@@ -1,0 +1,22 @@
+[
+  {"query": "Issue #1002: implement the PostgreSQL 18 relational adapter, grdr-rel-postgres, behind the Relational port.", "should_trigger": true},
+  {"query": "Add a NATS JetStream bus adapter for the distributed profile.", "should_trigger": true},
+  {"query": "the blob adapter needs Azure Blob support through object_store, same tenant path rules as S3", "should_trigger": true},
+  {"query": "Implement SandboxBackend on Linux with landlock for the launch sandbox.", "should_trigger": true},
+  {"query": "A contributor wants a ClickHouse Events adapter implementing QueryIr in grdr-contrib. Set it up and get it through the port test kit.", "should_trigger": true},
+  {"query": "Add a PKCS#11 KeyStore adapter for servers as a contrib Tier 2 adapter.", "should_trigger": true},
+  {"query": "grdr-bus-log now fails the crash-point cases in grdr-ports-testkit after the commit-fence change. Fix the adapter.", "should_trigger": true},
+  {"query": "Write the SensorBackend for a vendor's eBPF sensor and describe it with a HostProfile.", "should_trigger": true},
+  {"query": "implement the SecretStore port on macOS using the Keychain", "should_trigger": true},
+  {"query": "GRDR_WORK_ITEM=1017: change grdr-blob's put_versioned so object keys honour the TenantPath prefix for the new retention rules.", "should_trigger": true},
+  {"query": "Write the RFC for adding a lag-per-partition method to the Bus port trait.", "should_trigger": false},
+  {"query": "Export findings to a customer's S3 bucket as OCSF Parquet through an integration manifest.", "should_trigger": false},
+  {"query": "Add the Jira ticketing integration for policy-violation findings.", "should_trigger": false},
+  {"query": "Create a new layer 1 crate grdr-review for the sans-IO review stage.", "should_trigger": false},
+  {"query": "Write golden vectors for the grdr.decide.v1alpha1 request and response frames.", "should_trigger": false},
+  {"query": "Run the full kernel matrix for my change to the Linux sensor's exec probe.", "should_trigger": false},
+  {"query": "Write a Sigma rule for an agent spawning a reverse shell.", "should_trigger": false},
+  {"query": "Refactor the daemon's spool writer to read time from the Clock it is given instead of SystemTime::now.", "should_trigger": false},
+  {"query": "Threat-model tenant context on the hunt query path in the server.", "should_trigger": false},
+  {"query": "Measure p99 write latency of the SQLite store on the tier B reference host.", "should_trigger": false}
+]

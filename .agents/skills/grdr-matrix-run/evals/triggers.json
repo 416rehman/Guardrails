@@ -1,0 +1,22 @@
+[
+  {"query": "Issue #233: the Windows SensorBackend now subscribes to ETW process events. I'm in the Linux container, so how do I get results for Windows 11 x64 and ARM64 with Defender?", "should_trigger": true},
+  {"query": "My change to bpf/grdr-sensor-linux-bpf adds a connect4 probe. Does it load and pass the verifier on every kernel in the design/10 matrix, 5.15 up?", "should_trigger": true},
+  {"query": "eval-platform here: run the Tier 1 cells for merge-queue commit 4f1e2a9c and report parity per cell.", "should_trigger": true},
+  {"query": "the macOS launch sandbox profile under platform/macos changed and I can't run macOS here. how do I get arm64 results", "should_trigger": true},
+  {"query": "Bug #318 says the Linux sensor drops exec events on arm64 kernels. Reproduce it on main's commit on an arm64 cell before touching any code.", "should_trigger": true},
+  {"query": "[WI-0039] macOS tier 1: the acceptance criteria want the Tier 1 macOS arm64 cells green in matrix-run. Run them on the queued commit.", "should_trigger": true},
+  {"query": "matrix-run came back with 'not run (requires hardware)' for the 72-hour soak cell. Can I mark that acceptance criterion as passed?", "should_trigger": true},
+  {"query": "I rewrote the named-pipe peer authentication in grdr-hook's Windows transport. It needs testing on Windows Server 2025 as well as Windows 11.", "should_trigger": true},
+  {"query": "Run the Defender coexistence cell for the new MSI installer build on the queued commit and tell me if Defender logged anything on install, run or uninstall.", "should_trigger": true},
+  {"query": "The kernel matrix job failed on 6.8 with a verifier error at insn 412. Read the log it pointed at and tell me which cells failed and why.", "should_trigger": true},
+  {"query": "Run cargo xtask verify --fast on my grdr-core change before I hand off issue #240.", "should_trigger": false},
+  {"query": "Add a Tier 1 cell for Ubuntu 26.04 arm64 to support.toml together with its CI job.", "should_trigger": false},
+  {"query": "Register my gaming PC as a tier B self-hosted runner for the lab and give it a Windows guest.", "should_trigger": false},
+  {"query": "Fix the flaky cursor test in grdr-store-local that fails one run in twenty on Linux.", "should_trigger": false},
+  {"query": "Implement the matrix-run subcommand in xtask: read lab/jobs/*.toml, dispatch to hosted runners and print ten lines.", "should_trigger": false},
+  {"query": "Write the lab/jobs entry format for tier C driver jobs and how matrix-run should refuse them.", "should_trigger": false},
+  {"query": "Run the M04 TOCTOU power prompt over the Windows grant code in grdr-core::policy.", "should_trigger": false},
+  {"query": "Prepare the 0.5.0 release candidate: Tier 1 matrix, scorecard, held-out counts, SBOM and VEX.", "should_trigger": false},
+  {"query": "Threat-model the new ETW consumer in the Windows sensor: new parser, untrusted event payloads.", "should_trigger": false},
+  {"query": "Explain the difference between tier A, B and C in team/05 section 19; I'm writing the lab chapter of the contributor guide.", "should_trigger": false}
+]

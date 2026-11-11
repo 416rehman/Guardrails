@@ -1,0 +1,12 @@
+# True false positives of structure check S4, implicit state machines (skill grdr-structure,
+# rule 3). The fix for a real finding is an explicit state type, never an entry here. It is a
+# protected path, so no agent exempts its own change: an entry lands only through a
+# protected-change item (owner instruction 7) that lead-agent-kit implements under
+# GRDR_SCOPE=protected, after eval-security, one evaluator on the other model and the evaluator
+# for the file's area agree in check runs.
+#
+# Entry: { path = "crates/<crate>/src/<file>.rs", type = "<TypeName>",
+#          pattern = "bool-fields" | "status-field" | "option-group",
+#          reason = "<why the fields are not one state>", requested_in = "#<issue or pull request>",
+#          added_by = "<agent that implemented the protected change>" }
+exemptions = []

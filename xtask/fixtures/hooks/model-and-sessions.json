@@ -1,0 +1,19 @@
+{
+  "handler": "model-gate",
+  "preset": "worker",
+  "cases": [
+    {"name": "fable-for-non-architect", "env": {"GRDR_AGENT": "impl-rust", "GRDR_WORK_ITEM": "7"},
+     "input": {"hook_event_name": "UserPromptSubmit", "model": "claude-fable-5-2", "prompt": "do it"},
+     "expect": "block", "contains": "model rule"},
+    {"name": "sonnet-allowed", "env": {"GRDR_AGENT": "impl-rust", "GRDR_WORK_ITEM": "7"},
+     "input": {"hook_event_name": "UserPromptSubmit", "model": "claude-sonnet-5-5", "prompt": "do it"},
+     "expect": "allow"},
+    {"name": "unknown-model", "env": {"GRDR_AGENT": "impl-rust", "GRDR_WORK_ITEM": "7"},
+     "input": {"hook_event_name": "UserPromptSubmit", "model": "claude-haiku-4-5", "prompt": "do it"},
+     "expect": "block", "contains": "does not bind"},
+    {"name": "person-on-fable-real-first-prompt", "env": {},
+     "files": {".agent/state/session-00000000-0000-4000-8000-000000000002.json": "{\"schema\": \"hook-session.v1\", \"session_id\": \"00000000-0000-4000-8000-000000000002\", \"started_at\": \"2026-11-11T10:07:30Z\", \"agent\": null, \"work_item\": null, \"model\": \"claude-fable-5-2\", \"start_tree\": null}"},
+     "input": {"session_id": "00000000-0000-4000-8000-000000000002", "prompt_id": "00000000-0000-4000-8000-000000000003", "permission_mode": "default", "hook_event_name": "UserPromptSubmit", "prompt": "Reply with the word ready."},
+     "expect": "block", "contains": "a session with no agent may run on"}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "handler": "session-restore",
+  "preset": "worker",
+  "cases": [
+    {"name": "chief-architect-resume-carries-sentence", "env": {"GRDR_AGENT": "chief-architect"},
+     "input": {"hook_event_name": "SessionStart", "source": "compact", "agent_type": "chief-architect"},
+     "expect": "context", "contains": "This codebase is yours"}
+  ]
+}

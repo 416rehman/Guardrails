@@ -1,0 +1,75 @@
+name: scorecard
+
+# OpenSSF Scorecard, weekly, with its score ratcheted against security/scorecard.toml (owner
+# instruction 22). The repository is public, so Scorecard runs with the workflow token alone
+# (owner instruction 28); a private copy, such as a self-hosted mirror, would need a personal
+# access token, so the visibility check skips the analysis there.
+
+on:
+  schedule:
+    - cron: "33 5 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: scorecard
+  cancel-in-progress: false
+
+jobs:
+  repository:
+    name: Visibility
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      public: ${{ steps.visibility.outputs.public }}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - id: visibility
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          visibility=$(gh api "repos/$REPOSITORY" --jq .visibility)
+          echo "public=$([ "$visibility" = public ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  analysis:
+    needs: repository
+    if: needs.repository.outputs.public == 'true'
+    name: Scorecard
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+      checks: read
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.5.0
+        with:
+          results_file: scorecard.json
+          results_format: json
+          publish_results: false
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: scorecard
+          path: scorecard.json
+      - name: Hold the score at or above the ratchet
+        run: >-
+          python3 -I -c 'import json, sys, tomllib;
+          score = json.load(open(sys.argv[1]))["score"];
+          floor = tomllib.load(open(sys.argv[2], "rb"))["floor"];
+          print(f"Scorecard {score}, floor {floor}");
+          sys.exit(0 if score >= floor else 1)'
+          scorecard.json security/scorecard.toml

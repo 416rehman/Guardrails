@@ -1,0 +1,9 @@
+{
+  "handler": "session-end",
+  "preset": "worker",
+  "cases": [
+    {"name": "records-a-learning", "env": {"GRDR_AGENT": "impl-rust"},
+     "input": {"hook_event_name": "SessionEnd", "reason": "other"},
+     "expect": "allow"}
+  ]
+}

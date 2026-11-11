@@ -1,0 +1,22 @@
+[
+  {"query": "Issue #418 (kind:removal): delete the `grdr doctor --legacy-output` flag and everything behind it. Write set is programs/grdr/src/doctor/** and programs/grdr/tests/doctor_*.rs.", "should_trigger": true},
+  {"query": "replace the hand-rolled exponential backoff in crates/grdr-store-local/src/spool/retry.rs with the Backoff type that already exists in grdr-model, and get rid of the old one", "should_trigger": true},
+  {"query": "We no longer need the GRDR_SPOOL_COMPAT toggle. Remove it, the config key spool.compat_mode and the code path it selects.", "should_trigger": true},
+  {"query": "GRDR_WORK_ITEM=507: retire the v0 tool-table format. The interpreter should only accept v1 tables, so delete crates/grdr-core/src/analyze/tooltable/v0.rs and its callers.", "should_trigger": true},
+  {"query": "rip out the unused serde_yaml dependency from grdr-agents, nothing reads yaml there anymore", "should_trigger": true},
+  {"query": "`grdr inventory --flat` was deprecated two releases ago and its earliest_removal date has passed. Take it out of the CLI.", "should_trigger": true},
+  {"query": "Delete the dead FallbackClock struct in grdr-daemon. The Clock port replaced it but it is still compiled in and two tests still construct it.", "should_trigger": true},
+  {"query": "#533 is a replace-X-with-Y item: swap every use of legacy_digest() for ActionDigest::compute and remove legacy_digest entirely.", "should_trigger": true},
+  {"query": "can you drop the --json-v0 output mode from the hook shim? the spec on issue 560 says remove it, not hide it behind a flag", "should_trigger": true},
+  {"query": "The evaluator failed attempt 1 of #571 because I wrapped the old spool format reader in `if cfg.legacy` instead of deleting it. Redo it properly on agent/571/a2.", "should_trigger": true},
+  {"query": "Issue #419 (kind:bug): `grdr doctor` prints 'effective' for a hook that never fired. Fix it with the three-arm proof.", "should_trigger": false},
+  {"query": "Clean up the comments in my staged diff before I commit, there's a lot of narration in crates/grdr-wire/src/frame.rs", "should_trigger": false},
+  {"query": "Add a deprecations.toml entry and migration page for `grdr inventory --flat`; we announce it in 0.4 and remove it two releases later.", "should_trigger": false},
+  {"query": "run simplify on my diff for #440 before I write the hand-off", "should_trigger": false},
+  {"query": "Split the policy module out of grdr-core into its own crate now that the browser policy check is a second consumer.", "should_trigger": false},
+  {"query": "Refactor the spool writer in grdr-store-local into smaller functions without changing behaviour; golden vectors must stay byte-identical.", "should_trigger": false},
+  {"query": "As lead-core, turn proposed issue #612 (remove the v0 tool-table format) into a ready item: write set, acceptance criteria with named oracles, tier, then the ready.v1 comment.", "should_trigger": false},
+  {"query": "The nightly mutation run says 14 mutants survive in grdr-fastpath. Add tests that kill them.", "should_trigger": false},
+  {"query": "verify --fast is green for #418, post the handoff.v1 and stop", "should_trigger": false},
+  {"query": "Run the E03 deletion-pass audit over grdr-core::session and record the results in the ledger.", "should_trigger": false}
+]

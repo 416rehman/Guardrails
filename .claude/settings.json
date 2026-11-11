@@ -1,0 +1,513 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "autoMemoryEnabled": false,
+  "availableModels": [
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+    "claude-fable-5-2"
+  ],
+  "disableAutoMode": "disable",
+  "enabledPlugins": {
+    "agentic-actions-auditor@grdr-agent-marketplace": true,
+    "ce-simplify-code@grdr-agent-marketplace": true,
+    "cleanup@grdr-agent-marketplace": true,
+    "code-simplifier@grdr-agent-marketplace": true,
+    "differential-review@grdr-agent-marketplace": true,
+    "dzhng-skills@grdr-agent-marketplace": true,
+    "fp-check@grdr-agent-marketplace": true,
+    "frontend-design@grdr-agent-marketplace": true,
+    "hookify@grdr-agent-marketplace": true,
+    "insecure-defaults@grdr-agent-marketplace": true,
+    "md-management@grdr-agent-marketplace": true,
+    "modern-web-guidance@grdr-agent-marketplace": true,
+    "mutation-testing@grdr-agent-marketplace": true,
+    "patching-bugs@grdr-agent-marketplace": true,
+    "pr-review-toolkit@grdr-agent-marketplace": true,
+    "property-based-testing@grdr-agent-marketplace": true,
+    "regression-hunt@grdr-agent-marketplace": true,
+    "rust-analyzer-lsp@grdr-agent-marketplace": true,
+    "rust-review@grdr-agent-marketplace": true,
+    "security-guidance@grdr-agent-marketplace": true,
+    "security-scan@grdr-agent-marketplace": true,
+    "semgrep@grdr-agent-marketplace": true,
+    "sharp-edges@grdr-agent-marketplace": true,
+    "spec-to-code-compliance@grdr-agent-marketplace": true,
+    "superpowers@grdr-agent-marketplace": true,
+    "supply-chain-risk-auditor@grdr-agent-marketplace": true,
+    "thermo-nuclear-code-quality-review@grdr-agent-marketplace": true,
+    "typescript-lsp@grdr-agent-marketplace": true,
+    "unslop@grdr-agent-marketplace": true,
+    "writing-lean-proofs@grdr-agent-marketplace": true
+  },
+  "env": {
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-sonnet-5-5",
+    "CARGO_TERM_COLOR": "never",
+    "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": "4",
+    "CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS": "3",
+    "DISABLE_TELEMETRY": "1",
+    "ENABLE_CODE_SECURITY_REVIEW": "0",
+    "GH_NO_UPDATE_NOTIFIER": "1",
+    "GH_PROMPT_DISABLED": "1",
+    "GH_REPO": "416rehman/Guardrails",
+    "GRDR_KIT": "1",
+    "SEMGREP_GUARDIAN_AUTO_UPDATE": "0"
+  },
+  "extraKnownMarketplaces": {
+    "grdr-agent-marketplace": {
+      "source": {
+        "path": "./.agents/marketplace",
+        "source": "directory"
+      }
+    }
+  },
+  "hooks": {
+    "ConfigChange": [
+      {
+        "hooks": [
+          {
+            "command": "\"${CLAUDE_PROJECT_DIR}/.agent/kit/bin/xtask\" hook config-change",
+            "onFailure": "block",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "\"${CLAUDE_PROJECT_DIR}/.agent/kit/bin/xtask\" hook post-edit",
+            "timeout": 60,
+            "type": "command"
+          }
+        ],
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit"
+      },
+      {
+        "hooks": [
+          {
+            "command": "\"${CLAUDE_PROJECT_DIR}/.agent/kit/bin/xtask\" hook post-bash",
+            "timeout": 20,
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash|PowerShell"
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "command": "\"${CLAUDE_PROJECT_DIR}/.agent/kit/bin/xtask\" hook pre-compact",
+            "timeout": 60,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "PreModelSwitch": [
+      {
+        "hooks": [
+          {
+            "command": "\"${CLAUDE_PROJECT_DIR}/.agent/kit/bin/xtask\" hook model-switch",
+            "onFailure": "block",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "\"${CLAUDE_PROJECT_DIR}/.agent/kit/bin/xtask\" hook guard-path",
+            "onFailure": "block",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit"
+      },
+      {
+        "hooks": [
+          {
+            "command": "\"${CLAUDE_PROJECT_DIR}/.agent/kit/bin/xtask\" hook guard-command",
+            "onFailure": "block",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash|PowerShell"
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "command": "\"${CLAUDE_PROJECT_DIR}/.agent/kit/bin/xtask\" hook session-end",
+            "timeout": 2,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "\"${CLAUDE_PROJECT_DIR}/.agent/kit/bin/xtask\" hook session-start",
+            "timeout": 300,
+            "type": "command"
+          }
+        ],
+        "matcher": "startup|resume|clear|fork"
+      },
+      {
+        "hooks": [
+          {
+            "command": "\"${CLAUDE_PROJECT_DIR}/.agent/kit/bin/xtask\" hook session-restore",
+            "timeout": 30,
+            "type": "command"
+          }
+        ],
+        "matcher": "compact"
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "\"${CLAUDE_PROJECT_DIR}/.agent/kit/bin/xtask\" hook stop-gate",
+            "timeout": 600,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "command": "\"${CLAUDE_PROJECT_DIR}/.agent/kit/bin/xtask\" hook stop-failure",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "command": "\"${CLAUDE_PROJECT_DIR}/.agent/kit/bin/xtask\" hook subagent-start",
+            "timeout": 20,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "command": "\"${CLAUDE_PROJECT_DIR}/.agent/kit/bin/xtask\" hook subagent-stop",
+            "timeout": 60,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "command": "\"${CLAUDE_PROJECT_DIR}/.agent/kit/bin/xtask\" hook model-gate",
+            "onFailure": "block",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  },
+  "model": "claude-sonnet-5-5",
+  "permissions": {
+    "allow": [
+      "Bash(cargo xtask *)",
+      "Bash(cargo check *)",
+      "Bash(cargo build *)",
+      "Bash(cargo nextest *)",
+      "Bash(cargo test *)",
+      "Bash(cargo clippy *)",
+      "Bash(cargo fmt *)",
+      "Bash(pnpm run *)",
+      "Bash(pnpm -r run *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git add *)",
+      "Bash(git commit -m *)",
+      "Bash(gh issue view *)",
+      "Bash(gh issue list *)",
+      "Bash(gh issue create *)",
+      "Bash(gh issue comment *)",
+      "Bash(gh issue edit *)",
+      "Bash(gh issue close *)",
+      "Bash(gh search issues *)",
+      "Bash(gh label list *)",
+      "Bash(gh repo view *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr diff *)",
+      "Bash(gh pr list *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh pr comment *)",
+      "Bash(git push *)",
+      "Bash(gh pr create *)",
+      "Bash(gh pr edit *)",
+      "Bash(git checkout HEAD -- *)",
+      "Bash(git checkout -- *)",
+      "Bash(git restore *)",
+      "Bash(cargo update *)",
+      "WebFetch(domain:www.1password.dev)",
+      "WebFetch(domain:support.1password.com)",
+      "WebFetch(domain:docs.beyondtrust.com)",
+      "WebFetch(domain:www.beyondtrust.com)",
+      "WebFetch(domain:www.checkpoint.com)",
+      "WebFetch(domain:sc1.checkpoint.com)",
+      "WebFetch(domain:docs.lakera.ai)",
+      "WebFetch(domain:cisco-ai-defense.github.io)",
+      "WebFetch(domain:www.cisco.com)",
+      "WebFetch(domain:developers.cloudflare.com)",
+      "WebFetch(domain:blog.cloudflare.com)",
+      "WebFetch(domain:aidr-docs.crowdstrike.com)",
+      "WebFetch(domain:developer.crowdstrike.com)",
+      "WebFetch(domain:www.crowdstrike.com)",
+      "WebFetch(domain:pangea.cloud)",
+      "WebFetch(domain:docs.datadoghq.com)",
+      "WebFetch(domain:www.elastic.co)",
+      "WebFetch(domain:www.island.io)",
+      "WebFetch(domain:www.jamf.com)",
+      "WebFetch(domain:learn.jamf.com)",
+      "WebFetch(domain:learn.microsoft.com)",
+      "WebFetch(domain:www.microsoft.com)",
+      "WebFetch(domain:blogs.windows.com)",
+      "WebFetch(domain:docs.github.com)",
+      "WebFetch(domain:docs.netskope.com)",
+      "WebFetch(domain:community.netskope.com)",
+      "WebFetch(domain:help.okta.com)",
+      "WebFetch(domain:developer.okta.com)",
+      "WebFetch(domain:www.okta.com)",
+      "WebFetch(domain:www.originhq.com)",
+      "WebFetch(domain:docs.originhq.com)",
+      "WebFetch(domain:docs.paloaltonetworks.com)",
+      "WebFetch(domain:cortex-docs.paloaltonetworks.com)",
+      "WebFetch(domain:www.paloaltonetworks.com)",
+      "WebFetch(domain:www.sentinelone.com)",
+      "WebFetch(domain:www.prompt.security)",
+      "WebFetch(domain:sidekicksecurity.ai)",
+      "WebFetch(domain:docs.sysdig.com)",
+      "WebFetch(domain:docs.zenity.io)",
+      "WebFetch(domain:zenity.io)",
+      "WebFetch(domain:www.zscaler.com)",
+      "WebFetch(domain:help.zscaler.com)",
+      "WebFetch(domain:a2a-protocol.org)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:agentskills.io)",
+      "WebFetch(domain:arxiv.org)",
+      "WebFetch(domain:export.arxiv.org)",
+      "WebFetch(domain:www.blackhat.com)",
+      "WebFetch(domain:defcon.org)",
+      "WebFetch(domain:info.defcon.org)",
+      "WebFetch(domain:media.defcon.org)",
+      "WebFetch(domain:www.usenix.org)",
+      "WebFetch(domain:*.ieee-security.org)",
+      "WebFetch(domain:www.sigsac.org)",
+      "WebFetch(domain:bsideslv.org)",
+      "WebFetch(domain:www.securitybsides.com)",
+      "WebFetch(domain:fwdcloudsec.org)",
+      "WebFetch(domain:www.coalitionforsecureai.org)",
+      "WebFetch(domain:cloudsecurityalliance.org)",
+      "WebFetch(domain:labs.cloudsecurityalliance.org)",
+      "WebFetch(domain:www.enisa.europa.eu)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:news.ycombinator.com)",
+      "WebFetch(domain:hn.algolia.com)",
+      "WebFetch(domain:datatracker.ietf.org)",
+      "WebFetch(domain:www.ietf.org)",
+      "WebFetch(domain:www.rfc-editor.org)",
+      "WebFetch(domain:lobste.rs)",
+      "WebFetch(domain:modelcontextprotocol.io)",
+      "WebFetch(domain:www.securityweek.com)",
+      "WebFetch(domain:www.helpnetsecurity.com)",
+      "WebFetch(domain:www.theregister.com)",
+      "WebFetch(domain:thehackernews.com)",
+      "WebFetch(domain:softwareanalyst.substack.com)",
+      "WebFetch(domain:www.nist.gov)",
+      "WebFetch(domain:csrc.nist.gov)",
+      "WebFetch(domain:nvlpubs.nist.gov)",
+      "WebFetch(domain:pages.nist.gov)",
+      "WebFetch(domain:openid.net)",
+      "WebFetch(domain:openid.github.io)",
+      "WebFetch(domain:genai.owasp.org)",
+      "WebFetch(domain:owasp.org)",
+      "WebFetch(domain:aivss.owasp.org)",
+      "WebFetch(domain:www.reddit.com)",
+      "WebFetch(domain:www.w3.org)",
+      "WebFetch(domain:w3c.github.io)",
+      "WebSearch"
+    ],
+    "ask": [
+      "Bash(cargo add *)",
+      "Bash(cargo install *)",
+      "Bash(pnpm add *)",
+      "Bash(gh api *)"
+    ],
+    "defaultMode": "default",
+    "deny": [
+      "Edit(./conformance/vectors/**)",
+      "Edit(./tests/golden/**)",
+      "Edit(**/*.snap)",
+      "Edit(**/__screenshots__/**)",
+      "Edit(./fuzz/corpus/regressions/**)",
+      "Edit(./spec/**)",
+      "Edit(./specs/**)",
+      "Edit(./security/**)",
+      "Edit(./quality/**)",
+      "Edit(./audits/**)",
+      "Edit(./architecture.toml)",
+      "Edit(./surfaces.toml)",
+      "Edit(./support.toml)",
+      "Edit(./limits.toml)",
+      "Edit(./supply-chain/**)",
+      "Edit(./third_party/**)",
+      "Edit(./governance/**)",
+      "Edit(./brand/**)",
+      "Edit(./web/packages/ui/exceptions.toml)",
+      "Edit(./deploy/fleet/**)",
+      "Edit(./dist.toml)",
+      "Edit(./release-please-config.json)",
+      "Edit(./.release-please-manifest.json)",
+      "Edit(./release/**)",
+      "Edit(**/CHANGELOG.md)",
+      "Edit(./deny.toml)",
+      "Edit(**/clippy.toml)",
+      "Edit(./rustfmt.toml)",
+      "Edit(./rust-toolchain.toml)",
+      "Edit(./.cargo/**)",
+      "Edit(./Cargo.toml)",
+      "Edit(./Cargo.lock)",
+      "Edit(./pnpm-lock.yaml)",
+      "Edit(./pnpm-workspace.yaml)",
+      "Edit(./.github/**)",
+      "Edit(./AGENTS.md)",
+      "Edit(**/AGENTS.md)",
+      "Edit(./CLAUDE.md)",
+      "Edit(**/REVIEW.md)",
+      "Edit(./docs/AUTOPILOT.md)",
+      "Edit(./docs/design/**)",
+      "Edit(./docs/decisions/**)",
+      "Edit(./docs/agents/status/**)",
+      "Edit(./rfcs/**)",
+      "Edit(./docs/team/**)",
+      "Edit(./docs/references/research/**)",
+      "Edit(./LICENSE)",
+      "Edit(./NOTICE)",
+      "Edit(./COVENANT.md)",
+      "Edit(./GOVERNANCE.md)",
+      "Edit(./CONTRIBUTING.md)",
+      "Edit(./CODE_OF_CONDUCT.md)",
+      "Edit(./SECURITY.md)",
+      "Edit(./MAINTAINERS.md)",
+      "Edit(./AI_POLICY.md)",
+      "Edit(./ADOPTERS.md)",
+      "Edit(./TRADEMARKS.md)",
+      "Edit(./.agents/**)",
+      "Edit(./.claude/**)",
+      "Edit(./xtask/Cargo.toml)",
+      "Edit(./xtask/src/config/**)",
+      "Edit(./xtask/src/gates/**)",
+      "Edit(./xtask/src/hook/**)",
+      "Edit(./xtask/src/kit/**)",
+      "Edit(./xtask/verify.toml)",
+      "Edit(./.git/**)",
+      "Edit(./.agent/kit/**)",
+      "Edit(./.agent/state/item-*.json)",
+      "Read(./.env)",
+      "Read(./**/*.pem)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.config/gh/**)",
+      "Read(~/AppData/Roaming/GitHub CLI/**)",
+      "Read(~/.cargo/credentials.toml)",
+      "Read(~/.npmrc)",
+      "Read(~/.claude/.credentials.json)",
+      "Read(~/.claude/settings.json)",
+      "Read(~/.claude/settings.local.json)",
+      "Read(~/.claude.json)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git reset --hard *)",
+      "Bash(git commit --no-verify *)",
+      "Bash(git commit -s *)",
+      "Bash(git commit --signoff *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh release *)",
+      "Bash(cargo publish *)",
+      "Bash(npm publish *)",
+      "Bash(pnpm publish *)",
+      "Bash(cargo insta accept *)",
+      "Bash(cargo insta review *)",
+      "Bash(gh auth *)",
+      "Bash(gh secret *)",
+      "Bash(gh variable *)",
+      "Bash(gh extension *)",
+      "Bash(gh gist *)",
+      "Bash(gh ssh-key *)",
+      "Bash(gh gpg-key *)",
+      "Bash(gh config set *)",
+      "Bash(gh repo create *)",
+      "Bash(gh repo edit *)",
+      "Bash(gh repo delete *)",
+      "Bash(gh repo rename *)",
+      "Bash(gh repo archive *)",
+      "Bash(gh issue delete *)",
+      "Bash(gh issue transfer *)",
+      "Bash(gh label create *)",
+      "Bash(gh label edit *)",
+      "Bash(gh label delete *)",
+      "Bash(gh label clone *)"
+    ],
+    "disableBypassPermissionsMode": "disable"
+  },
+  "sandbox": {
+    "allowUnsandboxedCommands": false,
+    "enabled": true,
+    "filesystem": {
+      "denyRead": [
+        "~/.ssh",
+        "~/.aws",
+        "~/.config/gh"
+      ]
+    },
+    "network": {
+      "allowedDomains": [
+        "crates.io",
+        "index.crates.io",
+        "static.crates.io",
+        "docs.rs",
+        "registry.npmjs.org",
+        "github.com",
+        "api.github.com",
+        "codeload.github.com",
+        "buf.build"
+      ]
+    }
+  }
+}

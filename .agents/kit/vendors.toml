@@ -1,0 +1,253 @@
+# What the skill grdr-vendor-research reads when a feature's requirements, completeness or industry
+# norm are unclear (owner instruction 14): the reference vendors, each with its documentation
+# domains and the brief under docs/references/research/ that covers it, then the source classes
+# of the horizon sweep, each with its domains and the URLs a sweep starts from.
+#
+# kit render turns every domain here into a WebFetch(domain:<d>) allow rule and adds WebSearch
+# for the roles whose roster skills include [research] skill; every other role keeps WebSearch
+# out of its tools. The same domains join the egress lists [research] egress_lists names, and
+# each granted role's entry in deploy/fleet/egress.json. A domain is an exact host; `*.` before a
+# host covers its subdomains, never the host itself. kit check validates the file. Add a vendor
+# or a source class here; nothing in code names one. A vendor's optional `aliases` are the short
+# forms code would write; check S7 looks for its `name` and each alias.
+
+[research]
+skill = "grdr-vendor-research"
+egress_lists = ["intel"]
+
+# The reference vendors the owner named, briefs 01 to 05.
+
+[vendor.origin]
+name = "Origin"
+domains = ["www.originhq.com", "docs.originhq.com"]
+brief = "docs/references/research/01-origin.md"
+
+[vendor.beyondtrust]
+name = "BeyondTrust AI Agent Security"
+aliases = ["BeyondTrust"]
+domains = ["docs.beyondtrust.com", "www.beyondtrust.com"]
+brief = "docs/references/research/02-beyondtrust.md"
+
+[vendor.microsoft]
+name = "Microsoft Agent 365 and the Microsoft agent governance stack"
+aliases = ["Agent 365"]
+domains = ["learn.microsoft.com", "www.microsoft.com", "blogs.windows.com", "docs.github.com"]
+brief = "docs/references/research/03-microsoft.md"
+
+[vendor.crowdstrike]
+name = "CrowdStrike Falcon AIDR"
+aliases = ["CrowdStrike", "Falcon"]
+domains = ["aidr-docs.crowdstrike.com", "developer.crowdstrike.com", "www.crowdstrike.com", "pangea.cloud"]
+brief = "docs/references/research/04-crowdstrike.md"
+
+[vendor.sidekick]
+name = "Sidekick Security"
+domains = ["sidekicksecurity.ai"]
+brief = "docs/references/research/05-sidekick.md"
+
+# Incumbent EDR, XDR, SASE and identity vendors, briefs g02 (round one) and h03 (search-backed;
+# where the two differ, h03 wins). The market maps 06 and 07 cover the rest of the field.
+
+[vendor.palo-alto-networks]
+name = "Palo Alto Networks Prisma AIRS and Cortex"
+aliases = ["Palo Alto Networks", "Prisma AIRS"]
+domains = ["docs.paloaltonetworks.com", "cortex-docs.paloaltonetworks.com", "www.paloaltonetworks.com"]
+brief = "docs/references/research/h03-incumbent-vendor-docs.md"
+
+[vendor.sentinelone]
+name = "SentinelOne and Prompt Security"
+aliases = ["SentinelOne", "Prompt Security"]
+domains = ["www.sentinelone.com", "www.prompt.security"]
+brief = "docs/references/research/h03-incumbent-vendor-docs.md"
+
+[vendor.netskope]
+name = "Netskope"
+domains = ["docs.netskope.com", "community.netskope.com"]
+brief = "docs/references/research/h03-incumbent-vendor-docs.md"
+
+[vendor.zscaler]
+name = "Zscaler"
+domains = ["www.zscaler.com", "help.zscaler.com"]
+brief = "docs/references/research/h03-incumbent-vendor-docs.md"
+
+[vendor.check-point]
+name = "Check Point and Lakera"
+aliases = ["Check Point", "Lakera"]
+domains = ["www.checkpoint.com", "sc1.checkpoint.com", "docs.lakera.ai"]
+brief = "docs/references/research/h03-incumbent-vendor-docs.md"
+
+[vendor.datadog]
+name = "Datadog AI Guard"
+aliases = ["Datadog"]
+domains = ["docs.datadoghq.com"]
+brief = "docs/references/research/h03-incumbent-vendor-docs.md"
+
+[vendor.okta]
+name = "Okta"
+domains = ["help.okta.com", "developer.okta.com", "www.okta.com"]
+brief = "docs/references/research/h03-incumbent-vendor-docs.md"
+
+[vendor.jamf]
+name = "Jamf"
+domains = ["www.jamf.com", "learn.jamf.com"]
+brief = "docs/references/research/h03-incumbent-vendor-docs.md"
+
+[vendor.island]
+name = "Island"
+domains = ["www.island.io"]
+brief = "docs/references/research/h03-incumbent-vendor-docs.md"
+
+[vendor.1password]
+name = "1Password"
+domains = ["www.1password.dev", "support.1password.com"]
+brief = "docs/references/research/h03-incumbent-vendor-docs.md"
+
+[vendor.cisco]
+name = "Cisco AI Defense and DefenseClaw"
+aliases = ["Cisco", "DefenseClaw"]
+domains = ["cisco-ai-defense.github.io", "www.cisco.com"]
+brief = "docs/references/research/g02-edr-class-rivals-docs.md"
+
+[vendor.elastic]
+name = "Elastic Defend"
+aliases = ["Elastic Defend"]
+domains = ["www.elastic.co"]
+brief = "docs/references/research/g02-edr-class-rivals-docs.md"
+
+[vendor.sysdig]
+name = "Sysdig"
+domains = ["docs.sysdig.com"]
+brief = "docs/references/research/g02-edr-class-rivals-docs.md"
+
+[vendor.zenity]
+name = "Zenity"
+domains = ["docs.zenity.io", "zenity.io"]
+brief = "docs/references/research/g02-edr-class-rivals-docs.md"
+
+[vendor.cloudflare]
+name = "Cloudflare AI Gateway and MCP portals"
+aliases = ["Cloudflare"]
+domains = ["developers.cloudflare.com", "blog.cloudflare.com"]
+brief = "docs/references/research/g02-edr-class-rivals-docs.md"
+
+# Source classes of the horizon sweep (instruction 14, second step). Briefs h01 to h09 show what
+# a sweep records for each class.
+
+[sources.ietf]
+domains = ["datatracker.ietf.org", "www.ietf.org", "www.rfc-editor.org"]
+urls = [
+  "https://datatracker.ietf.org/wg/oauth/documents/",
+  "https://datatracker.ietf.org/wg/wimse/documents/",
+  "https://datatracker.ietf.org/wg/scim/documents/",
+  "https://datatracker.ietf.org/wg/httpbis/documents/",
+  "https://datatracker.ietf.org/wg/webbotauth/documents/",
+  "https://datatracker.ietf.org/wg/scitt/documents/",
+  "https://datatracker.ietf.org/group/agentproto/about/",
+  "https://datatracker.ietf.org/group/dawn/about/",
+]
+
+[sources.w3c]
+domains = ["www.w3.org", "w3c.github.io"]
+urls = ["https://www.w3.org/TR/", "https://www.w3.org/groups/wg/"]
+
+[sources.openid]
+domains = ["openid.net", "openid.github.io"]
+urls = [
+  "https://openid.net/wg/authzen/",
+  "https://openid.net/wg/sharedsignals/",
+  "https://openid.net/cg/artificial-intelligence-identity-management-community-group/",
+]
+
+[sources.owasp]
+domains = ["genai.owasp.org", "owasp.org", "aivss.owasp.org"]
+urls = [
+  "https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/",
+  "https://genai.owasp.org/resource/agent-control-standard-acs/",
+  "https://genai.owasp.org/llm-top-10/",
+  "https://owasp.org/www-project-mcp-top-10/",
+]
+
+[sources.cosai]
+domains = ["www.coalitionforsecureai.org", "github.com"]
+urls = ["https://www.coalitionforsecureai.org/", "https://github.com/cosai-oasis"]
+
+[sources.csa]
+domains = ["cloudsecurityalliance.org", "labs.cloudsecurityalliance.org"]
+urls = [
+  "https://cloudsecurityalliance.org/artifacts/ai-controls-matrix",
+  "https://labs.cloudsecurityalliance.org/research/",
+]
+
+[sources.nist]
+domains = ["www.nist.gov", "csrc.nist.gov", "nvlpubs.nist.gov", "pages.nist.gov"]
+urls = [
+  "https://www.nist.gov/caisi/ai-agent-standards-initiative",
+  "https://csrc.nist.gov/projects/cosais",
+  "https://csrc.nist.gov/publications",
+]
+
+[sources.enisa]
+domains = ["www.enisa.europa.eu"]
+urls = ["https://www.enisa.europa.eu/publications"]
+
+[sources.mcp]
+domains = ["modelcontextprotocol.io", "github.com"]
+urls = [
+  "https://modelcontextprotocol.io/specification/latest",
+  "https://modelcontextprotocol.io/specification/draft",
+  "https://github.com/modelcontextprotocol/modelcontextprotocol/pulls",
+]
+
+[sources.a2a]
+domains = ["a2a-protocol.org", "github.com"]
+urls = ["https://a2a-protocol.org/latest/specification/", "https://github.com/a2aproject/A2A"]
+
+# The Agent Skills format and the portable hook draft (agent-hook-unity).
+[sources.agent-drafts]
+domains = ["agentskills.io", "github.com"]
+urls = [
+  "https://agentskills.io/",
+  "https://github.com/agentskills/agentskills",
+  "https://github.com/trendmicro/agent-hook-unity",
+]
+
+[sources.conferences]
+domains = [
+  "www.blackhat.com", "defcon.org", "info.defcon.org", "media.defcon.org", "www.usenix.org",
+  "*.ieee-security.org", "www.sigsac.org", "bsideslv.org", "www.securitybsides.com", "fwdcloudsec.org",
+]
+urls = [
+  "https://www.blackhat.com/",
+  "https://defcon.org/",
+  "https://www.usenix.org/conferences",
+  "https://www.ieee-security.org/TC/SP-Index.html",
+  "https://www.sigsac.org/ccs.html",
+  "https://bsideslv.org/talks",
+  "https://fwdcloudsec.org/",
+]
+
+[sources.arxiv]
+domains = ["arxiv.org", "export.arxiv.org"]
+urls = ["https://arxiv.org/list/cs.CR/recent", "https://arxiv.org/list/cs.AI/recent"]
+
+# New open-source projects: licence and star count on the date read.
+[sources.github-search]
+domains = ["github.com", "api.github.com"]
+urls = ["https://github.com/search?q=agent+security&type=repositories&s=updated", "https://github.com/topics/ai-security"]
+
+# New startups and funding news in agent security.
+[sources.news]
+domains = ["www.securityweek.com", "www.helpnetsecurity.com", "www.theregister.com", "thehackernews.com", "softwareanalyst.substack.com"]
+urls = ["https://www.securityweek.com/", "https://www.helpnetsecurity.com/", "https://softwareanalyst.substack.com/"]
+
+[sources.hacker-news]
+domains = ["news.ycombinator.com", "hn.algolia.com"]
+urls = ["https://news.ycombinator.com/", "https://hn.algolia.com/"]
+
+[sources.lobsters]
+domains = ["lobste.rs"]
+urls = ["https://lobste.rs/t/security"]
+
+[sources.reddit]
+domains = ["www.reddit.com"]
+urls = ["https://www.reddit.com/r/netsec/", "https://www.reddit.com/r/cybersecurity/", "https://www.reddit.com/r/blueteamsec/"]

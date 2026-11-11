@@ -1,0 +1,22 @@
+[
+  {"query": "Spec #212 says 'agent identity attestation' but nothing about what the attestation must carry. Before I write the acceptance criteria, find out what the reference vendors ship and what the drafts require.", "should_trigger": true},
+  {"query": "I'm implementing session recording export for #318 and the spec doesn't say which fields are the industry minimum. Check what BeyondTrust and CrowdStrike export.", "should_trigger": true},
+  {"query": "eval-acceptance on #404: the item claims the approval flow is complete. Is it complete compared with what Microsoft Agent 365 and Origin do?", "should_trigger": true},
+  {"query": "We're adding MCP tool pinning. What do the MCP spec's open proposals and the OWASP agentic guidance say we must cover?", "should_trigger": true},
+  {"query": "Product lead here: decide whether kill-switch scope per agent type is table stakes. Compare shipping products and any IETF or OpenID drafts.", "should_trigger": true},
+  {"query": "For #155 the requirement for delegated credentials is vague. Look up WIMSE and OAuth drafts and any recent Black Hat or USENIX talks on agent token theft.", "should_trigger": true},
+  {"query": "Is anyone doing runtime provenance of agent-written code? Check arXiv, new open-source projects and Hacker News, and tell me what is proven.", "should_trigger": true},
+  {"query": "The discovery spec for browser agents is thin. What does Sidekick do at the browser edge, and what do the market maps say the minimum is?", "should_trigger": true},
+  {"query": "Chief architect: before deciding the RFC on per-tenant policy packs, check how incumbent EDR vendors document policy inheritance.", "should_trigger": true},
+  {"query": "I'm not sure the audit export in #277 covers what compliance buyers expect. Research vendors and standards and post the findings on the issue.", "should_trigger": true},
+  {"query": "Fix the off-by-one in the spool rotation in crates/grdr-store-local/src/spool.rs; the failing test is spool::rotates_at_limit.", "should_trigger": false},
+  {"query": "Run cargo xtask verify --fast and tell me which gate failed.", "should_trigger": false},
+  {"query": "Write the hand-off for #91: verify is green and every acceptance criterion passed.", "should_trigger": false},
+  {"query": "Pull the new CISA KEV entries since yesterday into the mirror pack and propose detections.", "should_trigger": false},
+  {"query": "Rename the Watch label in the console's mode control to match the presentation registry.", "should_trigger": false},
+  {"query": "Review the Dependabot pull request that bumps tokio from 1.52 to 1.53.", "should_trigger": false},
+  {"query": "Write a decision record for using the token scanner until the shell canonicaliser lands.", "should_trigger": false},
+  {"query": "The spec for #330 lists every field and its limit; implement the parser and its fuzz target.", "should_trigger": false},
+  {"query": "Run audit A01 over grdr-core::session at the current head.", "should_trigger": false},
+  {"query": "Summarise brief 04 for my notes; I don't need anything new looked up.", "should_trigger": false}
+]

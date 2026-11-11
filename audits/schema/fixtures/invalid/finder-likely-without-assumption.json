@@ -1,0 +1,24 @@
+{
+  "schema": "audit-finding.v1",
+  "report": "finder",
+  "prompt": { "id": "C01", "version": "1.0.0" },
+  "commit": "3f1c2b9a8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a",
+  "applicable": true,
+  "results": [
+    {
+      "class_key": "swallowed:defaulted",
+      "locus": { "crate": "grdr-engine", "item": "eval::step" },
+      "title": "eval::step turns an evaluator error into ALLOW through unwrap_or_default",
+      "label": "LIKELY",
+      "severity": 2,
+      "evidence": [
+        { "path": "programs/grdr-engine/src/eval.rs", "line": 10, "quote": "let v = eval(req).ok().unwrap_or_default();" }
+      ],
+      "permits": "Any evaluator error yields the default verdict.",
+      "reach": "Not shown.",
+      "smallest_fix": "Map the error through the rule class's failure policy.",
+      "closure_proposal": { "kind": "test", "detail": "Evaluator error on a fail-closed class yields DENY." }
+    }
+  ],
+  "checked_and_sound": []
+}

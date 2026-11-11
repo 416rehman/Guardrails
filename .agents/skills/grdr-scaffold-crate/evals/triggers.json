@@ -1,0 +1,22 @@
+[
+  {"query": "Issue #60 adds grdr-export (layer 3, internal, privilege none). Create the crate.", "should_trigger": true},
+  {"query": "The policy module now has a second consumer, the in-browser policy check. Split it out of grdr-core into its own crate.", "should_trigger": true},
+  {"query": "run cargo xtask new-crate grdr-redact --layer 1 --privilege none --surface internal and finish the setup around it", "should_trigger": true},
+  {"query": "Add the new layer 4 program grdr-uplink for the fleet squad's item, with its metadata and test layout.", "should_trigger": true},
+  {"query": "We need a grdr-conformance tool crate for the adapter conformance suite. Scaffold it so archlint accepts it.", "should_trigger": true},
+  {"query": "How do I set up [package.metadata.grdr] and the crate AGENTS.md for a new grdr-bus-log adapter crate?", "should_trigger": true},
+  {"query": "Make a new crate grdr-judge-local for the first judge back end, behind the JudgeBackend trait.", "should_trigger": true},
+  {"query": "The detect module needs a different licence because of the bundled rule engine. Move it into its own workspace crate.", "should_trigger": true},
+  {"query": "Create grdr-mcp-proto as the parsing half of grdr-mcp, layer 1, public surface.", "should_trigger": true},
+  {"query": "I need a new workspace member for the S-15 benchmark harness, a tool crate. What's the right way to add it in this repo?", "should_trigger": true},
+  {"query": "Add a module compile::interest inside grdr-core for interest sets; it has one consumer.", "should_trigger": false},
+  {"query": "Update the Invariants section of crates/grdr-wire/AGENTS.md with the finding from last week's review.", "should_trigger": false},
+  {"query": "Add serde_json as a dependency of grdr-engine for the new parser.", "should_trigger": false},
+  {"query": "Bump rust-toolchain.toml to 1.100.1 now that it is fourteen days old.", "should_trigger": false},
+  {"query": "Add a same-layer edge from grdr-wire to grdr-model in architecture.toml.", "should_trigger": false},
+  {"query": "Delete the grdr-fastpath-ffi crate, nothing calls it any more.", "should_trigger": false},
+  {"query": "Publish grdr-proto 0.1.0 to crates.io.", "should_trigger": false},
+  {"query": "Create a new pnpm package under web/ for the DTCG design tokens.", "should_trigger": false},
+  {"query": "Write the specification for the sink interface of the grdr-export crate, including failure modes.", "should_trigger": false},
+  {"query": "Fix the clippy error ARCH-003 reports in grdr-model: it calls SystemTime::now.", "should_trigger": false}
+]

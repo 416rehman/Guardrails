@@ -1,0 +1,6 @@
+# zizmor's settings, found here by its own discovery. Dependabot waits 3 days after a patch or
+# minor release (owner instruction 22), below the 7 days zizmor asks for by default.
+rules:
+  dependabot-cooldown:
+    config:
+      days: 3

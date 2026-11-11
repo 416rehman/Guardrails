@@ -1,0 +1,11 @@
+[models]
+fable = "claude-fable-5-2"
+opus = "claude-opus-5-5"
+sonnet = "claude-sonnet-5-5"
+
+[rules]
+fable_agents = ["chief-architect"]   # the renderer refuses any other agent bound to fable
+# The rule has no Haiku tier; it folds into Sonnet (design/_review/03). A plugin agent that names
+# `haiku`, and Claude Code's own background calls, resolve to the sonnet id through the
+# ANTHROPIC_DEFAULT_HAIKU_MODEL variable kit render writes.
+folded_aliases = { haiku = "sonnet" }

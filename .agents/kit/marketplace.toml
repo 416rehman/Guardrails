@@ -1,0 +1,54 @@
+# The plugin marketplace of team/03 section 9, the only plugin source for agent sessions. Its
+# catalogue lives in this repository at `local_path`, relative to the repository root, and every
+# git entry there is pinned by commit (.agents/marketplace/PINS.md).
+# kit render turns `enabled` into enabledPlugins in .claude/settings.json and names the catalogue
+# there as `./<local_path>`, which Claude Code resolves against the main checkout. kit install
+# writes the untracked .claude/settings.local.json: the catalogue's absolute path while the tracked
+# settings do not name it, `true` for every entry with a git source (Claude Code fetches those
+# only when local, user or managed settings enable them), and `false` for a user-scope plugin that
+# loads under the same name as an entry here, so its hooks and skills do not run twice.
+# Owner instruction 2: every entry in the catalogue is enabled, and kit check fails otherwise.
+
+[marketplace]
+name = "grdr-agent-marketplace"
+local_path = ".agents/marketplace"
+
+[plugins]
+enabled = [
+  "pr-review-toolkit@grdr-agent-marketplace",
+  "code-simplifier@grdr-agent-marketplace",
+  "security-guidance@grdr-agent-marketplace",
+  "security-scan@grdr-agent-marketplace",
+  "hookify@grdr-agent-marketplace",
+  "md-management@grdr-agent-marketplace",
+  "rust-analyzer-lsp@grdr-agent-marketplace",
+  "typescript-lsp@grdr-agent-marketplace",
+  "frontend-design@grdr-agent-marketplace",
+  "mutation-testing@grdr-agent-marketplace",
+  "property-based-testing@grdr-agent-marketplace",
+  "rust-review@grdr-agent-marketplace",
+  "differential-review@grdr-agent-marketplace",
+  "regression-hunt@grdr-agent-marketplace",
+  "patching-bugs@grdr-agent-marketplace",
+  "insecure-defaults@grdr-agent-marketplace",
+  "sharp-edges@grdr-agent-marketplace",
+  "spec-to-code-compliance@grdr-agent-marketplace",
+  "fp-check@grdr-agent-marketplace",
+  "supply-chain-risk-auditor@grdr-agent-marketplace",
+  "agentic-actions-auditor@grdr-agent-marketplace",
+  "writing-lean-proofs@grdr-agent-marketplace",
+  "superpowers@grdr-agent-marketplace",
+  "dzhng-skills@grdr-agent-marketplace",
+  "cleanup@grdr-agent-marketplace",
+  "ce-simplify-code@grdr-agent-marketplace",
+  "thermo-nuclear-code-quality-review@grdr-agent-marketplace",
+  "unslop@grdr-agent-marketplace",
+  "semgrep@grdr-agent-marketplace",
+  "modern-web-guidance@grdr-agent-marketplace",
+]
+
+# Entries whose plugin manifest carries another name. Claude Code names their skills and agents
+# `<manifest name>:<item>`, and refuses an entry name that starts with `claude-`.
+[plugins.namespaces]
+security-scan = "claude-security"
+md-management = "claude-md-management"

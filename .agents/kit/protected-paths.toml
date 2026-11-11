@@ -1,0 +1,80 @@
+# Agents (worker, evaluator, gardener identities) may not create, modify or delete these.
+# Read by: worker VM mount profile, PreToolUse hook (advisory), CI gate V05 (enforcing).
+# Contents and order: team/05 section 5, without acceptance/**: acceptance criteria live in the
+# work-item issue, held by the ready.v1 digest (owner instruction 5). The kit binary every hook
+# runs is built from xtask/src/hook, kit and config and xtask/Cargo.toml, so they are protected
+# beside the gates. quality/hardcoded-exemptions.toml (S7) is under quality/**, every bound of
+# .agents/kit/limits.toml under .agents/**, and the brand manifest under brand/**. The Astryx
+# exception registry (owner instruction 21) and the release-please files (owner instruction 3)
+# change only through their own protected-change items. The chief architect's RFCs and status
+# notes are here beside its decision records, so its whole write set lands the one way its shell
+# allows: a protected-change lease, which makes it the item's implementer (owner instructions 5
+# and 7). A protected change is its own work item under GRDR_SCOPE=protected, landed after its
+# evaluators pass (owner instruction 7).
+paths = [
+  "conformance/vectors/**",
+  "tests/golden/**",
+  "**/*.snap",
+  "**/__screenshots__/**",
+  "fuzz/corpus/regressions/**",
+  "spec/**",
+  "specs/**",
+  "security/**",
+  "quality/**",
+  "audits/**",
+  "architecture.toml",
+  "surfaces.toml",
+  "support.toml",
+  "limits.toml",
+  "supply-chain/**",
+  "third_party/**",
+  "governance/**",
+  "brand/**",
+  "web/packages/ui/exceptions.toml",
+  "deploy/fleet/**",
+  "dist.toml",
+  "release-please-config.json",
+  ".release-please-manifest.json",
+  "release/**",
+  "**/CHANGELOG.md",
+  "deny.toml",
+  "**/clippy.toml",
+  "rustfmt.toml",
+  "rust-toolchain.toml",
+  ".cargo/**",
+  "Cargo.toml",
+  "Cargo.lock",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  ".github/**",
+  "AGENTS.md",
+  "**/AGENTS.md",
+  "CLAUDE.md",
+  "**/REVIEW.md",
+  "docs/AUTOPILOT.md",
+  "docs/design/**",
+  "docs/decisions/**",
+  "docs/agents/status/**",
+  "rfcs/**",
+  "docs/team/**",
+  "docs/references/research/**",
+  "LICENSE",
+  "NOTICE",
+  "COVENANT.md",
+  "GOVERNANCE.md",
+  "CONTRIBUTING.md",
+  "CODE_OF_CONDUCT.md",
+  "SECURITY.md",
+  "MAINTAINERS.md",
+  "AI_POLICY.md",
+  "ADOPTERS.md",
+  "TRADEMARKS.md",
+  ".agents/**",
+  ".claude/**",
+  "xtask/Cargo.toml",
+  "xtask/src/config/**",
+  "xtask/src/gates/**",
+  "xtask/src/hook/**",
+  "xtask/src/kit/**",
+  "xtask/verify.toml",
+]

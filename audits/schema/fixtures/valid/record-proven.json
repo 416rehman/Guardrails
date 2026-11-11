@@ -1,0 +1,43 @@
+{
+  "schema": "audit-finding.v1",
+  "fingerprint": "sha256:9f2c4a1e0b7d3c6f8e2a5b9d1c4f7e0a3b6d9c2f5e8a1b4d7c0f3e6a9b2d5c8f",
+  "run_id": "019a6c1e-7d2b-7c11-9a4e-5b0c1d2e3f40",
+  "prompt": { "id": "M04", "version": "1.0.0" },
+  "class_key": "toctou:grant-digest-vs-exec",
+  "locus": {
+    "crate": "grdr-core",
+    "item": "policy::grant::digest_action",
+    "item_sha256": "sha256:5be0a1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0"
+  },
+  "title": "Grant digest is computed from argv before the interpreter path is resolved",
+  "label": "LIKELY",
+  "assumption": "The agent can replace the script file between grant and exec, which it can at user privilege.",
+  "severity": 1,
+  "evidence": [
+    {
+      "path": "crates/grdr-core/src/policy/grant.rs",
+      "line": 212,
+      "item": "policy::grant::digest_action",
+      "snippet_sha256": "sha256:c41e0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a",
+      "quote": "let digest = hash_argv(&req.argv);"
+    }
+  ],
+  "permits": "A grant whose digest covers argv only, while the executed file is resolved later.",
+  "reach": "An agent swaps the script between the grant and the exec; the grant still matches.",
+  "trust_core": true,
+  "security_candidate": true,
+  "smallest_fix": "Include the resolved executable's content hash in the digest and re-check at the OS control point.",
+  "closure_proposal": { "kind": "test", "detail": "Race test: swap the script between grant and exec; expect DENY." },
+  "verifier": [
+    { "verdict": "UPHELD", "model": "claude-opus-5-5", "reason": "No re-check binds the grant to the opened file." },
+    { "verdict": "UPHELD", "model": "claude-sonnet-5-5", "reason": "The exec path reads the script after the digest check." }
+  ],
+  "proof": { "status": "reproduced", "artefact": "audit-proofs/019a6c1e/M04-1.rs" },
+  "state": "proven",
+  "closure": null,
+  "history": [
+    { "state": "open", "run_id": "019a6c1e-7d2b-7c11-9a4e-5b0c1d2e3f40", "at": "2026-12-02T03:14:00Z", "by": "runner" },
+    { "state": "upheld", "run_id": "019a6c1e-7d2b-7c11-9a4e-5b0c1d2e3f40", "at": "2026-12-02T03:31:00Z", "by": "runner" },
+    { "state": "proven", "run_id": "019a6c1e-7d2b-7c11-9a4e-5b0c1d2e3f40", "at": "2026-12-02T03:52:00Z", "by": "runner" }
+  ]
+}

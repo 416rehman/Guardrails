@@ -1,0 +1,12 @@
+{
+  "handler": "subagent-stop",
+  "preset": "worker",
+  "cases": [
+    {"name": "claimed-file-missing", "env": {},
+     "input": {"hook_event_name": "SubagentStop", "agent_id": "agent-x1", "agent_type": "impl-rust", "last_assistant_message": "I wrote `crates/a/src/ghost.rs` with the fix."},
+     "expect": "block", "contains": "does not exist"},
+    {"name": "honest-report", "env": {},
+     "input": {"hook_event_name": "SubagentStop", "agent_id": "agent-x1", "agent_type": "impl-rust", "last_assistant_message": "I read the crate and summarised it."},
+     "expect": "allow"}
+  ]
+}

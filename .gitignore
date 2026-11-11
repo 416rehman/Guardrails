@@ -1,0 +1,3 @@
+.agent/
+target/
+.claude/settings.local.json

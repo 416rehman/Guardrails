@@ -1,0 +1,4 @@
+# LF in every text file on every system, so rendered files are byte-identical to a fresh render.
+* text=auto eol=lf
+# Vendored upstream files stay out of the repository's language statistics.
+third_party/** linguist-vendored

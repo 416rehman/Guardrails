@@ -1,0 +1,30 @@
+{
+  "schema": "audit-run.v1",
+  "run_id": "019a6c1e-7d2b-7c11-9a4e-5b0c1d2e3f46",
+  "prompt": {
+    "id": "A01",
+    "version": "1.0.0",
+    "skill_sha256": "sha256:4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c",
+    "preamble_sha256": "sha256:5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d"
+  },
+  "arm": "control",
+  "pair_id": "019a6c1e-7d2b-7c11-9a4e-5b0c1d2e3f43",
+  "commit": "3f1c2b9a8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a",
+  "scope": { "kind": "crate", "name": "grdr-hook" },
+  "trigger": "nightly",
+  "harness": { "name": "claude-code", "version": "2.1.319" },
+  "finder_model": "claude-sonnet-5-5",
+  "verifier_models": ["claude-opus-5-5"],
+  "tokens_in": 1000,
+  "tokens_out": 100,
+  "usage_window_share": 0.001,
+  "paused_for_limit": 0,
+  "duration_s": 30,
+  "results_returned": 0,
+  "results_after_span_check": 0,
+  "upheld": 0,
+  "reproduced": 0,
+  "checked_and_sound": [],
+  "skipped": [],
+  "results": []
+}

@@ -1,0 +1,22 @@
+[
+  {"query": "You are eval-acceptance. PR #48 claims to finish #21. Judge it against the readied acceptance criteria by driving the built CLI.", "should_trigger": true},
+  {"query": "eval-diff round 1 on PR #57 for issue #142. Its metadata block says claude-sonnet-5-5 wrote it and you run on Opus. Review it.", "should_trigger": true},
+  {"query": "As eval-security, review the hand-off on #22 (daemon hub, trust core) and post a verdict with findings and proofs.", "should_trigger": true},
+  {"query": "eval-diff round 2 for PR #61: only the commits since round 1, and don't repeat findings on unchanged code.", "should_trigger": true},
+  {"query": "GRDR_AGENT=eval-platform. The worker says the Linux sensor change passes on every Tier 1 cell; check it yourself on the matrix.", "should_trigger": true},
+  {"query": "You're the independent evaluator for #55, a bug fix. Re-run the three-arm proof and tell me whether the hand-off's claims hold.", "should_trigger": true},
+  {"query": "eval-acceptance session: the acceptance section of #77 no longer matches the digest in its ready.v1 comment. What verdict do I give?", "should_trigger": true},
+  {"query": "eval-ux on PR #90: the console's approvals page. Drive it through Playwright and judge each criterion.", "should_trigger": true},
+  {"query": "Round 3 for PR #48 as eval-diff. Report every remaining finding at once and publish the verdict.", "should_trigger": true},
+  {"query": "eval-diff here. PR #57 adds a phase: u8 field and a match on it in grdr-agents. Judge the diff, including the A01 check the review workflow needs.", "should_trigger": true},
+  {"query": "I'm impl-rust on #142 and verify --fast is green. Write my hand-off and open the PR.", "should_trigger": false},
+  {"query": "Run the M01 fail-open-paths audit on programs/grdr-hook for the nightly rotation.", "should_trigger": false},
+  {"query": "Review my own diff with simplify before I hand off #19.", "should_trigger": false},
+  {"query": "Write the acceptance criteria for #77 with a named oracle for each, as lead-core.", "should_trigger": false},
+  {"query": "Fix the two major findings eval-diff left on my PR #57 for #142.", "should_trigger": false},
+  {"query": "What is the difference between cannot-evaluate and fail in team/02? Explain for the owner's onboarding note.", "should_trigger": false},
+  {"query": "Threat-model the new socket listener in #31 as the implementer before writing code.", "should_trigger": false},
+  {"query": "Score every evaluator against lab/reviewer-evals/ for the model-upgrade workflow and write up the results.", "should_trigger": false},
+  {"query": "Implement the grdr-evaluator check-run publisher in xtask for kit handoff.", "should_trigger": false},
+  {"query": "As the persona-council chair, merge the eight seats' objections on the design issue #66 into the spec.", "should_trigger": false}
+]

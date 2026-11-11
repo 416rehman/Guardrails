@@ -1,0 +1,22 @@
+[
+  {"query": "Build the approval card for #241 in web/packages/kit: it needs the canonical call, the approver and the expiry.", "should_trigger": true},
+  {"query": "post-edit blocked my edit with ERROR V26 UX3 on web/apps/console/src/routes/home.tsx. What do I change?", "should_trigger": true},
+  {"query": "Add the tray menu item that opens the privacy view, with its label and icon.", "should_trigger": true},
+  {"query": "Astryx has no tree view at the pinned version and the inventory screen needs one. How do I get one in?", "should_trigger": true},
+  {"query": "Write the block message the CLI prints when a deny rule fires, and the --json shape next to it.", "should_trigger": true},
+  {"query": "The empty state on the findings table should say we could not look, not zero. Fix the screen in #388.", "should_trigger": true},
+  {"query": "Add a 'Freeze session' button to the session timeline that asks for confirmation first.", "should_trigger": true},
+  {"query": "New notification class for expired exceptions: the email, the toast and the chat card.", "should_trigger": true},
+  {"query": "Add a language token for the enrolment success message with the device count and the organisation name.", "should_trigger": true},
+  {"query": "The desktop's Mode control looks different from the console's. Make the Rune view match.", "should_trigger": true},
+  {"query": "Fix the race in the spool writer where two flushes can interleave.", "should_trigger": false},
+  {"query": "Back-translate the changed Japanese tokens in #512 and give an equivalence verdict per token.", "should_trigger": false},
+  {"query": "Write the Cedar policy that denies credential store reads in Essentials.", "should_trigger": false},
+  {"query": "Review the Dependabot pull request that bumps the Astryx packages and check the changelog for breaking changes.", "should_trigger": false},
+  {"query": "Run audit A01 on the diff of pull request 77.", "should_trigger": false},
+  {"query": "Add a limits.toml entry for the maximum batch size of the uplink.", "should_trigger": false},
+  {"query": "Write the hand-off for #91 and open the pull request.", "should_trigger": false},
+  {"query": "What do the reference vendors show on their approval screens? Research it for the spec of #240.", "should_trigger": false},
+  {"query": "Scaffold a new layer 2 crate for the retry policies.", "should_trigger": false},
+  {"query": "Prepare the release candidate evidence for 0.7.0.", "should_trigger": false}
+]

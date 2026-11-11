@@ -1,0 +1,64 @@
+# The brand manifest of Loonaro's distribution (D-66, owner instructions 25 and 26), in the schema
+# `grdr.brand.v1alpha1` of design/36 section 2. Every user-visible name, domain and address the
+# product, its documentation and its release tooling show comes from here; no code or
+# configuration default outside brand/ holds one. A white-label or partner build replaces this
+# file (D-41 L6), and a self-hosted deployment sets its own hosts in boot configuration and
+# runtime settings and never depends on these values. The tables design/36 lists that this file
+# lacks (os_identity, display, links, assets, tokens) arrive with LBC-3.
+#
+# Each host and address has `value`, what the distribution uses now, and `on_domain`, its value
+# once DNS for `identity.domain` exists. Until then `value` is a GitHub-hosted address, so nothing
+# waits on DNS; an empty `value` means nothing GitHub hosts can stand in, and a reader shows that
+# address as not set up. Moving to the domain is a change of `value` lines only.
+
+[identity]
+product_name = "Guardrails ADR"
+short_name = "Guardrails"
+vendor_name = "Loonaro"
+namespace = "grdr"
+domain = "guardrailshq.com"
+category = "agent detection and response"
+category_short = "ADR"
+
+[repository]
+forge = "github.com"
+owner = "416rehman"
+name = "Guardrails"
+url = "https://github.com/416rehman/Guardrails"
+
+[hosts.docs]
+value = "https://416rehman.github.io/Guardrails/"
+on_domain = "https://docs.guardrailshq.com/"
+
+# The hosted service opens only on revenue, sponsorship or donated credits (D-63).
+[hosts.hosted]
+value = ""
+on_domain = "https://app.guardrailshq.com/"
+
+# Update origins, in order (P15, P16). Binaries and bundles are GitHub Releases assets; TUF
+# metadata and small targets are on GitHub Pages; jsDelivr's GitHub mirror is a further origin,
+# with no account. Any other origin is one more entry.
+[hosts.updates]
+value = [
+  "https://416rehman.github.io/Guardrails/tuf/",
+  "https://github.com/416rehman/Guardrails/releases/download/",
+  "https://cdn.jsdelivr.net/gh/416rehman/Guardrails@gh-pages/tuf/",
+]
+on_domain = ["https://updates.guardrailshq.com/"]
+
+# Mail the hosted service sends (invitations, verification, notifications) comes from this domain
+# with SPF, DKIM and DMARC. A self-hosted deployment sends through its own SMTP relay.
+[hosts.mail_domain]
+value = ""
+on_domain = "guardrailshq.com"
+
+[addresses.security]
+value = "https://github.com/416rehman/Guardrails/security/advisories/new"
+on_domain = "security@guardrailshq.com"
+
+[addresses.conduct]
+value = ""
+on_domain = "conduct@guardrailshq.com"
+
+[legal]
+copyright_holder = "The Guardrails ADR Authors"

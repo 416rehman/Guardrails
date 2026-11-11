@@ -1,0 +1,24 @@
+{
+  "schema": "audit-finding.v1",
+  "report": "finder",
+  "prompt": { "id": "D05", "version": "1.0.0" },
+  "commit": "3f1c2b9a8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a",
+  "applicable": true,
+  "results": [
+    {
+      "class_key": "Missing Deadline",
+      "locus": { "crate": "grdr-wire", "item": "client::call" },
+      "title": "client::call waits on the IPC reply with no deadline",
+      "label": "CONFIRMED",
+      "severity": 3,
+      "evidence": [
+        { "path": "crates/grdr-wire/src/client.rs", "line": 77, "quote": "let reply = rx.recv().await?;" }
+      ],
+      "permits": "An unbounded wait.",
+      "reach": "A peer that never replies.",
+      "smallest_fix": "Wrap the wait in the frame deadline from limits.toml.",
+      "closure_proposal": { "kind": "lint", "detail": "Lint on recv without timeout in grdr-wire." }
+    }
+  ],
+  "checked_and_sound": []
+}

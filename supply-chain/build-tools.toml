@@ -1,0 +1,46 @@
+# Build and scan tools, pinned by version and, for container images, by digest (design/24
+# section 12, team/05 section 3). The workflows read their pins here; `cargo xtask tools install`
+# (WI-0002) adds the rest of team/06 section 12's table with each download's SHA-256. Tools are
+# installed and run, never linked or redistributed, so a copyleft tool licence is allowed here.
+
+[tool.gitleaks]
+version = "8.30.1"
+licence = "MIT"
+source = "https://github.com/gitleaks/gitleaks"
+image = "ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
+
+[tool.zizmor]
+version = "1.32.0"
+licence = "MIT"
+source = "https://github.com/zizmorcore/zizmor"
+
+[tool.semgrep]
+version = "1.185.0"
+licence = "LGPL-2.1-only"
+source = "https://github.com/semgrep/semgrep"
+image = "semgrep/semgrep@sha256:67518c174185a2043fdbed16c70631b79209499b3671178e7194379b48295a0d"
+
+# Rule sets are read at run time from this commit and never vendored: their licence allows use,
+# not redistribution. `severities` are the finding levels that fail the job; the INFO rules of the
+# set are audit notes that match every `std::env::args()`, `temp_dir()` and `current_exe()`.
+[tool.semgrep-rules]
+licence = "LicenseRef-Semgrep-Rules-1.0"
+repository = "semgrep/semgrep-rules"
+commit = "a5ad1714f00c9f7fde980cab0ea1d6dc6d414fd2"
+severities = "WARNING ERROR"
+
+[tool.grype]
+version = "v0.121.3"
+licence = "Apache-2.0"
+source = "https://github.com/anchore/grype"
+
+[tool.cosign]
+version = "v3.1.4"
+licence = "Apache-2.0"
+source = "https://github.com/sigstore/cosign"
+
+[tool.zap]
+version = "2.17.0"
+licence = "Apache-2.0"
+source = "https://github.com/zaproxy/zaproxy"
+image = "ghcr.io/zaproxy/zaproxy@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af"

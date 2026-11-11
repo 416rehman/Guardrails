@@ -1,0 +1,40 @@
+{
+  "schema": "audit-finding.v1",
+  "fingerprint": "sha256:1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809",
+  "run_id": "019a6c1e-7d2b-7c11-9a4e-5b0c1d2e3f41",
+  "prompt": { "id": "B07", "version": "1.0.0" },
+  "class_key": "leak:secret",
+  "locus": {
+    "crate": "grdr-daemon",
+    "item": "config::Credentials",
+    "item_sha256": "sha256:2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a"
+  },
+  "title": "Credentials derives Debug, so the broker token reaches the support bundle",
+  "label": "CONFIRMED",
+  "severity": 2,
+  "evidence": [
+    {
+      "path": "programs/grdr-daemon/src/config.rs",
+      "line": 12,
+      "item": "config::Credentials",
+      "snippet_sha256": "sha256:3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b",
+      "quote": "#[derive(Debug, Clone)]\npub struct Credentials {"
+    }
+  ],
+  "permits": "Debug output of the token.",
+  "reach": "grdr support-bundle formats the config with {:?}.",
+  "trust_core": true,
+  "security_candidate": true,
+  "smallest_fix": "Make the token a LogSafe-redacting newtype.",
+  "closure_proposal": { "kind": "type", "detail": "Secret newtype with a redacting Debug." },
+  "verifier": [
+    { "verdict": "UPHELD", "model": "claude-opus-5-5", "reason": "The bundle path formats the struct with Debug." }
+  ],
+  "proof": { "status": "not-attempted" },
+  "state": "triage",
+  "closure": null,
+  "issue": { "repository": "416rehman/Guardrails", "number": 58 },
+  "history": [
+    { "state": "open", "run_id": "019a6c1e-7d2b-7c11-9a4e-5b0c1d2e3f41", "at": "2026-12-03T02:10:00Z" }
+  ]
+}

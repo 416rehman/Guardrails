@@ -1,0 +1,22 @@
+[
+  {"query": "Issue #702: write a Sigma detection for an agent-lineage process reading browser cookie stores, with a positive and a near-miss negative fixture.", "should_trigger": true},
+  {"query": "the pivot-after-denial correlation hits 3 of every 1000 benign corpus sessions. tune it so it can stay experimental", "should_trigger": true},
+  {"query": "Add a session rule that sets a mass-change label when an agent deletes more than 200 files within 60 seconds.", "should_trigger": true},
+  {"query": "Catalogue row 14 (an MCP tool manifest changing after it was pinned) still has no rule. That's #715, write it.", "should_trigger": true},
+  {"query": "Write the detection for honeytoken use outside the workspace, with x_grdr mappings to ATLAS and ASI at their pinned releases.", "should_trigger": true},
+  {"query": "I want a finding when a session reads a .env file and then posts to a paste site within ten minutes, temporal_ordered and grouped by session.root.", "should_trigger": true},
+  {"query": "grdr.det.cred-store-read misses the agent-store path class. Extend it, bump the version and add fixtures for it.", "should_trigger": true},
+  {"query": "write a detection that flags an agent setting git core.hooksPath to an empty directory, ceiling notify", "should_trigger": true},
+  {"query": "GRDR_WORK_ITEM=730 adds an event_count correlation for a session spawning more than 20 sub-agents in five minutes.", "should_trigger": true},
+  {"query": "The cred-store-read rule misses reads done through `cat ~/.ssh/id_ed25519 | base64`. Add that case and a fixture that proves it.", "should_trigger": true},
+  {"query": "Write a Cedar forbid in grdr.secrets that asks before non-agent processes read password-manager vaults.", "should_trigger": false},
+  {"query": "The detect-lag metric reports 0 even when the engine has stalled. Fix it in grdr-core::detect, kind:bug.", "should_trigger": false},
+  {"query": "Implement value_percentile correlations in the server detect target.", "should_trigger": false},
+  {"query": "Add an export sink that forwards findings to Elastic over the bulk API.", "should_trigger": false},
+  {"query": "Write the spec for the promotion bot that proposes moving rules from experimental to test.", "should_trigger": false},
+  {"query": "Run the M03 security power prompt over grdr-core::detect on the frozen commit.", "should_trigger": false},
+  {"query": "Add an agent adapter manifest for Kiro in grdr-content.", "should_trigger": false},
+  {"query": "You are eval-acceptance: judge the hand-off on #702 against the acceptance criteria its ready.v1 comment pinned.", "should_trigger": false},
+  {"query": "As lead-content, triage the twelve proposed detection requests garden-intel filed overnight and ready the two with fixtures attached.", "should_trigger": false},
+  {"query": "Write the OCSF 1.9 export mapping for the finding class under schema/mappings.", "should_trigger": false}
+]

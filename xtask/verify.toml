@@ -1,0 +1,114 @@
+# The steps of `cargo xtask verify` (team/05 section 3). The binary reads this file from the
+# comparison base, so a change cannot relax the gate that judges it.
+#
+# `run` is an argv: `{packages}` becomes the fast form's touched packages and their direct
+# dependents (or `--workspace`), `{base}` the base commit; `timeout_s` kills the command.
+# `builtin` names a gate this binary implements in process. `when.changed` limits a step to
+# diffs that touch the given globs. `fixture` names the input that proves the gate fails.
+# V04, V06 to V17 and V19 join as the work items that build them land. V21 to V26 and V28 are the
+# kit's own gates (team/05 section 3). Q01 is the CI form only (`verify --ci`): it reads the issue.
+
+[[step]]
+id = "V01"
+name = "format"
+forms = ["fast", "full"]
+run = ["cargo", "fmt", "--all", "--", "--check"]
+timeout_s = 300
+
+[[step]]
+id = "V02"
+name = "clippy"
+forms = ["fast", "full"]
+run = ["cargo", "clippy", "--locked", "{packages}", "--all-targets", "--", "-D", "warnings"]
+timeout_s = 1200
+
+[[step]]
+id = "V03"
+name = "tests"
+forms = ["fast", "full"]
+run = ["cargo", "test", "--locked", "{packages}"]
+timeout_s = 1800
+
+[[step]]
+id = "V05"
+name = "protected-paths"
+forms = ["fast", "full"]
+builtin = "protected-paths"
+timeout_s = 30
+
+[[step]]
+id = "V21"
+name = "kit-check"
+forms = ["fast", "full"]
+builtin = "kit-check"
+timeout_s = 120
+
+[[step]]
+id = "V22"
+name = "model-rule"
+forms = ["fast", "full"]
+builtin = "model-rule"
+timeout_s = 30
+
+[[step]]
+id = "V23"
+name = "skills-lint"
+forms = ["fast", "full"]
+builtin = "skills-lint"
+timeout_s = 30
+
+[[step]]
+id = "V20"
+name = "structure"
+forms = ["fast", "full"]
+builtin = "structure"
+timeout_s = 120
+
+[[step]]
+id = "V18"
+name = "hooks-selftest"
+forms = ["fast", "full"]
+builtin = "hooks-selftest"
+when = { changed = [".agents/**", ".claude/**", "xtask/src/hook/**", "xtask/fixtures/hooks/**"] }
+fixture = "xtask/fixtures/hooks"
+timeout_s = 600
+
+[[step]]
+id = "V24"
+name = "commit-form"
+forms = ["fast", "full"]
+builtin = "commits"
+timeout_s = 30
+
+[[step]]
+id = "V25"
+name = "prose"
+forms = ["fast", "full"]
+builtin = "prose"
+when = { changed = ["**/*.md"] }
+timeout_s = 30
+
+[[step]]
+id = "V26"
+name = "interface"
+forms = ["fast", "full"]
+builtin = "interface"
+when = { changed = ["web/**", "site/**", "interface/**", "quality/interface.toml", ".agents/kit/path-skills.toml", "xtask/src/gates/interface/**", "xtask/src/gates/structure/**"] }
+fixture = "xtask/src/gates/interface"
+timeout_s = 120
+
+[[step]]
+id = "V28"
+name = "package-manager"
+forms = ["fast", "full"]
+builtin = "package-manager"
+fixture = "xtask/src/gates/pnpm.rs"
+timeout_s = 30
+
+[[step]]
+id = "Q01"
+name = "acceptance-digest"
+forms = ["ci"]
+builtin = "acceptance-digest"
+fixture = "xtask/src/gates/acceptance.rs"
+timeout_s = 60

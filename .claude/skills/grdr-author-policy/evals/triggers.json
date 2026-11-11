@@ -1,0 +1,22 @@
+[
+  {"query": "Issue #801: add a rule to grdr.destructive that asks before `terraform destroy` runs against a production-tagged workspace.", "should_trigger": true},
+  {"query": "Essentials needs a Block rule for agent-lineage writes to another agent's hook configuration. Draft it with tests.", "should_trigger": true},
+  {"query": "Move the paste-site rule in grdr.egress from Watch to Ask, the replay over the last week looks fine.", "should_trigger": true},
+  {"query": "widen the allow list in grdr.cloud so our staging GCP project is accepted", "should_trigger": true},
+  {"query": "People find the @message on essentials.cred-store.read confusing. Rewrite the message and the steer text.", "should_trigger": true},
+  {"query": "Add a `kubectl delete namespace` pattern to the destructive pack's protect list with a positive and a negative test.", "should_trigger": true},
+  {"query": "GRDR_WORK_ITEM=820 touches packs/grdr.mcp: require write-capable MCP tools to be pinned by manifest hash.", "should_trigger": true},
+  {"query": "Draft a new pack for regulated repositories that blocks pushes outside the organisation.", "should_trigger": true},
+  {"query": "The cloud pack needs a resource.tags attribute that the Cedar schema doesn't have yet. Can you add it?", "should_trigger": true},
+  {"query": "grdr policy check says my change to grdr.secrets is widening and I don't see why. Figure it out and fix the pack.", "should_trigger": true},
+  {"query": "The policy evaluator returns ALLOW when a forbid's when-clause errors. Fix it with a three-arm proof.", "should_trigger": false},
+  {"query": "Write a Sigma detection for agents passing --no-verify to git commit.", "should_trigger": false},
+  {"query": "Write the RFC for pack format_version 2 with the new requires_capabilities semantics.", "should_trigger": false},
+  {"query": "Add a deny rule for `npm publish` to .agents/kit/permissions.toml and re-render settings.json.", "should_trigger": false},
+  {"query": "Implement the almost-matched bucket in grdr policy replay's compiler split.", "should_trigger": false},
+  {"query": "Add PagerDuty as a response target for threat findings.", "should_trigger": false},
+  {"query": "Benchmark the fast-path evaluator after the table compiler change on the reference runner.", "should_trigger": false},
+  {"query": "Update .agents/risk-tiers.toml so changes under web/ are medium tier.", "should_trigger": false},
+  {"query": "Review the copy in the tray's approval dialog against D-44.", "should_trigger": false},
+  {"query": "As eval-security, review the pull request for #801 and post the check run; it widens grdr.destructive.", "should_trigger": false}
+]

@@ -1,0 +1,15 @@
+{
+  "handler": "session-start",
+  "preset": "worker",
+  "cases": [
+    {"name": "chief-architect-ownership-sentence", "env": {"GRDR_AGENT": "chief-architect"},
+     "input": {"hook_event_name": "SessionStart", "source": "startup", "model": "claude-fable-5-2", "agent_type": "chief-architect"},
+     "expect": "context", "contains": "This codebase is yours"},
+    {"name": "writer-loads-structure-skill", "env": {"GRDR_AGENT": "impl-rust", "GRDR_WORK_ITEM": "7"},
+     "input": {"hook_event_name": "SessionStart", "source": "startup", "model": "claude-sonnet-5-5"},
+     "expect": "context", "contains": "grdr-structure"},
+    {"name": "person-real-startup-payload", "env": {},
+     "input": {"session_id": "00000000-0000-4000-8000-000000000001", "transcript_path": "C:\\Users\\dev\\.claude\\projects\\D--src-grdr\\00000000-0000-4000-8000-000000000001.jsonl", "hook_event_name": "SessionStart", "source": "startup"},
+     "expect": "context", "contains": "a person's session"}
+  ]
+}

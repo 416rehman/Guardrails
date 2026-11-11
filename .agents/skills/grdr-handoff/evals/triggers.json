@@ -1,0 +1,22 @@
+[
+  {"query": "verify --fast is green for #142 (.agent/evidence/verify-7f3a.json). Wrap up the item and hand it off.", "should_trigger": true},
+  {"query": "I can't finish #18 because the acceptance criteria point at a golden vector under tests/golden/ that doesn't exist. Write a blocked hand-off with a protected change request.", "should_trigger": true},
+  {"query": "AC-2 on issue #31 contradicts R4 in its spec section. Stop here and report it the sanctioned way.", "should_trigger": true},
+  {"query": "I'm at 66 of 80 turns on #30 and won't finish the last two tasks. Write a partial hand-off so the next session can resume cleanly.", "should_trigger": true},
+  {"query": "Fill in the decisions where the spec was silent for my change on #26, least confident first, and post the hand-off comment.", "should_trigger": true},
+  {"query": "Finish up #9: commit with a one-line subject and open the PR with the evidence template body.", "should_trigger": true},
+  {"query": "what goes in the three_arm and revert fields of the handoff for my bug fix on #50?", "should_trigger": true},
+  {"query": "The Stop hook blocked three times on the same diff and then let me stop. Record what failed and end the session properly.", "should_trigger": true},
+  {"query": "I found a second instance of the bug in grdr-wire outside my write set while finishing #142. Hand off and make sure that doesn't get lost.", "should_trigger": true},
+  {"query": "I need a new dependency (zerocopy) to finish #16, which implementers can't add. Write it up for the lead and stop.", "should_trigger": true},
+  {"query": "Evaluate the hand-off comment impl-rust posted on #26 against its readied acceptance criteria and give a verdict.", "should_trigger": false},
+  {"query": "Write a JSON Schema for handoff.v1 under schema/ and a validator subcommand in xtask with fixtures.", "should_trigger": false},
+  {"query": "Run the repository gates on my branch and tell me what is red before I wrap up #19.", "should_trigger": false},
+  {"query": "Summarise yesterday's hand-off comments across all open issues for the programme manager's daily digest.", "should_trigger": false},
+  {"query": "Start #142: read the snapshot, the issue and its comments, then run the baseline.", "should_trigger": false},
+  {"query": "Rebase agent/17/a1 onto main, there are conflicts in crates/grdr-fastpath/src/table.rs.", "should_trigger": false},
+  {"query": "eval-diff round 2 for PR #61: review only the commits since round 1 and list findings.", "should_trigger": false},
+  {"query": "Implement the pause-and-resume on usage limits in the dispatcher (cargo xtask dispatch) for [WI-0011].", "should_trigger": false},
+  {"query": "Write the spec and acceptance criteria for #44 so each criterion names an oracle.", "should_trigger": false},
+  {"query": "Explain the difference between the escalated and impossible outcomes for a diagram I'm drawing for the owner.", "should_trigger": false}
+]

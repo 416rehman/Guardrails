@@ -1,0 +1,22 @@
+[
+  {"query": "Tonight's rotation scope is grdr-core::session. Run A01 at commit 9c1d2e7f0a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d and report the run.", "should_trigger": true},
+  {"query": "lead-security asked for M04 toctou-windows over crate:grdr-core at the current main head. Do it.", "should_trigger": true},
+  {"query": "You are garden-architecture. This week's job: A04 unenforced-invariants over the whole repo. Go.", "should_trigger": true},
+  {"query": "Run audit C03 on grdr-wire and tell me how many results survived the verifier.", "should_trigger": true},
+  {"query": "As eval-diff on PR #57, the diff adds two Option fields to Session. Run the A01 check the review workflow requires for that.", "should_trigger": true},
+  {"query": "Scheduled W4 bucket 2 run: B08 on the repo at 4f1e9a2. Execute it the sanctioned way.", "should_trigger": true},
+  {"query": "can you run the implicit state machines power prompt against programs/grdr-hook? lead-adapters wants the fingerprints", "should_trigger": true},
+  {"query": "The release workflow needs M01 fail-open-paths at the release branch head 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b. Run it and list anything held for private triage.", "should_trigger": true},
+  {"query": "Run the paired control arm for G01 tests-that-do-not-test on grdr-fastpath, the schedule says this one is paired.", "should_trigger": true},
+  {"query": "lead-core named audit A05 representable-illegal-states for grdr-model before the RFC. Run it at 77ab01c.", "should_trigger": true},
+  {"query": "A01 issue #203 says Grant uses minted: bool, consumed: bool, voided: bool. Fix it with a state type; I'm the implementer.", "should_trigger": false},
+  {"query": "Write a new power prompt A08 for timer leaks, with its exact wording and closure kinds, as a library change.", "should_trigger": false},
+  {"query": "Close fingerprint sha256:9f2c with the trybuild case I added in crates/grdr-core/tests/ui/grant.rs.", "should_trigger": false},
+  {"query": "Explain how the audit ledger fingerprint survives a rustfmt pass. Just explain.", "should_trigger": false},
+  {"query": "Review PR #61 as eval-diff and list the findings with proofs.", "should_trigger": false},
+  {"query": "Threat-model the new parser for Codex hook payloads that #34 adds.", "should_trigger": false},
+  {"query": "Implement the audit runner's span check in xtask/src/audit/ (team/04 work item 2).", "should_trigger": false},
+  {"query": "verify --fast fails with ERROR V20 S4 on crates/grdr-agents/src/install.rs. Fix my struct.", "should_trigger": false},
+  {"query": "Summarise last week's audit metrics per prompt for the quarterly retire-or-promote decision record.", "should_trigger": false},
+  {"query": "Find the bugs in crates/grdr-store-local/src/spool.rs and fix them in this session.", "should_trigger": false}
+]

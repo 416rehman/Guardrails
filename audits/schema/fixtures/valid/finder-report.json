@@ -1,0 +1,27 @@
+{
+  "schema": "audit-finding.v1",
+  "report": "finder",
+  "prompt": { "id": "A01", "version": "1.0.0" },
+  "commit": "3f1c2b9a8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a",
+  "applicable": true,
+  "results": [
+    {
+      "class_key": "implicit-state:exclusive-bools",
+      "locus": { "crate": "grdr-agents", "item": "install::InstallRecord" },
+      "title": "InstallRecord can hold written and canary_passed true with probed false, a combination no install step produces",
+      "label": "CONFIRMED",
+      "severity": 2,
+      "evidence": [
+        { "path": "crates/grdr-agents/src/install.rs", "line": 41, "quote": "pub probed: bool,\npub written: bool,\npub canary_passed: bool," },
+        { "path": "crates/grdr-agents/src/install.rs", "line": 118, "quote": "if record.written && !record.canary_passed {" }
+      ],
+      "permits": "Any of the eight combinations of the three booleans.",
+      "reach": "restore_from_journal sets written from the journal without setting probed, so a restart after a crash mid-install reaches it.",
+      "smallest_fix": "Replace the three booleans with enum InstallState { Probed(Probe), Written(Probe, Journal), Effective(Probe, Journal, Canary) } and transitions that consume one state.",
+      "closure_proposal": { "kind": "type", "detail": "InstallState enum; trybuild case showing Written cannot be built without a Probe." }
+    }
+  ],
+  "checked_and_sound": [
+    { "item": "install::Uninstall", "path": "crates/grdr-agents/src/uninstall.rs", "reason": "Already one enum with one transition function." }
+  ]
+}

@@ -1,0 +1,22 @@
+[
+  {"query": "I just changed crates/grdr-core/src/analyze/shell.rs so here-doc bodies come back unresolved instead of malformed. Before I write the hand-off for #142, make sure the repo gates are green.", "should_trigger": true},
+  {"query": "the Stop hook blocked me with `ERROR V02: clippy::unwrap_used in crates/grdr-wire/src/frame.rs:41`, what do I do now", "should_trigger": true},
+  {"query": "CI failed on the windows-2025 job of my PR for #19, the summary says ERROR V03 in grdr-core tests. Work out what broke and get it green again without touching the test.", "should_trigger": true},
+  {"query": "run cargo xtask verify --fast on agent/17/a1 and tell me which gate fails", "should_trigger": true},
+  {"query": "verify exited 2 and printed target/verify-logs/2026-11-11T09-14.log. Read it and tell me what failed and how to fix it.", "should_trigger": true},
+  {"query": "Before you tell me the fastpath evaluator change works, prove it with the repository checks and give me the evidence id.", "should_trigger": true},
+  {"query": "I edited three files in programs/grdr-hook and one in crates/grdr-wire. Did I break anything? Use the project's gate, not just cargo test.", "should_trigger": true},
+  {"query": "V06 ratchet fails on my diff because of a new #[allow(clippy::indexing_slicing)] in grdr-fastpath. How do I get past it properly?", "should_trigger": true},
+  {"query": "The post-edit hook complained after my last Write to grdr-store-local. Check everything is still passing before I commit for #26.", "should_trigger": true},
+  {"query": "Should I run the fast or the full form of verify before handing off [WI-0003] archlint? I changed the fixtures under xtask/fixtures/archlint.", "should_trigger": true},
+  {"query": "verify --fast already passed with .agent/evidence/verify-20261111T0902.json. Post the handoff.v1 comment for #142 and fill in the decisions list.", "should_trigger": false},
+  {"query": "Add a new gate V20 to xtask/verify.toml that checks SPDX headers, with a failing fixture under xtask/fixtures/gates.", "should_trigger": false},
+  {"query": "Reproduce the bug where grdr-hook exits 0 instead of denying when the daemon socket is missing, write the failing test first and fix it.", "should_trigger": false},
+  {"query": "You're eval-acceptance. Judge PR #48 against the readied acceptance criteria of #21 by driving the built CLI.", "should_trigger": false},
+  {"query": "Write .github/workflows/verify.yml with harden-runner and checkout pinned by 40-hex SHA for the three hosted runners.", "should_trigger": false},
+  {"query": "Run the A01 implicit-state-machines audit on grdr-daemon for tonight's rotation.", "should_trigger": false},
+  {"query": "cargo build is really slow on my Windows box, can you suggest how to speed up incremental builds for this workspace?", "should_trigger": false},
+  {"query": "Write the specification for the --json output of cargo xtask verify so another harness can parse it.", "should_trigger": false},
+  {"query": "Run the windows-with-defender matrix cell for my change to grdr-sensor-windows and give me the ten-line result.", "should_trigger": false},
+  {"query": "What is the difference between the trust-core list and the protected-path list in this repo? Just explain, no changes.", "should_trigger": false}
+]

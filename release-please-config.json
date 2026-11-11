@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/712fcf01effd08d7b0e7b1fd3861f2cb388bc8d1/schemas/config.json",
+  "release-type": "rust",
+  "separate-pull-requests": false,
+  "group-pull-request-title-pattern": "chore(release): release ${branch}",
+  "pull-request-header": "Release pull request from release-please. The merge queue lands it like any other pull request; release-please then creates the tags and GitHub releases, and the release workflow signs and attests the artefacts.",
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "commit-search-depth": 2000,
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "-",
+  "plugins": [
+    { "type": "cargo-workspace", "merge": false }
+  ],
+  "packages": {}
+}

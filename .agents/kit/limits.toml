@@ -1,0 +1,184 @@
+# Every bound of the agent kit: timeouts, retry budgets, sizes, capacities, counts and
+# thresholds (owner instructions 15 and 26). Compiled code holds none of these numbers. It reads
+# this file through the typed loader in `xtask/src/config/limits.rs`, which is how structure
+# check S7 holds for the kit itself.
+#
+# Format:
+# - One top-level table per area: [hook], [gates], [orchestrate], [dispatch] and [kit]. Inside an
+#   area, one sub-table per module that owns bounds, named after the module: [gates.structure],
+#   [hook.post_edit]. A module that gains its first bound gets its own sub-table.
+# - Keys are lower snake case and name what they bound. A duration is an integer whose key ends
+#   in its unit, `_ms` or `_s`. A size ends in `_bytes`. A count or a character width has no
+#   unit suffix.
+# - Every key is required and no key is unknown: the loader rejects both, so a typo fails the
+#   first command that reads the file instead of falling back to a number in code. Adding a bound
+#   means adding the key here and the field to its area's type in the loader, in one change.
+# - The file is protected (.agents/**), so it changes only through a protected-change item. The
+#   gates read the comparison base's copy, so a change cannot relax the limits that judge it;
+#   with no copy in the base or the working tree, the kit binary uses the copy it was built with.
+
+# The hook handlers read the working tree's copy (it is protected, so no session edits it), and
+# each handler's registered `timeout` stays in hooks.toml.
+[hook.runner]
+# A handler answers this long before its registered timeout; the largest event payload read from
+# stdin; payload characters copied into the handler's log.
+deadline_margin_s = 2
+input_bytes = 67108864
+logged_input_chars = 4000
+
+[hook.outcome]
+# Lines of a block reason (the log path is the last of them), and lines of added context.
+diagnostic_lines = 10
+context_lines = 60
+
+[hook.session_start]
+# Deadline left after `kit install`; reading the session's command line for its model; write-set
+# globs listed; pre-compact summary lines session-restore re-injects.
+rebuild_margin_s = 20
+startup_command_line_s = 15
+write_set_lines = 12
+summary_lines = 50
+
+[hook.post_edit]
+# rustfmt on the edited file, and the time kept back from the hook's deadline for the checks.
+format_timeout_s = 30
+format_margin_s = 5
+# Findings printed in the block message; the log keeps them all.
+printed_findings = 7
+# A suppression's reason, beside it or on the comment line above, has at least this many
+# characters.
+min_reason_chars = 4
+
+[hook.post_bash]
+# Protected changes post-bash lists.
+protected_listed = 8
+
+[hook.stop_gate]
+# Blocks on one diff before stop-gate allows the stop; structure findings printed; newest evidence
+# files searched; transcript tail read for the skills loaded; deadline left after verify --fast;
+# hand-off draft problems printed, by stop-gate and by `kit handoff` alike; the last lines of a
+# failed verify's output quoted.
+blocks = 3
+printed_findings = 4
+evidence_files = 60
+transcript_bytes = 16777216
+verify_margin_s = 10
+handoff_problems = 6
+verify_tail_lines = 3
+
+[hook.transcript]
+# The transcript tail read for the session's model, and the wider tail read once when the first
+# holds no assistant message.
+model_tail_bytes = 524288
+widened_tail_bytes = 16777216
+
+[hook.pre_compact]
+# Transcript tail read, paths and commands listed, evidence ids listed.
+transcript_bytes = 4194304
+listed = 20
+evidence_files = 5
+
+[hook.subagent]
+# Subagent transcript tail subagent-stop reads, and the longest file extension a path it reports
+# writing may have.
+transcript_bytes = 33554432
+path_extension_chars = 6
+
+[hook.shell]
+# `bash -c`, `pwsh -Command` and `eval` levels, and nested `$(...)` levels, guard-command reads.
+nested_shells = 6
+substitutions = 8
+
+[hook.selftest]
+# One in-process case; git, Git Bash and the installed binary; guard-command's timeout in the
+# missed-deadline case, how long that case waits before it fails, and how often it looks.
+case_s = 120
+process_s = 60
+short_timeout_s = 3
+deadline_wait_s = 30
+poll_ms = 100
+
+[gates.structure]
+# S1: code lines in one source file (blank lines, comments and the test module excluded).
+max_code_lines = 500
+# S5: control-flow nesting levels inside one function body.
+max_nesting_depth = 4
+# S4: a type with at least this many `bool` fields is an implicit state machine.
+bool_field_threshold = 3
+# Findings printed by `cargo xtask structure`, and the width of a quoted comment in a finding.
+printed_findings = 9
+excerpt_chars = 60
+
+[gates.run]
+# The failure line quoted from a command's output, and the wait for `cargo metadata`.
+summary_chars = 200
+metadata_timeout_s = 120
+
+[gates.evidence]
+# ERROR lines in the verify summary (with the totals line it stays within ten lines), problems
+# kept per gate in the evidence file (the log keeps them all), and the width of one folded line.
+printed_errors = 9
+recorded_problems = 50
+line_chars = 240
+
+[gates.skills]
+# V23: a SKILL.md has fewer lines than this; detail moves to references/.
+max_lines = 200
+
+[orchestrate.claude]
+# How often a watched session is polled, and how long after its process exits the pipes may stay
+# open for a grandchild still writing to them.
+poll_ms = 50
+drain_grace_s = 2
+# Turns past a session's --max-turns before the watch stops it, so the two counts never race.
+turn_margin = 2
+
+[orchestrate.launch]
+# The fable session lock's heartbeat; kit.lock.stale_beats of them without a touch frees the lock.
+fable_heartbeat_s = 30
+
+[orchestrate.prove]
+# One arm's test run.
+run_timeout_s = 1800
+
+[orchestrate.audit]
+# Changed files a diff scope's description names; the rest are counted.
+scope_files_named = 60
+
+[orchestrate.ready]
+# Problems `kit ready` prints.
+printed_problems = 9
+
+[orchestrate.risk]
+# Reasons `cargo xtask risk` prints; the evidence file keeps them all.
+printed_reasons = 8
+
+[dispatch.worker]
+# `kit install` in a new worktree that has no kit binary to copy.
+install_timeout_s = 900
+
+[dispatch.lease]
+# A lease lasts this many times its role's wall clock (team/01 section 9).
+lease_factor = 2
+
+[kit.check]
+# Problems `cargo xtask kit check` prints; the log keeps them all.
+printed_problems = 9
+
+[kit.install]
+# `cargo build --profile kit` of the kit binary.
+build_timeout_s = 1800
+
+# The git, process and lock tables are read from the copy the binary was built with, since
+# reading the base's copy needs git.
+[kit.git]
+# One git command.
+timeout_s = 120
+
+[kit.process]
+# How often a child process is checked for exit or a passed deadline.
+poll_ms = 5
+
+[kit.lock]
+# A lock file untouched for this many heartbeats belongs to a holder that is gone.
+stale_beats = 3

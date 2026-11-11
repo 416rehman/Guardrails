@@ -1,0 +1,16 @@
+# True exceptions to structure checks S6 (panic path, owner instruction 15) and S7 (hard-coded
+# value, owner instruction 26), skill grdr-structure. The fix for a real finding is a typed error
+# for S6 and a value read from its data source for S7 (configuration schema, brand manifest,
+# limits.toml, design tokens or language tokens, D-69), never an entry here. It is a protected path,
+# so no agent exempts its own change: an entry lands only through a protected-change item (owner
+# instruction 7) that lead-agent-kit implements under GRDR_SCOPE=protected, after eval-security,
+# one evaluator on the other model and eval-architecture agree in check runs.
+#
+# Entry: { path = "<root-relative path>", check = "S6" | "S7",
+#          value = "<the construct or literal exactly as the finding quotes it>",
+#          reason = "<why no data source or typed error can hold it>",
+#          requested_in = "#<issue or pull request>",
+#          added_by = "<agent that implemented the protected change>" }
+#
+# An entry silences that value in that file only, on every line it appears.
+exemptions = []

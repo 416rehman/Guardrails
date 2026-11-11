@@ -1,0 +1,677 @@
+# Labels of the repository `.agents/harness.toml` [github] names. A work item is an issue and
+# nothing else; its labels are its status and its fields (owner instruction 5). `cargo xtask
+# labels sync` applies this file and `--check` runs in CI. There are no milestone or date labels,
+# and no work-item files.
+#
+# [[group]] says how many labels of a prefix an issue carries and who may set them; guard-command
+# enforces it on agents' gh calls. Roster names may be globs. "filer" is whoever creates the
+# issue, at creation only. "kit" is `cargo xtask kit ready` and `kit handoff`, which change
+# labels for the agent that runs them; "dispatcher" is `cargo xtask dispatch`.
+# [[transition]] is the status state machine: no other status change is valid.
+
+[[group]]
+prefix = "status:"
+count = "one"                    # exactly one on every open issue
+filed_as = "status:proposed"     # the only status an issue may be created with
+
+[[group]]
+prefix = "priority:"
+count = "at-most-one"
+set_by = ["programme-manager", "product-lead", "lead-*", "chief-architect"]
+
+[[group]]
+prefix = "tier:"
+count = "one-when-ready"
+set_by = ["lead-*", "product-lead", "programme-manager", "chief-architect", "eval-tier"]
+raise_only = true                # from `cargo xtask risk`; may be raised, never lowered
+
+[[group]]
+names = ["trust-core"]
+count = "flag"
+set_by = ["lead-*", "product-lead", "programme-manager", "chief-architect", "eval-tier"]
+raise_only = true
+
+[[group]]
+prefix = "squad:"
+count = "one-when-ready"
+set_by = ["filer", "lead-*", "product-lead", "programme-manager", "chief-architect", "garden-intake"]
+
+[[group]]
+prefix = "kind:"
+count = "one-when-ready"
+set_by = ["filer", "lead-*", "product-lead", "programme-manager", "chief-architect", "garden-intake"]
+
+[[group]]
+prefix = "size:"
+count = "one-when-ready"
+set_by = ["filer", "lead-*", "product-lead", "programme-manager", "chief-architect"]
+
+[[group]]
+prefix = "agent:"
+count = "one-when-ready"
+set_by = ["filer", "lead-*", "product-lead", "programme-manager", "chief-architect"]
+
+[[group]]
+names = ["open-to-contributors", "good-first-issue", "extractive"]
+count = "flag"
+set_by = ["lead-*", "product-lead", "programme-manager"]   # the fleet never claims good-first-issue
+
+[[group]]
+names = ["perf-accepted"]
+count = "flag"
+set_by = ["lead-*"]              # after a second evaluator agreed; makes the change high tier
+
+[[group]]
+names = ["ui-baseline"]
+count = "flag"
+set_by = ["eval-ux"]             # allows the screenshot baselines to be regenerated
+
+# release-please marks its release pull request with these (owner instruction 3); no agent sets
+# or removes them, and a merged one left at pending blocks the next release pull request.
+[[group]]
+names = ["autorelease: pending", "autorelease: tagged"]
+count = "flag"
+set_by = []
+
+# Readying needs a ready.v1 comment from the agent that readies, naming itself and the SHA-256
+# of the acceptance-criteria section and of the write set; that agent is never the issue's agent:
+# label.
+[[transition]]
+from = "proposed"
+to = "ready"
+by = ["kit"]
+run_by = ["lead-*", "product-lead", "programme-manager"]
+when = "spec, write set, acceptance criteria with named oracles and every *-when-ready label are present"
+
+[[transition]]
+from = "proposed"
+to = "in-review"
+by = ["kit"]
+when = "the chief architect's seed session (GRDR_SCOPE=seed) hands off the agent/seed pull request for the [WI-0000] issue, with the lease that names that branch"
+
+[[transition]]
+from = "proposed"
+to = "blocked"
+by = ["lead-*", "product-lead", "programme-manager"]
+when = "an external precondition, named in the issue, must hold first"
+
+[[transition]]
+from = "proposed"
+to = "closed"
+by = ["lead-*", "product-lead", "programme-manager"]
+when = "duplicate or will not be done; closed as not planned with the reason"
+
+[[transition]]
+from = "ready"
+to = "leased"
+by = ["dispatcher"]
+when = "every blocked-by issue is closed and the acceptance and write-set digests match ready.v1"
+
+[[transition]]
+from = "ready"
+to = "proposed"
+by = ["dispatcher"]
+when = "the acceptance section or the write set changed after readying; an edit by the implementer is a tamper finding"
+
+[[transition]]
+from = "leased"
+to = "in-review"
+by = ["dispatcher"]
+when = "the pull request for agent/<n>/a<attempt> is open"
+
+[[transition]]
+from = "leased"
+to = "ready"
+by = ["dispatcher"]
+when = "stall or failed attempt 1; the next lease raises the attempt"
+
+[[transition]]
+from = "leased"
+to = "escalated"
+by = ["dispatcher", "kit"]
+when = "stall or failure on attempt 2, or a blocked hand-off carrying a team/01 section 6 packet"
+
+[[transition]]
+from = "leased"
+to = "blocked"
+by = ["kit"]
+when = "a blocked hand-off that waits on a named issue or external precondition"
+
+[[transition]]
+from = "leased"
+to = "proposed"
+by = ["kit", "dispatcher"]
+when = "an impossible hand-off: the spec and the tests conflict, so the item returns to its spec author; or the acceptance section changed under the lease"
+
+[[transition]]
+from = "in-review"
+to = "leased"
+by = ["dispatcher"]
+when = "evaluator findings in a round before the last (usage.toml [item] max_review_rounds), or a merge-queue refusal: pull-request-invalid, checks-failed, verify-failed or merge-conflict"
+
+[[transition]]
+from = "in-review"
+to = "proposed"
+by = ["dispatcher"]
+when = "the last review round failed on the first attempt, or the acceptance section changed after the lease (acceptance-changed), so evaluators did not judge the readied snapshot; the lead re-plans"
+
+[[transition]]
+from = "in-review"
+to = "escalated"
+by = ["dispatcher"]
+when = "the last review round failed on the last attempt (usage.toml [item] max_attempts), usage above [item] escalate_above times the item's cap, [item] verdict_hours with no verdict, evaluators-on-one-model: the evaluators the lane needs ran on one model and the change needs two, or evaluator-unavailable: an evaluator the lane needs is not in the roster, has no model or may not run on the model asked"
+
+[[transition]]
+from = "in-review"
+to = "closed"
+by = ["merge"]
+when = "the merged pull request closes the issue; this is done"
+
+[[transition]]
+from = "blocked"
+to = "ready"
+by = ["dispatcher"]
+when = "the precondition holds and a valid ready.v1 exists"
+
+[[transition]]
+from = "blocked"
+to = "proposed"
+by = ["lead-*", "product-lead", "programme-manager"]
+when = "the precondition holds and the issue has no valid ready.v1"
+
+[[transition]]
+from = "escalated"
+to = "proposed"
+by = ["lead-*", "product-lead", "programme-manager", "chief-architect"]
+when = "the decision is recorded: the lead's or the chief architect's answer, or the packet's default after 48 hours"
+
+[[transition]]
+from = "escalated"
+to = "closed"
+by = ["lead-*", "product-lead", "programme-manager", "chief-architect"]
+when = "the decision abandons the item; closed as not planned"
+
+# Status
+
+[[label]]
+name = "status:proposed"
+color = "c5def5"
+description = "Filed; a lead adds spec, write set, acceptance criteria and labels, then readies it"
+
+[[label]]
+name = "status:ready"
+color = "0e8a16"
+description = "Readied with a valid ready.v1 comment; the dispatcher may lease it"
+
+[[label]]
+name = "status:leased"
+color = "1d76db"
+description = "Leased to one implementer; the lease comment names agent, attempt and digest"
+
+[[label]]
+name = "status:in-review"
+color = "5319e7"
+description = "Pull request open; evaluators and the merge queue hold it"
+
+[[label]]
+name = "status:blocked"
+color = "b60205"
+description = "Waits on a precondition or issue named in the issue"
+
+[[label]]
+name = "status:escalated"
+color = "d93f0b"
+description = "Needs a decision; a comment holds the team/01 section 6 packet"
+
+# Priority, set by the programme manager to order the queue
+
+[[label]]
+name = "priority:p0"
+color = "b60205"
+description = "First: unblocks other items, or trust-core, security or release work"
+
+[[label]]
+name = "priority:p1"
+color = "d93f0b"
+description = "Next after p0"
+
+[[label]]
+name = "priority:p2"
+color = "fbca04"
+description = "Normal order"
+
+[[label]]
+name = "priority:p3"
+color = "c2e0c6"
+description = "When nothing above it is ready"
+
+# Risk tier and trust core
+
+[[label]]
+name = "tier:low"
+color = "c2e0c6"
+description = "Low risk tier (cargo xtask risk); docs and additive changes behind a flag"
+
+[[label]]
+name = "tier:medium"
+color = "fbca04"
+description = "Medium risk tier (cargo xtask risk)"
+
+[[label]]
+name = "tier:high"
+color = "d93f0b"
+description = "High risk tier (cargo xtask risk); full lane: eval-security, eval-adversarial, cross-model review"
+
+[[label]]
+name = "trust-core"
+color = "7057ff"
+description = "Touches security/trust-core.paths; two independent passing evaluators on different models"
+
+# Squads (team/06 section 8.1, .agents/owners.toml)
+
+[[label]]
+name = "squad:core"
+color = "bfd4f2"
+description = "SQ-01: protobuf, schema, core crates, xtask, gate data, supply chain"
+
+[[label]]
+name = "squad:security"
+color = "bfd4f2"
+description = "SQ-18: crypto, IPC peer authentication, security and governance files"
+
+[[label]]
+name = "squad:discovery"
+color = "bfd4f2"
+description = "SQ-02: discovery and session modules of grdr-core"
+
+[[label]]
+name = "squad:adapters"
+color = "bfd4f2"
+description = "SQ-03: grdr-agents and grdr-hook"
+
+[[label]]
+name = "squad:endpoint"
+color = "bfd4f2"
+description = "SQ-07: daemon, engine, CLI, local store, engine sandbox"
+
+[[label]]
+name = "squad:linux"
+color = "bfd4f2"
+description = "SQ-04: Linux sensor and eBPF programs"
+
+[[label]]
+name = "squad:macos"
+color = "bfd4f2"
+description = "SQ-05: macOS shell and system extensions"
+
+[[label]]
+name = "squad:windows"
+color = "bfd4f2"
+description = "SQ-06: Windows shell, services and driver"
+
+[[label]]
+name = "squad:gateway"
+color = "bfd4f2"
+description = "SQ-11: MCP broker and explicit proxy"
+
+[[label]]
+name = "squad:identity-data"
+color = "bfd4f2"
+description = "SQ-10: identity, credential broker and data protection"
+
+[[label]]
+name = "squad:content"
+color = "bfd4f2"
+description = "SQ-08, SQ-09: packs, rules, fingerprints, adapter manifests"
+
+[[label]]
+name = "squad:fleet"
+color = "bfd4f2"
+description = "SQ-12: updater, uplink and fleet updates"
+
+[[label]]
+name = "squad:server"
+color = "bfd4f2"
+description = "SQ-13: server platform and storage"
+
+[[label]]
+name = "squad:interfaces"
+color = "bfd4f2"
+description = "SQ-14: web console, browser extension, tray and desktop"
+
+[[label]]
+name = "squad:ecosystem"
+color = "bfd4f2"
+description = "SQ-15: export, integrations, specifications and conformance kits"
+
+[[label]]
+name = "squad:release"
+color = "bfd4f2"
+description = "SQ-16: packaging, release pipeline, brand"
+
+[[label]]
+name = "squad:lab"
+color = "bfd4f2"
+description = "SQ-16: efficacy harness, test lab, matrix runner"
+
+[[label]]
+name = "squad:agent-kit"
+color = "bfd4f2"
+description = "SQ-17: agent kit, hooks, dispatcher, CI configuration"
+
+# Kind: picks the evaluators of team/02 section 10 and the definition of done
+
+[[label]]
+name = "kind:feature"
+color = "d4c5f9"
+description = "New behaviour or capability"
+
+[[label]]
+name = "kind:bug"
+color = "d4c5f9"
+description = "Defect fix with a three-arm proof"
+
+[[label]]
+name = "kind:removal"
+color = "d4c5f9"
+description = "Removal or simplification with a survival test"
+
+[[label]]
+name = "kind:repair"
+color = "d4c5f9"
+description = "Repair of an upheld audit finding; closes by type, test, lint or decision record"
+
+[[label]]
+name = "kind:test"
+color = "d4c5f9"
+description = "Tests only; changes nothing under src/"
+
+[[label]]
+name = "kind:docs"
+color = "d4c5f9"
+description = "Documentation outside the spine"
+
+[[label]]
+name = "kind:design"
+color = "d4c5f9"
+description = "Spine, RFC, decision record or specification"
+
+[[label]]
+name = "kind:gate"
+color = "d4c5f9"
+description = "Gate, CI, hooks, roster, workflows or gate data"
+
+[[label]]
+name = "kind:dependency"
+color = "d4c5f9"
+description = "New dependency, licence or major version bump"
+
+[[label]]
+name = "kind:api"
+color = "d4c5f9"
+description = "Wire format, public crate or Cedar schema"
+
+[[label]]
+name = "kind:ui"
+color = "d4c5f9"
+description = "UI screen, tray menu or CLI output"
+
+[[label]]
+name = "kind:installer"
+color = "d4c5f9"
+description = "Installer or managed-settings writer"
+
+[[label]]
+name = "kind:content"
+color = "d4c5f9"
+description = "Content pack or rule"
+
+[[label]]
+name = "kind:adapter"
+color = "d4c5f9"
+description = "Agent adapter, agent version or hook dialect"
+
+[[label]]
+name = "kind:spike"
+color = "d4c5f9"
+description = "Spine section 8 spike; the title carries its id, [S-04] ..."
+
+[[label]]
+name = "kind:gardening"
+color = "c2e0c6"
+description = "Found by a gardener or an audit: de-slop, docs, tests, dependencies, A01 repairs"
+
+[[label]]
+name = "kind:proposal"
+color = "fef2c0"
+description = "A request from outside the team, triaged by garden-intake for the product lead"
+
+# The rfc:draft, rfc:final-comment, rfc:accepted, rfc:rejected and rfc:postponed labels of team/06
+# section 7.2 are removed: owner instruction 7 ended the comment period, and an RFC's decision record
+# states its outcome.
+[[label]]
+name = "kind:rfc"
+color = "5319e7"
+description = "An RFC's design issue: the persona council comments here, the chief architect decides"
+
+# Size: non-test changed lines; larger work is split into sub-issues
+
+[[label]]
+name = "size:XS"
+color = "ededed"
+description = "Up to 50 non-test changed lines"
+
+[[label]]
+name = "size:S"
+color = "ededed"
+description = "Up to 200 non-test changed lines"
+
+[[label]]
+name = "size:M"
+color = "ededed"
+description = "Up to 500 non-test changed lines"
+
+# Agent: the roster name the dispatcher leases the issue to, never a model
+
+[[label]]
+name = "agent:impl-rust"
+color = "f9d0c4"
+description = "Implemented by impl-rust"
+
+[[label]]
+name = "agent:impl-kernel"
+color = "f9d0c4"
+description = "Implemented by impl-kernel"
+
+[[label]]
+name = "agent:impl-apple"
+color = "f9d0c4"
+description = "Implemented by impl-apple"
+
+[[label]]
+name = "agent:impl-web"
+color = "f9d0c4"
+description = "Implemented by impl-web"
+
+[[label]]
+name = "agent:impl-content"
+color = "f9d0c4"
+description = "Implemented by impl-content"
+
+[[label]]
+name = "agent:impl-docs"
+color = "f9d0c4"
+description = "Implemented by impl-docs"
+
+[[label]]
+name = "agent:chief-architect"
+color = "f9d0c4"
+description = "Worked by chief-architect: RFCs, decision records, architecture review"
+
+[[label]]
+name = "agent:product-lead"
+color = "f9d0c4"
+description = "Worked by product-lead"
+
+[[label]]
+name = "agent:lead-core"
+color = "f9d0c4"
+description = "Worked by lead-core"
+
+[[label]]
+name = "agent:lead-security"
+color = "f9d0c4"
+description = "Worked by lead-security"
+
+[[label]]
+name = "agent:lead-discovery"
+color = "f9d0c4"
+description = "Worked by lead-discovery"
+
+[[label]]
+name = "agent:lead-adapters"
+color = "f9d0c4"
+description = "Worked by lead-adapters"
+
+[[label]]
+name = "agent:lead-endpoint"
+color = "f9d0c4"
+description = "Worked by lead-endpoint"
+
+[[label]]
+name = "agent:lead-linux"
+color = "f9d0c4"
+description = "Worked by lead-linux"
+
+[[label]]
+name = "agent:lead-macos"
+color = "f9d0c4"
+description = "Worked by lead-macos"
+
+[[label]]
+name = "agent:lead-windows"
+color = "f9d0c4"
+description = "Worked by lead-windows"
+
+[[label]]
+name = "agent:lead-gateway"
+color = "f9d0c4"
+description = "Worked by lead-gateway"
+
+[[label]]
+name = "agent:lead-identity-data"
+color = "f9d0c4"
+description = "Worked by lead-identity-data"
+
+[[label]]
+name = "agent:lead-content"
+color = "f9d0c4"
+description = "Worked by lead-content"
+
+[[label]]
+name = "agent:lead-fleet"
+color = "f9d0c4"
+description = "Worked by lead-fleet"
+
+[[label]]
+name = "agent:lead-server"
+color = "f9d0c4"
+description = "Worked by lead-server"
+
+[[label]]
+name = "agent:lead-interfaces"
+color = "f9d0c4"
+description = "Worked by lead-interfaces"
+
+[[label]]
+name = "agent:lead-ecosystem"
+color = "f9d0c4"
+description = "Worked by lead-ecosystem"
+
+[[label]]
+name = "agent:lead-release"
+color = "f9d0c4"
+description = "Worked by lead-release"
+
+[[label]]
+name = "agent:lead-lab"
+color = "f9d0c4"
+description = "Worked by lead-lab"
+
+[[label]]
+name = "agent:lead-agent-kit"
+color = "f9d0c4"
+description = "Worked by lead-agent-kit"
+
+[[label]]
+name = "agent:garden-catalogue"
+color = "f9d0c4"
+description = "Fixed by garden-catalogue: a trivial finding it filed and leases"
+
+[[label]]
+name = "agent:garden-conformance"
+color = "f9d0c4"
+description = "Fixed by garden-conformance: a trivial finding it filed and leases"
+
+[[label]]
+name = "agent:garden-cost"
+color = "f9d0c4"
+description = "Fixed by garden-cost: a trivial finding it filed and leases"
+
+[[label]]
+name = "agent:garden-deslop"
+color = "f9d0c4"
+description = "Fixed by garden-deslop: a trivial finding it filed and leases"
+
+[[label]]
+name = "agent:garden-docs"
+color = "f9d0c4"
+description = "Fixed by garden-docs: a trivial finding it filed and leases"
+
+[[label]]
+name = "agent:garden-intel"
+color = "f9d0c4"
+description = "Fixed by garden-intel: a trivial finding it filed and leases"
+
+[[label]]
+name = "agent:garden-tests"
+color = "f9d0c4"
+description = "Fixed by garden-tests: a trivial finding it filed and leases"
+
+# Contributors (team/06 section 7.2; design/30 section 4 keeps these names for outsiders)
+
+[[label]]
+name = "open-to-contributors"
+color = "0075ca"
+description = "Outside contributors may take this issue"
+
+[[label]]
+name = "good-first-issue"
+color = "7057ff"
+description = "Suitable for a first contribution; the agent fleet never takes it"
+
+[[label]]
+name = "extractive"
+color = "e4e669"
+description = "Costs more to review than it is worth; closed with the reason (design/30 section 4)"
+
+[[label]]
+name = "perf-accepted"
+color = "e99695"
+description = "An accepted instruction-count regression; the change becomes high tier"
+
+[[label]]
+name = "ui-baseline"
+color = "bfdadc"
+description = "eval-ux allows this pull request to regenerate the screenshot baselines"
+
+# Release pull requests (release-please, owner instruction 3)
+[[label]]
+name = "autorelease: pending"
+color = "ededed"
+description = "release-please: a release pull request whose tags and releases are not created yet"
+
+[[label]]
+name = "autorelease: tagged"
+color = "ededed"
+description = "release-please: the release pull request's tags and GitHub releases exist"

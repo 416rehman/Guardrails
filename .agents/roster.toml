@@ -1,0 +1,1246 @@
+# The agent roster (team/02 section 1.2): one [defaults] table, then one [agent.<name>] table per
+# agent in team/02 order. kit render turns each into .claude/agents/<name>.md.
+#
+# A role whose skills include grdr-vendor-research (the product lead, the chief architect, every
+# lead, implementer and evaluator, and garden-intel) gets WebFetch and WebSearch from kit render,
+# with fetch rules for the domains of .agents/kit/vendors.toml (owner instruction 14), so its
+# entry neither lists nor disallows them. No other role may list WebSearch. The repository the
+# work items live in is harness.toml [github] repository.
+
+# The direction group and the 18 domain leads (team/02 sections 3 and 4), with work items as
+# GitHub issues (owner instructions 5 and 6). cap_role names a row of team/01 section 9.
+# Planners write no repository files: their output is issues, labels and comments through gh,
+# which guard-command limits per role, so only the chief architect has a write set.
+
+# Commits are one Conventional Commit line with no trailers; the pull request body carries
+# Closes #<item> and the metadata block (owner instruction 27).
+[defaults]
+handoff = "issue-comment"                        # handoff.v1 in a collapsed section on the item's issue
+item_snapshot = ".agent/state/item-{item}.json"  # written by kit launch from the issue; hooks read it
+branch = "agent/{item}/a{attempt}"
+
+[agent.chief-architect]
+group = "direction"
+description = "Owns the decision spine, layer rules and RFCs. Use for architecture questions, RFC drafting and resolving lead conflicts. Never writes code."
+model = "fable"
+effort = "xhigh"
+cap_role = "direction"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Write", "Edit", "WebFetch", "Skill", "Bash", "Workflow"]
+disallowed_tools = ["PowerShell", "NotebookEdit", "Agent"]
+write = ["rfcs/**", "docs/decisions/**", "docs/agents/status/**"]
+deny_write = "@protected"
+net = "B"
+skills = ["grdr-write-spec", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "manual"
+body = "templates/agents/chief-architect.md"
+
+[agent.product-lead]
+group = "direction"
+description = "Owns scope, personas, support tiers and acceptance criteria. Use when a request, persona finding or scorecard needs a product decision, and to write and ready an item's acceptance criteria."
+model = "opus"
+effort = "high"
+cap_role = "direction"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-write-spec", "grdr-handoff", "ui-architect", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "dispatch"
+body = "templates/agents/product-lead.md"
+
+[agent.programme-manager]
+group = "direction"
+description = "Orders the queue with priority labels, readies items whose spec is complete, and caps writer concurrency against evaluator capacity and subscription usage. Use for queue order and status."
+model = "sonnet"
+effort = "medium"
+cap_role = "direction"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Bash", "Skill", "Workflow"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent", "WebFetch", "WebSearch"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-handoff", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "schedule"
+usage_cap = 0.02
+body = "templates/agents/programme-manager.md"
+
+[agent.lead-core]
+group = "lead"
+description = "Plans the core and architecture squad. Use to decompose design 03, 04 and 12 into work items and to resolve a blocked hand-off for proto/, schema/, the core crates and xtask/. Never writes code."
+model = "opus"
+effort = "high"
+cap_role = "lead"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-write-spec", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "dispatch"
+body = "templates/agents/lead-core.md"
+
+[agent.lead-security]
+group = "lead"
+description = "Plans the security and trust core squad. Use to decompose design 02 and 35 into work items and to resolve a blocked hand-off for grdr-crypto, grdr-approve, peer authentication, security/ and governance/. Never writes code."
+model = "opus"
+effort = "high"
+cap_role = "lead"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-write-spec", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "dispatch"
+body = "templates/agents/lead-security.md"
+
+[agent.lead-discovery]
+group = "lead"
+description = "Plans the discovery and attribution squad. Use to decompose design 05 and 06 into work items and to resolve a blocked hand-off for the discover and session modules of grdr-core and catalogue/. Never writes code."
+model = "opus"
+effort = "high"
+cap_role = "lead"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-write-spec", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "dispatch"
+body = "templates/agents/lead-discovery.md"
+
+[agent.lead-adapters]
+group = "lead"
+description = "Plans the agent adapters and hooks squad. Use to decompose design 07 into work items and to resolve a blocked hand-off for grdr-agents, grdr-broker, grdr-hook and grdr-conformance. Never writes code."
+model = "opus"
+effort = "high"
+cap_role = "lead"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-write-spec", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "dispatch"
+body = "templates/agents/lead-adapters.md"
+
+[agent.lead-endpoint]
+group = "lead"
+description = "Plans the endpoint platform squad. Use to decompose design 11 into work items and to resolve a blocked hand-off for grdr-daemon, grdr-engine, grdr-run, grdr, grdr-store-local and grdr-sandbox-*. Never writes code."
+model = "opus"
+effort = "high"
+cap_role = "lead"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-write-spec", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "dispatch"
+body = "templates/agents/lead-endpoint.md"
+
+[agent.lead-linux]
+group = "lead"
+description = "Plans the Linux sensor squad. Use to decompose design 10 into work items and to resolve a blocked hand-off for grdr-sensor-linux, grdr-sensor-linux-bpf and bpf/. Never writes code."
+model = "opus"
+effort = "high"
+cap_role = "lead"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-write-spec", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "dispatch"
+body = "templates/agents/lead-linux.md"
+
+[agent.lead-macos]
+group = "lead"
+description = "Plans the macOS squad. Use to decompose design 09 into work items and to resolve a blocked hand-off for grdr-sensor-macos and platform/macos/. Never writes code."
+model = "opus"
+effort = "high"
+cap_role = "lead"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-write-spec", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "dispatch"
+body = "templates/agents/lead-macos.md"
+
+[agent.lead-windows]
+group = "lead"
+description = "Plans the Windows endpoint squad. Use to decompose design 08 into work items and to resolve a blocked hand-off for grdr-sensor-windows, platform/windows/ and grdr-driver-windows. Never writes code."
+model = "opus"
+effort = "high"
+cap_role = "lead"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-write-spec", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "dispatch"
+body = "templates/agents/lead-windows.md"
+
+[agent.lead-gateway]
+group = "lead"
+description = "Plans the gateway and network squad. Use to decompose design 17 into work items and to resolve a blocked hand-off for grdr-llm-proto, grdr-mcp-proto, grdr-proxy, grdr-mcp and the server gateway target. Never writes code."
+model = "opus"
+effort = "high"
+cap_role = "lead"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-write-spec", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "dispatch"
+body = "templates/agents/lead-gateway.md"
+
+[agent.lead-identity-data]
+group = "lead"
+description = "Plans the identity and data protection squad. Use to decompose design 15 and 16 into work items and to resolve a blocked hand-off for grdr-redact, the analyze detectors and grdr-identity. Never writes code."
+model = "opus"
+effort = "high"
+cap_role = "lead"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-write-spec", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "dispatch"
+body = "templates/agents/lead-identity-data.md"
+
+[agent.lead-content]
+group = "lead"
+description = "Plans the detection content and intelligence squad. Use to decompose design 13, 14 and 19 into work items and to resolve a blocked hand-off for the detect module, packs/, rules/, the intelligence mirror and grdr-judge-*. Never writes code."
+model = "opus"
+effort = "high"
+cap_role = "lead"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-write-spec", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "dispatch"
+body = "templates/agents/lead-content.md"
+
+[agent.lead-fleet]
+group = "lead"
+description = "Plans the fleet and updates squad. Use to decompose design 22 into work items and to resolve a blocked hand-off for grdr-update, grdr-uplink and grdr-updater. Never writes code."
+model = "opus"
+effort = "high"
+cap_role = "lead"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-write-spec", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "dispatch"
+body = "templates/agents/lead-fleet.md"
+
+[agent.lead-server]
+group = "lead"
+description = "Plans the server platform squad. Use to decompose design 18, 20, 21, 23 and 32 into work items and to resolve a blocked hand-off for grdr-server, grdr-rel-*, grdr-lake, grdr-bus-*, grdr-blob and sdk/. Never writes code."
+model = "opus"
+effort = "high"
+cap_role = "lead"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-write-spec", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "dispatch"
+body = "templates/agents/lead-server.md"
+
+[agent.lead-interfaces]
+group = "lead"
+description = "Plans the interfaces squad. Use to decompose design 27 and 28 into work items and to resolve a blocked hand-off for web/, desktop/, grdr-tray and grdr-desktop. Never writes code."
+model = "opus"
+effort = "high"
+cap_role = "lead"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-write-spec", "grdr-handoff", "ui-architect", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "dispatch"
+body = "templates/agents/lead-interfaces.md"
+
+[agent.lead-ecosystem]
+group = "lead"
+description = "Plans the embedding and integrations squad. Use to decompose design 25 and 26 into work items and to resolve a blocked hand-off for grdr-export, grdr-integrations, spec/ and conformance/. Never writes code."
+model = "opus"
+effort = "high"
+cap_role = "lead"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-write-spec", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "dispatch"
+body = "templates/agents/lead-ecosystem.md"
+
+[agent.lead-release]
+group = "lead"
+description = "Plans the release squad. Use to decompose design 24 into work items and to resolve a blocked hand-off for deploy/, brand/, deny.toml, dist.toml and release.yml. Never writes code."
+model = "opus"
+effort = "high"
+cap_role = "lead"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-write-spec", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "dispatch"
+body = "templates/agents/lead-release.md"
+
+[agent.lead-lab]
+group = "lead"
+description = "Plans the lab squad. Use to decompose spine D-45 and D-64 into work items and to resolve a blocked hand-off for lab/, the matrix-run jobs and the held-out evaluator client. Never writes code."
+model = "opus"
+effort = "high"
+cap_role = "lead"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-write-spec", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "dispatch"
+body = "templates/agents/lead-lab.md"
+
+[agent.lead-agent-kit]
+group = "lead"
+description = "Plans the agent kit squad and implements protected gate-configuration items, code included. Use to decompose team 01 to 06 into work items, to resolve a blocked hand-off for AGENTS.md, CLAUDE.md, .agents/, .claude/, .github/ and the kit subcommands of xtask/, and for a protected-change lease, such as one on xtask/src/config, gates, hook or kit."
+model = "opus"
+effort = "high"
+cap_role = "lead"
+max_turns = 40
+# Edit and Write serve only a protected-change lease (owner instruction 7): the dispatcher sets
+# GRDR_SCOPE=protected and guard-path holds the session to that item's write set.
+tools = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "Skill"]
+disallowed_tools = ["NotebookEdit", "PowerShell", "Agent"]
+write = [
+  "AGENTS.md", "**/AGENTS.md", "CLAUDE.md", "WORKFLOW.md", ".agents/**", ".claude/**", ".github/**",
+  "quality/**", "xtask/verify.toml", "security/trust-core.paths", "audits/**", "deploy/fleet/**",
+  "xtask/Cargo.toml", "xtask/src/config/**", "xtask/src/gates/**", "xtask/src/hook/**",
+  "xtask/src/kit/**",
+]
+deny_write = "@protected"
+net = "A"
+skills = [
+  "grdr-write-spec", "grdr-handoff", "grdr-start-item", "grdr-verify", "grdr-structure",
+  "cleanup:cleanup", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer",
+]
+trigger = "dispatch"
+usage_cap = 0.02                                 # its monthly planning run (team/03 section 7)
+body = "templates/agents/lead-agent-kit.md"
+
+# Implementers (team/02 section 5) and the twelve independent evaluators (team/02 section 6).
+# Models and effort: team/02 and design/_review/03. cap_role and max_turns: team/01 section 9.
+# The dispatcher, not the roster, runs a worker on opus for a trust-core path or a high-tier
+# change, and starts eval-diff on the model that did not write the change.
+# Implementers take their usage cap from cap_role in .agents/kit/usage.toml. Evaluators run on
+# every pull request without a person starting them (usage.toml routines review, eval-tier and
+# eval-by-kind), so each carries usage_cap, per run and round.
+# Every implementer preloads grdr-structure and cleanup (owner instruction 4) and
+# grdr-vendor-research (owner instruction 14); every writer and reviewer of a screen preloads
+# ui-architect, then grdr-interface (P17), and impl-web, eval-ux and the screen-reviewing persona
+# seats add the Modern Web Guidance skills after them (owner instruction 18).
+
+[agent.impl-rust]
+group = "implementer"
+description = "Implements exactly one leased work item, a GitHub issue, in the Rust crates, programs and xtask/src of the item's squad. Use only from the dispatcher with an issue number."
+model = "sonnet"
+effort = "high"
+cap_role = "worker"
+max_turns = 80   # sizes XS and S; the launcher passes 150 for size M
+tools = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "Skill", "LSP"]
+disallowed_tools = ["Agent", "PowerShell"]
+# The first three globs are team/02 section 1.2; the rest are the components team/02 section 9
+# gives impl-rust, plus fuzz targets. The issue's write set narrows them further.
+write = [
+  "crates/**", "programs/**", "xtask/src/**",
+  "proto/**", "schema/**", "buf.yaml", "buf.gen.yaml",
+  "lab/**", "sdk/**", "conformance/**", "deploy/**", "platform/windows/**", "fuzz/**",
+]
+deny_write = "@protected"
+net = "A"
+skills = [
+  "grdr-start-item", "grdr-verify", "grdr-fix-bug", "grdr-remove-code", "grdr-handoff",
+  "grdr-structure", "cleanup:cleanup", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer",
+]
+trigger = "dispatch"
+body = "templates/agents/impl-rust.md"
+
+[agent.impl-kernel]
+group = "implementer"
+description = "Implements exactly one leased work item, a GitHub issue, in bpf/, the kernel-facing parts of grdr-sensor-linux or the optional Windows driver; active only once S-13 passes. Use only from the dispatcher with an issue number."
+model = "opus"   # always opus: every kernel item is trust core
+effort = "xhigh"
+cap_role = "worker"
+max_turns = 80   # sizes XS and S; the launcher passes 150 for size M
+tools = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "Skill", "LSP"]
+disallowed_tools = ["Agent", "PowerShell"]
+write = [
+  "bpf/**", "crates/grdr-sensor-linux/**", "crates/grdr-sensor-linux-bpf/**",
+  "crates/grdr-driver-windows/**", "platform/windows/**",
+]
+deny_write = "@protected"
+net = "A"
+skills = [
+  "grdr-start-item", "grdr-verify", "grdr-fix-bug", "grdr-remove-code", "grdr-handoff",
+  "grdr-matrix-run",
+  "grdr-structure", "cleanup:cleanup", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer",
+]
+trigger = "dispatch"
+body = "templates/agents/impl-kernel.md"
+
+[agent.impl-apple]
+group = "implementer"
+description = "Implements exactly one leased work item, a GitHub issue, in the macOS Swift shell and packaging under platform/macos/; active with the macOS squad. Use only from the dispatcher with an issue number."
+model = "sonnet"
+effort = "high"
+cap_role = "worker"
+max_turns = 80   # sizes XS and S; the launcher passes 150 for size M
+tools = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "Skill", "LSP"]
+disallowed_tools = ["Agent", "PowerShell"]
+write = ["platform/macos/**"]
+deny_write = "@protected"
+net = "A"
+skills = [
+  "grdr-start-item", "grdr-verify", "grdr-fix-bug", "grdr-remove-code", "grdr-handoff",
+  "grdr-matrix-run",
+  "grdr-structure", "cleanup:cleanup", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer",
+]
+trigger = "dispatch"
+body = "templates/agents/impl-apple.md"
+
+[agent.impl-web]
+group = "implementer"
+description = "Implements exactly one leased work item, a GitHub issue, in interface/ (except its translations), web/, the desktop/ view-models and kit, or the kit and ui packages, composing registered patterns only. Use only from the dispatcher with an issue number."
+model = "sonnet"
+effort = "medium"
+cap_role = "worker"
+max_turns = 80   # sizes XS and S; the launcher passes 150 for size M
+tools = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "Skill", "LSP", "mcp__playwright__*"]
+disallowed_tools = ["Agent", "PowerShell"]
+write = ["interface/**", "!interface/strings/tr/**", "web/**", "desktop/**"]   # never a translation (D-69)
+deny_write = "@protected"
+net = "A"
+skills = [
+  "grdr-start-item", "grdr-verify", "grdr-fix-bug", "grdr-remove-code", "grdr-handoff",
+  "ui-architect", "grdr-interface", "frontend-design:frontend-design",
+  "modern-web-guidance:modern-web-guidance", "modern-web-guidance:chrome-extensions",
+  "grdr-structure", "cleanup:cleanup", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer",
+]
+trigger = "dispatch"
+body = "templates/agents/impl-web.md"
+
+[agent.impl-content]
+group = "implementer"
+description = "Implements exactly one leased work item, a GitHub issue, in the content repository: Sigma rules, Cedar packs, agent manifests and mappings. Use only from the dispatcher with an issue number."
+model = "sonnet"
+effort = "high"
+cap_role = "worker"
+max_turns = 80   # sizes XS and S; the launcher passes 150 for size M
+tools = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "Skill"]
+disallowed_tools = ["Agent", "PowerShell"]
+# Paths in the grdr-content repository (design/13 section 11), relative to its root. The benign
+# corpus (corpora/goodlog/), schemas and vectors stay out: a rule never changes what judges it.
+write = [
+  "packs/**", "detections/**", "tests/**", "policy/**", "analysers/**", "yara/**",
+  "detectors/**", "agents/**", "catalogue/**", "mappings/**",
+  "corpora/positive/**", "corpora/negative/**",
+]
+deny_write = "@protected"
+net = "A"
+skills = [
+  "grdr-start-item", "grdr-verify", "grdr-fix-bug", "grdr-remove-code", "grdr-handoff",
+  "grdr-author-detection", "grdr-author-policy", "grdr-add-agent-adapter",
+  "grdr-structure", "cleanup:cleanup", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer",
+]
+trigger = "dispatch"
+body = "templates/agents/impl-content.md"
+
+[agent.impl-docs]
+group = "implementer"
+description = "Implements exactly one leased work item, a GitHub issue, in docs/ outside docs/design/ and docs/decisions/, in crate READMEs or in docs/references/*-llms.txt. Use only from the dispatcher with an issue number."
+model = "sonnet"
+effort = "medium"
+cap_role = "worker"
+max_turns = 80   # sizes XS and S; the launcher passes 150 for size M
+tools = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "Skill"]
+disallowed_tools = ["Agent", "PowerShell"]
+write = ["docs/**", "crates/*/README.md", "programs/*/README.md"]
+deny_write = "@protected"
+net = "A"
+skills = [
+  "grdr-start-item", "grdr-verify", "grdr-fix-bug", "grdr-remove-code", "grdr-handoff",
+  "ui-architect", "grdr-interface", "anthropic-skills:skill-creator", "unslop:unslop",
+  "grdr-structure", "cleanup:cleanup", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer",
+]
+trigger = "dispatch"
+body = "templates/agents/impl-docs.md"
+
+[agent.eval-tier]
+group = "evaluator"
+description = "Raises the risk tier of a pull request above the path-rule floor. Use on every pull request before other evaluators."
+model = "sonnet"
+effort = "low"
+cap_role = "evaluator-light"
+max_turns = 30
+tools = ["Read", "Grep", "Glob"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "Bash", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-evaluate", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"
+usage_cap = 0.005
+body = "templates/agents/eval-tier.md"
+
+[agent.eval-acceptance]
+group = "evaluator"
+description = "Verifies one pull request against its issue's readied acceptance criteria by driving the built artefact. Use on every code pull request."
+model = "sonnet"
+effort = "high"
+cap_role = "evaluator-specialist"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Bash", "Skill", "mcp__playwright__*"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-evaluate", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"
+usage_cap = 0.02
+body = "templates/agents/eval-acceptance.md"
+
+[agent.eval-diff]
+group = "evaluator"
+description = "Clean-context, cross-model reviewer of a pull request diff, including the structure rubric and audit A01. Use on every pull request; at most three rounds per item."
+model = "sonnet"   # the dispatcher runs it on opus when sonnet wrote the change
+effort = "high"
+cap_role = "evaluator-review"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+# grdr-structure is the rubric it judges by: symptom fixes, guards around implicit state and
+# mechanical splits fail (owner instruction 4).
+skills = [
+  "grdr-evaluate", "grdr-audit", "grdr-handoff", "code-review", "grdr-structure",
+  "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer",
+]
+trigger = "event"
+usage_cap = 0.03   # per round, as usage.toml's review routine
+body = "templates/agents/eval-diff.md"
+
+# Framework over features (P14) and hard-coded values (S7) in review, and the check run that an
+# exemption or ratchet loosening needs before it lands (owner instructions 7, 9, 21 and 26).
+[agent.eval-architecture]
+group = "evaluator"
+description = "Reviews standard and full lane pull requests for behaviour hard-coded where a mechanism belongs (P14) and for hard-coded values (S7), agrees or refuses each exemption and ratchet change in a check run, and reviews RFCs before the chief architect decides. Use on every standard and full lane pull request, every protected change to an exemption file or ratchet, and every RFC."
+model = "opus"
+effort = "high"
+cap_role = "evaluator-review"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = [
+  "grdr-evaluate", "grdr-structure", "grdr-audit", "grdr-handoff", "grdr-vendor-research",
+  "anthropic-skills:write-like-a-normal-staff-senior-developer",
+]
+trigger = "event"
+usage_cap = 0.03   # per round, as usage.toml's review routine
+body = "templates/agents/eval-architecture.md"
+
+[agent.eval-security]
+group = "evaluator"
+description = "Security reviewer for medium and high tier changes and every trust-core path. Use when the tier label is medium or above."
+model = "opus"
+effort = "xhigh"
+cap_role = "evaluator-review"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = [
+  "grdr-evaluate", "grdr-threat-model-change", "grdr-handoff", "security-review",
+  "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer",
+]
+trigger = "event"
+usage_cap = 0.02
+body = "templates/agents/eval-security.md"
+
+[agent.eval-adversarial]
+group = "evaluator"
+description = "Red-teams a build in the lab. Use for trust-core, policy, control-point and release-candidate changes."
+model = "opus"
+effort = "high"
+cap_role = "evaluator-review"
+max_turns = 40
+tools = ["Read", "Grep", "Glob", "Bash", "Write", "Skill"]
+disallowed_tools = ["Edit", "NotebookEdit", "PowerShell", "Agent"]   # adds new scenario files, never edits one
+write = ["lab/scenarios/proposed/**", "target/**"]
+deny_write = "@protected"
+net = "A"
+skills = [
+  "grdr-evaluate", "grdr-matrix-run", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer",
+]
+trigger = "event"
+usage_cap = 0.02
+body = "templates/agents/eval-adversarial.md"
+
+[agent.eval-ux]
+group = "evaluator"
+description = "Reviews interface changes under the ui-architect skill, then grdr-interface. Use on web, desktop, tray, approval dialog, CLI output, block-message, notification, email, extension, docs-component, installer and language-token changes."
+model = "sonnet"
+effort = "high"
+cap_role = "evaluator-specialist"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Bash", "Skill", "mcp__playwright__*"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-evaluate", "ui-architect", "grdr-interface", "modern-web-guidance:modern-web-guidance", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"
+usage_cap = 0.02
+body = "templates/agents/eval-ux.md"
+
+[agent.eval-performance]
+group = "evaluator"
+description = "Measures latency, footprint and storage targets. Use on hook, fast-path, engine, proxy and storage changes."
+model = "sonnet"
+effort = "medium"
+cap_role = "evaluator-specialist"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]   # its target/ output comes from the commands it runs
+write = ["target/**"]
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-evaluate", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"
+usage_cap = 0.02
+body = "templates/agents/eval-performance.md"
+
+[agent.eval-api]
+group = "evaluator"
+description = "Checks wire formats, public crates and specifications for compatibility. Use when proto/, schema/, spec/ or a public crate changes."
+model = "sonnet"
+effort = "medium"
+cap_role = "evaluator-specialist"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-evaluate", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"
+usage_cap = 0.02
+body = "templates/agents/eval-api.md"
+
+[agent.eval-platform]
+group = "evaluator"
+description = "Runs a change on every Tier 1 cell and reports parity. Use on sensor, daemon, adapter, installer and sandbox changes."
+model = "sonnet"
+effort = "medium"
+cap_role = "evaluator-specialist"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = [
+  "grdr-evaluate", "grdr-matrix-run", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer",
+]
+trigger = "event"
+usage_cap = 0.02
+body = "templates/agents/eval-platform.md"
+
+[agent.eval-a11y]
+group = "evaluator"
+description = "Accessibility review for web and desktop changes. Use on any UI path."
+model = "sonnet"
+effort = "medium"
+cap_role = "evaluator-specialist"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Bash", "Skill", "mcp__playwright__*"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+# ui-architect: the owner's rule binds every session that judges web/ or desktop/ screens (team/03 section 2).
+skills = ["grdr-evaluate", "grdr-handoff", "ui-architect", "grdr-interface", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"
+usage_cap = 0.02
+body = "templates/agents/eval-a11y.md"
+
+[agent.eval-docs]
+group = "evaluator"
+description = "Checks that user-visible changes carry correct documentation. Use on CLI, config, API, UI and behaviour changes."
+model = "sonnet"
+effort = "low"
+cap_role = "evaluator-light"
+max_turns = 30
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-evaluate", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"
+usage_cap = 0.005
+body = "templates/agents/eval-docs.md"
+
+[agent.eval-licence]
+group = "evaluator"
+description = "Licence and provenance check. Use on dependency, lockfile, vendored code, third_party and content changes."
+model = "sonnet"
+effort = "low"
+cap_role = "evaluator-light"
+max_turns = 30
+tools = ["Read", "Grep", "Glob", "Bash"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-evaluate", "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"
+usage_cap = 0.005
+body = "templates/agents/eval-licence.md"
+
+# Gardeners (team/02 section 7, the intake triager included), the persona council (section 8)
+# and the operations agents (section 7.1). Models and effort: team/02 and design/_review/03.
+# cap_role names a row of team/01 section 9: "gardener" (60 turns), "council" (20 turns).
+# Operations agents have no row of their own; team/01 section 9 gives other recurring agents the
+# row for their role, and the gardener row is the recurring-agent row they match.
+#
+# Work items are GitHub issues in the main repository (owner instruction 5). A gardener's
+# scheduled run is a find run: it files status:proposed issues and changes nothing. Gardeners
+# that make pull requests do so only in a fix run, on a status:ready issue labelled
+# agent:<their name> that the dispatcher leased to them, so the readying lead, never the
+# gardener, writes the acceptance criteria (owner instruction 6).
+#
+# usage_cap is a share of the subscription's usage window per run, a target until S-20
+# (WI-0032) measures it. Council seats run per design issue, not on a cadence, so they carry
+# none. Gardener audit runs are also bounded by the token caps in .agents/kit/usage.toml.
+
+# Gardeners. Find passes run on sonnet; every refuting pass runs on opus, started by the
+# dispatcher or the audit runner, never by the gardener.
+
+[agent.garden-deslop]
+group = "gardener"
+description = "Scheduled de-slopping gardener: narration comments, near-copies, one-implementation traits and speculative fallbacks. Started by the dispatcher on its cadence or on a ready issue labelled agent:garden-deslop; not for interactive use."
+model = "sonnet"
+effort = "medium"
+cap_role = "gardener"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "Skill"]
+disallowed_tools = ["NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = ["crates/**", "programs/**", "xtask/src/**", "xtask/tests/**", "sdk/**", "web/**", "desktop/**"]
+deny_write = "@protected"
+net = "A"
+skills = [
+  "grdr-structure", "cleanup:cleanup", "ce-simplify-code:ce-simplify-code",
+  "modern-web-guidance:modern-web-guidance", "grdr-start-item", "grdr-remove-code", "grdr-verify",
+  "grdr-handoff", "anthropic-skills:write-like-a-normal-staff-senior-developer",
+]
+trigger = "schedule"   # nightly and weekly; fix runs come through dispatch
+usage_cap = 0.03
+body = "templates/agents/garden-deslop.md"
+
+[agent.garden-architecture]
+group = "gardener"
+description = "Scheduled audit gardener: runs team/04's nightly, weekly and four-weekly power prompts through the audit runner and files upheld results as issues, every A01 result as a repair closed only by a type. Not for interactive use."
+model = "sonnet"
+effort = "medium"   # the agent drives the runner; the runner sets each finder's and verifier's effort per prompt (team/04 section 1)
+cap_role = "gardener"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-audit", "grdr-handoff", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "schedule"   # nightly, weekly, every fourth week
+usage_cap = 0.05
+body = "templates/agents/garden-architecture.md"
+
+[agent.garden-deps]
+group = "gardener"
+description = "Scheduled dependency gardener: reviews Dependabot pull requests past their cooldown, returning one review comment each for the publisher, and proposes updates to the tool pins Dependabot does not read. Not for interactive use."
+model = "sonnet"
+effort = "medium"
+cap_role = "gardener"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = []
+deny_write = "@protected"
+net = "forge-read"   # reads outsider text (SD-06)
+skills = ["grdr-handoff", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "schedule"   # nightly
+usage_cap = 0.02
+body = "templates/agents/garden-deps.md"
+
+[agent.garden-docs]
+group = "gardener"
+description = "Scheduled documentation gardener: statements the code contradicts, stale AGENTS.md and CLAUDE.md lines, dead links. Started by the dispatcher weekly or on a ready issue labelled agent:garden-docs; not for interactive use."
+model = "sonnet"
+effort = "medium"
+cap_role = "gardener"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "Skill"]
+disallowed_tools = ["NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+# Source globs are for rustdoc, CLI help and error text only; the body forbids other changes.
+write = [
+  "docs/**", "README.md", "crates/*/README.md", "programs/*/README.md",
+  "crates/**/src/**/*.rs", "programs/**/src/**/*.rs",
+]
+deny_write = "@protected"
+net = "A"
+skills = [
+  "grdr-structure", "cleanup:cleanup", "grdr-start-item", "grdr-verify", "grdr-handoff",
+  "anthropic-skills:write-like-a-normal-staff-senior-developer",
+]
+trigger = "schedule"   # weekly; fix runs come through dispatch
+usage_cap = 0.02
+body = "templates/agents/garden-docs.md"
+
+[agent.garden-tests]
+group = "gardener"
+description = "Scheduled test gardener: tests for surviving mutants, tests that cannot fail, flaky tests, fuzz and Miri triage. Started by the dispatcher nightly or on a ready issue labelled agent:garden-tests; never touches src/."
+model = "sonnet"
+effort = "high"
+cap_role = "gardener"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "Skill"]
+disallowed_tools = ["NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = [
+  "crates/*/tests/**", "programs/*/tests/**", "xtask/tests/**",
+  "web/**/*.test.ts", "web/**/*.test.tsx",
+]
+deny_write = "@protected"
+net = "A"
+skills = [
+  "grdr-structure", "cleanup:cleanup", "grdr-start-item", "grdr-verify", "grdr-handoff",
+  "anthropic-skills:write-like-a-normal-staff-senior-developer",
+]
+trigger = "schedule"   # nightly; fix runs come through dispatch
+usage_cap = 0.03
+body = "templates/agents/garden-tests.md"
+
+[agent.garden-catalogue]
+group = "gardener"
+description = "Scheduled catalogue gardener: checks agent catalogue tiers and hook-contract notes against vendors' published docs. Started by the dispatcher weekly or on a ready issue labelled agent:garden-catalogue; not for interactive use."
+model = "sonnet"
+effort = "medium"
+cap_role = "gardener"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "Skill", "WebFetch"]
+disallowed_tools = ["NotebookEdit", "Agent", "WebSearch", "PowerShell"]
+write = ["catalogue/**", "agents/**"]   # paths in the content repository (grdr-content)
+deny_write = "@protected"
+net = "B"   # the vendors' documentation domains
+skills = [
+  "grdr-add-agent-adapter", "cleanup:cleanup", "grdr-start-item", "grdr-handoff",
+  "anthropic-skills:write-like-a-normal-staff-senior-developer",
+]
+trigger = "schedule"   # weekly; fix runs come through dispatch
+usage_cap = 0.02
+body = "templates/agents/garden-catalogue.md"
+
+[agent.garden-intel]
+group = "gardener"
+description = "Scheduled threat-intelligence gardener: brings OpenSSF malicious-packages, GHSA, KEV and incident write-ups into the mirror pack and detection proposals in Watch. Started by the dispatcher daily or on a ready issue labelled agent:garden-intel."
+model = "sonnet"
+effort = "medium"
+cap_role = "gardener"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "Skill", "WebFetch"]
+disallowed_tools = ["NotebookEdit", "Agent", "PowerShell"]
+write = ["packs/**", "rules/**"]   # paths in the content repository (grdr-content)
+deny_write = "@protected"
+net = "intel"
+skills = [
+  "grdr-author-detection", "grdr-author-policy", "cleanup:cleanup", "grdr-start-item",
+  "grdr-handoff", "grdr-vendor-research", "anthropic-skills:write-like-a-normal-staff-senior-developer",
+]
+trigger = "schedule"   # daily; fix runs come through dispatch
+usage_cap = 0.02
+body = "templates/agents/garden-intel.md"
+
+[agent.garden-conformance]
+group = "gardener"
+description = "Triages a failed adapter canary: classifies the failure, files the Watch drop and the adapter fix issue, and in a fix run drops the new version to Watch. Started by the dispatcher on canary failure or on a ready issue labelled agent:garden-conformance."
+model = "sonnet"
+effort = "high"
+cap_role = "gardener"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "Skill"]
+disallowed_tools = ["NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = ["catalogue/**", "agents/**"]   # paths in the content repository (grdr-content)
+deny_write = "@protected"
+net = "A"
+skills = [
+  "grdr-add-agent-adapter", "cleanup:cleanup", "grdr-start-item", "grdr-handoff",
+  "anthropic-skills:write-like-a-normal-staff-senior-developer",
+]
+trigger = "event"   # adapter canary failure; fix runs come through dispatch
+usage_cap = 0.02
+body = "templates/agents/garden-conformance.md"
+
+[agent.garden-cost]
+group = "gardener"
+description = "Scheduled usage gardener: weekly report of subscription usage per accepted item, tokens by agent and evaluator yield, flags for the programme manager. Started by the dispatcher or on a ready issue labelled agent:garden-cost."
+model = "sonnet"
+effort = "low"
+cap_role = "gardener"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "Skill"]
+disallowed_tools = ["NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = ["docs/agents/metrics/**", "ops/cost-model/**"]
+deny_write = "@protected"
+net = "A"
+skills = [
+  "cleanup:cleanup", "grdr-start-item", "grdr-handoff", "anthropic-skills:write-like-a-normal-staff-senior-developer",
+]
+trigger = "schedule"   # weekly, after each S-20 rerun and on a plan or limit change
+usage_cap = 0.01
+body = "templates/agents/garden-cost.md"
+
+[agent.garden-rules]
+group = "gardener"
+description = "Scheduled rules gardener: turns review comments and audit closures that recur three times into issues for a lint, ast-grep rule, REVIEW.md line or skill change. Not for interactive use."
+model = "sonnet"
+effort = "medium"
+cap_role = "gardener"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = []
+deny_write = "@protected"
+net = "A"
+# The hookify and claude-md-management plugins (team/03 section 5) are for this agent only.
+skills = ["grdr-handoff", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "schedule"   # weekly
+usage_cap = 0.02
+body = "templates/agents/garden-rules.md"
+
+[agent.garden-intake]
+group = "gardener"
+description = "Intake triager: returns typed fields for a newly opened outsider issue, with no write access. Started by the dispatcher when an issue or report is opened; not for interactive use."
+model = "sonnet"
+effort = "low"
+cap_role = "gardener"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = []
+deny_write = "@protected"
+net = "forge-read"   # reads outsider text (SD-06)
+skills = ["grdr-handoff", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"   # issue or report opened
+usage_cap = 0.005
+body = "templates/agents/garden-intake.md"
+
+# Operations agents. They require the hosted service (D-63) and act only after OPS-S1's shadow
+# run (TR-11); until then the dispatcher never starts them. team/02 section 7.1 sets effort from
+# the OPS-S1 shadow results, so "medium" is the starting value that run replaces. Their write
+# globs are paths in the hosted deployment repository or the status repository, neither of
+# which exists yet; TR-11 confirms them and adds the telemetry, runner and ticket endpoints to
+# their egress list.
+
+[agent.ops-triage]
+group = "operations"
+description = "First responder for the hosted service: enriches every alert and synthetic miss, classifies severity, opens the incident record, keeps the timeline and drafts the postmortem. Never lowers or closes a Sev1 or Sev2."
+model = "sonnet"
+effort = "medium"   # set from OPS-S1
+cap_role = "gardener"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-handoff", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"   # alert or synthetic miss
+usage_cap = 0.02
+body = "templates/agents/ops-triage.md"
+
+[agent.ops-runbook]
+group = "operations"
+description = "Submits agent and approved agent-approved runbook steps to the operations runner and runs restore drills into scratch cells. Never submits a human or two-humans step."
+model = "sonnet"
+effort = "medium"   # set from OPS-S1
+cap_role = "gardener"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = []
+deny_write = "@protected"
+net = "A"   # the runner request API only, once TR-11 adds it
+skills = ["grdr-handoff", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"   # approved runbook step or drill schedule
+usage_cap = 0.01
+body = "templates/agents/ops-runbook.md"
+
+[agent.status-drafter]
+group = "operations"
+description = "Drafts status posts and customer incident emails for the hosted service and publishes Sev3 and maintenance posts through status-repository pull requests. Never publishes a Sev1 or Sev2 post without the lead's approval."
+model = "sonnet"
+effort = "medium"   # set from OPS-S1
+cap_role = "gardener"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "Skill"]
+disallowed_tools = ["NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = ["posts/**"]   # status repository
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-handoff", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"   # incident update or planned maintenance
+usage_cap = 0.01
+body = "templates/agents/status-drafter.md"
+
+[agent.capacity-planner]
+group = "operations"
+description = "Weekly capacity forecast per hosted cell; proposes cell provisioning two weeks ahead and bounds.toml changes as pull requests the merge queue lands once their evaluators pass."
+model = "sonnet"
+effort = "medium"   # set from OPS-S1
+cap_role = "gardener"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Edit", "Write", "Bash", "Skill"]
+disallowed_tools = ["NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = ["cells/**", "bounds.toml"]   # hosted deployment repository
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-handoff", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "schedule"   # weekly
+usage_cap = 0.02
+body = "templates/agents/capacity-planner.md"
+
+[agent.usage-reconciler]
+group = "operations"
+description = "Runs the daily ledger-to-billing reconciliation job for the hosted service and opens a ticket on every difference. Never finalises or corrects an invoice."
+model = "sonnet"
+effort = "medium"   # set from OPS-S1
+cap_role = "gardener"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-handoff", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "schedule"   # daily
+usage_cap = 0.01
+body = "templates/agents/usage-reconciler.md"
+
+[agent.support-first-line]
+group = "operations"
+description = "Drafts first answers to support tickets and analyses consented support bundles. Never sends an S1 or S2 reply or requests a SupportGrant."
+model = "sonnet"
+effort = "medium"   # set from OPS-S1
+cap_role = "gardener"
+max_turns = 60
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = []
+deny_write = "@protected"
+net = "forge-read"   # reads outsider text (SD-06); its output goes through the publisher
+skills = ["grdr-handoff", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"   # ticket opened
+usage_cap = 0.01
+body = "templates/agents/support-first-line.md"
+
+# Persona council. Seats run on sonnet; the chair of the persona-council workflow, which collects
+# the seat comments for product-lead, runs on opus inside that workflow and is not a roster agent.
+# Seats comment on the design issue and write no file.
+
+[agent.persona-solo-dev]
+group = "council"
+description = "Persona council seat 1, the solo developer. Use to review design documents, screen specs and preview builds that affect first run, tray, desktop, CLI and block messages."
+model = "sonnet"
+effort = "medium"
+cap_role = "council"
+max_turns = 20
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-handoff", "ui-architect", "grdr-interface", "modern-web-guidance:modern-web-guidance", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"   # design issue or screen-spec pull request
+body = "templates/agents/persona-solo-dev.md"
+
+[agent.persona-it-admin]
+group = "council"
+description = "Persona council seat 2, the enterprise endpoint engineer. Use to review designs and builds that affect the installer, grdr doctor, deployment health and coexistence with an incumbent EDR."
+model = "sonnet"
+effort = "medium"
+cap_role = "council"
+max_turns = 20
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-handoff", "ui-architect", "grdr-interface", "modern-web-guidance:modern-web-guidance", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"
+body = "templates/agents/persona-it-admin.md"
+
+[agent.persona-soc-analyst]
+group = "council"
+description = "Persona council seat 3, the SOC analyst and detection engineer. Use to review designs and builds that affect the review queue, incidents, hunting and the export contract."
+model = "sonnet"
+effort = "medium"
+cap_role = "council"
+max_turns = 20
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-handoff", "ui-architect", "grdr-interface", "modern-web-guidance:modern-web-guidance", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"
+body = "templates/agents/persona-soc-analyst.md"
+
+[agent.persona-msp-operator]
+group = "council"
+description = "Persona council seat 4, the MSP operator. Use to review provider views and the tenancy seams before they exist."
+model = "sonnet"
+effort = "medium"
+cap_role = "council"
+max_turns = 20
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-handoff", "ui-architect", "grdr-interface", "modern-web-guidance:modern-web-guidance", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"
+body = "templates/agents/persona-msp-operator.md"
+
+[agent.persona-oem-partner]
+group = "council"
+description = "Persona council seat 5, the OEM or EDR partner. Use to review embedding options, the host contract, the brand manifest and stability classes, and their seams before they exist."
+model = "sonnet"
+effort = "medium"
+cap_role = "council"
+max_turns = 20
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-handoff", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"
+body = "templates/agents/persona-oem-partner.md"
+
+[agent.persona-privacy-officer]
+group = "council"
+description = "Persona council seat 6, the privacy officer and works council. Use to review schemas and data classes, capture levels, retention and the disclosure screen."
+model = "sonnet"
+effort = "medium"
+cap_role = "council"
+max_turns = 20
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-handoff", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"
+body = "templates/agents/persona-privacy-officer.md"
+
+[agent.persona-contributor]
+group = "council"
+description = "Persona council seat 7, the open-source contributor. Use to review CONTRIBUTING.md, AGENTS.md, archlint messages and the contribution flow against building from the public repository alone."
+model = "sonnet"
+effort = "medium"
+cap_role = "council"
+max_turns = 20
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-handoff", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"
+body = "templates/agents/persona-contributor.md"
+
+[agent.persona-simplicity]
+group = "council"
+description = "Persona council seat 8, the simplicity auditor. Use on every design change to find what can be removed and to check the Simple view's terms and the Advanced view's control."
+model = "sonnet"
+effort = "medium"
+cap_role = "council"
+max_turns = 20
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-handoff", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"
+body = "templates/agents/persona-simplicity.md"
+
+[agent.persona-intl]
+group = "council"
+description = "Persona council seat 9, the operator who works in Arabic and Japanese. Use on every RFC and UI design item to check that each surface reads naturally in the locale, mirrors where it should, truncates nothing and keeps identifiers intact."
+model = "sonnet"
+effort = "medium"
+cap_role = "council"
+max_turns = 20
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit", "Agent", "WebFetch", "WebSearch", "PowerShell"]
+write = []
+deny_write = "@protected"
+net = "A"
+skills = ["grdr-handoff", "ui-architect", "grdr-interface", "anthropic-skills:write-like-a-normal-staff-senior-developer"]
+trigger = "event"
+body = "templates/agents/persona-intl.md"

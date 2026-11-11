@@ -1,0 +1,190 @@
+# Project-scope permissions, sandbox and settings for .claude/settings.json (team/03 sections 4
+# and 8). Keys honoured only from managed or user settings (strictKnownMarketplaces,
+# allowManagedPermissionRulesOnly, allowManagedHooksOnly, sandbox.network.strictAllowlist,
+# telemetry exporters) live in deploy/fleet/managed-settings.json instead.
+
+[permissions]
+default_mode = "default"
+disable_bypass = "disable"
+# kit render adds one Edit deny rule per entry of protected-paths.toml. The issue snapshot and
+# the kit binary sit in git-ignored .agent/, outside that list, and the hooks trust both.
+deny = [
+  "Edit(./.git/**)", "Edit(./.agent/kit/**)", "Edit(./.agent/state/item-*.json)",
+  "Read(./.env)", "Read(./**/*.pem)", "Read(~/.ssh/**)", "Read(~/.aws/**)", "Read(~/.config/gh/**)",
+  "Read(~/AppData/Roaming/GitHub CLI/**)",
+  "Read(~/.cargo/credentials.toml)", "Read(~/.npmrc)", "Read(~/.claude/.credentials.json)",
+  "Read(~/.claude/settings.json)", "Read(~/.claude/settings.local.json)", "Read(~/.claude.json)",
+  "Bash(git push --force *)", "Bash(git push -f *)", "Bash(git reset --hard *)",
+  "Bash(git commit --no-verify *)", "Bash(git commit -s *)", "Bash(git commit --signoff *)",
+  "Bash(gh pr merge *)", "Bash(gh release *)", "Bash(cargo publish *)", "Bash(npm publish *)",
+  "Bash(pnpm publish *)", "Bash(cargo insta accept *)", "Bash(cargo insta review *)",
+  "Bash(gh auth *)", "Bash(gh secret *)", "Bash(gh variable *)", "Bash(gh extension *)",
+  "Bash(gh gist *)", "Bash(gh ssh-key *)", "Bash(gh gpg-key *)", "Bash(gh config set *)",
+  "Bash(gh repo create *)", "Bash(gh repo edit *)", "Bash(gh repo delete *)",
+  "Bash(gh repo rename *)", "Bash(gh repo archive *)",
+  "Bash(gh issue delete *)", "Bash(gh issue transfer *)",
+  "Bash(gh label create *)", "Bash(gh label edit *)", "Bash(gh label delete *)",
+  "Bash(gh label clone *)",
+]
+# No bare WebFetch or WebSearch rule here or in deny: it would shadow the WebFetch(domain:<d>)
+# and WebSearch allow rules kit render adds from .agents/kit/vendors.toml (owner instruction 14).
+# Only the roles that load its research skill carry those tools; for any other fetch Claude Code
+# still asks, and dontAsk sessions refuse it.
+ask = [
+  "Bash(cargo add *)", "Bash(cargo install *)", "Bash(pnpm add *)",
+  "Bash(gh api *)",
+]
+# Agents file, triage and ready issues themselves (owner instruction 6), so the gh issue verbs
+# are allowed here and guard-command narrows them per role: implementers comment and create
+# status:proposed issues; leads, the product lead and the programme manager also edit and
+# close as not planned; nobody closes an issue as completed, the merged pull request does.
+allow = [
+  "Bash(cargo xtask *)", "Bash(cargo check *)", "Bash(cargo build *)", "Bash(cargo nextest *)",
+  "Bash(cargo test *)", "Bash(cargo clippy *)", "Bash(cargo fmt *)",
+  # A package's scripts run from its own directory, or with -r for every package: a * before
+  # `run` would also approve any pnpm option written there.
+  "Bash(pnpm run *)", "Bash(pnpm -r run *)",
+  "Bash(git status *)", "Bash(git diff *)", "Bash(git log *)", "Bash(git show *)", "Bash(git add *)",
+  "Bash(git commit -m *)",
+  "Bash(gh issue view *)", "Bash(gh issue list *)", "Bash(gh issue create *)",
+  "Bash(gh issue comment *)", "Bash(gh issue edit *)", "Bash(gh issue close *)",
+  "Bash(gh search issues *)", "Bash(gh label list *)", "Bash(gh repo view *)",
+  "Bash(gh pr view *)", "Bash(gh pr diff *)", "Bash(gh pr list *)", "Bash(gh pr checks *)",
+  "Bash(gh pr comment *)",
+  # Gardeners open static-lane pull requests from their own branch, and post-bash names a git
+  # revert; guard-command keeps each to the session's own branch and role.
+  "Bash(git push *)", "Bash(gh pr create *)", "Bash(gh pr edit *)",
+  "Bash(git checkout HEAD -- *)", "Bash(git checkout -- *)", "Bash(git restore *)",
+  "Bash(cargo update *)",
+]
+
+# failIfUnavailable stays unset: native Windows has no sandbox, and the fleet's managed
+# settings turn it on where one exists.
+[sandbox]
+enabled = true
+allow_unsandboxed_commands = false
+deny_read = ["~/.ssh", "~/.aws", "~/.config/gh"]
+allowed_domains = [
+  "crates.io", "index.crates.io", "static.crates.io", "docs.rs", "registry.npmjs.org",
+  "github.com", "api.github.com", "codeload.github.com", "buf.build",
+]
+
+[settings]
+schema = "https://json.schemastore.org/claude-code-settings.json"
+model = "claude-sonnet-5-5"
+available_models = ["opus", "sonnet", "fable"]
+auto_memory = false
+attribution_commit = ""
+attribution_pr = ""
+disable_workflows = false
+disable_auto_mode = "disable"
+
+# kit render adds GH_REPO from harness.toml [github] repository and ANTHROPIC_DEFAULT_HAIKU_MODEL
+# from models.toml folded_aliases, here and in every managed document's env.
+[settings.env]
+GRDR_KIT = "1"
+CARGO_TERM_COLOR = "never"
+CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS = "4"
+CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS = "3"
+GH_PROMPT_DISABLED = "1"
+GH_NO_UPDATE_NOTIFIER = "1"
+DISABLE_TELEMETRY = "1"            # owner instruction 18; the Modern Web Guidance CLI honours it too
+SEMGREP_GUARDIAN_AUTO_UPDATE = "0" # Guardian keeps its pinned hook binaries (.agents/marketplace/PINS.md)
+ENABLE_CODE_SECURITY_REVIEW = "0"  # security-guidance keeps its edit warnings, runs no model review (owner instruction 8)
+
+# Managed settings for the fleet container (team/03 section 8), one document per roster group in
+# Claude Code's own key names. kit render merges in the protected-path Edit deny rules, the
+# vendors.toml fetch and search rules where a role of the group loads the research skill, and the
+# derived env, and writes deploy/fleet/managed-settings.json (implementer) and
+# managed-settings.<group>.json. dontAsk refuses every fetch those rules do not allow.
+# guard-command narrows the gh rules to each role's calls.
+[managed.implementer]
+disableAutoMode = "disable"
+allowManagedPermissionRulesOnly = true
+strictKnownMarketplaces = [{ source = "pathPattern", pathPattern = '(^|/)\.agents/marketplace/?$' }]
+autoMemoryEnabled = false
+
+[managed.implementer.permissions]
+defaultMode = "dontAsk"
+disableBypassPermissionsMode = "disable"
+deny = [
+  "Bash(gh pr merge *)", "Bash(git push --force *)", "Bash(git push -f *)",
+  "Bash(cargo publish *)", "Bash(cargo add *)", "Bash(cargo install *)", "Bash(pnpm add *)",
+]
+allow = [
+  "Bash(cargo xtask *)", "Bash(cargo check *)", "Bash(cargo build *)", "Bash(cargo nextest *)",
+  "Bash(cargo clippy *)", "Bash(cargo fmt *)", "Bash(pnpm run *)", "Bash(pnpm -r run *)",
+  "Bash(git status *)", "Bash(git diff *)", "Bash(git log *)", "Bash(git add *)",
+  "Bash(git commit -m *)", "Bash(gh issue *)", "Bash(gh pr view *)",
+  "Bash(gh pr create *)", "Bash(gh pr edit *)", "Bash(gh pr comment *)",
+  "mcp__playwright__*",
+]
+
+[managed.implementer.sandbox]
+enabled = true
+failIfUnavailable = true
+allowUnsandboxedCommands = false
+
+[managed.implementer.sandbox.network]
+allowedDomains = [
+  "crates.io", "index.crates.io", "static.crates.io", "docs.rs", "registry.npmjs.org",
+  "github.com", "api.github.com", "codeload.github.com",
+]
+strictAllowlist = true
+
+[managed.implementer.env]
+CLAUDE_CODE_ENABLE_TELEMETRY = "1"
+OTEL_LOGS_EXPORTER = "otlp"
+OTEL_METRICS_EXPORTER = "otlp"
+OTEL_EXPORTER_OTLP_ENDPOINT = "http://127.0.0.1:4318"
+CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS = "4"
+CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS = "3"
+DISABLE_TELEMETRY = "1"
+GH_PROMPT_DISABLED = "1"
+
+# Evaluators: the implementer document with every Edit denied and no git add or commit; gh api
+# posts their commit statuses until the evaluator App can post check runs.
+[managed.evaluator]
+disableAutoMode = "disable"
+allowManagedPermissionRulesOnly = true
+strictKnownMarketplaces = [{ source = "pathPattern", pathPattern = '(^|/)\.agents/marketplace/?$' }]
+autoMemoryEnabled = false
+
+[managed.evaluator.permissions]
+defaultMode = "dontAsk"
+disableBypassPermissionsMode = "disable"
+deny = [
+  "Edit", "Write", "NotebookEdit", "Bash(gh pr merge *)",
+  "Bash(git push *)", "Bash(git commit *)", "Bash(cargo publish *)", "Bash(cargo add *)",
+  "Bash(cargo install *)", "Bash(pnpm add *)",
+]
+allow = [
+  "Bash(cargo xtask *)", "Bash(cargo check *)", "Bash(cargo build *)", "Bash(cargo nextest *)",
+  "Bash(cargo clippy *)", "Bash(cargo fmt *)", "Bash(pnpm run *)", "Bash(pnpm -r run *)",
+  "Bash(git status *)", "Bash(git diff *)", "Bash(git log *)", "Bash(git show *)",
+  "Bash(git fetch *)", "Bash(git worktree *)", "Bash(gh issue *)", "Bash(gh pr view *)",
+  "Bash(gh pr diff *)", "Bash(gh pr checks *)", "Bash(gh pr comment *)", "Bash(gh api *)",
+  "mcp__playwright__*",
+]
+
+[managed.evaluator.sandbox]
+enabled = true
+failIfUnavailable = true
+allowUnsandboxedCommands = false
+
+[managed.evaluator.sandbox.network]
+allowedDomains = [
+  "crates.io", "index.crates.io", "static.crates.io", "docs.rs", "registry.npmjs.org",
+  "github.com", "api.github.com", "codeload.github.com",
+]
+strictAllowlist = true
+
+[managed.evaluator.env]
+CLAUDE_CODE_ENABLE_TELEMETRY = "1"
+OTEL_LOGS_EXPORTER = "otlp"
+OTEL_METRICS_EXPORTER = "otlp"
+OTEL_EXPORTER_OTLP_ENDPOINT = "http://127.0.0.1:4318"
+CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS = "4"
+CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS = "3"
+DISABLE_TELEMETRY = "1"
+GH_PROMPT_DISABLED = "1"

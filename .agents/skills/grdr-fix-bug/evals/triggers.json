@@ -1,0 +1,22 @@
+[
+  {"query": "#55 is kind:bug: grdr-hook exits 0 when the daemon socket is gone, it should deny with Degraded. Fix it.", "should_trigger": true},
+  {"query": "shell_heredoc_unresolved started failing after my change to crates/grdr-core/src/analyze/shell.rs and I didn't mean to break it. Sort it out.", "should_trigger": true},
+  {"query": "Regression since [WI-0017] landed: grdr-fastpath returns ALLOW for an empty argv. Find the cause and fix it.", "should_trigger": true},
+  {"query": "Issue #88 says `grdr doctor` panics when the config directory is missing. Reproduce it and fix it with the three-arm proof.", "should_trigger": true},
+  {"query": "nextest shows grant_digest_binds_interpreter failing on main after the last merge. fix it properly, not by loosening the test", "should_trigger": true},
+  {"query": "The M03 audit reproduced an off-by-one in the grdr-wire frame length check (fingerprint sha256:9f2c). The repair issue #160 is leased to me, fix it.", "should_trigger": true},
+  {"query": "There's an intermittent failure in the grdr-store-local spool tests that I think is a real race, not flakiness. Fix the defect.", "should_trigger": true},
+  {"query": "The evaluator found that the peer check in #21 trusts the PID instead of the kernel handle. That's a defect; fix it on attempt 2.", "should_trigger": true},
+  {"query": "How do I do the prove --arm before/after/revert sequence for the supervision timeout bug in grdr-engine?", "should_trigger": true},
+  {"query": "The Windows CI job fails on backslash path normalisation in grdr-agents; my change exposed it even though I didn't touch that file. Fix the bug.", "should_trigger": true},
+  {"query": "Remove the deprecated --legacy-table flag from grdr-hook and replace it with the new table path.", "should_trigger": false},
+  {"query": "Add the Codex dialect rows to the tool-table interpreter for #34.", "should_trigger": false},
+  {"query": "verify says ERROR V01 on two files I edited. Just get the formatting green.", "should_trigger": false},
+  {"query": "Write the test plan section of the spec for the shell canonicaliser differential fuzz target.", "should_trigger": false},
+  {"query": "Run the M01 fail-open-paths audit over programs/grdr-hook at the PR head.", "should_trigger": false},
+  {"query": "As eval-acceptance, check whether the three-arm proof claimed in the #55 hand-off is genuine by re-running it.", "should_trigger": false},
+  {"query": "Refactor grdr-core::policy so the evaluator and the table compiler share one module, with no behaviour change.", "should_trigger": false},
+  {"query": "Threat-model the new IPC endpoint that the design in #55 adds to grdr-daemon.", "should_trigger": false},
+  {"query": "Add spool_roundtrip to quality/quarantine.toml with its seed and failing commit.", "should_trigger": false},
+  {"query": "File a status:proposed issue for the grdr doctor panic with the reproduction steps, don't fix it.", "should_trigger": false}
+]

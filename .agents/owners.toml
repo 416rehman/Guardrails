@@ -1,0 +1,128 @@
+# Routing for planners, the dispatcher and the change classifier.
+# It grants no merge right, code-owner entry or vote (D-61).
+# Squads and paths are team/06 section 8.1; root files that table leaves out take the squad
+# team/06 section 2.1 gives them. A squad with no paths yet gets them from its first work item.
+
+[squad.core]
+alias = ["SQ-01"]
+lead = "lead-core"
+paths = ["proto/**", "schema/**", "buf.yaml", "buf.gen.yaml",
+         "crates/grdr-proto/**", "crates/grdr-schema/**", "crates/grdr-model/**",
+         "crates/grdr-core/**", "crates/grdr-llm-proto/**", "crates/grdr-fastpath/**",
+         "crates/grdr-fastpath-ffi/**", "crates/grdr-ffi/**", "crates/grdr-wasm/**",
+         "crates/grdr-ports/**", "crates/grdr-ports-testkit/**", "crates/grdr-wire/**",
+         "xtask/**", "architecture.toml", "limits.toml", "surfaces.toml", "support.toml",
+         "supply-chain/**", "third_party/**",
+         "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", ".cargo/**", "clippy.toml",
+         "rustfmt.toml"]
+
+[squad.security]
+alias = ["SQ-18"]
+lead = "lead-security"
+paths = ["crates/grdr-crypto/**", "crates/grdr-wire/src/peer_auth.rs",
+         "crates/grdr-wire/src/peer_auth/**", "security/**", "governance/**",
+         "SECURITY.md", "GOVERNANCE.md", "AI_POLICY.md", "COVENANT.md", "MAINTAINERS.md",
+         "programs/grdr-approve/**",
+         "LICENSE", "NOTICE", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "ADOPTERS.md",
+         "TRADEMARKS.md"]
+
+[squad.discovery]
+alias = ["SQ-02"]
+lead = "lead-discovery"
+paths = ["crates/grdr-core/src/discover.rs", "crates/grdr-core/src/discover/**",
+         "crates/grdr-core/src/session.rs", "crates/grdr-core/src/session/**"]
+
+[squad.adapters]
+alias = ["SQ-03"]
+lead = "lead-adapters"
+paths = ["crates/grdr-agents/**", "programs/grdr-hook/**"]
+
+[squad.endpoint]
+alias = ["SQ-07"]
+lead = "lead-endpoint"
+paths = ["programs/grdr-daemon/**", "programs/grdr-engine/**", "programs/grdr/**",
+         "crates/grdr-store-local/**", "crates/grdr-sandbox-engine/**"]
+
+[squad.linux]
+alias = ["SQ-04"]
+lead = "lead-linux"
+paths = ["crates/grdr-sensor-linux/**", "bpf/**"]
+
+[squad.macos]
+alias = ["SQ-05"]
+lead = "lead-macos"
+paths = ["platform/macos/**"]
+
+[squad.windows]
+alias = ["SQ-06"]
+lead = "lead-windows"
+paths = ["platform/windows/**"]
+
+[squad.gateway]
+alias = ["SQ-11"]
+lead = "lead-gateway"
+paths = []
+
+[squad.identity-data]
+alias = ["SQ-10"]
+lead = "lead-identity-data"
+paths = []
+
+[squad.content]
+alias = ["SQ-08", "SQ-09"]
+lead = "lead-content"
+paths = []                         # works in the grdr-content repository
+repository = "grdr-content"
+
+[squad.fleet]
+alias = ["SQ-12"]
+lead = "lead-fleet"
+paths = []
+
+[squad.server]
+alias = ["SQ-13"]
+lead = "lead-server"
+paths = []
+
+[squad.interfaces]
+alias = ["SQ-14"]
+lead = "lead-interfaces"
+paths = ["web/**", "site/**", "interface/**", "desktop/**", "programs/grdr-tray/**"]
+
+[squad.ecosystem]
+alias = ["SQ-15"]
+lead = "lead-ecosystem"
+paths = ["spec/**", "conformance/**"]
+
+[squad.release]
+alias = ["SQ-16"]
+lead = "lead-release"
+paths = ["deploy/**", "brand/**", "deny.toml", "dist.toml", "release/**",
+         ".github/workflows/release-please.yml", "release-please-config.json",
+         ".release-please-manifest.json"]
+
+[squad.lab]
+alias = ["SQ-16"]
+lead = "lead-lab"
+paths = ["lab/**"]
+
+[squad.agent-kit]
+alias = ["SQ-17"]
+lead = "lead-agent-kit"
+paths = ["AGENTS.md", "CLAUDE.md", "docs/AUTOPILOT.md", ".gitignore",
+         ".gitattributes", ".agents/**", ".claude/**", ".github/**", "quality/**",
+         "xtask/src/kit/**", "xtask/src/hook/**", "xtask/src/config/**",
+         "xtask/src/orchestrate/**", "xtask/src/dispatch/**", "xtask/verify.toml",
+         "xtask/fixtures/hooks/**", "audits/**", "deploy/fleet/**", "docs/team/**"]
+
+# Plan documents are owned by direction agents, not a squad (team/06 section 2.1).
+[direction.chief-architect]
+paths = ["docs/design/**", "docs/decisions/**", "rfcs/**"]
+
+[direction.product-lead]
+paths = ["docs/PLAN.md"]
+
+[rules]
+one_owner_per_path = true          # each path resolves to one squad by its longest matching
+                                   # glob; verify fails on a tie or an unowned path
+cross_squad_items = "lead-named"   # an item spanning squads names a lead squad (team/01 section 2)

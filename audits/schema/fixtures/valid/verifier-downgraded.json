@@ -1,0 +1,12 @@
+{
+  "schema": "audit-finding.v1",
+  "report": "verifier",
+  "fingerprint": "sha256:9f2c4a1e0b7d3c6f8e2a5b9d1c4f7e0a3b6d9c2f5e8a1b4d7c0f3e6a9b2d5c8f",
+  "verdict": "DOWNGRADED",
+  "label": "LIKELY",
+  "severity": 2,
+  "reason": "The spans match. restore_from_journal is reachable only after a crash between write and canary, which the result asserts but does not construct, so CONFIRMED becomes LIKELY.",
+  "quotes": [
+    { "path": "crates/grdr-agents/src/install.rs", "line": 201, "item": "install::restore_from_journal", "quote": "record.written = journal.has_write();" }
+  ]
+}

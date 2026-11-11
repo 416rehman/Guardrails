@@ -1,0 +1,78 @@
+# Trust-core paths: the D-63 list as design/02 (Interfaces) states it, one glob per line.
+# A change under any of them is high tier and takes the full lane, except a lockfile change
+# inside the supply-chain policy (D-63). The full lane is eval-security and eval-adversarial in
+# clean contexts, cross-model review by the model that did not write it, and two independent
+# passing evaluators on different models (owner instruction 7). Read by
+# `cargo xtask risk` through .agents/risk-tiers.toml and by `cargo xtask governance-sync` for
+# .github/CODEOWNERS.
+# Module globs fix where that code lives inside its crate; moving the code means a change here.
+
+# eBPF programs
+bpf/**
+
+# Windows driver; design/03 section 11 puts it, with the service definitions, under platform/windows
+crates/grdr-driver-windows/**
+platform/windows/**
+
+# macOS Swift shell and system extensions
+platform/macos/**
+
+# Privileged core: the daemon and the engine sandbox launcher only it calls (design/03, design/11)
+programs/grdr-daemon/**
+crates/grdr-sandbox-engine/**
+
+# IPC peer authentication in grdr-wire, with its OS adapters under the same module
+crates/grdr-wire/src/peer_auth.rs
+crates/grdr-wire/src/peer_auth/**
+
+# Pack verifier and updater
+crates/grdr-update/**
+programs/grdr-updater/**
+
+# Cryptography
+crates/grdr-crypto/**
+
+# Policy evaluator semantics (the policy module of grdr-core until it splits out)
+crates/grdr-core/src/policy.rs
+crates/grdr-core/src/policy/**
+
+# Tenant context (TenantCtx, taken by every port method) and row-level security
+crates/grdr-ports/src/tenant.rs
+crates/grdr-ports/src/tenant/**
+crates/grdr-rel-postgres/migrations/**
+
+# unsafe in the FFI
+crates/grdr-ffi/**
+
+# Approval helper
+programs/grdr-approve/**
+
+# Gate, CI and release configuration, this file included
+security/trust-core.paths
+security/breakers.toml
+security/scorecard.toml
+.github/**
+.agents/**
+.claude/**
+AGENTS.md
+CLAUDE.md
+xtask/**
+deploy/fleet/**
+audits/**
+governance/**
+MAINTAINERS.md
+Cargo.toml
+Cargo.lock
+rust-toolchain.toml
+.cargo/**
+deny.toml
+**/clippy.toml
+rustfmt.toml
+architecture.toml
+surfaces.toml
+support.toml
+limits.toml
+dist.toml
+supply-chain/**
+release-please-config.json
+.release-please-manifest.json

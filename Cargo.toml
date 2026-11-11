@@ -1,0 +1,33 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "programs/*", "xtask"]
+exclude = ["bpf/grdr-sensor-linux-bpf"]
+
+# Every member inherits this table with `[lints] workspace = true` (owner instruction 15); test
+# code may unwrap, expect, panic and index through clippy.toml. Cargo refuses crate entries next
+# to `workspace = true`, so layer 0 to 2 and privileged crates add
+# `#![deny(clippy::arithmetic_side_effects)]` at their crate root, and grdr-ffi and the OS adapter
+# crates, the only ones allowed unsafe code, carry a copy of this table with `unsafe_code = "deny"`
+# and a reasoned `#[allow(unsafe_code)]` on each unsafe item. `xtask archlint` (WI-0003) checks
+# both.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+indexing_slicing = "deny"
+string_slice = "deny"
+get_unwrap = "deny"
+panic_in_result_fn = "deny"
+exit = "deny"
+
+# The kit binary that hooks exec (team/03 section 1): optimised, no debug information.
+[profile.kit]
+inherits = "release"
+debug = false
+strip = "debuginfo"

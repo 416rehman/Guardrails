@@ -1,0 +1,77 @@
+# .agents/risk-tiers.toml (gate configuration, trust core). The highest matching tier wins.
+# `cargo xtask risk` and the dispatcher read it from the base commit, so a change cannot lower
+# its own tier or lane.
+[trust_core]
+paths_file = "security/trust-core.paths"     # design/02 owns the list
+# Owner instruction 7: a trust-core change lands only after passing evaluators on two models.
+distinct_models = 2
+evaluators = ["eval-adversarial", "eval-platform", "eval-performance"]   # beside the tier's set
+[high]
+paths = ["proto/**", "schema/**", "spec/**", "crates/grdr-{proto,schema,model,ports,wire}/**",
+         "AGENTS.md", "**/AGENTS.md", "**/REVIEW.md", "CLAUDE.md", ".claude/**", "specs/**", "Cargo.lock"]
+triggers = ["new_dependency", "major_bump", "public_api_change", "wire_or_pack_format_change",
+            "unsafe_added", "fail_mode_change", "security_test_weakened", "essentials_or_failsafe_change",
+            "acceptance_changed_after_lease"]   # the issue's acceptance digest differs from its lease comment
+# Each tier's evaluators (team/02 section 10). `eval-architecture` reviews every code tier's change
+# for hard-coded behaviour and values (owner instruction 9); the low tier holds docs and additive
+# changes behind a flag, where it has nothing to judge.
+evaluators = ["eval-tier", "eval-diff", "eval-acceptance", "eval-security", "cross-model review", "eval-architecture"]
+[medium]
+paths = ["crates/**", "programs/**", "platform/**", "web/**", "desktop/**", "deploy/**", "lab/**"]
+triggers = []
+evaluators = ["eval-tier", "eval-diff", "eval-acceptance", "eval-security", "eval-architecture"]
+[low]
+paths = ["docs/**", "**/*.md"]
+triggers = ["tests_only_addition", "additive_behind_flag"]
+evaluators = ["eval-tier", "eval-diff"]
+# Until the incident eval set (lab/reviewer-evals/, team/02 TR-06) holds 50 cases, low tier is
+# limited to docs and additive changes behind a flag (h09); everything else is at least medium.
+
+# team/02 section 10: the evaluators a change kind (its kind: label) adds to its lane's set in the
+# light, standard and full lanes, beside the tier's set. A light lane that names an evaluator runs
+# only that pass.
+[kinds]
+docs = ["eval-docs"]
+ui = ["eval-ux", "eval-a11y", "eval-acceptance", "eval-docs"]
+api = ["eval-api", "cross-model review"]
+dependency = ["eval-licence", "cross-model review"]
+gate = ["cross-model review", "eval-architecture"]
+installer = ["eval-platform", "eval-acceptance"]
+content = ["eval-acceptance", "eval-adversarial", "eval-licence"]
+adapter = ["eval-acceptance", "eval-platform"]
+rfc = ["eval-architecture"]
+
+# The evaluators a trigger `cargo xtask risk` finds in the diff adds, as [kinds] does.
+[trigger_evaluators]
+new_dependency = ["eval-licence", "cross-model review"]
+public_api_change = ["eval-api", "cross-model review"]
+wire_or_pack_format_change = ["eval-api", "cross-model review"]
+
+# Owner instruction 7: a protected-change item lands only after these evaluators pass, plus one
+# more on the other model.
+[protected_change]
+evaluators = ["eval-security"]
+distinct_models = 2
+
+# Owner instruction 8: the review lane. `static` is a change proven equivalent or checkable
+# without a model (comment, whitespace or formatting only Rust, prose outside the protected
+# paths, a generated file listed here outside them, a lockfile whose packages gain no new name
+# and no new major); `light` is at most light_max_lines changed lines in at most light_max_files
+# files away from every sensitive surface; `full` is high tier or trust core; anything else is
+# `standard`. Static never applies to a protected-change item, and on a trust-core path only to
+# that lockfile case; every other trust-core change takes `full` (D-63). An agent raises a lane
+# with `cargo xtask risk --item <n> --raise <lane>`; nothing lowers one. A failed light round
+# raises the item to standard.
+[lanes]
+light_max_lines = 50
+light_max_files = 3
+lockfiles = ["Cargo.lock", "pnpm-lock.yaml"]
+generated = []                     # paths `kit check` re-derives, once any sits outside the protected paths
+
+[lanes.light]
+evaluators = ["eval-diff"]
+model = "sonnet"
+effort = "low"
+
+[lanes.full]
+evaluators = ["eval-security", "eval-adversarial"]   # beside the high tier's set

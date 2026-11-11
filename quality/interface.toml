@@ -1,0 +1,57 @@
+# What the interface checks UX1 to UX8 read besides the source (team/05 gate V26; skills
+# ui-architect, then grdr-interface; owner instructions 19 and 21). The checks' vocabulary of the
+# web platform (CSS properties and units, HTML elements, `Intl`) is part of the checks; the
+# choices of this repository (paths, packages, registries and hook names) are here, so a new web
+# package or a renamed hook is a data change (P14).
+#
+# It is a protected path, so it changes only through a protected-change item (owner instruction
+# 7) that lead-agent-kit implements, after eval-security, one evaluator on the other model and
+# eval-ux agree in check runs. It is not an exemption file: the interface checks have none, and a
+# false positive is fixed in the check and its fixture.
+#
+# The checks run on every path of each `.agents/kit/path-skills.toml` entry whose skills include
+# `scope_skill`, minus `exclude`. Globs follow the kit's glob syntax.
+
+scope_skill = "ui-architect"
+exclude = [
+  "**/generated/**",
+  "**/*.generated.*",
+  "**/__generated__/**",
+  "**/*.stories.*",
+  "**/*.test.*",
+  "**/*.spec.*",
+]
+
+# Application code, where UX2 refuses stylesheets, `style` and `className` and raw elements (as it
+# does in `kit`), and UX8 refuses hand-rolled confirmations, route literals and shortcuts.
+apps = ["web/apps/**", "web/extension/**", "site/src/**"]
+
+# The three packages instruction 21 names: `ui` wraps the component library, `kit` composes `ui`,
+# `i18n` holds the generated accessors and the only `Intl` use.
+ui = ["web/packages/ui/**"]
+kit = ["web/packages/kit/**"]
+i18n = ["web/packages/i18n/**"]
+
+# UX2: packages only `ui` imports.
+ui_only_imports = ["@astryxdesign/*"]
+# UX2: packages a file imports only when the exception registry lists that file for them; every
+# package an entry of the registry names is governed the same way.
+exception_imports = ["react-aria", "react-aria-components"]
+exceptions = "web/packages/ui/exceptions.toml"
+# UX2: everything `kit` may import besides its own relative files.
+kit_imports = ["@grdr/ui", "@grdr/tokens", "@grdr/i18n", "react"]
+
+# UX5: icon packages, imported only inside `ui`.
+icon_imports = ["lucide-react"]
+
+# UX7: the pattern registry every export of `kit` is registered in.
+patterns = "interface/patterns.toml"
+
+# UX4: the generated message accessor object of `@grdr/i18n`.
+accessor = "t"
+
+# UX8: hooks and elements an application calls only through `useAction`, the route table and
+# the shortcut registry.
+mutation_hooks = ["useMutation"]
+shortcut_hooks = ["useHotkeys", "useKeyboardShortcut"]
+confirmation_elements = ["AlertDialog", "ConfirmDialog"]

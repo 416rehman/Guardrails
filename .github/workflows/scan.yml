@@ -1,0 +1,146 @@
+name: scan
+
+# Proactive vulnerability work that needs no account (owner instructions 22 and 23): secrets with
+# gitleaks, workflows with zizmor, lockfiles with osv-scanner and source with Semgrep OSS rules.
+# Tool versions and image digests come from supply-chain/build-tools.toml. GitHub's secret scanning
+# with push protection, a setting of the public repository, backs gitleaks up on every push (owner
+# instruction 28).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "41 2 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: scan-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  gitleaks:
+    name: Secrets (gitleaks)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: pins
+        run: >-
+          python3 -I -c 'import sys, tomllib;
+          tool = tomllib.load(open(sys.argv[1], "rb"))["tool"][sys.argv[2]];
+          print("\n".join(f"{k}={v}" for k, v in tool.items() if isinstance(v, str)))'
+          supply-chain/build-tools.toml gitleaks >> "$GITHUB_OUTPUT"
+      - name: Scan the new commits, or the whole history on a schedule
+        env:
+          IMAGE: ${{ steps.pins.outputs.image }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.event.after }}
+        run: |
+          range=""
+          if [ -n "$PR_BASE" ]; then range="$PR_BASE..$PR_HEAD"; fi
+          if [ -z "$range" ] && [ -n "$PUSH_BEFORE" ] && [ -n "${PUSH_BEFORE//0/}" ]; then range="$PUSH_BEFORE..$PUSH_AFTER"; fi
+          args=(git --redact --no-banner --exit-code 1)
+          if [ -n "$range" ]; then args+=("--log-opts=$range"); fi
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo" "$IMAGE" "${args[@]}" /repo
+
+  zizmor:
+    name: Workflows (zizmor)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: pins
+        run: >-
+          python3 -I -c 'import sys, tomllib;
+          tool = tomllib.load(open(sys.argv[1], "rb"))["tool"][sys.argv[2]];
+          print("\n".join(f"{k}={v}" for k, v in tool.items() if isinstance(v, str)))'
+          supply-chain/build-tools.toml zizmor >> "$GITHUB_OUTPUT"
+      - uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
+        with:
+          version: ${{ steps.pins.outputs.version }}
+          advanced-security: false
+          annotations: true
+
+  osv-scanner:
+    name: Dependencies (osv-scanner)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: google/osv-scanner-action/osv-scanner-action@32d3cd482bdadfb38b186c0ad1b031902d55d932 # v2.7.1
+        with:
+          scan-args: |-
+            --recursive
+            ./
+
+  semgrep:
+    name: Source (Semgrep OSS)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: semgrep
+        run: >-
+          python3 -I -c 'import sys, tomllib;
+          tool = tomllib.load(open(sys.argv[1], "rb"))["tool"][sys.argv[2]];
+          print("\n".join(f"{k}={v}" for k, v in tool.items() if isinstance(v, str)))'
+          supply-chain/build-tools.toml semgrep >> "$GITHUB_OUTPUT"
+      - id: rules
+        run: >-
+          python3 -I -c 'import sys, tomllib;
+          tool = tomllib.load(open(sys.argv[1], "rb"))["tool"][sys.argv[2]];
+          print("\n".join(f"{k}={v}" for k, v in tool.items() if isinstance(v, str)))'
+          supply-chain/build-tools.toml semgrep-rules >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ steps.rules.outputs.repository }}
+          ref: ${{ steps.rules.outputs.commit }}
+          path: .semgrep-rules
+          persist-credentials: false
+      - name: Run the Rust rules, and the TypeScript rules once web/ exists
+        env:
+          IMAGE: ${{ steps.semgrep.outputs.image }}
+          SEVERITIES: ${{ steps.rules.outputs.severities }}
+        run: |
+          configs=(--config .semgrep-rules/rust)
+          if [ -d web ]; then configs+=(--config .semgrep-rules/typescript --config .semgrep-rules/javascript); fi
+          levels=()
+          for severity in $SEVERITIES; do levels+=(--severity "$severity"); done
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/src" -w /src "$IMAGE" \
+            semgrep scan --metrics=off --error --disable-version-check \
+            --exclude .semgrep-rules --exclude third_party --exclude target \
+            "${levels[@]}" "${configs[@]}"

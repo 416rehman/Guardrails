@@ -1,0 +1,14 @@
+{
+  "handler": "stop-gate",
+  "preset": "worker",
+  "cases": [
+    {"name": "paused-for-background-work", "preset": "person", "env": {},
+     "input": {"hook_event_name": "Stop", "last_assistant_message": "waiting", "background_tasks": [{"id": "t1", "type": "shell", "status": "running"}]}, "expect": "allow"},
+    {"name": "agent-without-handoff-draft", "env": {"GRDR_AGENT": "impl-rust", "GRDR_WORK_ITEM": "7"},
+     "input": {"hook_event_name": "Stop", "last_assistant_message": "Implemented the change."}, "expect": "block", "contains": "hand-off"},
+    {"name": "evaluator-without-draft-is-told-the-kit-route", "env": {"GRDR_AGENT": "eval-security", "GRDR_WORK_ITEM": "7"},
+     "input": {"hook_event_name": "Stop", "last_assistant_message": "Reviewed."}, "expect": "block", "contains": "kit handoff --draft"},
+    {"name": "lead-without-draft-is-told-the-kit-route", "env": {"GRDR_AGENT": "lead-core", "GRDR_WORK_ITEM": "7"},
+     "input": {"hook_event_name": "Stop", "last_assistant_message": "Planned."}, "expect": "block", "contains": "kit handoff --draft"}
+  ]
+}

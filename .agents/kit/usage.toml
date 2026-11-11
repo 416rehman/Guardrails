@@ -1,0 +1,255 @@
+# Session and routine caps (team/01 section 9, team/03 section 7, team/04 section 9). Every
+# figure is a target until S-20 (WI-0032) replaces it with measured values. `usage_cap` is the
+# share of the subscription's usage window one run may consume, as the hand-off's
+# usage.window_share reports it; at the cap the run stops and hands off `partial`. Turns are the
+# other per-run cap. The stall timeout is harness.toml's stall_seconds for every role, and a
+# lease is twice the wall clock. Paused time counts against none of these, and a usage limit
+# never fails a run.
+
+[item]
+max_attempts = 2
+evaluation_factor = 2        # evaluation turns per item are twice the worker turns
+escalate_above = 1.5         # an item above 1.5 times its total turn cap escalates
+max_review_rounds = 3
+verdict_hours = 24           # an issue in review with no verdict for this long escalates
+
+[role.direction]             # programme manager, chief architect, product lead
+max_turns = 60
+wall_clock_minutes = 60
+sessions_per_attempt = 1
+usage_cap = 0.03
+
+[role.lead]
+max_turns = 40
+wall_clock_minutes = 45
+sessions_per_attempt = 1
+usage_cap = 0.02
+
+[role.worker]                # sizes XS and S
+max_turns = 80
+wall_clock_minutes = 60
+sessions_per_attempt = 2
+item_turns = 160
+usage_cap = 0.04
+
+# Owner instruction 8: tokens follow the size of the change. The dispatcher launches an
+# implementer with its size row's effort (`kit launch` passes it as --effort) and turn cap; the
+# model rule still decides opus or sonnet.
+[role.worker.size.XS]
+effort = "low"
+max_turns = 40
+wall_clock_minutes = 30
+item_turns = 80
+usage_cap = 0.02
+
+[role.worker.size.S]
+effort = "low"
+max_turns = 80
+
+[role.worker.size.M]
+max_turns = 150
+wall_clock_minutes = 120
+item_turns = 300
+usage_cap = 0.08
+
+[role.evaluator-specialist]  # acceptance, platform, UX and other specialist evaluators
+max_turns = 60
+wall_clock_minutes = 45
+sessions_per_round = 1
+usage_cap = 0.02
+
+[role.evaluator-review]      # diff, cross-model, security and adversarial evaluators
+max_turns = 40
+wall_clock_minutes = 30
+sessions_per_round = 1
+usage_cap = 0.02
+
+[role.evaluator-light]       # eval-tier, eval-licence, eval-docs
+max_turns = 30
+wall_clock_minutes = 15
+sessions_per_round = 1
+usage_cap = 0.005
+
+[role.council]
+max_turns = 20
+wall_clock_minutes = 15
+sessions_per_round = 1
+usage_cap = 0.005
+max_rounds = 2                 # one round plus one re-review of the changed sections
+max_findings = 5               # findings per seat, the ones that most hurt its top tasks
+
+[role.gardener]
+max_turns = 60
+wall_clock_minutes = 45
+sessions_per_run = 1
+sessions_per_attempt = 1     # a leased gardener item's sessions, as for workers
+usage_cap = 0.02
+max_changed_lines = 200      # per pull request (team/02 section 7)
+
+# Recurring agents. `cargo xtask dispatch` starts each one on its cadence, one session per run
+# with the turn cap of the agent's cap_role, on the owner's logged-in Claude Code (owner
+# instructions 6 and 23); hosted runs through GitHub Agentic Workflows stay optional. Each run
+# files what it finds as status:proposed issues with evidence. `agent` is a roster name;
+# `workflow` names a team/03 section 6 workflow; `token_cap` is team/04 section 9's cap, which
+# applies beside usage_cap.
+# The pull-request cadences are the dispatcher's review pass: for each issue in review it starts
+# the evaluators the lane needs (.agents/risk-tiers.toml [lanes]): none in the static lane, one
+# eval-diff pass without the review workflow in the light lane, otherwise eval-tier first and then
+# the tier's set, with eval-diff and the review workflow on the model that did not write the
+# change as the pull request's meta.v1 block and the handoff.v1 comment name it; these tables give
+# their caps.
+# Leads and the product lead plan proposed, escalated and blocked issues in the dispatcher's
+# planning pass, with no routine: an issue is planned when its updatedAt moved since its last
+# planner ended. An escalation its lead left unresolved goes to the chief architect, one fable
+# session at a time and never on a cadence.
+
+[routine.review]
+agent = "eval-diff"
+workflow = "review"
+cadence = "pull-request"
+usage_cap = 0.03             # per round; the round cap is [item] max_review_rounds
+
+[routine.eval-tier]
+agent = "eval-tier"
+cadence = "pull-request"
+usage_cap = 0.005
+
+# The review pass starts the evaluators a change kind and the diff's triggers add
+# (.agents/risk-tiers.toml [kinds] and [trigger_evaluators]) with the rest of the lane's set; this
+# row is their cap, per evaluator and round.
+[routine.eval-by-kind]
+agent = "eval-*"
+cadence = "pull-request"
+usage_cap = 0.02             # per evaluator and round
+
+[routine.audit-pr]
+agent = "eval-diff"
+workflow = "audit"
+cadence = "pull-request"
+usage_cap = 0.01             # per power run
+token_cap = 140_000
+pull_request_token_cap = 1_000_000   # control run included
+max_power_runs = 6
+
+[routine.garden-intake]
+agent = "garden-intake"
+cadence = "issue-opened"
+usage_cap = 0.005
+
+[routine.programme-manager-planning]   # queue order (priority labels), plan, digest (team/01 section 7)
+agent = "programme-manager"
+cadence = "weekly"
+usage_cap = 0.02
+
+[routine.garden-deslop]
+agent = "garden-deslop"
+cadence = "nightly"
+usage_cap = 0.02
+
+[routine.garden-tests]
+agent = "garden-tests"
+cadence = "nightly"
+usage_cap = 0.02
+
+[routine.garden-deps]
+agent = "garden-deps"
+cadence = "nightly"
+usage_cap = 0.01
+
+# garden-architecture runs `cargo xtask audit run`, which starts the finder and the refuting
+# verifier itself; it needs no workflow.
+[routine.audit-nightly]
+agent = "garden-architecture"
+cadence = "nightly"
+usage_cap = 0.04
+token_cap = 6_000_000
+
+[routine.garden-intel]
+agent = "garden-intel"
+cadence = "daily"
+usage_cap = 0.01
+
+[routine.garden-conformance]
+agent = "garden-conformance"
+cadence = "canary-failure"
+usage_cap = 0.02
+
+[routine.audit-weekly]       # the every-fourth-week buckets run inside this cap
+agent = "garden-architecture"
+cadence = "weekly"
+usage_cap = 0.08
+token_cap = 15_000_000
+max_issues_per_week = 8      # issues audits file in seven days (team/04 section 6); A01 results are filed regardless
+
+[routine.garden-docs]
+agent = "garden-docs"
+cadence = "weekly"
+usage_cap = 0.02
+
+[routine.garden-catalogue]
+agent = "garden-catalogue"
+cadence = "weekly"
+usage_cap = 0.02
+
+[routine.garden-cost]
+agent = "garden-cost"
+cadence = "weekly"
+usage_cap = 0.01
+
+[routine.garden-rules]
+agent = "garden-rules"
+cadence = "weekly"
+usage_cap = 0.02
+
+[routine.garden-deslop-suppressions]   # suppression burn-down
+agent = "garden-deslop"
+cadence = "weekly"
+usage_cap = 0.02
+
+[routine.lead-agent-kit-planning]      # pins, hook efficacy, dependency justification
+agent = "lead-agent-kit"
+cadence = "monthly"
+usage_cap = 0.02
+
+# The adapter-canary and release-candidate workflows are K10's and not built yet; their events
+# start nothing until then.
+[routine.adapter-canary]
+workflow = "adapter-canary"
+cadence = "agent-release"
+usage_cap = 0.02
+runner = "K10"
+
+[routine.release-candidate]
+workflow = "release-candidate"
+cadence = "release-branch"
+usage_cap = 0.05
+runner = "K10"
+
+[routine.audit-release]
+workflow = "audit"
+cadence = "release-branch"
+usage_cap = 0.10
+token_cap = 25_000_000
+
+[routine.audit-model-upgrade]
+workflow = "audit"
+cadence = "model-upgrade"
+usage_cap = 0.05
+token_cap = 10_000_000
+
+[routine.audit-incident]
+workflow = "audit"
+cadence = "incident"
+usage_cap = 0.03             # per incident
+token_cap = 5_000_000
+
+# Reads the programme manager's digest and notifies the owner; writes nothing to GitHub.
+[routine.owner-digest]
+runner = "owner-scheduled-task"
+cadence = "daily"
+usage_cap = 0.002
+
+[audit_brake]
+weekly_share = 0.15                   # audits above this share of a week's usage shed runs
+drop_order = ["every-fourth-week", "weekly"]   # PR, nightly S and release runs are never dropped
+baseline_factor = 2.0                 # above twice the S-20 usage per item, only M01 to M05 run

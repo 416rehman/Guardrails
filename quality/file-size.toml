@@ -1,0 +1,15 @@
+# Source files allowed over the 500-code-line limit of structure check S1 (skill grdr-structure,
+# rule 2; blank lines, comments and the test module are not counted). A ratchet: an entry's
+# `code_lines` may only fall, and an entry goes once its file is under the limit. It is a
+# protected path, so an entry changes only through a protected-change item (owner instruction 7):
+# lead-agent-kit implements it under GRDR_SCOPE=protected, and it lands after eval-security and
+# one evaluator on the other model pass. A split that follows responsibilities is the fix.
+#
+# Entry: { path = "<root-relative path>", code_lines = <count when added> }
+#
+# The two workflow scripts are single files because a Workflow script cannot import a module;
+# they leave this list when the review and audit stages move into child workflows.
+files = [
+  { path = ".agents/kit/workflows/audit.js", code_lines = 650 },
+  { path = ".agents/kit/workflows/review.js", code_lines = 828 },
+]

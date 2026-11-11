@@ -1,0 +1,25 @@
+{
+  "schema": "audit-finding.v1",
+  "report": "finder",
+  "prompt": { "id": "B04", "version": "1.0.0" },
+  "commit": "3f1c2b9a8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a",
+  "applicable": false,
+  "not_applicable_reason": "No tenant-keyed state in scope.",
+  "results": [
+    {
+      "class_key": "tenant-scope:missing-org",
+      "locus": { "crate": "grdr-lake", "item": "flush::prefix" },
+      "title": "flush::prefix builds the lake prefix without the organisation id",
+      "label": "SMELL",
+      "severity": 4,
+      "evidence": [
+        { "path": "crates/grdr-lake/src/flush.rs", "line": 3, "quote": "let prefix = format!(\"{}/\", day);" }
+      ],
+      "permits": "Prefixes shared across organisations.",
+      "reach": "Not shown.",
+      "smallest_fix": "Take TenantCtx and include the organisation id.",
+      "closure_proposal": { "kind": "test", "detail": "Isolation test across two organisations." }
+    }
+  ],
+  "checked_and_sound": []
+}

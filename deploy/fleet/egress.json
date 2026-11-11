@@ -1,0 +1,567 @@
+{
+  "lists": {
+    "A": {
+      "groups": {
+        "evaluator": []
+      },
+      "hosts": [
+        "api.anthropic.com",
+        "claude.ai",
+        "platform.claude.com",
+        "index.crates.io",
+        "static.crates.io",
+        "registry.npmjs.org",
+        "github.com",
+        "api.github.com",
+        "docs.rs"
+      ]
+    },
+    "B": {
+      "hosts": [
+        "api.anthropic.com",
+        "claude.ai",
+        "platform.claude.com",
+        "index.crates.io",
+        "static.crates.io",
+        "registry.npmjs.org",
+        "github.com",
+        "api.github.com",
+        "docs.rs"
+      ],
+      "hosts_from_request": true
+    },
+    "forge-read": {
+      "hosts": [
+        "api.github.com"
+      ],
+      "methods": [
+        "GET"
+      ]
+    },
+    "intel": {
+      "hosts": [
+        "github.com",
+        "codeload.github.com",
+        "api.osv.dev",
+        "www.1password.dev",
+        "support.1password.com",
+        "docs.beyondtrust.com",
+        "www.beyondtrust.com",
+        "www.checkpoint.com",
+        "sc1.checkpoint.com",
+        "docs.lakera.ai",
+        "cisco-ai-defense.github.io",
+        "www.cisco.com",
+        "developers.cloudflare.com",
+        "blog.cloudflare.com",
+        "aidr-docs.crowdstrike.com",
+        "developer.crowdstrike.com",
+        "www.crowdstrike.com",
+        "pangea.cloud",
+        "docs.datadoghq.com",
+        "www.elastic.co",
+        "www.island.io",
+        "www.jamf.com",
+        "learn.jamf.com",
+        "learn.microsoft.com",
+        "www.microsoft.com",
+        "blogs.windows.com",
+        "docs.github.com",
+        "docs.netskope.com",
+        "community.netskope.com",
+        "help.okta.com",
+        "developer.okta.com",
+        "www.okta.com",
+        "www.originhq.com",
+        "docs.originhq.com",
+        "docs.paloaltonetworks.com",
+        "cortex-docs.paloaltonetworks.com",
+        "www.paloaltonetworks.com",
+        "www.sentinelone.com",
+        "www.prompt.security",
+        "sidekicksecurity.ai",
+        "docs.sysdig.com",
+        "docs.zenity.io",
+        "zenity.io",
+        "www.zscaler.com",
+        "help.zscaler.com",
+        "a2a-protocol.org",
+        "agentskills.io",
+        "arxiv.org",
+        "export.arxiv.org",
+        "www.blackhat.com",
+        "defcon.org",
+        "info.defcon.org",
+        "media.defcon.org",
+        "www.usenix.org",
+        "*.ieee-security.org",
+        "www.sigsac.org",
+        "bsideslv.org",
+        "www.securitybsides.com",
+        "fwdcloudsec.org",
+        "www.coalitionforsecureai.org",
+        "cloudsecurityalliance.org",
+        "labs.cloudsecurityalliance.org",
+        "www.enisa.europa.eu",
+        "api.github.com",
+        "news.ycombinator.com",
+        "hn.algolia.com",
+        "datatracker.ietf.org",
+        "www.ietf.org",
+        "www.rfc-editor.org",
+        "lobste.rs",
+        "modelcontextprotocol.io",
+        "www.securityweek.com",
+        "www.helpnetsecurity.com",
+        "www.theregister.com",
+        "thehackernews.com",
+        "softwareanalyst.substack.com",
+        "www.nist.gov",
+        "csrc.nist.gov",
+        "nvlpubs.nist.gov",
+        "pages.nist.gov",
+        "openid.net",
+        "openid.github.io",
+        "genai.owasp.org",
+        "owasp.org",
+        "aivss.owasp.org",
+        "www.reddit.com",
+        "www.w3.org",
+        "w3c.github.io"
+      ],
+      "sources": [
+        "github.com/ossf/malicious-packages",
+        "github.com/github/advisory-database",
+        "github.com/cisagov/kev-data",
+        "github.com/mitre-atlas/atlas-data",
+        "osv.dev"
+      ]
+    },
+    "none": {
+      "hosts": []
+    }
+  },
+  "research": {
+    "hosts": [
+      "www.1password.dev",
+      "support.1password.com",
+      "docs.beyondtrust.com",
+      "www.beyondtrust.com",
+      "www.checkpoint.com",
+      "sc1.checkpoint.com",
+      "docs.lakera.ai",
+      "cisco-ai-defense.github.io",
+      "www.cisco.com",
+      "developers.cloudflare.com",
+      "blog.cloudflare.com",
+      "aidr-docs.crowdstrike.com",
+      "developer.crowdstrike.com",
+      "www.crowdstrike.com",
+      "pangea.cloud",
+      "docs.datadoghq.com",
+      "www.elastic.co",
+      "www.island.io",
+      "www.jamf.com",
+      "learn.jamf.com",
+      "learn.microsoft.com",
+      "www.microsoft.com",
+      "blogs.windows.com",
+      "docs.github.com",
+      "docs.netskope.com",
+      "community.netskope.com",
+      "help.okta.com",
+      "developer.okta.com",
+      "www.okta.com",
+      "www.originhq.com",
+      "docs.originhq.com",
+      "docs.paloaltonetworks.com",
+      "cortex-docs.paloaltonetworks.com",
+      "www.paloaltonetworks.com",
+      "www.sentinelone.com",
+      "www.prompt.security",
+      "sidekicksecurity.ai",
+      "docs.sysdig.com",
+      "docs.zenity.io",
+      "zenity.io",
+      "www.zscaler.com",
+      "help.zscaler.com",
+      "a2a-protocol.org",
+      "github.com",
+      "agentskills.io",
+      "arxiv.org",
+      "export.arxiv.org",
+      "www.blackhat.com",
+      "defcon.org",
+      "info.defcon.org",
+      "media.defcon.org",
+      "www.usenix.org",
+      "*.ieee-security.org",
+      "www.sigsac.org",
+      "bsideslv.org",
+      "www.securitybsides.com",
+      "fwdcloudsec.org",
+      "www.coalitionforsecureai.org",
+      "cloudsecurityalliance.org",
+      "labs.cloudsecurityalliance.org",
+      "www.enisa.europa.eu",
+      "api.github.com",
+      "news.ycombinator.com",
+      "hn.algolia.com",
+      "datatracker.ietf.org",
+      "www.ietf.org",
+      "www.rfc-editor.org",
+      "lobste.rs",
+      "modelcontextprotocol.io",
+      "www.securityweek.com",
+      "www.helpnetsecurity.com",
+      "www.theregister.com",
+      "thehackernews.com",
+      "softwareanalyst.substack.com",
+      "www.nist.gov",
+      "csrc.nist.gov",
+      "nvlpubs.nist.gov",
+      "pages.nist.gov",
+      "openid.net",
+      "openid.github.io",
+      "genai.owasp.org",
+      "owasp.org",
+      "aivss.owasp.org",
+      "www.reddit.com",
+      "www.w3.org",
+      "w3c.github.io"
+    ],
+    "skill": "grdr-vendor-research"
+  },
+  "roles": {
+    "capacity-planner": {
+      "group": "operations",
+      "list": "A",
+      "research": false
+    },
+    "chief-architect": {
+      "group": "direction",
+      "list": "B",
+      "research": true
+    },
+    "eval-a11y": {
+      "group": "evaluator",
+      "list": "A",
+      "research": true
+    },
+    "eval-acceptance": {
+      "group": "evaluator",
+      "list": "A",
+      "research": true
+    },
+    "eval-adversarial": {
+      "group": "evaluator",
+      "list": "A",
+      "research": true
+    },
+    "eval-api": {
+      "group": "evaluator",
+      "list": "A",
+      "research": true
+    },
+    "eval-architecture": {
+      "group": "evaluator",
+      "list": "A",
+      "research": true
+    },
+    "eval-diff": {
+      "group": "evaluator",
+      "list": "A",
+      "research": true
+    },
+    "eval-docs": {
+      "group": "evaluator",
+      "list": "A",
+      "research": true
+    },
+    "eval-licence": {
+      "group": "evaluator",
+      "list": "A",
+      "research": true
+    },
+    "eval-performance": {
+      "group": "evaluator",
+      "list": "A",
+      "research": true
+    },
+    "eval-platform": {
+      "group": "evaluator",
+      "list": "A",
+      "research": true
+    },
+    "eval-security": {
+      "group": "evaluator",
+      "list": "A",
+      "research": true
+    },
+    "eval-tier": {
+      "group": "evaluator",
+      "list": "A",
+      "research": true
+    },
+    "eval-ux": {
+      "group": "evaluator",
+      "list": "A",
+      "research": true
+    },
+    "garden-architecture": {
+      "group": "gardener",
+      "list": "A",
+      "research": false
+    },
+    "garden-catalogue": {
+      "group": "gardener",
+      "list": "B",
+      "research": false
+    },
+    "garden-conformance": {
+      "group": "gardener",
+      "list": "A",
+      "research": false
+    },
+    "garden-cost": {
+      "group": "gardener",
+      "list": "A",
+      "research": false
+    },
+    "garden-deps": {
+      "group": "gardener",
+      "list": "forge-read",
+      "research": false
+    },
+    "garden-deslop": {
+      "group": "gardener",
+      "list": "A",
+      "research": false
+    },
+    "garden-docs": {
+      "group": "gardener",
+      "list": "A",
+      "research": false
+    },
+    "garden-intake": {
+      "group": "gardener",
+      "list": "forge-read",
+      "research": false
+    },
+    "garden-intel": {
+      "group": "gardener",
+      "list": "intel",
+      "research": true
+    },
+    "garden-rules": {
+      "group": "gardener",
+      "list": "A",
+      "research": false
+    },
+    "garden-tests": {
+      "group": "gardener",
+      "list": "A",
+      "research": false
+    },
+    "impl-apple": {
+      "group": "implementer",
+      "list": "A",
+      "research": true
+    },
+    "impl-content": {
+      "group": "implementer",
+      "list": "A",
+      "research": true
+    },
+    "impl-docs": {
+      "group": "implementer",
+      "list": "A",
+      "research": true
+    },
+    "impl-kernel": {
+      "group": "implementer",
+      "list": "A",
+      "research": true
+    },
+    "impl-rust": {
+      "group": "implementer",
+      "list": "A",
+      "research": true
+    },
+    "impl-web": {
+      "group": "implementer",
+      "list": "A",
+      "research": true
+    },
+    "lead-adapters": {
+      "group": "lead",
+      "list": "A",
+      "research": true
+    },
+    "lead-agent-kit": {
+      "group": "lead",
+      "list": "A",
+      "research": true
+    },
+    "lead-content": {
+      "group": "lead",
+      "list": "A",
+      "research": true
+    },
+    "lead-core": {
+      "group": "lead",
+      "list": "A",
+      "research": true
+    },
+    "lead-discovery": {
+      "group": "lead",
+      "list": "A",
+      "research": true
+    },
+    "lead-ecosystem": {
+      "group": "lead",
+      "list": "A",
+      "research": true
+    },
+    "lead-endpoint": {
+      "group": "lead",
+      "list": "A",
+      "research": true
+    },
+    "lead-fleet": {
+      "group": "lead",
+      "list": "A",
+      "research": true
+    },
+    "lead-gateway": {
+      "group": "lead",
+      "list": "A",
+      "research": true
+    },
+    "lead-identity-data": {
+      "group": "lead",
+      "list": "A",
+      "research": true
+    },
+    "lead-interfaces": {
+      "group": "lead",
+      "list": "A",
+      "research": true
+    },
+    "lead-lab": {
+      "group": "lead",
+      "list": "A",
+      "research": true
+    },
+    "lead-linux": {
+      "group": "lead",
+      "list": "A",
+      "research": true
+    },
+    "lead-macos": {
+      "group": "lead",
+      "list": "A",
+      "research": true
+    },
+    "lead-release": {
+      "group": "lead",
+      "list": "A",
+      "research": true
+    },
+    "lead-security": {
+      "group": "lead",
+      "list": "A",
+      "research": true
+    },
+    "lead-server": {
+      "group": "lead",
+      "list": "A",
+      "research": true
+    },
+    "lead-windows": {
+      "group": "lead",
+      "list": "A",
+      "research": true
+    },
+    "ops-runbook": {
+      "group": "operations",
+      "list": "A",
+      "research": false
+    },
+    "ops-triage": {
+      "group": "operations",
+      "list": "A",
+      "research": false
+    },
+    "persona-contributor": {
+      "group": "council",
+      "list": "A",
+      "research": false
+    },
+    "persona-intl": {
+      "group": "council",
+      "list": "A",
+      "research": false
+    },
+    "persona-it-admin": {
+      "group": "council",
+      "list": "A",
+      "research": false
+    },
+    "persona-msp-operator": {
+      "group": "council",
+      "list": "A",
+      "research": false
+    },
+    "persona-oem-partner": {
+      "group": "council",
+      "list": "A",
+      "research": false
+    },
+    "persona-privacy-officer": {
+      "group": "council",
+      "list": "A",
+      "research": false
+    },
+    "persona-simplicity": {
+      "group": "council",
+      "list": "A",
+      "research": false
+    },
+    "persona-soc-analyst": {
+      "group": "council",
+      "list": "A",
+      "research": false
+    },
+    "persona-solo-dev": {
+      "group": "council",
+      "list": "A",
+      "research": false
+    },
+    "product-lead": {
+      "group": "direction",
+      "list": "A",
+      "research": true
+    },
+    "programme-manager": {
+      "group": "direction",
+      "list": "A",
+      "research": false
+    },
+    "status-drafter": {
+      "group": "operations",
+      "list": "A",
+      "research": false
+    },
+    "support-first-line": {
+      "group": "operations",
+      "list": "forge-read",
+      "research": false
+    },
+    "usage-reconciler": {
+      "group": "operations",
+      "list": "A",
+      "research": false
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "handler": "config-change",
+  "preset": "worker",
+  "cases": [
+    {"name": "guarded-settings-change-blocked", "env": {},
+     "input": {"hook_event_name": "ConfigChange", "source": "project_settings"}, "files": {".claude/settings.json": "{\"hooks\": {\"Stop\": []}}"}, "expect": "block", "contains": "mid-session"},
+    {"name": "unrelated-source-allowed", "env": {},
+     "input": {"hook_event_name": "ConfigChange", "source": "skills"}, "expect": "allow"},
+    {"name": "identity-in-settings-env-blocked", "env": {},
+     "input": {"hook_event_name": "ConfigChange", "source": "local_settings"}, "files": {".claude/settings.local.json": "{\"env\": {\"GRDR_AGENT\": \"chief-architect\", \"GRDR_SCOPE\": \"seed\"}}"}, "expect": "block"}
+  ]
+}

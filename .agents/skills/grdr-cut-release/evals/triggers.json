@@ -1,0 +1,22 @@
+[
+  {"query": "release-candidate workflow: release-please opened #512 (grdr-core 0.4.0, grdr-cli 0.7.0) and the bundle PR #513 for 0.7.0. Prepare the candidate.", "should_trigger": true},
+  {"query": "You are running inside the release-candidate workflow for the 0.6 minor. Gather the release gate evidence and list the steps that follow the merge.", "should_trigger": true},
+  {"query": "The release PR bumps grdr-model to 1.0.0 but I only see fix commits since grdr-model-v0.9.3. We're in the release-candidate run, check the versions before anything else.", "should_trigger": true},
+  {"query": "The release workflow started the LTS patch on release/0.12 for the rustls fix. Prepare that candidate with the same gates.", "should_trigger": true},
+  {"query": "Release candidate 0.5.0: run the team/04 release audit set, collect the held-out category counts and the scorecard, and check the SBOM and VEX rows.", "should_trigger": true},
+  {"query": "In this release run, release-please moved the eBPF object to 0.3.0 while the Linux sensor stayed at 0.2.4. Is that right under decoupled versioning before we hand the candidate over?", "should_trigger": true},
+  {"query": "The release-candidate run for 0.8.0 stopped at a usage limit halfway through the Tier 1 matrix. Resume preparing the candidate.", "should_trigger": true},
+  {"query": "release-candidate workflow, 0.9.0: draft the notes the changelog can't carry, the cells that were not run and the unsigned macOS package.", "should_trigger": true},
+  {"query": "Check that upgrade-path.json in the server 0.9.0 release candidate keeps the two-minor hop rule and puts its stops at LTS minors.", "should_trigger": true},
+  {"query": "Is release candidate 0.7.0 ready for the merge queue? Collect evidence for every team/05 section 16 gate on the queued commit.", "should_trigger": true},
+  {"query": "Write .github/workflows/release.yml as the reusable release workflow for [WI-0012], with every action pinned by SHA.", "should_trigger": false},
+  {"query": "Write the one-line commit subject for my spool writer fix on agent/377/a1 in the repository's Conventional Commit form.", "should_trigger": false},
+  {"query": "Add release-please-config.json and manifest entries for the new grdr-ports crate so it gets its own version.", "should_trigger": false},
+  {"query": "Which Sigstore identity does cosign use when the release workflow signs a binary?", "should_trigger": false},
+  {"query": "Change the Dependabot config so major bumps wait seven days and minor ones three.", "should_trigger": false},
+  {"query": "Triage CVE-2026-1234 in rustls privately: are we affected, and what goes into the advisory?", "should_trigger": false},
+  {"query": "Run the Tier 1 cells for my change to the Windows sensor on the merge-queue commit and report each cell.", "should_trigger": false},
+  {"query": "Add a deprecations.toml entry and migration page for `grdr inventory --flat`, to be removed two releases from now.", "should_trigger": false},
+  {"query": "As programme-manager, order the ready issues for this week and put priority:p0 on the release-blocking ones.", "should_trigger": false},
+  {"query": "Write docs/release/resign.md, the runbook for re-signing a release under a replacement Developer ID identity.", "should_trigger": false}
+]

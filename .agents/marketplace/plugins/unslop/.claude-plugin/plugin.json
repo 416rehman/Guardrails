@@ -1,0 +1,10 @@
+{
+  "name": "unslop",
+  "version": "0.15.36+grdr.1",
+  "description": "Rewrites prose to remove AI writing patterns. The pstack skill with the edits PROVENANCE.md lists.",
+  "author": {
+    "name": "Lauren Tan"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/cursor/plugins"
+}

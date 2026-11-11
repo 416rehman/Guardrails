@@ -1,0 +1,61 @@
+name: fuzz
+
+# ClusterFuzzLite in GitHub Actions, with no account (owner instructions 22 and 23): the changed
+# targets on pull requests, every target in a nightly batch. It runs once the first fuzz target
+# lands with its .clusterfuzzlite/ build files; until then the fuzzing job is skipped.
+
+on:
+  pull_request:
+  schedule:
+    - cron: "7 1 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: fuzz-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  targets:
+    name: Fuzz targets present
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      present: ${{ steps.check.outputs.present }}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: check
+        run: echo "present=$([ -f .clusterfuzzlite/project.yaml ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  fuzz:
+    needs: targets
+    if: needs.targets.outputs.present == 'true'
+    name: ClusterFuzzLite (once fuzz targets exist)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: google/clusterfuzzlite/actions/build_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          language: rust
+          sanitizer: address
+          github-token: ${{ github.token }}
+      - uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          language: rust
+          sanitizer: address
+          mode: ${{ github.event_name == 'pull_request' && 'code-change' || 'batch' }}
+          fuzz-seconds: ${{ github.event_name == 'pull_request' && 600 || 3600 }}
+          github-token: ${{ github.token }}

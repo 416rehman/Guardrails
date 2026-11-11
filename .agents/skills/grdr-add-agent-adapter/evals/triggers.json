@@ -1,0 +1,22 @@
+[
+  {"query": "Issue #611: add an adapter for Gemini CLI. It uses the same JSON-over-stdin hook framing as Claude Code, so it should be manifest only under agents/ in grdr-content.", "should_trigger": true},
+  {"query": "Claude Code 2.1.330 shipped this morning and adapter-canary flagged C3 failing on linux-x64. Get the adapter supporting 2.1.330.", "should_trigger": true},
+  {"query": "We need to support opencode's JS plugin hook dialect. Its framing is different from anything grdr-agents translates today.", "should_trigger": true},
+  {"query": "add codex 0.48 to the codex adapter's tested version range, the canary cells went green overnight", "should_trigger": true},
+  {"query": "GRDR_WORK_ITEM=620 asks for an Aider adapter manifest: fingerprints, config locations, the managed-source probe table and the tested version range.", "should_trigger": true},
+  {"query": "Cursor moved its hooks.json in the 2.4 release. Fix the adapter's config locations and the managed-source probe.", "should_trigger": true},
+  {"query": "Record the hook payloads for every Copilot CLI tool and map their fields to action classes for the new adapter.", "should_trigger": true},
+  {"query": "The Windsurf adapter reports configured-not-effective on every session because the canary never passes. Issue #633 is to get it to effective.", "should_trigger": true},
+  {"query": "write the install template for Goose, a new harness that reads hooks from one admin-owned TOML file", "should_trigger": true},
+  {"query": "Adapter request #645 for Kiro is status:ready now, with a ready.v1 comment from lead-adapters and links to its hook dialect docs. Start on it.", "should_trigger": true},
+  {"query": "Add a Sigma detection for an agent-lineage process reading ~/.aws/credentials, with fixtures.", "should_trigger": false},
+  {"query": "Write a Cedar rule in grdr.agents that caps sub-agent depth at three.", "should_trigger": false},
+  {"query": "Add a Splunk HEC export sink manifest with golden files.", "should_trigger": false},
+  {"query": "grdr-hook panics when the payload is larger than 1 MiB instead of denying. Fix it, kind:bug.", "should_trigger": false},
+  {"query": "Add a garden-docs subagent definition to .agents/roster.toml and re-render .claude/agents.", "should_trigger": false},
+  {"query": "Bump the Claude Code pin in the fleet image and harness.toml to 2.1.330 after the canary container passes.", "should_trigger": false},
+  {"query": "Threat-model the new local IPC listener the macOS hook shim will connect to.", "should_trigger": false},
+  {"query": "As garden-catalogue, file an issue for each Tier 1 agent whose vendor docs changed their hook contract this week.", "should_trigger": false},
+  {"query": "Add a catalogue entry for the LangGraph SDK so discovery pass 2 recognises it as a building block.", "should_trigger": false},
+  {"query": "Run the V18 hooks self-test with the Windows backslash-path fixtures and tell me which handler failed.", "should_trigger": false}
+]

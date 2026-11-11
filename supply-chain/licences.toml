@@ -1,0 +1,42 @@
+# The licence policy (D-02, design/30 section 1). cargo deny, the npm and Python licence checks
+# and the vendoring check read it; deny.toml's [licenses] allow is the permissive class. Changing
+# this file changes the licence policy, which needs an RFC (design/30 section 3).
+
+[[class]]
+name = "permissive"
+licences = ["Apache-2.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Zlib", "Unicode-3.0", "CC0-1.0"]
+allowed_in = "everywhere, the embedded build closure included"
+
+[[class]]
+name = "weak-copyleft"
+licences = ["MPL-2.0"]
+allowed_in = "unmodified, as a dependency of layer 3 and 4 programs only; never in layers 0 to 2, grdr-ffi, grdr-wasm or the embedded closure"
+
+[[class]]
+name = "kernel"
+licences = ["GPL-2.0-only"]
+allowed_in = "only kernel interfaces consumed by bpf/; no kernel source copied"
+
+[[class]]
+name = "data-with-attribution"
+licences = ["CC-BY-4.0"]
+allowed_in = "only intel/mirror/ and documentation"
+
+# Never linked, vendored or redistributed. A development tool under one of these may be installed
+# and run, as the CC-BY-SA-4.0 trailofbits/skills are through the private marketplace.
+[banned]
+licences = [
+  "GPL-*",
+  "LGPL-*",
+  "AGPL-*",
+  "SSPL-1.0",
+  "BUSL-1.1",
+  "Elastic-2.0",
+  "FSL-*",
+  "DRL-1.0",
+  "DRL-1.1",
+  "CC-BY-SA-*",
+  "CC-BY-NC-*",
+]
+gpl_allowed_under = ["bpf/"]
+unlicensed = "banned"

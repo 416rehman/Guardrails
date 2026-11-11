@@ -1,0 +1,5 @@
+# OpenSSF Scorecard ratchet (owner instruction 22). The weekly scorecard workflow fails when the
+# aggregate score falls below `floor`. The floor only rises: after a run scores higher, a change
+# raises it to that score. It starts at 0 because no run can happen while the repository is
+# private.
+floor = 0.0

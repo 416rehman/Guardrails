@@ -1,0 +1,5 @@
+# When rust-toolchain.toml reaches 1.100, where the key is stable, this file adds
+# `[registry] global-min-publish-age = "3 days"` (owner instruction 22). Cargo does not check
+# versions already in Cargo.lock (cargo#17246), so team/05's lock-age job S04 covers those.
+[alias]
+xtask = "run --locked --package xtask --"

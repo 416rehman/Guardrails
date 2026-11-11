@@ -1,0 +1,294 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:grdr:audits:audit-finding.v1",
+  "title": "audit-finding.v1",
+  "description": "Audit findings (docs/team/04 section 4): the finder's report a run writes to {out}, the verifier's report, and the ledger record the runner keeps per fingerprint. A development-process record, never the product's Finding.",
+  "oneOf": [
+    { "$ref": "#/$defs/finder_report" },
+    { "$ref": "#/$defs/verifier_report" },
+    { "$ref": "#/$defs/record" }
+  ],
+  "$defs": {
+    "schema_tag": { "const": "audit-finding.v1" },
+    "prompt_id": {
+      "type": "string",
+      "pattern": "^([A-K]0[1-9]|Y0[1-4]|M0[1-5]|control)$",
+      "description": "A library id, or `control` for the plain \"Find the bugs\" arm."
+    },
+    "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$" },
+    "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "uuid_v7": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "audit_model": {
+      "enum": ["claude-opus-5-5", "claude-sonnet-5-5"],
+      "description": "The model rule allows only these for audit passes; no audit pass runs on Fable."
+    },
+    "class_key": {
+      "type": "string",
+      "pattern": "^(injected-instruction|[a-z0-9]+(-[a-z0-9]+)*:[a-z0-9]+(-[a-z0-9]+)*)$",
+      "description": "From the prompt's `Class keys` line, or `injected-instruction` (preamble rule 3). The runner rejects any other value."
+    },
+    "label": { "enum": ["CONFIRMED", "LIKELY", "SMELL"] },
+    "severity": { "type": "integer", "minimum": 1, "maximum": 4 },
+    "closure_kind": { "enum": ["type", "test", "lint", "decision"] },
+    "prompt_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": { "id": { "$ref": "#/$defs/prompt_id" }, "version": { "$ref": "#/$defs/version" } }
+    },
+    "quote": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 600,
+      "pattern": "^[^\\n]*(\\n[^\\n]*){0,2}$",
+      "description": "Exact text at the cited line, at most 3 lines; the runner discards a span that does not match the file at the commit."
+    },
+    "span_fields": {
+      "type": "object",
+      "required": ["path", "line", "quote"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1, "pattern": "^[^/\\\\][^\\\\]*$", "description": "Repository-relative, forward slashes." },
+        "line": { "type": "integer", "minimum": 1 },
+        "item": { "type": "string", "minLength": 1, "description": "Enclosing function, impl or type path, or the heading path in a document. The runner resolves it when absent." },
+        "quote": { "$ref": "#/$defs/quote" }
+      }
+    },
+    "span": {
+      "allOf": [{ "$ref": "#/$defs/span_fields" }],
+      "unevaluatedProperties": false
+    },
+    "checked_span": {
+      "allOf": [{ "$ref": "#/$defs/span_fields" }],
+      "required": ["item", "snippet_sha256"],
+      "properties": { "snippet_sha256": { "$ref": "#/$defs/sha256" } },
+      "unevaluatedProperties": false
+    },
+    "locus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["crate", "item"],
+      "properties": {
+        "crate": { "type": "string", "minLength": 1, "description": "Crate or program name; a top-level path such as `docs` outside Cargo." },
+        "item": { "type": "string", "minLength": 1 },
+        "item_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "closure_proposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "detail"],
+      "properties": { "kind": { "$ref": "#/$defs/closure_kind" }, "detail": { "$ref": "#/$defs/text" } }
+    },
+    "sound": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item", "reason"],
+      "properties": {
+        "item": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "reason": { "$ref": "#/$defs/text" }
+      }
+    },
+    "claim_fields": {
+      "type": "object",
+      "description": "What a finder states about one defect. `title` is the claim: one falsifiable sentence naming the item and the defect, refuted by one quoted counter-example.",
+      "required": ["class_key", "locus", "title", "label", "severity", "evidence", "permits", "reach", "smallest_fix", "closure_proposal"],
+      "properties": {
+        "class_key": { "$ref": "#/$defs/class_key" },
+        "title": { "type": "string", "minLength": 10, "maxLength": 200 },
+        "label": { "$ref": "#/$defs/label" },
+        "assumption": { "$ref": "#/$defs/text" },
+        "severity": { "$ref": "#/$defs/severity" },
+        "permits": { "$ref": "#/$defs/text", "description": "What the code permits." },
+        "reach": { "$ref": "#/$defs/text", "description": "What a caller can actually reach, and how; or why reach is not shown." },
+        "smallest_fix": { "$ref": "#/$defs/text" },
+        "closure_proposal": { "$ref": "#/$defs/closure_proposal" }
+      },
+      "if": { "properties": { "label": { "const": "LIKELY" } } },
+      "then": { "required": ["assumption"] }
+    },
+    "result": {
+      "allOf": [{ "$ref": "#/$defs/claim_fields" }],
+      "properties": {
+        "locus": { "$ref": "#/$defs/locus" },
+        "evidence": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/span" } }
+      },
+      "unevaluatedProperties": false
+    },
+    "finder_report": {
+      "type": "object",
+      "description": "What a finder (power or control arm) writes to {out}.",
+      "required": ["schema", "report", "prompt", "commit", "applicable", "results", "checked_and_sound"],
+      "properties": {
+        "schema": { "$ref": "#/$defs/schema_tag" },
+        "report": { "const": "finder" },
+        "prompt": { "$ref": "#/$defs/prompt_ref" },
+        "commit": { "$ref": "#/$defs/commit" },
+        "applicable": { "type": "boolean" },
+        "not_applicable_reason": { "$ref": "#/$defs/text" },
+        "results": { "type": "array", "maxItems": 15, "items": { "$ref": "#/$defs/result" } },
+        "checked_and_sound": { "type": "array", "items": { "$ref": "#/$defs/sound" } }
+      },
+      "additionalProperties": false,
+      "if": { "properties": { "applicable": { "const": false } } },
+      "then": { "required": ["not_applicable_reason"], "properties": { "results": { "maxItems": 0 } } }
+    },
+    "verifier_report": {
+      "type": "object",
+      "description": "What a refuting verifier writes to {out} for one result. DOWNGRADED carries the corrected label and severity.",
+      "required": ["schema", "report", "fingerprint", "verdict", "reason", "quotes"],
+      "properties": {
+        "schema": { "$ref": "#/$defs/schema_tag" },
+        "report": { "const": "verifier" },
+        "fingerprint": { "$ref": "#/$defs/sha256" },
+        "verdict": { "enum": ["REFUTED", "UPHELD", "DOWNGRADED"] },
+        "label": { "$ref": "#/$defs/label" },
+        "severity": { "$ref": "#/$defs/severity" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "quotes": { "type": "array", "maxItems": 8, "items": { "$ref": "#/$defs/span" } }
+      },
+      "additionalProperties": false,
+      "if": { "properties": { "verdict": { "const": "DOWNGRADED" } } },
+      "then": { "required": ["label", "severity"] }
+    },
+    "verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "model", "reason"],
+      "properties": {
+        "verdict": { "enum": ["REFUTED", "UPHELD", "DOWNGRADED"] },
+        "model": { "$ref": "#/$defs/audit_model" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "label": { "$ref": "#/$defs/label" },
+        "severity": { "$ref": "#/$defs/severity" }
+      },
+      "if": { "properties": { "verdict": { "const": "DOWNGRADED" } } },
+      "then": { "required": ["label", "severity"] }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["reproduced", "not-reproduced", "not-attempted"] },
+        "artefact": { "type": "string", "minLength": 1 }
+      },
+      "if": { "properties": { "status": { "const": "reproduced" } } },
+      "then": { "required": ["artefact"] }
+    },
+    "closure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "ref", "commit", "verified_at"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/closure_kind" },
+        "ref": { "type": "string", "minLength": 1, "description": "trybuild case or type, test path and name, lint id, or docs/decisions/ADR-NNNN-*.md (team/04 section 5)." },
+        "commit": { "$ref": "#/$defs/commit" },
+        "verified_at": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "waiver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "expires"],
+      "properties": {
+        "decision": { "type": "string", "pattern": "^docs/decisions/ADR-[0-9]{4}-[a-z0-9-]+\\.md$" },
+        "expires": { "type": "string", "format": "date" }
+      }
+    },
+    "state": { "enum": ["open", "refuted", "upheld", "triage", "proven", "closed", "waived", "regressed"] },
+    "history_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "at"],
+      "properties": {
+        "state": { "$ref": "#/$defs/state" },
+        "run_id": { "$ref": "#/$defs/uuid_v7" },
+        "at": { "$ref": "#/$defs/timestamp" },
+        "by": { "type": "string", "minLength": 1, "description": "Roster name, the runner, or a person's login." }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "number"],
+      "properties": {
+        "repository": { "const": "416rehman/Guardrails" },
+        "number": { "type": "integer", "minimum": 1 }
+      },
+      "description": "The GitHub issue that carries the repair (owner instruction 5)."
+    },
+    "record_rules": {
+      "description": "Embargo (team/04 section 4) and life-cycle (section 5) rules a record must satisfy.",
+      "allOf": [
+        {
+          "if": { "properties": { "severity": { "const": 1 } } },
+          "then": { "properties": { "security_candidate": { "const": true } } }
+        },
+        {
+          "if": { "properties": { "prompt": { "properties": { "id": { "pattern": "^M" } } } } },
+          "then": { "properties": { "security_candidate": { "const": true } } }
+        },
+        {
+          "if": { "properties": { "prompt": { "properties": { "id": { "pattern": "^B" } } }, "severity": { "maximum": 2 } } },
+          "then": { "properties": { "security_candidate": { "const": true } } }
+        },
+        {
+          "if": { "properties": { "security_candidate": { "const": true } } },
+          "then": { "not": { "required": ["issue"] } }
+        },
+        {
+          "if": { "properties": { "state": { "enum": ["upheld", "triage", "proven"] } } },
+          "then": {
+            "properties": {
+              "verifier": { "minItems": 1, "items": { "properties": { "verdict": { "enum": ["UPHELD", "DOWNGRADED"] } } } }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "state": { "enum": ["upheld", "triage", "proven"] }, "severity": { "const": 1 } } },
+          "then": { "properties": { "verifier": { "minItems": 2 } } }
+        },
+        {
+          "if": { "properties": { "state": { "const": "proven" } } },
+          "then": { "properties": { "proof": { "$ref": "#/$defs/proof", "properties": { "status": { "const": "reproduced" } } } } }
+        },
+        {
+          "if": { "properties": { "state": { "const": "closed" } } },
+          "then": { "properties": { "closure": { "$ref": "#/$defs/closure" } } }
+        },
+        {
+          "if": { "properties": { "state": { "const": "waived" } } },
+          "then": { "required": ["waiver"] }
+        }
+      ]
+    },
+    "record": {
+      "type": "object",
+      "description": "Ledger record, one per fingerprint: current state plus history. Fingerprint = sha256(prompt_id | prompt_major | class_key | crate | item).",
+      "allOf": [{ "$ref": "#/$defs/claim_fields" }, { "$ref": "#/$defs/record_rules" }],
+      "required": ["schema", "fingerprint", "run_id", "prompt", "trust_core", "security_candidate", "verifier", "proof", "state", "closure", "history"],
+      "properties": {
+        "schema": { "$ref": "#/$defs/schema_tag" },
+        "fingerprint": { "$ref": "#/$defs/sha256" },
+        "run_id": { "$ref": "#/$defs/uuid_v7" },
+        "prompt": { "$ref": "#/$defs/prompt_ref" },
+        "locus": { "allOf": [{ "$ref": "#/$defs/locus" }], "required": ["item_sha256"] },
+        "evidence": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/checked_span" } },
+        "trust_core": { "type": "boolean" },
+        "security_candidate": { "type": "boolean" },
+        "verifier": { "type": "array", "maxItems": 2, "items": { "$ref": "#/$defs/verdict" } },
+        "proof": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/proof" }] },
+        "state": { "$ref": "#/$defs/state" },
+        "closure": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/closure" }] },
+        "waiver": { "$ref": "#/$defs/waiver" },
+        "issue": { "$ref": "#/$defs/issue" },
+        "history": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/history_entry" } }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

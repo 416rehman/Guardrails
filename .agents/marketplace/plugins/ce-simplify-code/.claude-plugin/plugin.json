@@ -1,0 +1,10 @@
+{
+  "name": "ce-simplify-code",
+  "version": "3.37.1+grdr.1",
+  "description": "Simplifies code for reuse and quality without changing behaviour, and reports tests that protect nothing. Compound Engineering's skill with the edits PROVENANCE.md lists.",
+  "author": {
+    "name": "Every"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/EveryInc/compound-engineering-plugin"
+}

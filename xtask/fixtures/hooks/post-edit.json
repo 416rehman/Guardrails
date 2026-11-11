@@ -1,0 +1,10 @@
+{
+  "handler": "post-edit",
+  "preset": "worker",
+  "cases": [
+    {"name": "s7-url-literal", "env": {"GRDR_AGENT": "impl-rust", "GRDR_WORK_ITEM": "7"},
+     "input": {"tool_name": "Edit", "tool_input": {"file_path": "crates/a/src/endpoint.rs"}},
+     "files": {"crates/a/src/endpoint.rs": "pub const URL: &str = \"https://api.vendor.io\";\n"},
+     "expect": "block", "contains": "URL literal"}
+  ]
+}

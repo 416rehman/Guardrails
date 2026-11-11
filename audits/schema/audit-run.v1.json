@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:grdr:audits:audit-run.v1",
+  "title": "audit-run.v1",
+  "description": "One audit run (docs/team/04 section 4), written by the runner to audit-ledger/runs/<yyyy>/<mm>/<run_id>.json with its results. Skipped prompts keep \"did not look\" apart from \"found nothing\" (P9).",
+  "type": "object",
+  "required": [
+    "schema", "run_id", "prompt", "arm", "pair_id", "commit", "scope", "trigger", "harness",
+    "finder_model", "verifier_models", "tokens_in", "tokens_out", "usage_window_share", "paused_for_limit",
+    "duration_s", "results_returned", "results_after_span_check", "upheld", "reproduced",
+    "checked_and_sound", "skipped", "results"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "audit-run.v1" },
+    "run_id": { "$ref": "urn:grdr:audits:audit-finding.v1#/$defs/uuid_v7" },
+    "prompt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "skill_sha256", "preamble_sha256"],
+      "properties": {
+        "id": { "$ref": "urn:grdr:audits:audit-finding.v1#/$defs/prompt_id" },
+        "version": { "$ref": "urn:grdr:audits:audit-finding.v1#/$defs/version" },
+        "skill_sha256": { "$ref": "urn:grdr:audits:audit-finding.v1#/$defs/sha256", "description": "Digest of prompts/<id>.md, or of the control concept." },
+        "preamble_sha256": { "$ref": "urn:grdr:audits:audit-finding.v1#/$defs/sha256" }
+      }
+    },
+    "arm": { "enum": ["power", "control"] },
+    "pair_id": {
+      "oneOf": [{ "type": "null" }, { "$ref": "urn:grdr:audits:audit-finding.v1#/$defs/uuid_v7" }],
+      "description": "Shared by every power run and the one control run on the same commit and scope in a job; null when the run is not paired."
+    },
+    "commit": { "$ref": "urn:grdr:audits:audit-finding.v1#/$defs/commit" },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name"],
+      "properties": {
+        "kind": { "enum": ["crate", "diff", "path", "repo"] },
+        "name": { "type": "string", "minLength": 1 },
+        "base": { "$ref": "urn:grdr:audits:audit-finding.v1#/$defs/commit", "description": "Base commit of a diff scope." }
+      },
+      "if": { "properties": { "kind": { "const": "diff" } } },
+      "then": { "required": ["base"] }
+    },
+    "trigger": { "enum": ["pr", "nightly", "weekly", "w4", "release", "model-upgrade", "incident", "bench", "manual"] },
+    "harness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "const": "claude-code" },
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" }
+      }
+    },
+    "finder_model": { "$ref": "urn:grdr:audits:audit-finding.v1#/$defs/audit_model" },
+    "verifier_models": {
+      "type": "array",
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": { "$ref": "urn:grdr:audits:audit-finding.v1#/$defs/audit_model" }
+    },
+    "tokens_in": { "type": "integer", "minimum": 0 },
+    "tokens_out": { "type": "integer", "minimum": 0 },
+    "usage_window_share": { "type": ["number", "null"], "minimum": 0, "description": "Share of the subscription's usage window the run consumed; null when the runner did not measure it." },
+    "paused_for_limit": { "type": "number", "minimum": 0, "description": "Seconds spent waiting for a usage window to reset; a paused run is never failed or empty." },
+    "duration_s": { "type": "number", "minimum": 0 },
+    "results_returned": { "type": "integer", "minimum": 0, "maximum": 15 },
+    "results_after_span_check": { "type": "integer", "minimum": 0, "maximum": 15 },
+    "upheld": { "type": "integer", "minimum": 0, "maximum": 15 },
+    "reproduced": { "type": "integer", "minimum": 0, "maximum": 15 },
+    "not_applicable_reason": { "type": "string", "minLength": 1 },
+    "checked_and_sound": {
+      "type": "array",
+      "items": { "$ref": "urn:grdr:audits:audit-finding.v1#/$defs/sound" }
+    },
+    "skipped": {
+      "type": "array",
+      "description": "Prompts that matched the trigger but did not run, with the reason.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["prompt", "reason"],
+        "properties": {
+          "prompt": { "$ref": "urn:grdr:audits:audit-finding.v1#/$defs/prompt_id" },
+          "reason": { "enum": ["max-power-runs", "run-cap", "window-cap", "usage-brake", "scope-absent"] },
+          "detail": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "results": {
+      "type": "array",
+      "maxItems": 15,
+      "items": { "$ref": "urn:grdr:audits:audit-finding.v1#/$defs/record" }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "arm": { "const": "control" } } },
+      "then": { "properties": { "prompt": { "properties": { "id": { "const": "control" } } }, "pair_id": { "type": "string" } } }
+    },
+    {
+      "if": { "properties": { "prompt": { "properties": { "id": { "const": "control" } } } } },
+      "then": { "properties": { "arm": { "const": "control" } } }
+    }
+  ]
+}

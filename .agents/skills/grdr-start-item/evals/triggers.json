@@ -1,0 +1,22 @@
+[
+  {"query": "Work item #1. Follow AGENTS.md.", "should_trigger": true},
+  {"query": "You are impl-rust and the dispatcher just leased you #142 on branch agent/142/a1. Get started.", "should_trigger": true},
+  {"query": "Start on [WI-0019], the shell canonicaliser with its reference model (issue #19). Where do I begin?", "should_trigger": true},
+  {"query": "GRDR_WORK_ITEM=26 in this session. Pick it up where the last session stopped; there's a partial hand-off comment on the issue.", "should_trigger": true},
+  {"query": "new session, issue #34 (codex dialect). read what you need and tell me the write set and tier before touching any code", "should_trigger": true},
+  {"query": "I've been assigned #15, envelope and id minting. Which files may I change and what are the oracles for it?", "should_trigger": true},
+  {"query": "Resume #22 now that the usage window has reset. The context was compacted, so re-orient before doing anything.", "should_trigger": true},
+  {"query": "kit launch put me on #37, the grdr.base and Essentials packs item. Do the reading first and run the baseline.", "should_trigger": true},
+  {"query": "Pick up #3 archlint again on attempt 2: eval-diff posted round 1 findings as a comment on the issue.", "should_trigger": true},
+  {"query": "claude -p session for impl-docs: work item #9, intake templates and labels. Follow AGENTS.md and start.", "should_trigger": true},
+  {"query": "As lead-core, write the spec and acceptance criteria for proposed issue #41, the local audit chain.", "should_trigger": false},
+  {"query": "Which status:ready issues should the dispatcher lease next, and in what order?", "should_trigger": false},
+  {"query": "I'm done with #19 and verify --fast is green with evidence .agent/evidence/verify-81c2.json. Post the hand-off.", "should_trigger": false},
+  {"query": "File the fifty-three reserved work items of team/06 section 10 as issues titled [WI-0001] to [WI-0053].", "should_trigger": false},
+  {"query": "As eval-acceptance, judge the hand-off on #15 against its readied acceptance criteria.", "should_trigger": false},
+  {"query": "#36 is bigger than size M. Split it into sub-issues with their own write sets.", "should_trigger": false},
+  {"query": "What does the status:leased to status:ready transition mean for the attempt counter? Just explain it.", "should_trigger": false},
+  {"query": "Move #12 from status:proposed to status:ready now that its blockers are closed, and post the ready.v1 comment.", "should_trigger": false},
+  {"query": "Run the M04 toctou-windows audit over the grant code in grdr-core::policy.", "should_trigger": false},
+  {"query": "Write the escalation for #23: the second evaluator for this trust-core change has not run yet.", "should_trigger": false}
+]

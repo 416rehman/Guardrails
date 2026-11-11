@@ -1,0 +1,60 @@
+# cargo-deny 0.20 policy (gate S01, team/05 section 9). The licence allow-list is the permissive
+# class of supply-chain/licences.toml; MPL-2.0 and the kernel and data classes enter only as
+# per-crate exceptions, because they are allowed in some layers and not others. The bans are the
+# Rust crates on design/03 section 13's do-not-use list.
+
+[graph]
+all-features = true
+
+[advisories]
+yanked = "deny"
+unmaintained = "all"
+unsound = "all"
+unused-ignored-advisory = "deny"
+ignore = []
+
+[licenses]
+allow = [
+  "Apache-2.0",
+  "MIT",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "Unicode-3.0",
+  "CC0-1.0",
+]
+confidence-threshold = 0.93
+unused-allowed-license = "allow"
+exceptions = []
+
+[licenses.private]
+ignore = false
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+deny = [
+  { crate = "ferrisetw", reason = "unmaintained since 2025-08; Windows uses our own ETW layer on the windows crate (design/03 section 13)" },
+  { crate = "windivert", reason = "WinDivert is not a release dependency; user-mode WFP filters go through the wfp crate (design/03 section 13)" },
+  { crate = "madsim", reason = "unmaintained or unstable; deterministic simulation uses turmoil and shuttle (design/03 section 13)" },
+  { crate = "fluvio", reason = "unmaintained or unstable (design/03 section 13)" },
+  { crate = "iggy", reason = "unmaintained or unstable (design/03 section 13)" },
+  { crate = "tensorzero", reason = "archived upstream (design/03 section 13)" },
+  { crate = "rsigma", reason = "security history: all five 2026 advisories; Sigma goes through rsigma-parser and rsigma-eval only (design/03 section 13)" },
+  { crate = "rsigma-runtime", reason = "security history: all five 2026 advisories (design/03 section 13)" },
+  { crate = "rsigma-mcp", reason = "security history: all five 2026 advisories (design/03 section 13)" },
+  { crate = "cel", reason = "Cedar is the only enforced language, with no third expression language (ADR-0008, D-08, D-09)" },
+  { crate = "cel-interpreter", reason = "Cedar is the only enforced language, with no third expression language (ADR-0008, D-08, D-09)" },
+  { crate = "duckdb", reason = "in-process DuckDB is not in a release-gating path; the lake engine is DataFusion (design/03 section 13)" },
+  { crate = "chdb-rust", reason = "chDB has no Windows build (design/03 section 13)" },
+  { crate = "pingora", reason = "Windows support is preliminary (design/03 section 13)" },
+  { crate = "surrealdb", reason = "BSL, not open source (design/03 section 13, D-02)" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

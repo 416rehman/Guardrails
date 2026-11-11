@@ -1,0 +1,22 @@
+[
+  {"query": "Issue #901: add a Splunk HEC export sink manifest with fixtures and golden files.", "should_trigger": true},
+  {"query": "We need a Jira ticketing integration so policy-violation findings open tickets with our state map.", "should_trigger": true},
+  {"query": "add PagerDuty as a paging target, threat and tamper findings only", "should_trigger": true},
+  {"query": "Import CrowdStrike Falcon's host inventory as an ingest dialect so discovery pass 4 can diff it.", "should_trigger": true},
+  {"query": "A design partner wants our findings in Microsoft Sentinel. Build the export.", "should_trigger": true},
+  {"query": "GRDR_WORK_ITEM=915 names ServiceNow as a response target that opens an incident for each contain action.", "should_trigger": true},
+  {"query": "Write the manifest for a Slack notify integration and its fault-set fixtures.", "should_trigger": true},
+  {"query": "the Datadog logs sink drops records on 429 instead of honouring Retry-After. fix the manifest and add a golden for it", "should_trigger": true},
+  {"query": "Add an Elastic ingest dialect for their endpoint alerts index.", "should_trigger": true},
+  {"query": "Wire up Vanta evidence push as the second first-party member of the GRC family.", "should_trigger": true},
+  {"query": "Implement the PostgreSQL 18 relational adapter behind the Relational port.", "should_trigger": false},
+  {"query": "Write the OCSF 1.9 mapping file for the decision stream in schema/mappings.", "should_trigger": false},
+  {"query": "Fix the CEF header escaping bug in grdr-export's syslog codec, kind:bug.", "should_trigger": false},
+  {"query": "Write a detection for agent sessions posting data to paste sites.", "should_trigger": false},
+  {"query": "Threat-model the grants of the WebAssembly integrations host.", "should_trigger": false},
+  {"query": "Change the Dependabot config so major bumps wait seven days.", "should_trigger": false},
+  {"query": "Run the Windows Defender coexistence cell for the new installer build.", "should_trigger": false},
+  {"query": "Draft the spec for INT-6, the WebAssembly host world 0.1.", "should_trigger": false},
+  {"query": "As lead-ecosystem, split proposed issue #930 (all SIEM sinks) into one sub-issue per vendor with write sets and acceptance criteria.", "should_trigger": false},
+  {"query": "A cursor test in grdr-store-local fails one run in twenty. Find out why.", "should_trigger": false}
+]

@@ -1,0 +1,203 @@
+# Dispatcher, launcher and merge-queue policy (team/01 section 9, D-63). `cargo xtask kit launch`,
+# `cargo xtask dispatch` and the merge queue read every value here; the code holds none of them.
+
+# Work items are issues in this one repository on the owner's personal account, with labels as
+# their status and fields (owner instruction 5). There is no organisation and no GitHub Project.
+# Agents reach GitHub only through gh.
+[github]
+repository = "416rehman/Guardrails"
+issue_form = ".github/ISSUE_TEMPLATE/work-item.yml"
+labels = ".github/labels.toml"
+reserved_title = "[WI-{id}] {title}"       # the fifty-three reserved items of team/06 section 10
+branch = "agent/{issue}/a{attempt}"
+snapshot = ".agent/state/item-{issue}.json"   # written by kit launch; session state, not a store
+ready_comment = "ready.v1"
+handoff_comment = "handoff.v1"
+# Every agent posts as the owner's gh login, and guard-command enforces each role's gh calls
+# (owner instructions 6 and 23). The grdr-agent, grdr-evaluator and grdr-queue Apps are an
+# optional later hardening.
+identity = "owner"
+call_timeout_seconds = 60
+push_timeout_seconds = 300
+# The one step printed when something outside the kit is missing; {repository}, {owner} and
+# {branch} are filled in.
+missing_cli = "Install the GitHub CLI (https://cli.github.com), run `gh auth login` as {owner}, then rerun this command."
+missing_login = "Run `gh auth login` as {owner} (the `repo` scope is enough), then rerun this command."
+missing_repository = "Create the repository: `gh repo create {repository} --public --disable-wiki` (public from the first push, owner instruction 28). Then rerun this command, or rerun it with --dry-run."
+missing_remote = "Add the remote with `git remote add origin https://github.com/{repository}.git`, then rerun cargo xtask kit handoff; the branch {branch} stays local until then."
+
+# The repository settings `cargo xtask github check` reads once gh, its login and the repository
+# are in place (team/06 section 11 item 6, owner instruction 28). Each check makes one read-only
+# gh call and compares the JSON values at its pointers; a mismatch prints its fix. A read the
+# token is not allowed to make is reported and the other checks still run. {repository},
+# {owner} and {name} are filled in.
+[[github.settings]]
+name = "the repository is public"
+read = ["api", "repos/{repository}"]
+expect = { "/visibility" = "public" }
+fix = "gh api --method PATCH repos/{repository} -f visibility=public"
+
+[[github.settings]]
+name = "Actions tokens are read-only and may create and approve pull requests"
+read = ["api", "repos/{repository}/actions/permissions/workflow"]
+expect = { "/default_workflow_permissions" = "read", "/can_approve_pull_request_reviews" = true }
+fix = "gh api --method PUT repos/{repository}/actions/permissions/workflow -f default_workflow_permissions=read -F can_approve_pull_request_reviews=true"
+
+# The REST check answers 404 when the alerts are off, so GraphQL gives the value instead.
+[[github.settings]]
+name = "Dependabot vulnerability alerts are on"
+read = ["api", "graphql", "-f", "query=query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { hasVulnerabilityAlertsEnabled } }", "-f", "owner={owner}", "-f", "name={name}"]
+expect = { "/data/repository/hasVulnerabilityAlertsEnabled" = true }
+fix = "gh api --method PUT repos/{repository}/vulnerability-alerts"
+
+[[github.settings]]
+name = "Dependabot security updates are on"
+read = ["api", "repos/{repository}/automated-security-fixes"]
+expect = { "/enabled" = true }
+fix = "gh api --method PUT repos/{repository}/automated-security-fixes"
+
+[[github.settings]]
+name = "private vulnerability reporting is on"
+read = ["api", "repos/{repository}/private-vulnerability-reporting"]
+expect = { "/enabled" = true }
+fix = "gh api --method PUT repos/{repository}/private-vulnerability-reporting"
+
+# security_and_analysis is in the reply only for a token with admin rights on the repository.
+[[github.settings]]
+name = "secret scanning and push protection are on"
+read = ["api", "repos/{repository}"]
+expect = { "/security_and_analysis/secret_scanning/status" = "enabled", "/security_and_analysis/secret_scanning_push_protection/status" = "enabled" }
+fix = "gh api --method PATCH repos/{repository} -f security_and_analysis[secret_scanning][status]=enabled -f security_and_analysis[secret_scanning_push_protection][status]=enabled"
+
+# Owner instruction 27: every commit message is one Conventional Commit line, with no body and no
+# trailers. guard-command, gate V24 and the merge queue apply the same rule.
+[commit]
+types = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert"]
+max_subject_chars = 72
+
+# The pull request a worker's hand-off opens against base: its title is a valid subject, its body
+# closes the issue and no other and carries the meta.v1 block (harness, the model id that wrote
+# the change, the attempt) that the review pass reads. The merge queue squash-merges it with this
+# subject, which is the form release-please reads, and the subject too is one valid commit line.
+# No session pushes to base or to a branch starting with one of protected_prefixes, the release
+# branches release-please and the queue write (owner instruction 7).
+[pull_request]
+base = "main"
+remote = "origin"                # where agent branches are pushed and the base is fetched from
+protected_prefixes = ["release/", "release-", "releases/"]
+closes = "Closes #{issue}"
+squash_subject = "{title} (#{pr})"
+
+[dispatch]
+max_writers = 3                  # calibration row of the concurrency ladder (S-20)
+max_evaluators = 6
+max_gardeners = 1
+max_planners = 1                 # leads, the product lead and the chief architect planning issues
+stall_seconds = 300              # Symphony's default; the lease and attempt rules are team/01 section 9
+poll_seconds = 60
+poll_jitter_seconds = 6          # a GitHub pass starts up to this long before or after its interval
+# A failed GitHub pass retries after a full-jitter exponential backoff (P15): a random wait up to
+# base times two to the failure count, never above the cap.
+backoff_base_seconds = 30
+backoff_cap_seconds = 900
+lease_order = ["blocks-others", "priority", "age"]   # team/01 section 7
+claude_pin = "2.1.319"           # the version installed on the owner's machine
+claude_pin_plan = "2.1.322"      # team/06 section 12; adopted once V18 and kit check pass on it
+# The roles that implement a protected-change item, under GRDR_SCOPE=protected (owner
+# instruction 7): gate configuration and the spine and plan.
+protected_change_agents = ["lead-agent-kit", "chief-architect"]
+
+# The merge queue (owner instruction 7): it lands a pull request whose lane's evaluators passed
+# once the kit binary's full verify is green on the exact tree that lands (the pull request
+# squashed onto the current base tip, in .agent/worktrees/queue), CI is green where it runs, at
+# most the item's review rounds were used, and the title and body are valid. It closes the issue.
+[queue]
+worktree = "queue"
+verify_args = ["verify"]
+verify_timeout_seconds = 1800
+
+# How `kit launch` starts Claude Code. Every variable the owner's user settings `env` sets (and
+# the project's does not) is passed to the session empty, by name only, so a credential kept
+# there never reaches an agent or its subprocesses. setting_sources = "project,local" would also
+# drop the owner's user skills and plugins (ui-architect, frontend-design) that agents preload;
+# the fleet image of WI-0006 sets it once those come from the marketplace.
+[launch]
+scrub_user_env = true
+harness = "claude-code"          # the harness name in the meta.v1 block
+# GRDR_CLAUDE names the executable when set. Otherwise `claude` is looked up on PATH, skipping
+# entries that are empty or invalid and stripping the quotes around or after an entry, and then
+# at these install locations: {home} is the user's home directory and {exe} the platform's
+# executable suffix.
+claude = "claude"
+claude_locations = [
+  "{home}/.local/bin/claude{exe}",
+  "{home}/.claude/local/claude{exe}",
+  "/opt/homebrew/bin/claude",
+  "/usr/local/bin/claude",
+]
+
+# Claude Code ignores the project's permissions.allow rules in a folder it does not trust, and in
+# print mode it never shows the trust dialog, so every agent session would stall on tool denials
+# (code.claude.com/docs/en/permissions, "Project allow rules and workspace trust"). kit launch,
+# and dispatch before the first session of each pass, read the trust from Claude Code's global
+# config and start nothing when the repository root is not trusted or the trust cannot be read.
+# Claude Code keys the trust on the repository root, the main checkout's for a worktree, and in
+# print mode a trusted parent folder does not count. The config file is in CLAUDE_CONFIG_DIR when
+# it is set, else in the home directory (USERPROFILE on Windows, HOME elsewhere), where Claude
+# Code itself looks. check = "managed" skips the check where something else sets the trust, such
+# as a fleet image. {root} and {why} are filled in.
+[workspace_trust]
+check = "claude-config"
+config_file = ".claude.json"
+projects_key = "projects"
+accepted_key = "hasTrustDialogAccepted"
+untrusted = "Claude Code does not trust {root}, so every agent session would ignore the project's permission rules and stall. Run `claude` once in {root} and accept the trust dialog, then rerun this command."
+undecided = "Could not tell whether Claude Code trusts {root} ({why}), so no session starts. Run `claude` once in {root} and accept the trust dialog, then rerun this command; where something else sets the trust, set [workspace_trust] check = \"managed\" in .agents/harness.toml."
+
+# The three-arm proof of a bug fix (`cargo xtask prove`, skill grdr-fix-bug): the command that runs
+# one test, {test} standing for its filter; the pattern that reads how many tests ran; and the
+# paths that are test code, which the revert arm brings over onto the base.
+[prove]
+command = ["cargo", "test", "--locked", "--workspace", "--", "{test}"]
+count_regex = 'running (\d+) tests?'
+test_paths = [
+  "**/tests/**",
+  "**/benches/**",
+  "fuzz/**",
+  "**/tests.rs",
+  "**/*_test.rs",
+  "**/*_tests.rs",
+  "**/*.test.ts",
+  "**/*.test.tsx",
+  "**/*.spec.ts",
+  "**/*.spec.tsx",
+]
+
+# A subscription usage limit pauses work and never fails it (D-47). The print-mode exit code is
+# not documented, so a run is classed as limited by these strings in its output.
+[limits]
+usage_limit_strings = [
+  "You've hit your session limit",
+  "You've hit your weekly limit",
+  "Request rejected",            # with HTTP 429
+]
+on_limit = "pause"               # keep the worktree, session id and lease; stop new leases
+resume = "after-window-reset"    # `claude --resume <session-id>`, trust-core, security and release first
+retry_seconds = 1800
+counts_as_attempt = false        # no lease or attempt comment is posted for a pause
+counts_as_round = false
+counts_as_stall = false
+
+# Skills that exist outside .agents/skills/ and the marketplace. kit check counts a roster skill
+# as present only when it is here, in .agents/skills/ or in an enabled plugin, and on a machine
+# with a ~/.claude it checks the user entries against what is installed there. builtin ships with
+# the pinned Claude Code; user is the owner's user-scope skills (~/.claude/skills), copied into the
+# fleet image by WI-0006; account is the owner's claude.ai skills, which Claude Code names
+# `anthropic-skills:<name>`; user_plugins are plugins the owner's user settings enable, named
+# `<plugin>:<skill>`, for one the private marketplace does not pin (none now: it pins every one,
+# owner instructions 2 and 18).
+[skills]
+builtin = ["simplify", "code-review", "security-review"]
+user = ["ui-architect"]
+account = ["anthropic-skills:write-like-a-normal-staff-senior-developer", "anthropic-skills:skill-creator"]
+user_plugins = []

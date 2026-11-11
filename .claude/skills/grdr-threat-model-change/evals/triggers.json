@@ -1,0 +1,22 @@
+[
+  {"query": "#21 adds a Linux socket with peer credentials for grdr.decide. Threat-model it before lead-adapters readies the issue.", "should_trigger": true},
+  {"query": "We're adding the TUF metadata parser to grdr-updater. What new trust boundaries does that create and what tests prove the controls?", "should_trigger": true},
+  {"query": "This change makes grdr-daemon listen on a new named pipe on Windows. Do the security analysis for it.", "should_trigger": true},
+  {"query": "eval-security: the PR touches crates/grdr-crypto and programs/grdr-approve. Give me the threat-model delta with proofs.", "should_trigger": true},
+  {"query": "High-tier issue #36 gives the daemon new privileges in the Protected profile. Write the threat model and post it on the issue.", "should_trigger": true},
+  {"query": "grdr console serve is getting a websocket endpoint. Which adversaries, trust boundaries and SRs apply?", "should_trigger": true},
+  {"query": "adding a protobuf decoder to grdr-hook for the IPC frames, is that a new parser on a privileged path? analyse it properly", "should_trigger": true},
+  {"query": "The approval helper will now read a file from ProgramData before showing the prompt. Threat-model that change.", "should_trigger": true},
+  {"query": "Map the change to the shim's fail-safe table onto the design/02 assets and adversaries and say which test proves each control.", "should_trigger": true},
+  {"query": "New observe-only eBPF program for connect events in [WI-0023]. Do the threat modelling part before eval-security reviews it.", "should_trigger": true},
+  {"query": "Run the M02 privilege-boundary-crossings power prompt on grdr-daemon at commit 4e1c2d9.", "should_trigger": false},
+  {"query": "Write a Sigma detection for reads of agent credential stores from outside agent lineage, with an attack fixture.", "should_trigger": false},
+  {"query": "Rotate the CLAUDE_CODE_OAUTH_TOKEN repository secret.", "should_trigger": false},
+  {"query": "grdr-hook allows the call when the daemon is gone; that's the bug in #55. Fix it with a three-arm proof.", "should_trigger": false},
+  {"query": "Summarise the twelve adversaries in design/02 for a blog post about the project.", "should_trigger": false},
+  {"query": "Add grdr-sandbox-engine to security/trust-core.paths.", "should_trigger": false},
+  {"query": "Write SECURITY.md from design/35 section 4 for the seed commit.", "should_trigger": false},
+  {"query": "Review this docs-only change to docs/architecture/ports.md as eval-docs.", "should_trigger": false},
+  {"query": "Add a unit test for the existing IPC frame size cap in grdr-wire.", "should_trigger": false},
+  {"query": "Someone emailed security@ with a bypass report for the shell canonicaliser. Triage it and decide the severity.", "should_trigger": false}
+]

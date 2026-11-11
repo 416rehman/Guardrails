@@ -1,0 +1,105 @@
+# Hook handlers, rendered into the "hooks" block of .claude/settings.json (team/03 section 4).
+# A command entry runs `xtask hook <handler>` from .agent/kit/bin/; what each handler does and
+# how it fails is team/03 section 4.1. Entries for one event and matcher run in file order.
+# The owner's kit instructions add to these handlers: session-start and session-restore carry
+# the chief architect's ownership sentence on every source (1); post-edit and stop-gate run the
+# structure checks (4); guard-path reads the write set from the issue snapshot
+# .agent/state/item-<n>.json and names the skills of .agents/kit/path-skills.toml on a session's
+# first edit of a matching path (5, 18); guard-command applies each role's gh rules and the
+# one-line commit form (6, 27). No prompt or agent hook is used: stop-gate matches unfiled
+# "pre-existing", "flaky" and "out of scope" claims and missing evidence ids by pattern (8).
+
+# Every bound the handlers use besides their registered `timeout` is in the [hook.*] tables of
+# .agents/kit/limits.toml (owner instructions 15 and 26).
+
+[[hook]]
+event = "SessionStart"
+matcher = "startup|resume|clear|fork"
+handler = "session-start"
+timeout = 300
+
+[[hook]]
+event = "SessionStart"
+matcher = "compact"
+handler = "session-restore"
+timeout = 30
+
+# Not in team/03: these enforce the model rule of design/_review/03 on every prompt and every
+# model switch. availableModels must keep Fable for the chief architect, so settings alone
+# cannot keep other sessions off it.
+[[hook]]
+event = "UserPromptSubmit"
+handler = "model-gate"
+timeout = 10
+on_failure = "block"
+
+[[hook]]
+event = "PreModelSwitch"
+handler = "model-switch"
+timeout = 10
+on_failure = "block"
+
+[[hook]]
+event = "PreToolUse"
+matcher = "Edit|Write|MultiEdit|NotebookEdit"
+handler = "guard-path"
+timeout = 10
+on_failure = "block"
+
+[[hook]]
+event = "PreToolUse"
+matcher = "Bash|PowerShell"
+handler = "guard-command"
+timeout = 10
+on_failure = "block"
+
+[[hook]]
+event = "PostToolUse"
+matcher = "Edit|Write|MultiEdit|NotebookEdit"
+handler = "post-edit"
+timeout = 60
+
+[[hook]]
+event = "PostToolUse"
+matcher = "Bash|PowerShell"
+handler = "post-bash"
+timeout = 20
+
+[[hook]]
+event = "SubagentStart"
+handler = "subagent-start"
+timeout = 20
+
+[[hook]]
+event = "SubagentStop"
+handler = "subagent-stop"
+timeout = 60
+
+[[hook]]
+event = "Stop"
+handler = "stop-gate"
+timeout = 600
+
+# A turn that ends on an API error, a usage limit among them, is recorded in
+# .agent/state/stop-failure-<session>.json for the dispatcher, which pauses instead of counting
+# an attempt (D-47, harness.toml [limits]). Claude Code ignores this hook's output.
+[[hook]]
+event = "StopFailure"
+handler = "stop-failure"
+timeout = 10
+
+[[hook]]
+event = "PreCompact"
+handler = "pre-compact"
+timeout = 60
+
+[[hook]]
+event = "ConfigChange"
+handler = "config-change"
+timeout = 10
+on_failure = "block"
+
+[[hook]]
+event = "SessionEnd"
+handler = "session-end"
+timeout = 2

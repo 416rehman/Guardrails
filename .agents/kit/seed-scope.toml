@@ -1,0 +1,81 @@
+# Scope of the chief architect's seed session: team/06 section 14, steps 1 to 7, with the work
+# items filed as issues in the main repository instead of files (owner instruction 5). It
+# applies only to a session launched with GRDR_AGENT = "chief-architect" and GRDR_SCOPE =
+# "seed" (`cargo xtask kit launch chief-architect --seed`). There is no bootstrap mode (owner
+# instruction 7). That session may write exactly these paths, the
+# protected ones among them included, and run exactly these commands.
+
+agent = "chief-architect"
+scope = "seed"
+# `kit launch --seed` checks this branch out, from the fetched [pull_request] base when it does not
+# exist yet; `kit handoff` pushes it, opens its pull request for the [WI-0000] issue and moves the
+# issue into review, where its evaluators and the merge queue take it like any leased item.
+branch = "agent/seed"
+max_turns = 200      # raised from the definition's 60 for this one session
+prompt = "kit/prompts/chief-architect-seed.md"
+acts_as = ["programme-manager", "lead-*"]   # the planner and lead roles of team/06 section 14
+
+paths = [
+  # Step 1. The plan gives the section 5 and 6 templates no path, so they share one directory.
+  "AGENTS.md",
+  "CLAUDE.md",
+  "docs/agents/templates/**",
+  ".github/ISSUE_TEMPLATE/*",
+  ".github/labels.toml",
+  # Step 2: ADR-0001 to ADR-0028.
+  "docs/decisions/ADR-0001-*.md",
+  "docs/decisions/ADR-0002-*.md",
+  "docs/decisions/ADR-0003-*.md",
+  "docs/decisions/ADR-0004-*.md",
+  "docs/decisions/ADR-0005-*.md",
+  "docs/decisions/ADR-0006-*.md",
+  "docs/decisions/ADR-0007-*.md",
+  "docs/decisions/ADR-0008-*.md",
+  "docs/decisions/ADR-0009-*.md",
+  "docs/decisions/ADR-0010-*.md",
+  "docs/decisions/ADR-0011-*.md",
+  "docs/decisions/ADR-0012-*.md",
+  "docs/decisions/ADR-0013-*.md",
+  "docs/decisions/ADR-0014-*.md",
+  "docs/decisions/ADR-0015-*.md",
+  "docs/decisions/ADR-0016-*.md",
+  "docs/decisions/ADR-0017-*.md",
+  "docs/decisions/ADR-0018-*.md",
+  "docs/decisions/ADR-0019-*.md",
+  "docs/decisions/ADR-0020-*.md",
+  "docs/decisions/ADR-0021-*.md",
+  "docs/decisions/ADR-0022-*.md",
+  "docs/decisions/ADR-0023-*.md",
+  "docs/decisions/ADR-0024-*.md",
+  "docs/decisions/ADR-0025-*.md",
+  "docs/decisions/ADR-0026-*.md",
+  "docs/decisions/ADR-0027-*.md",
+  "docs/decisions/ADR-0028-*.md",
+  # Steps 3 and 4 write issues, not files. Steps 5 and 6:
+  "docs/agents/status/bootstrap-entry.md",
+  # Step 7 is the hand-off comment on the [WI-0000] issue.
+]
+
+# guard-command allows these and nothing else on the shell in this session; a commit is one
+# Conventional Commit line with no trailers (owner instruction 27).
+commands = [
+  "gh issue create",
+  "gh issue edit",
+  "gh issue view",
+  "gh issue list",
+  "gh issue comment",
+  "gh issue close",
+  "gh pr view",
+  "gh pr diff",
+  "gh pr list",
+  "gh pr checks",
+  "git status",
+  "git log",
+  "git diff",
+  "git show",
+  "git add",
+  "git commit",
+  "cargo xtask verify",
+  "cargo xtask kit ready",
+  "cargo xtask kit handoff",
+]

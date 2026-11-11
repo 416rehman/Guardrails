@@ -1,0 +1,51 @@
+# Network allow-lists of team/01 section 10. A roster entry's `net` names one list (team/02
+# section 1.2). The egress proxy outside each fleet VM enforces them and refuses and logs
+# everything else (WI-0006); until it exists the interactive sandbox's allowed_domains in
+# permissions.toml is the only network rule, and native Windows has no sandbox at all.
+# kit render resolves `extends`, adds the vendors.toml domains to the lists its [research]
+# egress_lists names, and writes deploy/fleet/egress.json with each role's list, group and
+# research grant, which is the file the proxy reads. A list's `group.<group>` hosts apply only to
+# that roster group.
+
+[list.A]
+hosts = [
+  "api.anthropic.com",     # Claude API under the owner's subscription
+  "claude.ai",             # subscription account authentication
+  "platform.claude.com",   # OAuth token exchange and refresh for claude.ai accounts
+  "index.crates.io",
+  "static.crates.io",
+  "registry.npmjs.org",
+  "github.com",            # the forge's git endpoint, reached only through the proxy
+  "api.github.com",        # gh, the only route to work-item issues (owner instruction 5)
+  "docs.rs",
+]
+mirrors = []               # the project's own mirrors, added as each one exists
+
+# Evaluators get list A plus these (team/01 section 10).
+[list.A.group.evaluator]
+hosts = []                 # the replay model endpoint (WI-0027) and lab dispatch (WI-0013)
+
+# List A plus fetch access to the documentation domains a research request names.
+[list.B]
+extends = "A"
+hosts_from_request = true
+
+# The forge read API only, for agents that read outsider text (SD-06).
+[list.forge-read]
+hosts = ["api.github.com"]
+methods = ["GET"]
+
+# design/14's upstream feeds, fetched through the gh-aw firewall, and the research domains of
+# vendors.toml for garden-intel's horizon sweep.
+[list.intel]
+hosts = ["github.com", "codeload.github.com", "api.osv.dev"]
+sources = [
+  "github.com/ossf/malicious-packages",
+  "github.com/github/advisory-database",
+  "github.com/cisagov/kev-data",
+  "github.com/mitre-atlas/atlas-data",
+  "osv.dev",
+]
+
+[list.none]
+hosts = []

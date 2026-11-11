@@ -1,0 +1,80 @@
+name: codeql
+
+# CodeQL for Rust, TypeScript and the workflows (owner instruction 22), on every pull request,
+# every push to main and weekly, since the repository is public (owner instruction 28). CodeQL's
+# terms allow automated analysis only of open-source code in a public repository, and GitHub code
+# scanning is free only there, so the visibility check skips the analysis on a private copy, such
+# as a self-hosted mirror.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "12 4 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  repository:
+    name: Visibility and languages
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      public: ${{ steps.plan.outputs.public }}
+      languages: ${{ steps.plan.outputs.languages }}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          visibility=$(gh api "repos/$REPOSITORY" --jq .visibility)
+          languages='["rust", "actions"]'
+          if [ -f pnpm-workspace.yaml ]; then languages='["rust", "actions", "javascript-typescript"]'; fi
+          {
+            echo "public=$([ "$visibility" = public ] && echo true || echo false)"
+            echo "languages=$languages"
+          } >> "$GITHUB_OUTPUT"
+
+  analyze:
+    needs: repository
+    if: needs.repository.outputs.public == 'true'
+    name: CodeQL ${{ matrix.language }}
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJSON(needs.repository.outputs.languages) }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          queries: security-extended
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: /language:${{ matrix.language }}

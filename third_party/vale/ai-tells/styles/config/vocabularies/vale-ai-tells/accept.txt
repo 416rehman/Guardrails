@@ -1,0 +1,67 @@
+# Project terminology
+vale-ai-tells
+ai-tells
+
+# Acronyms
+BLEU
+GPT
+ICSE
+LLM
+LLMs
+MDX
+MIT
+MSR
+NLP
+PEPs
+PMC
+PNAS
+POS
+RLHF
+ROUGE
+arXiv
+
+# Technical terms
+allowlist
+burstiness
+chatbots
+coreference
+gitmoji
+H_max
+Jaccard
+lockfiles
+lookups
+lowercased
+[Mm]etacommentary
+[Nn]ominalizations
+proselint
+devtools
+repotools
+rumdl
+cspell
+ryl
+stylometric
+substring
+templated
+[Tt]engo
+[Tt]ricolon
+[Tt]ricolons
+tokenizer
+[Tt]oolchain
+[Vv]endored
+whitepaper
+yamllint
+
+# Author and tool names
+Dasel
+Gorrie
+Kassorla
+Pangram
+Reinhart
+
+# Common words
+repo
+[Tt]odo
+
+# File names
+Justfile
+frontmatter

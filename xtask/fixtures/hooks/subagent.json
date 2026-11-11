@@ -1,0 +1,9 @@
+{
+  "handler": "subagent-start",
+  "preset": "worker",
+  "cases": [
+    {"name": "injects-handoff-contract", "env": {},
+     "input": {"hook_event_name": "SubagentStart", "agent_id": "agent-x1", "agent_type": "impl-rust"},
+     "expect": "context", "contains": "handoff.v1"}
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "schema": "audit-finding.v1",
+  "fingerprint": "sha256:1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809",
+  "run_id": "019a6c1e-7d2b-7c11-9a4e-5b0c1d2e3f41",
+  "prompt": { "id": "A01", "version": "1.0.0" },
+  "class_key": "implicit-state:exclusive-bools",
+  "locus": {
+    "crate": "grdr-agents",
+    "item": "install::InstallRecord",
+    "item_sha256": "sha256:2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a"
+  },
+  "title": "InstallRecord can hold written and canary_passed true with probed false, a combination no install step produces",
+  "label": "LIKELY",
+  "assumption": "A restart after a crash between write and canary runs restore_from_journal.",
+  "severity": 2,
+  "evidence": [
+    {
+      "path": "crates/grdr-agents/src/install.rs",
+      "line": 41,
+      "item": "install::InstallRecord",
+      "snippet_sha256": "sha256:3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b",
+      "quote": "pub probed: bool,\npub written: bool,\npub canary_passed: bool,"
+    }
+  ],
+  "permits": "Any of the eight combinations of the three booleans.",
+  "reach": "restore_from_journal sets written without probed.",
+  "trust_core": false,
+  "security_candidate": false,
+  "smallest_fix": "One InstallState enum whose variants own their data, with transitions that consume one state.",
+  "closure_proposal": { "kind": "type", "detail": "InstallState enum and a trybuild compile-fail case." },
+  "verifier": [
+    { "verdict": "DOWNGRADED", "model": "claude-opus-5-5", "reason": "Reach depends on a crash timing the result asserts.", "label": "LIKELY", "severity": 2 }
+  ],
+  "proof": { "status": "not-attempted" },
+  "state": "triage",
+  "closure": null,
+  "issue": { "repository": "416rehman/Guardrails", "number": 57 },
+  "history": [
+    { "state": "open", "run_id": "019a6c1e-7d2b-7c11-9a4e-5b0c1d2e3f41", "at": "2026-12-03T02:10:00Z", "by": "runner" },
+    { "state": "triage", "run_id": "019a6c1e-7d2b-7c11-9a4e-5b0c1d2e3f41", "at": "2026-12-03T02:25:00Z", "by": "runner" }
+  ]
+}

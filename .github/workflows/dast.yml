@@ -1,0 +1,108 @@
+name: dast
+
+# An OWASP ZAP baseline scan of the console and API against the embedded server (owner
+# instruction 22). deploy/ci/dast.toml, written with the server, holds the start command, the
+# readiness URL and the targets, so no host or port is written here; until it exists the scan is
+# skipped.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "19 3 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: dast-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  server:
+    name: Server targets defined
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      present: ${{ steps.check.outputs.present }}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: check
+        run: echo "present=$([ -f deploy/ci/dast.toml ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  baseline:
+    needs: server
+    if: needs.server.outputs.present == 'true'
+    name: ZAP baseline (once the server and deploy/ci/dast.toml exist)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - id: pins
+        run: >-
+          python3 -I -c 'import sys, tomllib;
+          tool = tomllib.load(open(sys.argv[1], "rb"))["tool"][sys.argv[2]];
+          print("\n".join(f"{k}={v}" for k, v in tool.items() if isinstance(v, str)))'
+          supply-chain/build-tools.toml zap >> "$GITHUB_OUTPUT"
+      - name: Start the embedded server and wait until it is ready
+        env:
+          LOG: ${{ runner.temp }}/server.log
+        run: |
+          python3 -I - deploy/ci/dast.toml "$LOG" <<'EOF'
+          import subprocess, sys, time, tomllib, urllib.request
+          plan = tomllib.load(open(sys.argv[1], "rb"))
+          log = open(sys.argv[2], "wb")
+          subprocess.Popen(plan["start"], stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+          deadline = time.monotonic() + plan["ready_timeout_seconds"]
+          while time.monotonic() < deadline:
+              try:
+                  with urllib.request.urlopen(plan["ready_url"], timeout=plan["ready_poll_seconds"]) as response:
+                      if response.status == 200:
+                          sys.exit(0)
+              except OSError:
+                  pass
+              time.sleep(plan["ready_poll_seconds"])
+          print(f"::error::the server was not ready at {plan['ready_url']} in time; see the server log artefact")
+          sys.exit(1)
+          EOF
+      - name: Scan each target
+        env:
+          IMAGE: ${{ steps.pins.outputs.image }}
+          REPORTS: ${{ runner.temp }}/zap
+        run: |
+          mkdir -p "$REPORTS"
+          chmod 0777 "$REPORTS"
+          status=0
+          while IFS=$'\t' read -r name url rules; do
+            args=(zap-baseline.py -t "$url" -I -J "$name.json" -r "$name.html")
+            if [ -n "$rules" ]; then
+              cp "$rules" "$REPORTS/$name.rules.tsv"
+              args+=(-c "$name.rules.tsv")
+            fi
+            docker run --rm --network host -v "$REPORTS:/zap/wrk:rw" "$IMAGE" "${args[@]}" || status=1
+          done < <(python3 -I -c 'import sys, tomllib;
+          [print(t["name"], t["url"], t.get("rules", ""), sep="\t") for t in tomllib.load(open(sys.argv[1], "rb"))["target"]]' deploy/ci/dast.toml)
+          exit "$status"
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dast
+          path: |
+            ${{ runner.temp }}/zap/
+            ${{ runner.temp }}/server.log
+          if-no-files-found: ignore

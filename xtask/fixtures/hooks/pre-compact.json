@@ -1,0 +1,9 @@
+{
+  "handler": "pre-compact",
+  "preset": "worker",
+  "cases": [
+    {"name": "writes-the-summary", "env": {"GRDR_WORK_ITEM": "7"},
+     "input": {"hook_event_name": "PreCompact", "trigger": "auto", "custom_instructions": null},
+     "expect": "context", "contains": "evidence"}
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "schema": "audit-finding.v1",
+  "fingerprint": "sha256:1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809",
+  "run_id": "019a6c1e-7d2b-7c11-9a4e-5b0c1d2e3f41",
+  "prompt": { "id": "A01", "version": "1.0.0" },
+  "class_key": "implicit-state:exclusive-bools",
+  "locus": {
+    "crate": "grdr-agents",
+    "item": "install::InstallRecord",
+    "item_sha256": "sha256:2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a"
+  },
+  "title": "InstallRecord can hold written and canary_passed true with probed false, a combination no install step produces",
+  "label": "CONFIRMED",
+  "severity": 3,
+  "evidence": [
+    {
+      "path": "crates/grdr-agents/src/install.rs",
+      "line": 41,
+      "item": "install::InstallRecord",
+      "snippet_sha256": "sha256:3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b",
+      "quote": "pub probed: bool,"
+    }
+  ],
+  "permits": "Any of the eight combinations.",
+  "reach": "restore_from_journal.",
+  "trust_core": false,
+  "security_candidate": false,
+  "smallest_fix": "One InstallState enum.",
+  "closure_proposal": { "kind": "type", "detail": "InstallState enum." },
+  "verifier": [
+    { "verdict": "UPHELD", "model": "claude-opus-5-5", "reason": "Spans match; reach constructed." }
+  ],
+  "proof": null,
+  "state": "closed",
+  "closure": null,
+  "history": [
+    { "state": "open", "at": "2026-12-03T02:10:00Z" },
+    { "state": "closed", "at": "2026-12-09T11:00:00Z", "by": "lead-adapters" }
+  ]
+}

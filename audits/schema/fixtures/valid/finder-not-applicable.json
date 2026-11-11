@@ -1,0 +1,10 @@
+{
+  "schema": "audit-finding.v1",
+  "report": "finder",
+  "prompt": { "id": "B04", "version": "1.0.0" },
+  "commit": "3f1c2b9a8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a",
+  "applicable": false,
+  "not_applicable_reason": "The scope holds no query, cache key, bus subject, lake prefix or background job.",
+  "results": [],
+  "checked_and_sound": []
+}

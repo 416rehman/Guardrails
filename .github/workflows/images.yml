@@ -1,0 +1,82 @@
+name: images
+
+# Grype as the second image scanner beside osv-scanner (owner instruction 22). The images come
+# from `cargo xtask dist`, the only release entry point (design/24 section 10), once the packaging
+# work item writes dist.toml; until then the scan is skipped.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "51 2 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  images:
+    name: Images defined
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      present: ${{ steps.check.outputs.present }}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: check
+        run: echo "present=$([ -f dist.toml ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  grype:
+    needs: images
+    if: needs.images.outputs.present == 'true'
+    name: Grype (once dist.toml defines images)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - id: pins
+        run: >-
+          python3 -I -c 'import sys, tomllib;
+          tool = tomllib.load(open(sys.argv[1], "rb"))["tool"][sys.argv[2]];
+          print("\n".join(f"{k}={v}" for k, v in tool.items() if isinstance(v, str)))'
+          supply-chain/build-tools.toml grype >> "$GITHUB_OUTPUT"
+      - id: grype
+        uses: anchore/scan-action/download-grype@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          grype-version: ${{ steps.pins.outputs.version }}
+      - name: Build the images
+        env:
+          OUT: ${{ runner.temp }}/images
+        run: cargo xtask dist --images --out "$OUT"
+      - name: Scan every image archive
+        env:
+          GRYPE: ${{ steps.grype.outputs.cmd }}
+          OUT: ${{ runner.temp }}/images
+        run: |
+          shopt -s nullglob
+          archives=("$OUT"/*.tar)
+          if [ "${#archives[@]}" -eq 0 ]; then
+            echo "::error::cargo xtask dist wrote no image archive to $OUT"
+            exit 1
+          fi
+          for archive in "${archives[@]}"; do
+            "$GRYPE" "oci-archive:$archive" --fail-on high --only-fixed
+          done

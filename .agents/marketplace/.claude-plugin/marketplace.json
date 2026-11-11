@@ -1,0 +1,342 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "grdr-agent-marketplace",
+  "owner": {
+    "name": "Loonaro"
+  },
+  "description": "The plugins agent sessions in this repository load, each pinned to a commit. PINS.md lists every entry with its commit and licence.",
+  "plugins": [
+    {
+      "name": "pr-review-toolkit",
+      "description": "Review agents for comments, tests, silent failures, type design and code quality.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/anthropics/claude-plugins-official.git",
+        "path": "plugins/pr-review-toolkit",
+        "ref": "main",
+        "sha": "43fd1f9db0941b2b83cb62268e35970d4a67c202"
+      }
+    },
+    {
+      "name": "code-simplifier",
+      "description": "An agent that simplifies recently changed code.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/anthropics/claude-plugins-official.git",
+        "path": "plugins/code-simplifier",
+        "ref": "main",
+        "sha": "43fd1f9db0941b2b83cb62268e35970d4a67c202"
+      }
+    },
+    {
+      "name": "security-guidance",
+      "description": "Pattern-based warnings on risky edits; its model reviews are switched off.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/anthropics/claude-plugins-official.git",
+        "path": "plugins/security-guidance",
+        "ref": "main",
+        "sha": "43fd1f9db0941b2b83cb62268e35970d4a67c202"
+      }
+    },
+    {
+      "name": "security-scan",
+      "description": "Vulnerability scanning of this repository, with each finding challenged before it is reported. Its skills are named claude-security.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/anthropics/claude-plugins-official.git",
+        "path": "plugins/claude-security",
+        "ref": "main",
+        "sha": "43fd1f9db0941b2b83cb62268e35970d4a67c202"
+      }
+    },
+    {
+      "name": "hookify",
+      "description": "Writes hook rules from conversation patterns or instructions.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/anthropics/claude-plugins-official.git",
+        "path": "plugins/hookify",
+        "ref": "main",
+        "sha": "43fd1f9db0941b2b83cb62268e35970d4a67c202"
+      }
+    },
+    {
+      "name": "md-management",
+      "description": "Audits and updates CLAUDE.md files. Its skills are named claude-md-management.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/anthropics/claude-plugins-official.git",
+        "path": "plugins/claude-md-management",
+        "ref": "main",
+        "sha": "43fd1f9db0941b2b83cb62268e35970d4a67c202"
+      }
+    },
+    {
+      "name": "rust-analyzer-lsp",
+      "description": "rust-analyzer as the language server for Rust files.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/anthropics/claude-plugins-official.git",
+        "path": "plugins/rust-analyzer-lsp",
+        "ref": "main",
+        "sha": "43fd1f9db0941b2b83cb62268e35970d4a67c202"
+      }
+    },
+    {
+      "name": "typescript-lsp",
+      "description": "typescript-language-server for TypeScript and JavaScript files.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/anthropics/claude-plugins-official.git",
+        "path": "plugins/typescript-lsp",
+        "ref": "main",
+        "sha": "43fd1f9db0941b2b83cb62268e35970d4a67c202"
+      }
+    },
+    {
+      "name": "frontend-design",
+      "description": "Design direction for new screens, after ui-architect.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/anthropics/claude-plugins-official.git",
+        "path": "plugins/frontend-design",
+        "ref": "main",
+        "sha": "43fd1f9db0941b2b83cb62268e35970d4a67c202"
+      }
+    },
+    {
+      "name": "mutation-testing",
+      "description": "Mutation testing campaigns and their surviving mutants.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/trailofbits/skills.git",
+        "path": "plugins/mutation-testing",
+        "ref": "main",
+        "sha": "e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff"
+      }
+    },
+    {
+      "name": "property-based-testing",
+      "description": "Writing and triaging property-based tests.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/trailofbits/skills.git",
+        "path": "plugins/property-based-testing",
+        "ref": "main",
+        "sha": "e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff"
+      }
+    },
+    {
+      "name": "rust-review",
+      "description": "Security review of Rust code.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/trailofbits/skills.git",
+        "path": "plugins/rust-review",
+        "ref": "main",
+        "sha": "e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff"
+      }
+    },
+    {
+      "name": "differential-review",
+      "description": "Security review of a change against its history.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/trailofbits/skills.git",
+        "path": "plugins/differential-review",
+        "ref": "main",
+        "sha": "e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff"
+      }
+    },
+    {
+      "name": "regression-hunt",
+      "description": "Finds, reproduces and judges regressions in commits and pull requests.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/trailofbits/skills.git",
+        "path": "plugins/regression-hunt",
+        "ref": "main",
+        "sha": "e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff"
+      }
+    },
+    {
+      "name": "patching-bugs",
+      "description": "Reproduces, patches and proves the fix for one known bug.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/trailofbits/skills.git",
+        "path": "plugins/patching-bugs",
+        "ref": "main",
+        "sha": "e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff"
+      }
+    },
+    {
+      "name": "insecure-defaults",
+      "description": "Finds insecure default configuration.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/trailofbits/skills.git",
+        "path": "plugins/insecure-defaults",
+        "ref": "main",
+        "sha": "e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff"
+      }
+    },
+    {
+      "name": "sharp-edges",
+      "description": "Finds APIs and settings that invite security mistakes.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/trailofbits/skills.git",
+        "path": "plugins/sharp-edges",
+        "ref": "main",
+        "sha": "e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff"
+      }
+    },
+    {
+      "name": "spec-to-code-compliance",
+      "description": "Checks code against the documents that specify it.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/trailofbits/skills.git",
+        "path": "plugins/spec-to-code-compliance",
+        "ref": "main",
+        "sha": "e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff"
+      }
+    },
+    {
+      "name": "fp-check",
+      "description": "The fp-check skill: verifies a reported security bug before it is called a true or false positive.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/trailofbits/skills.git",
+        "path": "plugins/fp-check/skills",
+        "ref": "main",
+        "sha": "e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff"
+      },
+      "skills": [
+        "./fp-check"
+      ]
+    },
+    {
+      "name": "supply-chain-risk-auditor",
+      "description": "Audits dependencies for supply-chain risk.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/trailofbits/skills.git",
+        "path": "plugins/supply-chain-risk-auditor",
+        "ref": "main",
+        "sha": "e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff"
+      }
+    },
+    {
+      "name": "agentic-actions-auditor",
+      "description": "Audits GitHub Actions workflows that run AI agents.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/trailofbits/skills.git",
+        "path": "plugins/agentic-actions-auditor",
+        "ref": "main",
+        "sha": "e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff"
+      }
+    },
+    {
+      "name": "writing-lean-proofs",
+      "description": "Writing proofs in Lean 4.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/trailofbits/skills.git",
+        "path": "plugins/writing-lean-proofs",
+        "ref": "main",
+        "sha": "e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff"
+      }
+    },
+    {
+      "name": "superpowers",
+      "description": "Three superpowers skills: test-driven development, systematic debugging and verification before completion.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/obra/superpowers.git",
+        "path": "skills",
+        "ref": "v7.0.2",
+        "sha": "22f0b463e7a5e579904dd6211a520321035526f7"
+      },
+      "skills": [
+        "./test-driven-development",
+        "./systematic-debugging",
+        "./verification-before-completion"
+      ]
+    },
+    {
+      "name": "dzhng-skills",
+      "description": "Five review skills: implicit state machines, test value, decision records, overengineering and file-size ratchets.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/dzhng/skills.git",
+        "path": "skills/review",
+        "ref": "main",
+        "sha": "873aba8d6331976f92052f54513076abd1ae629f"
+      },
+      "skills": [
+        "./find-state-machines",
+        "./audit-tests",
+        "./audit-decisions",
+        "./find-overengineering",
+        "./ratchet-files"
+      ]
+    },
+    {
+      "name": "cleanup",
+      "description": "The owner's cleanup skill and the commit gate that holds a commit until the pass has run.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/416rehman/claude-mods.git",
+        "path": "cleanup",
+        "ref": "main",
+        "sha": "489dd5a409814c9db337a4d53bce440aba75d21f"
+      }
+    },
+    {
+      "name": "ce-simplify-code",
+      "description": "Simplifies code for reuse and quality and reports tests that protect nothing; vendored with edits.",
+      "source": "./plugins/ce-simplify-code"
+    },
+    {
+      "name": "thermo-nuclear-code-quality-review",
+      "description": "A strict maintainability review of structure and abstraction quality, for the review workflow's shadow seat.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/cursor/plugins.git",
+        "path": "cursor-team-kit/skills/thermo-nuclear-code-quality-review",
+        "ref": "main",
+        "sha": "5866df557357d005b3c0c9d3da0d9e739b4bdde3"
+      }
+    },
+    {
+      "name": "unslop",
+      "description": "Rewrites prose to remove AI writing patterns; vendored with edits.",
+      "source": "./plugins/unslop"
+    },
+    {
+      "name": "semgrep",
+      "description": "Semgrep Guardian: scans the files an agent writes, through Semgrep's service.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/semgrep/mcp-marketplace.git",
+        "path": "plugin",
+        "ref": "develop",
+        "sha": "5e0bb47111d96081e06194bad0fb7dc0caa52563"
+      }
+    },
+    {
+      "name": "modern-web-guidance",
+      "description": "Modern web platform guidance with browser-compatibility data, and the chrome-extensions skill.",
+      "source": {
+        "source": "github",
+        "repo": "GoogleChrome/modern-web-guidance",
+        "ref": "v1.0.0",
+        "sha": "4dd968349e54ca45a05dd5c818fb035c9054b022"
+      }
+    }
+  ]
+}

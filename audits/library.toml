@@ -1,0 +1,1041 @@
+# Power-prompt registry (docs/team/04). `cargo xtask audit` reads it from the base branch; README.md
+# says how. Gate configuration under D-63: a change is a trust-core work item. Model names resolve
+# through .agents/models.toml; token caps per trigger window are .agents/kit/usage.toml's
+# [routine.audit-*] rows and the usage brake its [audit_brake].
+
+[files]
+preamble = "preamble.md"
+verifier = "verifier.md"
+prompt = "prompts/{id}.md"
+finding_schema = "schema/audit-finding.v1.json"
+run_schema = "schema/audit-run.v1.json"
+
+[defaults]
+max_findings = 15
+finder_model = "sonnet"            # design/_review/03: find passes on Sonnet 5.5
+finder_effort = "medium"
+verifier_model = "opus"            # refuting passes on Opus 5.5 in a clean context (D-47)
+verifier_effort = "high"
+second_verifier_model = "sonnet"   # severity 1 adds a clean-context Sonnet verifier, so two models look
+prover_model = "opus"
+overlap_model = "sonnet"           # advisory overlap judgement (team/04 section 6)
+finder_max_turns = 40
+verifier_max_turns = 20
+prover_max_turns = 40
+usage_cap_tokens = 750_000         # per run; a run's cap is the lower of this and its trigger's per-run cap
+control_concept = "Find the bugs in {scope}."
+control_pairing = { first_runs = 8, then_every = 4, every_run_when_only = ["w4", "release", "model-upgrade"] }
+shadow_days = 14                   # a new or major-bumped prompt files no issues and blocks nothing
+
+[rules]
+allowed_models = ["opus", "sonnet"]   # no audit pass runs on fable
+
+# Where results go. The repositories are created under the owner's profile when this work starts
+# (owner instruction 5); until then the runner writes the ledger to `local` and says so.
+[ledger]
+public = "416rehman/audit-ledger"
+private = "416rehman/audit-ledger-private"   # security candidates under embargo (D-62)
+local = ".agent/audit-ledger"
+
+# A security candidate goes to the private ledger only: never an issue, comment or pull request.
+[embargo]
+severity = 1                          # any severity 1 result
+themes = ["security"]                 # any S-theme result
+theme_severity = { boundaries = 2 }   # B-theme results at severity 2 or worse
+
+# Upheld results that are not security candidates become GitHub issues (owner instructions 5 and 6).
+[issues]
+repository = "416rehman/Guardrails"
+labels = ["status:proposed", "kind:gardening"]   # plus squad:<owner of the locus> from .agents/owners.toml
+max_per_week = 8                     # team/04 section 6; prompts with always_file are not held back
+rank = ["severity", "proof", "trust-core"]
+title = "[{prompt_id}] {title}"
+fingerprint_line = "Audit-Fingerprint: {fingerprint}"
+closure_line = "Closes by: {closes_by}"
+
+[release_gate]
+blocking_states = ["open", "upheld", "triage", "proven", "regressed"]   # per prompt: release_gate = worst severity that blocks
+
+# Triggers (team/04 section 9). `scope` is the default scope kind of a run on that trigger.
+[trigger.pr]
+cadence = "pull-request"
+scope = "diff"
+routine = "audit-pr"                 # per-run and per-pull-request caps, at most six power runs
+started_by = "eval-diff"             # inside the `review` workflow, first and final rounds
+order = ["M01", "M02", "M03", "M04", "M05"]   # then library order; the rest are recorded as skipped
+forks = "merge-queue"                # pull requests from forks are audited when they enter the queue
+
+[trigger.nightly]
+cadence = "nightly"
+scope = "rotation"
+routine = "audit-nightly"
+started_by = "garden-architecture"
+security_rotation = ["M01", "M02", "M03", "M04", "M05"]   # one a night
+
+[trigger.weekly]
+cadence = "weekly"
+scope = "repo"                       # the five crates with the most churn when the tree does not fit the cap
+churn_crates = 5
+routine = "audit-weekly"
+started_by = "garden-architecture"
+
+[trigger.w4]
+cadence = "every-fourth-week"
+scope = "repo"
+routine = "audit-weekly"             # inside the weekly cap
+started_by = "garden-architecture"
+buckets = 4
+
+[trigger.release]
+cadence = "release"
+scope = "release-head"               # findings diffed against the previous release
+routine = "audit-release"
+started_by = "release workflow"
+
+[trigger.model-upgrade]
+cadence = "model-upgrade"
+scope = "kit"
+routine = "audit-model-upgrade"
+started_by = "lead-agent-kit"
+adopt_when = { max_recall_loss_points = 10 }   # Y01; the new model is not used for audits before
+
+[trigger.incident]
+cadence = "incident"
+scope = "repo"
+routine = "audit-incident"
+started_by = "incident review"
+
+# Diff shapes a pull-request filter can require, beyond paths. The runner matches them with
+# ast-grep on the changed items; `line_regex` (Rust regex, on added and removed lines) is the
+# fallback until those rules exist, and errs toward running the prompt.
+[shape.type-field]
+description = "A field of a struct, enum variant, union, class, interface or type literal is added, removed, renamed or retyped"
+line_regex = '^\s*(pub(\([^)]*\))?\s+|readonly\s+|(public|private|protected)\s+)?[A-Za-z_][A-Za-z0-9_]*\??\s*:\s*[^:=\s]|^\s*[A-Z][A-Za-z0-9]*\s*(\{|\(|,|=\s*\d)'
+
+[shape.status-like-field]
+description = "A field, variable or parameter whose name is, or ends in, one of `names` is added or changed"
+names = ["state", "status", "phase", "stage", "mode"]   # owner instruction 4, the same list as grdr-structure S4
+line_regex = '(?i)\b[a-z0-9_]*(state|status|phase|stage|mode)\??\s*[:=]'
+
+[shape.match-on-status-like]
+description = "A match, switch or if-let whose scrutinee is a status-like field is added or changed"
+line_regex = '(?i)\b(match|switch)\b[^{]*\b[a-z0-9_]*(state|status|phase|stage|mode)\b|\bif\s+let\b[^{]*=\s*[^{]*\b[a-z0-9_]*(state|status|phase|stage|mode)\b'
+
+[shape.test-code]
+description = "Test code is added or changed: test directories, test files, #[cfg(test)] modules, test functions"
+paths = ["**/tests/**", "**/benches/**", "fuzz/**", "**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"]
+line_regex = '#\[(test|tokio::test|rstest|proptest|cfg\(test\))|\b(assert|assert_eq|assert_ne|debug_assert|prop_assert|proptest)!|\b(it|test|describe)\('
+
+[shape.logging-or-error]
+description = "Logging, Debug or Display output, or error types and messages are added or changed"
+line_regex = '\b(tracing|log)::|\b(trace|debug|info|warn|error|println|eprintln)!\(|#\[derive\([^)]*\bDebug\b|\bimpl\b.*\b(Display|Debug|Error)\b\s+for\b|#\[error\(|\bLogSafe\b|support[-_]bundle'
+
+[shape.async-code]
+description = "Async code, locks, channels or task spawns are added or changed"
+line_regex = '\basync\b|\.await\b|\bselect!|\b(Mutex|RwLock|Semaphore|Notify|mpsc|oneshot|broadcast)\b|\bspawn(_blocking|_local)?\('
+
+[shape.removal-claim]
+description = "The pull-request title, body or a commit subject claims a removal"
+text_regex = '(?i)\b(remove[sd]?|removal|delete[sd]?|deletion|drop(s|ped)?)\b'
+
+# Nightly rotation (team/04 section 9). The runner takes the next entry whose paths exist, so the
+# cycle grows as crates arrive; the pull request that adds a crate adds it here (work item 10).
+[[rotation]]
+name = "grdr-hook"
+paths = ["programs/grdr-hook/**"]
+
+[[rotation]]
+name = "grdr-core::session"
+paths = ["crates/grdr-core/src/session.rs", "crates/grdr-core/src/session/**"]
+
+[[rotation]]
+name = "grdr-core::policy with grdr-policy-ref"
+paths = ["crates/grdr-core/src/policy.rs", "crates/grdr-core/src/policy/**", "crates/grdr-policy-ref/**"]
+
+[[rotation]]
+name = "grdr-core::analyze"
+paths = ["crates/grdr-core/src/analyze.rs", "crates/grdr-core/src/analyze/**"]
+
+[[rotation]]
+name = "grdr-fastpath"
+paths = ["crates/grdr-fastpath/**"]
+
+[[rotation]]
+name = "grdr-wire"
+paths = ["crates/grdr-wire/**"]
+
+[[rotation]]
+name = "grdr-daemon"
+paths = ["programs/grdr-daemon/**"]
+
+[[rotation]]
+name = "grdr-engine"
+paths = ["programs/grdr-engine/**"]
+
+[[rotation]]
+name = "grdr-agents"
+paths = ["crates/grdr-agents/**"]
+
+[[rotation]]
+name = "grdr-update with grdr-updater"
+paths = ["crates/grdr-update/**", "programs/grdr-updater/**"]
+
+[[rotation]]
+name = "grdr-store-local"
+paths = ["crates/grdr-store-local/**"]
+
+[[rotation]]
+name = "grdr-sensor-linux"
+paths = ["crates/grdr-sensor-linux/**"]
+
+[[rotation]]
+name = "grdr-sensor-macos"
+paths = ["crates/grdr-sensor-macos/**"]
+
+[[rotation]]
+name = "grdr-sensor-windows"
+paths = ["crates/grdr-sensor-windows/**"]
+
+[[rotation]]
+name = "grdr-proxy with grdr-mcp"
+paths = ["programs/grdr-proxy/**", "programs/grdr-mcp/**"]
+
+[[rotation]]
+name = "grdr-sandbox-*"
+paths = ["crates/grdr-sandbox-*/**"]
+
+[[rotation]]
+name = "grdr-server targets"
+paths = ["programs/grdr-server/**"]
+
+[[rotation]]
+name = "web/"
+paths = ["web/**"]
+
+# Prompts (team/04 sections 7 and 8). Unset keys take [defaults]. `paths` and `pr_shape` filter
+# pull requests; `scope` overrides a trigger's default scope kind; `bucket` places a w4 prompt.
+
+# 7.1 State and invariants
+
+[[prompt]]
+id = "A01"
+name = "implicit-state-machines"
+title = "Implicit state machines"
+version = "1.0.0"
+theme = "state"
+triggers = ["pr", "nightly", "weekly"]   # pr and weekly whole tree by owner instruction 4
+paths = ["**/*.rs", "**/*.ts", "**/*.tsx", "**/*.swift"]
+pr_shape = ["type-field", "status-like-field", "match-on-status-like"]
+pr_priority = "never-skip"         # funded first from the per-pull-request cap; not one of the six
+blocking = "major"                 # a surviving PR finding fails eval-diff
+closes-by = ["type"]               # owner instruction 4: never a comment, flag, guard or test alone
+always_file = true                 # every surviving scheduled finding becomes an issue
+shadow_days = 0
+finder_effort = "high"
+usage_cap_tokens = 1_500_000
+
+[[prompt]]
+id = "A02"
+name = "lifecycle-delta"
+title = "Lifecycle delta"
+version = "1.0.0"
+theme = "state"
+triggers = ["pr"]
+paths_from = "docs/state-machines/*.md"   # each machine document lists its paths in front matter
+closes-by = ["type", "test"]
+
+[[prompt]]
+id = "A03"
+name = "reachable-illegal-transitions"
+title = "Reachable illegal transitions"
+version = "1.0.0"
+theme = "state"
+triggers = ["nightly", "weekly"]
+after = "A01"                      # runs on the machines the A01 run of the same trigger upheld
+scope = { nightly = "machines", weekly = "machines" }
+params = ["name"]
+closes-by = ["test"]
+finder_effort = "high"
+
+[[prompt]]
+id = "A04"
+name = "unenforced-invariants"
+title = "Unenforced invariants"
+version = "1.0.0"
+theme = "state"
+triggers = ["weekly"]
+closes-by = ["test", "type"]
+
+[[prompt]]
+id = "A05"
+name = "representable-illegal-states"
+title = "Representable illegal states"
+version = "1.0.0"
+theme = "state"
+triggers = ["pr", "w4"]
+bucket = 1
+paths = ["crates/grdr-model/**", "proto/**"]
+closes-by = ["type"]
+
+[[prompt]]
+id = "A06"
+name = "dual-sources-of-truth"
+title = "Dual sources of truth"
+version = "1.0.0"
+theme = "state"
+triggers = ["weekly"]
+closes-by = ["type", "test"]
+
+[[prompt]]
+id = "A07"
+name = "primitive-obsession"
+title = "Primitive obsession"
+version = "1.0.0"
+theme = "state"
+triggers = ["w4"]
+bucket = 1
+closes-by = ["type"]
+
+# 7.2 Boundaries and trust
+
+[[prompt]]
+id = "B01"
+name = "boundary-crossing-in-diff"
+title = "Boundary crossing in a diff"
+version = "1.0.0"
+theme = "boundaries"
+triggers = ["pr"]
+paths = ["crates/grdr-wire/**", "programs/grdr-hook/**", "programs/grdr-daemon/**", "programs/grdr-engine/**",
+         "programs/grdr-uplink/**", "programs/grdr-proxy/**", "programs/grdr-mcp/**"]
+closes-by = ["test", "lint"]
+
+[[prompt]]
+id = "B02"
+name = "trust-boundary-map"
+title = "Trust-boundary map"
+version = "1.0.0"
+theme = "boundaries"
+triggers = ["w4", "release"]
+bucket = 1
+closes-by = ["test", "lint"]
+
+[[prompt]]
+id = "B03"
+name = "layering-intent"
+title = "Layering intent"
+version = "1.0.0"
+theme = "boundaries"
+triggers = ["weekly"]
+closes-by = ["lint"]
+
+[[prompt]]
+id = "B04"
+name = "tenant-scoping"
+title = "Tenant scoping"
+version = "1.0.0"
+theme = "boundaries"
+triggers = ["pr", "release"]
+paths = ["programs/grdr-server/**", "crates/grdr-rel-postgres/**", "crates/grdr-rel-sqlite/**", "crates/grdr-lake/**",
+         "crates/grdr-bus-*/**", "crates/grdr-blob/**", "crates/grdr-store-local/**"]
+closes-by = ["test", "lint"]
+
+[[prompt]]
+id = "B05"
+name = "authz-coverage"
+title = "Authorisation coverage"
+version = "1.0.0"
+theme = "boundaries"
+triggers = ["pr", "release"]
+paths = ["programs/grdr-server/**", "programs/grdr-daemon/**", "programs/grdr/**", "programs/grdr-tray/**",
+         "programs/grdr-desktop/**", "proto/**", "schema/**"]
+closes-by = ["test", "lint"]
+
+[[prompt]]
+id = "B06"
+name = "data-becomes-instructions"
+title = "Data becomes instructions"
+version = "1.0.0"
+theme = "boundaries"
+triggers = ["w4"]
+bucket = 1
+closes-by = ["test", "lint"]
+
+[[prompt]]
+id = "B07"
+name = "secret-and-content-leaks"
+title = "Secret and content leaks"
+version = "1.0.0"
+theme = "boundaries"
+triggers = ["pr", "release"]
+paths = ["**/*.rs"]
+pr_shape = ["logging-or-error"]
+closes-by = ["lint", "type"]
+
+[[prompt]]
+id = "B08"
+name = "privacy-schema-drift"
+title = "Privacy schema drift"
+version = "1.0.0"
+theme = "boundaries"
+triggers = ["w4", "release"]
+bucket = 2
+closes-by = ["lint"]
+
+[[prompt]]
+id = "B09"
+name = "unsafe-invariants"
+title = "Unsafe invariants"
+version = "1.0.0"
+theme = "boundaries"
+triggers = ["pr", "release"]
+paths = ["crates/grdr-ffi/**", "crates/grdr-fastpath-ffi/**", "crates/grdr-sensor-*/**", "crates/grdr-sandbox-*/**",
+         "crates/grdr-driver-windows/**"]
+closes-by = ["test", "lint"]
+
+# 7.3 Errors and failure modes
+
+[[prompt]]
+id = "C01"
+name = "swallowed-errors"
+title = "Swallowed errors"
+version = "1.0.0"
+theme = "errors"
+triggers = ["pr"]
+paths = ["**/*.rs"]
+closes-by = ["lint", "test"]
+
+[[prompt]]
+id = "C02"
+name = "error-taxonomy"
+title = "Error taxonomy"
+version = "1.0.0"
+theme = "errors"
+triggers = ["w4"]
+bucket = 2
+closes-by = ["lint", "type"]
+
+[[prompt]]
+id = "C03"
+name = "panic-paths"
+title = "Panic paths"
+version = "1.0.0"
+theme = "errors"
+triggers = ["nightly"]
+closes-by = ["test", "lint"]
+
+[[prompt]]
+id = "C04"
+name = "implicit-transactions"
+title = "Implicit transactions"
+version = "1.0.0"
+theme = "errors"
+triggers = ["w4"]
+bucket = 2
+closes-by = ["test"]
+
+[[prompt]]
+id = "C05"
+name = "crash-consistency"
+title = "Crash consistency"
+version = "1.0.0"
+theme = "errors"
+triggers = ["w4", "release"]
+bucket = 2
+closes-by = ["test"]
+
+[[prompt]]
+id = "C06"
+name = "retry-safety"
+title = "Retry safety"
+version = "1.0.0"
+theme = "errors"
+triggers = ["pr", "w4"]
+bucket = 2
+paths = ["programs/grdr-uplink/**", "crates/grdr-core/src/policy.rs", "crates/grdr-core/src/policy/**",
+         "programs/grdr-daemon/**", "programs/grdr-server/**", "crates/grdr-store-local/**"]
+closes-by = ["test"]
+
+[[prompt]]
+id = "C07"
+name = "degrade-visibly"
+title = "Degrade visibly"
+version = "1.0.0"
+theme = "errors"
+triggers = ["weekly"]
+closes-by = ["test", "lint"]
+
+# 7.4 Concurrency and time
+
+[[prompt]]
+id = "D01"
+name = "time-assumptions"
+title = "Time assumptions"
+version = "1.0.0"
+theme = "concurrency"
+triggers = ["weekly"]
+closes-by = ["lint", "type"]
+
+[[prompt]]
+id = "D02"
+name = "delivery-assumptions"
+title = "Delivery assumptions"
+version = "1.0.0"
+theme = "concurrency"
+triggers = ["w4", "release"]
+bucket = 3
+closes-by = ["test"]
+
+[[prompt]]
+id = "D03"
+name = "concurrency-hazards"
+title = "Concurrency hazards"
+version = "1.0.0"
+theme = "concurrency"
+triggers = ["pr", "w4"]
+bucket = 3
+paths = ["**/*.rs"]
+pr_shape = ["async-code"]
+closes-by = ["test"]
+
+[[prompt]]
+id = "D04"
+name = "deadline-paths"
+title = "Deadline paths"
+version = "1.0.0"
+theme = "concurrency"
+triggers = ["pr", "release"]
+paths = ["programs/grdr-hook/**", "programs/grdr-engine/**", "programs/grdr-proxy/**", "crates/grdr-fastpath/**",
+         "crates/grdr-core/**"]
+closes-by = ["test", "lint"]
+
+[[prompt]]
+id = "D05"
+name = "missing-deadlines"
+title = "Missing deadlines"
+version = "1.0.0"
+theme = "concurrency"
+triggers = ["weekly"]
+closes-by = ["lint", "test"]
+
+[[prompt]]
+id = "D06"
+name = "flaky-explainers"
+title = "Flaky-test explainers"
+version = "1.0.0"
+theme = "concurrency"
+triggers = ["nightly"]
+scope = { nightly = "repo" }       # the flake log names the tests, not the rotation
+closes-by = ["test"]
+
+[[prompt]]
+id = "D07"
+name = "unbounded-resources"
+title = "Unbounded resources"
+version = "1.0.0"
+theme = "concurrency"
+triggers = ["pr", "weekly"]
+paths = ["crates/grdr-wire/**", "crates/grdr-llm-proto/**", "crates/grdr-mcp-proto/**", "crates/grdr-core/src/analyze.rs",
+         "crates/grdr-core/src/analyze/**", "programs/grdr-uplink/**", "limits.toml"]
+closes-by = ["lint", "test"]
+
+# 7.5 Duplication and dead code
+
+[[prompt]]
+id = "E01"
+name = "near-duplicates"
+title = "Near duplicates"
+version = "2.0.0"                  # looks in the V27 duplicate-code report first (P17)
+theme = "duplication"
+triggers = ["weekly"]
+closes-by = ["type", "test"]
+
+[[prompt]]
+id = "E02"
+name = "scattered-rules"
+title = "Scattered rules"
+version = "1.0.0"
+theme = "duplication"
+triggers = ["weekly"]
+closes-by = ["type", "test"]
+
+[[prompt]]
+id = "E03"
+name = "deletion-pass"
+title = "Deletion pass"
+version = "1.0.0"
+theme = "duplication"
+triggers = ["weekly"]
+closes-by = ["test"]
+
+[[prompt]]
+id = "E04"
+name = "deletion-avoidance"
+title = "Deletion avoidance"
+version = "1.0.0"
+theme = "duplication"
+triggers = ["pr"]
+pr_shape = ["removal-claim"]
+closes-by = ["test"]
+
+[[prompt]]
+id = "E05"
+name = "overengineering"
+title = "Overengineering"
+version = "1.0.0"
+theme = "duplication"
+triggers = ["w4"]
+bucket = 3
+closes-by = ["decision", "test"]
+
+[[prompt]]
+id = "E06"
+name = "flag-explosion"
+title = "Flag explosion"
+version = "1.0.0"
+theme = "duplication"
+triggers = ["w4"]
+bucket = 3
+closes-by = ["lint", "test"]
+
+[[prompt]]
+id = "E07"
+name = "one-way-per-concern"
+title = "One way per concern"
+version = "1.0.0"
+theme = "duplication"
+triggers = ["pr", "w4"]             # P17: every pull request that touches a registry
+bucket = 3
+paths = ["schema/**", "interface/**", "architecture.toml", "limits.toml", "brand/**"]
+closes-by = ["lint", "type", "decision"]
+
+[[prompt]]
+id = "E08"
+name = "hard-coded-behaviour"
+title = "Hard-coded behaviour and values"
+version = "1.0.0"
+theme = "architecture"
+triggers = ["weekly"]               # garden-architecture's weekly run (owner instructions 9 and 26)
+closes-by = ["type", "decision"]   # a mechanism or data source, or a record that the code is the mechanism's fixed part
+
+# 7.6 API and schema drift
+
+[[prompt]]
+id = "F01"
+name = "wire-semantics-vs-spec"
+title = "Wire semantics against the specification"
+version = "1.0.0"
+theme = "schema-drift"
+triggers = ["release"]
+closes-by = ["test", "decision"]
+
+[[prompt]]
+id = "F02"
+name = "undeclared-public-change"
+title = "Undeclared public change"
+version = "1.0.0"
+theme = "schema-drift"
+triggers = ["pr", "release"]
+paths = ["crates/grdr-proto/**", "crates/grdr-schema/**", "crates/grdr-model/**", "crates/grdr-core/**",
+         "crates/grdr-llm-proto/**", "crates/grdr-mcp-proto/**", "crates/grdr-fastpath/**", "crates/grdr-fastpath-ffi/**",
+         "crates/grdr-ffi/**", "crates/grdr-wasm/**", "crates/grdr-review/**", "crates/grdr-ports/**",
+         "crates/grdr-ports-testkit/**", "crates/grdr-crypto/**", "crates/grdr-wire/**"]
+closes-by = ["decision", "test"]
+
+[[prompt]]
+id = "F03"
+name = "implicit-protocols"
+title = "Implicit protocols"
+version = "1.0.0"
+theme = "schema-drift"
+triggers = ["w4"]
+bucket = 3
+closes-by = ["type", "test"]
+
+[[prompt]]
+id = "F04"
+name = "version-skew"
+title = "Version skew"
+version = "1.0.0"
+theme = "schema-drift"
+triggers = ["release"]
+release_gate = 2
+closes-by = ["test"]
+
+[[prompt]]
+id = "F05"
+name = "cedar-vocabulary-drift"
+title = "Cedar vocabulary drift"
+version = "1.0.0"
+theme = "schema-drift"
+triggers = ["pr", "release"]
+paths = ["schema/**", "crates/grdr-schema/**", "crates/grdr-core/src/policy.rs", "crates/grdr-core/src/policy/**"]
+closes-by = ["test", "lint"]
+
+[[prompt]]
+id = "F06"
+name = "terminology-drift"
+title = "Terminology drift"
+version = "2.0.0"                  # adds the vocabulary, language tokens, presentation words and routes (P17, D-69)
+theme = "schema-drift"
+triggers = ["pr", "w4"]
+bucket = 2
+paths = ["**/*.md", "interface/strings/**", "interface/presentation.toml", "interface/routes.toml", "schema/vocabulary.toml", "**/i18n/**"]
+closes-by = ["lint"]
+
+[[prompt]]
+id = "F07"
+name = "config-reference"
+title = "Configuration reference"
+version = "1.0.0"
+theme = "schema-drift"
+triggers = ["release"]
+closes-by = ["lint", "test"]
+
+[[prompt]]
+id = "F08"
+name = "platform-parity"
+title = "Platform parity"
+version = "1.0.0"
+theme = "schema-drift"
+triggers = ["release"]
+release_gate = 2
+closes-by = ["test"]
+
+# 7.7 Tests that do not test
+
+[[prompt]]
+id = "G01"
+name = "test-change-audit"
+title = "Test-change audit"
+version = "1.0.0"
+theme = "tests"
+triggers = ["pr"]
+pr_shape = ["test-code"]
+closes-by = ["test"]
+
+[[prompt]]
+id = "G02"
+name = "test-theatre"
+title = "Test theatre"
+version = "1.0.0"
+theme = "tests"
+triggers = ["weekly"]
+closes-by = ["test", "lint"]
+
+[[prompt]]
+id = "G03"
+name = "surviving-mutants"
+title = "Surviving mutants"
+version = "1.0.0"
+theme = "tests"
+triggers = ["nightly"]
+scope = { nightly = "repo" }       # the mutation report, worst crates first
+closes-by = ["test"]
+
+[[prompt]]
+id = "G04"
+name = "missing-executable-spec"
+title = "Missing executable specification"
+version = "1.0.0"
+theme = "tests"
+triggers = ["w4", "release"]
+bucket = 3
+closes-by = ["test"]
+
+[[prompt]]
+id = "G05"
+name = "oracle-independence"
+title = "Oracle independence"
+version = "1.0.0"
+theme = "tests"
+triggers = ["w4"]
+bucket = 4
+closes-by = ["test", "lint"]
+
+# 7.8 Documentation drift
+
+[[prompt]]
+id = "H01"
+name = "lying-docs"
+title = "Lying documentation"
+version = "1.0.0"
+theme = "docs"
+triggers = ["weekly"]
+closes-by = ["test", "lint"]
+
+[[prompt]]
+id = "H02"
+name = "spec-to-code"
+title = "Specification to code"
+version = "1.0.0"
+theme = "docs"
+triggers = ["release"]
+closes-by = ["test", "decision"]
+
+[[prompt]]
+id = "H03"
+name = "newcomer-traps"
+title = "Newcomer traps"
+version = "1.0.0"
+theme = "docs"
+triggers = ["w4"]
+bucket = 4
+closes-by = ["lint", "test", "decision"]
+
+[[prompt]]
+id = "H04"
+name = "stale-agent-instructions"
+title = "Stale agent instructions"
+version = "1.0.0"
+theme = "docs"
+triggers = ["model-upgrade", "w4"]
+bucket = 4
+closes-by = ["lint", "decision"]
+
+# 7.9 Dependency and supply chain
+
+[[prompt]]
+id = "I01"
+name = "new-dependency"
+title = "New dependency"
+version = "1.0.0"
+theme = "supply-chain"
+triggers = ["pr"]
+paths = ["**/Cargo.toml", "**/package.json", "third_party/**"]
+closes-by = ["decision", "lint"]
+
+[[prompt]]
+id = "I02"
+name = "build-supply-chain"
+title = "Build supply chain"
+version = "1.0.0"
+theme = "supply-chain"
+triggers = ["w4"]
+bucket = 4
+closes-by = ["lint"]
+
+[[prompt]]
+id = "I03"
+name = "dependency-justification"
+title = "Dependency justification"
+version = "1.0.0"
+theme = "supply-chain"
+triggers = ["w4"]
+bucket = 4
+closes-by = ["decision", "lint"]
+
+[[prompt]]
+id = "I04"
+name = "licence-hygiene"
+title = "Licence hygiene"
+version = "1.0.0"
+theme = "supply-chain"
+triggers = ["release"]
+closes-by = ["lint", "decision"]
+
+[[prompt]]
+id = "I05"
+name = "agent-kit-supply-chain"
+title = "Agent-kit supply chain"
+version = "1.0.0"
+theme = "supply-chain"
+triggers = ["model-upgrade", "w4"]
+bucket = 4
+scope = { w4 = "kit" }
+closes-by = ["lint", "decision"]
+
+# 7.10 Performance
+
+[[prompt]]
+id = "J01"
+name = "hot-path-cliffs"
+title = "Hot-path cliffs"
+version = "1.0.0"
+theme = "performance"
+triggers = ["pr", "w4"]
+bucket = 4
+paths = ["crates/grdr-core/src/lib.rs", "crates/grdr-core/src/session.rs", "crates/grdr-core/src/session/**",
+         "crates/grdr-core/src/analyze.rs", "crates/grdr-core/src/analyze/**", "crates/grdr-fastpath/**",
+         "programs/grdr-uplink/**", "crates/grdr-lake/**"]
+closes-by = ["test"]
+
+[[prompt]]
+id = "J02"
+name = "footprint-and-build-storms"
+title = "Footprint and build storms"
+version = "1.0.0"
+theme = "performance"
+triggers = ["release"]
+closes-by = ["test"]
+
+# 7.11 User-experience consistency
+
+[[prompt]]
+id = "K01"
+name = "block-message-contract"
+title = "Block-message contract"
+version = "1.0.0"
+theme = "ux"
+triggers = ["pr", "w4"]
+bucket = 4
+paths = ["programs/grdr-hook/**", "crates/grdr-agents/**", "programs/grdr/**", "web/**", "desktop/**"]
+closes-by = ["test"]
+
+[[prompt]]
+id = "K02"
+name = "dead-ends"
+title = "Dead ends"
+version = "1.0.0"
+theme = "ux"
+triggers = ["w4"]
+bucket = 4
+closes-by = ["test"]
+
+[[prompt]]
+id = "K03"
+name = "mode-consistency"
+title = "Mode consistency"
+version = "1.0.0"
+theme = "ux"
+triggers = ["w4"]
+bucket = 4
+closes-by = ["test", "type"]
+
+[[prompt]]
+id = "K04"
+name = "claims-versus-record"
+title = "Claims against the assurance record"
+version = "1.0.0"
+theme = "ux"
+triggers = ["release"]
+closes-by = ["test", "lint"]
+
+# 7.12 Library calibration and incidents: not paired, not judged by the section 6 metrics
+
+[[prompt]]
+id = "Y01"
+name = "frozen-replay"
+title = "Frozen replay"
+version = "1.0.0"
+theme = "calibration"
+triggers = ["model-upgrade"]
+scope = { model-upgrade = "bench" }
+replay = ["A01", "A06", "C07", "E02", "M01", "M02", "M03", "M04", "M05"]   # with --frozen; no wording of its own
+paired = false
+closes-by = ["decision"]
+usage_cap_tokens = 6_500_000       # the nine replays together
+
+[[prompt]]
+id = "Y02"
+name = "harness-ablation"
+title = "Harness ablation"
+version = "1.0.0"
+theme = "calibration"
+triggers = ["model-upgrade"]
+paired = false
+closes-by = ["decision", "lint"]
+
+[[prompt]]
+id = "Y03"
+name = "variant-hunt"
+title = "Variant hunt"
+version = "1.0.0"
+theme = "calibration"
+triggers = ["incident"]
+params = ["ref"]
+paired = false
+closes-by = ["test", "lint"]
+
+[[prompt]]
+id = "Y04"
+name = "incident-to-library"
+title = "Incident to library"
+version = "1.0.0"
+theme = "calibration"
+triggers = ["incident"]
+scope = { incident = "kit" }       # the library and the ledger
+params = ["ref"]
+paired = false
+closes-by = ["decision"]           # with a bench seed in audit-bench
+
+# 8. Security-product prompts: find on Opus, release-gating at severity 1
+
+[[prompt]]
+id = "M01"
+name = "fail-open-paths"
+title = "Fail-open paths"
+version = "1.0.0"
+theme = "security"
+triggers = ["pr", "nightly", "release"]
+paths = ["crates/grdr-wire/**", "crates/grdr-core/src/policy.rs", "crates/grdr-core/src/policy/**", "programs/grdr-hook/**",
+         "programs/grdr-daemon/**", "programs/grdr-engine/**", "programs/grdr-proxy/**", "crates/grdr-agents/**",
+         "crates/grdr-update/**"]
+closes-by = ["test"]               # no decision-record closure for fail-open
+release_gate = 1
+finder_model = "opus"
+finder_effort = "high"
+usage_cap_tokens = 1_000_000
+
+[[prompt]]
+id = "M02"
+name = "privilege-boundary-crossings"
+title = "Privilege-boundary crossings"
+version = "1.0.0"
+theme = "security"
+triggers = ["pr", "nightly", "release"]
+paths = ["crates/grdr-wire/**", "programs/grdr-daemon/**", "programs/grdr-updater/**", "programs/grdr-approve/**",
+         "programs/grdr-run/**", "platform/**"]
+closes-by = ["test", "type"]
+release_gate = 1
+finder_model = "opus"
+finder_effort = "high"
+usage_cap_tokens = 1_000_000
+
+[[prompt]]
+id = "M03"
+name = "untrusted-parsing-in-privileged-code"
+title = "Untrusted parsing in privileged code"
+version = "1.0.0"
+theme = "security"
+triggers = ["pr", "nightly", "release"]
+paths = ["programs/grdr-daemon/**", "programs/grdr-updater/**", "programs/grdr-approve/**", "programs/grdr-hook/**",
+         "crates/grdr-wire/**", "crates/grdr-fastpath/**", "crates/grdr-update/**", "crates/grdr-sandbox-engine/**",
+         "platform/**"]
+closes-by = ["lint", "test"]
+release_gate = 1
+finder_model = "opus"
+finder_effort = "high"
+usage_cap_tokens = 1_000_000
+
+[[prompt]]
+id = "M04"
+name = "toctou-windows"
+title = "Check-then-use windows"
+version = "1.0.0"
+theme = "security"
+triggers = ["pr", "nightly", "release"]
+paths = ["crates/grdr-sensor-*/**", "crates/grdr-core/src/policy.rs", "crates/grdr-core/src/policy/**",
+         "crates/grdr-core/src/session.rs", "crates/grdr-core/src/session/**", "programs/grdr-approve/**",
+         "programs/grdr-hook/**", "programs/grdr-run/**"]
+closes-by = ["test", "type"]
+release_gate = 1
+finder_model = "opus"
+finder_effort = "high"
+usage_cap_tokens = 1_000_000
+
+[[prompt]]
+id = "M05"
+name = "model-verdict-reach"
+title = "Model-verdict reach"
+version = "1.0.0"
+theme = "security"
+triggers = ["pr", "nightly", "release", "model-upgrade"]
+scope = { model-upgrade = "repo" }
+paths = ["crates/grdr-core/src/detect.rs", "crates/grdr-core/src/detect/**", "crates/grdr-core/src/session.rs",
+         "crates/grdr-core/src/session/**", "crates/grdr-core/src/policy.rs", "crates/grdr-core/src/policy/**",
+         "crates/grdr-review/**", "crates/grdr-judge-*/**"]
+closes-by = ["type", "test"]       # never a decision record
+release_gate = 1
+finder_model = "opus"
+finder_effort = "high"
+usage_cap_tokens = 1_000_000

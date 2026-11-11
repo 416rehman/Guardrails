@@ -1,0 +1,276 @@
+# Sources whose text must not flow into our code or content (D-02, design/30 section 1, design/03
+# section 13). The fleet's egress and token proxy refuses a request whose host and path match an
+# entry and records the attempt as a finding on the work item; agents never fetch, read or copy
+# them. People may read an entry to understand a technique, never to copy, translate or
+# paraphrase it. Adding an entry is an ordinary change; removing one needs an RFC.
+#
+# scope "all" covers the whole source; "content" covers only the listed rule trees, so the
+# project's specification stays readable. Without `paths` an entry covers the whole repository.
+
+# How a forge repository maps to the hosts and path prefixes the proxy matches.
+[forge."github.com"]
+hosts = ["github.com", "api.github.com", "raw.githubusercontent.com", "codeload.github.com", "objects.githubusercontent.com"]
+path_forms = ["/{repository}", "/repos/{repository}"]
+
+[[source]]
+forge = "github.com"
+repository = "elastic/detection-rules"
+licence = "Elastic-2.0"
+scope = "all"
+reason = "Not open source and hosted use is forbidden; behaviour is re-derived from incidents instead (g06)"
+
+[[source]]
+forge = "github.com"
+repository = "elastic/protections-artifacts"
+licence = "Elastic-2.0"
+scope = "all"
+reason = "Not open source and hosted use is forbidden (g06)"
+
+[[source]]
+forge = "github.com"
+repository = "elastic/ebpf"
+licence = "Elastic-2.0 for the user-space code"
+scope = "all"
+reason = "Elastic's non-GPL eBPF code is under the Elastic License 2.0 (design/03 section 13)"
+
+[[source]]
+forge = "github.com"
+repository = "SigmaHQ/sigma"
+licence = "DRL-1.1"
+scope = "content"
+paths = [
+  "rules",
+  "rules-compliance",
+  "rules-dfir",
+  "rules-emerging-threats",
+  "rules-placeholder",
+  "rules-threat-hunting",
+  "deprecated",
+  "unsupported",
+]
+reason = "The DRL requires attribution in match views; the Sigma specification (public domain) stays readable"
+
+[[source]]
+forge = "github.com"
+repository = "chainguard-dev/malcontent"
+licence = "mixed, including Elastic-2.0 and unlicensed rules"
+scope = "content"
+paths = ["third_party"]
+reason = "Its third-party rule tree carries Elastic-licensed and unlicensed rules (g06 verification row 6)"
+
+[[source]]
+forge = "github.com"
+repository = "wazuh/wazuh"
+licence = "GPL-2.0 (4.x releases); AGPL-3.0-or-later for src/engine/ on main"
+scope = "all"
+reason = "A copyleft engine in our domain (27 verification row 9)"
+
+[[source]]
+forge = "github.com"
+repository = "Cisco-Talos/clamav"
+licence = "GPL-2.0"
+scope = "all"
+reason = "The same functional space as our engines (27)"
+
+[[source]]
+forge = "github.com"
+repository = "OISF/suricata"
+licence = "GPL-2.0"
+scope = "all"
+reason = "The same functional space as our engines (27)"
+
+[[source]]
+forge = "github.com"
+repository = "halofyai/halofy"
+licence = "AGPL-3.0-or-later"
+scope = "all"
+reason = "An agent governance layer under the AGPL (h04, h05)"
+
+[[source]]
+forge = "github.com"
+repository = "hardenrun/aif"
+licence = "none"
+scope = "all"
+reason = "No usable licence (h04, h05)"
+
+[[source]]
+forge = "github.com"
+repository = "securetron-gh/aifw"
+licence = "none"
+scope = "all"
+reason = "No usable licence (h04, h05)"
+
+[[source]]
+forge = "github.com"
+repository = "openai/tart"
+licence = "FSL-1.1-ALv2"
+scope = "all"
+reason = "Source-available; lab hosts may run its release binaries, agents never fetch its source (31 verification)"
+
+[[source]]
+forge = "github.com"
+repository = "pathtofile/Sealighter"
+licence = "none"
+scope = "all"
+reason = "No licence (design/03 section 13)"
+
+# design/03 section 13, "Not open source, or copyleft that blocks embedding": never a dependency
+# and never read.
+
+[[source]]
+forge = "github.com"
+repository = "ComodoSecurity/openedr"
+licence = "not open source"
+scope = "all"
+reason = "design/03 section 13"
+
+[[source]]
+forge = "github.com"
+repository = "pipelab-org/pipelock"
+aliases = ["luckyPipewrench/pipelock"]
+licence = "proprietary for enterprise/"
+scope = "all"
+paths = ["enterprise"]
+reason = "Its enterprise/ tree is not open source (design/03 section 13)"
+
+[[source]]
+forge = "github.com"
+repository = "redpanda-data/redpanda"
+licence = "BUSL-1.1"
+scope = "all"
+reason = "design/03 section 13"
+
+[[source]]
+forge = "github.com"
+repository = "restatedev/restate"
+licence = "BUSL-1.1"
+scope = "all"
+reason = "design/03 section 13"
+
+[[source]]
+forge = "github.com"
+repository = "surrealdb/surrealdb"
+licence = "BUSL-1.1"
+scope = "all"
+reason = "design/03 section 13"
+
+[[source]]
+forge = "github.com"
+repository = "FalkorDB/FalkorDB"
+licence = "SSPL-1.0"
+scope = "all"
+reason = "design/03 section 13"
+
+[[source]]
+forge = "github.com"
+repository = "inngest/inngest"
+licence = "SSPL-1.0"
+scope = "all"
+reason = "design/03 section 13"
+
+[[source]]
+forge = "github.com"
+repository = "flipt-io/flipt"
+licence = "Fair Core License for v2"
+scope = "all"
+reason = "Flipt v2 is not open source (design/03 section 13)"
+
+[[source]]
+forge = "github.com"
+repository = "timescale/timescaledb"
+licence = "Timescale License for tsl/"
+scope = "all"
+paths = ["tsl"]
+reason = "Its tsl/ tree is not open source (design/03 section 13)"
+
+[[source]]
+forge = "github.com"
+repository = "Velocidex/velociraptor"
+licence = "AGPL-3.0"
+scope = "all"
+reason = "design/03 section 13"
+
+[[source]]
+forge = "github.com"
+repository = "Yamato-Security/hayabusa"
+licence = "AGPL-3.0"
+scope = "all"
+reason = "design/03 section 13"
+
+[[source]]
+forge = "github.com"
+repository = "openobserve/openobserve"
+licence = "AGPL-3.0"
+scope = "all"
+reason = "design/03 section 13"
+
+[[source]]
+forge = "github.com"
+repository = "zitadel/zitadel"
+licence = "AGPL-3.0"
+scope = "all"
+reason = "design/03 section 13"
+
+[[source]]
+forge = "github.com"
+repository = "grafana/loki"
+licence = "AGPL-3.0"
+scope = "all"
+reason = "design/03 section 13"
+
+[[source]]
+forge = "github.com"
+repository = "deuxfleurs-org/garage"
+licence = "AGPL-3.0"
+scope = "all"
+reason = "design/03 section 13"
+
+[[source]]
+forge = "github.com"
+repository = "kunai-project/kunai"
+licence = "GPL-3.0"
+scope = "all"
+reason = "design/03 section 13"
+
+[[source]]
+forge = "github.com"
+repository = "WithSecureOpenSource/chainsaw"
+aliases = ["WithSecureLabs/chainsaw"]
+licence = "GPL-3.0"
+scope = "all"
+reason = "design/03 section 13"
+
+[[source]]
+forge = "github.com"
+repository = "safing/portmaster"
+licence = "GPL-3.0"
+scope = "all"
+reason = "design/03 section 13"
+
+[[source]]
+forge = "github.com"
+repository = "tnodir/fort"
+licence = "GPL-3.0"
+scope = "all"
+reason = "design/03 section 13"
+
+[[source]]
+forge = "github.com"
+repository = "sandboxie-plus/Sandboxie"
+licence = "GPL-3.0"
+scope = "all"
+reason = "design/03 section 13"
+
+[[source]]
+forge = "github.com"
+repository = "objective-see/LuLu"
+licence = "GPL-3.0"
+scope = "all"
+reason = "design/03 section 13"
+
+# Captured vendor pages are third-party copyrighted text and never enter a repository (ADR-0026);
+# verify fails on any of these paths in the tree or its history.
+[[path]]
+paths = ["research/_sources", "docs/references/research/_sources"]
+scope = "all"
+reason = "Captured vendor pages from the research runs (team/06 section 13 step 3)"

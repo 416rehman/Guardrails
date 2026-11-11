@@ -1,0 +1,22 @@
+[
+  {"query": "Write the spec section of issue #41, the local audit chain and `grdr audit verify`, from the specification template in team/06.", "should_trigger": true},
+  {"query": "Draft the acceptance criteria for [WI-0006] so that each one is a command with a named oracle independent of the code.", "should_trigger": true},
+  {"query": "We need to add an expectation id field to grdr.decide.v1alpha1. Draft the RFC for it.", "should_trigger": true},
+  {"query": "Write a decision record saying guard-command uses the token scanner until the shell canonicaliser (K12) is available, and name what enforces it.", "should_trigger": true},
+  {"query": "Specify the CLI output and failure modes of `grdr hook render` for the adapters squad before anyone implements it.", "should_trigger": true},
+  {"query": "Draft the interface for the JudgeBackend port trait in grdr-ports, with data classes and failure modes per method.", "should_trigger": true},
+  {"query": "write the wire format spec for the IPC frame header: size cap, version byte, peer auth fields", "should_trigger": true},
+  {"query": "lead-core here. Turn design/12 section 9 into a spec and acceptance criteria for the session-rule interpreter issue, then ready it.", "should_trigger": true},
+  {"query": "I want to add an attribute to the agent.spawn action in the Cedar schema. What do I have to write before any code changes?", "should_trigger": true},
+  {"query": "As product lead, take proposed issue #93 (garden-tests found surviving mutants in grdr-wire) and turn it into a ready work item.", "should_trigger": true},
+  {"query": "You are impl-rust on #41. Implement what its spec section describes.", "should_trigger": false},
+  {"query": "Fix the broken link in docs/architecture/ports.md that V17 reports.", "should_trigger": false},
+  {"query": "Generate rustdoc for grdr-ports and check it builds with warnings denied.", "should_trigger": false},
+  {"query": "Write the README.md for crates/grdr-fastpath explaining how to embed it.", "should_trigger": false},
+  {"query": "Threat-model the new socket listener that #21 adds to grdr-daemon.", "should_trigger": false},
+  {"query": "Write unit tests that check the IPC frame header rejects frames over the size cap.", "should_trigger": false},
+  {"query": "In two sentences, what does D-61 say about who must approve community content?", "should_trigger": false},
+  {"query": "Create the grdr-export crate with layer 3 metadata and its AGENTS.md.", "should_trigger": false},
+  {"query": "verify is green for #19, post the hand-off comment and open the PR.", "should_trigger": false},
+  {"query": "Judge PR #57 against the readied acceptance criteria of #15 as the acceptance evaluator.", "should_trigger": false}
+]

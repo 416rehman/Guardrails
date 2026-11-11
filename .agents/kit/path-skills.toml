@@ -1,0 +1,51 @@
+# Which skills an agent loads, in order, before it edits a matching path (owner instruction 18,
+# P14, P17). guard-path names an entry's skills the first time a session edits one of its paths,
+# session-start lists the entries a write set touches, and stop-gate records which skills the
+# session loaded. A path in several entries takes each entry's skills once, in file order.
+#
+# Skill names are as installed: project and user skills by name, plugin skills as
+# <plugin>:<skill>, the owner's claude.ai skills as anthropic-skills:<name>. `crates_with`
+# matches a crate wherever it lives by the `renders` value of its [package.metadata.grdr];
+# `content_repository_paths` are this entry's paths in the content repository, whose kit reads
+# them.
+
+[[entry]]
+name = "web"
+skills = [
+  "ui-architect",
+  "frontend-design:frontend-design",
+  "modern-web-guidance:modern-web-guidance",
+  "grdr-interface",
+]
+paths = ["web/**", "site/**"]
+
+[[entry]]
+name = "browser-extension"
+skills = ["modern-web-guidance:chrome-extensions"]
+paths = ["web/extension/**"]
+
+[[entry]]
+name = "interface"
+skills = ["ui-architect", "grdr-interface"]
+paths = [
+  "interface/**", "desktop/**",
+  "programs/grdr/**", "programs/grdr-tray/**", "programs/grdr-approve/**",
+  "platform/*/installer/**",
+]
+crates_with = { renders = ["person", "agent"] }
+
+[[entry]]
+name = "translation"
+skills = ["ui-architect", "grdr-interface"]
+paths = ["interface/strings/tr/**", "docs/i18n/**"]
+content_repository_paths = ["packs/*/messages/**"]
+
+[[entry]]
+name = "code"
+skills = ["grdr-structure", "cleanup:cleanup"]
+paths = ["crates/**", "programs/**", "xtask/**", "**/*.rs", "**/*.ts", "**/*.tsx"]
+
+[[entry]]
+name = "prose"
+skills = ["anthropic-skills:write-like-a-normal-staff-senior-developer"]
+paths = ["docs/**"]

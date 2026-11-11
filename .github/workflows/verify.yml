@@ -1,0 +1,172 @@
+name: verify
+
+# team/05 sections 3 and 4. Pull requests get the fast form; main, the queue's branch and the
+# merge group get the full form. The local dispatcher's verify is the primary gate, so this is the
+# backstop (owner instruction 22). The repository is public, so the full form runs on Linux, macOS
+# and Windows on GitHub's free standard runners, and nightly (owner instruction 28). The plan job
+# reads the repository's visibility so that a private copy, such as a self-hosted mirror, falls
+# back to Linux only with no nightly run, because private runner minutes are limited and macOS and
+# Windows minutes count several times.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+    inputs:
+      form:
+        description: Which form of verify to run
+        type: choice
+        options: [full, fast]
+        default: full
+
+permissions: {}
+
+concurrency:
+  group: verify-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  plan:
+    name: Plan the run
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      form: ${{ steps.plan.outputs.form }}
+      systems: ${{ steps.plan.outputs.systems }}
+      run: ${{ steps.plan.outputs.run }}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          REQUESTED_FORM: ${{ inputs.form }}
+          LINUX: '["ubuntu-26.04"]'
+          ALL_SYSTEMS: '["ubuntu-26.04", "macos-26", "windows-2025"]'
+        run: |
+          visibility=$(gh api "repos/$REPOSITORY" --jq .visibility)
+          case "$EVENT" in
+            pull_request) form=fast ;;
+            workflow_dispatch) form="$REQUESTED_FORM" ;;
+            *) form=full ;;
+          esac
+          systems="$LINUX"
+          if [ "$visibility" = public ] && [ "$form" = full ]; then systems="$ALL_SYSTEMS"; fi
+          run=true
+          if [ "$EVENT" = schedule ] && [ "$visibility" != public ]; then run=false; fi
+          {
+            echo "form=$form"
+            echo "systems=$systems"
+            echo "run=$run"
+          } >> "$GITHUB_OUTPUT"
+
+  verify:
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
+    name: verify ${{ needs.plan.outputs.form }} (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(needs.plan.outputs.systems) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: change
+          fetch-depth: 0
+          persist-credentials: false
+      - id: base
+        working-directory: change
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          base="${PR_BASE:-$QUEUE_BASE}"
+          if [ -z "$base" ] && [ -n "$PUSH_BEFORE" ] && [ -n "${PUSH_BEFORE//0/}" ]; then base="$PUSH_BEFORE"; fi
+          if [ -z "$base" ]; then base=$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD); fi
+          echo "sha=$base" >> "$GITHUB_OUTPUT"
+      # The gate binary is built from the base commit, so a change cannot weaken the gate that
+      # judges it (team/05 section 2).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: gate
+          ref: ${{ steps.base.outputs.sha }}
+          persist-credentials: false
+      - working-directory: gate
+        run: rustup toolchain install
+      - working-directory: change
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: |
+            gate -> target
+            change -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - working-directory: gate
+        run: cargo build --locked --package xtask
+      # V05 judges an agent's pull request as that agent, named by the lease its head branch holds,
+      # against the write set of the item snapshot ci-env saves into the change checkout over any
+      # copy the change committed. It runs in the base checkout, so neither the binary nor the
+      # identity it trusts for leases comes from the change. Any other line in $GITHUB_ENV would
+      # set a variable in later steps.
+      - name: Lease identity for V05
+        if: github.event_name == 'pull_request'
+        working-directory: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PULL_REQUEST: ${{ github.event.pull_request.number }}
+        run: |
+          lease=$(./target/debug/xtask kit ci-env --pull-request "$PULL_REQUEST" --snapshot-into ../change)
+          if [ -z "$lease" ]; then exit 0; fi
+          if grep -qvE '^GRDR_(AGENT|WORK_ITEM|SCOPE)=' <<< "$lease"; then
+            echo "::error::kit ci-env printed a line other than GRDR_AGENT, GRDR_WORK_ITEM and GRDR_SCOPE"
+            exit 1
+          fi
+          echo "$lease" >> "$GITHUB_ENV"
+      - name: cargo xtask verify
+        working-directory: change
+        env:
+          FORM: ${{ needs.plan.outputs.form }}
+          BASE: ${{ steps.base.outputs.sha }}
+        run: |
+          flags=()
+          if [ "$FORM" = fast ]; then flags+=(--fast); fi
+          mkdir -p .agent
+          ../gate/target/debug/xtask verify "${flags[@]}" --base "$BASE" --json .agent/ci-verify.json
+      - name: cargo xtask verify --ci
+        if: github.event_name == 'pull_request'
+        working-directory: change
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ steps.base.outputs.sha }}
+        run: ../gate/target/debug/xtask verify --ci --base "$BASE"
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: verify-${{ needs.plan.outputs.form }}-${{ matrix.os }}
+          path: |
+            change/.agent/ci-verify.json
+            change/.agent/logs/
+            change/.agent/evidence/
+          if-no-files-found: ignore

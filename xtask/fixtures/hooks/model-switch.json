@@ -1,0 +1,16 @@
+{
+  "handler": "model-switch",
+  "preset": "worker",
+  "cases": [
+    {"name": "to-opus-without-launcher", "env": {"GRDR_AGENT": "impl-rust", "GRDR_WORK_ITEM": "7"},
+     "input": {"hook_event_name": "PreModelSwitch", "from_model": "claude-sonnet-5-5", "to_model": "claude-opus-5-5", "requested_model": "opus"}, "expect": "block", "contains": "model switch refused"},
+    {"name": "to-opus-with-launcher", "env": {"GRDR_AGENT": "impl-rust", "GRDR_WORK_ITEM": "7", "GRDR_MODEL": "opus"},
+     "input": {"hook_event_name": "PreModelSwitch", "from_model": "claude-sonnet-5-5", "to_model": "claude-opus-5-5", "requested_model": "opus"}, "expect": "allow"},
+    {"name": "to-fable", "env": {"GRDR_AGENT": "impl-rust", "GRDR_WORK_ITEM": "7"},
+     "input": {"hook_event_name": "PreModelSwitch", "from_model": "claude-sonnet-5-5", "to_model": "claude-fable-5-2", "requested_model": "fable"}, "expect": "block", "contains": "refused"},
+    {"name": "renamed-target-field", "env": {"GRDR_AGENT": "impl-rust", "GRDR_WORK_ITEM": "7"},
+     "input": {"hook_event_name": "PreModelSwitch", "new_model": "claude-fable-5-2"}, "expect": "block", "contains": "refused"},
+    {"name": "no-target-field-fails-closed", "preset": "person", "env": {},
+     "input": {"hook_event_name": "PreModelSwitch", "from_model": "claude-sonnet-5-5"}, "expect": "block", "contains": "names no target"}
+  ]
+}
