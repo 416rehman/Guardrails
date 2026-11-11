@@ -26,7 +26,10 @@ const EVAL_DIFF: &str = "[agent.eval-diff]\ngroup = \"evaluator\"\ndescription =
 /// A bare `origin` with `main` pushed, so the queue can fetch and the worker can push.
 fn with_origin(setup: &Setup) -> TempRepo {
     let origin = TempRepo::create();
-    git(origin.root(), &["init", "--quiet", "--bare"]);
+    git(
+        origin.root(),
+        &["init", "--quiet", "--bare", "--initial-branch=main"],
+    );
     let url = origin.root().to_string_lossy().into_owned();
     git(setup.temp.root(), &["remote", "add", "origin", &url]);
     git(setup.temp.root(), &["push", "--quiet", "origin", "main"]);

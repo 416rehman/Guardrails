@@ -464,7 +464,10 @@ fn the_chief_architect_is_leased_only_its_protected_changes() {
 fn a_new_item_branch_starts_from_the_fetched_base_tip() {
     let setup = Setup::new("");
     let origin = TempRepo::create();
-    crate::orchestrate::testkit::git(origin.root(), &["init", "--quiet", "--bare"]);
+    crate::orchestrate::testkit::git(
+        origin.root(),
+        &["init", "--quiet", "--bare", "--initial-branch=main"],
+    );
     let url = origin.root().to_string_lossy().into_owned();
     let run = |root: &std::path::Path, args: &[&str]| crate::orchestrate::testkit::git(root, args);
     run(setup.temp.root(), &["remote", "add", "origin", &url]);

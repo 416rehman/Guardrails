@@ -1,0 +1,15 @@
+# gitleaks rules for this repository: the default rule set plus one allowlist. scan.yml passes
+# this file through [tool.gitleaks] config in build-tools.toml. A finding in history stays in
+# every whole-history scan, so a false positive is allowed here rather than edited out of a file.
+[extend]
+useDefault = true
+
+# The design docs' examples use typed identifiers: a short lowercase type, an underscore and a
+# ULID, such as rty_01jcdqb2f7x1y0b8z5w2r9t4v6 in design/04. They are ids, not credentials, but
+# generic-api-key matches them when the field name contains "token".
+[[allowlists]]
+description = "typed ULID identifiers in the docs' examples"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^[a-z]{2,8}_01[0-9a-hjkmnp-tv-z]{24}$''']
+paths = ['''^docs/''']

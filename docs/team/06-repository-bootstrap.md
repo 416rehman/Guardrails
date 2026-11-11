@@ -790,11 +790,11 @@ Actors: **O** is the owner, or a setup session acting with the owner's logins, f
    git remote add origin https://github.com/416rehman/Guardrails.git
    git add -A
    git commit -m "chore: import the plan and the agent kit"
-   gitleaks git --redact .
+   gitleaks git --redact --config supply-chain/gitleaks.toml .
    test "$(git log --all --name-only --format= | grep -c '_sources/')" -eq 0
    git push -u origin main
    ```
-   `git init -b main` leaves the branch of a folder that is already a repository as it is, so `git symbolic-ref` names it `main`; the commit then lands on `main`, and `kit launch --seed` later starts `agent/seed` from the pushed `origin/main`. The setup session also reads the tree for personal data (section 11 item 9). A finding is fixed by amending the unpushed commit, never after the push. It is the only commit that lands without the merge queue, because the kit binary and the queue build from it. It cites no issue, since none exists yet. From this push on, hosted CI runs in its public form: the full form on three systems, the nightly run, CodeQL, Scorecard, secret scanning and release attestations (`team/05` section 4).
+   `git init -b main` leaves the branch of a folder that is already a repository as it is, so `git symbolic-ref` names it `main`; the commit then lands on `main`, and `kit launch --seed` later starts `agent/seed` from the pushed `origin/main`. The setup session also reads the tree for personal data (section 11 item 9). A finding is fixed by amending the unpushed commit, never after the push. It is the only commit that lands without the merge queue, because the kit binary and the queue build from it, except a fix the setup session pushes for a hosted check that fails on it before the first agent session starts (the gitleaks allowlist in `supply-chain/gitleaks.toml` was one). It cites no issue, since none exists yet. From this push on, hosted CI runs in its public form: the full form on three systems, the nightly run, CodeQL, Scorecard, secret scanning and release attestations (`team/05` section 4).
 4. **O.** Run `claude` once in the repository folder and accept the workspace trust dialog (section 11 item 14), then build the kit and the labels on the owner's machine:
    ```sh
    cargo xtask kit install          # the kit binary from the merge-base with origin/main

@@ -44,6 +44,7 @@ jobs:
       - name: Scan the new commits, or the whole history on a schedule
         env:
           IMAGE: ${{ steps.pins.outputs.image }}
+          CONFIG: ${{ steps.pins.outputs.config }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE: ${{ github.event.before }}
@@ -52,7 +53,7 @@ jobs:
           range=""
           if [ -n "$PR_BASE" ]; then range="$PR_BASE..$PR_HEAD"; fi
           if [ -z "$range" ] && [ -n "$PUSH_BEFORE" ] && [ -n "${PUSH_BEFORE//0/}" ]; then range="$PUSH_BEFORE..$PUSH_AFTER"; fi
-          args=(git --redact --no-banner --exit-code 1)
+          args=(git --redact --no-banner --exit-code 1 "--config=/repo/$CONFIG")
           if [ -n "$range" ]; then args+=("--log-opts=$range"); fi
           docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo" "$IMAGE" "${args[@]}" /repo
 

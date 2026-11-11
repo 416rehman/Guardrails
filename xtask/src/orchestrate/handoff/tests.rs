@@ -248,7 +248,10 @@ fn a_done_handoff_pushes_and_opens_the_pull_request() {
     let code = publish(&temp.repo(), &tracker, 7, &caller("impl-rust"), Mode::Live).unwrap();
     assert_eq!(code, ExitCode::from(EXIT_OWNER_STEP));
     let origin = TempRepo::create();
-    git(origin.root(), &["init", "--quiet", "--bare"]);
+    git(
+        origin.root(),
+        &["init", "--quiet", "--bare", "--initial-branch=main"],
+    );
     let url = origin.root().to_string_lossy().into_owned();
     git(temp.root(), &["remote", "add", "origin", &url]);
     let code = publish(&temp.repo(), &tracker, 7, &caller("impl-rust"), Mode::Live).unwrap();
@@ -307,7 +310,10 @@ fn no_pull_request_opens_without_a_valid_subject() {
     temp.write(".gitignore", ".agent/\n");
     init_git(temp.root());
     let origin = TempRepo::create();
-    git(origin.root(), &["init", "--quiet", "--bare"]);
+    git(
+        origin.root(),
+        &["init", "--quiet", "--bare", "--initial-branch=main"],
+    );
     let url = origin.root().to_string_lossy().into_owned();
     git(temp.root(), &["remote", "add", "origin", &url]);
     git(temp.root(), &["checkout", "--quiet", "-b", "agent/7/a1"]);
@@ -336,7 +342,10 @@ fn the_seed_session_ships_agent_seed_into_review() {
     );
     init_git(temp.root());
     let origin = TempRepo::create();
-    git(origin.root(), &["init", "--quiet", "--bare"]);
+    git(
+        origin.root(),
+        &["init", "--quiet", "--bare", "--initial-branch=main"],
+    );
     let url = origin.root().to_string_lossy().into_owned();
     git(temp.root(), &["remote", "add", "origin", &url]);
     git(temp.root(), &["push", "--quiet", "origin", "main"]);
