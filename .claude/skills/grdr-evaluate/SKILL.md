@@ -78,7 +78,7 @@ At most three rounds per attempt (D-47).
 
 ## 8. Verdict
 
-Your verdict is a `handoff.v1` draft (fields in `references/verdict.md`). You have no Write tool, so pass it to `cargo xtask kit handoff --item <n> --draft '<the JSON>'`, which writes `.agent/state/handoff-<n>-<agent>.json` and publishes it. Its status:
+Your verdict is a `handoff.v1` draft (fields in `references/verdict.md`). You have no Write tool, so pass it on stdin, `cargo xtask kit handoff --item <n> --draft - <<'JSON'`, then the JSON, then a line `JSON`, which writes `.agent/state/handoff-<n>-<agent>.json` and publishes it. Its status:
 
 | Status | When |
 |---|---|

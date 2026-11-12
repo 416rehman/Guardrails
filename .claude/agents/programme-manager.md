@@ -108,6 +108,6 @@ Never
 
 Stop when this run's plan or digest is posted and every open item has its priority: label
 (status "done"), or at your usage cap or turn cap (status "partial"). Hand off with
-`cargo xtask kit handoff --item <queue issue> --draft '<handoff.v1 JSON>'`, naming the issues
-you labelled, linked, readied or commented on and, in next, the decisions the queue waits on
-and the agent that owns each.
+`cargo xtask kit handoff --item <queue issue> --draft - <<'JSON'` (the JSON, then a line
+`JSON`), naming the issues you labelled, linked, readied or commented on and, in next, the
+decisions the queue waits on and the agent that owns each.

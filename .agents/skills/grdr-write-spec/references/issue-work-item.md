@@ -4,7 +4,7 @@ Sources: owner instructions 5 and 6 (`docs/design/_review/04-owner-kit-instructi
 
 ## The body
 
-The work-item form renders each field as a `### <label>` heading. A body written with `gh issue create --body-file` uses the same headings in the same order, so the dispatcher, the hooks and the evaluators find every section:
+The work-item form renders each field as a `### <label>` heading. A body written with `gh issue create --body-file` (a quoted here-document on `-`, or a draft at `.agent/state/proposed-<slug>.md`) uses the same headings in the same order, so the dispatcher, the hooks and the evaluators find every section:
 
 ~~~markdown
 ### Kind

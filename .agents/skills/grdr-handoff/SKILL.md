@@ -30,7 +30,7 @@ A subscription usage limit is not a status. If a limit is about to end the sessi
 
 ## 2. Write the draft
 
-Write the JSON to `.agent/state/handoff-<n>-<agent>.json`. It is session state, git-ignored; the Stop hook checks it and `kit handoff` publishes it. A role without the Write tool (an evaluator, a lead, the product lead, the programme manager, the chief architect) passes the JSON instead: `cargo xtask kit handoff --item <n> --draft '<the JSON>'` writes the draft and publishes it in one step. Fill every field of `references/handoff-v1.md`. The ones that decide whether the hand-off is useful:
+Write the JSON to `.agent/state/handoff-<n>-<agent>.json`. It is session state, git-ignored; the Stop hook checks it and `kit handoff` publishes it. A role without the Write tool (an evaluator, a lead, the product lead, the programme manager, the chief architect) passes the JSON instead: `cargo xtask kit handoff --item <n> --draft - <<'JSON'`, then the JSON, then a line `JSON`, writes the draft and publishes it in one step. Use the here-document rather than `--draft '<the JSON>'`: an apostrophe in any text field ends a single-quoted argument and the shell refuses the command. Fill every field of `references/handoff-v1.md`. The ones that decide whether the hand-off is useful:
 
 - `evidence`: one entry per command that proves something, with command, exit code, log path and SHA-256. Copy them from the evidence files under `.agent/evidence/`; never type a result that no command produced.
 - `acceptance`: one entry per criterion of the issue's acceptance section, `pass`, `fail` or `not-run`, each pointing at an `evidence` index. A criterion you did not run is `not-run`, never `pass`.

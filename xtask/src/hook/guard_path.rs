@@ -59,6 +59,9 @@ const PLACE_DIR: &str = ".agent/state/place";
 /// Ends a staged copy's name, so no `**/` protected glob (`**/AGENTS.md`, `**/*.snap`) denies
 /// the copy to the file tools.
 const PLACE_SUFFIX: &str = ".staged";
+/// Ends a refusal of a scratch file under `.agent/`: an agent asking for one usually wants a body
+/// for gh, which a draft holds, since an inline body with `#` lines is refused in `dontAsk`.
+const DRAFT_HINT: &str = "; an issue or comment body is a draft at .agent/state/proposed-<slug>.md, passed with --body-file";
 
 /// Files under the home directory that configure every later session: Claude Code's settings
 /// and the configuration of git and cargo. Claude Code's and gh's own directories are wherever
@@ -258,7 +261,8 @@ fn verdict(context: &Context, identity: &Identity, raw: &str) -> Result<Verdict>
     if identity.scope() == Some(Scope::Seed) && widened.is_some() {
         if !in_scope(text) {
             return Ok(Verdict::Refused(format!(
-                "{path} is outside the seed scope (.agents/kit/seed-scope.toml paths); the seed session writes those paths only"
+                "{path} is outside the seed scope (.agents/kit/seed-scope.toml paths); the seed session writes those paths only{}",
+                draft_hint(text)
             )));
         }
         return Ok(in_own_scope);
@@ -273,10 +277,19 @@ fn verdict(context: &Context, identity: &Identity, raw: &str) -> Result<Verdict>
             agent.write.join(", ")
         };
         return Ok(Verdict::Refused(format!(
-            "{path} is outside what {name} writes ({globs}, .agents/roster.toml); file a status:proposed issue for it instead"
+            "{path} is outside what {name} writes ({globs}, .agents/roster.toml); file a status:proposed issue for it instead{}",
+            draft_hint(text)
         )));
     }
     Ok(in_own_scope)
+}
+
+fn draft_hint(path: &str) -> &'static str {
+    if path.starts_with(".agent/") {
+        DRAFT_HINT
+    } else {
+        ""
+    }
 }
 
 /// Why no tool may write `absolute`, a path outside the repository, for `identity`: a path inside
