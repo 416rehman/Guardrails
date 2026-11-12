@@ -8,6 +8,7 @@ use std::time::Duration;
 use anyhow::Result;
 
 use super::journal::note;
+use super::sessions::fix_owed;
 use super::{Dispatcher, Prompt, Slot};
 use crate::config::session::ItemStatus;
 use crate::dispatch::lease::{self, Held};
@@ -16,12 +17,13 @@ use crate::dispatch::routines::{now_unix, unix_of};
 use crate::dispatch::worker;
 use crate::orchestrate::ids;
 use crate::orchestrate::issue::{Issue, status_label};
-use crate::orchestrate::launch;
+use crate::orchestrate::launch::{self, Caps};
 use crate::orchestrate::records::{self, Lease, Reason, Record};
 
 impl Dispatcher<'_> {
     /// Rebuilds the leases from the issues: every `status:leased` issue whose latest `lease.v1`
-    /// names a session becomes a paused slot, resumed when the window and a slot allow.
+    /// names a session, or is the seed's (which names none), becomes a paused slot, resumed when
+    /// the window and a slot allow, or started as a fix when it came back from review unanswered.
     pub fn adopt(&mut self) -> Result<()> {
         let Some(label) = status_label(ItemStatus::Leased) else {
             return Ok(());
@@ -33,10 +35,15 @@ impl Dispatcher<'_> {
             let issue = self.tracker.issue(summary.number)?;
             let found = records::records(&issue);
             let Some(lease) = records::current_lease(&found, issue.number)
-                .filter(|l| l.session.is_some())
+                .filter(|l| l.session.is_some() || self.is_seed_lease(l))
                 .cloned()
             else {
                 continue;
+            };
+            let prompt = if fix_owed(&found, &lease) {
+                Prompt::Fix
+            } else {
+                Prompt::Resume
             };
             let held = self.held_for(&issue, lease)?;
             note(
@@ -45,7 +52,7 @@ impl Dispatcher<'_> {
                 Some(&held.record),
                 "rebuilt from the issue's lease comment",
             );
-            self.slots.push(Slot::Paused { held });
+            self.slots.push(Slot::Paused { held, prompt });
         }
         Ok(())
     }
@@ -122,6 +129,7 @@ impl Dispatcher<'_> {
             tier: snapshot.risk_tier,
             trust_core: snapshot.trust_core,
             priority: candidate.item.priority,
+            caps: self.kit.caps_for(&candidate.agent, &snapshot.write_set)?,
             sessions: 0,
             worked: Duration::ZERO,
         };
@@ -136,7 +144,7 @@ impl Dispatcher<'_> {
                     self.tracker,
                     &failed_record,
                     Reason::WorkerFailed,
-                    self.policy.max_attempts,
+                    self.attempts_for(&failed_record),
                 )?;
                 Err(error)
             }
@@ -174,7 +182,7 @@ impl Dispatcher<'_> {
                     self.tracker,
                     &lease,
                     Reason::LeaseExpired,
-                    self.policy.max_attempts,
+                    self.attempts_for(&lease),
                 )?;
                 println!(
                     "dispatch: #{}: the kit claim lease expired; {outcome:?}",
@@ -241,7 +249,7 @@ impl Dispatcher<'_> {
         });
         let limit = self
             .kit
-            .wall_clock(&lease.agent, None)
+            .wall_clock(&lease.agent, None, Caps::Role)
             .map(|clock| clock.saturating_mul(self.policy.lease_factor));
         match (posted, limit) {
             (Some(at), Some(limit)) => now_unix().saturating_sub(at) > limit.as_secs(),
@@ -252,6 +260,7 @@ impl Dispatcher<'_> {
     pub(super) fn held_for(&self, issue: &Issue, record: Lease) -> Result<Held> {
         let snapshot = launch::snapshot_of(issue, &self.kit, &record.agent)?;
         let name = worker::attempt_worktree(issue.number, record.attempt);
+        let caps = self.kit.caps_for(&record.agent, &snapshot.write_set)?;
         Ok(Held {
             worktree: worker::worktree_dir(&self.repo, &name),
             record,
@@ -259,6 +268,7 @@ impl Dispatcher<'_> {
             tier: snapshot.risk_tier,
             trust_core: snapshot.trust_core,
             priority: issue.work_item().priority,
+            caps,
             sessions: 1,
             worked: Duration::ZERO,
         })

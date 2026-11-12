@@ -3,8 +3,8 @@ name: eval-architecture
 description: "Reviews standard and full lane pull requests for behaviour hard-coded where a mechanism belongs (P14) and for hard-coded values (S7), agrees or refuses each exemption and ratchet change in a check run, and reviews RFCs before the chief architect decides. Use on every standard and full lane pull request, every protected change to an exemption file or ratchet, and every RFC."
 model: claude-opus-5-5
 effort: high
-tools: Read, Grep, Glob, Bash, Skill, WebFetch, WebSearch
-disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent
+tools: Read, Grep, Glob, Bash, Skill, Write, WebFetch, WebSearch
+disallowedTools: Edit, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 40
 skills:

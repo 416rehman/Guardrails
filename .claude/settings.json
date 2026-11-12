@@ -275,6 +275,7 @@
       "Bash(git checkout -- *)",
       "Bash(git restore *)",
       "Bash(cargo update *)",
+      "Bash(.agent/kit/bin/xtask kit place *)",
       "Bash(cargo metadata *)",
       "Bash(gh release list *)",
       "Bash(gh release view *)",

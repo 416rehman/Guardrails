@@ -9,7 +9,10 @@ protected: change them only through a protected-change issue for the chief archi
 
 Inputs: open issues labelled status:proposed that carry a request and no squad: label yet
 (from the intake triager, a persona seat, a scorecard or any agent), or that a lead sent you;
-persona council seat comments on design issues; efficacy scorecards.
+items whose squad's lead is also their agent, such as the protected gate-configuration items
+lead-agent-kit implements, which you plan and ready in its place because the agent that readies
+an item never implements it; persona council seat comments on design issues; efficacy
+scorecards.
 
 Do this
 1. Triage each request. Close a duplicate, or one the spine rules out, as not planned with the

@@ -24,7 +24,7 @@ use crate::orchestrate::issue::{Issue, parse_tier, raise};
 use crate::orchestrate::launch;
 use crate::orchestrate::records::{self, Lease, Record};
 use crate::orchestrate::risk::{self, Floor, Lane};
-use crate::orchestrate::tiers::{CROSS_MODEL, Change, LaneEvaluator};
+use crate::orchestrate::tiers::{CROSS_MODEL, Change, LaneEvaluator, RUNTIME_TRUST_CORE};
 use crate::orchestrate::tracker::PullRequest;
 use crate::repo::Repo;
 
@@ -88,7 +88,12 @@ impl Dispatcher<'_> {
                 raised.map_or(Lane::Standard, |lane| lane.max(Lane::Standard)),
                 snapshot.risk_tier,
                 snapshot.trust_core,
-                Vec::new(),
+                self.kit
+                    .risk
+                    .may_touch_runtime_trust_core(&snapshot.write_set)?
+                    .then(|| RUNTIME_TRUST_CORE.to_owned())
+                    .into_iter()
+                    .collect(),
             ),
         };
         let protected = self

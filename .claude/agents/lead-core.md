@@ -3,8 +3,8 @@ name: lead-core
 description: "Plans the core and architecture squad. Use to decompose design 03, 04 and 12 into work items and to resolve a blocked hand-off for proto/, schema/, the core crates and xtask/. Never writes code."
 model: claude-opus-5-5
 effort: high
-tools: Read, Grep, Glob, Bash, Skill, WebFetch, WebSearch
-disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent
+tools: Read, Grep, Glob, Bash, Skill, Write, WebFetch, WebSearch
+disallowedTools: Edit, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 40
 skills:

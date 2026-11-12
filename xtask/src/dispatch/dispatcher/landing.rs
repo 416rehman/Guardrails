@@ -4,7 +4,9 @@
 //! instruction 5: evaluators judged that snapshot) and the full verify passed on the tree that
 //! lands. One verify runs at
 //! a time; a passed tree is kept by pull request, head and base tip, so a moved base or a new
-//! push verifies again. A refusal sends the item back to its worker with the reason.
+//! push verifies again. A refusal sends the item back to its worker with the reason and uses one
+//! of its review rounds, so a refusal the worker cannot answer ends with the rounds. The seed's
+//! branch, which no session can rebase, goes to the chief architect on a conflict instead.
 
 use anyhow::Result;
 
@@ -13,7 +15,7 @@ use super::leasing::acceptance_changed;
 use super::review::failed_rounds;
 use super::{Dispatcher, LOCAL_POLL};
 use crate::config::session::ItemStatus;
-use crate::dispatch::lease;
+use crate::dispatch::lease::{self, Change};
 use crate::dispatch::merge::{self, Checks, Prepared, Tree, Verified, Verifying, Writer};
 use crate::dispatch::worker;
 use crate::git;
@@ -73,12 +75,12 @@ impl Dispatcher<'_> {
         let problems = self.form.pull_request_problems(request, expected);
         if !problems.is_empty() {
             let detail = format!("Fix and run kit handoff again: {}.", problems.join("; "));
-            return self.send_back(issue, lease, Reason::PullRequestInvalid, &detail);
+            return self.queue_refused(issue, lease, found, Reason::PullRequestInvalid, &detail);
         }
         match merge::rollup(&request.checks) {
             Checks::Failed(names) => {
                 let detail = format!("Failed: {}.", names.join(", "));
-                return self.send_back(issue, lease, Reason::ChecksFailed, &detail);
+                return self.queue_refused(issue, lease, found, Reason::ChecksFailed, &detail);
             }
             Checks::Waiting(names) => {
                 self.notice(
@@ -121,10 +123,10 @@ impl Dispatcher<'_> {
         if self.verified.get(&request.number) == Some(&tree) {
             return self.merge(issue, request, &tree);
         }
-        self.verify(issue, lease, tree)
+        self.verify(issue, lease, found, tree)
     }
 
-    fn verify(&mut self, issue: &Issue, lease: &Lease, tree: Tree) -> Result<()> {
+    fn verify(&mut self, issue: &Issue, lease: &Lease, found: &[Record], tree: Tree) -> Result<()> {
         if let Landing::Verifying(running) = &self.landing {
             let what = if running.tree == tree {
                 "passed review; the merge queue is verifying it".to_owned()
@@ -161,9 +163,26 @@ impl Dispatcher<'_> {
                 self.landing = Landing::Verifying(running);
                 Ok(())
             }
+            Prepared::Conflict(detail) if self.is_seed_lease(lease) => {
+                let change = Change {
+                    item: issue.number,
+                    attempt: lease.attempt,
+                    from: ItemStatus::InReview,
+                    to: ItemStatus::Escalated,
+                    reason: Reason::MergeConflict,
+                };
+                let detail = format!(
+                    "The seed branch no longer merges onto {}: {detail}. No session can merge or rebase it, and the seed's issue has no second attempt, so the chief architect decides how it continues.",
+                    tree.base
+                );
+                lease::transition_with(self.tracker, &change, Some(&detail))
+            }
             Prepared::Conflict(detail) => {
-                let detail = format!("Rebase the branch on {}: {detail}.", tree.base);
-                self.send_back(issue, lease, Reason::MergeConflict, &detail)
+                let detail = format!(
+                    "The branch no longer merges onto {}: {detail}. A session cannot merge or rebase, so push nothing and stop; the attempt then ends and the next one starts from the current base.",
+                    tree.base
+                );
+                self.queue_refused(issue, lease, found, Reason::MergeConflict, &detail)
             }
         }
     }
@@ -265,7 +284,8 @@ impl Dispatcher<'_> {
                 let Some(lease) = records::current_lease(&found, tree.item).cloned() else {
                     return Ok(());
                 };
-                self.send_back(&issue, &lease, Reason::VerifyFailed, &format!("{detail}."))
+                let detail = format!("{detail}.");
+                self.queue_refused(&issue, &lease, &found, Reason::VerifyFailed, &detail)
             }
         }
     }

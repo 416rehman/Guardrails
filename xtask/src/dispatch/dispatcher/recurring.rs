@@ -12,7 +12,7 @@ use crate::dispatch::worker::Job;
 use crate::orchestrate::claude::Ended;
 use crate::orchestrate::ids;
 use crate::orchestrate::issue::status_label;
-use crate::orchestrate::launch::{LaunchScope, SessionStart};
+use crate::orchestrate::launch::{Caps, LaunchScope, SessionStart};
 
 impl Dispatcher<'_> {
     /// When the newest `status:proposed` issue was filed, for routines that run on new issues.
@@ -77,8 +77,8 @@ impl Dispatcher<'_> {
             self.schedule.started(&routine.name, now_unix());
             self.schedule.save(&self.repo)?;
             let watch = self.policy.session.watch(
-                Some(self.kit.turn_cap(&agent, None)?),
-                self.kit.wall_clock(&agent, None),
+                Some(self.kit.turn_cap(&agent, None, Caps::Role)?),
+                self.kit.wall_clock(&agent, None, Caps::Role),
             );
             let log = self.repo.path(&format!(
                 ".agent/logs/dispatch-routine-{}-{}.jsonl",

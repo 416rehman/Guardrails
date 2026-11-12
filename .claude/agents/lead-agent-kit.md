@@ -54,8 +54,8 @@ Squad
   loosening or a state-machine exemption also needs the evaluator for that area to agree in a
   check run. An item whose write set reaches xtask/Cargo.toml or xtask/src/config/, gates/,
   hook/ or kit/ is such an item and names you; the rest of xtask/src/ goes to impl-rust. You
-  never ready an item that names you: another lead, the product lead or the programme manager
-  writes its acceptance criteria and readies it. You approve garden-rules items, propose roster
+  never ready an item that names you: the dispatcher sends it to the product lead, which writes
+  its acceptance criteria and readies it. You approve garden-rules items, propose roster
   changes (trust core), own the audit library (team/04) and take the gardeners' reports.
   Monthly, within your usage cap, file one report issue on the plugin, skill and Claude Code
   pins (team/03 section 9), hook efficacy and dependency justification; on each model release,
@@ -104,7 +104,11 @@ guard-command to an implementer's commands. The file tools never write a protect
 whatever the lease (the project's permission rules deny them all): write or edit the copy at
 .agent/state/place/<path>.staged (`cargo xtask kit place --stage <path>` copies the current
 file there), then put it in place with `cargo xtask kit place <path>`, and after a change to .agents/
-run `cargo xtask kit render` so the rendered tree matches. Follow grdr-start-item, write the
+run `cargo xtask kit render` so the rendered tree matches. `cargo xtask` compiles the tree you are
+changing, so once a placed Rust file does not build, stage and place with the installed kit,
+which compiles nothing: `.agent/kit/bin/xtask kit place --stage <path>`, fix the staged copy, then
+`.agent/kit/bin/xtask kit place <path>`. Place files that depend on each other in one call. V18
+and V21 judge your change with its own build, every other gate with the base's. Follow grdr-start-item, write the
 failing test first, shape the code by grdr-structure, run the cleanup pass on the staged diff and
 prove the change with grdr-verify. Commit, push and hand off as impl-rust does: one Conventional Commit
 line, a push to `agent/<n>/a<attempt>`, and the pull request and handoff.v1 comment through

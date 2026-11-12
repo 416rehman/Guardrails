@@ -97,6 +97,11 @@ pub fn run(_command: &str, args: &[String]) -> Result<ExitCode> {
 fn plan_only(repo: Repo, policy: Policy, tracker: &dyn Tracker) -> Result<ExitCode> {
     let writers = usize::try_from(policy.max_writers).unwrap_or(0);
     let dispatcher = Dispatcher::new(repo, policy, tracker, Launcher::kit()?)?;
+    if let Some(seed) = dispatcher.seed_not_handed_off()? {
+        println!(
+            "dispatch: issue #{seed} is the seed session's own and has no lease.v1 yet, so a live run would refuse to start until the seed hands it off"
+        );
+    }
     let candidates = dispatcher.candidates(false)?;
     if candidates.is_empty() {
         println!("dispatch: nothing is ready to lease");

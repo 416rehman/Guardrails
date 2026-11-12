@@ -22,6 +22,9 @@ use crate::repo::Repo;
 pub const TIERS_FILE: &str = ".agents/risk-tiers.toml";
 /// The plan's name for the review by the model that did not write the change.
 pub const CROSS_MODEL: &str = "cross-model review";
+/// The trigger `cargo xtask risk` reports for a trust-core path under `[trust_core]
+/// runtime_paths`, whose `[trigger_evaluators]` row names the evaluators that need the lab.
+pub const RUNTIME_TRUST_CORE: &str = "runtime_trust_core";
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -42,6 +45,10 @@ struct TrustCoreSource {
     paths_file: String,
     evaluators: Vec<String>,
     distinct_models: usize,
+    /// The product's code roots: a trust-core path under one is the runtime trust core. A base
+    /// whose file predates the key has no runtime class, and every trust-core evaluator applies.
+    #[serde(default)]
+    runtime_paths: Vec<String>,
 }
 
 /// Owner instruction 7: what a protected-change item needs before it lands.
@@ -119,6 +126,8 @@ pub struct RiskPolicy {
     trust_core_patterns: Vec<String>,
     trust_core: GlobList,
     trust_core_evaluators: Vec<String>,
+    runtime_patterns: Vec<String>,
+    runtime: GlobList,
     kinds: BTreeMap<String, Vec<String>>,
     trigger_evaluators: BTreeMap<String, Vec<String>>,
     /// Passing evaluators on this many models for a trust-core change.
@@ -176,6 +185,8 @@ impl RiskPolicy {
             trust_core: glob(&trust_core_patterns)?,
             trust_core_patterns,
             trust_core_evaluators: file.trust_core.evaluators,
+            runtime: glob(&file.trust_core.runtime_paths)?,
+            runtime_patterns: file.trust_core.runtime_paths,
             kinds: file.kinds,
             trigger_evaluators: file.trigger_evaluators,
             trust_core_models: file.trust_core.distinct_models,
@@ -207,6 +218,17 @@ impl RiskPolicy {
     /// Whether any path a write set allows is on the trust-core list.
     pub fn touches_trust_core(&self, write_set: &[String]) -> Result<bool> {
         overlaps(write_set, &self.trust_core_patterns)
+    }
+
+    /// A trust-core path that ships in the product: under `[trust_core] runtime_paths`.
+    pub fn is_runtime_trust_core(&self, path: &str) -> bool {
+        self.is_trust_core(path) && self.runtime.is_match(path)
+    }
+
+    /// Whether a write set can reach both the trust-core list and a runtime root, for a review
+    /// that has no diff to classify.
+    pub fn may_touch_runtime_trust_core(&self, write_set: &[String]) -> Result<bool> {
+        Ok(self.touches_trust_core(write_set)? && overlaps(write_set, &self.runtime_patterns)?)
     }
 
     /// The tier a write set implies: the highest tier any of its globs can reach.
@@ -483,6 +505,34 @@ evaluators = ["eval-adversarial"]
     }
 
     #[test]
+    fn runtime_trust_core_is_a_trust_core_path_under_a_runtime_root() {
+        let policy = build(&FILE.replace(
+            "distinct_models = 2
+[high]",
+            "distinct_models = 2
+runtime_paths = [\"crates/**\"]
+[high]",
+        ))
+        .unwrap();
+        let set = |globs: &[&str]| globs.iter().map(|g| g.to_string()).collect::<Vec<_>>();
+        assert!(policy.is_runtime_trust_core("crates/grdr-crypto/src/lib.rs"));
+        assert!(!policy.is_runtime_trust_core("xtask/src/main.rs"));
+        assert!(!policy.is_runtime_trust_core("crates/grdr-core/src/lib.rs"));
+        assert!(
+            policy
+                .may_touch_runtime_trust_core(&set(&["crates/**"]))
+                .unwrap()
+        );
+        assert!(
+            !policy
+                .may_touch_runtime_trust_core(&set(&["xtask/**"]))
+                .unwrap()
+        );
+        let without = build(FILE).unwrap();
+        assert!(!without.is_runtime_trust_core("crates/grdr-crypto/src/lib.rs"));
+    }
+
+    #[test]
     fn every_key_is_required_and_distinct_models_is_at_least_one() {
         assert!(build(FILE).is_ok());
         let missing = FILE.replace("distinct_models = 2\n[high]", "[high]");
@@ -558,14 +608,18 @@ evaluators = ["eval-adversarial"]
         assert_eq!(policy.required_models(false, true), 2);
     }
 
-    #[test]
-    fn the_repository_tiers_file_names_every_lane() {
+    fn repository_policy() -> RiskPolicy {
         let text = std::fs::read_to_string(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.agents/risk-tiers.toml"),
         )
         .unwrap();
         let file: TiersFile = crate::config::parse_toml(&text, TIERS_FILE).unwrap();
-        let policy = RiskPolicy::build(file, Vec::new(), "repo".into()).unwrap();
+        RiskPolicy::build(file, Vec::new(), "repo".into()).unwrap()
+    }
+
+    #[test]
+    fn the_repository_tiers_file_names_every_lane() {
+        let policy = repository_policy();
         assert_eq!(policy.lanes.light_max_lines, 50);
         assert_eq!(policy.lanes.light_max_files, 3);
         assert_eq!(policy.lanes.light.evaluators, ["eval-diff"]);
@@ -580,5 +634,34 @@ evaluators = ["eval-adversarial"]
         assert_eq!(policy.trust_core_models, 2);
         assert!(policy.lanes.lockfiles.contains(&"Cargo.lock".to_owned()));
         assert!(policy.evaluator_names().contains("eval-ux"));
+    }
+
+    #[test]
+    fn the_first_crates_take_no_evaluator_whose_lab_command_is_not_built() {
+        let policy = repository_policy();
+        let triggers = [RUNTIME_TRUST_CORE.to_owned()];
+        let change = Change {
+            tier: RiskTier::High,
+            trust_core: true,
+            protected: true,
+            kind: Some("gate"),
+            triggers: &triggers,
+        };
+        let agents: Vec<String> = policy
+            .lane_evaluators(Lane::Full, &change)
+            .into_iter()
+            .map(|evaluator| evaluator.agent)
+            .collect();
+        assert!(
+            agents.iter().any(|agent| agent == "eval-security")
+                && agents.iter().any(|agent| agent == "eval-adversarial"),
+            "{agents:?}"
+        );
+        assert!(
+            !agents
+                .iter()
+                .any(|agent| agent == "eval-platform" || agent == "eval-performance"),
+            "{agents:?}"
+        );
     }
 }

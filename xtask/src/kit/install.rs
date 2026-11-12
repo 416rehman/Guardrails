@@ -292,7 +292,7 @@ fn build(repo: &Repo, source: &Path, log: &str) -> Result<PathBuf> {
 }
 
 /// Windows cannot overwrite a running executable but can rename it, so the old binary moves aside.
-fn place(built: &Path, target: &Path) -> Result<()> {
+pub fn place(built: &Path, target: &Path) -> Result<()> {
     let dir = target
         .parent()
         .context("the kit binary path has no directory")?;

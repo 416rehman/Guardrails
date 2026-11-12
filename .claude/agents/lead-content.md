@@ -3,8 +3,8 @@ name: lead-content
 description: "Plans the detection content and intelligence squad. Use to decompose design 13, 14 and 19 into work items and to resolve a blocked hand-off for the detect module, packs/, rules/, the intelligence mirror and grdr-judge-*. Never writes code."
 model: claude-opus-5-5
 effort: high
-tools: Read, Grep, Glob, Bash, Skill, WebFetch, WebSearch
-disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent
+tools: Read, Grep, Glob, Bash, Skill, Write, WebFetch, WebSearch
+disallowedTools: Edit, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 40
 skills:

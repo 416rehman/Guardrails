@@ -3,8 +3,8 @@ name: eval-api
 description: "Checks wire formats, public crates and specifications for compatibility. Use when proto/, schema/, spec/ or a public crate changes."
 model: claude-sonnet-5-5
 effort: medium
-tools: Read, Grep, Glob, Bash, Skill, WebFetch, WebSearch
-disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent
+tools: Read, Grep, Glob, Bash, Skill, Write, WebFetch, WebSearch
+disallowedTools: Edit, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 60
 skills:

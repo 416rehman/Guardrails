@@ -3,8 +3,8 @@ name: lead-adapters
 description: "Plans the agent adapters and hooks squad. Use to decompose design 07 into work items and to resolve a blocked hand-off for grdr-agents, grdr-broker, grdr-hook and grdr-conformance. Never writes code."
 model: claude-opus-5-5
 effort: high
-tools: Read, Grep, Glob, Bash, Skill, WebFetch, WebSearch
-disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent
+tools: Read, Grep, Glob, Bash, Skill, Write, WebFetch, WebSearch
+disallowedTools: Edit, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 40
 skills:

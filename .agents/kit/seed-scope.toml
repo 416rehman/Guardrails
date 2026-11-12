@@ -14,6 +14,9 @@ branch = "agent/seed"
 max_turns = 200      # raised from the definition's 60 for this one session
 prompt = "kit/prompts/chief-architect-seed.md"
 acts_as = ["programme-manager", "lead-*"]   # the planner and lead roles of team/06 section 14
+# The seed's own issue, titled `[WI-0000] ...`. Nobody readies it: the dispatcher never plans it,
+# and refuses to start while it is still status:proposed, since only the seed's hand-off moves it.
+work_item = "WI-0000"
 
 paths = [
   # Step 1. The plan gives the section 5 and 6 templates no path, so they share one directory.

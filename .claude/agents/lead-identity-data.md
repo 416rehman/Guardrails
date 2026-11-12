@@ -3,8 +3,8 @@ name: lead-identity-data
 description: "Plans the identity and data protection squad. Use to decompose design 15 and 16 into work items and to resolve a blocked hand-off for grdr-redact, the analyze detectors and grdr-identity. Never writes code."
 model: claude-opus-5-5
 effort: high
-tools: Read, Grep, Glob, Bash, Skill, WebFetch, WebSearch
-disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent
+tools: Read, Grep, Glob, Bash, Skill, Write, WebFetch, WebSearch
+disallowedTools: Edit, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 40
 skills:

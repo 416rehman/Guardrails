@@ -19,7 +19,7 @@ mod sessions;
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 
 use self::assist::{Assist, AssistState};
 use self::journal::note;
@@ -30,11 +30,14 @@ use super::policy::Policy;
 use super::queue;
 use super::routines::{Routine, Schedule};
 use super::worker::{self, Launcher, Upstream};
+use crate::config::session::ItemStatus;
 use crate::orchestrate::claude::{Ended, Running};
 use crate::orchestrate::form::Form;
 use crate::orchestrate::ids;
+use crate::orchestrate::issue::status_label;
 use crate::orchestrate::labels::LabelsFile;
 use crate::orchestrate::launch::{LaunchKit, trust};
+use crate::orchestrate::records::Lease;
 use crate::orchestrate::tracker::Tracker;
 use crate::repo::Repo;
 
@@ -61,6 +64,9 @@ enum Slot {
     },
     Paused {
         held: Held,
+        /// The prompt it restarts with: `Fix` for a sent-back item whose fix has not started,
+        /// `Resume` for a session stopped mid-work.
+        prompt: Prompt,
     },
 }
 
@@ -107,7 +113,7 @@ pub struct Dispatcher<'a> {
 impl Slot {
     fn held(&self) -> &Held {
         match self {
-            Slot::Working { held, .. } | Slot::Paused { held } => held,
+            Slot::Working { held, .. } | Slot::Paused { held, .. } => held,
         }
     }
 }
@@ -162,6 +168,37 @@ impl<'a> Dispatcher<'a> {
         })
     }
 
+    /// The seed session's issue while it waits for the seed's hand-off.
+    pub fn seed_not_handed_off(&self) -> Result<Option<u64>> {
+        let Some(label) = status_label(ItemStatus::Proposed) else {
+            return Ok(None);
+        };
+        for issue in self.tracker.open_with_label(&label)? {
+            if self.awaits_seed_handoff(&issue)? {
+                return Ok(Some(issue.number));
+            }
+        }
+        Ok(None)
+    }
+
+    /// The attempts `lease`'s item gets: one for the seed's issue, which nobody readies again,
+    /// so an attempt that ends without landing goes to the chief architect.
+    fn attempts_for(&self, lease: &Lease) -> u32 {
+        if self.is_seed_lease(lease) {
+            1
+        } else {
+            self.policy.max_attempts
+        }
+    }
+
+    /// Whether `lease` is the one the seed's hand-off posted: it names the seed scope's branch.
+    fn is_seed_lease(&self, lease: &Lease) -> bool {
+        self.kit
+            .seed
+            .as_ref()
+            .is_some_and(|seed| seed.branch == lease.branch)
+    }
+
     /// Runs the queue's verify with `program` instead of the installed kit binary.
     #[cfg(test)]
     pub(crate) fn set_verifier(&mut self, program: std::path::PathBuf) {
@@ -169,9 +206,15 @@ impl<'a> Dispatcher<'a> {
     }
 
     /// Runs until stopped, or with `once` until the sessions the first pass started have ended.
-    /// It starts nothing while Claude Code does not trust the repository folder.
+    /// It starts nothing while Claude Code does not trust the repository folder, or while the
+    /// seed session's issue has not been handed off.
     pub fn run(&mut self, once: bool) -> Result<()> {
         trust::require(&self.repo)?;
+        if let Some(seed) = self.seed_not_handed_off()? {
+            bail!(
+                "issue #{seed} is the seed session's own and has no lease.v1 yet; the seed hands it off with cargo xtask kit handoff (team/06 section 13 step 5) before the dispatcher starts"
+            );
+        }
         self.adopt()?;
         let mut next_github = Instant::now();
         let mut passes = 0u32;
@@ -257,7 +300,10 @@ impl<'a> Dispatcher<'a> {
                                     "dispatch: #{}: {error:#}; the lease stays paused",
                                     kept.item()
                                 );
-                                Some(Slot::Paused { held: kept })
+                                Some(Slot::Paused {
+                                    held: kept,
+                                    prompt: Prompt::Resume,
+                                })
                             })
                     }
                 },
@@ -328,7 +374,10 @@ impl<'a> Dispatcher<'a> {
                     mut held, mut run, ..
                 } => {
                     held.worked += run.stop().report().elapsed;
-                    Slot::Paused { held }
+                    Slot::Paused {
+                        held,
+                        prompt: Prompt::Resume,
+                    }
                 }
                 paused @ Slot::Paused { .. } => paused,
             };
@@ -360,28 +409,23 @@ impl<'a> Dispatcher<'a> {
     }
 
     fn resume_paused(&mut self) -> Result<()> {
-        let mut paused: Vec<Held> = Vec::new();
+        let mut paused: Vec<(Held, Prompt)> = Vec::new();
         let mut kept = Vec::new();
         for slot in std::mem::take(&mut self.slots) {
             match slot {
-                Slot::Paused { held } => paused.push(held),
+                Slot::Paused { held, prompt } => paused.push((held, prompt)),
                 working => kept.push(working),
             }
         }
         self.slots = kept;
-        paused.sort_by_key(|held| queue::urgency(held.trust_core, held.tier, held.priority));
-        for held in paused {
-            let prompt = if held.session().is_some() {
-                Prompt::Resume
-            } else {
-                Prompt::Continue
-            };
+        paused.sort_by_key(|(held, _)| queue::urgency(held.trust_core, held.tier, held.priority));
+        for (held, prompt) in paused {
             let kept = held.clone();
             match self.start(held, prompt) {
                 Ok(slot) => self.slots.extend(slot),
                 Err(error) => {
                     eprintln!("dispatch: #{} could not resume: {error:#}", kept.item());
-                    self.slots.push(Slot::Paused { held: kept });
+                    self.slots.push(Slot::Paused { held: kept, prompt });
                 }
             }
         }

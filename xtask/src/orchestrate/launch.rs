@@ -48,7 +48,7 @@ pub use self::harness::{HARNESS_FILE, claude_from, claude_program};
 use self::item::fetch_item;
 pub use self::item::{acceptance_path, snapshot_of};
 use self::kit::model_name;
-pub use self::kit::{LaunchKit, ModelChoice, protected_change_agents};
+pub use self::kit::{Caps, LaunchKit, ModelChoice, protected_change_agents};
 use self::trust::{Trust, Untrusted};
 
 pub const CLAUDE_VARIABLE: &str = "GRDR_CLAUDE";
@@ -249,13 +249,6 @@ pub fn plan(
             model = raised_model(kit, id, "the dispatcher asked for it (cross-model review)");
         }
     }
-    let size = snapshot.as_ref().and_then(|s| s.size.as_deref());
-    let turns = kit.session_turns(name, size, request.scope)?;
-    let effort = match &request.effort {
-        Some(asked) if EFFORTS.contains(&asked.as_str()) => Some(asked.clone()),
-        Some(asked) => bail!("--effort {asked} is not one of {}", EFFORTS.join(", ")),
-        None => kit.effort(name, size),
-    };
     let leased_to_it = snapshot
         .as_ref()
         .is_some_and(|snapshot| snapshot.status == ItemStatus::Leased)
@@ -263,6 +256,18 @@ pub fn plan(
     let protected = match &snapshot {
         Some(snapshot) if leased_to_it => kit.is_protected_change(name, &snapshot.write_set)?,
         _ => false,
+    };
+    let caps = if protected {
+        Caps::ProtectedChange
+    } else {
+        Caps::Role
+    };
+    let size = snapshot.as_ref().and_then(|s| s.size.as_deref());
+    let turns = kit.session_turns(name, size, request.scope, caps)?;
+    let effort = match &request.effort {
+        Some(asked) if EFFORTS.contains(&asked.as_str()) => Some(asked.clone()),
+        Some(asked) => bail!("--effort {asked} is not one of {}", EFFORTS.join(", ")),
+        None => kit.effort(name, size, caps),
     };
     let scope_value = match (&seed, protected) {
         (Some(_), _) => Some("seed"),

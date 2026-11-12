@@ -48,7 +48,7 @@ trigger = "dispatch"
 body = "templates/agents/lead-agent-kit.md"
 "#;
 const SEED: &str = "agent = \"chief-architect\"\nscope = \"seed\"\nbranch = \"agent/seed\"\nmax_turns = 200\nprompt = \"kit/prompts/seed.md\"\npaths = [\"AGENTS.md\"]\n";
-const USAGE: &str = "[role.worker]\nmax_turns = 80\nwall_clock_minutes = 60\n[role.worker.size.S]\neffort = \"low\"\n[role.worker.size.M]\nmax_turns = 150\nwall_clock_minutes = 120\n[role.lead]\nmax_turns = 40\n";
+const USAGE: &str = "[role.worker]\nmax_turns = 80\nwall_clock_minutes = 60\n[role.worker.size.S]\neffort = \"low\"\n[role.worker.size.M]\nmax_turns = 150\nwall_clock_minutes = 120\n[role.lead]\nmax_turns = 40\nprotected_change_cap_role = \"worker\"\n";
 
 pub(super) fn repo() -> TempRepo {
     let temp = TempRepo::create();
@@ -270,6 +270,7 @@ fn protected_changes_get_the_protected_scope() {
         None,
         "no lease.v1 names lead-agent-kit, so nothing widens"
     );
+    assert_eq!(unleased.turns, 40, "an unleased lead runs on the lead caps");
     let lease = Lease {
         schema: LEASE_SCHEMA.into(),
         item: 9,
@@ -283,6 +284,10 @@ fn protected_changes_get_the_protected_scope() {
     tracker.comment(9, &lease_comment(&lease).unwrap()).unwrap();
     let plan = plan(&temp.repo(), &kit, &tracker, "claude".into(), &request).unwrap();
     assert_eq!(env_value(&plan, "GRDR_SCOPE"), Some("protected"));
+    assert_eq!(
+        plan.turns, 80,
+        "a protected-change lease runs on the worker caps its role names"
+    );
     assert!(
         !kit.is_protected_change("impl-rust", &[".claude/**".into()])
             .unwrap()

@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 
 use super::issue::{parse_tier, raise, tier_name};
 use super::launch::owner_step_or;
-use super::tiers::{Change, LaneLimits, RiskPolicy};
+use super::tiers::{Change, LaneLimits, RUNTIME_TRUST_CORE, RiskPolicy};
 use super::tracker::GhTracker;
 use crate::cli::{self, Spec};
 use crate::clock::Utc;
@@ -238,7 +238,13 @@ pub fn assess(
             reasons.push(format!("{}: trust core", change.path));
         }
     }
-    let triggers = triggers(changes);
+    let mut triggers = triggers(changes);
+    triggers.extend(
+        changes
+            .iter()
+            .filter(|change| policy.is_runtime_trust_core(&change.path))
+            .map(|change| format!("{RUNTIME_TRUST_CORE}: {}", change.path)),
+    );
     let tests_only = !changes.is_empty()
         && changes
             .iter()

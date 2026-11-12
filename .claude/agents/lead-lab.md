@@ -3,8 +3,8 @@ name: lead-lab
 description: "Plans the lab squad. Use to decompose spine D-45 and D-64 into work items and to resolve a blocked hand-off for lab/, the matrix-run jobs and the held-out evaluator client. Never writes code."
 model: claude-opus-5-5
 effort: high
-tools: Read, Grep, Glob, Bash, Skill, WebFetch, WebSearch
-disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent
+tools: Read, Grep, Glob, Bash, Skill, Write, WebFetch, WebSearch
+disallowedTools: Edit, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 40
 skills:

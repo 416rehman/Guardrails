@@ -1,18 +1,21 @@
 //! The dispatcher's planning and review passes: proposed issues reach their squad's lead and are
-//! planned again only after a change, issues in review get `eval-tier` first and `eval-diff` on
-//! the other model, a failed round goes back to the worker, and a held lease whose acceptance
-//! section changed goes back to proposed.
+//! planned again only after a change, an item its squad's lead implements goes to the product
+//! lead, the seed's own issue waits for the seed's hand-off and then goes to the chief architect,
+//! issues in review get `eval-tier` first and `eval-diff` on the other model, a failed round goes
+//! back to the worker with the fix prompt even when it waited for a slot, and a held lease whose
+//! acceptance section changed goes back to proposed.
 
 use super::tests::{DONE, Setup, settle, transitions};
 use crate::config::session::ItemStatus;
-use crate::orchestrate::records::Reason;
+use crate::orchestrate::records::{LEASE_SCHEMA, Lease, Reason, lease_comment};
 use crate::orchestrate::testkit::{body, git, issue};
-use crate::orchestrate::tracker::Tracker;
+use crate::orchestrate::tracker::{IssueEdit, Tracker};
 use crate::testkit::{risk_tiers, tier};
 
 const LEAD: &str = "[agent.lead-core]\ngroup = \"lead\"\ndescription = \"Core lead.\"\nmodel = \"opus\"\neffort = \"high\"\ncap_role = \"lead\"\nmax_turns = 40\ntools = [\"Read\"]\ndisallowed_tools = [\"Edit\", \"Write\"]\ndeny_write = \"@protected\"\nnet = \"A\"\ntrigger = \"dispatch\"\nbody = \"templates/agents/lead-core.md\"\n";
 const EVALUATORS: &str = "[agent.eval-tier]\ngroup = \"evaluator\"\ndescription = \"Tier.\"\nmodel = \"sonnet\"\neffort = \"low\"\ncap_role = \"evaluator-light\"\nmax_turns = 30\ntools = [\"Read\"]\ndisallowed_tools = [\"Edit\", \"Write\"]\ndeny_write = \"@protected\"\nnet = \"none\"\ntrigger = \"event\"\nbody = \"templates/agents/eval-tier.md\"\n\n[agent.eval-diff]\ngroup = \"evaluator\"\ndescription = \"Diff.\"\nmodel = \"sonnet\"\neffort = \"high\"\ncap_role = \"evaluator-review\"\nmax_turns = 40\ntools = [\"Read\"]\ndisallowed_tools = [\"Edit\", \"Write\"]\ndeny_write = \"@protected\"\nnet = \"none\"\ntrigger = \"event\"\nbody = \"templates/agents/eval-diff.md\"\n";
 const OWNERS: &str = "[squad.core]\nlead = \"lead-core\"\npaths = [\"crates/**\"]\n";
+const SEED_SCOPE: &str = "agent = \"chief-architect\"\nscope = \"seed\"\nbranch = \"agent/seed\"\npaths = [\"docs/plan.md\"]\nwork_item = \"WI-0000\"\n";
 
 pub(super) fn handoff(item: u64, agent: &str, status: &str, model: &str) -> String {
     format!(
@@ -38,7 +41,8 @@ fn a_proposed_issue_gets_its_squads_lead_and_is_not_planned_twice() {
     assert_eq!(calls.len(), 1, "{calls:?}");
     assert!(calls[0].contains("lead-core --item 30"), "{}", calls[0]);
     assert!(
-        calls[0].contains("cargo xtask kit ready 30"),
+        calls[0].contains("cargo xtask kit ready 30")
+            && calls[0].contains(".agent/state/handoff-30-lead-core.json"),
         "{}",
         calls[0]
     );
@@ -64,6 +68,133 @@ fn a_proposed_issue_gets_its_squads_lead_and_is_not_planned_twice() {
 }
 
 #[test]
+fn an_item_its_squad_lead_implements_goes_to_the_product_lead_and_the_seed_issue_to_nobody() {
+    let setup = Setup::new("");
+    setup.temp.add_agents(LEAD);
+    setup.temp.add_agents(
+        &LEAD
+            .replace("lead-core", "product-lead")
+            .replace("\"lead\"", "\"direction\""),
+    );
+    setup.temp.write(".agents/owners.toml", OWNERS);
+    setup.temp.write(".agents/kit/seed-scope.toml", SEED_SCOPE);
+    setup.tracker.add(issue(
+        31,
+        &["status:proposed", "squad:core", "agent:lead-core"],
+        "A protected item the core lead implements.",
+    ));
+    let mut seed = issue(32, &["status:proposed", "squad:core"], "The seed.");
+    seed.title = "[WI-0000] Seed the agent team".to_owned();
+    setup.tracker.add(seed);
+    setup.fake.respond(1, DONE, 0);
+    let mut dispatcher = setup.dispatcher();
+    assert_eq!(dispatcher.seed_not_handed_off().unwrap(), Some(32));
+    dispatcher.step_github().unwrap();
+    settle(&mut dispatcher);
+    let calls = setup.fake.calls();
+    assert_eq!(
+        calls.len(),
+        1,
+        "the seed's issue is never planned: {calls:?}"
+    );
+    assert!(calls[0].contains("product-lead --item 31"), "{}", calls[0]);
+}
+
+#[test]
+fn a_handed_off_seed_issue_lets_the_dispatcher_start_and_goes_to_the_chief_architect() {
+    let setup = Setup::new("");
+    setup.temp.write(".agents/owners.toml", OWNERS);
+    setup.temp.write(".agents/kit/seed-scope.toml", SEED_SCOPE);
+    let mut seed = issue(
+        33,
+        &["status:proposed", "squad:core", "agent:chief-architect"],
+        "The seed.",
+    );
+    seed.title = "[WI-0000] Seed the agent team".to_owned();
+    setup.tracker.add(seed);
+    let lease = Lease {
+        schema: LEASE_SCHEMA.into(),
+        item: 33,
+        attempt: 1,
+        agent: "chief-architect".into(),
+        model: "claude-fable-5-2".into(),
+        acceptance_sha256: String::new(),
+        branch: "agent/seed".into(),
+        session: None,
+    };
+    setup
+        .tracker
+        .comment(33, &lease_comment(&lease).unwrap())
+        .unwrap();
+    setup.fake.respond(1, DONE, 0).respond(2, DONE, 0);
+    let mut dispatcher = setup.dispatcher();
+    assert_eq!(
+        dispatcher.seed_not_handed_off().unwrap(),
+        None,
+        "the seed's hand-off posted its lease, so the dispatcher may start"
+    );
+    dispatcher.step_github().unwrap();
+    settle(&mut dispatcher);
+    let escalated = IssueEdit {
+        add: vec!["status:escalated".into()],
+        remove: vec!["status:proposed".into()],
+        assign_self: false,
+    };
+    setup.tracker.edit(33, &escalated).unwrap();
+    dispatcher.step_github().unwrap();
+    settle(&mut dispatcher);
+    let calls = setup.fake.calls();
+    assert_eq!(calls.len(), 2, "{calls:?}");
+    assert!(
+        calls
+            .iter()
+            .all(|call| call.contains("chief-architect --item 33")),
+        "{calls:?}"
+    );
+    assert!(calls[1].contains("decide it"), "{}", calls[1]);
+}
+
+#[test]
+fn a_fix_that_waited_for_a_writer_slot_starts_with_the_fix_prompt() {
+    let setup = Setup::new("");
+    setup.temp.add_agents(EVALUATORS);
+    let mut dispatcher = in_review(&setup, 46, &[]);
+    setup.fake.respond(2, DONE, 0);
+    dispatcher.step_github().unwrap();
+    settle(&mut dispatcher);
+    setup
+        .tracker
+        .comment(46, &handoff(46, "eval-tier", "pass", "claude-sonnet-5-5"))
+        .unwrap();
+    setup.fake.respond(3, DONE, 0);
+    dispatcher.step_github().unwrap();
+    settle(&mut dispatcher);
+    setup
+        .tracker
+        .comment(46, &handoff(46, "eval-diff", "fail", "claude-opus-5-5"))
+        .unwrap();
+    setup.ready_issue(47, &[], "lead-core");
+    setup.fake.respond(4, DONE, 0).respond(5, DONE, 0);
+    dispatcher.step_github().unwrap();
+    assert_eq!(
+        dispatcher.held(),
+        vec![47, 46],
+        "#47 took the only writer slot, so #46's fix waits"
+    );
+    settle(&mut dispatcher);
+    dispatcher.step_github().unwrap();
+    settle(&mut dispatcher);
+    let calls = setup.fake.calls();
+    assert!(calls[3].contains("impl-rust --item 47"), "{calls:?}");
+    assert!(calls[4].contains("impl-rust --item 46"), "{calls:?}");
+    assert!(
+        calls[4].contains("came back from review") && !calls[4].contains("--resume"),
+        "{}",
+        calls[4]
+    );
+}
+
+#[test]
 fn an_issue_in_review_gets_eval_tier_first_and_a_failed_round_goes_back_to_its_worker() {
     let setup = Setup::new("");
     setup.temp.add_agents(EVALUATORS);
@@ -82,6 +213,11 @@ fn an_issue_in_review_gets_eval_tier_first_and_a_failed_round_goes_back_to_its_w
     settle(&mut dispatcher);
     let calls = setup.fake.calls();
     assert!(calls[1].contains("eval-tier --item 40"), "{}", calls[1]);
+    assert!(
+        calls[1].contains("to .agent/state/handoff-40-eval-tier.json with the Write tool"),
+        "the verdict goes through a draft file: {}",
+        calls[1]
+    );
     setup
         .tracker
         .comment(40, &handoff(40, "eval-tier", "pass", "claude-sonnet-5-5"))

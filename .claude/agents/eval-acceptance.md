@@ -3,8 +3,8 @@ name: eval-acceptance
 description: "Verifies one pull request against its issue's readied acceptance criteria by driving the built artefact. Use on every code pull request."
 model: claude-sonnet-5-5
 effort: high
-tools: Read, Grep, Glob, Bash, Skill, mcp__playwright__*, WebFetch, WebSearch
-disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent
+tools: Read, Grep, Glob, Bash, Skill, mcp__playwright__*, Write, WebFetch, WebSearch
+disallowedTools: Edit, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 60
 skills:

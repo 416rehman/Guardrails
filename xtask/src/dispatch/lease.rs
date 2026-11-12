@@ -11,7 +11,7 @@ use anyhow::{Result, bail};
 use super::queue::Candidate;
 use crate::config::session::{ItemStatus, RiskTier};
 use crate::orchestrate::issue::status_label;
-use crate::orchestrate::launch::ModelChoice;
+use crate::orchestrate::launch::{Caps, ModelChoice};
 use crate::orchestrate::records::{
     self, LEASE_SCHEMA, Lease, Reason, STATE_SCHEMA, Transition, lease_comment, transition_comment,
 };
@@ -26,6 +26,8 @@ pub struct Held {
     pub tier: RiskTier,
     pub trust_core: bool,
     pub priority: Option<u8>,
+    /// The `usage.toml` row the worker's caps come from.
+    pub caps: Caps,
     /// Sessions started in this attempt.
     pub sessions: u32,
     /// Time the worker has run in this attempt; paused time is not counted.

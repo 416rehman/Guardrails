@@ -3,8 +3,8 @@ name: lead-interfaces
 description: "Plans the interfaces squad. Use to decompose design 27 and 28 into work items and to resolve a blocked hand-off for web/, desktop/, grdr-tray and grdr-desktop. Never writes code."
 model: claude-opus-5-5
 effort: high
-tools: Read, Grep, Glob, Bash, Skill, WebFetch, WebSearch
-disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent
+tools: Read, Grep, Glob, Bash, Skill, Write, WebFetch, WebSearch
+disallowedTools: Edit, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 40
 skills:

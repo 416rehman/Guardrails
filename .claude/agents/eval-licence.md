@@ -3,8 +3,8 @@ name: eval-licence
 description: "Licence and provenance check. Use on dependency, lockfile, vendored code, third_party and content changes."
 model: claude-sonnet-5-5
 effort: low
-tools: Read, Grep, Glob, Bash, WebFetch, WebSearch
-disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent
+tools: Read, Grep, Glob, Bash, Write, WebFetch, WebSearch
+disallowedTools: Edit, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 30
 skills:

@@ -3,8 +3,8 @@ name: eval-a11y
 description: "Accessibility review for web and desktop changes. Use on any UI path."
 model: claude-sonnet-5-5
 effort: medium
-tools: Read, Grep, Glob, Bash, Skill, mcp__playwright__*, WebFetch, WebSearch
-disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent
+tools: Read, Grep, Glob, Bash, Skill, mcp__playwright__*, Write, WebFetch, WebSearch
+disallowedTools: Edit, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 60
 skills:

@@ -34,6 +34,9 @@ pub struct RoleCaps {
     pub effort: Option<String>,
     #[serde(default)]
     pub size: BTreeMap<String, RoleCaps>,
+    /// The row whose caps and size rows a protected-change lease of this role runs on: such a
+    /// lease implements an item (owner instruction 7), so it needs an implementer's caps.
+    pub protected_change_cap_role: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

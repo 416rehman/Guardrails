@@ -5,11 +5,13 @@
 //! forced timeout, the missing item snapshot, a fable session for a non-architect, a chief-architect
 //! resume that must carry the ownership sentence, the oversized and ill-ordered source files, the
 //! three-bool struct, and each command the deny list of team/03 section 4.1 names, plus the
-//! owner's kit rules in `rule_cases.rs`.
+//! owner's kit rules in `rule_cases.rs`, and the widened scopes and item snapshots in
+//! `scope_cases.rs`.
 
 pub(super) mod cases;
 mod harness;
 mod rule_cases;
+mod scope_cases;
 
 use std::process::ExitCode;
 

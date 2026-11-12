@@ -1,19 +1,23 @@
 //! One worker session from start to end: which session to start (the lease's own, a resumed one
 //! or a new one in the same attempt), its prompt and limits, and what its end means for the item:
 //! review when the pull request is open, another session after a partial hand-off, or the end of
-//! the attempt.
+//! the attempt. Once an item came back from review, its next session in the attempt, resumed or
+//! new, goes back to review only after a new hand-off, so the evaluators never judge a head left
+//! unanswered. A fable agent's session waits while another fable session holds the lock.
 
 use anyhow::Result;
 
 use super::journal::{log_session, note};
+use super::review::{handoff_by, since_lease};
 use super::{Dispatcher, Prompt, Slot};
 use crate::config::session::ItemStatus;
 use crate::dispatch::lease::{self, Held};
 use crate::dispatch::worker::{self, Job};
+use crate::kit::CHIEF_ARCHITECT;
 use crate::orchestrate::claude::Ended;
 use crate::orchestrate::ids;
-use crate::orchestrate::launch::SessionStart;
-use crate::orchestrate::records::{self, Lease, Reason};
+use crate::orchestrate::launch::{self, SessionStart};
+use crate::orchestrate::records::{self, Lease, Reason, Record};
 
 const PARTIAL: &str = "partial";
 /// The `result` subtype of a session that `--max-turns` stopped.
@@ -35,7 +39,12 @@ impl Dispatcher<'_> {
             ended.describe()
         );
         let reason = match &ended {
-            Ended::UsageLimited { .. } => return Ok(Some(Slot::Paused { held })),
+            Ended::UsageLimited { .. } => {
+                return Ok(Some(Slot::Paused {
+                    held,
+                    prompt: Prompt::Resume,
+                }));
+            }
             Ended::Stalled { .. } => Some(Reason::Stall),
             Ended::OverTime { .. } => Some(Reason::LeaseExpired),
             Ended::OverTurns { .. } | Ended::Exited { .. } => None,
@@ -53,22 +62,34 @@ impl Dispatcher<'_> {
             );
             return Ok(None);
         }
-        if self
-            .tracker
-            .open_pull_request(&held.record.branch)?
-            .is_some()
+        let found = records::records(&issue);
+        let owed = fix_owed(&found, &held.record);
+        if !owed
+            && self
+                .tracker
+                .open_pull_request(&held.record.branch)?
+                .is_some()
         {
             lease::to_review(self.tracker, &held.record)?;
             println!("dispatch: #{} is in review", held.item());
             return Ok(None);
         }
-        if prompt == Prompt::Resume && ended.report().turns == 0 {
-            return self.start(held, Prompt::Continue);
+        if owed {
+            note(
+                &self.repo,
+                "fix-unanswered",
+                Some(&held.record),
+                "the session ended without a hand-off since the item came back from review",
+            );
         }
-        let partial = records::latest_handoff(&records::records(&issue), held.item())
+        if prompt == Prompt::Resume && ended.report().turns == 0 {
+            let next = if owed { Prompt::Fix } else { Prompt::Continue };
+            return self.start(held, next);
+        }
+        let partial = records::latest_handoff(&found, held.item())
             .and_then(|handoff| handoff.get("status").and_then(serde_json::Value::as_str))
             == Some(PARTIAL);
-        let cap_role = self.kit.agent(&held.record.agent)?.cap_role.clone();
+        let cap_role = self.kit.cap_role(&held.record.agent, held.caps)?;
         if partial && held.sessions < self.policy.sessions_per_attempt(&cap_role)? {
             return self.start(held, Prompt::Continue);
         }
@@ -87,8 +108,8 @@ impl Dispatcher<'_> {
     }
 
     pub(super) fn fail(&mut self, held: Held, reason: Reason) -> Result<Option<Slot>> {
-        let outcome =
-            lease::end_attempt(self.tracker, &held.record, reason, self.policy.max_attempts)?;
+        let attempts = self.attempts_for(&held.record);
+        let outcome = lease::end_attempt(self.tracker, &held.record, reason, attempts)?;
         let detail = format!("{}; {outcome:?}", reason.describe());
         note(&self.repo, "attempt-ended", Some(&held.record), &detail);
         println!(
@@ -100,12 +121,16 @@ impl Dispatcher<'_> {
     }
 
     /// Starts a session for `held`: the lease's own session, a resumed one, or a new one. An
-    /// expired lease ends its attempt instead, and no slot remains.
+    /// expired lease ends its attempt instead, and no slot remains; a fable agent's session waits
+    /// in a paused slot while another fable session runs.
     pub(super) fn start(&mut self, mut held: Held, prompt: Prompt) -> Result<Option<Slot>> {
         let agent = held.record.agent.clone();
+        if agent == CHIEF_ARCHITECT && launch::fable_session_running()? {
+            return Ok(Some(Slot::Paused { held, prompt }));
+        }
         let lease_limit = self
             .kit
-            .wall_clock(&agent, held.size.as_deref())
+            .wall_clock(&agent, held.size.as_deref(), held.caps)
             .map(|clock| clock.saturating_mul(self.policy.lease_factor));
         if lease_limit.is_some_and(|limit| held.worked >= limit) {
             return self.fail(held, Reason::LeaseExpired);
@@ -133,7 +158,7 @@ impl Dispatcher<'_> {
         let watch = self.policy.session.watch(
             Some(
                 self.kit
-                    .session_turns(&agent, held.size.as_deref(), scope)?,
+                    .session_turns(&agent, held.size.as_deref(), scope, held.caps)?,
             ),
             lease_limit.map(|limit| limit.saturating_sub(held.worked)),
         );
@@ -179,7 +204,7 @@ impl Dispatcher<'_> {
             Prompt::Fix => (
                 "fix",
                 format!(
-                    "The pull request of issue #{n}, attempt {a} on branch {b}, came back from review or the merge queue: read the newest state.v1 comment for why, the failed check runs and the evaluators' handoff.v1 comments on the issue, fix what they found in the design (never around the symptom), push, and finish with cargo xtask kit handoff."
+                    "The pull request of issue #{n}, attempt {a} on branch {b}, came back from review or the merge queue: read the newest state.v1 comment for why, the failed checks (gh pr checks {b}) and the evaluators' handoff.v1 comments on the issue, fix what they found in the design (never around the symptom), push, and finish with cargo xtask kit handoff. If the state.v1 comment says there is nothing to fix in the branch, stop without a hand-off."
                 ),
             ),
         };
@@ -205,4 +230,20 @@ impl Dispatcher<'_> {
                 .to_owned()
         }))
     }
+}
+
+/// Whether the item came back from review in `lease`'s attempt and its agent has not handed off
+/// since, so its pull request still holds the head the evaluators or the merge queue sent back.
+pub(super) fn fix_owed(found: &[Record], lease: &Lease) -> bool {
+    let attempt = since_lease(found, lease);
+    let Some(returned) = attempt.iter().rposition(|record| {
+        matches!(record, Record::Transition(t) if t.from == ItemStatus::InReview && t.to == ItemStatus::Leased)
+    }) else {
+        return false;
+    };
+    !attempt
+        .get(returned + 1..)
+        .unwrap_or_default()
+        .iter()
+        .any(|record| handoff_by(record, lease.item, &lease.agent).is_some())
 }
