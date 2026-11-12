@@ -123,6 +123,12 @@ verify_timeout_seconds = 1800
 # the fleet image of WI-0006 sets it once those come from the marketplace.
 [launch]
 scrub_user_env = true
+# Allow rules for a plugin's own commands, by plugin entry of marketplace.toml, which kit launch
+# passes to every session as --allowedTools: {root} becomes the plugin's install directory that
+# Claude Code records in installed_plugins.json, with forward slashes, the way the plugin prints
+# the command. The path is this machine's, so it is not a project rule. The cleanup gate refuses a
+# commit of source lines until its sign-off runs (skill grdr-handoff, definition of done).
+plugin_allow = { cleanup = 'Bash(node "{root}/hooks/cleanup-gate.js" --mark *)' }
 harness = "claude-code"          # the harness name in the meta.v1 block
 # GRDR_CLAUDE names the executable when set. Otherwise `claude` is looked up on PATH, skipping
 # entries that are empty or invalid and stripping the quotes around or after an entry, and then

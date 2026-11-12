@@ -147,7 +147,7 @@ pub fn render(repo: &Repo, kit: &Kit) -> Result<Rendered> {
         &mut files,
     )?;
     for (group, document) in &kit.permissions.managed {
-        let value = settings::managed(kit, group, document)?;
+        let value = settings::managed(repo, kit, group, document)?;
         files.insert(settings::managed_path(group), settings::to_bytes(&value)?);
     }
     if let Some(value) = egress::render(kit)? {
@@ -488,6 +488,60 @@ tools: Read, Edit, Write, Bash, WebFetch, WebSearch
         assert_eq!(egress["roles"]["impl-rust"]["research"], true);
         assert_eq!(egress["roles"]["chief-architect"]["list"], "B");
         assert_eq!(egress["roles"]["chief-architect"]["research"], false);
+    }
+
+    #[test]
+    fn rules_fill_their_placeholders_and_every_kit_workflow_is_allowed() {
+        let temp = TempRepo::create();
+        let path = ".agents/kit/permissions.toml";
+        let original = std::fs::read_to_string(temp.repo().path(path)).unwrap();
+        let templated = original.replacen(
+            "allow = [\"Bash(cargo xtask *)\"]\n\n[sandbox]",
+            "allow = [\"Bash(cargo xtask *)\", \"Bash(gh api --method POST repos/{repository}/check-runs *)\", \"Read(~/.claude/plugins/cache/{marketplace}/**)\"]\n\n[sandbox]",
+            1,
+        );
+        assert_ne!(templated, original);
+        temp.write(path, &templated);
+        let repo = temp.repo();
+        let unset = render(&repo, &Kit::load(&repo).unwrap()).unwrap_err();
+        assert!(
+            format!("{unset:#}").contains("names {repository}"),
+            "{unset:#}"
+        );
+        let harness = std::fs::read_to_string(repo.path(".agents/harness.toml")).unwrap();
+        temp.write(
+            ".agents/harness.toml",
+            &format!("[github]\nrepository = \"owner/name\"\n\n{harness}"),
+        );
+        let settings = json(&rendered(&temp), settings::SETTINGS_PATH);
+        let allow = &settings["permissions"]["allow"];
+        assert_eq!(
+            allow,
+            &serde_json::json!([
+                "Bash(cargo xtask *)",
+                "Bash(gh api --method POST repos/owner/name/check-runs *)",
+                "Read(~/.claude/plugins/cache/grdr-agent-marketplace/**)",
+                "Workflow(review)"
+            ])
+        );
+        assert!(!settings.to_string().contains("{repository}"));
+        let evaluator = json(
+            &rendered(&temp),
+            "deploy/fleet/managed-settings.evaluator.json",
+        );
+        assert!(
+            evaluator["permissions"].get("allow").is_none(),
+            "no evaluator of the fixture has the Workflow tool: {evaluator}"
+        );
+        temp.add_agents("[agent.eval-diff]\ngroup = \"evaluator\"\ndescription = \"Reviews diffs.\"\nmodel = \"sonnet\"\neffort = \"high\"\ncap_role = \"evaluator\"\nmax_turns = 40\ntools = [\"Read\", \"Workflow\"]\nwrite = []\ndeny_write = \"@protected\"\nnet = \"A\"\ntrigger = \"event\"\nbody = \"templates/agents/impl-rust.md\"\n");
+        let evaluator = json(
+            &rendered(&temp),
+            "deploy/fleet/managed-settings.evaluator.json",
+        );
+        assert_eq!(
+            evaluator["permissions"]["allow"],
+            serde_json::json!(["Workflow(review)"])
+        );
     }
 
     #[test]

@@ -2,19 +2,22 @@
 //! `marketplace.toml` and `vendors.toml`, and the fleet's managed settings from
 //! `[managed.<group>]` (team/03 sections 4 and 8). Only project-scope keys go into the project
 //! file. `GH_REPO` comes from harness.toml `[github] repository` and each folded model alias from
-//! models.toml, so neither is written twice.
+//! models.toml, so neither is written twice. A permission rule may name `{repository}` and
+//! `{marketplace}`, filled from harness.toml and marketplace.toml for the same reason, and every
+//! kit workflow gets its `Workflow(<name>)` allow rule, so a session in `dontAsk` can start it.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::{Context, Result, bail};
 use serde_json::{Map, Value, json};
 
+use super::render::WORKFLOWS_SOURCE;
 use super::research::{self, Grant};
 use crate::config::Kit;
 use crate::config::hooks::{Action, OnFailure};
 use crate::config::permissions::FORBIDDEN_PROJECT_MODES;
 use crate::config::roster::Group;
-use crate::repo::Repo;
+use crate::repo::{Repo, walk_files};
 
 pub const SETTINGS_PATH: &str = ".claude/settings.json";
 /// Shell form with the quoted path: Git Bash on Windows resolves `xtask` to `xtask.exe`.
@@ -31,6 +34,9 @@ pub const MANAGED_DIR: &str = "deploy/fleet";
 /// The group whose managed document is `managed-settings.json` itself.
 const DEFAULT_GROUP: Group = Group::Implementer;
 const REPOSITORY_VARIABLE: &str = "GH_REPO";
+const REPOSITORY_PLACEHOLDER: &str = "{repository}";
+const MARKETPLACE_PLACEHOLDER: &str = "{marketplace}";
+const WORKFLOW_TOOL: &str = "Workflow";
 
 /// The entries of one event that share a matcher.
 struct MatcherGroup<'a> {
@@ -96,7 +102,10 @@ pub fn project(repo: &Repo, kit: &Kit) -> Result<Value> {
             "permissions.toml settings.disable_workflows: no verified Claude Code setting renders it; keep it false"
         );
     }
-    root.insert("permissions".into(), permissions(kit)?);
+    root.insert(
+        "permissions".into(),
+        permissions(kit, &workflow_rules(repo)?)?,
+    );
     root.insert("sandbox".into(), sandbox(kit));
     let plugins: Map<String, Value> = kit
         .marketplace
@@ -116,7 +125,7 @@ pub fn project(repo: &Repo, kit: &Kit) -> Result<Value> {
 }
 
 /// One managed settings document, with the protected-path deny rules merged in.
-pub fn managed(kit: &Kit, group: &str, document: &toml::Table) -> Result<Value> {
+pub fn managed(repo: &Repo, kit: &Kit, group: &str, document: &toml::Table) -> Result<Value> {
     if !Group::ALL.iter().any(|known| known.as_str() == group) {
         bail!(
             "permissions.toml [managed.{group}]: `{group}` is not a roster group ({})",
@@ -140,8 +149,8 @@ pub fn managed(kit: &Kit, group: &str, document: &toml::Table) -> Result<Value> 
     let Some(permissions) = permissions.as_object_mut() else {
         bail!("permissions.toml [managed.{group}].permissions is not a table");
     };
-    let listed = rule_list(permissions, "deny", group)?;
-    let asked = rule_list(permissions, "ask", group)?;
+    let listed = expanded(kit, rule_list(permissions, "deny", group)?)?;
+    let asked = expanded(kit, rule_list(permissions, "ask", group)?)?;
     let grant = Grant::of(kit).filter(|grant| grant.covers_group(kit, group));
     if let Some(rule) =
         research::shadowing_rule(&listed).or_else(|| research::shadowing_rule(&asked))
@@ -155,12 +164,21 @@ pub fn managed(kit: &Kit, group: &str, document: &toml::Table) -> Result<Value> 
         "deny".into(),
         json!(dedupe(kit.protected.edit_rules().into_iter().chain(listed))),
     );
-    if let Some(grant) = grant {
-        let allowed = rule_list(permissions, "allow", group)?;
-        permissions.insert(
-            "allow".into(),
-            json!(dedupe(allowed.into_iter().chain(grant.allow_rules()))),
-        );
+    if !asked.is_empty() {
+        permissions.insert("ask".into(), json!(asked));
+    }
+    let workflows = if group_runs_workflows(kit, group) {
+        workflow_rules(repo)?
+    } else {
+        Vec::new()
+    };
+    let allowed = expanded(kit, rule_list(permissions, "allow", group)?)?
+        .into_iter()
+        .chain(workflows)
+        .chain(grant.map(|grant| grant.allow_rules()).unwrap_or_default());
+    let allowed = dedupe(allowed);
+    if !allowed.is_empty() {
+        permissions.insert("allow".into(), json!(allowed));
     }
     let derived = derived_env(kit)?;
     if !derived.is_empty() {
@@ -184,7 +202,7 @@ pub fn to_bytes(value: &Value) -> Result<Vec<u8>> {
     Ok(text.into_bytes())
 }
 
-fn permissions(kit: &Kit) -> Result<Value> {
+fn permissions(kit: &Kit, workflows: &[String]) -> Result<Value> {
     let source = &kit.permissions.permissions;
     if FORBIDDEN_PROJECT_MODES.contains(&source.default_mode.as_str()) {
         bail!(
@@ -197,17 +215,23 @@ fn permissions(kit: &Kit) -> Result<Value> {
     if let Some(value) = &source.disable_bypass {
         out.insert("disableBypassPermissionsMode".into(), json!(value));
     }
+    let listed = expanded(kit, source.deny.clone())?;
+    let asked = expanded(kit, source.ask.clone())?;
     let deny = dedupe(
         kit.protected
             .edit_rules()
             .into_iter()
-            .chain(source.deny.iter().cloned()),
+            .chain(listed.iter().cloned()),
     );
     let grant =
         Grant::of(kit).filter(|grant| kit.roster.agents.values().any(|agent| grant.covers(agent)));
-    let mut allow = source.allow.clone();
+    let mut allow = dedupe(
+        expanded(kit, source.allow.clone())?
+            .into_iter()
+            .chain(workflows.iter().cloned()),
+    );
     if let Some(grant) = grant {
-        for (list, rules) in [("deny", &source.deny), ("ask", &source.ask)] {
+        for (list, rules) in [("deny", &listed), ("ask", &asked)] {
             if let Some(rule) = research::shadowing_rule(rules) {
                 bail!(
                     "permissions.toml {list} lists `{rule}`, which would override the fetch rules vendors.toml grants; the roles without the grant do not have the tool"
@@ -217,9 +241,67 @@ fn permissions(kit: &Kit) -> Result<Value> {
         allow = dedupe(allow.into_iter().chain(grant.allow_rules()));
     }
     out.insert("deny".into(), json!(deny));
-    out.insert("ask".into(), json!(source.ask));
+    out.insert("ask".into(), json!(asked));
     out.insert("allow".into(), json!(allow));
     Ok(Value::Object(out))
+}
+
+/// `rules` with `{repository}` and `{marketplace}` filled in; a rule naming one that has no value
+/// is an error, so no rule is ever written with a placeholder in it.
+fn expanded(kit: &Kit, rules: Vec<String>) -> Result<Vec<String>> {
+    let values = [
+        (
+            REPOSITORY_PLACEHOLDER,
+            kit.harness.github.repository.as_deref(),
+            "harness.toml [github] repository",
+        ),
+        (
+            MARKETPLACE_PLACEHOLDER,
+            Some(kit.marketplace.marketplace.name.as_str()),
+            "marketplace.toml [marketplace] name",
+        ),
+    ];
+    rules
+        .into_iter()
+        .map(|rule| {
+            values
+                .iter()
+                .try_fold(rule.clone(), |text, (placeholder, value, source)| {
+                    match (text.contains(placeholder), value) {
+                        (false, _) => Ok(text),
+                        (true, Some(value)) => Ok(text.replace(placeholder, value)),
+                        (true, None) => {
+                            bail!("permissions.toml rule `{rule}` names {placeholder}, and {source} is not set")
+                        }
+                    }
+                })
+        })
+        .collect()
+}
+
+/// `Workflow(<name>)` for every kit workflow, by its file name, as `kit render` copies them to
+/// `.claude/workflows/`.
+fn workflow_rules(repo: &Repo) -> Result<Vec<String>> {
+    let mut names: Vec<String> = walk_files(&repo.path(WORKFLOWS_SOURCE))?
+        .iter()
+        .filter_map(|file| repo.relative(file))
+        .filter_map(|path| {
+            path.as_str()
+                .strip_prefix(&format!("{WORKFLOWS_SOURCE}/"))
+                .and_then(|name| name.strip_suffix(".js"))
+                .filter(|name| !name.contains('/'))
+                .map(|name| format!("{WORKFLOW_TOOL}({name})"))
+        })
+        .collect();
+    names.sort();
+    Ok(names)
+}
+
+/// Whether a roster role of `group` has the Workflow tool.
+fn group_runs_workflows(kit: &Kit, group: &str) -> bool {
+    kit.roster.agents.values().any(|agent| {
+        agent.group.as_str() == group && agent.tools.iter().any(|tool| tool == WORKFLOW_TOOL)
+    })
 }
 
 fn sandbox(kit: &Kit) -> Value {

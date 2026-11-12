@@ -13,6 +13,7 @@ usage: cargo xtask <command> [options]
   kit launch <agent> [--item <n>] [--seed] [...]    start a Claude Code session as one roster agent
   kit ready <n>                                     ready a proposed issue: ready.v1 and status:ready
   kit handoff [...]                                 post the hand-off, push, open the pull request
+  kit place [--stage] <path>...                     put a widened session's staged protected files in place
   kit claim --next                                  lease the next ready issue through the dispatcher
   kit ci-env --pull-request <n> [...]               print the lease identity CI runs a pull request's gates as, save its snapshot
   hook <handler>                                    one hook handler; JSON on stdin
@@ -82,6 +83,7 @@ fn kit_command(args: &[String]) -> ExitCode {
         "render" => report(kit::render_command(rest)),
         "check" => report(kit::check_command(rest)),
         "install" => report(kit::install_command(rest)),
+        "place" => report(kit::place::command(rest)),
         other => report(orchestrate::run(&format!("kit {other}"), rest)),
     }
 }

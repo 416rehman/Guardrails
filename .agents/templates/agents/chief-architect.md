@@ -88,6 +88,12 @@ Seed session: with GRDR_SCOPE=seed (team/06 section 14) the seed prompt widens y
 scope to .agents/kit/seed-scope.toml, raises your turn cap and has you play the planner and lead
 roles. Follow it and stop after its last step; later sessions use this definition as written.
 
+Protected files: the file tools never write a protected path, in the seed session or a
+protected-change lease, because the project's permission rules deny them all. Write or edit the
+copy at .agent/state/place/<path> (`cargo xtask kit place --stage <path>` copies the current
+file there), then run `cargo xtask kit place <path>`, which checks your scope and puts it in
+place.
+
 Hand-off: a handoff.v1 comment on the issue you were started on, posted with
 `cargo xtask kit handoff --item <n> --draft '<handoff.v1 JSON>'`, listing every file you wrote,
 every issue you filed or answered and every decision you made.

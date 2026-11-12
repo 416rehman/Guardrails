@@ -7,6 +7,12 @@
 //! configure Claude Code, git, gh or cargo for every later session, through this tool or the shell
 //! ([`outside_refusal`]). An edit it allows on a path of `.agents/kit/path-skills.toml` names that
 //! entry's skills the first time the session edits there (owner instruction 18).
+//!
+//! The project settings carry no Edit allow rule, so an agent's write inside its scope runs in
+//! `dontAsk` only because this handler approves it. A person's session gets no approval and
+//! prompts as before. Every protected path is an Edit deny rule (kit render), which no approval
+//! overrides, so a widened session puts a protected path in place with `cargo xtask kit place`
+//! instead.
 
 use std::path::{Path, PathBuf};
 
@@ -34,8 +40,23 @@ pub const KIT_STATE: &[&str] = &[
     ".agent/evidence/**",
     ".agent/state/**",
 ];
-/// Drafts an agent writes under `.agent/state/`: its hand-off and the bodies of issues it files.
-const AGENT_DRAFTS: &[&str] = &[".agent/state/handoff-*", ".agent/state/proposed-*"];
+/// What an agent writes itself under `.agent/`: its hand-off, the bodies of issues and comments it
+/// posts, its predictions (skill grdr-start-item), the evaluator's expectation log until the
+/// evidence writer of WI-0002 owns it (skill grdr-evaluate), and the files a widened session
+/// stages for `kit place`.
+const AGENT_DRAFTS: &[&str] = &[
+    ".agent/state/handoff-*",
+    ".agent/state/proposed-*",
+    ".agent/state/research-*",
+    ".agent/state/threat-model-*",
+    ".agent/state/*.AGENTS.draft.md",
+    ".agent/state/expect-*",
+    ".agent/evidence/expectations-*.jsonl",
+    ".agent/state/place/**",
+];
+/// Where a widened session stages the protected files `cargo xtask kit place` puts in place.
+pub const PLACE_DIR: &str = ".agent/state/place";
+
 /// Files under the home directory that configure every later session: Claude Code's settings
 /// and the configuration of git and cargo. Claude Code's and gh's own directories are wherever
 /// [`claude_config`] and [`gh_config`] find them.
@@ -48,6 +69,15 @@ const HOME_CONFIGURATION: &[&str] = &[
 ];
 /// The directory component of a git repository's own files.
 const GIT_DIR: &str = ".git";
+
+/// What the handler decides about one write.
+enum Verdict {
+    Refused(String),
+    /// Inside the repository and inside the agent's scope.
+    Approved,
+    /// No decision: a person's session, or a path outside the repository nothing refuses.
+    Undecided,
+}
 
 /// [`KIT_STATE`] with [`AGENT_DRAFTS`] carved out, compiled once for every path a handler checks.
 pub struct KitState {
@@ -69,7 +99,7 @@ impl KitState {
         })
     }
 
-    /// An agent's own draft under `.agent/state/`.
+    /// An agent's own draft under `.agent/`.
     pub fn is_draft(&self, path: &str) -> bool {
         self.drafts.is_match(path)
     }
@@ -88,10 +118,22 @@ pub fn run(context: &Context) -> Result<Outcome> {
     let Some(raw) = tool_path(&context.input) else {
         return Ok(Outcome::Allow);
     };
-    if let Some(reason) = refusal(context, &identity, raw)? {
+    let verdict = verdict(context, &identity, raw)?;
+    if let Verdict::Refused(reason) = verdict {
         return Ok(Outcome::Block(reason));
     }
-    Ok(first_skills(context, raw)?.map_or(Outcome::Allow, Outcome::Context))
+    let skills = first_skills(context, raw)?;
+    Ok(match (verdict, skills) {
+        (Verdict::Approved, context) => Outcome::Approve {
+            reason: format!(
+                "{raw} is inside what {} writes",
+                identity.agent().unwrap_or("this session")
+            ),
+            context,
+        },
+        (_, Some(skills)) => Outcome::Context(skills),
+        (_, None) => Outcome::Allow,
+    })
 }
 
 /// The skills of every path-skill entry `raw` matches that this session has not been told yet.
@@ -130,8 +172,8 @@ fn first_skills(context: &Context, raw: &str) -> Result<Option<String>> {
     )))
 }
 
-/// Why `identity` may not write `raw`, or `None` when it may.
-fn refusal(context: &Context, identity: &Identity, raw: &str) -> Result<Option<String>> {
+/// Whether `identity` may write `raw`, and whether this handler approves it.
+fn verdict(context: &Context, identity: &Identity, raw: &str) -> Result<Verdict> {
     let expanded = if raw.starts_with('~') {
         expand_home(raw, &context.env)
             .to_string_lossy()
@@ -143,7 +185,7 @@ fn refusal(context: &Context, identity: &Identity, raw: &str) -> Result<Option<S
     let located = match context.repo.locate_through_links(&expanded, cwd.as_deref()) {
         Ok(located) => located,
         Err(error) => {
-            return Ok(Some(format!(
+            return Ok(Verdict::Refused(format!(
                 "{raw} goes through a link the guard cannot follow ({error:#}); write the path it leads to"
             )));
         }
@@ -159,16 +201,20 @@ fn refusal(context: &Context, identity: &Identity, raw: &str) -> Result<Option<S
                     )
                 })
             });
-            return Ok(refused);
+            return Ok(refused.map_or(Verdict::Undecided, Verdict::Refused));
         }
     };
     let text = path.as_str();
+    let in_own_scope = match &identity.who {
+        Who::Agent { .. } => Verdict::Approved,
+        Who::Person | Who::Unknown(_) => Verdict::Undecided,
+    };
     let kit_state = KitState::compile()?;
     if kit_state.is_draft(text) {
-        return Ok(None);
+        return Ok(in_own_scope);
     }
     if kit_state.is_kit_written(text) {
-        return Ok(Some(format!(
+        return Ok(Verdict::Refused(format!(
             "{path} is the kit's own state, written by xtask and the hooks only"
         )));
     }
@@ -178,28 +224,35 @@ fn refusal(context: &Context, identity: &Identity, raw: &str) -> Result<Option<S
     };
     let in_scope = |text: &str| widened.as_ref().is_some_and(|globs| globs.is_match(text));
     let protected = ProtectedPaths::load(&context.repo)?.globs()?;
-    if protected.is_match(text) && !in_scope(text) {
-        return Ok(Some(format!(
-            "{path} is a protected path (.agents/kit/protected-paths.toml); ask for the change in the hand-off's protected_change_requests"
-        )));
+    if protected.is_match(text) {
+        let reason = if in_scope(text) {
+            format!(
+                "{path} is a protected path in this session's scope, and the project's permission rules deny every protected path to the file tools. Stage it instead: `cargo xtask kit place --stage {path}` copies the current file to {PLACE_DIR}/{path} (skip that for a new file); edit or write that copy, then run `cargo xtask kit place {path}`"
+            )
+        } else {
+            format!(
+                "{path} is a protected path (.agents/kit/protected-paths.toml); ask for the change in the hand-off's protected_change_requests"
+            )
+        };
+        return Ok(Verdict::Refused(reason));
     }
     if let Some(snapshot) = identity.snapshot() {
         if !snapshot.write_set_globs()?.is_match(text) && !in_scope(text) {
-            return Ok(Some(format!(
+            return Ok(Verdict::Refused(format!(
                 "{path} is outside the write set of issue #{} ({}); file a status:proposed issue for it and name it in the hand-off's next field",
                 snapshot.number,
                 snapshot.write_set.join(", ")
             )));
         }
-        return Ok(None);
+        return Ok(in_own_scope);
     }
     if identity.scope() == Some(Scope::Seed) && widened.is_some() {
         if !in_scope(text) {
-            return Ok(Some(format!(
+            return Ok(Verdict::Refused(format!(
                 "{path} is outside the seed scope (.agents/kit/seed-scope.toml paths); the seed session writes those paths only"
             )));
         }
-        return Ok(None);
+        return Ok(in_own_scope);
     }
     if let Who::Agent { name, agent } = &identity.who
         && !agent.write_globs()?.is_match(text)
@@ -210,11 +263,11 @@ fn refusal(context: &Context, identity: &Identity, raw: &str) -> Result<Option<S
         } else {
             agent.write.join(", ")
         };
-        return Ok(Some(format!(
+        return Ok(Verdict::Refused(format!(
             "{path} is outside what {name} writes ({globs}, .agents/roster.toml); file a status:proposed issue for it instead"
         )));
     }
-    Ok(None)
+    Ok(in_own_scope)
 }
 
 /// Why no tool may write `absolute`, a path outside the repository, for `identity`: a path inside
@@ -359,6 +412,17 @@ mod tests {
         assert!(!kit_state.is_draft(".agent/state/item-7.json"));
         assert!(kit_state.is_kit_written(".agent/state/item-7.json"));
         assert!(kit_state.is_kit_written(".agent/kit/bin/xtask.exe"));
+        for draft in [
+            ".agent/state/expect-7.jsonl",
+            ".agent/state/research-7.md",
+            ".agent/state/grdr-core.AGENTS.draft.md",
+            ".agent/evidence/expectations-7.jsonl",
+            ".agent/state/place/AGENTS.md",
+        ] {
+            assert!(kit_state.is_draft(draft), "{draft}");
+        }
+        assert!(kit_state.is_kit_written(".agent/evidence/chain.jsonl"));
+        assert!(kit_state.is_kit_written(".agent/state/session-1.md"));
     }
 
     #[test]

@@ -38,7 +38,8 @@ and content changes. You run in a clean context on a read-only checkout, followi
 at most 3.
 
 ## Steps
-1. Run `cargo deny check`, `cargo vet`, the pnpm licence report and the SPDX header check.
+1. Run `cargo deny check`, `cargo vet --locked`, the pnpm licence report
+   (`pnpm licenses list`) and the SPDX header check.
 2. Confirm nothing from the do-not-read list (`supply-chain/do-not-read.toml`; D-02,
    `design/03` section 13) entered the change.
 3. Confirm vendored code records its provenance in `third_party/`.

@@ -1,13 +1,16 @@
 //! The kit data one launch reads, and the rules it applies to it: the model a session runs on
 //! (team/01 section 9, design/_review/03), its turn and wall-clock caps by cap role and size class
-//! (`.agents/kit/usage.toml`), and whether an item is a protected change (owner instruction 7).
+//! (`.agents/kit/usage.toml`), whether an item is a protected change (owner instruction 7), and
+//! the allow rules of the plugins' own commands (`[launch] plugin_allow`).
 
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 
 use super::LaunchScope;
-use super::harness::harness_list_at;
+use super::harness::{harness_list_at, harness_strings};
+use crate::config::marketplace::{InstalledPlugins, Marketplace};
 use crate::config::models::Models;
 use crate::config::protected::{ProtectedPaths, SeedScope};
 use crate::config::roster::{Agent, Group, Roster};
@@ -29,6 +32,8 @@ const RAISABLE: &[Group] = &[Group::Implementer, Group::Gardener, Group::Operati
 const REVIEW_RAISABLE: &[Group] = &[Group::Evaluator];
 const MODEL_RANK: &[&str] = &[SONNET, OPUS, FABLE];
 const SECONDS_PER_MINUTE: u64 = 60;
+/// Stands for a plugin's install directory in a `[launch] plugin_allow` rule.
+const PLUGIN_ROOT: &str = "{root}";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelChoice {
@@ -47,6 +52,8 @@ pub struct LaunchKit {
     pub protected: ProtectedPaths,
     pub seed: Option<SeedScope>,
     pub risk: RiskPolicy,
+    /// `--allowedTools` rules every session gets for a plugin's own commands.
+    pub plugin_rules: Vec<String>,
     protected_agents: Vec<String>,
 }
 
@@ -54,6 +61,16 @@ impl LaunchKit {
     pub fn load(repo: &Repo) -> Result<LaunchKit> {
         let harness = Harness::load(repo)?;
         let protected_agents = protected_change_agents(repo, &Base::Unborn)?;
+        let templates = harness_strings(repo, "launch", "plugin_allow")?;
+        let plugin_rules = if templates.is_empty() {
+            Vec::new()
+        } else {
+            plugin_rules(
+                &templates,
+                &Marketplace::load(repo)?,
+                &crate::kit::install::read_installed()?,
+            )
+        };
         Ok(LaunchKit {
             models: Models::load(repo)?,
             roster: Roster::load(repo)?,
@@ -62,6 +79,7 @@ impl LaunchKit {
             protected: ProtectedPaths::load(repo)?,
             seed: SeedScope::load(repo)?,
             risk: RiskPolicy::load(repo)?,
+            plugin_rules,
             protected_agents,
         })
     }
@@ -202,6 +220,28 @@ impl LaunchKit {
         }
         overlaps(write_set, &self.protected.paths)
     }
+}
+
+/// The rules of `templates`, plugin entry name to rule, for each entry Claude Code records as
+/// installed from `marketplace`: `{root}` becomes its install directory with forward slashes, the
+/// form a plugin prints its own commands in. A plugin not installed yet gets no rule, and its
+/// hooks do not run either.
+pub fn plugin_rules(
+    templates: &BTreeMap<String, String>,
+    marketplace: &Marketplace,
+    installed: &InstalledPlugins,
+) -> Vec<String> {
+    templates
+        .iter()
+        .filter_map(|(entry, rule)| {
+            let root = installed
+                .plugins
+                .get(&marketplace.id(entry))?
+                .iter()
+                .find_map(|record| record.install_path.as_deref())?;
+            Some(rule.replace(PLUGIN_ROOT, &root.replace('\\', "/")))
+        })
+        .collect()
 }
 
 /// The agents that implement protected changes (owner instruction 7): `[dispatch]

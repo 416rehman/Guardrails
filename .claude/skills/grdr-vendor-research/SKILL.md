@@ -60,7 +60,7 @@ Read the verifier's corrections in the index before you rely on a digest. A brie
 
 ## 3. The comment
 
-Write the comment to `.agent/state/research-<n>.md` and post it with `gh issue comment <n> --body-file .agent/state/research-<n>.md`. It has these parts, in this order, and keeps them apart:
+Write the comment to `.agent/state/research-<n>.md` and post it with `gh issue comment <n> --body-file .agent/state/research-<n>.md`; a role without the Write tool passes the same text with `--body-file -` and a quoted here-document. It has these parts, in this order, and keeps them apart:
 
 ```markdown
 ### Industry check for #<n>: <feature, one line>

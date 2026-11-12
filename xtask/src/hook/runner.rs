@@ -209,7 +209,7 @@ fn write_log(
         .lock()
         .map(|shared| shared.detail.clone())
         .unwrap_or_default();
-    if *outcome == Outcome::Allow && failure.is_none() && detail.len() <= 1 {
+    if outcome.is_quiet() && failure.is_none() && detail.len() <= 1 {
         return None;
     }
     let stamp = Utc::now();

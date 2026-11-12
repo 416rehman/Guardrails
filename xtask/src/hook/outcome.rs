@@ -1,9 +1,10 @@
 //! A handler's answer and how each event takes it (team/03 section 1): exit 2 with the reason on
 //! stderr blocks; PostToolUse takes `decision: block` as JSON; context goes into
 //! `hookSpecificOutput.additionalContext`, and PreCompact's stdout becomes the compaction
-//! instructions.
+//! instructions. Silence approves nothing, so a PreToolUse handler that has checked a call answers
+//! `permissionDecision: allow` for it to run without a prompt; deny and ask rules still apply.
 
-use serde_json::json;
+use serde_json::{Map, Value, json};
 
 use super::Event;
 use crate::config::limits::HookLimits;
@@ -13,9 +14,15 @@ pub const BLOCK_EXIT: u8 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
+    /// No decision: Claude Code's permission rules and mode decide.
     Allow,
     /// Text for the model that does not stop it.
     Context(String),
+    /// The call is checked and runs without a prompt, with context for the model if any.
+    Approve {
+        reason: String,
+        context: Option<String>,
+    },
     Block(String),
 }
 
@@ -31,6 +38,7 @@ impl Outcome {
         match self {
             Outcome::Allow => "allow",
             Outcome::Context(_) => "context",
+            Outcome::Approve { .. } => "approve",
             Outcome::Block(_) => "block",
         }
     }
@@ -39,7 +47,16 @@ impl Outcome {
         match self {
             Outcome::Allow => "",
             Outcome::Context(text) | Outcome::Block(text) => text,
+            Outcome::Approve { reason, context } => context.as_deref().unwrap_or(reason),
         }
+    }
+
+    /// Whether a log of this outcome would hold nothing but its kind.
+    pub fn is_quiet(&self) -> bool {
+        matches!(
+            self,
+            Outcome::Allow | Outcome::Approve { context: None, .. }
+        )
     }
 
     /// Blocks with every reason, one per line, or allows when there is none.
@@ -94,6 +111,27 @@ impl Outcome {
                     ..Rendered::default()
                 }
             }
+            Outcome::Approve { reason, context } if event == Event::PreToolUse => {
+                let mut output = Map::new();
+                output.insert("hookEventName".into(), json!(event.name()));
+                output.insert("permissionDecision".into(), json!("allow"));
+                output.insert("permissionDecisionReason".into(), json!(reason));
+                if let Some(text) = context {
+                    let lines = limits.map(|limits| limits.outcome.context_lines);
+                    output.insert(
+                        "additionalContext".into(),
+                        json!(with_log(text, log, lines)),
+                    );
+                }
+                Rendered {
+                    stdout: json!({ "hookSpecificOutput": Value::Object(output) }).to_string(),
+                    ..Rendered::default()
+                }
+            }
+            Outcome::Approve { context, .. } => match context {
+                Some(text) => Outcome::Context(text.clone()).render(event, log, limits),
+                None => Rendered::default(),
+            },
         }
     }
 }
@@ -183,5 +221,41 @@ mod tests {
             Outcome::Context("load ui-architect".into()).render(Event::PreToolUse, None, None);
         let value: serde_json::Value = serde_json::from_str(&tool.stdout).unwrap();
         assert_eq!(value["hookSpecificOutput"]["hookEventName"], "PreToolUse");
+    }
+
+    #[test]
+    fn an_approval_is_a_permission_decision_only_before_a_tool_runs() {
+        let approve = |context: Option<&str>| Outcome::Approve {
+            reason: "in the write set".into(),
+            context: context.map(str::to_owned),
+        };
+        let rendered = approve(Some("load grdr-structure")).render(Event::PreToolUse, None, None);
+        assert_eq!(rendered.code, 0);
+        let value: serde_json::Value = serde_json::from_str(&rendered.stdout).unwrap();
+        let output = &value["hookSpecificOutput"];
+        assert_eq!(output["permissionDecision"], "allow");
+        assert_eq!(output["permissionDecisionReason"], "in the write set");
+        assert_eq!(output["additionalContext"], "load grdr-structure");
+        let bare: serde_json::Value =
+            serde_json::from_str(&approve(None).render(Event::PreToolUse, None, None).stdout)
+                .unwrap();
+        assert!(
+            bare["hookSpecificOutput"]
+                .get("additionalContext")
+                .is_none()
+        );
+        assert!(approve(None).is_quiet());
+        assert!(!approve(Some("x")).is_quiet());
+        let after = approve(Some("load it")).render(Event::PostToolUse, None, None);
+        assert!(
+            !after.stdout.contains("permissionDecision"),
+            "{}",
+            after.stdout
+        );
+        assert!(after.stdout.contains("load it"));
+        assert_eq!(
+            approve(None).render(Event::PostToolUse, None, None),
+            Rendered::default()
+        );
     }
 }

@@ -46,6 +46,8 @@ pub enum Expect {
     Block,
     Allow,
     Context,
+    /// `permissionDecision: allow`, with or without context.
+    Approve,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -293,6 +295,7 @@ fn judge(case: &Case, outcome: &Outcome) -> Result<()> {
         Expect::Block => matches!(outcome, Outcome::Block(_)),
         Expect::Allow => matches!(outcome, Outcome::Allow),
         Expect::Context => matches!(outcome, Outcome::Context(_)),
+        Expect::Approve => matches!(outcome, Outcome::Approve { .. }),
     };
     if !matched {
         bail!(

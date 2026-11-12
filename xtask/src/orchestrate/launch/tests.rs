@@ -50,7 +50,7 @@ body = "templates/agents/lead-agent-kit.md"
 const SEED: &str = "agent = \"chief-architect\"\nscope = \"seed\"\nbranch = \"agent/seed\"\nmax_turns = 200\nprompt = \"kit/prompts/seed.md\"\npaths = [\"AGENTS.md\"]\n";
 const USAGE: &str = "[role.worker]\nmax_turns = 80\nwall_clock_minutes = 60\n[role.worker.size.S]\neffort = \"low\"\n[role.worker.size.M]\nmax_turns = 150\nwall_clock_minutes = 120\n[role.lead]\nmax_turns = 40\n";
 
-fn repo() -> TempRepo {
+pub(super) fn repo() -> TempRepo {
     let temp = TempRepo::create();
     temp.add_agents(EXTRA_ROSTER);
     let tiers = plain_tiers("[\"proto/**\"]", "[\"crates/**\"]", "[\"docs/**\"]");
@@ -65,7 +65,7 @@ fn repo() -> TempRepo {
     temp
 }
 
-fn request(agent: &str, item: Option<u64>, prompting: Prompting) -> Request {
+pub(super) fn request(agent: &str, item: Option<u64>, prompting: Prompting) -> Request {
     Request {
         agent: agent.into(),
         item,
@@ -87,7 +87,7 @@ fn tracker_with(number: u64, labels: &[&str], write_set: &[&str]) -> MemoryTrack
     tracker
 }
 
-fn env_value<'a>(plan: &'a Plan, name: &str) -> Option<&'a str> {
+pub(super) fn env_value<'a>(plan: &'a Plan, name: &str) -> Option<&'a str> {
     plan.env
         .iter()
         .find(|(key, _)| *key == name)
@@ -247,29 +247,6 @@ fn a_lease_keeps_its_model_and_a_wrong_agent_is_refused() {
     )
     .unwrap();
     assert_eq!(reviewer.snapshot.unwrap().agent, "impl-rust");
-}
-
-#[test]
-fn the_seed_session_is_only_for_the_chief_architect() {
-    let temp = repo();
-    let kit = LaunchKit::load(&temp.repo()).unwrap();
-    let tracker = MemoryTracker::default();
-    let seed = Request {
-        scope: LaunchScope::Seed,
-        ..request("chief-architect", None, Prompting::Interactive)
-    };
-    let plan = plan(&temp.repo(), &kit, &tracker, "claude".into(), &seed).unwrap();
-    assert_eq!(env_value(&plan, "GRDR_SCOPE"), Some("seed"));
-    assert_eq!(plan.turns, 200);
-    assert_eq!(plan.model.id, "claude-fable-5-2");
-    let prompt = plan.args.last().unwrap();
-    assert!(prompt.starts_with(OWNERSHIP_SENTENCE), "{prompt}");
-    assert!(prompt.contains("Start the team."));
-    let other = Request {
-        scope: LaunchScope::Seed,
-        ..request("impl-rust", None, Prompting::Interactive)
-    };
-    assert!(super::plan(&temp.repo(), &kit, &tracker, "claude".into(), &other).is_err());
 }
 
 #[test]

@@ -1,5 +1,6 @@
-//! `cargo xtask kit render | check | install` (team/03 section 1, K1 and K2). Other `kit`
-//! subcommands belong to the orchestration module.
+//! `cargo xtask kit render | check | install | place` (team/03 section 1, K1 and K2). `kit place`
+//! writes protected paths for a widened session, so it lives here with the other protected kit code.
+//! Other `kit` subcommands belong to the orchestration module.
 
 pub mod agents;
 pub mod check;
@@ -7,6 +8,7 @@ pub mod claude_config;
 pub mod egress;
 pub mod gh_config;
 pub mod install;
+pub mod place;
 pub mod plugins;
 pub mod render;
 pub mod research;

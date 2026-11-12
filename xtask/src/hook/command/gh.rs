@@ -14,7 +14,7 @@ use std::path::Path;
 
 use super::Rules;
 use crate::hook::identity::Role;
-use crate::hook::shell::{Invocation, Word};
+use crate::hook::shell::{Invocation, RedirectKind, Word};
 use crate::orchestrate::labels::LabelsFile;
 use labels::Statuses;
 
@@ -98,6 +98,7 @@ const GRAPH_FLAGS: &[&str] = &[
 const BOARD_FLAGS: &[&str] = &["-m", "--milestone", "-p", "--project", "--add-project"];
 const BASE_FLAGS: &[&str] = &["-B", "--base"];
 const FIELD_FLAGS: &[&str] = &["-f", "--field", "-F", "--raw-field"];
+const INPUT_FLAGS: &[&str] = &["--input"];
 /// The commit-status context an evaluator posts under, with its roster name after it.
 const STATUS_CONTEXT: &str = "grdr-evaluator/";
 const READS: &[(&str, &[&str])] = &[
@@ -257,7 +258,7 @@ pub fn check(rules: &Rules, invocation: &Invocation, cwd: Option<&Path>) -> Vec<
         ];
     }
     if let Err(reason) = bodies::repository(&call, &rules.github.repository)
-        .and_then(|()| bodies::records(&call, cwd))
+        .and_then(|()| bodies::records(rules, &call, cwd, document(invocation)))
     {
         return vec![reason];
     }
@@ -274,7 +275,7 @@ pub fn check(rules: &Rules, invocation: &Invocation, cwd: Option<&Path>) -> Vec<
             Role::Planner => Ok(planner(&call)),
             Role::Architect => Ok(architect(&call)),
             Role::Implementer | Role::Gardener => worker(rules, &call, &statuses, cwd),
-            Role::Evaluator => evaluator(rules, &call, &statuses),
+            Role::Evaluator => evaluator(rules, &call, &statuses, document(invocation)),
             _ => commenter(&call, &statuses),
         }?;
         if allowed {
@@ -374,7 +375,12 @@ fn own_issue(rules: &Rules, call: &Call) -> Result<bool, String> {
 /// statuses on this repository, proposed issues and the labels `.github/labels.toml` gives them
 /// (`tier:` and `trust-core` for eval-tier, `ui-baseline` for eval-ux), never an issue's body,
 /// title or dependencies.
-fn evaluator(rules: &Rules, call: &Call, statuses: &Statuses) -> Result<bool, String> {
+fn evaluator(
+    rules: &Rules,
+    call: &Call,
+    statuses: &Statuses,
+    stdin: Option<&Word>,
+) -> Result<bool, String> {
     match (call.group, call.sub) {
         ("issue" | "pr", "comment") => Ok(true),
         ("issue", "create") => proposed_issue(call, statuses),
@@ -384,7 +390,7 @@ fn evaluator(rules: &Rules, call: &Call, statuses: &Statuses) -> Result<bool, St
             }
             Ok(call.has(LABEL_FLAGS))
         }
-        ("api", _) => posts_verdict(call, &rules.github.repository, rules.agent_name()),
+        ("api", _) => posts_verdict(call, &rules.github.repository, rules.agent_name(), stdin),
         _ => Ok(false),
     }
 }
@@ -440,9 +446,25 @@ fn own_pull_request(rules: &Rules, call: &Call, cwd: Option<&Path>) -> Result<bo
     }
 }
 
+/// The here-document or here-string a command reads on stdin.
+fn document(invocation: &Invocation) -> Option<&Word> {
+    invocation
+        .redirects
+        .iter()
+        .find(|redirect| redirect.kind == RedirectKind::Document)
+        .map(|redirect| &redirect.target)
+}
+
 /// `gh api -X POST repos/<repository>/check-runs` and `PATCH .../check-runs/<id>`, or
-/// `-X POST repos/<repository>/statuses/<sha>` under the context `grdr-evaluator/<agent>`.
-fn posts_verdict(call: &Call, repository: &str, agent: &str) -> Result<bool, String> {
+/// `-X POST repos/<repository>/statuses/<sha>` under the context `grdr-evaluator/<agent>`, given
+/// as a field or in the JSON body `--input -` reads from a literal here-document (the review
+/// workflow's form).
+fn posts_verdict(
+    call: &Call,
+    repository: &str,
+    agent: &str,
+    stdin: Option<&Word>,
+) -> Result<bool, String> {
     let method = call
         .values(&["-X", "--method"])
         .ok()
@@ -474,14 +496,26 @@ fn posts_verdict(call: &Call, repository: &str, agent: &str) -> Result<bool, Str
         Some("statuses") if method == "POST" && sha.is_some_and(is_commit) => {
             let context = format!("{STATUS_CONTEXT}{agent}");
             let fields = call.values(FIELD_FLAGS)?;
-            if fields
+            let in_fields = fields
                 .iter()
-                .any(|field| *field == format!("context={context}"))
-            {
+                .any(|field| *field == format!("context={context}"));
+            let from_stdin = call
+                .raw_values(INPUT_FLAGS)
+                .iter()
+                .any(|word| word.value == "-");
+            let in_body = from_stdin
+                && stdin
+                    .filter(|body| !body.opaque)
+                    .and_then(|body| serde_json::from_str::<serde_json::Value>(&body.value).ok())
+                    .is_some_and(|body| {
+                        body.get("context").and_then(serde_json::Value::as_str)
+                            == Some(context.as_str())
+                    });
+            if in_fields || in_body {
                 Ok(true)
             } else {
                 Err(format!(
-                    "a commit status from {agent} carries `-f context={context}`"
+                    "a commit status from {agent} carries `-f context={context}`, or that context in the JSON `--input -` reads from a quoted here-document"
                 ))
             }
         }

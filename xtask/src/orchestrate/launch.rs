@@ -3,11 +3,17 @@
 //! pick the model by the rule of team/01 section 9 and design/_review/03 and the effort by the
 //! item's size, set the session identity, and start Claude Code with every variable of the
 //! owner's user settings `env` blanked, so no credential kept there reaches an agent or its
-//! subprocesses; `[launch] setting_sources` in harness.toml can narrow the settings further. The
-//! dispatcher starts every session through this command in print mode. It refuses to run inside
-//! an agent session or while Claude Code does not trust the repository folder (`trust`), and a
-//! fable session holds a machine-wide lock: one at a time. `--seed` first checks out the seed
-//! scope's branch, new from the fetched base tip when it does not exist yet.
+//! subprocesses; `[launch] setting_sources` in harness.toml can narrow the settings further. Every
+//! session runs in `dontAsk`, so nothing waits on a prompt (owner instruction 7): a call that no
+//! allow rule or hook approves is refused and the agent is told why. `[launch] plugin_allow` adds
+//! the allow rules of plugins' own commands, such as the cleanup gate's sign-off, from where
+//! Claude Code installed each plugin. The dispatcher starts every session through this command in
+//! print mode: the prompt on stdin, the turn cap and stream-json output. `--seed` starts the chief
+//! architect's seed session the same way, with the seed scope's prompt unless `--print` gives
+//! another, after checking out the seed scope's branch, new from the fetched base tip when it
+//! does not exist yet. Without `--print` or `--seed` the session is interactive, still in
+//! `dontAsk`. It refuses to run inside an agent session or while Claude Code does not trust the
+//! repository folder (`trust`), and a fable session holds a machine-wide lock: one at a time.
 
 mod harness;
 mod item;
@@ -59,6 +65,8 @@ const SPEC: Spec = Spec {
 };
 const EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 const PROJECT_SETTINGS: &str = ".claude/settings.json";
+/// Anything no allow rule or hook approves is refused, never asked (owner instruction 7).
+const PERMISSION_MODE: &str = "dontAsk";
 /// One fable session at a time on this machine (design/_review/03: on demand, never in a loop).
 const FABLE_LOCK: &str = "grdr-fable-session.lock";
 
@@ -262,11 +270,12 @@ pub fn plan(
         (None, false) => None,
     };
     let prompting = match (&request.prompting, &seed) {
-        (Prompting::Interactive, Some(scope)) => Some(seed_prompt(repo, scope)?),
-        (Prompting::Print(prompt), _) => Some(prompt.clone()),
-        (Prompting::Interactive, None) => None,
-    }
-    .map(|prompt| with_ownership(name, prompt));
+        (Prompting::Interactive, Some(scope)) => {
+            Prompting::Print(with_ownership(name, seed_prompt(repo, scope)?))
+        }
+        (Prompting::Print(prompt), _) => Prompting::Print(with_ownership(name, prompt.clone())),
+        (Prompting::Interactive, None) => Prompting::Interactive,
+    };
     let mut env = vec![
         (AGENT_VARIABLE, name.to_owned()),
         (LAUNCHER_MODEL_VARIABLE, model.id.clone()),
@@ -280,14 +289,10 @@ pub fn plan(
         Some(value) => env.push((SCOPE_VARIABLE, value.to_owned())),
         None => unset.push(SCOPE_VARIABLE),
     }
-    let (mut args, stdin) = arguments(
-        name,
-        &model.id,
-        turns,
-        &request.prompting,
-        prompting,
-        &request.session,
-    );
+    let (mut args, stdin) = arguments(name, &model.id, turns, prompting, &request.session);
+    for rule in &kit.plugin_rules {
+        args.extend(["--allowedTools".to_owned(), rule.clone()]);
+    }
     let mut leading = Vec::new();
     if let Some(sources) = harness_text(repo, "launch", "setting_sources")? {
         leading.extend(["--setting-sources".to_owned(), sources]);
@@ -461,12 +466,13 @@ fn describe(plan: &Plan, request: &Request) -> String {
     )
 }
 
+/// Claude Code's arguments and the prompt for its stdin. Every session runs in `dontAsk`, whatever
+/// the agent definition's `permissionMode` says, since that field binds subagents only.
 fn arguments(
     name: &str,
     model: &str,
     turns: u32,
-    prompting: &Prompting,
-    prompt: Option<String>,
+    prompting: Prompting,
     session: &SessionStart,
 ) -> (Vec<String>, Option<String>) {
     let mut args: Vec<String> = Vec::new();
@@ -484,24 +490,16 @@ fn arguments(
         SessionStart::Named(id) => args.extend(["--session-id".into(), id.clone()]),
         SessionStart::Resume(id) => args.extend(["--resume".into(), id.clone()]),
     }
+    let mode = ["--permission-mode", PERMISSION_MODE].map(str::to_owned);
     match prompting {
-        Prompting::Print(_) => {
-            args.extend(
-                [
-                    "--max-turns",
-                    &turns.to_string(),
-                    "--permission-mode",
-                    "dontAsk",
-                    "--output-format",
-                    "stream-json",
-                    "--verbose",
-                ]
-                .map(str::to_owned),
-            );
-            (args, prompt)
+        Prompting::Print(prompt) => {
+            args.extend(["--max-turns".to_owned(), turns.to_string()]);
+            args.extend(mode);
+            args.extend(["--output-format", "stream-json", "--verbose"].map(str::to_owned));
+            (args, Some(prompt))
         }
         Prompting::Interactive => {
-            args.extend(prompt);
+            args.extend(mode);
             (args, None)
         }
     }
@@ -534,5 +532,7 @@ fn with_ownership(name: &str, prompt: String) -> String {
     }
 }
 
+#[cfg(test)]
+mod permission_tests;
 #[cfg(test)]
 mod tests;

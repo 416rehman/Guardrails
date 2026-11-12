@@ -59,7 +59,7 @@ The security power prompts M01 to M05 (team/04 section 8) cover fail-open paths,
 
 ## 7. Write the output
 
-Write it to `.agent/state/threat-model-<n>.md` and post it as a comment on the issue: `gh issue comment <n> --body-file .agent/state/threat-model-<n>.md`. A lead writing the spec links the comment from the spec section, so the item is readied with its threat model; an implementer links it from the hand-off's summary. A later revision is a new comment, never an edit of the old one. In this order:
+Write it to `.agent/state/threat-model-<n>.md` and post it as a comment on the issue: `gh issue comment <n> --body-file .agent/state/threat-model-<n>.md`; a role without the Write tool passes the same text with `--body-file -` and a quoted here-document. A lead writing the spec links the comment from the spec section, so the item is readied with its threat model; an implementer links it from the hand-off's summary. A later revision is a new comment, never an edit of the old one. In this order:
 
 ```markdown
 ## Threat model #<n>: <change in one line>

@@ -33,6 +33,11 @@ const REFUSED_PACKAGES: &[(&str, &str)] = &[(
 )];
 /// pnpm subcommands that run a package's executable.
 const PNPM_RUNNERS: &[&str] = &["dlx", "exec"];
+/// The wrappers the scanner records for pnpm's package runners (`exec`, `dlx` and `x`). An agent
+/// never runs a program through them: `pnpm exec <prog>` and `pnpm dlx <pkg>` run an arbitrary
+/// program, so the write set, the protected-path rules, the shell rules and the fetch list that
+/// the guard applies to a named command do not reach what that program writes or fetches.
+const PNPM_RUNNER_WRAPPERS: &[&str] = &["pnpm exec", "pnpm dlx", "pnpm x"];
 /// Owner instruction 24: pnpm is the only JavaScript package manager. `npm publish` is denied as
 /// a publish command instead.
 const NOT_PNPM: &[(&str, &str)] = &[
@@ -67,6 +72,13 @@ const GH_VARIABLES: &[&str] = &[
 ];
 /// Global cargo options that take the next word as their value.
 const CARGO_VALUED: &[&str] = &["--color", "-Z", "--config", "-C"];
+/// cargo vet subcommands that only read; every other one writes supply-chain/ (`certify`, `trust`,
+/// `regenerate`, `prune`, `fmt`, `add-exemption` and the rest), so an agent runs only these. An
+/// empty subcommand is `check`, the default.
+const CARGO_VET_READS: &[&str] = &["check", "inspect", "diff", "dump-graph", "explain-audit"];
+/// cargo vet options that take the next word as their value, so vet's own subcommand is read past
+/// them. These values are directories or files vet writes; writes.rs judges them as write targets.
+const CARGO_VET_OUTPUTS: &[&str] = &["--output-file", "--log-file", "--store-path"];
 /// `claude` options that replace the settings, and with them the kit's hooks.
 const SETTINGS_FLAGS: &[&str] = &["--settings", "--setting-sources"];
 /// Flags of other harnesses that turn their permission checks off.
@@ -147,9 +159,12 @@ pub fn programs(rules: &Rules, invocation: &Invocation) -> Vec<String> {
     reasons.extend(snapshots(invocation, name));
     reasons.extend(not_pnpm(invocation, name));
     reasons.extend(refused_package(invocation, name));
+    reasons.extend(pnpm_runner(rules, invocation));
     match name {
         "cargo" => reasons.extend(cargo(rules, invocation)),
-        "xtask" if rules.is_agent() => reasons.extend(kit_denial(&lowercase(invocation))),
+        "xtask" if rules.is_agent() => {
+            reasons.extend(kit_denial(rules, &lowercase(invocation)));
+        }
         "twine" if invocation.leading(1).as_deref() == Some(&["upload"]) => {
             reasons.push(publish_reason("twine upload"))
         }
@@ -193,16 +208,38 @@ fn cargo(rules: &Rules, invocation: &Invocation) -> Vec<String> {
         "add" | "install" if rules.role == Role::Implementer => reasons.push(format!(
             "`cargo {sub}` adds a dependency or a tool; implementers ask for it in the hand-off and a lead files the item"
         )),
+        "vet" if rules.is_agent() => reasons.extend(cargo_vet(&after_sub)),
+        "mutants" if rules.is_agent() && after_sub.contains(&"--in-place") => reasons.push(
+            "`cargo mutants --in-place` rewrites the source it mutates; run it without --in-place so it works on a copy".to_owned(),
+        ),
         "xtask" if rules.is_agent() => {
-            reasons.extend(kit_denial(&after_sub.iter().map(|arg| (*arg).to_owned()).collect::<Vec<_>>()));
+            reasons.extend(kit_denial(rules, &after_sub.iter().map(|arg| (*arg).to_owned()).collect::<Vec<_>>()));
         }
         "run" if rules.is_agent() && runs_xtask(&words) => {
             let after: Vec<String> = words.iter().skip_while(|arg| **arg != "--").skip(1).map(|arg| (*arg).to_owned()).collect();
-            reasons.extend(kit_denial(&after));
+            reasons.extend(kit_denial(rules, &after));
         }
         _ => {}
     }
     reasons
+}
+
+/// cargo vet's own subcommand, when an agent runs one that is not read-only: `certify`, `trust`,
+/// `regenerate`, `prune`, `fmt`, `add-exemption` and the rest write supply-chain/, which the
+/// hooks never check through this binary. The `--locked` the allow rule keeps only stops vet
+/// fetching imports. `words` is everything after `vet`.
+fn cargo_vet(words: &[&str]) -> Option<String> {
+    let mut index = 0;
+    while let Some(word) = words.get(index).filter(|word| word.starts_with('-')) {
+        let takes_value = CARGO_VET_OUTPUTS.contains(word) && !word.contains('=');
+        index += if takes_value { 2 } else { 1 };
+    }
+    let sub = words.get(index).copied().unwrap_or("check");
+    (!CARGO_VET_READS.contains(&sub)).then(|| {
+        format!(
+            "`cargo vet {sub}` writes supply-chain/, which is protected; an agent runs only cargo vet (check) and cargo vet check"
+        )
+    })
 }
 
 pub(super) fn runs_xtask(words: &[&str]) -> bool {
@@ -217,8 +254,11 @@ pub(super) fn runs_xtask(words: &[&str]) -> bool {
 /// From an agent session: `kit render` and `kit install`, which rewrite the kit that judges it;
 /// `kit launch`, `kit claim` and `dispatch`, which start or lease sessions under another identity;
 /// `queue`, the merge queue, which lands pull requests under the owner's login; and `labels sync`,
-/// which rewrites the repository's labels.
-fn kit_denial(args: &[String]) -> Option<String> {
+/// which rewrites the repository's labels. A protected-change lease may run `kit render`, so a
+/// change to `.agents/` carries the tree it renders: the session's own settings do not change
+/// under it (ConfigChange), its hooks run the installed binary, and V05 holds the rendered files to
+/// the item's write set.
+fn kit_denial(rules: &Rules, args: &[String]) -> Option<String> {
     let positionals: Vec<&str> = args
         .iter()
         .map(String::as_str)
@@ -228,7 +268,8 @@ fn kit_denial(args: &[String]) -> Option<String> {
         .iter()
         .any(|arg| arg == "--check" || arg == "--dry-run");
     match positionals.as_slice() {
-        ["kit", "render" | "install", ..] => Some("`kit render` and `kit install` rewrite the kit that judges this session; they run outside agent sessions".to_owned()),
+        ["kit", "render", ..] if rules.identity.protected_lease => None,
+        ["kit", "render" | "install", ..] => Some("`kit render` and `kit install` rewrite the kit that judges this session; they run outside agent sessions, and `kit render` in a protected-change lease".to_owned()),
         ["kit", sub @ ("launch" | "claim"), ..] => Some(format!("`kit {sub}` starts or leases a session under another identity; only the dispatcher and a person's session do")),
         ["dispatch", ..] => Some("`dispatch` runs the loop that starts every session; it never runs inside an agent session".to_owned()),
         ["queue", ..] if !checking => Some("`queue` is the merge queue, which lands pull requests; it runs only in the dispatcher or a person's session".to_owned()),
@@ -326,6 +367,22 @@ fn refused_package(invocation: &Invocation, name: &str) -> Option<String> {
         .find(|(refused, _)| *refused == package)?;
     Some(format!(
         "`{refused}` is not run in this repository; {instead}"
+    ))
+}
+
+/// `pnpm exec <prog>` and `pnpm dlx <pkg>` from an agent session, which the scanner unwrapped to
+/// the inner program: refused whatever the program is, because the guard applies the write set,
+/// the protected-path rules and the fetch list to a named command, not to one pnpm runs for it.
+fn pnpm_runner(rules: &Rules, invocation: &Invocation) -> Option<String> {
+    if !rules.is_agent() {
+        return None;
+    }
+    let runner = invocation
+        .wrappers
+        .iter()
+        .find(|wrapper| PNPM_RUNNER_WRAPPERS.contains(&wrapper.as_str()))?;
+    Some(format!(
+        "`{runner}` runs an arbitrary program, so the write set, the protected-path rules and the fetch list do not reach what it writes or fetches; run a package's tools through its package.json scripts with pnpm run"
     ))
 }
 

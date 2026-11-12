@@ -3,11 +3,23 @@
 # allowManagedPermissionRulesOnly, allowManagedHooksOnly, sandbox.network.strictAllowlist,
 # telemetry exporters) live in deploy/fleet/managed-settings.json instead.
 
+# One file serves every role, so a rule here is the union of what the roles need. Each role stays
+# bounded by its definition's tools list, guard-path (paths: write set, seed scope or roster write
+# globs), guard-command (each role's shell and gh calls) and these deny rules. There is no Edit
+# allow rule on purpose: guard-path approves a file-tool write inside the agent's scope with
+# permissionDecision allow, and an Edit allow rule would also pre-approve every shell redirect,
+# whose targets guard-command checks against protected paths and kit state but not the write set.
+# A rule may name {repository} (harness.toml [github] repository) and {marketplace}
+# (marketplace.toml [marketplace] name), and kit render adds Workflow(<name>) for every kit
+# workflow. kit launch runs every session in dontAsk, so what no rule or hook approves is refused.
 [permissions]
 default_mode = "default"
 disable_bypass = "disable"
-# kit render adds one Edit deny rule per entry of protected-paths.toml. The issue snapshot and
-# the kit binary sit in git-ignored .agent/, outside that list, and the hooks trust both.
+# kit render adds one Edit deny rule per entry of protected-paths.toml. No hook decision overrides
+# a deny rule, so a widened session (the seed, a protected-change lease) writes its protected
+# paths through `cargo xtask kit place`, a subprocess these rules do not see, which holds it to
+# the same scope guard-path does. The issue snapshot and the kit binary sit in git-ignored
+# .agent/, outside that list, and the hooks trust both.
 deny = [
   "Edit(./.git/**)", "Edit(./.agent/kit/**)", "Edit(./.agent/state/item-*.json)",
   "Read(./.env)", "Read(./**/*.pem)", "Read(~/.ssh/**)", "Read(~/.aws/**)", "Read(~/.config/gh/**)",
@@ -16,7 +28,10 @@ deny = [
   "Read(~/.claude/settings.json)", "Read(~/.claude/settings.local.json)", "Read(~/.claude.json)",
   "Bash(git push --force *)", "Bash(git push -f *)", "Bash(git reset --hard *)",
   "Bash(git commit --no-verify *)", "Bash(git commit -s *)", "Bash(git commit --signoff *)",
-  "Bash(gh pr merge *)", "Bash(gh release *)", "Bash(cargo publish *)", "Bash(npm publish *)",
+  # guard-command reads `gh release list` and `view` as reads (garden-deps needs both).
+  "Bash(gh pr merge *)", "Bash(gh release create *)", "Bash(gh release edit *)",
+  "Bash(gh release delete *)", "Bash(gh release delete-asset *)", "Bash(gh release upload *)",
+  "Bash(gh release download *)", "Bash(cargo publish *)", "Bash(npm publish *)",
   "Bash(pnpm publish *)", "Bash(cargo insta accept *)", "Bash(cargo insta review *)",
   "Bash(gh auth *)", "Bash(gh secret *)", "Bash(gh variable *)", "Bash(gh extension *)",
   "Bash(gh gist *)", "Bash(gh ssh-key *)", "Bash(gh gpg-key *)", "Bash(gh config set *)",
@@ -29,10 +44,10 @@ deny = [
 # No bare WebFetch or WebSearch rule here or in deny: it would shadow the WebFetch(domain:<d>)
 # and WebSearch allow rules kit render adds from .agents/kit/vendors.toml (owner instruction 14).
 # Only the roles that load its research skill carry those tools; for any other fetch Claude Code
-# still asks, and dontAsk sessions refuse it.
+# still asks, and dontAsk sessions refuse it. No `gh api` rule here either: an ask rule beats
+# every allow rule, so it would refuse the evaluators' verdict posts allowed below.
 ask = [
   "Bash(cargo add *)", "Bash(cargo install *)", "Bash(pnpm add *)",
-  "Bash(gh api *)",
 ]
 # Agents file, triage and ready issues themselves (owner instruction 6), so the gh issue verbs
 # are allowed here and guard-command narrows them per role: implementers comment and create
@@ -56,6 +71,34 @@ allow = [
   "Bash(git push *)", "Bash(gh pr create *)", "Bash(gh pr edit *)",
   "Bash(git checkout HEAD -- *)", "Bash(git checkout -- *)", "Bash(git restore *)",
   "Bash(cargo update *)",
+  # Leads plan against the workspace graph; garden-deps reads upstream releases and CI runs, which
+  # guard-command reads as reads; the review workflow fetches the pull request's commits.
+  "Bash(cargo metadata *)", "Bash(gh release list *)", "Bash(gh release view *)",
+  "Bash(gh run list *)", "Bash(gh run view *)", "Bash(git fetch origin *)",
+  # eval-api's contract checks and eval-licence's licence checks; cargo vet only checks, since its
+  # other subcommands rewrite supply-chain/. garden-tests' scoped mutation run. guard-command
+  # treats both tools' output options as writes and refuses `cargo mutants --in-place`.
+  "Bash(buf lint *)", "Bash(buf breaking *)", "Bash(cargo semver-checks *)",
+  "Bash(cargo deny check *)", "Bash(cargo vet --locked)", "Bash(cargo vet --locked check *)",
+  "Bash(pnpm licenses list *)", "Bash(cargo mutants *)",
+  # The pnpm form owner instruction 24 names instead of npm ci. There is no `pnpm exec` rule: it
+  # runs any program, so a package's tools run through its scripts (`pnpm run`), which only a
+  # lead's item changes, and guard-command refuses `pnpm exec` and `pnpm dlx` to agents.
+  "Bash(pnpm install --frozen-lockfile *)",
+  # The evaluator's verdict: a check run, or a commit status where check runs need an App.
+  # guard-command allows these to evaluators only, on this repository, under their own context.
+  "Bash(gh api --method POST repos/{repository}/check-runs *)",
+  "Bash(gh api --method PATCH repos/{repository}/check-runs/*)",
+  "Bash(gh api --method POST repos/{repository}/statuses/*)",
+  # Logs an agent appends to from the shell: an implementer's predictions (skill grdr-start-item)
+  # and an evaluator's expectations (skill grdr-evaluate). guard-path and guard-command treat both
+  # as the agent's own drafts. Every other write goes through a file tool, which guard-path approves.
+  "Edit(./.agent/state/expect-*)", "Edit(./.agent/evidence/expectations-*.jsonl)",
+  # The installed plugins' own files, such as the modern-web-guidance guides that guard-command
+  # names instead of the package's CLI (owner instruction 18).
+  "Read(~/.claude/plugins/cache/{marketplace}/**)",
+  # team/03 K8's browser driver for impl-web and the UI evaluators, once its server is configured.
+  "mcp__playwright__*",
 ]
 
 # failIfUnavailable stays unset: native Windows has no sandbox, and the fleet's managed
@@ -117,6 +160,8 @@ allow = [
   "Bash(git status *)", "Bash(git diff *)", "Bash(git log *)", "Bash(git add *)",
   "Bash(git commit -m *)", "Bash(gh issue *)", "Bash(gh pr view *)",
   "Bash(gh pr create *)", "Bash(gh pr edit *)", "Bash(gh pr comment *)",
+  "Bash(pnpm install --frozen-lockfile *)",
+  "Edit(./.agent/state/expect-*)", "Read(~/.claude/plugins/cache/{marketplace}/**)",
   "mcp__playwright__*",
 ]
 
@@ -164,7 +209,9 @@ allow = [
   "Bash(git status *)", "Bash(git diff *)", "Bash(git log *)", "Bash(git show *)",
   "Bash(git fetch *)", "Bash(git worktree *)", "Bash(gh issue *)", "Bash(gh pr view *)",
   "Bash(gh pr diff *)", "Bash(gh pr checks *)", "Bash(gh pr comment *)", "Bash(gh api *)",
-  "mcp__playwright__*",
+  "Bash(buf lint *)", "Bash(buf breaking *)", "Bash(cargo semver-checks *)",
+  "Bash(cargo deny check *)", "Bash(cargo vet --locked)", "Bash(cargo vet --locked check *)",
+  "Bash(pnpm licenses list *)", "mcp__playwright__*",
 ]
 
 [managed.evaluator.sandbox]

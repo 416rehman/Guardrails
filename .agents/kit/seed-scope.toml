@@ -57,7 +57,9 @@ paths = [
 ]
 
 # guard-command allows these and nothing else on the shell in this session; a commit is one
-# Conventional Commit line with no trailers (owner instruction 27).
+# Conventional Commit line with no trailers (owner instruction 27). The file tools never write a
+# protected path, so the session puts AGENTS.md, CLAUDE.md, .github/ and its decision and status
+# files in place with `cargo xtask kit place`.
 commands = [
   "gh issue create",
   "gh issue edit",
@@ -78,4 +80,5 @@ commands = [
   "cargo xtask verify",
   "cargo xtask kit ready",
   "cargo xtask kit handoff",
+  "cargo xtask kit place",
 ]

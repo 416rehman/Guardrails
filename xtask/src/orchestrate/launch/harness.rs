@@ -1,6 +1,7 @@
 //! What `kit launch` reads from `.agents/harness.toml`: single values and lists of its tables,
 //! and the Claude Code executable that `[launch] claude` and `claude_locations` lead to.
 
+use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 
@@ -70,6 +71,28 @@ pub(super) fn harness_text(repo: &Repo, table: &str, key: &str) -> Result<Option
 /// A list of strings from a table of `.agents/harness.toml`, `None` when absent.
 pub(super) fn harness_list(repo: &Repo, table: &str, key: &str) -> Result<Option<Vec<String>>> {
     Ok(harness_value(repo, table, key)?.and_then(strings))
+}
+
+/// An inline table of strings from a table of `.agents/harness.toml`, empty when absent; a value
+/// that is not a string is an error.
+pub(super) fn harness_strings(
+    repo: &Repo,
+    table: &str,
+    key: &str,
+) -> Result<BTreeMap<String, String>> {
+    let Some(value) = harness_value(repo, table, key)? else {
+        return Ok(BTreeMap::new());
+    };
+    let Some(entries) = value.as_table() else {
+        bail!("{HARNESS_FILE} [{table}] {key} is not a table");
+    };
+    entries
+        .iter()
+        .map(|(name, value)| match value.as_str() {
+            Some(text) => Ok((name.clone(), text.to_owned())),
+            None => bail!("{HARNESS_FILE} [{table}] {key}.{name} is not a string"),
+        })
+        .collect()
 }
 
 /// [`harness_list`] from the copy at `base` ([`git::read_at`]), with the label of that copy.

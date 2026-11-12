@@ -555,7 +555,8 @@ model = "sonnet"   # the dispatcher runs it on opus when sonnet wrote the change
 effort = "high"
 cap_role = "evaluator-review"
 max_turns = 40
-tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+# Workflow runs the review and audit workflows of its routines (usage.toml).
+tools = ["Read", "Grep", "Glob", "Bash", "Skill", "Workflow"]
 disallowed_tools = ["Edit", "Write", "NotebookEdit", "PowerShell", "Agent"]
 write = []
 deny_write = "@protected"

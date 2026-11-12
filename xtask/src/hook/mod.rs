@@ -10,7 +10,7 @@ mod context;
 #[cfg(test)]
 mod escape_tests;
 mod github;
-mod guard_path;
+pub(crate) mod guard_path;
 pub mod handoff;
 mod identity;
 mod lifecycle;

@@ -1,12 +1,13 @@
 //! The write class of team/03 section 4.1: a shell command that writes into a protected path,
 //! the kit's state, a git directory, the main checkout or, for an agent, a file outside the
 //! repository that configures later sessions, by redirection, by a command that writes the files
-//! it names, by an xtask output option, or by deleting a directory that holds one; and the writes
-//! the scanner cannot see (`xargs` into a write command, `find -delete`, .NET file calls), which
-//! are denied outright. A target is judged where it lands once the links on its way are followed,
-//! and the target of a link a command makes is judged as a write, since later writes through the
-//! link land there; an agent links only to paths inside the repository. PowerShell's `$null`
-//! discards what is redirected to it, as `NUL` and `/dev/null` do.
+//! it names, by an xtask, cargo vet or cargo mutants output option, by `kit place`, or by deleting
+//! a directory that holds one; and the writes the scanner cannot see (`xargs` into a write
+//! command, `find -delete`, .NET file calls), which are denied outright. A target is judged where
+//! it lands once the links on its way are followed, and the target of a link a command makes is
+//! judged as a write, since later writes through the link land there; an agent links only to
+//! paths inside the repository. PowerShell's `$null` discards what is redirected to it, as `NUL`
+//! and `/dev/null` do.
 
 use std::path::Path;
 
@@ -19,6 +20,15 @@ use crate::paths::Located;
 
 /// xtask options whose value is a file the command writes.
 const XTASK_OUTPUTS: &[&str] = &["--json", "--out", "--output"];
+/// `kit place --stage` copies files into the staging directory instead of placing them.
+const PLACE_STAGE_FLAG: &str = "--stage";
+/// cargo vet and cargo mutants options whose value is a file or directory they write, by the cargo
+/// subcommand they belong to. The allow rules narrow these tools to their read-only forms, and
+/// these targets are judged against the protected paths and the repository edge like any write.
+const CARGO_OUTPUTS: &[(&str, &[&str])] = &[
+    ("vet", &["--output-file", "--log-file", "--store-path"]),
+    ("mutants", &["--output", "-o"]),
+];
 
 const DELETE_COMMANDS: &[&str] = &[
     "rm",
@@ -156,6 +166,7 @@ pub fn writes(rules: &Rules, invocation: &Invocation, cwd: Option<&Path>) -> Vec
         .collect();
     targets.extend(written_operands(invocation).into_iter().cloned());
     targets.extend(xtask_outputs(invocation));
+    let outputs = cargo_outputs(invocation);
     let discards = |target: &Word| {
         invocation.dialect == Dialect::PowerShell
             && target.raw.eq_ignore_ascii_case(POWERSHELL_NULL)
@@ -169,6 +180,12 @@ pub fn writes(rules: &Rules, invocation: &Invocation, cwd: Option<&Path>) -> Vec
             write_problem(rules, target, cwd)
                 .or_else(|| deletes.then(|| deleted_tree(rules, target, cwd)).flatten())
         })
+        .chain(outputs.iter().map(|target| {
+            // An output option names a file or the directory a tool fills, so a directory that
+            // holds a protected path is refused as a write into it, not only when it matches.
+            write_problem(rules, target, cwd)
+                .or_else(|| tree_problem(rules, target, cwd, "writing into"))
+        }))
         .chain(
             link_targets(invocation)
                 .into_iter()
@@ -224,9 +241,8 @@ fn is_write_command(name: &str) -> bool {
         || matches!(name, "sed" | "perl" | "dd")
 }
 
-/// The files an xtask command writes through `--json`, `--out` or `--output`.
-fn xtask_outputs(invocation: &Invocation) -> Vec<Word> {
-    let runs_kit = match invocation.name() {
+fn runs_kit(invocation: &Invocation) -> bool {
+    match invocation.name() {
         Some("xtask") => true,
         Some("cargo") => {
             let words = lowercase(invocation);
@@ -234,8 +250,13 @@ fn xtask_outputs(invocation: &Invocation) -> Vec<Word> {
             words.contains(&"xtask") || runs_xtask(&words)
         }
         _ => false,
-    };
-    if !runs_kit {
+    }
+}
+
+/// The files an xtask command writes through `--json`, `--out` or `--output`, and the paths
+/// `kit place` puts in place.
+fn xtask_outputs(invocation: &Invocation) -> Vec<Word> {
+    if !runs_kit(invocation) {
         return Vec::new();
     }
     let args = &invocation.args;
@@ -250,17 +271,69 @@ fn xtask_outputs(invocation: &Invocation) -> Vec<Word> {
             found.push(word.with_value(path));
         }
     }
+    let staging = args.iter().any(|word| word.value == PLACE_STAGE_FLAG);
+    let after_place = args.windows(2).position(
+        |pair| matches!(pair, [kit, place] if kit.value == "kit" && place.value == "place"),
+    );
+    if let Some(start) = after_place.filter(|_| !staging) {
+        found.extend(
+            args.iter()
+                .skip(start + 2)
+                .filter(|word| !word.value.starts_with('-'))
+                .cloned(),
+        );
+    }
     found
+}
+
+/// The files cargo vet or cargo mutants writes through an output option (`--output-file`,
+/// `--log-file`, `--store-path`, `--output`, `-o`).
+fn cargo_outputs(invocation: &Invocation) -> Vec<Word> {
+    if invocation.name() != Some("cargo") {
+        return Vec::new();
+    }
+    let Some((_, flags)) = cargo_subcommand(invocation)
+        .and_then(|sub| CARGO_OUTPUTS.iter().find(|(name, _)| *name == sub.as_str()))
+    else {
+        return Vec::new();
+    };
+    let args = &invocation.args;
+    let mut found = Vec::new();
+    for (index, word) in args.iter().enumerate() {
+        let value = word.value.as_str();
+        if flags.contains(&value) {
+            found.extend(args.get(index + 1).cloned());
+        } else if let Some((flag, path)) = value.split_once('=')
+            && flags.contains(&flag)
+        {
+            found.push(word.with_value(path));
+        }
+    }
+    found
+}
+
+/// The cargo subcommand: the first operand that is not a `+toolchain` or a global option.
+fn cargo_subcommand(invocation: &Invocation) -> Option<String> {
+    let mut words = invocation
+        .values()
+        .filter(|word| !word.starts_with('+') && !word.starts_with('-'));
+    words.next().map(str::to_ascii_lowercase)
 }
 
 /// Deleting a directory that holds a protected path or the kit's state, or the repository itself.
 fn deleted_tree(rules: &Rules, target: &Word, cwd: Option<&Path>) -> Option<String> {
+    tree_problem(rules, target, cwd, "deleting")
+}
+
+/// `verb` applied to a directory (or the repository root) that holds a protected path or the
+/// kit's state: the operation reaches a protected file through the directory it names.
+fn tree_problem(rules: &Rules, target: &Word, cwd: Option<&Path>, verb: &str) -> Option<String> {
     let Located::Inside(path) = rules.context.repo.locate(&target.value, cwd) else {
         return None;
     };
     if path.is_root() {
         return Some(format!(
-            "deleting `{}` deletes the repository, protected paths included",
+            "{verb} `{}` reaches the whole repository, protected paths included",
             target.raw
         ));
     }
@@ -273,7 +346,7 @@ fn deleted_tree(rules: &Rules, target: &Word, cwd: Option<&Path>) -> Option<Stri
         .map(|glob| fixed_prefix(glob).to_ascii_lowercase())
         .find(|prefix| !prefix.is_empty() && format!("{prefix}/").starts_with(&dir))?;
     Some(format!(
-        "deleting {path} deletes {held}, which is protected or the kit's own state"
+        "{verb} {path} reaches {held}, which is protected or the kit's own state"
     ))
 }
 

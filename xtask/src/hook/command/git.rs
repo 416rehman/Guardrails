@@ -53,6 +53,24 @@ const CONFIG_READS: &[&str] = &[
     "--list",
     "--show-origin",
 ];
+/// git fetch options an agent never passes: `--upload-pack` runs a program on the remote,
+/// `--refmap` rewrites which local refs a fetch updates, and `--update-head-ok` lets it move the
+/// checked-out branch.
+const FETCH_REFUSED: &[&str] = &["--upload-pack", "--refmap", "--update-head-ok"];
+/// git fetch options that take the next word as their value, so a refspec is not confused with one.
+const FETCH_VALUED: &[&str] = &[
+    "--upload-pack",
+    "--refmap",
+    "--depth",
+    "--deepen",
+    "--shallow-since",
+    "--shallow-exclude",
+    "--negotiation-tip",
+    "-j",
+    "--jobs",
+    "-o",
+    "--server-option",
+];
 
 pub fn check(rules: &Rules, invocation: &Invocation, cwd: Option<&Path>) -> Result<Vec<String>> {
     let args = &invocation.args;
@@ -124,9 +142,75 @@ pub fn check(rules: &Rules, invocation: &Invocation, cwd: Option<&Path>) -> Resu
         "tag" if rules.is_agent() && creates_tag(rest) => {
             reasons.push("release tags are made by release-please, never by a session".to_owned());
         }
+        "fetch" if rules.is_agent() => reasons.extend(fetch(rest)),
         _ => {}
     }
     Ok(reasons)
+}
+
+/// A git fetch from an agent: its refspecs update only the remote-tracking refs git chooses from
+/// `<remote> <ref>`, never a destination the command names. Every worktree shares one ref store,
+/// so a refspec with a destination (`src:dst`, `+src:dst`) or a forced one (`+src`) could rewrite
+/// another session's branch, a tag, or `refs/remotes/origin/main`, which `git::resolve_base` reads
+/// as the review base.
+fn fetch(args: &[Word]) -> Vec<String> {
+    let mut reasons = Vec::new();
+    let mut index = 0;
+    let mut remote_seen = false;
+    let mut options_done = false;
+    while let Some(word) = args.get(index) {
+        index += 1;
+        let value = word.value.as_str();
+        if !options_done && value.starts_with('-') && value != "-" {
+            if value == "--" {
+                options_done = true;
+                continue;
+            }
+            let name = value.split('=').next().unwrap_or_default();
+            if FETCH_REFUSED.contains(&name) {
+                reasons.push(format!(
+                    "`git fetch {value}` is not part of a fetch an agent runs; fetch with `git fetch origin <branch>` or `git fetch origin <sha>`"
+                ));
+            }
+            if FETCH_VALUED.contains(&name) && !value.contains('=') {
+                index += 1;
+            }
+            continue;
+        }
+        if word.opaque {
+            reasons.push(format!(
+                "the git fetch argument `{}` depends on an expansion; name the remote and ref literally",
+                word.raw
+            ));
+            continue;
+        }
+        if !remote_seen {
+            remote_seen = true;
+            continue;
+        }
+        if let Some(reason) = refspec_problem(word) {
+            reasons.push(reason);
+        }
+    }
+    reasons
+}
+
+/// A fetch refspec an agent may not use: one with a destination (`src:dst`) or a forced one
+/// (`+src`), either of which writes a ref the command chose rather than the one git would.
+fn refspec_problem(refspec: &Word) -> Option<String> {
+    let value = refspec.value.as_str();
+    if value.starts_with('+') {
+        return Some(format!(
+            "`git fetch` refspec `{}` force-updates a ref; fetch `origin <branch>` or `origin <sha>` and let git update only the remote-tracking ref",
+            refspec.raw
+        ));
+    }
+    value.contains(':').then(|| {
+        format!(
+            "`git fetch` refspec `{}` names a destination ref, which would rewrite a ref every worktree shares; fetch `origin <branch>` or `origin <sha>`",
+            refspec.raw
+        )
+    })
 }
 
 fn push(rules: &Rules, args: &[Word], dir: Option<&Path>) -> Vec<String> {

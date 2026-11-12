@@ -3,7 +3,7 @@ name: eval-diff
 description: "Clean-context, cross-model reviewer of a pull request diff, including the structure rubric and audit A01. Use on every pull request; at most three rounds per item."
 model: claude-sonnet-5-5
 effort: high
-tools: Read, Grep, Glob, Bash, Skill, WebFetch, WebSearch
+tools: Read, Grep, Glob, Bash, Skill, Workflow, WebFetch, WebSearch
 disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 40

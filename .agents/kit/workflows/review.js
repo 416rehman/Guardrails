@@ -420,7 +420,7 @@ function scopePrompt(input, repo) {
     `4. item: ${input.item ? `${input.item} (given)` : 'the "item" of the JSON line inside the pull-request body\'s <details><summary>meta.v1</summary> block, else the number in the body\'s first "Closes #<n>" line, else the first closingIssuesReferences number, else 0'}.`,
     `   writer_models: the "model" of that meta.v1 line; if the body has none, the "model" of the newest handoff.v1 comment on the item from an agent whose name does not start with eval- (gh issue view <item> --repo ${repo} --comments); else [].`,
     `5. labels: the pull request's label names plus, when item is not 0, the item's: gh issue view <item> --repo ${repo} --json labels --jq '.labels[].name'`,
-    `6. review_markers: every line printed by gh api repos/${repo}/issues/<n>/comments --paginate --jq '.[].body | split("\\n")[] | select(startswith("<!-- ${MARKER} "))' for n = the item (when not 0) and n = ${pr}. Copy each line exactly.`,
+    `6. review_markers: every line printed by gh issue view <item> --repo ${repo} --json comments --jq '.comments[].body | split("\\n")[] | select(startswith("<!-- ${MARKER} "))' when the item is not 0, and by gh pr view ${pr} --repo ${repo} with the same --json and --jq. Copy each line exactly.`,
     ...common,
   ].join('\n')
 }
@@ -469,12 +469,12 @@ function checkAction(repo, check, status) {
   }
 }
 
-function commentAction(repo, number, token, body, fallbackBody) {
+function commentAction(repo, kind, number, token, body, fallbackBody) {
   const delimiter = `GRDR_COMMENT_${token}`
   return {
     title: `verdict comment on issue ${number}`,
     steps: [
-      `First run: gh api repos/${repo}/issues/${number}/comments --paginate --jq '.[] | select(.body | contains("${token}")) | .html_url'`,
+      `First run: gh ${kind} view ${number} --repo ${repo} --json comments --jq '.comments[] | select(.body | contains("${token}")) | .url'`,
       'If it prints a URL, report outcome exists with that URL and skip the rest of this action.',
       'If action 0 reported outcome posted, post this body:',
       heredoc(`gh issue comment ${number} --repo ${repo} --body-file -`, body, delimiter),
@@ -694,7 +694,7 @@ async function overCap(facts) {
   const check = { name: CHECK_NAME, head_sha: facts.head, status: 'completed', conclusion: 'failure', output: { title: `eval-diff: round ${facts.round} is over the cap`, summary: reason, text: fencedJson(handoff) } }
   const status = { state: 'failure', context: STATUS_CONTEXT, description: `round ${facts.round} is over the ${maxRounds}-round cap` }
   const body = `eval-diff on \`${facts.head.slice(0, 12)}\`: **fail**, review round ${facts.round} is over the ${maxRounds}-round cap; the item returns to its lead.\n${markerFor(facts.token, facts.pr, facts.round, facts.head, [])}`
-  const result = await publish(facts.repo, [checkAction(facts.repo, check, status), commentAction(facts.repo, facts.item || facts.pr, facts.token, body, body)])
+  const result = await publish(facts.repo, [checkAction(facts.repo, check, status), commentAction(facts.repo, facts.item ? 'issue' : 'pr', facts.item || facts.pr, facts.token, body, body)])
   return { status: 'fail', reason, round: facts.round, handoff, published: result ? result.actions : null }
 }
 
@@ -868,7 +868,7 @@ if (!publishing) {
 }
 const published = await publish(repo, [
   checkAction(repo, check, commitStatus),
-  commentAction(repo, item || pr, token, comment, fallbackComment),
+  commentAction(repo, item ? 'issue' : 'pr', item || pr, token, comment, fallbackComment),
   ...proposed.map(issue => issueAction(repo, issue)),
 ])
 if (!published) return incomplete('the publisher did not return; a re-run skips whatever the comment marker shows was posted', { round })

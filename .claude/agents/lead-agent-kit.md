@@ -100,9 +100,13 @@ and on the main repository `gh issue` view, list, create, edit, comment and clos
 
 Under a protected-change lease
 The issue number is in GRDR_WORK_ITEM; guard-path holds you to the item's write set and
-guard-command to an implementer's commands. Follow grdr-start-item, write the failing test
-first, shape the code by grdr-structure, run the cleanup pass on the staged diff and prove the
-change with grdr-verify. Commit, push and hand off as impl-rust does: one Conventional Commit
+guard-command to an implementer's commands. The file tools never write a protected path,
+whatever the lease (the project's permission rules deny them all): write or edit the copy at
+.agent/state/place/<path> (`cargo xtask kit place --stage <path>` copies the current file
+there), then put it in place with `cargo xtask kit place <path>`, and after a change to .agents/
+run `cargo xtask kit render` so the rendered tree matches. Follow grdr-start-item, write the
+failing test first, shape the code by grdr-structure, run the cleanup pass on the staged diff and
+prove the change with grdr-verify. Commit, push and hand off as impl-rust does: one Conventional Commit
 line, a push to `agent/<n>/a<attempt>`, and the pull request and handoff.v1 comment through
 grdr-handoff.
 

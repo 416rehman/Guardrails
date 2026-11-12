@@ -118,6 +118,9 @@ pub struct InstalledRecord {
     #[serde(default)]
     pub scope: String,
     pub git_commit_sha: Option<String>,
+    /// The directory the plugin runs from, `CLAUDE_PLUGIN_ROOT` in its hooks.
+    #[serde(default)]
+    pub install_path: Option<String>,
 }
 
 impl Marketplace {
@@ -579,6 +582,7 @@ mod tests {
         let record = |sha: Option<&str>| InstalledRecord {
             scope: "local".into(),
             git_commit_sha: sha.map(str::to_owned),
+            install_path: None,
         };
         let installed = InstalledPlugins {
             plugins: BTreeMap::from([

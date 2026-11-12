@@ -1,7 +1,8 @@
 # What the skill grdr-vendor-research reads when a feature's requirements, completeness or industry
 # norm are unclear (owner instruction 14): the reference vendors, each with its documentation
 # domains and the brief under docs/references/research/ that covers it, then the source classes
-# of the horizon sweep, each with its domains and the URLs a sweep starts from.
+# of the horizon sweep, each with its domains and the URLs a sweep starts from, and last the
+# reference documentation, feeds and coding-agent documentation the roles read at work.
 #
 # kit render turns every domain here into a WebFetch(domain:<d>) allow rule and adds WebSearch
 # for the roles whose roster skills include [research] skill; every other role keeps WebSearch
@@ -251,3 +252,38 @@ urls = ["https://lobste.rs/t/security"]
 [sources.reddit]
 domains = ["www.reddit.com"]
 urls = ["https://www.reddit.com/r/netsec/", "https://www.reddit.com/r/cybersecurity/", "https://www.reddit.com/r/blueteamsec/"]
+
+# Reference documentation for the crates and the web platform an implementer or evaluator works
+# with while specifying, building or judging a feature.
+[sources.package-docs]
+domains = ["docs.rs", "doc.rust-lang.org", "developer.mozilla.org"]
+urls = ["https://docs.rs/", "https://doc.rust-lang.org/std/", "https://developer.mozilla.org/en-US/docs/Web"]
+
+# The vulnerability feeds of egress.toml [list.intel] for garden-intel. github.com sends a raw
+# file to raw.githubusercontent.com, and WebFetch hands a redirect to another host back instead
+# of following it, so that host is listed too.
+[sources.vulnerability-feeds]
+domains = ["osv.dev", "api.osv.dev", "raw.githubusercontent.com", "www.cisa.gov"]
+urls = [
+  "https://osv.dev/list",
+  "https://api.osv.dev/v1/vulns/",
+  "https://raw.githubusercontent.com/cisagov/kev-data/develop/known_exploited_vulnerabilities.json",
+  "https://www.cisa.gov/known-exploited-vulnerabilities-catalog",
+]
+
+# The coding agents' own documentation and release notes, for garden-catalogue's checks of
+# catalogue tiers and hook contracts, and for adapter items (skill grdr-add-agent-adapter).
+[sources.coding-agents]
+domains = [
+  "code.claude.com", "cursor.com", "learn.chatgpt.com", "developers.openai.com", "kiro.dev",
+  "opencode.ai", "geminicli.com",
+]
+urls = [
+  "https://code.claude.com/docs/en/hooks",
+  "https://cursor.com/docs/agent",
+  "https://learn.chatgpt.com/docs/hooks",
+  "https://developers.openai.com/codex/",
+  "https://kiro.dev/docs/hooks",
+  "https://opencode.ai/docs/plugins",
+  "https://geminicli.com/docs/",
+]

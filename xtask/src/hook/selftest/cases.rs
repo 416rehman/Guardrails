@@ -119,7 +119,7 @@ const SEED_SCOPE: &str = r#"agent = "chief-architect"
 scope = "seed"
 branch = "agent/seed"
 paths = ["AGENTS.md", "CLAUDE.md", "docs/decisions/ADR-0001-*.md", ".github/ISSUE_TEMPLATE/*"]
-commands = ["gh issue create", "gh issue edit", "gh issue view", "gh issue list", "cargo xtask kit ready", "cargo xtask kit handoff"]
+commands = ["gh issue create", "gh issue edit", "gh issue view", "gh issue list", "cargo xtask kit ready", "cargo xtask kit handoff", "cargo xtask kit place"]
 "#;
 
 fn roster() -> String {
@@ -346,7 +346,7 @@ pub fn programmatic() -> Vec<(Handler, String, Case)> {
                 preset: None,
                 env: worker_env(),
                 input: edit("crates/a/src/added.rs"),
-                expect: Expect::Allow,
+                expect: Expect::Approve,
                 contains: None,
                 files: BTreeMap::new(),
                 sign_off: false,

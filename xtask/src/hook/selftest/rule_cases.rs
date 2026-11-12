@@ -339,7 +339,7 @@ pub fn cases(path_skills: &str) -> Vec<(Handler, String, Case)> {
         ),
         worker(
             Handler::GuardPath,
-            case("first-edit-names-path-skills", env("impl-rust"), edit("crates/a/src/added.rs"), Expect::Context, "grdr-structure", skills()),
+            case("first-edit-names-path-skills", env("impl-rust"), edit("crates/a/src/added.rs"), Expect::Approve, "grdr-structure", skills()),
         ),
         worker(
             Handler::GuardPath,
@@ -347,8 +347,8 @@ pub fn cases(path_skills: &str) -> Vec<(Handler, String, Case)> {
                 "named-path-skills-are-not-repeated",
                 env("impl-rust"),
                 json!({"session_id": "s-skills", "tool_name": "Edit", "tool_input": {"file_path": "crates/a/src/added.rs"}}),
-                Expect::Allow,
-                "",
+                Expect::Approve,
+                "is inside what impl-rust writes",
                 announced,
             ),
         ),
