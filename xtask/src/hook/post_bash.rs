@@ -1,17 +1,22 @@
 //! `PostToolUse` on Bash and PowerShell (team/03 section 4.1): protected paths that differ from
 //! what they were when the session started are fed back with the command that reverts them. The
-//! session's baseline keeps files that were already changed out of the report.
+//! session's baseline keeps files that were already changed out of the report, and so does the
+//! session's own widened scope: the seed scope, or a protected-change lease's write set, whose
+//! paths that session places with `cargo xtask kit place`.
 
 use std::collections::BTreeMap;
 
 use anyhow::Result;
 
 use super::context::Context;
+use super::identity::Identity;
 use super::outcome::{Outcome, capped};
 use super::state::{SESSION_SCHEMA, SessionState, sha256_hex};
 use crate::clock::Utc;
 use crate::config::protected::ProtectedPaths;
-use crate::git;
+use crate::gates::protected::allowance;
+use crate::git::{self, Base};
+use crate::globs::GlobList;
 use crate::paths::RepoPath;
 use crate::repo::Repo;
 
@@ -44,10 +49,16 @@ pub fn run(context: &Context) -> Result<Outcome> {
         context.note("no session state: recorded the protected-path baseline now");
         return Ok(Outcome::Allow);
     };
+    let widened = widened(context);
     let new: Vec<&Changed> = current
         .iter()
         .filter(|changed| {
             state.protected_baseline.get(changed.path.as_str()) != Some(&changed.hash)
+        })
+        .filter(|changed| {
+            !widened
+                .as_ref()
+                .is_some_and(|globs| globs.is_match(changed.path.as_str()))
         })
         .collect();
     if new.is_empty() {
@@ -69,6 +80,16 @@ pub fn run(context: &Context) -> Result<Outcome> {
     )];
     lines.extend(capped(&reverts, context.limits.post_bash.protected_listed));
     Ok(Outcome::Block(lines.join("\n")))
+}
+
+/// The protected globs this session's scope covers, as guard-path and guard-command read them.
+/// An identity that does not load widens nothing, so every protected change is still reported.
+fn widened(context: &Context) -> Option<GlobList> {
+    let identity = Identity::load(context).ok()?;
+    let agent = identity.agent()?;
+    allowance(&context.repo, &Base::Unborn, &identity.session, agent)
+        .ok()
+        .flatten()
 }
 
 /// Protected paths that `git status` reports as changed, added or deleted.

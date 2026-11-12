@@ -3,8 +3,9 @@
 //! them, `eval-tier` first. The verdicts are the evaluators' `handoff.v1` comments since the issue
 //! last entered review; a pass counts only from the model it was asked on. A failed round sends
 //! the item back to its worker until the rounds are used up, and a failed light round raises the
-//! item to standard; a round with no verdict within the deadline is escalated. A passed change
-//! goes to the merge queue (`landing.rs`).
+//! item to standard; a round with no verdict within the deadline is escalated. Every send-back,
+//! the merge queue's included, uses one of the rounds, so no loop between the worker and the
+//! queue is unbounded. A passed change goes to the merge queue (`landing.rs`).
 
 use anyhow::Result;
 use serde_json::Value;
@@ -16,6 +17,7 @@ use crate::config::session::ItemStatus;
 use crate::dispatch::lease::{self, Change};
 use crate::dispatch::routines::{HOUR, now_unix, unix_of};
 use crate::dispatch::worker;
+use crate::github::Identity;
 use crate::orchestrate::issue::{Issue, status_label};
 use crate::orchestrate::records::{self, LANE_SCHEMA, LaneRaise, Lease, Reason, Record};
 use crate::orchestrate::risk::Lane;
@@ -24,6 +26,23 @@ const EVAL_TIER: &str = "eval-tier";
 const PASS: &str = "pass";
 /// The name the dispatcher's own `lane.v1` comments carry, as `.github/labels.toml` names it.
 const DISPATCHER: &str = "dispatcher";
+/// The send-backs that use a review round: an evaluator's findings and every refusal by the
+/// merge queue, which a worker answers with a new head that the evaluators judge again.
+const ROUND_ENDS: &[Reason] = &[
+    Reason::EvaluatorFindings,
+    Reason::PullRequestInvalid,
+    Reason::ChecksFailed,
+    Reason::VerifyFailed,
+    Reason::MergeConflict,
+];
+
+/// The review round the evaluators start in: its first record, the pull request head they judge
+/// and the lane.
+pub(super) struct RoundStart<'a> {
+    since: usize,
+    head: &'a str,
+    lane: Lane,
+}
 
 /// What the verdicts of the current round say.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,7 +124,12 @@ impl Dispatcher<'_> {
                 self.escalate(issue.number, &lease, Reason::NoVerdict)
             }
             Verdicts::Missing(missing) => {
-                self.start_evaluators(issue.number, &lease, since, &missing, lane)
+                let start = RoundStart {
+                    since,
+                    head: &request.head,
+                    lane,
+                };
+                self.start_evaluators(issue.number, &lease, &start, &missing)
             }
         }
     }
@@ -114,15 +138,14 @@ impl Dispatcher<'_> {
         &mut self,
         item: u64,
         lease: &Lease,
-        since: usize,
+        start: &RoundStart,
         missing: &[Needed],
-        lane: Lane,
     ) -> Result<()> {
         let capacity = usize::try_from(self.policy.max_evaluators).unwrap_or(0);
         let round = self.assisted.reviewing.entry(item).or_default();
-        if round.since != since {
+        if round.since != start.since {
             *round = Round {
-                since,
+                since: start.since,
                 ..Round::default()
             };
         }
@@ -136,7 +159,7 @@ impl Dispatcher<'_> {
             if started.contains(&needed.agent) || self.assists_for(Purpose::Review) >= capacity {
                 continue;
             }
-            let prompt = self.review_prompt(item, lease, &needed.agent, lane)?;
+            let prompt = self.review_prompt(item, lease, &needed.agent, start)?;
             let worktree = worker::attempt_worktree(item, lease.attempt);
             let job = AssistJob {
                 purpose: Purpose::Review,
@@ -163,19 +186,29 @@ impl Dispatcher<'_> {
         self.assisted.save(&self.repo)
     }
 
-    /// `.agents/kit/prompts/dispatch-review.md` with `{item}`, `{agent}`, `{branch}` and `{lane}`
-    /// when present, otherwise one line; the light lane's pass runs without the review workflow.
-    fn review_prompt(&self, item: u64, lease: &Lease, agent: &str, lane: Lane) -> Result<String> {
-        let b = &lease.branch;
+    /// `.agents/kit/prompts/dispatch-review.md` with `{item}`, `{agent}`, `{branch}`, `{lane}`,
+    /// `{head}` and `{repository}` when present, otherwise one paragraph; the light lane's pass
+    /// runs without the review workflow. The commit status is spelled out because only that form
+    /// of `gh api` has a permission rule, and the verdict goes through a draft file because
+    /// `dontAsk` refuses a here-document that carries JSON.
+    fn review_prompt(
+        &self,
+        item: u64,
+        lease: &Lease,
+        agent: &str,
+        start: &RoundStart,
+    ) -> Result<String> {
+        let (b, head, lane) = (&lease.branch, start.head, start.lane);
+        let repository = Identity::load(&self.repo)?.repository;
         let how = match lane {
             Lane::Light => {
-                "in one pass on the diff, without the review workflow and without audits (the light lane)"
+                "in one pass on the diff, without the review workflow and without audits (the light lane). This is owner instruction 8's single Sonnet pass, not the cross-model review, so grdr-evaluate's stop for a reviewer on the writer's model does not apply to it"
             }
             _ if agent == EVAL_DIFF => "with the review workflow",
             _ => "with the grdr-evaluate skill",
         };
         let line = format!(
-            "Evaluate the pull request of issue #{item} on branch {b} as {agent} {how}, against the acceptance criteria the ready.v1 digest names. Post your verdict as the commit status grdr-evaluator/{agent} on the pull request's head and finish with cargo xtask kit handoff --item {item} --draft '<handoff.v1 JSON>' whose status is pass, fail or cannot-evaluate."
+            "Evaluate the pull request of issue #{item} on branch {b}, head {head}, as {agent} {how}. Judge it against the acceptance criteria the issue's ready.v1 digest names, or for an issue the kit put in review without a ready.v1 (the seed's) the lease.v1 digest the kit posted; cargo xtask kit digest {item} prints the digests. Post your verdict as the commit status gh api --method POST repos/{repository}/statuses/{head} -f state=<success, failure or error> -f context=grdr-evaluator/{agent} -f description='<one line>', then write the handoff.v1 JSON, whose status is pass, fail or cannot-evaluate, to .agent/state/handoff-{item}-{agent}.json with the Write tool and finish with cargo xtask kit handoff --item {item}."
         );
         let number = item.to_string();
         Ok(self
@@ -186,9 +219,35 @@ impl Dispatcher<'_> {
                     ("agent", agent),
                     ("branch", b.as_str()),
                     ("lane", lane.name()),
+                    ("head", head),
+                    ("repository", repository.as_str()),
                 ],
             )?
             .unwrap_or(line))
+    }
+
+    /// A send-back from the merge queue, which uses a round as a failed review does.
+    pub(super) fn queue_refused(
+        &mut self,
+        issue: &Issue,
+        lease: &Lease,
+        found: &[Record],
+        reason: Reason,
+        detail: &str,
+    ) -> Result<()> {
+        let round = u32::try_from(failed_rounds(found, lease))
+            .unwrap_or(u32::MAX)
+            .saturating_add(1);
+        if round < self.max_rounds() {
+            return self.send_back(issue, lease, reason, detail);
+        }
+        println!(
+            "dispatch: #{} used its {} rounds: {}",
+            issue.number,
+            self.max_rounds(),
+            reason.describe()
+        );
+        self.rounds_used(issue, lease)
     }
 
     /// A failed round: back to the worker on the same attempt while rounds remain; then the
@@ -226,10 +285,11 @@ impl Dispatcher<'_> {
         self.rounds_used(issue, lease)
     }
 
-    /// The rounds are used up: the lead re-plans the item, or after the last attempt it is
-    /// escalated (`.github/labels.toml`'s in-review transitions for review-rounds-used).
+    /// The rounds are used up: the lead re-plans the item, or after the last attempt (the seed's
+    /// issue has one) it is escalated (`.github/labels.toml`'s in-review transitions for
+    /// review-rounds-used).
     pub(super) fn rounds_used(&mut self, issue: &Issue, lease: &Lease) -> Result<()> {
-        let to = if lease.attempt < self.policy.max_attempts {
+        let to = if lease.attempt < self.attempts_for(lease) {
             ItemStatus::Proposed
         } else {
             ItemStatus::Escalated
@@ -250,7 +310,7 @@ impl Dispatcher<'_> {
 
     /// Back to the worker on the same attempt, with why, and its fix session started when a
     /// writer slot is free.
-    pub(super) fn send_back(
+    fn send_back(
         &mut self,
         issue: &Issue,
         lease: &Lease,
@@ -271,15 +331,21 @@ impl Dispatcher<'_> {
             let kept = held.clone();
             match self.start(held, Prompt::Fix) {
                 Ok(slot) => self.slots.extend(slot),
-                Err(_) => self.slots.push(Slot::Paused { held: kept }),
+                Err(_) => self.slots.push(Slot::Paused {
+                    held: kept,
+                    prompt: Prompt::Fix,
+                }),
             }
         } else {
-            self.slots.push(Slot::Paused { held });
+            self.slots.push(Slot::Paused {
+                held,
+                prompt: Prompt::Fix,
+            });
         }
         Ok(())
     }
 
-    fn escalate(&mut self, item: u64, lease: &Lease, reason: Reason) -> Result<()> {
+    pub(super) fn escalate(&mut self, item: u64, lease: &Lease, reason: Reason) -> Result<()> {
         lease::transition(
             self.tracker,
             item,
@@ -300,13 +366,11 @@ impl Dispatcher<'_> {
     }
 }
 
-/// Failed review rounds since the lease.
+/// The rounds since the lease that ended in a send-back to the worker.
 pub(super) fn failed_rounds(found: &[Record], lease: &Lease) -> usize {
     since_lease(found, lease)
         .iter()
-        .filter(|record| {
-            matches!(record, Record::Transition(t) if t.reason == Reason::EvaluatorFindings)
-        })
+        .filter(|record| matches!(record, Record::Transition(t) if ROUND_ENDS.contains(&t.reason)))
         .count()
 }
 
@@ -360,5 +424,42 @@ pub(super) fn handoff_by<'r>(record: &'r Record, item: u64, agent: &str) -> Opti
             Some(value)
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::orchestrate::records::{LEASE_SCHEMA, STATE_SCHEMA, Transition};
+
+    fn back(reason: Reason) -> Record {
+        Record::Transition(Transition {
+            schema: STATE_SCHEMA.to_owned(),
+            item: 7,
+            attempt: 1,
+            from: ItemStatus::InReview,
+            to: ItemStatus::Leased,
+            reason,
+        })
+    }
+
+    #[test]
+    fn every_send_back_uses_a_round_and_nothing_else_does() {
+        let lease = Lease {
+            schema: LEASE_SCHEMA.to_owned(),
+            item: 7,
+            attempt: 1,
+            agent: "impl-rust".to_owned(),
+            model: "claude-sonnet-5-5".to_owned(),
+            acceptance_sha256: "ab".to_owned(),
+            branch: "agent/7/a1".to_owned(),
+            session: None,
+        };
+        let mut found = vec![Record::Lease(lease.clone())];
+        found.extend(ROUND_ENDS.iter().map(|reason| back(*reason)));
+        found.push(back(Reason::AcceptanceChanged));
+        assert_eq!(failed_rounds(&found, &lease), ROUND_ENDS.len());
+        assert!(ROUND_ENDS.contains(&Reason::ChecksFailed));
+        assert!(ROUND_ENDS.contains(&Reason::VerifyFailed));
     }
 }

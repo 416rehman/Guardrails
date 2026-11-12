@@ -4,11 +4,12 @@
 //! project-scope keys, every model a rendered file or a plugin agent names is one the rule
 //! allows, vendors.toml names briefs and a skill that exist, and the marketplace catalogue agrees
 //! with marketplace.toml and PINS.md with no installed plugin off its pin, every evaluator
-//! `.agents/risk-tiers.toml` names is a roster evaluator, and every label a template, skill or
-//! prompt names is in `.github/labels.toml`. [`all_problems`] adds the model rule and the skills
-//! lint.
+//! `.agents/risk-tiers.toml` names is a roster evaluator, every label a template, skill or
+//! prompt names is in `.github/labels.toml`, and no template, skill, prompt or workflow gives a
+//! command JSON on standard input. [`all_problems`] adds the model rule and the skills lint.
 
 use std::collections::BTreeSet;
+use std::path::Path;
 use std::sync::LazyLock;
 
 use anyhow::Result;
@@ -30,6 +31,16 @@ use crate::repo::{Repo, walk_files};
 
 /// Where agents read the labels they file and set.
 const LABEL_SOURCES: &[&str] = &[".agents/templates", ".agents/skills", ".agents/kit/prompts"];
+/// Where agents read the commands they run.
+const COMMAND_SOURCES: &[&str] = &[
+    ".agents/templates",
+    ".agents/skills",
+    ".agents/kit/prompts",
+    ".agents/kit/workflows",
+];
+/// Options that read JSON from standard input. An agent can feed it only from a here-document,
+/// and Claude Code in `dontAsk` refuses a here-document that carries JSON.
+const JSON_ON_STDIN: &[&str] = &["--draft -", "--input -"];
 const MODEL_KEY: &str = "model";
 const AVAILABLE_MODELS_KEY: &str = "availableModels";
 const MODEL_VARIABLE_SUFFIX: &str = "_MODEL";
@@ -67,6 +78,7 @@ pub fn kit_problems(repo: &Repo) -> Result<Vec<String>> {
     problems.extend(research::problems(repo, &kit)?);
     problems.extend(evaluator_problems(repo, &kit));
     problems.extend(label_problems(repo)?);
+    problems.extend(stdin_json_problems(repo)?);
     problems.extend(marketplace_problems(
         repo,
         &kit,
@@ -99,6 +111,37 @@ fn evaluator_problems(repo: &Repo, kit: &Kit) -> Vec<String> {
         .collect()
 }
 
+/// Every kit source that names a [`JSON_ON_STDIN`] option, which would get its session refused.
+fn stdin_json_problems(repo: &Repo) -> Result<Vec<String>> {
+    let mut problems = Vec::new();
+    for source in COMMAND_SOURCES {
+        for path in walk_files(&repo.path(source))? {
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            problems.extend(
+                JSON_ON_STDIN
+                    .iter()
+                    .filter(|form| text.contains(**form))
+                    .map(|form| {
+                        format!(
+                            "{} has `{form}`: an agent gives that JSON on a here-document, which dontAsk refuses; write a draft file or pass `gh api -f` fields",
+                            display_path(repo, &path)
+                        )
+                    }),
+            );
+        }
+    }
+    Ok(problems)
+}
+
+fn display_path(repo: &Repo, path: &Path) -> String {
+    repo.relative(path).map_or_else(
+        || path.display().to_string(),
+        |relative| relative.to_string(),
+    )
+}
+
 /// Every label a template, skill or prompt names in backticks is in `.github/labels.toml`, so an
 /// agent never files or sets a label `gh` would refuse.
 fn label_problems(repo: &Repo) -> Result<Vec<String>> {
@@ -113,10 +156,7 @@ fn label_problems(repo: &Repo) -> Result<Vec<String>> {
             let Ok(text) = std::fs::read_to_string(&path) else {
                 continue;
             };
-            let shown = repo.relative(&path).map_or_else(
-                || path.display().to_string(),
-                |relative| relative.to_string(),
-            );
+            let shown = display_path(repo, &path);
             named.extend(
                 pattern
                     .captures_iter(&text)
@@ -459,6 +499,29 @@ mod tests {
         let found = evaluator_problems(&repo, &kit);
         assert_eq!(found.len(), 1, "{found:#?}");
         assert!(found[0].contains("`eval-renamed`"), "{found:#?}");
+    }
+
+    #[test]
+    fn a_kit_source_that_gives_json_on_standard_input_fails() {
+        let temp = TempRepo::create();
+        let repo = temp.repo();
+        assert!(stdin_json_problems(&repo).unwrap().is_empty());
+        temp.write(
+            ".agents/skills/grdr-x/SKILL.md",
+            "Run `cargo xtask kit handoff --item <n> --draft - <<'JSON'`.\n",
+        );
+        temp.write(
+            ".agents/kit/workflows/post.js",
+            "const command = `gh api --method POST repos/r/statuses/s --input -`\n",
+        );
+        let found = stdin_json_problems(&repo).unwrap();
+        assert_eq!(found.len(), 2, "{found:#?}");
+        assert!(
+            found
+                .iter()
+                .any(|problem| problem.contains("post.js has `--input -`")),
+            "{found:#?}"
+        );
     }
 
     #[test]

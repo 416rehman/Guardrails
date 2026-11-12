@@ -7,6 +7,12 @@
 # diffs that touch the given globs. `fixture` names the input that proves the gate fails.
 # V04, V06 to V17 and V19 join as the work items that build them land. V21 to V26 and V28 are the
 # kit's own gates (team/05 section 3). Q01 is the CI form only (`verify --ci`): it reads the issue.
+#
+# V18 and V21 check that the kit's code agrees with its own fixtures and its own render, so they
+# run the change's own build: run by the base binary, a change to a hook's outcome, the fixture
+# format or the renderer would be judged by the code it replaces and could never pass. Every other
+# gate, V05 included, stays the base binary's, and only the seed or a protected-change lease, which
+# eval-security and an evaluator on the other model review, can change the kit's code.
 
 [[step]]
 id = "V01"
@@ -40,8 +46,8 @@ timeout_s = 30
 id = "V21"
 name = "kit-check"
 forms = ["fast", "full"]
-builtin = "kit-check"
-timeout_s = 120
+run = ["cargo", "run", "--locked", "--quiet", "--package", "xtask", "--", "kit", "check"]
+timeout_s = 900
 
 [[step]]
 id = "V22"
@@ -68,8 +74,8 @@ timeout_s = 120
 id = "V18"
 name = "hooks-selftest"
 forms = ["fast", "full"]
-builtin = "hooks-selftest"
-when = { changed = [".agents/**", ".claude/**", "xtask/src/hook/**", "xtask/fixtures/hooks/**"] }
+run = ["cargo", "run", "--locked", "--quiet", "--package", "xtask", "--", "hooks-selftest"]
+when = { changed = [".agents/**", ".claude/**", "xtask/src/hook/**", "xtask/src/config/**", "xtask/src/kit/**", "xtask/fixtures/hooks/**"] }
 fixture = "xtask/fixtures/hooks"
 timeout_s = 600
 

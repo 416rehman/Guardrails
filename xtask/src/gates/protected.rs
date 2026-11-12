@@ -3,14 +3,17 @@
 //! protected-change lease, whose own write set is allowed (owner instruction 7). The gate reads the
 //! protected paths, the seed scope and `[dispatch] protected_change_agents` at the comparison base,
 //! so a change never sets the rules that judge it; the hooks read the working tree, which their
-//! session cannot write.
+//! session cannot write. A session that holds another agent's item, an evaluator's, judges that
+//! item's branch as its writer would be judged: with the seed scope on the seed's branch and with
+//! the item's write set for a protected-change agent, as the merge queue does. Only the gate does
+//! this; the hooks still hold such a session to its own scope.
 
 use anyhow::Result;
 
 use super::{Context, Outcome};
 use crate::config::protected::{ProtectedPaths, SeedScope};
 use crate::config::session::{ItemSnapshot, Scope, Session};
-use crate::git::Base;
+use crate::git::{self, Base};
 use crate::globs::GlobList;
 use crate::orchestrate::launch::protected_change_agents;
 use crate::paths::RepoPath;
@@ -23,12 +26,49 @@ pub fn gate(context: &Context) -> Result<Outcome> {
         ));
     };
     let protected = ProtectedPaths::at(&context.repo, &context.base)?.globs()?;
-    let allowed = allowance(&context.repo, &context.base, &context.session, agent)?;
+    let writer = writer_of(&context.repo, &context.base, &context.session, agent)?;
+    let (agent, session) = writer
+        .as_ref()
+        .map_or((agent, &context.session), |(name, session)| {
+            (name.as_str(), session)
+        });
+    let allowed = allowance(&context.repo, &context.base, session, agent)?;
     Ok(Outcome::from_problems(violations(
         &context.changed,
         &protected,
         allowed.as_ref(),
     )))
+}
+
+/// For a session holding the snapshot of an item another agent writes, that writer and the scope
+/// its change is judged in: the seed scope when the checkout is on the seed's branch, otherwise
+/// the protected scope, which [`allowance`] grants only to a protected-change agent's own item.
+fn writer_of(
+    repo: &Repo,
+    rules_at: &Base,
+    session: &Session,
+    agent: &str,
+) -> Result<Option<(String, Session)>> {
+    let Some(item) = session.item(repo)? else {
+        return Ok(None);
+    };
+    if item.agent == agent {
+        return Ok(None);
+    }
+    let branch = git::current_branch(repo)?.unwrap_or_default();
+    let on_seed_branch =
+        SeedScope::at(repo, rules_at)?.is_some_and(|seed| seed.is_session(&item.agent, &branch));
+    let scope = if on_seed_branch {
+        Scope::Seed
+    } else {
+        Scope::Protected
+    };
+    let judged = Session {
+        agent: Some(item.agent.clone()),
+        work_item: session.work_item,
+        scope: Some(scope),
+    };
+    Ok(Some((item.agent, judged)))
 }
 
 /// Protected paths in `changed` that the session's scope does not cover.
@@ -185,6 +225,58 @@ mod tests {
         let found = problems(judged(&temp, &[".agents/harness.toml"], session));
         assert!(
             found[0].starts_with(".agents/harness.toml is protected"),
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn an_evaluator_judges_a_protected_change_by_its_writers_write_set() {
+        let temp = TempRepo::create();
+        temp.write(
+            ".agents/kit/protected-paths.toml",
+            "paths = [\".agents/**\", \"AGENTS.md\"]\n",
+        );
+        init_git(temp.root());
+        temp.write(
+            ".agent/state/item-7.json",
+            &SNAPSHOT.replace("\"impl-rust\"", "\"lead-agent-kit\""),
+        );
+        let evaluator = || Session {
+            agent: Some("eval-acceptance".into()),
+            work_item: Some(7),
+            scope: None,
+        };
+        let changed = [".agents/kit/hooks.toml"];
+        assert!(matches!(
+            judged(&temp, &changed, evaluator()),
+            Outcome::Pass { .. }
+        ));
+        let found = problems(judged(
+            &temp,
+            &[".agents/kit/hooks.toml", "AGENTS.md"],
+            evaluator(),
+        ));
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].starts_with("AGENTS.md is protected"), "{found:?}");
+    }
+
+    #[test]
+    fn an_evaluator_of_an_ordinary_item_widens_nothing() {
+        let temp = TempRepo::create();
+        temp.write(
+            ".agents/kit/protected-paths.toml",
+            "paths = [\".agents/**\"]\n",
+        );
+        init_git(temp.root());
+        temp.write(".agent/state/item-7.json", SNAPSHOT);
+        let evaluator = Session {
+            agent: Some("eval-acceptance".into()),
+            work_item: Some(7),
+            scope: None,
+        };
+        let found = problems(judged(&temp, &[".agents/kit/hooks.toml"], evaluator));
+        assert!(
+            found[0].starts_with(".agents/kit/hooks.toml is protected"),
             "{found:?}"
         );
     }

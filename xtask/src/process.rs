@@ -1,5 +1,6 @@
 //! Child processes with captured output and a deadline. On a deadline the child is killed and the
-//! output read so far is kept; grandchildren that still hold the pipes do not delay the return.
+//! output read so far is kept; after an exit the pipes are read for at most the drain grace. Either
+//! way grandchildren that still hold the pipes do not delay the return.
 
 use std::ffi::{OsStr, OsString};
 use std::io::{self, Read, Write};
@@ -78,13 +79,13 @@ pub fn run(command: &mut Command, input: Option<&[u8]>, timeout: Duration) -> io
         })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let poll = Limits::built_with()
-        .map_err(io::Error::other)?
-        .kit
-        .process
-        .poll();
-    let started = Instant::now();
+    let limits = &Limits::built_with().map_err(io::Error::other)?.kit.process;
+    let poll = limits.poll();
+    let grace = limits.drain_grace();
     let mut child = command.spawn()?;
+    // On Windows std starts one child at a time, so a spawn can wait behind other threads' spawns;
+    // the deadline and the duration count only the child's own time.
+    let started = Instant::now();
     if let (Some(bytes), Some(mut stdin)) = (input, child.stdin.take()) {
         let bytes = bytes.to_vec();
         thread::spawn(move || {
@@ -94,11 +95,14 @@ pub fn run(command: &mut Command, input: Option<&[u8]>, timeout: Duration) -> io
     let (stdout, stdout_reader) = drain(child.stdout.take());
     let (stderr, stderr_reader) = drain(child.stderr.take());
     let finished = match wait(&mut child, started, timeout, poll)? {
-        Some(status) => Finished::Exited {
-            code: status.code(),
-            stdout: collect(&stdout, stdout_reader),
-            stderr: collect(&stderr, stderr_reader),
-        },
+        Some(status) => {
+            wait_for_eof(&[&stdout_reader, &stderr_reader], grace, poll);
+            Finished::Exited {
+                code: status.code(),
+                stdout: collect(&stdout, stdout_reader),
+                stderr: collect(&stderr, stderr_reader),
+            }
+        }
         None => Finished::TimedOut {
             stdout: snapshot(&stdout),
             stderr: snapshot(&stderr),
@@ -149,8 +153,23 @@ fn drain<R: Read + Send + 'static>(pipe: Option<R>) -> (Buffer, Option<thread::J
     (buffer, handle)
 }
 
+/// Waits up to `grace` for the readers to reach the end of their pipes. A grandchild can hold
+/// them open for good: on Windows, one its parent was killed while starting stays suspended.
+fn wait_for_eof(readers: &[&Option<thread::JoinHandle<()>>], grace: Duration, poll: Duration) {
+    let exited = Instant::now();
+    let reading = || {
+        readers
+            .iter()
+            .any(|reader| reader.as_ref().is_some_and(|reader| !reader.is_finished()))
+    };
+    while reading() && exited.elapsed() < grace {
+        thread::sleep(poll);
+    }
+}
+
+/// What the reader read; one still blocked on a pipe a grandchild holds is left running.
 fn collect(buffer: &Buffer, handle: Option<thread::JoinHandle<()>>) -> Vec<u8> {
-    if let Some(handle) = handle {
+    if let Some(handle) = handle.filter(thread::JoinHandle::is_finished) {
         let _ = handle.join();
     }
     snapshot(buffer)
@@ -245,6 +264,10 @@ fn path_entry(raw: &str) -> Option<PathBuf> {
 mod tests {
     use super::*;
 
+    /// Holds the pipes it inherited until `stop` exists, a minute at most, then writes `gone`.
+    const HOLDER_CMD: &str = "@echo off\r\nfor /l %%i in (1,1,60) do (\r\n  if exist stop goto gone\r\n  ping -n 2 127.0.0.1 >NUL\r\n)\r\n:gone\r\necho.>gone\r\n";
+    const HOLDER_SH: &str = "i=0\nwhile [ ! -f stop ] && [ \"$i\" -lt 600 ]; do sleep 0.1; i=$((i+1)); done\n: > gone\n";
+
     fn shell(script: &str) -> Command {
         if cfg!(windows) {
             let mut command = Command::new("cmd");
@@ -255,6 +278,18 @@ mod tests {
             command.args(["-c", script]);
             command
         }
+    }
+
+    /// Whether `done` came true within 30 seconds.
+    fn eventually(done: impl Fn() -> bool) -> bool {
+        let started = Instant::now();
+        while !done() {
+            if started.elapsed() > Duration::from_secs(30) {
+                return false;
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+        true
     }
 
     #[test]
@@ -270,18 +305,60 @@ mod tests {
         assert!(!ran.success());
     }
 
-    /// The shell's own child outlives the kill on Windows and holds the test runner's output
-    /// handle until it exits, so it sleeps two seconds, not longer.
+    /// The sleeper is the child itself: a shell killed while it starts its own child can leave
+    /// that child suspended for good on Windows, holding the test runner's output pipe.
     #[test]
     fn deadline_kills_the_child() {
-        let script = if cfg!(windows) {
-            "ping -n 3 127.0.0.1 >NUL"
+        let mut sleeper = if cfg!(windows) {
+            let mut command = Command::new("ping");
+            command.args(["-n", "3", "127.0.0.1"]);
+            command
         } else {
-            "sleep 2"
+            let mut command = Command::new("sleep");
+            command.arg("2");
+            command
         };
-        let ran = run(&mut shell(script), None, Duration::from_millis(200)).unwrap();
+        let ran = run(&mut sleeper, None, Duration::from_millis(200)).unwrap();
         assert!(matches!(ran.finished, Finished::TimedOut { .. }));
         assert!(ran.duration < Duration::from_secs(2));
+    }
+
+    /// The shell exits at once and leaves a holder that keeps both pipes open until the run has
+    /// returned, as a grandchild left suspended on Windows would keep them for good. The holder
+    /// answers `stop` with `gone`, so it was still there when the run returned, and the test
+    /// ends only after it has. The holder is named with `.\` because `cmd` does not look in the
+    /// working directory when `NoDefaultCurrentDirectoryInExePath` is set.
+    #[test]
+    fn an_exit_returns_while_a_grandchild_still_holds_the_pipes() {
+        let dir = std::env::temp_dir().join(format!("xtask-holder-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (holder, text, script) = if cfg!(windows) {
+            (
+                "holder.cmd",
+                HOLDER_CMD,
+                "start /b cmd /c .\\holder.cmd & echo early",
+            )
+        } else {
+            ("holder.sh", HOLDER_SH, "sh holder.sh & echo early")
+        };
+        std::fs::write(dir.join(holder), text).unwrap();
+        let mut command = shell(script);
+        command.current_dir(&dir);
+        let ran = run(&mut command, None, Duration::from_secs(60)).unwrap();
+        let returned_first = !dir.join("gone").exists();
+        std::fs::write(dir.join("stop"), "").unwrap();
+        let answered = eventually(|| dir.join("gone").exists());
+        let removed = eventually(|| std::fs::remove_dir_all(&dir).is_ok());
+        assert!(answered, "the holder never answered stop");
+        assert!(
+            returned_first,
+            "the run waited {:?} for the holder",
+            ran.duration
+        );
+        assert!(removed, "{} is still there", dir.display());
+        assert!(ran.success(), "{}", ran.describe());
+        assert!(ran.stdout().contains("early"));
     }
 
     #[test]

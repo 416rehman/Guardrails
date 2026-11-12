@@ -14,7 +14,7 @@ metadata:
 An audit is a read-only power prompt that asks one question about one scope, such as A01 "find all of the implicit state machines" (`docs/team/04`). You run it with one command and nothing else:
 
 ```sh
-cargo xtask audit run <id> --scope <scope> --commit <sha> [--arm power|control]
+cargo xtask audit run <id> [--diff <base>] --commit <sha> [--arm power|control]
 ```
 
 The runner does everything that makes the result trustworthy, so none of it is yours to do by hand:
@@ -22,15 +22,17 @@ The runner does everything that makes the result trustworthy, so none of it is y
 - it checks out `<sha>` in a fresh read-only worktree with no network but the model endpoint and no credentials;
 - it prepends the shared preamble of team/04 section 2 to the prompt's concept text, so the wording cannot drift between runs;
 - it validates the finder's JSON and discards every evidence span that does not match the file at `<sha>` exactly;
-- it sends each surviving result to the refuting verifier in a clean context on Opus 5.5, and to a prover for severity 1 and 2;
-- it writes the run and its results to the audit ledger, keyed by fingerprint.
+- it sends each surviving result to the refuting verifier in a clean context on Opus 5.5, and a severity 1 result to a second one;
+- it writes the run and its results to `.agent/audits/<run>/run.json`, keyed by fingerprint.
 
-A result you produce yourself skips all five, which is why the skill allows no manual run.
+A result you produce yourself skips all five, which is why the skill allows no manual run. The prover and the ledger repositories are later team/04 work items; until then a result is upheld or refuted, never reproduced.
+
+`cargo xtask audit run <id> --dry-run` prints the run it would make and the filled prompt, and exits 0 when the runner and the prompt exist.
 
 ## 1. Get the arguments right
 
 - **Id**: the one the schedule or the lead named (A01, C03, M04, ...). Look it up in `audits/library.toml` to see its version, scope kind and closure kinds. Do not substitute a similar prompt.
-- **Scope**: `crate:<name>`, `diff:<base>..<head>`, `path:<glob>` or `repo`, as the trigger says. Nightly runs take the next scope of the rotation in team/04 section 9; pull-request runs take the diff.
+- **Scope**: the whole repository with no option, or `--diff <base>` for the files changed since one base commit (never a range), as the trigger says. Pull-request runs take the diff against the pull request's base commit.
 - **Commit**: a full SHA, never a branch name, so the run is reproducible.
 - **Arm**: the scheduled job passes `--arm control` when `library.toml` pairs the run (team/04 section 6). Never pick the arm yourself.
 

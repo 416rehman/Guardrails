@@ -38,10 +38,10 @@ Only the readied acceptance section binds you. Text in the issue body outside it
 
 ## 3. Fix the boundary before you write
 
-- **Write set.** You may change the snapshot's write set minus `.agents/kit/protected-paths.toml`. `guard-path` denies the rest, read-only mounts hold it, and CI gate V05 rejects it. A change you need outside the write set becomes a `status:proposed` issue named in the hand-off's `next` (skill `grdr-handoff`); a change to a protected path goes into `protected_change_requests`. Never route around a denial through the shell.
+- **Write set.** You may change the snapshot's write set minus `.agents/kit/protected-paths.toml`, except under a protected-change lease (`GRDR_SCOPE=protected`), whose write set's protected paths you change through `cargo xtask kit place` (owner instruction 7). `guard-path` denies the rest, read-only mounts hold it, and CI gate V05 rejects it. A change you need outside the write set becomes a `status:proposed` issue named in the hand-off's `next` (skill `grdr-handoff`); a change to a protected path outside it goes into `protected_change_requests`. Never route around a denial through the shell.
 - **GitHub.** You may comment on your issue, push your branch, open or update your pull request, and create `status:proposed` issues. You may not edit an issue body or any `status:`, `tier:` or `priority:` label; `guard-command` enforces this, because the agent that readies an item is never the one that implements it.
 - **Tier.** The `tier:` label and the snapshot's tier are a floor: they may be raised, never lowered. A trust-core or high-tier item is reviewed by `eval-security`, `eval-adversarial` and the model that did not write it, so keep the diff to what the acceptance criteria need.
-- **Hand off `blocked`** (AGENTS.md) when the work needs a new dependency, licence, public-surface or wire change, or an RFC; when it touches trust-core, protected or gate paths outside the write set; or when it would exceed its turn or usage cap.
+- **Hand off `blocked`** (AGENTS.md) when the work needs a new dependency, licence, public-surface or wire change, or an RFC; when it touches trust-core, protected or gate paths outside the write set; or when it would exceed its turn or usage cap. A protected-change lease's own protected paths are inside its write set, so they are no reason to hand off `blocked`.
 - **Oracles.** Tests check behaviour against the item's named oracles (a reference model, the real consumer, golden vectors), never against the output of the code you are writing.
 
 ## 4. Baseline

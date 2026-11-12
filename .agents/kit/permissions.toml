@@ -72,6 +72,9 @@ allow = [
   "Bash(git push *)", "Bash(gh pr create *)", "Bash(gh pr edit *)",
   "Bash(git checkout HEAD -- *)", "Bash(git checkout -- *)", "Bash(git restore *)",
   "Bash(cargo update *)",
+  # A widened session places its staged protected files with the installed kit, which compiles
+  # nothing, once its own tree no longer builds; guard-command judges the paths as for cargo xtask.
+  "Bash(.agent/kit/bin/xtask kit place *)",
   # Leads plan against the workspace graph; garden-deps reads upstream releases and CI runs, which
   # guard-command reads as reads; the review workflow fetches the pull request's commits.
   "Bash(cargo metadata *)", "Bash(gh release list *)", "Bash(gh release view *)",

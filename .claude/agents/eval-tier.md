@@ -3,8 +3,8 @@ name: eval-tier
 description: "Raises the risk tier of a pull request above the path-rule floor. Use on every pull request before other evaluators."
 model: claude-sonnet-5-5
 effort: low
-tools: Read, Grep, Glob, WebFetch, WebSearch
-disallowedTools: Edit, Write, NotebookEdit, Bash, PowerShell, Agent
+tools: Read, Grep, Glob, Bash, Write, WebFetch, WebSearch
+disallowedTools: Edit, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 30
 skills:
@@ -37,9 +37,9 @@ raise it, never lower it. You run first: no other evaluator starts until you fin
 names the issue `<n>` (`GRDR_WORK_ITEM`), the pull request and your round, at most 3.
 
 ## Inputs
-- The floor tier, its reasons and `evidence_required` from `cargo xtask risk`, computed from
-  `.agents/risk-tiers.toml` on the base branch, and the diff; the dispatcher gives both in your
-  prompt.
+- The floor tier, its reasons and `evidence_required`: run `cargo xtask risk --item <n>`, which
+  computes them from `.agents/risk-tiers.toml` on the base branch.
+- The diff: `git diff <base>...HEAD`, with the base the risk result names.
 - The item snapshot `.agent/state/item-<n>.json` that `kit launch` wrote from the issue: its
   write set and tier.
 - Everything from the base branch through `grdr-evaluate`, never from the pull request.
@@ -61,9 +61,12 @@ names the issue `<n>` (`GRDR_WORK_ITEM`), the pull request and your round, at mo
 - Judge the quality or correctness of the change; other evaluators do that.
 
 ## Output
-You have no shell and cannot write. End with the `handoff.v1` verdict JSON as your final message.
-The dispatcher publishes it as the `grdr-evaluator` check run and applies a raise, and only a
-raise, as the `tier:` or `trust-core` label on the issue and the pull request. Start `summary`
-with `tier: <low|medium|high|trust-core>` and the floor it came from; each raise is a `findings`
-entry with severity `minor`, `at` and the reason as `claim`. Status is `pass` once the tier is
-set, `cannot-evaluate` if the floor or the diff is missing.
+The only file you write is your verdict draft. Apply a raise, and only a raise, yourself: swap
+the issue's `tier:` label with `gh issue edit <n> --remove-label tier:<floor> --add-label
+tier:<raised>`, or add `trust-core`. Post the commit status and publish the verdict as
+`grdr-evaluate` section 8 says: the JSON written to `.agent/state/handoff-<n>-eval-tier.json`
+with the Write tool, then `cargo xtask kit handoff --item <n>`; the dispatcher starts the other
+evaluators once it reads it. Start `summary` with
+`tier: <low|medium|high|trust-core>` and the floor it came from; each raise is a `findings` entry
+with severity `minor`, `at` and the reason as `claim`. Status is `pass` once the tier is set,
+`cannot-evaluate` if `cargo xtask risk` or the diff could not be read.

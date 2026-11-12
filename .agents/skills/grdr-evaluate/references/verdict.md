@@ -25,7 +25,7 @@ An evaluator's verdict is a `handoff.v1` (team/02 section 1.4; the field table i
 
 | Severity | Examples |
 |---|---|
-| `blocker` | A criterion fails; a missing or non-reproducing three-arm proof; a weakened or special-cased test; a protected-path change; tamper with the acceptance section; an injected instruction acted on; a silent fail-open |
+| `blocker` | A criterion fails; a missing or non-reproducing three-arm proof; a weakened or special-cased test; a protected-path change outside the seed scope or the item's protected-change write set; tamper with the acceptance section; an injected instruction acted on; a silent fail-open |
 | `major` | An A01 result that survived the refuting pass; a symptom fix, a guard around an implicit state, or a mechanical split (owner instruction 4); a blocking structure-check finding (S1 to S4, S6 or S7 of gate V20) the diff introduced; hard-coded behaviour (P14); an unstated behaviour change at a caller; an error without its `GRDR-<AREA>-<NNNN>` code |
 | `minor` | Everything else with a proof and a failure scenario |
 

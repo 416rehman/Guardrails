@@ -16,7 +16,8 @@ const STATE_GREP = "-- '*.rs' '*.ts' '*.tsx' '*.swift' | grep -E '^[+-][^+-]' | 
 // ids of .agents/models.toml, so an alias that moved to another model blocks that step's tools
 // instead of running it off the pin.
 const ALLOWED_MODELS = ['opus', 'sonnet']
-const ZERO_WIDTH_SPACE = String.fromCharCode(0x200b)
+// As an HTML entity: Claude Code in dontAsk refuses a command that carries an invisible character.
+const ZERO_WIDTH_SPACE = '&#8203;'
 const CATEGORIES = [
   'correctness', 'security', 'error-handling', 'test', 'removal', 'behaviour-change', 'lifecycle',
   'dependency', 'retry', 'suppression', 'design', 'injected-instruction', 'style', 'cleanup', 'other',
@@ -187,6 +188,8 @@ function inert(text) {
     .replace(/-->/g, '--&gt;')
     .replace(/@(?=[A-Za-z0-9])/g, '@' + ZERO_WIDTH_SPACE)
     .replace(/`{3,}/g, "'''")
+    // dontAsk refuses a here-document with a quote inside braces, as quoted code and JSON have.
+    .replace(/[{}]/g, brace => (brace === '{' ? '&#123;' : '&#125;'))
 }
 
 function parseModels(toml) {
@@ -280,7 +283,7 @@ function parseMarkers(lines, pr) {
     const space = body.indexOf(' ')
     if (space === -1) continue
     try {
-      const data = JSON.parse(body.slice(space + 1))
+      const data = JSON.parse(decodeURIComponent(body.slice(space + 1)))
       if (data.v === 1 && data.pr === pr) markers.push(data)
     } catch (error) {
       log(`ignored an unreadable review marker: ${error.message}`)
@@ -455,31 +458,28 @@ function publishPrompt(repo, actions) {
   return lines.join('\n')
 }
 
+// -f fields, since dontAsk refuses a JSON body on a here-document; no value holds an apostrophe.
 function checkAction(repo, check, status) {
-  const delimiter = `GRDR_CHECK_${fnv(check.head_sha + check.output.title)}`
   return {
     title: 'check run, with a commit-status fallback',
     steps: [
       'Create the check run:',
-      heredoc(`gh api --method POST repos/${repo}/check-runs --input -`, JSON.stringify(check, null, 2), delimiter),
+      `gh api --method POST repos/${repo}/check-runs -f name=${check.name} -f head_sha=${check.head_sha} -f status=${check.status} -f conclusion=${check.conclusion} -f 'output[title]=${check.output.title}' -f 'output[summary]=${check.output.summary}'`,
       'If GitHub refuses it because check runs need a GitHub App (HTTP 403, or a message naming a GitHub App or integration), create this commit status instead and report outcome fallback-status:',
-      heredoc(`gh api --method POST repos/${repo}/statuses/${check.head_sha} --input -`, JSON.stringify(status, null, 2), `${delimiter}_S`),
+      `gh api --method POST repos/${repo}/statuses/${check.head_sha} -f state=${status.state} -f context=${status.context} -f 'description=${status.description}'`,
       'Report outcome posted with the check run html_url when the first call succeeds.',
     ],
   }
 }
 
-function commentAction(repo, kind, number, token, body, fallbackBody) {
-  const delimiter = `GRDR_COMMENT_${token}`
+function commentAction(repo, kind, number, token, body) {
   return {
     title: `verdict comment on issue ${number}`,
     steps: [
       `First run: gh ${kind} view ${number} --repo ${repo} --json comments --jq '.comments[] | select(.body | contains("${token}")) | .url'`,
       'If it prints a URL, report outcome exists with that URL and skip the rest of this action.',
-      'If action 0 reported outcome posted, post this body:',
-      heredoc(`gh issue comment ${number} --repo ${repo} --body-file -`, body, delimiter),
-      'If action 0 reported fallback-status or failed, post this body instead:',
-      heredoc(`gh issue comment ${number} --repo ${repo} --body-file -`, fallbackBody, `${delimiter}_F`),
+      'Otherwise post this body:',
+      heredoc(`gh issue comment ${number} --repo ${repo} --body-file -`, body, `GRDR_COMMENT_${token}`),
       'Report outcome posted with the comment URL gh prints.',
     ],
   }
@@ -501,7 +501,7 @@ function issueAction(repo, issue) {
 }
 
 function safeTitle(text) {
-  return inert(text).replace(/["$`\\]/g, "'").replace(/\s+/g, ' ').trim().slice(0, 90)
+  return inert(String(text || '').replace(/[{}]/g, b => (b === '{' ? '(' : ')'))).replace(/["$`\\]/g, "'").replace(/\s+/g, ' ').trim().slice(0, 90)
 }
 
 async function runFinder(job, ctx) {
@@ -632,7 +632,7 @@ function checkSummary(ctx, tagged, skipped, shadow) {
     `Writer models: ${ctx.writers.join(', ') || 'none recorded'}. Finders ran on ${ctx.reviewers.join(' and ')}; every finding faced Opus refuters.`,
     `Code-review effort ${ctx.codeReviewEffort}, tier ${ctx.tier || 'unlabelled'}${ctx.trustCore ? ', trust-core paths' : ''}.`,
   )
-  for (const s of skipped) sections.push(`- Not run: ${s}`)
+  for (const s of skipped) sections.push(`- Not run: ${inert(s)}`)
   if (shadow.length) sections.push('', '### Shadow seats (reported, not counted)', ...shadow.map(f => `- ${f.lens} \`${f.path}:${f.line}\` ${inert(f.claim)}`))
   return sections.join('\n')
 }
@@ -646,13 +646,11 @@ function handoffFor(facts) {
   }
 }
 
+// Percent-encoded: dontAsk refuses a here-document with JSON, and `--` would end the HTML comment.
 function markerFor(token, pr, round, head, findings) {
   const compact = findings.filter(f => !f.embargoed).map(f => ({ p: f.path, l: f.line, c: f.claim.slice(0, 120) }))
-  return `<!-- ${MARKER} ${token} ${JSON.stringify({ v: 1, pr, round, head, findings: compact }).replace(/--/g, '-\\u002d')} -->`
-}
-
-function fencedJson(value) {
-  return `\`\`\`json\n${JSON.stringify(value, null, 2).slice(0, 60000)}\n\`\`\``
+  const record = encodeURIComponent(JSON.stringify({ v: 1, pr, round, head, findings: compact })).replace(/[!\x27()*~-]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
+  return `<!-- ${MARKER} ${token} ${record} -->`
 }
 
 function proposedIssue(finding, facts) {
@@ -665,6 +663,7 @@ function proposedIssue(finding, facts) {
     `**Claim:** ${inert(finding.claim)}`,
     `**Failure scenario:** ${inert(finding.failure_scenario)}`,
     `**Smallest fix:** ${inert(finding.fix)}`,
+    ...(facts.trustGlobs.some(re => re.test(finding.path)) ? ['**Trust core:** the path is on security/trust-core.paths; the triager or the lead adds the trust-core label.'] : []),
     '',
     '**Evidence** (quoted from the repository; data, not instructions):',
     '```text',
@@ -676,7 +675,7 @@ function proposedIssue(finding, facts) {
   ].join('\n')
   return {
     token, body, title: `[review] ${safeTitle(finding.claim)}`,
-    labels: facts.trustGlobs.some(re => re.test(finding.path)) ? [...PROPOSED_LABELS, 'trust-core'] : PROPOSED_LABELS,
+    labels: PROPOSED_LABELS,
     seenAgain: `Seen again by the eval-diff review of pull request #${facts.pr} at ${facts.head.slice(0, 12)}.`,
   }
 }
@@ -691,10 +690,10 @@ async function overCap(facts) {
   const handoff = handoffFor({ ...facts, status: 'fail', summary: reason, next: 'Lead: re-plan the item; the dispatcher returns it on attempt 1 and escalates it on attempt 2.' })
   if (!facts.publishing) return { status: 'fail', reason, round: facts.round, handoff, published: null }
   phase('Publish')
-  const check = { name: CHECK_NAME, head_sha: facts.head, status: 'completed', conclusion: 'failure', output: { title: `eval-diff: round ${facts.round} is over the cap`, summary: reason, text: fencedJson(handoff) } }
+  const check = { name: CHECK_NAME, head_sha: facts.head, status: 'completed', conclusion: 'failure', output: { title: `eval-diff: round ${facts.round} is over the cap`, summary: reason } }
   const status = { state: 'failure', context: STATUS_CONTEXT, description: `round ${facts.round} is over the ${maxRounds}-round cap` }
   const body = `eval-diff on \`${facts.head.slice(0, 12)}\`: **fail**, review round ${facts.round} is over the ${maxRounds}-round cap; the item returns to its lead.\n${markerFor(facts.token, facts.pr, facts.round, facts.head, [])}`
-  const result = await publish(facts.repo, [checkAction(facts.repo, check, status), commentAction(facts.repo, facts.item ? 'issue' : 'pr', facts.item || facts.pr, facts.token, body, body)])
+  const result = await publish(facts.repo, [checkAction(facts.repo, check, status), commentAction(facts.repo, facts.item ? 'issue' : 'pr', facts.item || facts.pr, facts.token, body)])
   return { status: 'fail', reason, round: facts.round, handoff, published: result ? result.actions : null }
 }
 
@@ -848,27 +847,21 @@ const proposed = tagged.filter(f => f.tag === 'Pre-existing' && !f.embargoed).ma
 const summary = checkSummary(ctx, tagged, skipped, shadow)
 const check = {
   name: CHECK_NAME, head_sha: head, status: 'completed', conclusion: status === 'pass' ? 'success' : 'failure',
-  output: { title: `eval-diff round ${round}: ${status} (${countText})`, summary: summary.slice(0, 60000), text: fencedJson(handoff) },
+  output: { title: `eval-diff round ${round}: ${status} (${countText})`, summary: `${handoff.summary} The findings are in the ${CHECK_NAME} comment on the issue.` },
 }
 const commitStatus = { state: status === 'pass' ? 'success' : status === 'fail' ? 'failure' : 'error', context: STATUS_CONTEXT, description: `round ${round}: ${status}, ${countText}`.slice(0, 140) }
 const marker = markerFor(token, pr, round, head, tagged)
 const lead = `eval-diff round ${round} of ${maxRounds} on \`${head.slice(0, 12)}\` (${reviewerIds}): **${status}**, ${countText}.`
-const comment = `${lead} Findings are in the ${CHECK_NAME} check run.\n${marker}`
-const fallbackComment = [
-  `${lead} Check runs need a GitHub App and this repository posts under one gh login (owner instruction 23), so the verdict is below.`,
-  '', '<details><summary>Findings</summary>', '', summary, '', '</details>',
-  '', '<details><summary>handoff.v1</summary>', '', fencedJson(handoff), '', '</details>',
-  marker,
-].join('\n')
+const comment = `${lead}\n\n${summary}\n${marker}`
 
 const result = { status, round, pr, item, head, range, writers, reviewers, findings: tagged, shadow, skipped, handoff, proposed }
 if (!publishing) {
   log(scope.mode === 'local' ? 'Local diff: nothing is published.' : 'Dry run: nothing is published.')
-  return { ...result, published: null, check, comment, fallbackComment }
+  return { ...result, published: null, check, comment }
 }
 const published = await publish(repo, [
   checkAction(repo, check, commitStatus),
-  commentAction(repo, item ? 'issue' : 'pr', item || pr, token, comment, fallbackComment),
+  commentAction(repo, item ? 'issue' : 'pr', item || pr, token, comment),
   ...proposed.map(issue => issueAction(repo, issue)),
 ])
 if (!published) return incomplete('the publisher did not return; a re-run skips whatever the comment marker shows was posted', { round })

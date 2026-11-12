@@ -1,6 +1,8 @@
 //! `PreToolUse` on the file tools (team/03 section 4.1): protected paths always, the kit's own
 //! state always, and for an agent the paths outside its scope: the item's write set with a
-//! snapshot, the seed paths in the seed session, and the roster's `write` globs otherwise. The
+//! snapshot of its own item, the seed paths in the seed session, and the roster's `write` globs
+//! otherwise, so a planner or evaluator launched on another agent's item never gets its write
+//! set. The
 //! seed and protected scopes widen what a session may write. A path is judged where it lands once
 //! the links on its way are followed. Outside the repository, no session writes inside a git
 //! directory or the main checkout a worktree belongs to, and an agent never writes the files that
@@ -238,7 +240,7 @@ fn verdict(context: &Context, identity: &Identity, raw: &str) -> Result<Verdict>
     if protected.is_match(text) {
         let reason = if in_scope(text) {
             format!(
-                "{path} is a protected path in this session's scope, and the project's permission rules deny every protected path to the file tools. Stage it instead: `cargo xtask kit place --stage {path}` copies the current file to {} (skip that for a new file); edit or write that copy, then run `cargo xtask kit place {path}`",
+                "{path} is a protected path in this session's scope, and the project's permission rules deny every protected path to the file tools. Stage it instead: `cargo xtask kit place --stage {path}` copies the current file to {} (skip that for a new file); edit or write that copy, then run `cargo xtask kit place {path}`. When the tree does not build, run both through the installed kit, `.agent/kit/bin/xtask kit place`, which compiles nothing",
                 staged_path(path.as_str())
             )
         } else {
@@ -248,7 +250,10 @@ fn verdict(context: &Context, identity: &Identity, raw: &str) -> Result<Verdict>
         };
         return Ok(Verdict::Refused(reason));
     }
-    if let Some(snapshot) = identity.snapshot() {
+    let own_item = identity
+        .snapshot()
+        .filter(|snapshot| identity.agent() == Some(snapshot.agent.as_str()));
+    if let Some(snapshot) = own_item {
         if !snapshot.write_set_globs()?.is_match(text) && !in_scope(text) {
             return Ok(Verdict::Refused(format!(
                 "{path} is outside the write set of issue #{} ({}); file a status:proposed issue for it and name it in the hand-off's next field",

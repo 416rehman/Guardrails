@@ -231,6 +231,43 @@ fn an_impossible_handoff_returns_to_proposed_and_bad_drafts_post_nothing() {
     assert_eq!(tracker.snapshot(7).comments.len(), comments);
 }
 
+/// Local `main` still at the seed commit while `origin/main` has a landed change on top.
+#[test]
+fn the_title_skips_subjects_that_landed_after_the_local_base() {
+    let temp = temp_repo();
+    temp.write(".gitignore", ".agent/\n");
+    init_git(temp.root());
+    let origin = TempRepo::create();
+    git(
+        origin.root(),
+        &["init", "--quiet", "--bare", "--initial-branch=main"],
+    );
+    let url = origin.root().to_string_lossy().into_owned();
+    git(temp.root(), &["remote", "add", "origin", &url]);
+    let landed = "fix(kit): land another change";
+    git(
+        temp.root(),
+        &["commit", "--quiet", "--allow-empty", "-m", landed],
+    );
+    git(temp.root(), &["push", "--quiet", "origin", "main"]);
+    git(temp.root(), &["checkout", "--quiet", "-b", "agent/7/a1"]);
+    git(temp.root(), &["branch", "--force", "main", "HEAD~1"]);
+    temp.write("crates/a/src/lib.rs", "pub fn a() {}\n");
+    git(temp.root(), &["add", "-A"]);
+    git(temp.root(), &["commit", "--quiet", "-m", "feat(a): add a"]);
+    let tracker = leased_tracker();
+    write_draft(&temp, &draft("done"));
+    let code = publish(&temp.repo(), &tracker, 7, &caller("impl-rust"), Mode::Live).unwrap();
+    assert_eq!(code, ExitCode::SUCCESS);
+    let calls = tracker.calls();
+    assert!(
+        calls
+            .iter()
+            .any(|call| call == "pr create agent/7/a1 feat(a): add a"),
+        "{calls:?}"
+    );
+}
+
 #[test]
 fn a_done_handoff_pushes_and_opens_the_pull_request() {
     let temp = temp_repo();

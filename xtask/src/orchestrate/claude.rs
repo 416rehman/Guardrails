@@ -580,12 +580,16 @@ mod tests {
     #[test]
     fn stalls_and_turn_caps_end_the_session() {
         let fake = FakeProgram::new("claude-stall");
-        fake.sleep(1, 4);
+        fake.sleep(1, 20);
         let mut quick = watch();
         quick.stall = Duration::from_millis(400);
+        let command = Command::new(fake.program());
+        let mut session = Running::spawn(command, Some("the prompt".into()), None, quick).unwrap();
         let started = Instant::now();
-        assert!(matches!(run(&fake, quick), Ended::Stalled { .. }));
-        assert!(started.elapsed() < Duration::from_secs(4));
+        assert!(matches!(session.wait(), Ended::Stalled { .. }));
+        // The kill ended it, long before the fake's 20 s: taskkill alone can take seconds to start
+        // on a loaded runner.
+        assert!(started.elapsed() < Duration::from_secs(10));
         let over = FakeProgram::new("claude-turns");
         over.respond(1, STREAM, 0);
         let mut capped = watch();

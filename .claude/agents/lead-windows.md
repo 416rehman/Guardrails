@@ -3,8 +3,8 @@ name: lead-windows
 description: "Plans the Windows endpoint squad. Use to decompose design 08 into work items and to resolve a blocked hand-off for grdr-sensor-windows, platform/windows/ and grdr-driver-windows. Never writes code."
 model: claude-opus-5-5
 effort: high
-tools: Read, Grep, Glob, Bash, Skill, WebFetch, WebSearch
-disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent
+tools: Read, Grep, Glob, Bash, Skill, Write, WebFetch, WebSearch
+disallowedTools: Edit, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 40
 skills:

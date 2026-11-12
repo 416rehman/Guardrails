@@ -3,8 +3,8 @@ name: eval-ux
 description: "Reviews interface changes under the ui-architect skill, then grdr-interface. Use on web, desktop, tray, approval dialog, CLI output, block-message, notification, email, extension, docs-component, installer and language-token changes."
 model: claude-sonnet-5-5
 effort: high
-tools: Read, Grep, Glob, Bash, Skill, mcp__playwright__*, WebFetch, WebSearch
-disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent
+tools: Read, Grep, Glob, Bash, Skill, mcp__playwright__*, Write, WebFetch, WebSearch
+disallowedTools: Edit, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 60
 skills:

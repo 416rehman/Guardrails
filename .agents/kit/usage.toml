@@ -13,17 +13,21 @@ escalate_above = 1.5         # an item above 1.5 times its total turn cap escala
 max_review_rounds = 3
 verdict_hours = 24           # an issue in review with no verdict for this long escalates
 
+# A protected-change lease (owner instruction 7) makes a lead or the chief architect an item's
+# implementer, so it runs on the worker row and its size rows, not on the planning caps.
 [role.direction]             # programme manager, chief architect, product lead
 max_turns = 60
 wall_clock_minutes = 60
 sessions_per_attempt = 1
 usage_cap = 0.03
+protected_change_cap_role = "worker"
 
 [role.lead]
 max_turns = 40
 wall_clock_minutes = 45
 sessions_per_attempt = 1
 usage_cap = 0.02
+protected_change_cap_role = "worker"
 
 [role.worker]                # sizes XS and S
 max_turns = 80

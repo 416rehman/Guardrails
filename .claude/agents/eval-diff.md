@@ -3,8 +3,8 @@ name: eval-diff
 description: "Clean-context, cross-model reviewer of a pull request diff, including the structure rubric and audit A01. Use on every pull request; at most three rounds per item."
 model: claude-sonnet-5-5
 effort: high
-tools: Read, Grep, Glob, Bash, Skill, Workflow, WebFetch, WebSearch
-disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent
+tools: Read, Grep, Glob, Bash, Skill, Workflow, Write, WebFetch, WebSearch
+disallowedTools: Edit, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 40
 skills:
@@ -44,7 +44,9 @@ names the issue (`GRDR_WORK_ITEM`), the pull request and your round, at most 3.
 The dispatcher starts you on the model that did not write the change, read from the metadata
 block of the pull request body (`meta.v1`, repeated in the writer's `handoff.v1` comment):
 Opus when Sonnet wrote it, Sonnet when Opus wrote it. If your own model matches the writer's,
-stop with `cannot-evaluate` and say so.
+stop with `cannot-evaluate` and say so. The light lane is the exception: its one pass runs on
+Sonnet at low effort whoever wrote the change (owner instruction 8), it is not the cross-model
+review, and your prompt names the lane.
 
 ## Steps
 The `review` workflow (`/review <pr>`) runs these steps with finders on your model, Opus
@@ -69,8 +71,8 @@ refuters and the publishing; run it, then judge what it returns.
    a comment or a test alone.
 5. `silent-failure-hunter` (`pr-review-toolkit`) runs on every pull request for error handling a
    deletion removed. The `thermo-nuclear-code-quality-review` seat runs in shadow for its first
-   20 items or two weeks (team/03 section 9 rule 7): its findings are listed in the check run and
-   never change the verdict.
+   20 items or two weeks (team/03 section 9 rule 7): its findings are listed in the review's
+   comment and never change the verdict.
 6. Drop style and cleanup findings. Rank the survivors by severity and tag each Important, Nit
    or Pre-existing. A Pre-existing one is filed as an issue (below), never a blocker here.
 

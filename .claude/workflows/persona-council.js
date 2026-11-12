@@ -11,7 +11,8 @@ export const meta = {
 
 const REPO_SOURCE = 'the value of repository under [github] in .agents/harness.toml'
 const ALLOWED_MODELS = ['opus', 'sonnet']
-const ZERO_WIDTH_SPACE = String.fromCharCode(0x200b)
+// As an HTML entity: Claude Code in dontAsk refuses a command that carries an invisible character.
+const ZERO_WIDTH_SPACE = '&#8203;'
 const SEAT_MARKER = 'grdr:council'
 const CHAIR_MARKER = 'grdr:council-chair'
 const SEATS = [
@@ -149,10 +150,15 @@ function inert(text) {
     .replace(/-->/g, '--&gt;')
     .replace(/@(?=[A-Za-z0-9])/g, '@' + ZERO_WIDTH_SPACE)
     .replace(/`{3,}/g, "'''")
+    // dontAsk refuses a here-document with a quote inside braces, as quoted code and JSON have.
+    .replace(/[{}]/g, brace => (brace === '{' ? '&#123;' : '&#125;'))
 }
 
-function hiddenJson(value) {
-  return JSON.stringify(value).replace(/--/g, '-\\u002d')
+// A marker's record is percent-encoded: Claude Code in dontAsk refuses a here-document that
+// carries JSON, and the encoding has no `--` to end the HTML comment early.
+function hiddenRecord(value) {
+  return encodeURIComponent(JSON.stringify(value))
+    .replace(/[!\x27()*~-]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
 }
 
 function parseModels(toml) {
@@ -177,7 +183,7 @@ function parseMarkers(lines, issue) {
     const space = body.indexOf(' ')
     if (space === -1) continue
     try {
-      const data = JSON.parse(body.slice(space + 1))
+      const data = JSON.parse(decodeURIComponent(body.slice(space + 1)))
       if (data.v === 1 && data.issue === issue) markers.push(data)
     } catch (error) {
       log(`ignored an unreadable council marker: ${error.message}`)
@@ -253,18 +259,6 @@ function postPrompt(repo, issue, token, body) {
   ].join('\n')
 }
 
-function seatHandoff(seat, verdict, ctx) {
-  return {
-    schema: 'handoff.v1', item: `#${ctx.issue}`, agent: seat, model: ctx.models.sonnet || '', commit: ctx.head, status: 'done', round: ctx.round,
-    summary: `${seat} returns ${verdict.verdict} with ${verdict.findings.length} findings.`,
-    changed_paths: [], evidence: [], acceptance: [], decisions: [],
-    findings: verdict.findings.map(f => ({ severity: verdict.verdict === 'block' ? 'major' : 'minor', at: f.journey_step, claim: f.problem, proof: f.evidence })),
-    protected_change_requests: [], revert: '',
-    usage: { input_tokens: null, output_tokens: null, window_share: null, paused_for_limit: false },
-    next: verdict.verdict === 'block' ? 'product-lead: a written disposition for this block before the design or screen spec is accepted.' : 'product-lead: merge the accepted changes into the spec or RFC.',
-  }
-}
-
 function seatBody(seat, verdict, ctx, token) {
   const lines = [`**Council seat ${SEATS.indexOf(seat) + 1}, \`${seat}\`, round ${ctx.round}: ${verdict.verdict}**`]
   if (verdict.spine_floor.length) lines.push(`Spine floor broken: ${verdict.spine_floor.join(', ')}. ${inert(verdict.floor_reason)} This goes straight to the chief architect and the product lead.`)
@@ -274,8 +268,8 @@ function seatBody(seat, verdict, ctx, token) {
   lines.push('', '**Journeys**')
   for (const j of verdict.journeys) lines.push(`- ${inert(j.journey)}: ${j.outcome === 'walked' ? 'walked' : `could not walk (${inert(j.reason)})`}${j.gave_up_at ? `; would give up at ${inert(j.gave_up_at)}` : ''}`)
   lines.push(
-    '', '<details><summary>handoff.v1</summary>', '', '```json', JSON.stringify(seatHandoff(seat, verdict, ctx), null, 2), '```', '', '</details>',
-    `<!-- ${SEAT_MARKER} ${token} ${hiddenJson({ v: 1, kind: 'seat', issue: ctx.issue, seat, round: ctx.round, commit: ctx.head, verdict: verdict.verdict, floor: verdict.spine_floor, findings: verdict.findings.map(f => ({ s: f.journey_step.slice(0, 80), p: f.problem.slice(0, 160) })) })} -->`,
+    '',
+    `<!-- ${SEAT_MARKER} ${token} ${hiddenRecord({ v: 1, kind: 'seat', issue: ctx.issue, seat, round: ctx.round, commit: ctx.head, verdict: verdict.verdict, floor: verdict.spine_floor, findings: verdict.findings.map(f => ({ s: f.journey_step.slice(0, 80), p: f.problem.slice(0, 160) })) })} -->`,
   )
   return lines.join('\n')
 }
@@ -295,7 +289,7 @@ function chairBody(chair, verdicts, ctx, token) {
     lines.push('', '**Tensions for the product lead**')
     for (const t of chair.tensions) lines.push(`- ${t.seats.join(' and ')}: ${inert(t.what)}`)
   }
-  lines.push(`<!-- ${CHAIR_MARKER} ${token} ${hiddenJson({ v: 1, kind: 'chair', issue: ctx.issue, round: ctx.round, commit: ctx.head })} -->`)
+  lines.push(`<!-- ${CHAIR_MARKER} ${token} ${hiddenRecord({ v: 1, kind: 'chair', issue: ctx.issue, round: ctx.round, commit: ctx.head })} -->`)
   return lines.join('\n')
 }
 

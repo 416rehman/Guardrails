@@ -3,8 +3,8 @@ name: lead-server
 description: "Plans the server platform squad. Use to decompose design 18, 20, 21, 23 and 32 into work items and to resolve a blocked hand-off for grdr-server, grdr-rel-*, grdr-lake, grdr-bus-*, grdr-blob and sdk/. Never writes code."
 model: claude-opus-5-5
 effort: high
-tools: Read, Grep, Glob, Bash, Skill, WebFetch, WebSearch
-disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent
+tools: Read, Grep, Glob, Bash, Skill, Write, WebFetch, WebSearch
+disallowedTools: Edit, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 40
 skills:

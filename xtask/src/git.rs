@@ -2,9 +2,11 @@
 //! the tree digest that evidence records.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
-use std::path::PathBuf;
+use std::fs::{self, File};
+use std::io;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context, Result, bail};
 
@@ -16,6 +18,9 @@ use crate::repo::Repo;
 const MERGE_BASE_REFERENCES: [&str; 2] = ["origin/main", "main"];
 /// The name of the directory a main checkout keeps its repository in.
 const GIT_DIR: &str = ".git";
+/// Counts the scratch indexes this process made. Threads of one process share its id, and the
+/// clock of Windows and of Hyper-V runners moves in 100 ns steps, so the time alone can repeat.
+static SCRATCH_INDEXES: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Base {
@@ -199,12 +204,13 @@ pub fn tree_digest(repo: &Repo) -> Result<String> {
     let index = output(repo, &["rev-parse", "--git-path", "index"])?;
     let index = repo.root().join(index.trim());
     let scratch = std::env::temp_dir().join(format!(
-        "xtask-index-{}-{}",
+        "xtask-index-{}-{}-{}",
         std::process::id(),
+        SCRATCH_INDEXES.fetch_add(1, Ordering::Relaxed),
         unique_suffix()
     ));
     if index.is_file() {
-        fs::copy(&index, &scratch).context("copying the git index")?;
+        copy_index(&index, &scratch)?;
     }
     let scratch_text = scratch.to_string_lossy().into_owned();
     let env = [("GIT_INDEX_FILE", scratch_text.as_str())];
@@ -372,8 +378,25 @@ fn unique_suffix() -> u128 {
         .unwrap_or(0)
 }
 
+/// Copies the index with its modification time. Git checks a file's content only when the file
+/// is not older than the index, and its stat times may count whole seconds, so a newer copy
+/// would miss a same-size edit made in the second the index was written.
+fn copy_index(index: &Path, scratch: &Path) -> Result<()> {
+    let mut source = File::open(index).context("opening the git index")?;
+    let written = source
+        .metadata()
+        .and_then(|metadata| metadata.modified())
+        .context("reading when the git index was written")?;
+    let mut copy = File::create(scratch).context("creating a scratch index")?;
+    io::copy(&mut source, &mut copy).context("copying the git index")?;
+    copy.set_modified(written)
+        .context("setting the scratch index's modification time")
+}
+
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, Instant, UNIX_EPOCH};
+
     use super::*;
 
     #[test]
@@ -453,5 +476,49 @@ mod tests {
         );
         assert!(!is_linked_worktree(&temp.repo()).unwrap());
         assert!(is_linked_worktree(&Repo::at(&worktree)).unwrap());
+    }
+
+    /// The edit shares the second of the index write and the digest runs in a later second: a
+    /// git that compares whole seconds then trusts a stale stat unless the copy keeps that second.
+    #[test]
+    fn a_same_size_edit_in_the_second_the_index_was_written_is_in_the_digest() {
+        use crate::orchestrate::testkit::{git, init_git};
+        let temp = crate::testkit::TempRepo::create();
+        init_git(temp.root());
+        let index = temp.root().join(".git/index");
+        let lib = temp.root().join("lib.rs");
+        let second_of = |path: &Path| {
+            fs::metadata(path)
+                .and_then(|metadata| metadata.modified())
+                .unwrap()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+        };
+        let indexed = (0..20)
+            .find_map(|_| {
+                temp.write("lib.rs", "one\n");
+                let first = second_of(&lib);
+                git(temp.root(), &["add", "lib.rs"]);
+                temp.write("lib.rs", "two\n");
+                (second_of(&index) == first && second_of(&lib) == first).then_some(first)
+            })
+            .expect("lib.rs was never written, indexed and edited within one second");
+        let probe = temp.root().join(".git/probe");
+        let waiting = Instant::now();
+        loop {
+            fs::write(&probe, "later").unwrap();
+            if second_of(&probe) > indexed {
+                break;
+            }
+            assert!(
+                waiting.elapsed() < Duration::from_secs(10),
+                "a written file never left the second of the index write"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let digest = tree_digest(&temp.repo()).unwrap();
+        git(temp.root(), &["add", "-A"]);
+        assert_eq!(digest, git(temp.root(), &["write-tree"]).trim());
     }
 }

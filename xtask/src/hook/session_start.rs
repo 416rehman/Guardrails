@@ -1,5 +1,7 @@
 //! `SessionStart` (team/03 section 4.1, owner instructions 1, 4 and 18). `session-start` (startup,
-//! resume, clear, fork) rebuilds a stale kit binary, records the session's baseline, and prints at
+//! resume, clear, fork) rebuilds a stale kit binary before it reads the roster, so kit data the old
+//! binary cannot parse never stops the rebuild that would read it; then it records the session's
+//! baseline, and prints at
 //! most `[hook.outcome] context_lines` of context: the chief architect's ownership sentence first
 //! on every source, the agent and its model rule, the work item and its issue, the write set, the
 //! AGENTS.md files that govern it and the `.agents/kit/path-skills.toml` skills it touches, the
@@ -24,7 +26,7 @@ use super::startup_model;
 use super::state::{SESSION_SCHEMA, SessionState, sha256_hex, summary_path};
 use crate::clock::Utc;
 use crate::config::protected::{PROTECTED_PATHS_FILE, ProtectedPaths};
-use crate::config::session::Scope;
+use crate::config::session::{Scope, Session};
 use crate::gates::evidence::{EVIDENCE_DIR, Evidence};
 use crate::kit::OWNERSHIP_SENTENCE;
 use crate::kit::install;
@@ -51,6 +53,7 @@ pub fn start(context: &Context) -> Result<Outcome> {
     if identity::is_chief_architect(context) {
         lines.push(OWNERSHIP_SENTENCE.to_owned());
     }
+    lines.extend(rebuild(context));
     let identity = match Identity::load(context) {
         Ok(identity) => identity,
         Err(error) => {
@@ -58,7 +61,6 @@ pub fn start(context: &Context) -> Result<Outcome> {
             return Ok(Outcome::Context(lines.join("\n")));
         }
     };
-    lines.extend(rebuild(context, &identity));
     lines.extend(credential_warning(context, &identity));
     record(context, &identity);
     lines.extend(who(context, &identity)?);
@@ -112,7 +114,7 @@ fn credential_warning(context: &Context, identity: &Identity) -> Option<String> 
         .collect();
     (!names.is_empty()).then(|| {
         format!(
-            "WARNING: this agent session's environment holds credential-looking variables ({}); never print or use them. cargo xtask kit launch starts agent sessions with them emptied (harness.toml [launch] scrub_user_env).",
+            "WARNING: this agent session's environment holds credential-looking variables ({}); never print or use them. cargo xtask kit launch empties only the variables ~/.claude/settings.json sets (harness.toml [launch] scrub_user_env), so these come from the environment the dispatcher was started in.",
             names.join(", ")
         )
     })
@@ -120,8 +122,10 @@ fn credential_warning(context: &Context, identity: &Identity) -> Option<String> 
 
 /// Rebuilds the kit binary when this is the installed one and its source moved on. An agent
 /// session rebuilds only from a merge base: before one exists the source is `HEAD` or the
-/// working tree, which hold the agent's own edits, so the hooks would become the agent's.
-fn rebuild(context: &Context, identity: &Identity) -> Option<String> {
+/// working tree, which hold the agent's own edits, so the hooks would become the agent's. It reads
+/// only the launcher's variables, not the roster, and a session whose variables do not parse
+/// counts as an agent's.
+fn rebuild(context: &Context) -> Option<String> {
     let exe = std::env::current_exe().ok()?;
     if !super::context::same_file(&exe, &install::binary_path(&context.repo))
         || install::is_current(&context.repo).unwrap_or(true)
@@ -132,7 +136,9 @@ fn rebuild(context: &Context, identity: &Identity) -> Option<String> {
         install::source(&context.repo),
         Ok(install::KitSource::MergeBase { .. })
     );
-    if identity.is_agent() && !merge_base {
+    let agent =
+        Session::from_lookup(context.env.lookup()).map_or(true, |session| session.agent.is_some());
+    if agent && !merge_base {
         return Some("Kit: the hook binary is older than the tree, and with no merge base an agent session does not rebuild it; cargo xtask kit install runs outside agent sessions.".to_owned());
     }
     let mut command = Command::new(&exe);

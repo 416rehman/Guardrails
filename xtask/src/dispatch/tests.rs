@@ -13,7 +13,9 @@ use crate::orchestrate::records::{
 use crate::orchestrate::testkit::{FakeProgram, MemoryTracker, body, init_git, issue, ready_for};
 use crate::testkit::{TempRepo, risk_tiers, tier};
 
-const HARNESS: &str = "[dispatch]\nprotected_change_agents = [\"lead-agent-kit\", \"chief-architect\"]\nmax_writers = 1\nmax_gardeners = 1\nmax_planners = 1\nmax_evaluators = 2\nstall_seconds = 1\npoll_seconds = 1\npoll_jitter_seconds = 0\nbackoff_base_seconds = 1\nbackoff_cap_seconds = 1\nlease_order = [\"blocks-others\", \"priority\", \"age\"]\n[limits]\nusage_limit_strings = [\"You've hit your session limit\"]\nretry_seconds = 0\n[queue]\nworktree = \"queue\"\nverify_args = [\"verify\"]\nverify_timeout_seconds = 60\n[workspace_trust]\ncheck = \"managed\"\n";
+/// A fake session can take seconds to print on a loaded runner, so no session here stalls unless
+/// its test asks for `Setup::stalling_dispatcher`.
+const HARNESS: &str = "[dispatch]\nprotected_change_agents = [\"lead-agent-kit\", \"chief-architect\"]\nmax_writers = 1\nmax_gardeners = 1\nmax_planners = 1\nmax_evaluators = 2\nstall_seconds = 60\npoll_seconds = 1\npoll_jitter_seconds = 0\nbackoff_base_seconds = 1\nbackoff_cap_seconds = 1\nlease_order = [\"blocks-others\", \"priority\", \"age\"]\n[limits]\nusage_limit_strings = [\"You've hit your session limit\"]\nretry_seconds = 0\n[queue]\nworktree = \"queue\"\nverify_args = [\"verify\"]\nverify_timeout_seconds = 60\n[workspace_trust]\ncheck = \"managed\"\n";
 /// Written right after `GITHUB`, so it joins that `[github]` table, which has no branch pattern.
 const BRANCH: &str = "branch = \"agent/{issue}/a{attempt}\"\n";
 const USAGE: &str = "[item]\nmax_attempts = 2\nmax_review_rounds = 3\nverdict_hours = 24\n[role.worker]\nmax_turns = 80\nwall_clock_minutes = 60\nsessions_per_attempt = 2\n";
@@ -80,12 +82,22 @@ impl Setup {
     }
 
     pub(super) fn try_dispatcher(&self) -> Result<Dispatcher<'_>> {
+        self.dispatcher_under(Policy::load(&self.temp.repo(), None).unwrap())
+    }
+
+    /// A dispatcher that takes one second without output as a stall.
+    fn stalling_dispatcher(&self) -> Dispatcher<'_> {
+        let mut policy = Policy::load(&self.temp.repo(), None).unwrap();
+        policy.session.stall = Duration::from_secs(1);
+        self.dispatcher_under(policy).unwrap()
+    }
+
+    fn dispatcher_under(&self, policy: Policy) -> Result<Dispatcher<'_>> {
         let launcher = Launcher {
             program: self.fake.program().to_path_buf(),
             leading: Vec::new(),
             prepare: Prepare::CopyOnly,
         };
-        let policy = Policy::load(&self.temp.repo(), None).unwrap();
         Dispatcher::new(self.temp.repo(), policy, &self.tracker, launcher)
     }
 
@@ -180,7 +192,7 @@ fn stalls_return_the_item_to_ready_and_the_second_escalates() {
     let setup = Setup::new("");
     setup.ready_issue(8, &[], "lead-core");
     setup.fake.sleep(1, 4).sleep(2, 4);
-    let mut dispatcher = setup.dispatcher();
+    let mut dispatcher = setup.stalling_dispatcher();
     dispatcher.step_github().unwrap();
     settle(&mut dispatcher);
     assert_eq!(setup.status(8), Some(ItemStatus::Ready));

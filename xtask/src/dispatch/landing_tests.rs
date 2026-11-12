@@ -1,6 +1,7 @@
 //! The merge queue in the dispatcher: a static-lane change lands as `<title> (#<pr>)` once the
-//! full verify passed on the squashed tree, an invalid pull request goes back to its worker, and
-//! a failed light round raises the item to standard.
+//! full verify passed on the squashed tree, an invalid pull request goes back to its worker, a
+//! failed light round raises the item to standard, and the seed's pull request, which has one
+//! attempt and a branch no session can rebase, goes to the chief architect when it cannot go on.
 
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -12,7 +13,8 @@ use crate::config::session::ItemStatus;
 use crate::orchestrate::form::tests::form;
 use crate::orchestrate::issue::acceptance;
 use crate::orchestrate::records::{
-    self, LEASE_SCHEMA, Lease, Reason, Record, lease_comment, meta_block, ready_comment,
+    self, LEASE_SCHEMA, Lease, Reason, Record, STATE_SCHEMA, Transition, lease_comment, meta_block,
+    ready_comment, transition_comment,
 };
 use crate::orchestrate::risk::Lane;
 use crate::orchestrate::testkit::{FakeProgram, body, git, issue, ready_for};
@@ -329,18 +331,15 @@ fn a_landed_labels_change_is_synced_onto_the_repository() {
     );
 }
 
-#[test]
-fn the_seed_pull_request_sent_back_by_the_queue_is_fixed_in_the_seed_scope() {
-    let setup = Setup::new("");
-    let _origin = with_origin(&setup);
+/// Issue 62, the seed's, at `status` with the lease the seed's hand-off posted, and the seed
+/// branch with docs/plan.md committed and pushed. Returns the branch head.
+fn seed_issue(setup: &Setup, status: &str) -> String {
     setup.temp.write(".agents/kit/seed-scope.toml", SEED);
     let text = body("chief-architect", &["docs/plan.md"], CRITERIA);
     let digest = acceptance(&text).unwrap().sha256;
-    setup.tracker.add(issue(
-        62,
-        &["status:in-review", "agent:chief-architect"],
-        &text,
-    ));
+    setup
+        .tracker
+        .add(issue(62, &[status, "agent:chief-architect"], &text));
     let ready = ready_for(62, "programme-manager", &text);
     let lease = Lease {
         schema: LEASE_SCHEMA.into(),
@@ -377,18 +376,29 @@ fn the_seed_pull_request_sent_back_by_the_queue_is_fixed_in_the_seed_scope() {
     git(&worktree, &["add", "-A"]);
     git(&worktree, &["commit", "--quiet", "-m", "Seed the team"]);
     git(&worktree, &["push", "--quiet", "origin", "agent/seed"]);
-    let head = git(&worktree, &["rev-parse", "HEAD"]).trim().to_owned();
+    git(&worktree, &["rev-parse", "HEAD"]).trim().to_owned()
+}
+
+fn seed_pull_request(setup: &Setup, title: &str, body: &str, head: String) {
     setup.tracker.set_pull_request(
         "agent/seed",
         PullRequest {
             number: 620,
-            title: "Seed the team".into(),
-            body: "Work item: #62".into(),
+            title: title.into(),
+            body: body.into(),
             head,
             base: "main".into(),
             ..PullRequest::default()
         },
     );
+}
+
+#[test]
+fn the_seed_pull_request_sent_back_by_the_queue_is_fixed_in_the_seed_scope() {
+    let setup = Setup::new("");
+    let _origin = with_origin(&setup);
+    let head = seed_issue(&setup, "status:in-review");
+    seed_pull_request(&setup, "Seed the team", "Work item: #62", head);
     setup.fake.respond(1, DONE, 0);
     let mut dispatcher = setup.dispatcher();
     dispatcher.step_github().unwrap();
@@ -405,4 +415,78 @@ fn the_seed_pull_request_sent_back_by_the_queue_is_fixed_in_the_seed_scope() {
         "{}",
         calls[0]
     );
+    assert_eq!(
+        setup.status(62),
+        Some(ItemStatus::Escalated),
+        "the seed's issue has one attempt, so a fix that ends unanswered goes to the chief architect: {:?}",
+        transitions(&setup.found(62))
+    );
+}
+
+#[test]
+fn a_seed_branch_that_no_longer_merges_goes_to_the_chief_architect() {
+    let setup = Setup::new("");
+    let _origin = with_origin(&setup);
+    let head = seed_issue(&setup, "status:in-review");
+    setup.temp.write("docs/plan.md", "Another plan.\n");
+    git(setup.temp.root(), &["add", "-A"]);
+    git(
+        setup.temp.root(),
+        &["commit", "--quiet", "-m", "docs: another plan"],
+    );
+    git(setup.temp.root(), &["push", "--quiet", "origin", "main"]);
+    seed_pull_request(&setup, "docs: seed the team", &valid_body(62), head);
+    let verify = FakeProgram::new("queue-verify");
+    let mut dispatcher = setup.dispatcher();
+    dispatcher.set_verifier(verify.program().to_path_buf());
+    dispatcher.step_github().unwrap();
+    assert_eq!(
+        transitions(&setup.found(62)),
+        vec![(ItemStatus::Escalated, Reason::MergeConflict)]
+    );
+    assert!(setup.fake.calls().is_empty(), "no fix session starts");
+}
+
+#[test]
+fn a_restart_starts_the_seeds_unanswered_fix_as_a_fix() {
+    let setup = Setup::new("");
+    let _origin = with_origin(&setup);
+    let head = seed_issue(&setup, "status:leased");
+    seed_pull_request(&setup, "docs: seed the team", &valid_body(62), head);
+    let back = Transition {
+        schema: STATE_SCHEMA.into(),
+        item: 62,
+        attempt: 1,
+        from: ItemStatus::InReview,
+        to: ItemStatus::Leased,
+        reason: Reason::EvaluatorFindings,
+    };
+    setup
+        .tracker
+        .comment(
+            62,
+            &transition_comment(&back, "Back to the worker.").unwrap(),
+        )
+        .unwrap();
+    setup.fake.respond(1, DONE, 0);
+    let mut dispatcher = setup.dispatcher();
+    dispatcher.adopt().unwrap();
+    assert_eq!(
+        dispatcher.held(),
+        vec![62],
+        "the seed's lease names no session"
+    );
+    dispatcher.step_github().unwrap();
+    assert_eq!(
+        setup.status(62),
+        Some(ItemStatus::Leased),
+        "its open pull request does not go back to review unanswered"
+    );
+    settle(&mut dispatcher);
+    let calls = setup.fake.calls();
+    assert!(
+        calls[0].contains("chief-architect --item 62 --seed --print"),
+        "{calls:?}"
+    );
+    assert!(calls[0].contains("came back from review"), "{}", calls[0]);
 }

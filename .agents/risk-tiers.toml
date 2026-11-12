@@ -5,7 +5,13 @@
 paths_file = "security/trust-core.paths"     # design/02 owns the list
 # Owner instruction 7: a trust-core change lands only after passing evaluators on two models.
 distinct_models = 2
-evaluators = ["eval-adversarial", "eval-platform", "eval-performance"]   # beside the tier's set
+evaluators = ["eval-adversarial"]   # beside the tier's set, for every trust-core path
+# The product's code roots. A trust-core path under one is the runtime trust core (the sensor,
+# daemon, driver, platform shells, engine sandbox, updater, crypto, IPC and evaluator semantics):
+# `cargo xtask risk` reports it as the runtime_trust_core trigger, whose [trigger_evaluators] row
+# adds the evaluators that run the platform matrix and the performance budgets once they can. A
+# trust-core change elsewhere (gate configuration, the kit, the plan) takes no lab evaluator.
+runtime_paths = ["bpf/**", "crates/**", "programs/**", "platform/**"]
 [high]
 paths = ["proto/**", "schema/**", "spec/**", "crates/grdr-{proto,schema,model,ports,wire}/**",
          "AGENTS.md", "**/AGENTS.md", "**/REVIEW.md", "CLAUDE.md", ".claude/**", "specs/**", "Cargo.lock"]
@@ -46,6 +52,10 @@ rfc = ["eval-architecture"]
 new_dependency = ["eval-licence", "cross-model review"]
 public_api_change = ["eval-api", "cross-model review"]
 wire_or_pack_format_change = ["eval-api", "cross-model review"]
+# eval-platform and eval-performance join this row in the change that builds the commands they
+# run first, `cargo xtask matrix-run` (WI-0013) and `cargo xtask bench`. Until then each returns
+# cannot-evaluate on every runtime trust-core change, and WI-0013 waits on such changes.
+runtime_trust_core = []
 
 # Owner instruction 7: a protected-change item lands only after these evaluators pass, plus one
 # more on the other model.

@@ -34,6 +34,10 @@ pub struct SeedScope {
     /// The roles the seed session plays, whose readyings the dispatcher accepts from it.
     #[serde(default)]
     pub acts_as: Vec<String>,
+    /// The reserved work-item id of the seed's own issue, titled `[<id>] ...` (owner
+    /// instruction 5), which the dispatcher never plans or readies.
+    #[serde(default)]
+    pub work_item: Option<String>,
 }
 
 impl ProtectedPaths {
@@ -88,6 +92,13 @@ impl SeedScope {
     /// Whether `agent` on `branch` is the seed session, as its lease names it.
     pub fn is_session(&self, agent: &str, branch: &str) -> bool {
         self.agent == agent && self.branch == branch
+    }
+
+    /// Whether an issue titled `title` is the seed's own issue.
+    pub fn names_issue(&self, title: &str) -> bool {
+        self.work_item
+            .as_ref()
+            .is_some_and(|id| title.starts_with(&format!("[{id}]")))
     }
 
     /// The roles `agent` plays in the seed session; none when it is not the seed's agent.

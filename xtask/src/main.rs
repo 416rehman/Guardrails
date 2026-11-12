@@ -13,6 +13,7 @@ usage: cargo xtask <command> [options]
   kit launch <agent> [--item <n>] [--seed] [...]    start a Claude Code session as one roster agent
   kit ready <n>                                     ready a proposed issue: ready.v1 and status:ready
   kit handoff [...]                                 post the hand-off, push, open the pull request
+  kit digest <n>                                    the issue's acceptance digest beside its ready.v1 and lease.v1
   kit place [--stage] <path>...                     put a widened session's staged protected files in place
   kit claim --next                                  lease the next ready issue through the dispatcher
   kit ci-env --pull-request <n> [...]               print the lease identity CI runs a pull request's gates as, save its snapshot

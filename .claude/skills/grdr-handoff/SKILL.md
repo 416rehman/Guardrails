@@ -21,7 +21,7 @@ Every session ends with one `handoff.v1` posted as a comment on the item's issue
 |---|---|
 | `done` | `cargo xtask verify --fast` is green on the current tree, every acceptance criterion has evidence, and the definition of done holds (step 3) |
 | `partial` | The turn cap or the run's usage cap is near: hand off at 80% of either. Say exactly where the next session resumes |
-| `blocked` | You need something you may not do: a protected-path change, a new dependency or licence, a public-surface or wire change, a lead's or the chief architect's decision, a fourth held-out query, a structure exemption, or the baseline was red before you started |
+| `blocked` | You need something you may not do: a protected-path change outside a protected-change lease's write set, a new dependency or licence, a public-surface or wire change, a lead's or the chief architect's decision, a fourth held-out query, a structure exemption, or the baseline was red before you started |
 | `impossible` | The spec and the acceptance criteria or tests conflict. Name the clause and the test id in one line. This is a correct outcome; the item returns to the agent that wrote its spec |
 
 Evaluators use `pass`, `fail` or `cannot-evaluate` instead (skill `grdr-evaluate`).
@@ -30,13 +30,13 @@ A subscription usage limit is not a status. If a limit is about to end the sessi
 
 ## 2. Write the draft
 
-Write the JSON to `.agent/state/handoff-<n>-<agent>.json`. It is session state, git-ignored; the Stop hook checks it and `kit handoff` publishes it. A role without the Write tool (an evaluator, a lead, the product lead, the programme manager, the chief architect) passes the JSON instead: `cargo xtask kit handoff --item <n> --draft - <<'JSON'`, then the JSON, then a line `JSON`, writes the draft and publishes it in one step. Use the here-document rather than `--draft '<the JSON>'`: an apostrophe in any text field ends a single-quoted argument and the shell refuses the command. Fill every field of `references/handoff-v1.md`. The ones that decide whether the hand-off is useful:
+Write the JSON to `.agent/state/handoff-<n>-<agent>.json` with the Write tool. It is session state, git-ignored; the Stop hook checks it and `kit handoff` publishes it. Never pass the JSON on a here-document: in `dontAsk` Claude Code refuses a Bash command whose here-document carries JSON. A role without the Write tool passes it on one line, `cargo xtask kit handoff --item <n> --draft '<the JSON>'`, with no apostrophe and no line break in any text field, since an apostrophe ends the single-quoted argument; that writes the draft and publishes it in one step. Fill every field of `references/handoff-v1.md`. The ones that decide whether the hand-off is useful:
 
 - `evidence`: one entry per command that proves something, with command, exit code, log path and SHA-256. Copy them from the evidence files under `.agent/evidence/`; never type a result that no command produced.
 - `acceptance`: one entry per criterion of the issue's acceptance section, `pass`, `fail` or `not-run`, each pointing at an `evidence` index. A criterion you did not run is `not-run`, never `pass`.
 - `three_arm`: required for bug fixes; three indexes into `evidence` (skill `grdr-fix-bug`).
 - `decisions`: every place where the spec was silent and you chose, least confident first. This list is the record; the pull-request body repeats it.
-- `protected_change_requests`: the only route to a protected path. One entry per path with the reason, and the issue you filed for it: a protected change is its own `status:proposed` issue, `squad:agent-kit` for gate configuration or addressed to the chief architect for the spine and plan, which lands after `eval-security` and one evaluator on the other model pass (owner instruction 7). When the request needs proposed text (a crate `AGENTS.md`, a `limits.toml` key), post that text as a comment on the issue headed with the target path.
+- `protected_change_requests`: the only route to a protected path outside a protected-change lease's write set. One entry per path with the reason, and the issue you filed for it: a protected change is its own `status:proposed` issue, `squad:agent-kit` for gate configuration or addressed to the chief architect for the spine and plan, which lands after `eval-security` and one evaluator on the other model pass (owner instruction 7). When the request needs proposed text (a crate `AGENTS.md`, a `limits.toml` key), post that text as a comment on the issue headed with the target path.
 - `next`: what the receiver must do. New work you found is filed first as a `status:proposed` issue with its evidence (references, "File new work"), and `next` names the new issue numbers. You do not build it.
 - `model`: the exact id you ran on, from `.agents/models.toml`. The dispatcher chose it; you never change it.
 

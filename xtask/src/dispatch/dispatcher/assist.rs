@@ -10,12 +10,14 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use super::Dispatcher;
+use super::review::handoff_by;
 use crate::clock::Utc;
 use crate::dispatch::state;
 use crate::dispatch::worker::Job;
 use crate::orchestrate::claude::{Ended, Running};
 use crate::orchestrate::ids;
-use crate::orchestrate::launch::{LaunchScope, SessionStart};
+use crate::orchestrate::launch::{Caps, LaunchScope, SessionStart};
+use crate::orchestrate::records::{self, Reason};
 use crate::repo::Repo;
 
 const STATE_FILE: &str = ".agent/state/dispatch-assists.json";
@@ -50,6 +52,9 @@ pub struct Round {
     /// The verdict was reported, so the notice prints once.
     #[serde(default)]
     pub reported: bool,
+    /// Evaluators started again after a session that ended without a verdict.
+    #[serde(default)]
+    pub restarted: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -104,8 +109,8 @@ impl Dispatcher<'_> {
     pub(super) fn start_assist(&mut self, job: &AssistJob) -> Result<()> {
         let worktree = self.worktree(job.worktree, job.branch)?;
         let watch = self.policy.session.watch(
-            Some(self.kit.turn_cap(job.agent, None)?),
-            self.kit.wall_clock(job.agent, None),
+            Some(self.kit.turn_cap(job.agent, None, Caps::Role)?),
+            self.kit.wall_clock(job.agent, None, Caps::Role),
         );
         let log = self.repo.path(&format!(
             ".agent/logs/dispatch-{}-{}-{}.jsonl",
@@ -144,7 +149,9 @@ impl Dispatcher<'_> {
     }
 
     /// A planner records the issue as it left it, so it is planned again only after a change. A
-    /// session that ended at a usage limit records nothing and runs again after the window.
+    /// session that ended at a usage limit records nothing and runs again after the window. An
+    /// evaluator that ended without a verdict in its round runs once more; a second time the item
+    /// is escalated instead of waiting out the verdict deadline.
     pub(super) fn after_assist(&mut self, assist: &Assist, ended: &Ended) -> Result<()> {
         println!(
             "dispatch: {} on #{} {}",
@@ -165,7 +172,41 @@ impl Dispatcher<'_> {
                     agent: assist.agent.clone(),
                 },
             );
+        } else {
+            self.after_review(assist)?;
         }
         self.assisted.save(&self.repo)
+    }
+
+    fn after_review(&mut self, assist: &Assist) -> Result<()> {
+        let Some(round) = self.assisted.reviewing.get_mut(&assist.item) else {
+            return Ok(());
+        };
+        let issue = self.tracker.issue(assist.item)?;
+        let found = records::records(&issue);
+        let in_round = found.get(round.since..).unwrap_or_default();
+        if in_round
+            .iter()
+            .any(|record| handoff_by(record, assist.item, &assist.agent).is_some())
+        {
+            return Ok(());
+        }
+        if !round.restarted.contains(&assist.agent) {
+            println!(
+                "dispatch: {} on #{} ended without a verdict; it runs once more",
+                assist.agent, assist.item
+            );
+            round.restarted.push(assist.agent.clone());
+            round.started.retain(|started| *started != assist.agent);
+            return Ok(());
+        }
+        let Some(lease) = records::current_lease(&found, assist.item).cloned() else {
+            return Ok(());
+        };
+        println!(
+            "dispatch: {} on #{} ended twice without a verdict",
+            assist.agent, assist.item
+        );
+        self.escalate(assist.item, &lease, Reason::NoVerdict)
     }
 }

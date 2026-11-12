@@ -178,6 +178,8 @@ timeout_s = 120
 [kit.process]
 # How often a child process is checked for exit or a passed deadline.
 poll_ms = 5
+# How long the output pipes are read after the child exits; a grandchild can hold them open.
+drain_grace_s = 2
 
 [kit.lock]
 # A lock file untouched for this many heartbeats belongs to a holder that is gone.

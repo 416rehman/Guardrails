@@ -147,7 +147,7 @@ fn push(repo: &Repo, identity: &Identity, remote: &str, branch: &str, mode: Mode
 /// one. A new pull request's number is not known yet, so the issue's, which is smaller, stands in
 /// for it and the queue checks the subject that lands.
 fn title(repo: &Repo, form: &Form, base: &str, branch: &str, number: u64) -> Result<String> {
-    let range = format!("{base}..HEAD");
+    let range = format!("{}..HEAD", fetched_base(repo, form)?);
     let log =
         git::try_output(repo, &["log", "--reverse", "--format=%s", &range])?.unwrap_or_default();
     let subjects: Vec<&str> = log.lines().map(str::trim_end).collect();
@@ -164,6 +164,14 @@ fn title(repo: &Repo, form: &Form, base: &str, branch: &str, number: u64) -> Res
     bail!(
         "the hand-off is published and {branch} is pushed, but no pull request was opened: the title must be a commit subject in Conventional Commit form ({why}); amend the commit to one valid line and run kit handoff again"
     )
+}
+
+/// The base as last fetched from the remote, else the local branch. Nothing moves a main checkout's
+/// local base when changes land, so its range would add their subjects ahead of the branch's own.
+fn fetched_base(repo: &Repo, form: &Form) -> Result<String> {
+    let fetched = format!("refs/remotes/{}/{}", form.remote, form.base);
+    let found = git::try_output(repo, &["rev-parse", "--verify", "--quiet", &fetched])?;
+    Ok(found.map_or_else(|| form.base.clone(), |_| fetched))
 }
 
 /// The evidence template of team/01 section 3, filled from the draft, with the closing line and

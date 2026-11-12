@@ -35,6 +35,16 @@ const SECONDS_PER_MINUTE: u64 = 60;
 /// Stands for a plugin's install directory in a `[launch] plugin_allow` rule.
 const PLUGIN_ROOT: &str = "{root}";
 
+/// Which `usage.toml` row a session's caps come from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Caps {
+    /// The agent's own `cap_role`.
+    Role,
+    /// A protected-change lease: the row the agent's `cap_role` names in
+    /// `protected_change_cap_role`, else the agent's own.
+    ProtectedChange,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelChoice {
     pub name: String,
@@ -150,20 +160,42 @@ impl LaunchKit {
         matches!((rank(a), rank(b)), (Some(a), Some(b)) if a > b)
     }
 
+    /// The `usage.toml` row `name`'s caps come from.
+    pub fn cap_role(&self, name: &str, caps: Caps) -> Result<String> {
+        let own = &self.agent(name)?.cap_role;
+        let redirected = match caps {
+            Caps::Role => None,
+            Caps::ProtectedChange => self
+                .usage
+                .role
+                .get(own)
+                .and_then(|role| role.protected_change_cap_role.clone()),
+        };
+        Ok(redirected.unwrap_or_else(|| own.clone()))
+    }
+
+    /// The caps a lease of `name` on an item with `write_set` runs on.
+    pub fn caps_for(&self, name: &str, write_set: &[String]) -> Result<Caps> {
+        Ok(if self.is_protected_change(name, write_set)? {
+            Caps::ProtectedChange
+        } else {
+            Caps::Role
+        })
+    }
+
     /// The effort the item's size row names (owner instruction 8), else none and the roster's.
-    pub fn effort(&self, name: &str, size: Option<&str>) -> Option<String> {
-        let agent = self.agent(name).ok()?;
-        let role = self.usage.role.get(&agent.cap_role)?;
+    pub fn effort(&self, name: &str, size: Option<&str>, caps: Caps) -> Option<String> {
+        let role = self.usage.role.get(&self.cap_role(name, caps).ok()?)?;
         size.and_then(|size| role.size.get(size))
             .and_then(|caps| caps.effort.clone())
             .or_else(|| role.effort.clone())
     }
 
-    /// The per-session turn cap: the size class row of the agent's cap role, else the role, else
-    /// the roster figure (team/01 section 9).
-    pub fn turn_cap(&self, name: &str, size: Option<&str>) -> Result<u32> {
+    /// The per-session turn cap: the size class row of the cap role, else the role, else the
+    /// roster figure (team/01 section 9).
+    pub fn turn_cap(&self, name: &str, size: Option<&str>, caps: Caps) -> Result<u32> {
         let agent = self.agent(name)?;
-        let role = self.usage.role.get(&agent.cap_role);
+        let role = self.usage.role.get(&self.cap_role(name, caps)?);
         let by_size = size
             .and_then(|size| role.and_then(|role| role.size.get(size)))
             .and_then(|caps| caps.max_turns);
@@ -174,12 +206,18 @@ impl LaunchKit {
 
     /// The turn cap of one session in `scope`: the seed scope's own for the seed session, else
     /// [`LaunchKit::turn_cap`].
-    pub fn session_turns(&self, name: &str, size: Option<&str>, scope: LaunchScope) -> Result<u32> {
+    pub fn session_turns(
+        &self,
+        name: &str,
+        size: Option<&str>,
+        scope: LaunchScope,
+        caps: Caps,
+    ) -> Result<u32> {
         match (scope, &self.seed) {
             (LaunchScope::Seed, Some(seed)) => {
                 Ok(seed.max_turns.unwrap_or(self.agent(name)?.max_turns))
             }
-            _ => self.turn_cap(name, size),
+            _ => self.turn_cap(name, size, caps),
         }
     }
 
@@ -193,9 +231,8 @@ impl LaunchKit {
     }
 
     /// The wall clock one session may take, from the same rows' `wall_clock_minutes`.
-    pub fn wall_clock(&self, name: &str, size: Option<&str>) -> Option<Duration> {
-        let agent = self.agent(name).ok()?;
-        let role = self.usage.role.get(&agent.cap_role)?;
+    pub fn wall_clock(&self, name: &str, size: Option<&str>, caps: Caps) -> Option<Duration> {
+        let role = self.usage.role.get(&self.cap_role(name, caps).ok()?)?;
         let minutes = size
             .and_then(|size| role.size.get(size))
             .and_then(|caps| caps.wall_clock_minutes)

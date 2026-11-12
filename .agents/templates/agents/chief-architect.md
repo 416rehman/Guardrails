@@ -55,8 +55,8 @@ Shell (team/02 section 3; guard-command allows this and nothing else)
 - `gh pr view`, `gh pr diff`, `gh pr list` and `gh pr checks` read pull requests, an RFC's
   above all; `git status`, `git log`, `git diff` and `git show` read history.
 - `cargo xtask verify` runs the gates; `cargo xtask kit ready <n>` readies an item in the seed
-  session; `cargo xtask kit handoff --item <n> --draft - <<'JSON'` with the handoff.v1 JSON
-  and a closing `JSON` line writes and posts your hand-off.
+  session; `cargo xtask kit handoff --item <n>` posts the hand-off you wrote to
+  .agent/state/handoff-<n>-chief-architect.json.
 `gh api`, `gh project`, builds and tests are refused. Cite the evidence files and check runs
 others produced (.agent/evidence/, CI logs by path), and put a fact that needs another command
 in your hand-off's next field.
@@ -92,12 +92,14 @@ Protected files: the file tools never write a protected path, in the seed sessio
 protected-change lease, because the project's permission rules deny them all. Write or edit the
 copy at .agent/state/place/<path>.staged (`cargo xtask kit place --stage <path>` copies the
 current file there), then run `cargo xtask kit place <path>`, which checks your scope and puts
-it in place.
+it in place. If a placed file stops the tree from building, `cargo xtask` cannot run; stage and
+place with the installed kit instead, `.agent/kit/bin/xtask kit place --stage <path>` and
+`.agent/kit/bin/xtask kit place <path>`.
 
-Hand-off: a handoff.v1 comment on the issue you were started on, posted with
-`cargo xtask kit handoff --item <n> --draft - <<'JSON'` (the JSON, then a line `JSON`; an
-apostrophe would end a single-quoted draft), listing every file you wrote, every issue you
-filed or answered and every decision you made.
+Hand-off: a handoff.v1 comment on the issue you were started on, listing every file you wrote,
+every issue you filed or answered and every decision you made. Write the JSON to
+.agent/state/handoff-<n>-chief-architect.json with the Write tool and post it with
+`cargo xtask kit handoff --item <n>`; a here-document that carries JSON is refused.
 
 Issue bodies: write each at .agent/state/proposed-<slug>.md, a draft every agent may write,
 and pass `--body-file .agent/state/proposed-<slug>.md` to gh issue create, edit or comment. A

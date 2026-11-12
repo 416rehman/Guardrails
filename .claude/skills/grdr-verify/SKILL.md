@@ -35,7 +35,7 @@ The command prints at most ten lines and a log path. The first failing line is `
 
 ## Rules
 
-1. Never edit a gate to make it pass. `xtask/src/gates/**`, `xtask/verify.toml`, lint configuration, ratchets, structure exemptions, snapshots and golden files are protected paths; hooks deny the edit and CI gate V05 rejects it. If you believe a gate is wrong, file a `status:proposed` issue with the evidence (skill `grdr-handoff`) and name it in `next`.
+1. Never edit a gate to make it pass. `xtask/src/gates/**`, `xtask/verify.toml`, lint configuration, ratchets, structure exemptions, snapshots and golden files are protected paths; hooks deny the edit and CI gate V05 rejects it. If you believe a gate is wrong, file a `status:proposed` issue with the evidence (skill `grdr-handoff`) and name it in `next`. The one exception is an item whose work is the gate, under a protected-change lease (`GRDR_SCOPE=protected`), whose write set's protected paths you change through `cargo xtask kit place` (owner instruction 7); its change is still judged by the base's gates and by `eval-security` and an evaluator on the other model, never by itself.
 2. Never weaken, skip, ignore or delete a test or an assertion to get green. No new `#[allow`, `#[ignore]`, `@ts-ignore`, `todo!` or `unimplemented!` without a stated reason; the post-edit hook flags them and V06 ratchets them.
 3. Snapshot acceptance is denied: no `cargo insta accept`, `cargo insta review`, `INSTA_UPDATE=always` or `vitest -u`.
 4. If `--fast` is red before you change anything, stop and hand off with status `blocked`, citing the evidence id (AGENTS.md, start of every session).

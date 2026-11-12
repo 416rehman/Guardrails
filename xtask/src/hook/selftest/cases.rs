@@ -368,6 +368,7 @@ pub fn programmatic() -> Vec<(Handler, String, Case)> {
         ),
     ];
     cases.extend(super::rule_cases::cases(PATH_SKILLS));
+    cases.extend(super::scope_cases::cases());
     cases
 }
 

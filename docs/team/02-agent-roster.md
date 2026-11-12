@@ -26,7 +26,7 @@ Fields were checked against the Claude Code sub-agents and permission-modes page
 | `model` | The exact id bound to the role's model name in `.agents/models.toml`, never `inherit`, so a session cannot change an evaluator's model. `models.toml` binds three names (`design/_review/03`): `fable` (Fable 5.2) for `chief-architect` only; `opus` (Opus 5.5) for medium-to-heavy work; `sonnet` (Sonnet 5.5) for everything else. No Haiku and no other vendor's model. The renderer refuses a second agent bound to `fable`. A worker's front matter names its default; the dispatcher, not the worker, passes `--model` for Opus on a trust-core path or a high-tier change. `kit check` fails on any `model`, `availableModels` entry or `*_MODEL` variable in a rendered settings file that is not an id from `models.toml`, and on a plugin agent that names anything but `inherit`, a folded alias or an Opus or Sonnet id; `kit render` writes `ANTHROPIC_DEFAULT_HAIKU_MODEL` from `[rules] folded_aliases`, so a plugin agent that names `haiku` runs on Sonnet. `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`, which makes Claude Code ignore the field, is never set |
 | `effort` | Set on every agent; the renderer rejects a level the bound model lacks. The dispatcher passes the size row's effort for implementers (`usage.toml [role.worker.size.*]`). `CLAUDE_CODE_EFFORT_LEVEL`, which takes precedence over the field, is never set |
 | `tools`, `disallowedTools` | The roster's lists. A role whose skills include `grdr-vendor-research` gets `WebFetch` and `WebSearch` from `kit render`, with `WebFetch(domain:<d>)` rules for the domains of `.agents/kit/vendors.toml`; no other role may list `WebSearch` (owner instruction 14) |
-| `permissionMode` | `dontAsk` on every agent, with `team/03` section 8's allow-list. Read-only agents add `Edit, Write, NotebookEdit` to `disallowedTools` and get a read-only mount in the fleet image. Not `plan`: with auto mode disabled in the fleet, plan mode prompts for any command outside the read-only set, which an unattended run cannot answer. Each agent is the main agent of its own session, so a parent's mode never overrides it |
+| `permissionMode` | `dontAsk` on every agent, with `team/03` section 8's allow-list. Read-only agents add `Edit, Write, NotebookEdit` to `disallowedTools` and get a read-only mount in the fleet image. Planners keep `Write` with an empty write set, which `guard-path` holds to their drafts under `.agent/state/`, because an issue body longer than a Bash command may be (10,000 characters) can only go to `gh` as a file. Not `plan`: with auto mode disabled in the fleet, plan mode prompts for any command outside the read-only set, which an unattended run cannot answer. Each agent is the main agent of its own session, so a parent's mode never overrides it |
 | `isolation` | Not set. The field isolates a subagent, and every writer runs as the main thread of a `claude --agent` session that the dispatcher starts in its own git worktree under `.agent/worktrees/` (and, with WI-0006, its own VM) |
 | `memory`, `mcpServers` | Never set: the repository and the work item's issue are the memory (D-47); MCP servers come only from the project settings (Playwright, `team/03` section 5) |
 | `maxTurns` | The role's cap from `team/01` section 9 (targets until S-20). At the cap the output is marked partial and the hand-off status is `partial` |
@@ -190,8 +190,8 @@ name: product-lead
 description: Owns scope, personas, support tiers and acceptance criteria. Use when a request, persona finding or scorecard needs a product decision, and to write and ready an item's acceptance criteria.
 model: {{models.opus}}
 effort: high
-tools: Read, Grep, Glob, Bash, Skill, WebFetch, WebSearch
-disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent
+tools: Read, Grep, Glob, Bash, Skill, Write, WebFetch, WebSearch
+disallowedTools: Edit, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 60
 skills: [grdr-write-spec, grdr-handoff, ui-architect, grdr-vendor-research, anthropic-skills:write-like-a-normal-staff-senior-developer]
@@ -218,8 +218,8 @@ name: programme-manager
 description: Orders the queue with priority labels, readies items whose spec is complete, and caps writer concurrency against evaluator capacity and subscription usage. Use for queue order and status.
 model: {{models.sonnet}}
 effort: medium
-tools: Read, Grep, Glob, Bash, Skill, Workflow
-disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent, WebFetch, WebSearch
+tools: Read, Grep, Glob, Bash, Skill, Workflow, Write
+disallowedTools: Edit, NotebookEdit, PowerShell, Agent, WebFetch, WebSearch
 permissionMode: dontAsk
 maxTurns: 60
 skills: [grdr-handoff, anthropic-skills:write-like-a-normal-staff-senior-developer]
@@ -277,8 +277,8 @@ name: lead-{{squad.id}}
 description: Plans the {{squad.title}} squad. Use to decompose {{squad.docs}} into work-item issues, to ready proposed issues, and to resolve a blocked hand-off for paths {{squad.paths_short}}. Never writes code.
 model: {{models.opus}}
 effort: high
-tools: Read, Grep, Glob, Bash, Skill, WebFetch, WebSearch
-disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent
+tools: Read, Grep, Glob, Bash, Skill, Write, WebFetch, WebSearch
+disallowedTools: Edit, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 40
 skills: [grdr-write-spec, grdr-handoff, grdr-vendor-research, anthropic-skills:write-like-a-normal-staff-senior-developer]
@@ -709,15 +709,15 @@ name: eval-tier
 description: Raises the risk tier of a pull request above the path-rule floor. Use on every pull request before other evaluators.
 model: {{models.sonnet}}
 effort: low
-tools: Read, Grep, Glob, WebFetch, WebSearch
-disallowedTools: Edit, Write, NotebookEdit, Bash, PowerShell, Agent
+tools: Read, Grep, Glob, Bash, WebFetch, WebSearch
+disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 30
 skills: [grdr-evaluate, grdr-handoff, grdr-vendor-research, anthropic-skills:write-like-a-normal-staff-senior-developer]
 ---
 {{common}}
-The floor tier is already computed from .agents/risk-tiers.toml. You may raise it, never
-lower it. Raise to medium for behaviour changes on enforcement paths, defaults,
+Read the floor tier with cargo xtask risk --item <n>, computed from .agents/risk-tiers.toml on
+the base, and the diff with git diff. You may raise the tier, never lower it. Raise to medium for behaviour changes on enforcement paths, defaults,
 retries or error handling; to high for anything that changes what is allowed,
 who can approve, what is collected, an interface other code will copy, or a file
 outside the item's stated paths. Give one line of reason per raise.

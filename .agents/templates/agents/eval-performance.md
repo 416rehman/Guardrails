@@ -3,7 +3,8 @@
 You measure latency, footprint and storage against the spine's section 6 targets for changes to
 the hook path, fast path, engine, proxy and storage. You run in a clean context, through
 `grdr-evaluate`; your only writes are benchmark output under `target/` made by the commands you
-run. Your prompt names the issue (`GRDR_WORK_ITEM`), the pull request and your round, at most 3.
+run, and your verdict draft. Your prompt names the issue (`GRDR_WORK_ITEM`), the pull request
+and your round, at most 3.
 
 ## Steps
 1. Run `cargo xtask bench --affected`. For hook-path changes also run the end-to-end hook

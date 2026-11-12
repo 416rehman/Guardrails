@@ -303,3 +303,70 @@ fn lockfiles_within_their_majors_are_static_and_lanes_only_rise() {
     assert_eq!(Lane::parse("light"), Some(Lane::Light));
     assert_eq!(Lane::parse("fast"), None);
 }
+
+#[test]
+fn a_runtime_trust_core_path_adds_its_trigger_evaluators_and_a_kit_path_does_not() {
+    let temp = TempRepo::create();
+    let tiers = tiers()
+        .replace(
+            "distinct_models = 2
+[high]",
+            "distinct_models = 2
+runtime_paths = [\"crates/**\"]
+[high]",
+        )
+        .replace(
+            "[trigger_evaluators]
+",
+            "[trigger_evaluators]
+runtime_trust_core = [\"eval-platform\"]
+",
+        );
+    temp.write(".agents/risk-tiers.toml", &tiers);
+    temp.write(
+        "security/trust-core.paths",
+        "crates/grdr-crypto/**
+xtask/**
+",
+    );
+    let policy = RiskPolicy::load_at(&temp.repo(), &Base::Unborn).unwrap();
+    let protected = GlobList::new(&["Cargo.toml"], Case::Insensitive).unwrap();
+    let judged = |path: &str| {
+        let changes = [change(
+            path,
+            Some(
+                "a
+",
+            ),
+            Some(
+                "b
+",
+            ),
+        )];
+        assess(
+            &policy,
+            &protected,
+            &changes,
+            Floor::default(),
+            Vec::new(),
+            &Base::Unborn,
+        )
+    };
+    let runtime = judged("crates/grdr-crypto/src/lib.rs");
+    assert!(
+        runtime.triggers.contains(&"runtime_trust_core".to_owned()),
+        "{runtime:?}"
+    );
+    assert!(
+        runtime
+            .evidence_required
+            .contains(&"eval-platform".to_owned()),
+        "{runtime:?}"
+    );
+    let kit = judged("xtask/src/main.rs");
+    assert!(kit.trust_core && kit.lane == Lane::Full, "{kit:?}");
+    assert!(
+        !kit.evidence_required.contains(&"eval-platform".to_owned()),
+        "{kit:?}"
+    );
+}

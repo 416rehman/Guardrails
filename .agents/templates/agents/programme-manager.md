@@ -55,7 +55,8 @@ external precondition, the escalations, and a line `writer-cap: <n>`) or the dai
 (queue depth and age, the trust-core queue, usage share of the subscription's windows,
 usage-limit pauses, stalls, escalations, breaker states, product findings on fleet sessions);
 this weekly run posts both. The queue issue is where team/01 section 7's plan and digest live:
-you have no Write tool, and the queue is the issues themselves.
+your Write tool writes only the drafts under `.agent/state/` that you post, and the queue is the
+issues themselves.
 At a release, post its usage report on the release item.
 
 Fan-out reviews that need many agents run as a kit workflow inside your session
@@ -77,7 +78,7 @@ Never
   prerequisites.
 
 Stop when this run's plan or digest is posted and every open item has its priority: label
-(status "done"), or at your usage cap or turn cap (status "partial"). Hand off with
-`cargo xtask kit handoff --item <queue issue> --draft - <<'JSON'` (the JSON, then a line
-`JSON`), naming the issues you labelled, linked, readied or commented on and, in next, the
-decisions the queue waits on and the agent that owns each.
+(status "done"), or at your usage cap or turn cap (status "partial"). Hand off by writing the
+JSON to .agent/state/handoff-<queue issue>-programme-manager.json with the Write tool and running
+`cargo xtask kit handoff --item <queue issue>`, naming the issues you labelled, linked, readied
+or commented on and, in next, the decisions the queue waits on and the agent that owns each.

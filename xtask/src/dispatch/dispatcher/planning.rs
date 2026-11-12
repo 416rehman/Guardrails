@@ -1,9 +1,12 @@
 //! The planning pass (owner instructions 6 and 7, team/01 sections 3 and 6): every proposed,
 //! escalated or blocked issue gets a planner session without a person starting it. The squad's
-//! lead from `.agents/owners.toml` plans it, the product lead when the issue names no squad; an
-//! escalation the lead leaves unresolved goes to the chief architect, who decides it, one fable
-//! session at a time and never on a cadence. An issue is planned again only once its `updatedAt`
-//! moved since its last planner ended, so an unchanged issue costs no read beyond the list.
+//! lead from `.agents/owners.toml` plans it, the product lead when the issue names no squad or
+//! when the squad's lead is the issue's own agent, since the agent that readies an item never
+//! implements it; an escalation the lead leaves unresolved goes to the chief architect, who
+//! decides it, one fable session at a time and never on a cadence. An issue is planned again only
+//! once its `updatedAt` moved since its last planner ended, so an unchanged issue costs no read
+//! beyond the list. The seed session's own issue is not planned until the seed's hand-off posts
+//! its lease; after that only the chief architect, whose seed scope it is, plans it.
 
 use anyhow::Result;
 
@@ -13,6 +16,7 @@ use crate::config::session::ItemStatus;
 use crate::kit::CHIEF_ARCHITECT;
 use crate::orchestrate::issue::{Issue, status_label};
 use crate::orchestrate::launch;
+use crate::orchestrate::records;
 
 const PRODUCT_LEAD: &str = "product-lead";
 const PLANNED: &[ItemStatus] = &[
@@ -20,7 +24,7 @@ const PLANNED: &[ItemStatus] = &[
     ItemStatus::Proposed,
     ItemStatus::Blocked,
 ];
-const FINISH: &str = "Finish with cargo xtask kit handoff --item {n} --draft '<handoff.v1 JSON>' (skill grdr-handoff).";
+const FINISH: &str = "Finish by writing the handoff.v1 JSON to .agent/state/handoff-{n}-{agent}.json with the Write tool and running cargo xtask kit handoff --item {n} (skill grdr-handoff).";
 
 impl Dispatcher<'_> {
     pub(super) fn plan(&mut self) -> Result<()> {
@@ -33,7 +37,10 @@ impl Dispatcher<'_> {
                 if self.assists_for(Purpose::Plan) >= capacity {
                     return Ok(());
                 }
-                if self.assisting(summary.number) || self.held().contains(&summary.number) {
+                if self.assisting(summary.number)
+                    || self.held().contains(&summary.number)
+                    || self.awaits_seed_handoff(&summary)?
+                {
                     continue;
                 }
                 let Some(agent) = self.planner_for(&summary, *status) else {
@@ -64,16 +71,21 @@ impl Dispatcher<'_> {
         Ok(())
     }
 
-    /// The squad's lead, or the product lead; the chief architect for an escalation its lead
-    /// already saw and left as it was; nobody for an issue unchanged since its last planner.
-    /// `issue` is the list entry, whose labels and `updatedAt` are all this needs.
+    /// The squad's lead, or the product lead when there is no squad lead or it is the issue's
+    /// own agent; the chief architect for the seed's issue and for an escalation its lead already
+    /// saw and left as it was; nobody for an issue unchanged since its last planner. `issue` is
+    /// the list entry, whose labels and `updatedAt` are all this needs.
     fn planner_for(&self, issue: &Issue, status: ItemStatus) -> Option<String> {
-        let lead = issue
-            .work_item()
-            .squad
-            .and_then(|squad| self.squad_leads.get(&squad).cloned())
-            .filter(|lead| self.kit.roster.agent(lead).is_some())
-            .unwrap_or_else(|| PRODUCT_LEAD.to_owned());
+        let item = issue.work_item();
+        let lead = if self.is_seed_issue(issue) {
+            CHIEF_ARCHITECT.to_owned()
+        } else {
+            item.squad
+                .and_then(|squad| self.squad_leads.get(&squad).cloned())
+                .filter(|lead| self.kit.roster.agent(lead).is_some())
+                .filter(|lead| item.agent.as_ref() != Some(lead))
+                .unwrap_or_else(|| PRODUCT_LEAD.to_owned())
+        };
         let chosen = match self.assisted.planned.get(&issue.number) {
             Some(last) if last.updated_at == issue.updated_at => {
                 let escalate = status == ItemStatus::Escalated && last.agent != CHIEF_ARCHITECT;
@@ -82,6 +94,24 @@ impl Dispatcher<'_> {
             _ => lead,
         };
         self.kit.roster.agent(&chosen).is_some().then_some(chosen)
+    }
+
+    /// The issue `.agents/kit/seed-scope.toml` reserves for the seed session.
+    pub(super) fn is_seed_issue(&self, issue: &Issue) -> bool {
+        self.kit
+            .seed
+            .as_ref()
+            .is_some_and(|seed| seed.names_issue(&issue.title))
+    }
+
+    /// Whether `issue` is the seed's, still proposed with no `lease.v1`: the seed's hand-off posts
+    /// one as it moves the issue into review. `issue` may be a list entry without comments.
+    pub(super) fn awaits_seed_handoff(&self, issue: &Issue) -> Result<bool> {
+        if !self.is_seed_issue(issue) || issue.status() != Some(ItemStatus::Proposed) {
+            return Ok(false);
+        }
+        let full = self.tracker.issue(issue.number)?;
+        Ok(records::current_lease(&records::records(&full), issue.number).is_none())
     }
 
     /// `.agents/kit/prompts/dispatch-plan-<status>.md` when present, otherwise one line. The
@@ -114,7 +144,8 @@ impl Dispatcher<'_> {
             ),
         };
         let number = n.to_string();
-        let text = format!("{line} {}", FINISH.replace("{n}", &number));
+        let finish = FINISH.replace("{n}", &number).replace("{agent}", agent);
+        let text = format!("{line} {finish}");
         Ok(self
             .template(kind, &[("item", number.as_str()), ("agent", agent)])?
             .unwrap_or(text))

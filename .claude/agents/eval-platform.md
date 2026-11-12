@@ -3,8 +3,8 @@ name: eval-platform
 description: "Runs a change on every Tier 1 cell and reports parity. Use on sensor, daemon, adapter, installer and sandbox changes."
 model: claude-sonnet-5-5
 effort: medium
-tools: Read, Grep, Glob, Bash, Skill, WebFetch, WebSearch
-disallowedTools: Edit, Write, NotebookEdit, PowerShell, Agent
+tools: Read, Grep, Glob, Bash, Skill, Write, WebFetch, WebSearch
+disallowedTools: Edit, NotebookEdit, PowerShell, Agent
 permissionMode: dontAsk
 maxTurns: 60
 skills:
