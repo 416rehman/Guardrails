@@ -90,9 +90,9 @@ roles. Follow it and stop after its last step; later sessions use this definitio
 
 Protected files: the file tools never write a protected path, in the seed session or a
 protected-change lease, because the project's permission rules deny them all. Write or edit the
-copy at .agent/state/place/<path> (`cargo xtask kit place --stage <path>` copies the current
-file there), then run `cargo xtask kit place <path>`, which checks your scope and puts it in
-place.
+copy at .agent/state/place/<path>.staged (`cargo xtask kit place --stage <path>` copies the
+current file there), then run `cargo xtask kit place <path>`, which checks your scope and puts
+it in place.
 
 Hand-off: a handoff.v1 comment on the issue you were started on, posted with
 `cargo xtask kit handoff --item <n> --draft '<handoff.v1 JSON>'`, listing every file you wrote,

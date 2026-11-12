@@ -54,16 +54,16 @@ impl ProtectedPaths {
         GlobList::new(&self.paths, Case::Insensitive)
     }
 
-    /// The permission rule that denies edits to one protected glob: `./` anchors a root path,
-    /// a `**/` glob stays bare (team/03 section 4).
-    pub fn edit_rules(&self) -> Vec<String> {
+    /// The permission rule that denies edits to one protected glob: `anchor` before a root path,
+    /// a `**/` glob bare (team/03 section 4).
+    pub fn edit_rules(&self, anchor: &str) -> Vec<String> {
         self.paths
             .iter()
             .map(|path| {
                 if path.starts_with("**/") {
                     format!("Edit({path})")
                 } else {
-                    format!("Edit(./{path})")
+                    format!("Edit({anchor}{path})")
                 }
             })
             .collect()
@@ -110,13 +110,10 @@ mod tests {
             paths: vec!["Cargo.toml".into(), "**/*.snap".into(), ".claude/**".into()],
         };
         assert_eq!(
-            protected.edit_rules(),
-            vec![
-                "Edit(./Cargo.toml)",
-                "Edit(**/*.snap)",
-                "Edit(./.claude/**)"
-            ]
+            protected.edit_rules("/"),
+            vec!["Edit(/Cargo.toml)", "Edit(**/*.snap)", "Edit(/.claude/**)"]
         );
+        assert_eq!(protected.edit_rules("./")[2], "Edit(./.claude/**)");
         assert!(protected.globs().unwrap().is_match("CARGO.toml"));
     }
 }

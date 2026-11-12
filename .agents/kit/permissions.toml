@@ -15,7 +15,8 @@
 [permissions]
 default_mode = "default"
 disable_bypass = "disable"
-# kit render adds one Edit deny rule per entry of protected-paths.toml. No hook decision overrides
+# kit render adds one Edit deny rule per entry of protected-paths.toml, a root path anchored with
+# `/` because a one-segment `./x/**` deny rule matches at any depth. No hook decision overrides
 # a deny rule, so a widened session (the seed, a protected-change lease) writes its protected
 # paths through `cargo xtask kit place`, a subprocess these rules do not see, which holds it to
 # the same scope guard-path does. The issue snapshot and the kit binary sit in git-ignored

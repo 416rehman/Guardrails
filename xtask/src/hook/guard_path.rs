@@ -55,7 +55,10 @@ const AGENT_DRAFTS: &[&str] = &[
     ".agent/state/place/**",
 ];
 /// Where a widened session stages the protected files `cargo xtask kit place` puts in place.
-pub const PLACE_DIR: &str = ".agent/state/place";
+const PLACE_DIR: &str = ".agent/state/place";
+/// Ends a staged copy's name, so no `**/` protected glob (`**/AGENTS.md`, `**/*.snap`) denies
+/// the copy to the file tools.
+const PLACE_SUFFIX: &str = ".staged";
 
 /// Files under the home directory that configure every later session: Claude Code's settings
 /// and the configuration of git and cargo. Claude Code's and gh's own directories are wherever
@@ -108,6 +111,11 @@ impl KitState {
     pub fn is_kit_written(&self, path: &str) -> bool {
         self.state.is_match(path) && !self.is_draft(path)
     }
+}
+
+/// Where a widened session writes its copy of `path` for `cargo xtask kit place`.
+pub fn staged_path(path: &str) -> String {
+    format!("{PLACE_DIR}/{path}{PLACE_SUFFIX}")
 }
 
 pub fn run(context: &Context) -> Result<Outcome> {
@@ -227,7 +235,8 @@ fn verdict(context: &Context, identity: &Identity, raw: &str) -> Result<Verdict>
     if protected.is_match(text) {
         let reason = if in_scope(text) {
             format!(
-                "{path} is a protected path in this session's scope, and the project's permission rules deny every protected path to the file tools. Stage it instead: `cargo xtask kit place --stage {path}` copies the current file to {PLACE_DIR}/{path} (skip that for a new file); edit or write that copy, then run `cargo xtask kit place {path}`"
+                "{path} is a protected path in this session's scope, and the project's permission rules deny every protected path to the file tools. Stage it instead: `cargo xtask kit place --stage {path}` copies the current file to {} (skip that for a new file); edit or write that copy, then run `cargo xtask kit place {path}`",
+                staged_path(path.as_str())
             )
         } else {
             format!(
@@ -417,7 +426,7 @@ mod tests {
             ".agent/state/research-7.md",
             ".agent/state/grdr-core.AGENTS.draft.md",
             ".agent/evidence/expectations-7.jsonl",
-            ".agent/state/place/AGENTS.md",
+            ".agent/state/place/AGENTS.md.staged",
         ] {
             assert!(kit_state.is_draft(draft), "{draft}");
         }

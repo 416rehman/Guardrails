@@ -37,6 +37,14 @@ const REPOSITORY_VARIABLE: &str = "GH_REPO";
 const REPOSITORY_PLACEHOLDER: &str = "{repository}";
 const MARKETPLACE_PLACEHOLDER: &str = "{marketplace}";
 const WORKFLOW_TOOL: &str = "Workflow";
+/// How the project file anchors a protected root path. Claude Code reads a deny rule whose path
+/// has one segment, such as `./.github/**` or `./AGENTS.md`, at any depth, which would also deny
+/// the staged copies of `kit place` and every nested `spec/` or `security/` directory; `/`
+/// anchors it at the project root, the session's working directory.
+const PROJECT_ANCHOR: &str = "/";
+/// Managed settings keep `./`, since Claude Code documents `/` only for project, user and
+/// `--settings` files; a single-segment rule there over-denies nested paths rather than miss one.
+const MANAGED_ANCHOR: &str = "./";
 
 /// The entries of one event that share a matcher.
 struct MatcherGroup<'a> {
@@ -162,7 +170,12 @@ pub fn managed(repo: &Repo, kit: &Kit, group: &str, document: &toml::Table) -> R
     }
     permissions.insert(
         "deny".into(),
-        json!(dedupe(kit.protected.edit_rules().into_iter().chain(listed))),
+        json!(dedupe(
+            kit.protected
+                .edit_rules(MANAGED_ANCHOR)
+                .into_iter()
+                .chain(listed)
+        )),
     );
     if !asked.is_empty() {
         permissions.insert("ask".into(), json!(asked));
@@ -219,7 +232,7 @@ fn permissions(kit: &Kit, workflows: &[String]) -> Result<Value> {
     let asked = expanded(kit, source.ask.clone())?;
     let deny = dedupe(
         kit.protected
-            .edit_rules()
+            .edit_rules(PROJECT_ANCHOR)
             .into_iter()
             .chain(listed.iter().cloned()),
     );

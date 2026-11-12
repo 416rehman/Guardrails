@@ -2,10 +2,10 @@
 //! chief architect's seed session or a protected-change lease, writes the protected paths its
 //! scope covers. kit render denies every protected path to the file tools in
 //! `.claude/settings.json`, and no hook decision overrides a deny rule, so the session writes its
-//! copy at `.agent/state/place/<path>` and this command puts it in place. It holds the session to
-//! what guard-path holds it to: an agent identity, a scope that widens ([`allowance`]) and covers
-//! the path, never the kit's own state, never through a link. `--stage` copies the current file
-//! to the staging path first, so it can be edited there.
+//! copy at `.agent/state/place/<path>.staged` and this command puts it in place. It holds the
+//! session to what guard-path holds it to: an agent identity, a scope that widens ([`allowance`])
+//! and covers the path, never the kit's own state, never through a link. `--stage` copies the
+//! current file to the staging path first, so it can be edited there.
 
 use std::fs;
 use std::path::Path;
@@ -18,7 +18,7 @@ use crate::config::session::Session;
 use crate::gates::protected::allowance;
 use crate::git::Base;
 use crate::globs::GlobList;
-use crate::hook::guard_path::{KitState, PLACE_DIR};
+use crate::hook::guard_path::{KitState, staged_path};
 use crate::paths::{Located, RepoPath};
 use crate::repo::Repo;
 
@@ -101,7 +101,7 @@ fn targets(repo: &Repo, scope: &GlobList, raw: &[String], cwd: &Path) -> Result<
 
 /// One step for one path, and the line that reports it.
 fn run(repo: &Repo, step: Step, target: &RepoPath) -> Result<String> {
-    let staged_relative = format!("{PLACE_DIR}/{target}");
+    let staged_relative = staged_path(target.as_str());
     let staged = repo.path(&staged_relative);
     let destination = repo.path(target.as_str());
     repo.refuse_links(target.as_str())?;
@@ -200,7 +200,7 @@ mod tests {
                 .unwrap()
                 .contains("staged AGENTS.md")
         );
-        let staged = repo.path(".agent/state/place/AGENTS.md");
+        let staged = repo.path(".agent/state/place/AGENTS.md.staged");
         assert_eq!(fs::read_to_string(&staged).unwrap(), "# old\n");
         fs::write(&staged, "# new\n").unwrap();
         assert_eq!(

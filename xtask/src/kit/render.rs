@@ -261,9 +261,9 @@ mod tests {
         assert_eq!(
             &deny[..3],
             &[
-                "Edit(./Cargo.toml)",
+                "Edit(/Cargo.toml)",
                 "Edit(**/AGENTS.md)",
-                "Edit(./.claude/**)"
+                "Edit(/.claude/**)"
             ]
         );
         assert!(deny.contains(&"Bash(git push --force *)"));

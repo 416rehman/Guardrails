@@ -29,7 +29,7 @@
     {"name": "protected-lease-places-its-write-set", "preset": "protected", "env": {"GRDR_AGENT": "lead-agent-kit", "GRDR_WORK_ITEM": "7", "GRDR_SCOPE": "protected"},
      "input": {"tool_name": "Write", "tool_input": {"file_path": ".agents/kit/hooks.toml"}}, "expect": "block", "contains": "cargo xtask kit place .agents/kit/hooks.toml"},
     {"name": "protected-lease-stages-its-write-set", "preset": "protected", "env": {"GRDR_AGENT": "lead-agent-kit", "GRDR_WORK_ITEM": "7", "GRDR_SCOPE": "protected"},
-     "input": {"tool_name": "Write", "tool_input": {"file_path": ".agent/state/place/.agents/kit/hooks.toml"}}, "expect": "approve"},
+     "input": {"tool_name": "Write", "tool_input": {"file_path": ".agent/state/place/.agents/kit/hooks.toml.staged"}}, "expect": "approve"},
     {"name": "person-write-is-no-approval", "preset": "no-snapshot", "env": {},
      "input": {"tool_name": "Write", "tool_input": {"file_path": "crates/a/src/new.rs"}}, "expect": "allow"},
     {"name": "agent-outside-the-repository-is-no-approval", "preset": "no-snapshot", "env": {"GRDR_AGENT": "impl-rust"},
