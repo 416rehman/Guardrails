@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a vulnerability (private)
+    url: https://github.com/416rehman/Guardrails/security/advisories/new
+    about: Never open a public issue for a vulnerability. See SECURITY.md.
+  - name: Propose a change to a public surface (RFC)
+    url: https://github.com/416rehman/Guardrails/blob/main/rfcs/0000-template.md
+    about: Spine, public crates, wire formats, pack format and Cedar schema need an RFC.

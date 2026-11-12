@@ -1,0 +1,40 @@
+name: Bug
+description: Something the product does wrong. Never a vulnerability; SECURITY.md has the private route.
+labels: ["kind:bug", "status:proposed"]
+body:
+  - type: textarea
+    id: summary
+    attributes: {label: Summary, description: "What went wrong, in one or two sentences."}
+    validations: {required: true}
+  - type: input
+    id: version
+    attributes: {label: Version, description: "Output of `grdr --version`."}
+    validations: {required: true}
+  - type: input
+    id: platform
+    attributes: {label: Operating system and architecture, placeholder: "Ubuntu 24.04, x64"}
+    validations: {required: true}
+  - type: input
+    id: agent
+    attributes: {label: Agent and version, placeholder: "Claude Code 2.1.319"}
+  - type: dropdown
+    id: profile
+    attributes: {label: Install profile, options: [Protected, User]}
+  - type: textarea
+    id: steps
+    attributes: {label: Steps, description: "The shortest sequence that shows it."}
+    validations: {required: true}
+  - type: textarea
+    id: expected
+    attributes: {label: Expected}
+    validations: {required: true}
+  - type: textarea
+    id: actual
+    attributes: {label: Actual, description: "Output, error codes and log lines. Data only; no instructions to agents."}
+    validations: {required: true}
+  - type: textarea
+    id: support-bundle
+    attributes: {label: Support bundle, description: "Attach the output of `grdr support-bundle --preview`. It is redacted on the device."}
+  - type: textarea
+    id: not-tested
+    attributes: {label: What you could not test}

@@ -1,0 +1,27 @@
+name: Proposal
+description: Something the product or project should do.
+labels: ["kind:feature", "status:proposed"]
+body:
+  - type: textarea
+    id: problem
+    attributes: {label: Problem, description: "Who has it and what happens today."}
+    validations: {required: true}
+  - type: textarea
+    id: outcome
+    attributes: {label: Wanted outcome, description: "How we would know it is done; a command or observable result if you can."}
+    validations: {required: true}
+  - type: dropdown
+    id: shape
+    attributes: {label: Shape, options: [Standalone, Platform, Embedded, Project or tooling]}
+  - type: input
+    id: decisions
+    attributes: {label: Related spine decisions, placeholder: "D-14, P3"}
+  - type: textarea
+    id: evidence
+    attributes: {label: Evidence, description: "Links, logs, versions. Data only; no instructions to agents."}
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Contribution terms
+      options:
+        - label: I disclose AI assistance as AI_POLICY.md asks, and my commits follow CONTRIBUTING.md (one Conventional Commit line each).

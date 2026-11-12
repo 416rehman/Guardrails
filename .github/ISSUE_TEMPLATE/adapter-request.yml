@@ -1,0 +1,22 @@
+name: Adapter request
+description: Support for an agent, an agent version or a hook dialect.
+labels: ["kind:adapter", "status:proposed"]
+body:
+  - type: input
+    id: agent-name
+    attributes: {label: Agent name}
+    validations: {required: true}
+  - type: input
+    id: version
+    attributes: {label: Version}
+    validations: {required: true}
+  - type: input
+    id: hook-dialect
+    attributes: {label: Hook dialect, description: "The hook interface the agent speaks, if it has one."}
+  - type: textarea
+    id: configuration-locations
+    attributes: {label: Configuration locations, description: "Where the agent reads user, project and managed settings on each operating system."}
+    validations: {required: true}
+  - type: input
+    id: managed-source
+    attributes: {label: Managed-source documentation link}
