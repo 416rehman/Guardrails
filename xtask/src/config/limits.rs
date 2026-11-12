@@ -276,6 +276,7 @@ pub struct GitLimits {
 #[serde(deny_unknown_fields)]
 pub struct ProcessLimits {
     pub poll_ms: u64,
+    pub drain_grace_s: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -412,6 +413,10 @@ impl GitLimits {
 impl ProcessLimits {
     pub fn poll(&self) -> Duration {
         Duration::from_millis(self.poll_ms)
+    }
+
+    pub fn drain_grace(&self) -> Duration {
+        Duration::from_secs(self.drain_grace_s)
     }
 }
 

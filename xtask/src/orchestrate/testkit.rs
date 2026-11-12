@@ -17,12 +17,14 @@ use super::tracker::{
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
-const FAKE_CMD: &str = "@echo off\r\nsetlocal EnableExtensions\r\nset \"dir=%~dp0\"\r\nset n=0\r\nif exist \"%dir%count\" set /p n=<\"%dir%count\"\r\nset /a n=n+1\r\n>\"%dir%count\" echo %n%\r\n>>\"%dir%calls.log\" echo %*\r\n>\"%dir%env%n%.txt\" echo agent=%GRDR_AGENT% item=%GRDR_WORK_ITEM% model=%GRDR_MODEL% scope=%GRDR_SCOPE%\r\nfindstr \"^\" > \"%dir%stdin%n%.txt\"\r\nset s=0\r\nif exist \"%dir%sleep%n%.txt\" set /p s=<\"%dir%sleep%n%.txt\"\r\nif not \"%s%\"==\"0\" ping -n %s% 127.0.0.1 >NUL\r\nset target=\r\nif exist \"%dir%target%n%.txt\" set /p target=<\"%dir%target%n%.txt\"\r\nif defined target copy /Y \"%dir%write%n%.txt\" \"%target%\" >NUL\r\nif exist \"%dir%out%n%.txt\" type \"%dir%out%n%.txt\"\r\nif exist \"%dir%err%n%.txt\" type \"%dir%err%n%.txt\" 1>&2\r\nset code=0\r\nif exist \"%dir%code%n%.txt\" set /p code=<\"%dir%code%n%.txt\"\r\nexit /b %code%\r\n";
-const FAKE_SH: &str = "#!/bin/sh\ndir=$(dirname \"$0\")\nn=0\n[ -f \"$dir/count\" ] && n=$(cat \"$dir/count\")\nn=$((n+1))\necho \"$n\" > \"$dir/count\"\necho \"$*\" >> \"$dir/calls.log\"\necho \"agent=$GRDR_AGENT item=$GRDR_WORK_ITEM model=$GRDR_MODEL scope=$GRDR_SCOPE\" > \"$dir/env$n.txt\"\ncat > \"$dir/stdin$n.txt\"\n[ -f \"$dir/sleep$n.txt\" ] && sleep \"$(cat \"$dir/sleep$n.txt\")\"\n[ -f \"$dir/target$n.txt\" ] && cp \"$dir/write$n.txt\" \"$(cat \"$dir/target$n.txt\")\"\n[ -f \"$dir/out$n.txt\" ] && cat \"$dir/out$n.txt\"\n[ -f \"$dir/err$n.txt\" ] && cat \"$dir/err$n.txt\" >&2\ncode=0\n[ -f \"$dir/code$n.txt\" ] && code=$(cat \"$dir/code$n.txt\")\nexit \"$code\"\n";
+const FAKE_CMD: &str = "@echo off\r\nsetlocal EnableExtensions\r\nset \"dir=%~dp0\"\r\n:lock\r\n2>NUL mkdir \"%dir%lock\" || (ping -n 1 127.0.0.1 >NUL & goto lock)\r\nset n=0\r\nif exist \"%dir%count\" set /p n=<\"%dir%count\"\r\nset /a n=n+1\r\n>\"%dir%count\" echo %n%\r\n>>\"%dir%calls.log\" echo %*\r\nrmdir \"%dir%lock\"\r\n>\"%dir%env%n%.txt\" echo agent=%GRDR_AGENT% item=%GRDR_WORK_ITEM% model=%GRDR_MODEL% scope=%GRDR_SCOPE%\r\nfindstr \"^\" > \"%dir%stdin%n%.txt\"\r\nset s=0\r\nif exist \"%dir%sleep%n%.txt\" set /p s=<\"%dir%sleep%n%.txt\"\r\nif not \"%s%\"==\"0\" ping -n %s% 127.0.0.1 >NUL\r\nset target=\r\nif exist \"%dir%target%n%.txt\" set /p target=<\"%dir%target%n%.txt\"\r\nif defined target copy /Y \"%dir%write%n%.txt\" \"%target%\" >NUL\r\nif exist \"%dir%out%n%.txt\" type \"%dir%out%n%.txt\"\r\nif exist \"%dir%err%n%.txt\" type \"%dir%err%n%.txt\" 1>&2\r\nset code=0\r\nif exist \"%dir%code%n%.txt\" set /p code=<\"%dir%code%n%.txt\"\r\nexit /b %code%\r\n";
+const FAKE_SH: &str = "#!/bin/sh\ndir=$(dirname \"$0\")\nuntil mkdir \"$dir/lock\" 2>/dev/null; do sleep 0.01; done\nn=0\n[ -f \"$dir/count\" ] && n=$(cat \"$dir/count\")\nn=$((n+1))\necho \"$n\" > \"$dir/count\"\necho \"$*\" >> \"$dir/calls.log\"\nrmdir \"$dir/lock\"\necho \"agent=$GRDR_AGENT item=$GRDR_WORK_ITEM model=$GRDR_MODEL scope=$GRDR_SCOPE\" > \"$dir/env$n.txt\"\ncat > \"$dir/stdin$n.txt\"\n[ -f \"$dir/sleep$n.txt\" ] && sleep \"$(cat \"$dir/sleep$n.txt\")\"\n[ -f \"$dir/target$n.txt\" ] && cp \"$dir/write$n.txt\" \"$(cat \"$dir/target$n.txt\")\"\n[ -f \"$dir/out$n.txt\" ] && cat \"$dir/out$n.txt\"\n[ -f \"$dir/err$n.txt\" ] && cat \"$dir/err$n.txt\" >&2\ncode=0\n[ -f \"$dir/code$n.txt\" ] && code=$(cat \"$dir/code$n.txt\")\nexit \"$code\"\n";
 
 /// A scripted executable in a scratch directory: call `n` records its arguments, its `GRDR_*`
 /// environment and its stdin, sleeps `sleep<n>.txt` seconds, copies `write<n>.txt` to the path in
-/// `target<n>.txt`, prints `out<n>.txt` and `err<n>.txt` and exits with `code<n>.txt`.
+/// `target<n>.txt`, prints `out<n>.txt` and `err<n>.txt` and exits with `code<n>.txt`. Calls
+/// that start together, such as a lane's evaluators, take their numbers under a lock directory,
+/// so no two share a number and no `calls.log` line is lost.
 pub struct FakeProgram {
     dir: PathBuf,
     program: PathBuf,
@@ -59,8 +61,7 @@ impl FakeProgram {
             ("fake", FAKE_SH)
         };
         let program = dir.join(file);
-        fs::write(&program, script).unwrap();
-        make_executable(&program);
+        write_program(&program, script);
         FakeProgram { dir, program }
     }
 
@@ -398,7 +399,8 @@ pub fn body(agent: &str, write_set: &[&str], acceptance: &str) -> String {
     )
 }
 
-/// Runs git in `root` as a test identity; panics when it fails.
+/// Runs git in `root` as a test identity; panics when it fails. Bare repositories are allowed
+/// because agent sessions run git with `safe.bareRepository=explicit`.
 pub fn git(root: &Path, args: &[&str]) -> String {
     let output = std::process::Command::new("git")
         .arg("-C")
@@ -410,6 +412,8 @@ pub fn git(root: &Path, args: &[&str]) -> String {
             "user.email=test@example.invalid",
             "-c",
             "commit.gpgsign=false",
+            "-c",
+            "safe.bareRepository=all",
         ])
         .args(args)
         .output()
@@ -429,11 +433,24 @@ pub fn init_git(root: &Path) {
     git(root, &["commit", "--quiet", "-m", "chore: seed"]);
 }
 
+/// Writes `script` to `path` as an executable. On Unix a `cp` child writes it: a child that
+/// another test thread forks while this process holds the file open for writing keeps that
+/// handle until it execs, and running the file meanwhile fails with "Text file busy".
 #[cfg(unix)]
-fn make_executable(path: &Path) {
+pub fn write_program(path: &Path, script: &str) {
     use std::os::unix::fs::PermissionsExt;
+    let source = path.with_extension("src");
+    fs::write(&source, script).unwrap();
+    let copied = std::process::Command::new("cp")
+        .arg(&source)
+        .arg(path)
+        .status()
+        .unwrap();
+    assert!(copied.success(), "writing {}", path.display());
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
 }
 
 #[cfg(not(unix))]
-fn make_executable(_path: &Path) {}
+pub fn write_program(path: &Path, script: &str) {
+    fs::write(path, script).unwrap();
+}

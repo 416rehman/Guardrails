@@ -426,10 +426,10 @@ pub fn program_from(lookup: impl Fn(&str) -> Option<OsString>) -> PathBuf {
 #[cfg(test)]
 pub(crate) mod tests {
     use std::fs;
-    use std::path::Path;
     use std::sync::{Mutex, MutexGuard};
 
     use super::*;
+    use crate::orchestrate::testkit::write_program;
 
     static SERIAL: Mutex<()> = Mutex::new(());
 
@@ -467,8 +467,7 @@ pub(crate) mod tests {
             } else {
                 dir.join("gh")
             };
-            fs::write(&program, if cfg!(windows) { FAKE_CMD } else { FAKE_SH }).unwrap();
-            make_executable(&program);
+            write_program(&program, if cfg!(windows) { FAKE_CMD } else { FAKE_SH });
             FakeGh { dir, program }
         }
 
@@ -506,15 +505,6 @@ pub(crate) mod tests {
             let _ = fs::remove_dir_all(&self.dir);
         }
     }
-
-    #[cfg(unix)]
-    fn make_executable(path: &Path) {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
-    }
-
-    #[cfg(not(unix))]
-    fn make_executable(_path: &Path) {}
 
     #[test]
     fn the_environment_variable_names_the_program() {
