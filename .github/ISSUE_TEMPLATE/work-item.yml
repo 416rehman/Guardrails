@@ -106,7 +106,7 @@ body:
     id: write-set
     attributes:
       label: Write set
-      description: Globs the implementer may change, one per line. Protected paths are never in it.
+      description: Globs the implementer may change, one per line. A write set that reaches a protected path makes this a protected-change item, whose agent is lead-agent-kit or chief-architect.
       render: text
   - type: textarea
     id: spec
@@ -125,10 +125,11 @@ body:
     attributes:
       label: Acceptance criteria
       description: >-
-        One criterion per line: id, the command that checks it, the expected result and the
-        named oracle. The ready.v1 digest covers this section; any change after readying
-        returns the issue to status:proposed.
-      placeholder: "AC-1 | cargo nextest run -p grdr-core shell_heredoc | exit 0 | oracle: bash under exec tracing (D-10)"
+        One fenced JSON block, schema grdr.agents.acceptance.v1 (team/06 section 6.4): each
+        criterion has an id, the check command, the expected result and a named oracle that
+        is independent of the code under test. The ready.v1 digest covers this section; any
+        change after readying returns the issue to status:proposed.
+      placeholder: '{"schema": "grdr.agents.acceptance.v1", "item": "#<n>", "criteria": [{"id": "AC-1", "check": "cargo nextest run -p grdr-core shell_heredoc", "expect": "exit 0", "oracle": "bash under exec tracing (D-10)"}]}'
   - type: dropdown
     id: tier
     attributes:

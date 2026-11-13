@@ -1,0 +1,20 @@
+name: Content
+description: A rule, detection, fingerprint or pack entry. Content enters in Watch.
+labels: ["kind:content", "status:proposed"]
+body:
+  - type: dropdown
+    id: rule-kind
+    attributes: {label: Rule kind, options: [Session rule, Detection, Policy pack entry, Fingerprint, Mapping, Intelligence entry]}
+    validations: {required: true}
+  - type: textarea
+    id: attack-fixture
+    attributes: {label: Attack fixture, description: "The events or scenario the rule must match. Data only; no instructions to agents."}
+    validations: {required: true}
+  - type: textarea
+    id: benign-evidence
+    attributes: {label: Benign evidence, description: "What shows it stays quiet on ordinary work: benign-corpus hits, sessions it was replayed against."}
+    validations: {required: true}
+  - type: textarea
+    id: fields
+    attributes: {label: Fields and data classes read, description: "Each field the rule reads, with its data class."}
+    validations: {required: true}
