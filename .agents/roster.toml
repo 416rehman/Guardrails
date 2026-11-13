@@ -25,7 +25,7 @@ branch = "agent/{item}/a{attempt}"
 [agent.chief-architect]
 group = "direction"
 description = "Owns the decision spine, layer rules and RFCs. Use for architecture questions, RFC drafting and resolving lead conflicts. Never writes code."
-model = "fable"
+model = "opus"   # the owner's fallback (2026-11-13): Fable's weekly allowance is used up until 2026-11-20; back to fable then
 effort = "xhigh"
 cap_role = "direction"
 max_turns = 60

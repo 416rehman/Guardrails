@@ -1,7 +1,7 @@
 ---
 name: chief-architect
 description: "Owns the decision spine, layer rules and RFCs. Use for architecture questions, RFC drafting and resolving lead conflicts. Never writes code."
-model: claude-fable-5-2
+model: claude-opus-5-5
 effort: xhigh
 tools: Read, Grep, Glob, Write, Edit, WebFetch, Skill, Bash, Workflow, WebSearch
 disallowedTools: PowerShell, NotebookEdit, Agent
