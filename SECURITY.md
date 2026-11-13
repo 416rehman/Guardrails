@@ -44,6 +44,8 @@ reported to the authorities the EU Cyber Resilience Act names, on its clocks.
 
 Embargoed fixes are made in the advisory's private fork by the project's agents with network
 tools off. Report text never enters an agent session that can write in public or hold secrets.
+An embargoed fix may change a public surface without an RFC; a retroactive RFC opens when the fix
+is disclosed (GOVERNANCE.md).
 
 ## Supported versions
 

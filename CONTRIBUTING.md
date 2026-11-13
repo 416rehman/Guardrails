@@ -2,7 +2,9 @@
 
 Thank you for helping. This file covers both ways to contribute: content
 (rules, fingerprints, policy packs and other data) and code. AI_POLICY.md
-applies to every contribution, whoever or whatever wrote it.
+applies to every contribution, whoever or whatever wrote it, and
+CODE_OF_CONDUCT.md to every project space. GOVERNANCE.md says who decides
+what, and COVENANT.md what the steward commits to.
 
 ## How the project works
 
@@ -101,7 +103,9 @@ adapters).
    messages say how to fix a violation.
 5. Changes to public crates, wire formats, the pack format, the Cedar
    schema or anything else listed in GOVERNANCE.md need an accepted RFC
-   first.
+   first. Name it in the pull request body on a line `RFC: <nnnn>`; CI
+   fails a change under a path in governance/rfc-required.toml without
+   one.
 6. Changes to trust-core paths (security/trust-core.paths) need the
    security and adversarial reviews, two independent passing reviews on
    different models, and extra evidence (a reference model, differential
@@ -125,7 +129,7 @@ Fill in the template:
 
 - Work item: `Closes #<n>`.
 - Metadata: the tool and model that wrote the change, or `none` (see
-  AI_POLICY.md).
+  AI_POLICY.md), and `RFC: <nnnn>` when the change needs an RFC.
 - Testing: the commands you ran and their output.
 - Risk: what could break, and where.
 - How to revert.

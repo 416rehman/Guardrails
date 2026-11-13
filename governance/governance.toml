@@ -1,0 +1,127 @@
+# What `cargo xtask governance-check` requires of the governance files (design/30 sections 3 and
+# 13 to 16, D-03, D-61). The check reads this file at the comparison base, so a change cannot
+# relax the rules that judge it. Every listed file must exist, hold each `## ` heading in
+# `sections` and name the product as `brand/brand.toml [identity] product_name` gives it.
+
+[[file]]
+path = "COVENANT.md"
+sections = [
+  "Licences",
+  "Builds",
+  "Assets",
+  "Keys",
+  "Signing",
+  "Transfer trigger",
+  "Definitions",
+  "Assignment in escrow",
+  "Fallback",
+  "What the steward will never do",
+  "Licence review",
+  "Amendments",
+  "Succession",
+]
+
+[[file]]
+path = "GOVERNANCE.md"
+sections = [
+  "Principles",
+  "Roles",
+  "Steering group",
+  "RFCs",
+  "Becoming a maintainer",
+  "Succession",
+  "Releases and support",
+  "Conflicts of interest",
+  "Code of conduct",
+]
+
+[[file]]
+path = "AI_POLICY.md"
+sections = [
+  "The rules",
+  "What opening a pull request means",
+  "How the project's own agents land changes",
+  "Quality bar",
+  "Same gate for everyone",
+  "Security reports",
+  "Contributing elsewhere",
+]
+
+[[file]]
+path = "CONTRIBUTING.md"
+sections = [
+  "How the project works",
+  "Before you start",
+  "Content: the open lane",
+  "Code",
+  "Every pull request",
+  "Tests you cannot see",
+  "Response times",
+]
+
+[[file]]
+path = "SECURITY.md"
+sections = ["How to report", "What to include", "What happens next", "Supported versions"]
+
+[[file]]
+path = "CODE_OF_CONDUCT.md"
+sections = ["Our standard", "Scope", "Reporting", "Enforcement", "Agents"]
+
+[[file]]
+path = "MAINTAINERS.md"
+sections = ["Maintainers", "Roles"]
+
+[[file]]
+path = "ADOPTERS.md"
+sections = ["Adopters", "How to be listed"]
+
+# MAINTAINERS.md holds one fenced block in `language` with a `[[maintainer]]` table per person.
+# No agent identity holds an entry (D-61): a handle fails when it is a roster agent's name, starts
+# with one of `bot_prefixes` or ends with one of `bot_suffixes`, compared without case.
+[maintainers]
+path = "MAINTAINERS.md"
+language = "toml"
+bot_prefixes = ["app/"]
+bot_suffixes = ["[bot]", "-bot", "_bot"]
+
+# Human gates owner instruction 7 removed: no person is a step in building, reviewing, landing or
+# releasing. A listed file that contains a phrase, compared without case, fails.
+[[removed_gate]]
+phrase = "human release manager"
+removed = "the release manager is the lead-release agent (owner instruction 7, replacing R-49)"
+
+[[removed_gate]]
+phrase = "release manager signs"
+removed = "artefacts are signed keylessly by the release pipeline (owner instruction 7)"
+
+[[removed_gate]]
+phrase = "batch sign"
+removed = "batch signing by a person is gone (owner instruction 7, spine version 5)"
+
+[[removed_gate]]
+phrase = "owner approval"
+removed = "the owner approves nothing that lands (owner instruction 7)"
+
+[[removed_gate]]
+phrase = "owner's approval"
+removed = "the owner approves nothing that lands (owner instruction 7)"
+
+[[removed_gate]]
+phrase = "human approval"
+removed = "content and code land on evaluator passes, never a person's approval (owner instruction 7, replacing R-58)"
+
+[[removed_gate]]
+phrase = "maintainer approval"
+removed = "a maintainer's review adds evidence and never gates (owner instruction 7)"
+
+[[removed_gate]]
+phrase = "required code-owner review"
+removed = "CODEOWNERS requests review and never requires it (team/06 section 8.2)"
+
+[[removed_gate]]
+phrase = "developer certificate of origin"
+removed = "the project has no DCO and no sign-off (owner instructions 7 and 27)"
+
+[[removed_gate]]
+phrase = "signed-off-by:"
+removed = "commits carry no trailer (owner instructions 7 and 27)"

@@ -26,6 +26,7 @@ usage: cargo xtask <command> [options]
   prove --arm before|after|revert [...]             the three-arm proof of a bug fix
   audit run <id> [...]                              run one audit prompt of audits/library.toml
   github check                                      check gh, its login, the repository and its settings
+  governance-check [--base <ref>]                   check the governance files (design/30 sections 13 to 16)
 ";
 
 const NOT_BUILT: &[&str] = &[
@@ -60,6 +61,7 @@ fn main() -> ExitCode {
         "queue" => report(dispatch::merge::command(rest)),
         "labels" | "risk" | "prove" | "audit" => report(orchestrate::run(command, rest)),
         "github" => report(github::command(rest)),
+        "governance-check" => report(gates::governance::command(rest)),
         "help" | "--help" | "-h" => {
             print!("{USAGE}");
             ExitCode::SUCCESS

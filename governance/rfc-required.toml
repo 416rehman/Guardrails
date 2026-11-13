@@ -1,0 +1,11 @@
+# What the `rfc-required` gate of `verify --ci` requires (D-61, design/30 section 3). The gate
+# reads this file at the comparison base. A pull request whose diff touches a path in `paths` fails
+# unless its body has a line `<marker> <number>`, the number `digits` digits long, naming a file
+# `<directory>/<number>-<title>.md` at the base. Numbers in `reserved` name no RFC (0000 is the
+# template). A new public surface is one more entry in `paths`; the `buf breaking` input joins
+# with WI-0014.
+paths = ["proto/**", "schema/**"]
+directory = "rfcs"
+marker = "RFC:"
+digits = 4
+reserved = ["0000"]

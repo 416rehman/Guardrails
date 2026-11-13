@@ -8,12 +8,14 @@
 pub mod acceptance;
 pub mod commits;
 pub mod evidence;
+pub mod governance;
 pub mod interface;
 pub mod models;
 pub mod plan;
 pub mod pnpm;
 pub mod prose;
 pub mod protected;
+pub mod rfc;
 pub mod run;
 pub mod skills;
 pub mod structure;
