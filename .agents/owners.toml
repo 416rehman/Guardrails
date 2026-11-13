@@ -35,13 +35,15 @@ paths = ["crates/grdr-core/src/discover.rs", "crates/grdr-core/src/discover/**",
 [squad.adapters]
 alias = ["SQ-03"]
 lead = "lead-adapters"
-paths = ["crates/grdr-agents/**", "programs/grdr-hook/**"]
+paths = ["crates/grdr-agents/**", "crates/grdr-broker/**", "crates/grdr-conformance/**",
+         "programs/grdr-hook/**"]
 
 [squad.endpoint]
 alias = ["SQ-07"]
 lead = "lead-endpoint"
 paths = ["programs/grdr-daemon/**", "programs/grdr-engine/**", "programs/grdr/**",
-         "crates/grdr-store-local/**", "crates/grdr-sandbox-engine/**"]
+         "crates/grdr-store-local/**", "crates/grdr-sandbox-engine/**",
+         "crates/grdr-sandbox-*/**", "programs/grdr-run/**"]
 
 [squad.linux]
 alias = ["SQ-04"]
@@ -51,12 +53,13 @@ paths = ["crates/grdr-sensor-linux/**", "bpf/**"]
 [squad.macos]
 alias = ["SQ-05"]
 lead = "lead-macos"
-paths = ["platform/macos/**"]
+paths = ["crates/grdr-sensor-macos/**", "platform/macos/**"]
 
 [squad.windows]
 alias = ["SQ-06"]
 lead = "lead-windows"
-paths = ["platform/windows/**"]
+paths = ["crates/grdr-sensor-windows/**", "crates/grdr-driver-windows/**",
+         "platform/windows/**"]
 
 [squad.gateway]
 alias = ["SQ-11"]
@@ -71,7 +74,10 @@ paths = []
 [squad.content]
 alias = ["SQ-08", "SQ-09"]
 lead = "lead-content"
-paths = []                         # works in the grdr-content repository
+paths = ["crates/grdr-core/src/detect.rs", "crates/grdr-core/src/detect/**",
+         "crates/grdr-core/tests/detect_*.rs", "crates/grdr-core/tests/detect_fixtures/**",
+         "crates/grdr-sigma-ref/**", "fuzz/fuzz_targets/detect_*.rs",
+         "crates/grdr-review/**"]       # the rest works in the grdr-content repository
 repository = "grdr-content"
 
 [squad.fleet]
@@ -82,17 +88,26 @@ paths = []
 [squad.server]
 alias = ["SQ-13"]
 lead = "lead-server"
-paths = []
+paths = ["programs/grdr-server/**", "crates/grdr-rel-*/**", "crates/grdr-lake/**",
+         "crates/grdr-bus-*/**", "crates/grdr-blob/**", "sdk/**",
+         "crates/grdr-ports/src/storage.rs", "crates/grdr-ports/src/storage/**",
+         "crates/grdr-ports/tests/storage_*.rs", "crates/grdr-ports-testkit/src/storage.rs",
+         "crates/grdr-ports-testkit/src/storage/**", "crates/grdr-ports-testkit/tests/storage_*.rs",
+         "crates/grdr-ports/src/tenant.rs", "crates/grdr-ports/src/tenant/**",
+         "crates/grdr-ports/tests/tenant_*.rs"]
 
 [squad.interfaces]
 alias = ["SQ-14"]
 lead = "lead-interfaces"
-paths = ["web/**", "site/**", "interface/**", "desktop/**", "programs/grdr-tray/**"]
+paths = ["web/**", "site/**", "interface/**", "desktop/**", "programs/grdr-tray/**",
+         "pnpm-workspace.yaml", "pnpm-lock.yaml", "crates/grdr-strings/**",
+         "crates/grdr-messages/**", "crates/grdr-interface-gen/**"]
 
 [squad.ecosystem]
 alias = ["SQ-15"]
 lead = "lead-ecosystem"
-paths = ["spec/**", "conformance/**"]
+paths = ["crates/grdr-export/**", "crates/grdr-integrations/**", "spec/**",
+         "conformance/**"]
 
 [squad.release]
 alias = ["SQ-16"]
