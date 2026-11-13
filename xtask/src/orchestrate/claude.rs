@@ -2,7 +2,8 @@
 //! for the dispatcher and the audit runner: every output line goes to a log, assistant turns are
 //! counted, a stall, a turn cap or a deadline ends the session, and a subscription usage limit
 //! (the strings in `.agents/harness.toml [limits]`) ends it as a pause, never as a failure.
-//! Ending a session kills its whole process tree, because the session runs under `kit launch`.
+//! Ending a session kills its whole process tree, because the session runs under `kit launch`,
+//! and empties the locks `kit launch` held, which a killed process never lets go of.
 
 use std::collections::BTreeSet;
 use std::fs::{self, File};
@@ -19,6 +20,7 @@ use serde_json::Value;
 
 use crate::config;
 use crate::config::limits::Limits;
+use crate::lock::Lock;
 use crate::repo::Repo;
 
 const SYNTHETIC_MODEL: &str = "<synthetic>";
@@ -133,6 +135,8 @@ pub struct Running {
     unnamed_turns: u32,
     result: Option<RunResult>,
     watch: Watch,
+    /// Lock files the child takes; a kill empties each that still names it.
+    locks: Vec<PathBuf>,
 }
 
 impl SessionRules {
@@ -241,7 +245,14 @@ impl Running {
             unnamed_turns: 0,
             result: None,
             watch,
+            locks: Vec::new(),
         })
+    }
+
+    /// The session with `locks`, the lock files its child takes, emptied after a kill.
+    pub fn holding(mut self, locks: Vec<PathBuf>) -> Running {
+        self.locks = locks;
+        self
     }
 
     /// Reads what arrived and returns how the session ended, once it has.
@@ -445,9 +456,14 @@ impl Running {
     fn kill(&mut self) {
         if let Process::Alive(child) = &mut self.process {
             kill_tree(child);
-            let code = child.wait().ok().and_then(|status| status.code());
+            let waited = child.wait();
+            if waited.is_ok() {
+                for lock in &self.locks {
+                    let _ = Lock::release_killed(lock, child.id());
+                }
+            }
             self.process = Process::Exited {
-                code,
+                code: waited.ok().and_then(|status| status.code()),
                 at: Instant::now(),
             };
         }

@@ -5,13 +5,15 @@
 //! forced timeout, the missing item snapshot, a fable session for a non-architect, a chief-architect
 //! resume that must carry the ownership sentence, the oversized and ill-ordered source files, the
 //! three-bool struct, and each command the deny list of team/03 section 4.1 names, plus the
-//! owner's kit rules in `rule_cases.rs`, and the widened scopes and item snapshots in
-//! `scope_cases.rs`.
+//! owner's kit rules in `rule_cases.rs`, the widened scopes and item snapshots in
+//! `scope_cases.rs`, and the kit workflow scripts' publisher commands and the review's hand-off in
+//! `workflow_cases.rs`.
 
 pub(super) mod cases;
 mod harness;
 mod rule_cases;
 mod scope_cases;
+mod workflow_cases;
 
 use std::process::ExitCode;
 
@@ -19,7 +21,7 @@ use crate::cli::{self, Spec};
 
 /// Gate V18: the self-test's failures, for `verify`.
 pub fn problems() -> anyhow::Result<Vec<String>> {
-    Ok(harness::run(None, false)?.failures().to_vec())
+    Ok(report(None, false)?.failures().to_vec())
 }
 
 pub fn run(args: &[&str]) -> ExitCode {
@@ -39,7 +41,7 @@ pub fn run(args: &[&str]) -> ExitCode {
     };
     let verbose = parsed.has("--verbose") || parsed.has("-v");
     let only = parsed.value("--only");
-    match harness::run(only, verbose) {
+    match report(only, verbose) {
         Ok(report) => {
             print!("{}", report.summary());
             if report.failed() {
@@ -53,4 +55,11 @@ pub fn run(args: &[&str]) -> ExitCode {
             ExitCode::from(1)
         }
     }
+}
+
+/// The fixture and built cases, then the cases from the kit's workflow scripts.
+fn report(only: Option<&str>, verbose: bool) -> anyhow::Result<harness::Report> {
+    let mut report = harness::run(only, verbose)?;
+    workflow_cases::record(&mut report, only, verbose)?;
+    Ok(report)
 }

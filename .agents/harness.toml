@@ -141,6 +141,15 @@ claude_locations = [
   "/opt/homebrew/bin/claude",
   "/usr/local/bin/claude",
 ]
+# The exit code of a launch that a lock refused (sysexits' EX_TEMPFAIL): another fable session
+# runs, or the same agent's printed session on the same item still runs in that checkout, such as
+# one a stopped dispatcher left running. The dispatcher keeps that session paused, or starts that
+# planner or evaluator again on a later pass, instead of ending its attempt; a writer's wait for
+# its own session counts against its lease, and once the lease is used while that session runs, the
+# item escalates instead of starting another attempt. The dispatcher gives every launch it starts
+# its own value (`kit launch --busy-exit`), so a worktree whose copy of this file lacks the key
+# still exits with it.
+busy_exit = 75
 
 # Claude Code ignores the project's permissions.allow rules in a folder it does not trust, and in
 # print mode it never shows the trust dialog, so every agent session would stall on tool denials

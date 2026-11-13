@@ -18,7 +18,9 @@
 //! since a verdict counts only from the model it was asked on. Status changes follow the
 //! `by = ["kit"]` transitions of
 //! `.github/labels.toml`: a blocked hand-off goes to `status:blocked`, or to `status:escalated`
-//! when it carries an escalation packet, and an impossible one returns to `status:proposed`.
+//! when it carries an escalation packet, and an impossible one returns to `status:proposed`; the
+//! seed session's blocked or impossible hand-off goes to `status:escalated`, since nobody readies
+//! the seed's issue.
 
 mod pull_request;
 
@@ -192,7 +194,10 @@ pub fn publish(
         model: &model,
         attempt,
     };
-    let follow = follow(&status, output, packet.is_some());
+    let follow = match follow(&status, output, packet.is_some()) {
+        Follow::Status(_) if seed.is_some() => Follow::Status(ItemStatus::Escalated),
+        follow => follow,
+    };
     let ships_code = matches!(follow, Follow::PullRequest | Follow::PushOnly);
     let mut comment = handoff_comment(&draft, &name, attempt, packet.as_deref())?;
     if ships_code {
@@ -411,5 +416,7 @@ fn move_status(tracker: &dyn Tracker, issue: &Issue, next: ItemStatus) -> Result
     Ok(ExitCode::SUCCESS)
 }
 
+#[cfg(test)]
+mod seed_tests;
 #[cfg(test)]
 mod tests;

@@ -74,10 +74,11 @@ pub(super) fn request(agent: &str, item: Option<u64>, prompting: Prompting) -> R
         session: SessionStart::New,
         model: None,
         effort: None,
+        busy_exit: None,
     }
 }
 
-fn tracker_with(number: u64, labels: &[&str], write_set: &[&str]) -> MemoryTracker {
+pub(super) fn tracker_with(number: u64, labels: &[&str], write_set: &[&str]) -> MemoryTracker {
     let tracker = MemoryTracker::default();
     tracker.add(issue(
         number,
@@ -362,7 +363,7 @@ fn small_items_run_at_low_effort_and_the_setting_sources_are_data() {
     );
 }
 
-fn plan_for(temp: &TempRepo, tracker: &MemoryTracker, agent: &str, item: u64) -> Plan {
+pub(super) fn plan_for(temp: &TempRepo, tracker: &MemoryTracker, agent: &str, item: u64) -> Plan {
     let kit = LaunchKit::load(&temp.repo()).unwrap();
     plan(
         &temp.repo(),

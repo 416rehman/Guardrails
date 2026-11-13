@@ -115,7 +115,7 @@ impl Report {
         out
     }
 
-    fn record(&mut self, label: &str, result: Result<()>, verbose: bool) {
+    pub fn record(&mut self, label: &str, result: Result<()>, verbose: bool) {
         match result {
             Ok(()) => {
                 self.passed += 1;
@@ -240,7 +240,7 @@ pub fn run(only: Option<&str>, verbose: bool) -> Result<Report> {
     Ok(report)
 }
 
-fn run_case(handler: Handler, preset: &str, case: &Case, limits: &HookLimits) -> Result<()> {
+pub fn run_case(handler: Handler, preset: &str, case: &Case, limits: &HookLimits) -> Result<()> {
     let scratch = Scratch::create(preset, limits)?;
     let repo = scratch.repo();
     for (path, text) in &case.files {

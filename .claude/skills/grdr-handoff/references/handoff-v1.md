@@ -15,7 +15,7 @@ Sources: team/02 section 1.4 (hand-off), team/01 sections 3 and 4 (evidence temp
 | `round` | `1` on the first submission; after evaluator findings, the number of the review round that will judge this submission (at most 3) |
 | `summary` | Two sentences: what changed and what state it is in. Name the evidence ids |
 | `changed_paths` | Every path the change touches, from `git diff --name-only <base>` |
-| `evidence` | Array of `{cmd, exit, log, sha256}`: the command, its exit code, the log path, the SHA-256 of the log. Taken from `.agent/evidence/*.json` |
+| `evidence` | Array of `{cmd, exit, log, sha256}`: the command, its exit code, the log path, the SHA-256 of the log. Taken from `.agent/evidence/*.json`. An evaluator workflow may also cite the verdict comment that shows its verdict and is its round's newest, posted by it or by an earlier run that reached the same verdict: the command that reads and hashes it as `cmd`, the comment URL as `log` and that hash as `sha256` |
 | `acceptance` | Array of `{id, result, evidence}`: criterion id from the issue's acceptance section, `pass`, `fail` or `not-run`, and the index into `evidence` |
 | `three_arm` | Bug fixes only: `{fails_before, passes_after, fails_on_revert}`, each an index into `evidence` |
 | `decisions` | Array of `{at, choice, spec_silent, confidence}` with `at` as `path:line`, least confident first |

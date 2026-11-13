@@ -324,8 +324,8 @@ impl Dispatcher<'_> {
             to: ItemStatus::Leased,
             reason,
         };
-        lease::transition_with(self.tracker, &change, Some(detail))?;
         let held = self.held_for(issue, lease.clone())?;
+        lease::transition_with(self.tracker, &change, Some(detail))?;
         let free = self.slots.len() < usize::try_from(self.policy.max_writers).unwrap_or(0);
         if free {
             let kept = held.clone();
@@ -374,13 +374,21 @@ pub(super) fn failed_rounds(found: &[Record], lease: &Lease) -> usize {
         .count()
 }
 
-/// The records from the newest copy of `lease` on; all of them when it is not there.
+/// The records from the newest posted copy of `lease` on; none when it was never posted. The
+/// session is not compared: the dispatcher names a new one for each session after the first.
 pub(super) fn since_lease<'r>(found: &'r [Record], lease: &Lease) -> &'r [Record] {
-    let lease_index = found
+    found
         .iter()
-        .rposition(|record| matches!(record, Record::Lease(l) if l == lease))
-        .unwrap_or(0);
-    found.get(lease_index..).unwrap_or_default()
+        .rposition(|record| matches!(record, Record::Lease(posted) if same_lease(posted, lease)))
+        .and_then(|index| found.get(index..))
+        .unwrap_or_default()
+}
+
+fn same_lease(posted: &Lease, lease: &Lease) -> bool {
+    posted.item == lease.item
+        && posted.attempt == lease.attempt
+        && posted.agent == lease.agent
+        && posted.branch == lease.branch
 }
 
 /// The verdicts in `round` (records since the issue last entered review) for the needed
@@ -461,5 +469,35 @@ mod tests {
         assert_eq!(failed_rounds(&found, &lease), ROUND_ENDS.len());
         assert!(ROUND_ENDS.contains(&Reason::ChecksFailed));
         assert!(ROUND_ENDS.contains(&Reason::VerifyFailed));
+    }
+
+    /// A slot's lease names the session it runs now, a later one than the posted copy names.
+    #[test]
+    fn the_records_since_a_lease_start_at_its_posted_copy_and_nowhere_else() {
+        let posted = Lease {
+            schema: LEASE_SCHEMA.to_owned(),
+            item: 7,
+            attempt: 2,
+            agent: "impl-rust".to_owned(),
+            model: "claude-sonnet-5-5".to_owned(),
+            acceptance_sha256: "ab".to_owned(),
+            branch: "agent/7/a2".to_owned(),
+            session: Some("6b1c0f4e-1111-4222-8333-944455556607".to_owned()),
+        };
+        let found = vec![
+            back(Reason::EvaluatorFindings),
+            Record::Lease(posted.clone()),
+            back(Reason::ChecksFailed),
+        ];
+        let running = Lease {
+            session: Some("6b1c0f4e-1111-4222-8333-944455556617".to_owned()),
+            ..posted.clone()
+        };
+        assert_eq!(since_lease(&found, &running).len(), 2);
+        let never_posted = Lease {
+            attempt: 3,
+            ..posted
+        };
+        assert!(since_lease(&found, &never_posted).is_empty());
     }
 }

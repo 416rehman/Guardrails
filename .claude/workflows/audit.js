@@ -87,8 +87,8 @@ const SPAN = {
 
 const EVIDENCE = {
   type: 'object',
-  properties: { cmd: { type: 'string' }, exit: { type: 'integer' }, log: { type: 'string' } },
-  required: ['cmd', 'exit', 'log'],
+  properties: { cmd: { type: 'string' }, exit: { type: 'integer' }, log: { type: 'string' }, sha256: { type: 'string' } },
+  required: ['cmd', 'exit', 'log', 'sha256'],
 }
 
 const RESULTS_SCHEMA = {
@@ -257,12 +257,12 @@ function inert(text) {
     .replace(/-->/g, '--&gt;')
     .replace(/@(?=[A-Za-z0-9])/g, '@' + ZERO_WIDTH_SPACE)
     .replace(/`{3,}/g, "'''")
-    // dontAsk refuses a here-document with a quote inside braces, as quoted code and JSON have.
-    .replace(/[{}]/g, brace => (brace === '{' ? '&#123;' : '&#125;'))
+    // dontAsk refuses quoted JSON in a here-document, and guard-command a quoted kit record.
+    .replace(/[{}]/g, brace => (brace === '{' ? '&#123;' : '&#125;')).replace(/\b(ready|lease|state|handoff|meta|lane)\.(?=v1)/gi, '$1&#46;')
 }
 
 function safeTitle(text) {
-  return inert(text).replace(/["$`\\]/g, "'").replace(/\s+/g, ' ').trim().slice(0, 80)
+  return inert(text).replace(/&#46;/g, '.').replace(/["$`\\]/g, "'").replace(/\s+/g, ' ').trim().slice(0, 80)
 }
 
 function globToRegExp(glob) {
@@ -341,7 +341,7 @@ function finderPrompt(run, plan, input) {
       `1. Run: cargo xtask audit run ${run.entry.id}${input.diff ? ` --diff ${plan.base_sha}` : ''} --commit ${plan.commit_sha} --arm ${run.arm}`,
       '   The runner runs the finder in its own read-only worktree, checks every evidence span, sends each surviving result to its refuting verifiers, and prints the path of its record, .agent/audits/<run_id>/run.json.',
       '2. Read that run.json. Return its run_id, checked_by "runner", not_applicable "" (or the skip reason its skipped list gives), its checked_and_sound, and in results every entry of its results whose state is "upheld", with the fields the schema names copied as written.',
-      '3. In evidence give the command with its exit code and the run.json path as its log.',
+      '3. In evidence give the command with its exit code, the run.json path as its log, and as its sha256 the 64 hex digits sha256sum <that path> prints.',
     ].join('\n')
   }
   return [

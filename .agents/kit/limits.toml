@@ -134,7 +134,8 @@ drain_grace_s = 2
 turn_margin = 2
 
 [orchestrate.launch]
-# The fable session lock's heartbeat; kit.lock.stale_beats of them without a touch frees the lock.
+# The heartbeat of the locks kit launch holds, the fable session's and a printed session's own;
+# kit.lock.stale_beats of them without a touch frees a lock.
 fable_heartbeat_s = 30
 
 [orchestrate.prove]

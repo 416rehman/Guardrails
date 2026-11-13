@@ -1,21 +1,21 @@
 //! The dispatcher's planning and review passes: proposed issues reach their squad's lead and are
 //! planned again only after a change, an item its squad's lead implements goes to the product
-//! lead, the seed's own issue waits for the seed's hand-off and then goes to the chief architect,
-//! issues in review get `eval-tier` first and `eval-diff` on the other model, a failed round goes
-//! back to the worker with the fix prompt even when it waited for a slot, and a held lease whose
-//! acceptance section changed goes back to proposed.
+//! lead, the seed's own issue waits for the seed's hand-off and its escalation then goes to the
+//! chief architect, issues in review get `eval-tier` first and `eval-diff` on the other model, a
+//! failed round goes back to the worker with the fix prompt even when it waited for a slot, and a
+//! held lease whose acceptance section changed goes back to proposed.
 
 use super::tests::{DONE, Setup, settle, transitions};
 use crate::config::session::ItemStatus;
 use crate::orchestrate::records::{LEASE_SCHEMA, Lease, Reason, lease_comment};
 use crate::orchestrate::testkit::{body, git, issue};
-use crate::orchestrate::tracker::{IssueEdit, Tracker};
+use crate::orchestrate::tracker::Tracker;
 use crate::testkit::{risk_tiers, tier};
 
-const LEAD: &str = "[agent.lead-core]\ngroup = \"lead\"\ndescription = \"Core lead.\"\nmodel = \"opus\"\neffort = \"high\"\ncap_role = \"lead\"\nmax_turns = 40\ntools = [\"Read\"]\ndisallowed_tools = [\"Edit\", \"Write\"]\ndeny_write = \"@protected\"\nnet = \"A\"\ntrigger = \"dispatch\"\nbody = \"templates/agents/lead-core.md\"\n";
-const EVALUATORS: &str = "[agent.eval-tier]\ngroup = \"evaluator\"\ndescription = \"Tier.\"\nmodel = \"sonnet\"\neffort = \"low\"\ncap_role = \"evaluator-light\"\nmax_turns = 30\ntools = [\"Read\"]\ndisallowed_tools = [\"Edit\", \"Write\"]\ndeny_write = \"@protected\"\nnet = \"none\"\ntrigger = \"event\"\nbody = \"templates/agents/eval-tier.md\"\n\n[agent.eval-diff]\ngroup = \"evaluator\"\ndescription = \"Diff.\"\nmodel = \"sonnet\"\neffort = \"high\"\ncap_role = \"evaluator-review\"\nmax_turns = 40\ntools = [\"Read\"]\ndisallowed_tools = [\"Edit\", \"Write\"]\ndeny_write = \"@protected\"\nnet = \"none\"\ntrigger = \"event\"\nbody = \"templates/agents/eval-diff.md\"\n";
-const OWNERS: &str = "[squad.core]\nlead = \"lead-core\"\npaths = [\"crates/**\"]\n";
-const SEED_SCOPE: &str = "agent = \"chief-architect\"\nscope = \"seed\"\nbranch = \"agent/seed\"\npaths = [\"docs/plan.md\"]\nwork_item = \"WI-0000\"\n";
+pub(super) const LEAD: &str = "[agent.lead-core]\ngroup = \"lead\"\ndescription = \"Core lead.\"\nmodel = \"opus\"\neffort = \"high\"\ncap_role = \"lead\"\nmax_turns = 40\ntools = [\"Read\"]\ndisallowed_tools = [\"Edit\", \"Write\"]\ndeny_write = \"@protected\"\nnet = \"A\"\ntrigger = \"dispatch\"\nbody = \"templates/agents/lead-core.md\"\n";
+pub(super) const EVALUATORS: &str = "[agent.eval-tier]\ngroup = \"evaluator\"\ndescription = \"Tier.\"\nmodel = \"sonnet\"\neffort = \"low\"\ncap_role = \"evaluator-light\"\nmax_turns = 30\ntools = [\"Read\"]\ndisallowed_tools = [\"Edit\", \"Write\"]\ndeny_write = \"@protected\"\nnet = \"none\"\ntrigger = \"event\"\nbody = \"templates/agents/eval-tier.md\"\n\n[agent.eval-diff]\ngroup = \"evaluator\"\ndescription = \"Diff.\"\nmodel = \"sonnet\"\neffort = \"high\"\ncap_role = \"evaluator-review\"\nmax_turns = 40\ntools = [\"Read\"]\ndisallowed_tools = [\"Edit\", \"Write\"]\ndeny_write = \"@protected\"\nnet = \"none\"\ntrigger = \"event\"\nbody = \"templates/agents/eval-diff.md\"\n";
+pub(super) const OWNERS: &str = "[squad.core]\nlead = \"lead-core\"\npaths = [\"crates/**\"]\n";
+pub(super) const SEED_SCOPE: &str = "agent = \"chief-architect\"\nscope = \"seed\"\nbranch = \"agent/seed\"\npaths = [\"docs/plan.md\"]\nwork_item = \"WI-0000\"\n";
 
 pub(super) fn handoff(item: u64, agent: &str, status: &str, model: &str) -> String {
     format!(
@@ -101,13 +101,14 @@ fn an_item_its_squad_lead_implements_goes_to_the_product_lead_and_the_seed_issue
 }
 
 #[test]
-fn a_handed_off_seed_issue_lets_the_dispatcher_start_and_goes_to_the_chief_architect() {
+fn a_handed_off_seed_issue_lets_the_dispatcher_start_and_its_escalation_goes_to_the_chief_architect()
+ {
     let setup = Setup::new("");
     setup.temp.write(".agents/owners.toml", OWNERS);
     setup.temp.write(".agents/kit/seed-scope.toml", SEED_SCOPE);
     let mut seed = issue(
         33,
-        &["status:proposed", "squad:core", "agent:chief-architect"],
+        &["status:escalated", "squad:core", "agent:chief-architect"],
         "The seed.",
     );
     seed.title = "[WI-0000] Seed the agent team".to_owned();
@@ -126,7 +127,7 @@ fn a_handed_off_seed_issue_lets_the_dispatcher_start_and_goes_to_the_chief_archi
         .tracker
         .comment(33, &lease_comment(&lease).unwrap())
         .unwrap();
-    setup.fake.respond(1, DONE, 0).respond(2, DONE, 0);
+    setup.fake.respond(1, DONE, 0);
     let mut dispatcher = setup.dispatcher();
     assert_eq!(
         dispatcher.seed_not_handed_off().unwrap(),
@@ -135,23 +136,19 @@ fn a_handed_off_seed_issue_lets_the_dispatcher_start_and_goes_to_the_chief_archi
     );
     dispatcher.step_github().unwrap();
     settle(&mut dispatcher);
-    let escalated = IssueEdit {
-        add: vec!["status:escalated".into()],
-        remove: vec!["status:proposed".into()],
-        assign_self: false,
-    };
-    setup.tracker.edit(33, &escalated).unwrap();
     dispatcher.step_github().unwrap();
     settle(&mut dispatcher);
     let calls = setup.fake.calls();
-    assert_eq!(calls.len(), 2, "{calls:?}");
-    assert!(
-        calls
-            .iter()
-            .all(|call| call.contains("chief-architect --item 33")),
-        "{calls:?}"
+    assert_eq!(
+        calls.len(),
+        1,
+        "an unchanged escalation is decided once: {calls:?}"
     );
-    assert!(calls[1].contains("decide it"), "{}", calls[1]);
+    assert!(
+        calls[0].contains("chief-architect --item 33") && calls[0].contains("decide it"),
+        "{}",
+        calls[0]
+    );
 }
 
 #[test]

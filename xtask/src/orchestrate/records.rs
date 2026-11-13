@@ -20,6 +20,15 @@ pub const STATE_SCHEMA: &str = "state.v1";
 pub const HANDOFF_SCHEMA: &str = "handoff.v1";
 pub const META_SCHEMA: &str = "meta.v1";
 pub const LANE_SCHEMA: &str = "lane.v1";
+/// The records above, which guard-command keeps sessions from posting by hand.
+pub const KIT_RECORDS: &[&str] = &[
+    READY_SCHEMA,
+    LEASE_SCHEMA,
+    STATE_SCHEMA,
+    HANDOFF_SCHEMA,
+    META_SCHEMA,
+    LANE_SCHEMA,
+];
 const FENCE_OPEN: &str = "```json";
 const FENCE_CLOSE: &str = "```";
 /// GitHub's `authorAssociation` for the account that owns the repository.

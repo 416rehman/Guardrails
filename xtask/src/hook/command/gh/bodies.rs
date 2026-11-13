@@ -11,6 +11,7 @@ use regex::Regex;
 use super::super::{Rules, join};
 use super::Call;
 use crate::hook::shell::Word;
+use crate::orchestrate::records::KIT_RECORDS;
 use crate::paths::Located;
 
 const BODY_TEXT_FLAGS: &[&str] = &["-b", "--body"];
@@ -31,8 +32,15 @@ const REPO_FLAGS: &[&str] = &["-R", "--repo"];
 const POSTING: &[&str] = &["comment", "create", "edit", "review"];
 
 static KIT_RECORD: LazyLock<Option<Regex>> = LazyLock::new(|| {
-    Regex::new(r#"(?i)("schema"\s*:\s*"|<summary>\s*)(ready|lease|state|handoff|meta|lane)\.v1"#)
-        .ok()
+    let schemas: Vec<String> = KIT_RECORDS
+        .iter()
+        .map(|schema| regex::escape(schema))
+        .collect();
+    Regex::new(&format!(
+        r#"(?i)("schema"\s*:\s*"|<summary>\s*)({})"#,
+        schemas.join("|")
+    ))
+    .ok()
 });
 
 /// Whether a `gh api` typed-field value (`key=@path`, or `@path` with no key) reads a file: the

@@ -91,6 +91,12 @@ when = "the chief architect's seed session (GRDR_SCOPE=seed) hands off the agent
 
 [[transition]]
 from = "proposed"
+to = "leased"
+by = ["dispatcher"]
+when = "the chief architect's decision moved the handed-off [WI-0000] issue back from escalated; the seed session starts again on agent/seed under a new lease while usage.toml [item] max_attempts allows"
+
+[[transition]]
+from = "proposed"
 to = "blocked"
 by = ["lead-*", "product-lead", "programme-manager"]
 when = "an external precondition, named in the issue, must hold first"
@@ -129,19 +135,19 @@ when = "stall or failed attempt 1; the next lease raises the attempt"
 from = "leased"
 to = "escalated"
 by = ["dispatcher", "kit"]
-when = "stall or failure on attempt 2, or a blocked hand-off carrying a team/01 section 6 packet"
+when = "stall or failure on attempt 2, or a blocked hand-off carrying a team/01 section 6 packet; for the [WI-0000] issue, which nobody readies, any failure, a blocked or impossible hand-off of its seed session, or an acceptance-section change under its lease"
 
 [[transition]]
 from = "leased"
 to = "blocked"
 by = ["kit"]
-when = "a blocked hand-off that waits on a named issue or external precondition"
+when = "a blocked hand-off that waits on a named issue or external precondition; never the [WI-0000] issue's, which escalates"
 
 [[transition]]
 from = "leased"
 to = "proposed"
 by = ["kit", "dispatcher"]
-when = "an impossible hand-off: the spec and the tests conflict, so the item returns to its spec author; or the acceptance section changed under the lease"
+when = "an impossible hand-off: the spec and the tests conflict, so the item returns to its spec author; or the acceptance section changed under the lease; never the [WI-0000] issue, which escalates"
 
 [[transition]]
 from = "in-review"
@@ -159,7 +165,7 @@ when = "the last review round failed on the first attempt, or the acceptance sec
 from = "in-review"
 to = "escalated"
 by = ["dispatcher"]
-when = "the last review round failed on the last attempt (usage.toml [item] max_attempts), usage above [item] escalate_above times the item's cap, [item] verdict_hours with no verdict, evaluators-on-one-model: the evaluators the lane needs ran on one model and the change needs two, or evaluator-unavailable: an evaluator the lane needs is not in the roster, has no model or may not run on the model asked"
+when = "the last review round failed on the last attempt (usage.toml [item] max_attempts), usage above [item] escalate_above times the item's cap, [item] verdict_hours with no verdict, evaluators-on-one-model: the evaluators the lane needs ran on one model and the change needs two, or evaluator-unavailable: an evaluator the lane needs is not in the roster, has no model or may not run on the model asked; for the [WI-0000] issue, which nobody readies, also any failed last round, a merge conflict and acceptance-changed"
 
 [[transition]]
 from = "in-review"

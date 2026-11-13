@@ -9,7 +9,7 @@ use crate::orchestrate::testkit::{MemoryTracker, body, git, init_git, issue};
 use crate::testkit::TempRepo;
 
 /// A temporary repository whose harness carries the GitHub identity and the commit form.
-fn temp_repo() -> TempRepo {
+pub(super) fn temp_repo() -> TempRepo {
     let temp = TempRepo::create();
     temp.write(
         ".agents/harness.toml",
@@ -21,7 +21,7 @@ fn temp_repo() -> TempRepo {
     temp
 }
 
-fn draft(status: &str) -> Value {
+pub(super) fn draft(status: &str) -> Value {
     json!({
         "schema": "handoff.v1", "item": 7, "agent": "impl-rust", "model": "claude-sonnet-5-5",
         "status": status, "round": 1, "summary": "Fixed the parser. Evidence verify-20261111T100200Z.",
@@ -55,7 +55,7 @@ fn leased_tracker() -> MemoryTracker {
     tracker
 }
 
-fn caller(agent: &str) -> Caller {
+pub(super) fn caller(agent: &str) -> Caller {
     Caller {
         session: Session {
             agent: Some(agent.to_owned()),
@@ -366,116 +366,5 @@ fn no_pull_request_opens_without_a_valid_subject() {
             .calls()
             .iter()
             .any(|call| call.starts_with("pr create"))
-    );
-}
-
-#[test]
-fn the_seed_session_ships_agent_seed_into_review() {
-    let temp = temp_repo();
-    temp.write(".gitignore", ".agent/\n");
-    temp.write(
-        ".agents/kit/seed-scope.toml",
-        "agent = \"chief-architect\"\nscope = \"seed\"\nbranch = \"agent/seed\"\npaths = [\"AGENTS.md\"]\n",
-    );
-    init_git(temp.root());
-    let origin = TempRepo::create();
-    git(
-        origin.root(),
-        &["init", "--quiet", "--bare", "--initial-branch=main"],
-    );
-    let url = origin.root().to_string_lossy().into_owned();
-    git(temp.root(), &["remote", "add", "origin", &url]);
-    git(temp.root(), &["push", "--quiet", "origin", "main"]);
-    let form = Form::load(&temp.repo()).unwrap();
-    crate::orchestrate::launch::check_out_seed_branch(&temp.repo(), &form, "agent/seed").unwrap();
-    temp.write("AGENTS.md", "# Agents\n");
-    git(temp.root(), &["add", "-A"]);
-    git(
-        temp.root(),
-        &["commit", "--quiet", "-m", "docs(plan): seed the agent team"],
-    );
-    let tracker = MemoryTracker::default();
-    tracker.add(issue(
-        7,
-        &["status:proposed", "agent:chief-architect"],
-        &body("chief-architect", &["AGENTS.md"], "AC-1"),
-    ));
-    let mut seed = draft("done");
-    seed["agent"] = json!("chief-architect");
-    temp.write(
-        ".agent/state/handoff-7-chief-architect.json",
-        &seed.to_string(),
-    );
-    let ordinary = caller("chief-architect");
-    let seeding = Caller {
-        session: Session {
-            scope: Some(Scope::Seed),
-            ..ordinary.session.clone()
-        },
-        ..ordinary
-    };
-    let code = publish(&temp.repo(), &tracker, 7, &seeding, Mode::Live).unwrap();
-    assert_eq!(code, ExitCode::SUCCESS);
-    let calls = tracker.calls();
-    assert!(
-        calls
-            .iter()
-            .any(|call| call == "pr create agent/seed docs(plan): seed the agent team"),
-        "{calls:?}"
-    );
-    assert!(git(origin.root(), &["branch", "--list"]).contains("agent/seed"));
-    let after = tracker.snapshot(7);
-    assert_eq!(after.status(), Some(ItemStatus::InReview));
-    let found = records(&after);
-    let lease = crate::orchestrate::records::current_lease(&found, 7).unwrap();
-    assert_eq!(lease.branch, "agent/seed");
-    assert_eq!(
-        crate::orchestrate::records::lane_floor(&found, 7),
-        Some(crate::orchestrate::risk::Lane::Full)
-    );
-    assert_eq!(crate::git::current_branch(&temp.repo()).unwrap(), None);
-    let worktree = temp.root().join(".agent/worktrees/7-a1");
-    git(
-        temp.root(),
-        &[
-            "worktree",
-            "add",
-            "--quiet",
-            &worktree.to_string_lossy(),
-            "agent/seed",
-        ],
-    );
-    let fix = Repo::at(&worktree);
-    assert_eq!(
-        crate::git::current_branch(&fix).unwrap().as_deref(),
-        Some("agent/seed")
-    );
-    release_seed_branch(&fix, "agent/seed").unwrap();
-    assert_eq!(
-        crate::git::current_branch(&fix).unwrap().as_deref(),
-        Some("agent/seed")
-    );
-}
-
-#[test]
-fn the_seed_branch_is_checked_out_from_the_base() {
-    let temp = temp_repo();
-    temp.write(".gitignore", ".agent/\n");
-    init_git(temp.root());
-    let repo = temp.repo();
-    let form = Form::load(&repo).unwrap();
-    crate::orchestrate::launch::check_out_seed_branch(&repo, &form, "agent/seed").unwrap();
-    assert_eq!(
-        crate::git::current_branch(&repo).unwrap().as_deref(),
-        Some("agent/seed")
-    );
-    crate::orchestrate::launch::check_out_seed_branch(&repo, &form, "agent/seed").unwrap();
-    git(temp.root(), &["checkout", "--quiet", "main"]);
-    temp.write(".gitignore", ".agent/\ntarget/\n");
-    let error =
-        crate::orchestrate::launch::check_out_seed_branch(&repo, &form, "agent/seed").unwrap_err();
-    assert!(
-        format!("{error:#}").contains("uncommitted changes"),
-        "{error:#}"
     );
 }

@@ -1,6 +1,7 @@
 //! The recurring agents beside the writers: due routines start in their own worktrees within the
 //! routine slots, and a routine that ends at a usage limit keeps its previous start, so it runs
-//! again once the window is back.
+//! again once the window is back. A routine whose worktree cannot be made waits for the next
+//! pass, and the pass goes on.
 
 use anyhow::Result;
 
@@ -72,7 +73,16 @@ impl Dispatcher<'_> {
             let Some(agent) = routine.agent.clone() else {
                 continue;
             };
-            let worktree = self.worktree(&format!("routine-{}", routine.name), None)?;
+            let worktree = match self.worktree(&format!("routine-{}", routine.name), None) {
+                Ok(worktree) => worktree,
+                Err(error) => {
+                    println!(
+                        "dispatch: routine {} did not start: {error:#}",
+                        routine.name
+                    );
+                    continue;
+                }
+            };
             let previous = self.schedule.last_started.get(&routine.name).copied();
             self.schedule.started(&routine.name, now_unix());
             self.schedule.save(&self.repo)?;
@@ -98,6 +108,7 @@ impl Dispatcher<'_> {
                 model: None,
                 effort: None,
                 scope: LaunchScope::Ordinary,
+                busy_exit: self.policy.busy_exit,
             };
             let run = self.launcher.spawn(&worktree, &job, watch)?;
             println!("dispatch: started routine {} ({agent})", routine.name);

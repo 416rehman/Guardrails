@@ -18,8 +18,11 @@ use crate::testkit::{TempRepo, risk_tiers, tier};
 const HARNESS: &str = "[dispatch]\nprotected_change_agents = [\"lead-agent-kit\", \"chief-architect\"]\nmax_writers = 1\nmax_gardeners = 1\nmax_planners = 1\nmax_evaluators = 2\nstall_seconds = 60\npoll_seconds = 1\npoll_jitter_seconds = 0\nbackoff_base_seconds = 1\nbackoff_cap_seconds = 1\nlease_order = [\"blocks-others\", \"priority\", \"age\"]\n[limits]\nusage_limit_strings = [\"You've hit your session limit\"]\nretry_seconds = 0\n[queue]\nworktree = \"queue\"\nverify_args = [\"verify\"]\nverify_timeout_seconds = 60\n[workspace_trust]\ncheck = \"managed\"\n";
 /// Written right after `GITHUB`, so it joins that `[github]` table, which has no branch pattern.
 const BRANCH: &str = "branch = \"agent/{issue}/a{attempt}\"\n";
+/// Written right after `FORM`, so it joins that `[launch]` table.
+pub(super) const BUSY_EXIT: &str = "busy_exit = 75\n";
 const USAGE: &str = "[item]\nmax_attempts = 2\nmax_review_rounds = 3\nverdict_hours = 24\n[role.worker]\nmax_turns = 80\nwall_clock_minutes = 60\nsessions_per_attempt = 2\n";
 const LABELS: &str = "[[transition]]\nfrom = \"proposed\"\nto = \"ready\"\nby = [\"kit\"]\nrun_by = [\"lead-*\", \"programme-manager\"]\n";
+pub(super) const GARDEN_ROUTINE: &str = "[role.gardener]\nmax_turns = 60\nwall_clock_minutes = 45\n[routine.garden-docs]\nagent = \"garden-docs\"\ncadence = \"weekly\"\nusage_cap = 0.02\n";
 const GARDENER: &str = "[agent.garden-docs]\ngroup = \"gardener\"\ndescription = \"Docs.\"\nmodel = \"sonnet\"\neffort = \"medium\"\ncap_role = \"gardener\"\nmax_turns = 60\ntools = [\"Read\"]\ndeny_write = \"@protected\"\nnet = \"none\"\ntrigger = \"schedule\"\nbody = \"templates/agents/garden-docs.md\"\n";
 pub(super) const DONE: &str = "{\"type\":\"assistant\",\"message\":{\"id\":\"m1\",\"content\":[]}}\n{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turns\":1,\"result\":\"handed off\"}\n";
 const LIMITED: &str = "{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"is_error\":true,\"result\":\"You've hit your session limit - resets 3pm\"}\n";
@@ -38,7 +41,7 @@ impl Setup {
         temp.write(
             ".agents/harness.toml",
             &format!(
-                "{HARNESS}{}{BRANCH}{}",
+                "{HARNESS}{}{BRANCH}{}{BUSY_EXIT}",
                 crate::github::tests::GITHUB,
                 crate::orchestrate::form::tests::FORM
             ),
@@ -123,7 +126,7 @@ pub(super) fn settle(dispatcher: &mut Dispatcher) {
     }
 }
 
-fn leases(found: &[Record]) -> Vec<&Lease> {
+pub(super) fn leases(found: &[Record]) -> Vec<&Lease> {
     found
         .iter()
         .filter_map(|record| match record {
@@ -349,9 +352,9 @@ fn a_restart_adopts_leases_and_resumes_their_sessions() {
 
 #[test]
 fn due_routines_run_their_agent_without_an_item() {
-    let setup = Setup::new(
-        "[role.gardener]\nmax_turns = 60\nwall_clock_minutes = 45\n[routine.garden-docs]\nagent = \"garden-docs\"\ncadence = \"weekly\"\nusage_cap = 0.02\n[routine.review]\nagent = \"eval-diff\"\ncadence = \"pull-request\"\n",
-    );
+    let setup = Setup::new(&format!(
+        "{GARDEN_ROUTINE}[routine.review]\nagent = \"eval-diff\"\ncadence = \"pull-request\"\n"
+    ));
     setup.fake.respond(1, DONE, 0);
     let mut dispatcher = setup.dispatcher();
     dispatcher.step_github().unwrap();

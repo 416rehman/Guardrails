@@ -14,8 +14,12 @@ branch = "agent/seed"
 max_turns = 200      # raised from the definition's 60 for this one session
 prompt = "kit/prompts/chief-architect-seed.md"
 acts_as = ["programme-manager", "lead-*"]   # the planner and lead roles of team/06 section 14
-# The seed's own issue, titled `[WI-0000] ...`. Nobody readies it: the dispatcher never plans it,
-# and refuses to start while it is still status:proposed, since only the seed's hand-off moves it.
+# The seed's own issue, titled `[WI-0000] ...`. Nobody readies it. The dispatcher refuses to start
+# while it is status:proposed with no lease.v1, since only the seed's hand-off moves it; after the
+# hand-off it never plans it at proposed. Every attempt of it that ends without landing is
+# escalated to this agent, and when that decision moves it back to status:proposed the dispatcher
+# starts this session again on `branch` under a new lease, while usage.toml [item] max_attempts
+# allows.
 work_item = "WI-0000"
 
 paths = [

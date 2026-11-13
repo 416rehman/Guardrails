@@ -44,20 +44,13 @@ impl Dispatcher<'_> {
     ) -> Result<()> {
         let n = issue.number;
         if acceptance_changed(issue, lease) {
-            note(
-                &self.repo,
-                "acceptance-changed",
-                Some(lease),
-                Reason::AcceptanceChanged.describe(),
-            );
-            return lease::transition(
-                self.tracker,
-                n,
-                lease.attempt,
-                ItemStatus::InReview,
-                ItemStatus::Proposed,
-                Reason::AcceptanceChanged,
-            );
+            if let Landing::Verifying(running) = &mut self.landing
+                && running.tree.item == n
+            {
+                running.stop();
+                self.landing = Landing::Idle;
+            }
+            return self.acceptance_moved(lease, ItemStatus::InReview);
         }
         let Some(request) = merge::landable(request) else {
             self.notice(
@@ -172,7 +165,7 @@ impl Dispatcher<'_> {
                     reason: Reason::MergeConflict,
                 };
                 let detail = format!(
-                    "The seed branch no longer merges onto {}: {detail}. No session can merge or rebase it, and the seed's issue has no second attempt, so the chief architect decides how it continues.",
+                    "The seed branch no longer merges onto {}: {detail}. No session can merge or rebase the seed branch, so the chief architect decides how it continues.",
                     tree.base
                 );
                 lease::transition_with(self.tracker, &change, Some(&detail))
@@ -257,7 +250,7 @@ impl Dispatcher<'_> {
     }
 
     /// Polls the running verify; a pass is kept for the next GitHub pass to land, a failure
-    /// sends the item back to its worker.
+    /// sends the item back to its worker while it is still in review with that pull request.
     pub fn step_queue(&mut self) -> Result<()> {
         let Landing::Verifying(running) = &mut self.landing else {
             return Ok(());
@@ -284,6 +277,16 @@ impl Dispatcher<'_> {
                 let Some(lease) = records::current_lease(&found, tree.item).cloned() else {
                     return Ok(());
                 };
+                let request = self.tracker.open_pull_request(&lease.branch)?;
+                if issue.status() != Some(ItemStatus::InReview)
+                    || request.is_none_or(|request| request.number != tree.pr)
+                {
+                    println!(
+                        "dispatch: #{} left review while its verify ran, so the failure sends nothing back",
+                        tree.item
+                    );
+                    return Ok(());
+                }
                 let detail = format!("{detail}.");
                 self.queue_refused(&issue, &lease, &found, Reason::VerifyFailed, &detail)
             }

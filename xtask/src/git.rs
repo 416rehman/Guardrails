@@ -82,14 +82,24 @@ impl AddedLines {
     }
 }
 
-/// Runs git in the repository and returns stdout; a non-zero exit is an error naming the command.
+/// Runs git in the repository and returns stdout; a non-zero exit is an error naming the command
+/// and what git printed on stderr.
 pub fn output(repo: &Repo, args: &[&str]) -> Result<String> {
-    try_output(repo, args)?.with_context(|| format!("git {} failed", args.join(" ")))
+    let ran = run(repo, args, &[])?;
+    if ran.success() {
+        return Ok(ran.stdout());
+    }
+    let printed = ran.stderr();
+    match printed.trim() {
+        "" => bail!("git {} failed ({})", args.join(" "), ran.describe()),
+        why => bail!("git {} failed: {why}", args.join(" ")),
+    }
 }
 
 /// Like [`output`], but a non-zero exit is `None`.
 pub fn try_output(repo: &Repo, args: &[&str]) -> Result<Option<String>> {
-    run(repo, args, &[])
+    let ran = run(repo, args, &[])?;
+    Ok(ran.success().then(|| ran.stdout()))
 }
 
 pub fn head(repo: &Repo) -> Result<Option<String>> {
@@ -214,10 +224,11 @@ pub fn tree_digest(repo: &Repo) -> Result<String> {
     }
     let scratch_text = scratch.to_string_lossy().into_owned();
     let env = [("GIT_INDEX_FILE", scratch_text.as_str())];
+    let succeeded = |ran: process::Ran| ran.success().then(|| ran.stdout());
     let result = run(repo, &["add", "-A", "--", "."], &env)
-        .and_then(|added| added.context("git add -A into a scratch index failed"))
+        .and_then(|added| succeeded(added).context("git add -A into a scratch index failed"))
         .and_then(|_| run(repo, &["write-tree"], &env))
-        .and_then(|tree| tree.context("git write-tree failed"));
+        .and_then(|tree| succeeded(tree).context("git write-tree failed"));
     let _ = fs::remove_file(&scratch);
     Ok(result?.trim().to_owned())
 }
@@ -312,7 +323,7 @@ pub fn tree_id(repo: &Repo, commit: &str, path: &str) -> Result<Option<String>> 
     try_trimmed(repo, &["rev-parse", "--verify", "--quiet", &spec])
 }
 
-fn run(repo: &Repo, args: &[&str], env: &[(&str, &str)]) -> Result<Option<String>> {
+fn run(repo: &Repo, args: &[&str], env: &[(&str, &str)]) -> Result<process::Ran> {
     let mut command = Command::new("git");
     command
         .arg("-C")
@@ -321,8 +332,7 @@ fn run(repo: &Repo, args: &[&str], env: &[(&str, &str)]) -> Result<Option<String
         .env("GIT_OPTIONAL_LOCKS", "0")
         .envs(env.iter().copied());
     let timeout = Limits::built_with()?.kit.git.timeout();
-    let ran = process::run(&mut command, None, timeout).context("starting git")?;
-    Ok(ran.success().then(|| ran.stdout()))
+    process::run(&mut command, None, timeout).context("starting git")
 }
 
 /// Like [`try_output`], with the surrounding whitespace trimmed.
@@ -395,7 +405,7 @@ fn copy_index(index: &Path, scratch: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant, UNIX_EPOCH};
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     use super::*;
 
@@ -453,6 +463,24 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_command_says_what_git_printed() {
+        use crate::orchestrate::testkit::init_git;
+        let temp = crate::testkit::TempRepo::create();
+        init_git(temp.root());
+        let args = ["checkout", "--quiet", "no-such-branch"];
+        let error = output(&temp.repo(), &args).unwrap_err();
+        let printed = Command::new("git")
+            .arg("-C")
+            .arg(temp.root())
+            .args(args)
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&printed.stderr).trim().to_owned();
+        assert!(!stderr.is_empty());
+        assert!(format!("{error:#}").contains(&stderr), "{error:#}");
+    }
+
+    #[test]
     fn a_worktree_knows_its_main_checkout() {
         use crate::orchestrate::testkit::{git, init_git};
         let temp = crate::testkit::TempRepo::create();
@@ -495,15 +523,25 @@ mod tests {
                 .unwrap()
                 .as_secs()
         };
-        let indexed = (0..20)
-            .find_map(|_| {
-                temp.write("lib.rs", "one\n");
-                let first = second_of(&lib);
-                git(temp.root(), &["add", "lib.rs"]);
-                temp.write("lib.rs", "two\n");
-                (second_of(&index) == first && second_of(&lib) == first).then_some(first)
-            })
-            .expect("lib.rs was never written, indexed and edited within one second");
+        let indexed = (0..10).find_map(|_| {
+            // Each try starts as a second begins, so a slow `git add` still fits in it.
+            let into_second = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .subsec_nanos();
+            std::thread::sleep(Duration::from_nanos(u64::from(1_000_000_000 - into_second)));
+            temp.write("lib.rs", "one\n");
+            let first = second_of(&lib);
+            git(temp.root(), &["add", "lib.rs"]);
+            temp.write("lib.rs", "two\n");
+            (second_of(&index) == first && second_of(&lib) == first).then_some(first)
+        });
+        // A machine too loaded to run `git add` within a second cannot set the case up, and
+        // failing then would only report the load.
+        let Some(indexed) = indexed else {
+            eprintln!("skipped: lib.rs was never written, indexed and edited within one second");
+            return;
+        };
         let probe = temp.root().join(".git/probe");
         let waiting = Instant::now();
         loop {

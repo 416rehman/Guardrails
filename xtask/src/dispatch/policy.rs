@@ -1,7 +1,7 @@
-//! The dispatcher's policy, all of it data (P14): `.agents/harness.toml [github]`, `[dispatch]`
-//! and `[limits]`, and `.agents/kit/usage.toml [item]` and `[role.*]`. Every key the dispatcher
-//! reads is required, so a missing one fails the first command instead of falling back to a
-//! number in code.
+//! The dispatcher's policy, all of it data (P14): `.agents/harness.toml [github]`, `[dispatch]`,
+//! `[limits]` and `[launch] busy_exit`, and `.agents/kit/usage.toml [item]` and `[role.*]`.
+//! Every key the dispatcher reads is required, so a missing one fails the first command instead
+//! of falling back to a number in code.
 
 use std::time::Duration;
 
@@ -45,6 +45,9 @@ pub struct Policy {
     pub backoff_cap: Duration,
     /// An issue in review with no verdict for this many hours escalates.
     pub verdict_hours: u64,
+    /// The exit code of a launch a lock refused, which every launch the dispatcher starts is given
+    /// (`kit launch --busy-exit`); that session is started again later.
+    pub busy_exit: u8,
     usage: toml::Table,
 }
 
@@ -52,6 +55,12 @@ pub struct Policy {
 struct HarnessKeys {
     github: GithubKeys,
     dispatch: DispatchKeys,
+    launch: LaunchKeys,
+}
+
+#[derive(Deserialize)]
+struct LaunchKeys {
+    busy_exit: u8,
 }
 
 #[derive(Deserialize)]
@@ -113,6 +122,7 @@ impl Policy {
             backoff_base: Duration::from_secs(dispatch.backoff_base_seconds),
             backoff_cap: Duration::from_secs(dispatch.backoff_cap_seconds),
             verdict_hours: item.verdict_hours,
+            busy_exit: harness.launch.busy_exit,
             usage,
         })
     }
@@ -165,7 +175,7 @@ pub(crate) mod tests {
     use crate::testkit::TempRepo;
 
     /// Every key the dispatcher reads from `.agents/harness.toml`, for tests that start one.
-    pub(crate) const HARNESS: &str = "[github]\nbranch = \"agent/{issue}/a{attempt}\"\n[dispatch]\nmax_writers = 3\nprotected_change_agents = [\"lead-agent-kit\", \"chief-architect\"]\nmax_gardeners = 1\nmax_planners = 1\nmax_evaluators = 2\nstall_seconds = 120\npoll_seconds = 60\npoll_jitter_seconds = 6\nbackoff_base_seconds = 30\nbackoff_cap_seconds = 900\nlease_order = [\"priority\", \"age\"]\n[limits]\nusage_limit_strings = [\"You've hit your session limit\"]\nretry_seconds = 60\n";
+    pub(crate) const HARNESS: &str = "[github]\nbranch = \"agent/{issue}/a{attempt}\"\n[dispatch]\nmax_writers = 3\nprotected_change_agents = [\"lead-agent-kit\", \"chief-architect\"]\nmax_gardeners = 1\nmax_planners = 1\nmax_evaluators = 2\nstall_seconds = 120\npoll_seconds = 60\npoll_jitter_seconds = 6\nbackoff_base_seconds = 30\nbackoff_cap_seconds = 900\nlease_order = [\"priority\", \"age\"]\n[limits]\nusage_limit_strings = [\"You've hit your session limit\"]\nretry_seconds = 60\n[launch]\nbusy_exit = 75\n";
 
     #[test]
     fn reads_the_kit_data_and_only_lowers_the_writer_ceiling() {

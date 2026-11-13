@@ -68,6 +68,17 @@ pub(super) fn harness_text(repo: &Repo, table: &str, key: &str) -> Result<Option
     )
 }
 
+/// An exit code from a table of `.agents/harness.toml`, `None` when absent.
+pub(super) fn harness_code(repo: &Repo, table: &str, key: &str) -> Result<Option<u8>> {
+    let Some(value) = harness_value(repo, table, key)? else {
+        return Ok(None);
+    };
+    match value.as_integer().and_then(|code| u8::try_from(code).ok()) {
+        Some(code) => Ok(Some(code)),
+        None => bail!("{HARNESS_FILE} [{table}] {key} is not an exit code from 0 to 255"),
+    }
+}
+
 /// A list of strings from a table of `.agents/harness.toml`, `None` when absent.
 pub(super) fn harness_list(repo: &Repo, table: &str, key: &str) -> Result<Option<Vec<String>>> {
     Ok(harness_value(repo, table, key)?.and_then(strings))

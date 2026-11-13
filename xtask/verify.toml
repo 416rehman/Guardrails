@@ -75,7 +75,7 @@ id = "V18"
 name = "hooks-selftest"
 forms = ["fast", "full"]
 run = ["cargo", "run", "--locked", "--quiet", "--package", "xtask", "--", "hooks-selftest"]
-when = { changed = [".agents/**", ".claude/**", "xtask/src/hook/**", "xtask/src/config/**", "xtask/src/kit/**", "xtask/fixtures/hooks/**"] }
+when = { changed = [".agents/**", ".claude/**", ".github/labels.toml", "xtask/src/hook/**", "xtask/src/config/**", "xtask/src/kit/**", "xtask/src/orchestrate/records.rs", "xtask/fixtures/hooks/**"] }
 fixture = "xtask/fixtures/hooks"
 timeout_s = 600
 

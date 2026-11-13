@@ -56,11 +56,18 @@ enum Prompt {
     Fix,
 }
 
+/// A session `start` named and counted, and the session the lease named before it.
+struct Named {
+    before: Option<String>,
+}
+
 enum Slot {
     Working {
         held: Held,
         run: Box<Running>,
         prompt: Prompt,
+        /// What a launch a lock refused puts back; `None` when `start` resumed a session.
+        named: Option<Named>,
     },
     Paused {
         held: Held,
@@ -181,8 +188,10 @@ impl<'a> Dispatcher<'a> {
         Ok(None)
     }
 
-    /// The attempts `lease`'s item gets: one for the seed's issue, which nobody readies again,
-    /// so an attempt that ends without landing goes to the chief architect.
+    /// The attempts `lease`'s item gets before one that ends without landing is escalated: one
+    /// for the seed's issue, which nobody readies again, so each of its attempts that ends goes to
+    /// the chief architect, whose decision may start the next while `[item] max_attempts` allows
+    /// (`relaunch_seed`).
     fn attempts_for(&self, lease: &Lease) -> u32 {
         if self.is_seed_lease(lease) {
             1
@@ -289,12 +298,18 @@ impl<'a> Dispatcher<'a> {
                     held,
                     mut run,
                     prompt,
+                    named,
                 } => match run.poll() {
-                    None => Some(Slot::Working { held, run, prompt }),
+                    None => Some(Slot::Working {
+                        held,
+                        run,
+                        prompt,
+                        named,
+                    }),
                     Some(ended) => {
                         limited |= matches!(ended, Ended::UsageLimited { .. });
                         let kept = held.clone();
-                        self.after_session(held, ended, prompt)
+                        self.after_session(held, ended, prompt, named)
                             .unwrap_or_else(|error| {
                                 eprintln!(
                                     "dispatch: #{}: {error:#}; the lease stays paused",
@@ -363,25 +378,26 @@ impl<'a> Dispatcher<'a> {
     }
 
     /// A usage limit: every session stops as a pause, nothing is posted, and no lease is granted
-    /// until the window is retried.
+    /// until the window is retried. Its time counts against no lease, a writer's wait for its
+    /// session lock included.
     fn pause_all(&mut self) -> Result<()> {
         self.window = Window::Exhausted {
             since: Instant::now(),
         };
         for slot in std::mem::take(&mut self.slots) {
-            let paused = match slot {
+            let (mut held, prompt) = match slot {
                 Slot::Working {
                     mut held, mut run, ..
                 } => {
                     held.worked += run.stop().report().elapsed;
-                    Slot::Paused {
-                        held,
-                        prompt: Prompt::Resume,
-                    }
+                    // Its own session ran since, so its resume continues that session.
+                    held.left_session = false;
+                    (held, Prompt::Resume)
                 }
-                paused @ Slot::Paused { .. } => paused,
+                Slot::Paused { held, prompt } => (held, prompt),
             };
-            self.slots.push(paused);
+            held.refused_at = None;
+            self.slots.push(Slot::Paused { held, prompt });
         }
         for mut routine in std::mem::take(&mut self.running_routines) {
             let ended = routine.run.stop();
@@ -421,7 +437,7 @@ impl<'a> Dispatcher<'a> {
         paused.sort_by_key(|(held, _)| queue::urgency(held.trust_core, held.tier, held.priority));
         for (held, prompt) in paused {
             let kept = held.clone();
-            match self.start(held, prompt) {
+            match self.resume(held, prompt) {
                 Ok(slot) => self.slots.extend(slot),
                 Err(error) => {
                     eprintln!("dispatch: #{} could not resume: {error:#}", kept.item());
@@ -475,6 +491,8 @@ fn backoff(base: Duration, cap: Duration, failures: u32) -> Duration {
     Duration::from_millis(ids::below(ceiling.saturating_add(1)))
 }
 
+#[cfg(test)]
+mod refusal_tests;
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -16,7 +16,7 @@ use crate::gates::evidence::EVIDENCE_DIR;
 use crate::git;
 use crate::kit::install::{self, LOCAL_SETTINGS, RECORD_FILE};
 use crate::orchestrate::claude::{Running, Watch};
-use crate::orchestrate::launch::{LaunchScope, SessionStart};
+use crate::orchestrate::launch::{self, LaunchScope, SessionStart};
 use crate::process;
 use crate::repo::{Repo, walk_files};
 
@@ -54,6 +54,9 @@ pub struct Job<'a> {
     /// An effort the dispatcher asks for, such as low for the light review lane.
     pub effort: Option<&'a str>,
     pub scope: LaunchScope,
+    /// The exit code `kit launch` gives a launch a lock refuses, which the dispatcher reads as a
+    /// session to start again later.
+    pub busy_exit: u8,
 }
 
 /// Where new branches start: the base branch on the remote, fetched first, so an item starts from
@@ -99,13 +102,21 @@ impl Launcher {
                 command.args(["--resume", id]);
             }
         }
+        command.args(["--busy-exit", &job.busy_exit.to_string()]);
         command
             .current_dir(worktree)
             .env(PROJECT_DIR_VARIABLE, worktree);
         for name in IDENTITY_VARIABLES {
             command.env_remove(name);
         }
-        Running::spawn(command, None, Some(job.log), watch)
+        let session_lock = job
+            .item
+            .map(|item| launch::session_lock_path(&Repo::at(worktree), item, job.agent));
+        let locks = session_lock
+            .into_iter()
+            .chain([launch::fable_lock_path()])
+            .collect();
+        Ok(Running::spawn(command, None, Some(job.log), watch)?.holding(locks))
     }
 }
 
@@ -121,7 +132,9 @@ pub fn worktree_dir(repo: &Repo, name: &str) -> PathBuf {
 
 /// `.agent/worktrees/<name>` on `branch`, created from the fetched base tip when the branch is
 /// new. A worktree with no branch, a planner's or a routine's, moves to the fetched tip before
-/// every session while it has no tracked change, so it never plans or scans an old tree.
+/// every session while it has no tracked change, so it never plans or scans an old tree; one that
+/// cannot move there, such as for an untracked file the tip adds or a stale `index.lock`, is made
+/// again at the tip, and the untracked files it held are gone.
 pub fn worktree(
     repo: &Repo,
     name: &str,
@@ -155,7 +168,20 @@ pub fn worktree(
     Ok(dir)
 }
 
-/// Checks a detached worktree out at the fetched base tip, unless it holds a tracked change.
+/// Detaches the worktree `name` at its tip, files unchanged, so another worktree can check its
+/// branch out; nothing when it does not exist.
+pub fn detach(repo: &Repo, name: &str) -> Result<()> {
+    let dir = worktree_dir(repo, name);
+    if !dir.join(".git").exists() {
+        return Ok(());
+    }
+    git::output(&Repo::at(&dir), &["switch", "--quiet", "--detach"])
+        .with_context(|| format!("detaching {}", dir.display()))?;
+    Ok(())
+}
+
+/// Checks a detached worktree out at the fetched base tip, unless it holds a tracked change; one
+/// the checkout refuses is made again there.
 fn refresh_detached(repo: &Repo, dir: &Path, upstream: Upstream) -> Result<()> {
     let Some(tip) = start_point(repo, upstream)? else {
         return Ok(());
@@ -168,8 +194,18 @@ fn refresh_detached(repo: &Repo, dir: &Path, upstream: Upstream) -> Result<()> {
     if !changes.trim().is_empty() {
         return Ok(());
     }
-    git::output(&worktree, &["checkout", "--detach", "--quiet", &tip])
-        .with_context(|| format!("moving {} to {tip}", dir.display()))?;
+    let Err(refused) = git::output(&worktree, &["checkout", "--detach", "--quiet", &tip]) else {
+        return Ok(());
+    };
+    let target = dir.to_string_lossy().into_owned();
+    println!("dispatch: {target} cannot move to {tip} ({refused:#}); it is made again there");
+    git::output(repo, &["worktree", "remove", "--force", &target])
+        .with_context(|| format!("removing the worktree {target}"))?;
+    git::output(
+        repo,
+        &["worktree", "add", "--quiet", "--detach", &target, &tip],
+    )
+    .with_context(|| format!("making the worktree {target} again at {tip}"))?;
     Ok(())
 }
 

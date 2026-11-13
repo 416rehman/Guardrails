@@ -32,6 +32,10 @@ const CHECK_NAME = 'eval-diff'
 const STATUS_CONTEXT = 'grdr-evaluator/eval-diff'
 const MARKER = 'grdr:review'
 const PROPOSED_LABELS = ['status:proposed', 'kind:bug']
+// What sha256sum prints for no input, as when the gh read piped into it fails, so a digest the
+// publisher read back is evidence only when it is another one.
+const EMPTY_INPUT_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+const READ_DIGEST = new RegExp(`^(?!${EMPTY_INPUT_SHA256}$)[0-9a-f]{64}$`)
 
 const H09_LENSES = [
   ['h09-1', 'trust-boundary', 'Find every value in the change that crosses a trust boundary of docs/design/02-threat-model.md section 3.4 and is used on the receiving side without re-checking its shape, size or authority.'],
@@ -145,6 +149,7 @@ const PUBLISH_SCHEMA = {
           index: { type: 'integer' },
           outcome: { type: 'string', enum: ['posted', 'exists', 'fallback-status', 'failed', 'skipped'] },
           url: { type: 'string' },
+          sha256: { type: 'string' },
           error: { type: 'string' },
         },
         required: ['index', 'outcome', 'url', 'error'],
@@ -188,8 +193,8 @@ function inert(text) {
     .replace(/-->/g, '--&gt;')
     .replace(/@(?=[A-Za-z0-9])/g, '@' + ZERO_WIDTH_SPACE)
     .replace(/`{3,}/g, "'''")
-    // dontAsk refuses a here-document with a quote inside braces, as quoted code and JSON have.
-    .replace(/[{}]/g, brace => (brace === '{' ? '&#123;' : '&#125;'))
+    // dontAsk refuses quoted JSON in a here-document, and guard-command a quoted kit record.
+    .replace(/[{}]/g, brace => (brace === '{' ? '&#123;' : '&#125;')).replace(/\b(ready|lease|state|handoff|meta|lane)\.(?=v1)/gi, '$1&#46;')
 }
 
 function parseModels(toml) {
@@ -274,22 +279,18 @@ function insideChange(finding, diff) {
 }
 
 function parseMarkers(lines, pr) {
-  const prefix = `<!-- ${MARKER} `
-  const markers = []
-  for (const line of lines) {
-    const text = String(line).trim()
-    if (!text.startsWith(prefix) || !text.endsWith('-->')) continue
-    const body = text.slice(prefix.length, -3).trim()
-    const space = body.indexOf(' ')
-    if (space === -1) continue
+  const newestByRound = new Map()
+  const matches = lines.map(line => new RegExp(`^<!-- ${MARKER} (\\w+) (\\S+) -->$`).exec(String(line).trim())).filter(Boolean)
+  for (const [, token, record] of matches) {
     try {
-      const data = JSON.parse(decodeURIComponent(body.slice(space + 1)))
-      if (data.v === 1 && data.pr === pr) markers.push(data)
+      const data = { n: 0, ...JSON.parse(decodeURIComponent(record)), token }
+      const kept = newestByRound.get(data.round)
+      if (data.v === 1 && data.pr === pr && !(kept && kept.n > data.n)) newestByRound.set(data.round, data)
     } catch (error) {
       log(`ignored an unreadable review marker: ${error.message}`)
     }
   }
-  return markers.sort((a, b) => a.round - b.round)
+  return [...newestByRound.values()].sort((a, b) => a.round - b.round)
 }
 
 function worstSeverity(severities) {
@@ -473,14 +474,18 @@ function checkAction(repo, check, status) {
 }
 
 function commentAction(repo, kind, number, token, body) {
+  const marked = `.comments[] | select(.body | split("\\n") | any(startswith("<!-- ${MARKER} ${token} ")))`
+  const hash = `gh ${kind} view ${number} --repo ${repo} --json comments --jq '${marked} | .body' | sha256sum`
+  const readBack = ['Last, hash the comment as GitHub holds it: run this and report the 64 hex digits it prints as sha256, or sha256 "" if gh printed an error instead of the comment.', hash]
   return {
-    title: `verdict comment on issue ${number}`,
+    title: `verdict comment on issue ${number}`, hash, readBack,
     steps: [
-      `First run: gh ${kind} view ${number} --repo ${repo} --json comments --jq '.comments[] | select(.body | contains("${token}")) | .url'`,
-      'If it prints a URL, report outcome exists with that URL and skip the rest of this action.',
+      `First run: gh ${kind} view ${number} --repo ${repo} --json comments --jq '${marked} | .url'`,
+      'If it prints a URL, report outcome exists with that URL and go on to the last step of this action.',
       'Otherwise post this body:',
       heredoc(`gh issue comment ${number} --repo ${repo} --body-file -`, body, `GRDR_COMMENT_${token}`),
       'Report outcome posted with the comment URL gh prints.',
+      ...readBack,
     ],
   }
 }
@@ -501,7 +506,7 @@ function issueAction(repo, issue) {
 }
 
 function safeTitle(text) {
-  return inert(String(text || '').replace(/[{}]/g, b => (b === '{' ? '(' : ')'))).replace(/["$`\\]/g, "'").replace(/\s+/g, ' ').trim().slice(0, 90)
+  return inert(String(text || '').replace(/[{}]/g, b => (b === '{' ? '(' : ')'))).replace(/&#46;/g, '.').replace(/["$`\\]/g, "'").replace(/\s+/g, ' ').trim().slice(0, 90)
 }
 
 async function runFinder(job, ctx) {
@@ -592,9 +597,9 @@ async function vote(finding, ctx) {
   }
 }
 
-function incomplete(reason, extra) {
-  log(`Incomplete: ${reason}. Nothing was published; resume this run once the cause is gone (a usage limit pauses a review, it never fails one).`)
-  return { status: 'incomplete', reason, published: null, ...extra }
+function incomplete(reason, extra, next = 'Nothing was published; resume this run once the cause is gone (a usage limit pauses a review, it never fails one).') {
+  log(`Incomplete: ${reason}. ${next}`)
+  return { published: null, ...extra, status: 'incomplete', reason }
 }
 
 function verdictOf(survivors, a01Missing) {
@@ -646,11 +651,34 @@ function handoffFor(facts) {
   }
 }
 
-// Percent-encoded: dontAsk refuses a here-document with JSON, and `--` would end the HTML comment.
-function markerFor(token, pr, round, head, findings) {
-  const compact = findings.filter(f => !f.embargoed).map(f => ({ p: f.path, l: f.line, c: f.claim.slice(0, 120) }))
-  const record = encodeURIComponent(JSON.stringify({ v: 1, pr, round, head, findings: compact })).replace(/[!\x27()*~-]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
-  return `<!-- ${MARKER} ${token} ${record} -->`
+// kit handoff refuses a finished verdict with no evidence. The verdict comment holds the round
+// record, so its hash as GitHub keeps it is the review's own, whether or not an audit ran. A read
+// that printed no comment gets one more try, which posts nothing; past that the agent hashes it.
+async function publishVerdict(repo, actions, result) {
+  const published = await publish(repo, actions)
+  if (!published) return incomplete('the publisher did not return; a re-run skips whatever the comment marker shows was posted', { round: result.round })
+  const done = { ...result, published: published.actions }
+  const comment = published.actions.find(r => actions[r.index] && actions[r.index].hash && ['posted', 'exists'].includes(r.outcome))
+  if (!comment) return done
+  const { hash, readBack } = actions[comment.index]
+  const read = READ_DIGEST.test(comment.sha256 || '') ? comment : await publish(repo, [{ title: `read back the verdict comment ${comment.url}; post nothing`, steps: readBack }], 'read back').then(again => again && (again.actions[0] || {}))
+  if (read && READ_DIGEST.test(read.sha256 || '')) return { ...done, handoff: { ...done.handoff, evidence: [...done.handoff.evidence, { cmd: hash, exit: 0, log: comment.url, sha256: read.sha256 }] } }
+  const why = read ? `gh did not print the verdict comment ${comment.url} on two reads;` : `the agent that reads the verdict comment ${comment.url} a second time did not return; resuming this run reads it again, or`
+  return incomplete(`${why} without reviewing again, run ${hash} and add it to the hand-off's evidence as cmd, with exit 0, the comment URL as log and the digest it prints as sha256. If it prints ${EMPTY_INPUT_SHA256}, the digest of no input, gh printed no comment: run it again, and never cite that digest`, { ...done, comment: comment.url, hash }, 'The verdict comment is published; only its evidence entry is missing.')
+}
+
+// A comment that matches the round's newest marker keeps that marker's number, and so its token:
+// a re-run that reaches the same verdict finds that comment and posts nothing. Any other verdict
+// takes the next number and posts a comment of its own, even a verdict the round had before. A
+// marker from before the numbers counts as the oldest. The record is percent-encoded, since
+// dontAsk refuses a here-document with JSON and `--` would end the HTML comment.
+function markedComment(text, pr, round, head, findings, newest = { n: 0 }) {
+  const record = { v: 1, pr, round, head, findings: findings.filter(f => !f.embargoed).map(f => ({ p: f.path, l: f.line, c: f.claim.slice(0, 120) })) }
+  const digest = fnv(`${text}|${JSON.stringify(record)}`)
+  const n = fnv(`${digest}|${newest.n}`) === newest.token ? newest.n : newest.n + 1
+  const token = fnv(`${digest}|${n}`)
+  const encoded = encodeURIComponent(JSON.stringify({ ...record, n })).replace(/[!\x27()*~-]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
+  return { token, body: `${text}\n<!-- ${MARKER} ${token} ${encoded} -->` }
 }
 
 function proposedIssue(finding, facts) {
@@ -680,21 +708,20 @@ function proposedIssue(finding, facts) {
   }
 }
 
-async function publish(repo, actions) {
-  return agent(publishPrompt(repo, actions), { label: 'publish', phase: 'Publish', schema: PUBLISH_SCHEMA, model: 'sonnet', effort: 'low' })
+async function publish(repo, actions, label = 'publish') {
+  return agent(publishPrompt(repo, actions), { label, phase: 'Publish', schema: PUBLISH_SCHEMA, model: 'sonnet', effort: 'low' })
 }
 
 async function overCap(facts) {
   const reason = `Review round ${facts.round} requested; the cap is ${maxRounds} (D-47). The item returns to its lead (team/03 section 4.2).`
   log(reason)
-  const handoff = handoffFor({ ...facts, status: 'fail', summary: reason, next: 'Lead: re-plan the item; the dispatcher returns it on attempt 1 and escalates it on attempt 2.' })
-  if (!facts.publishing) return { status: 'fail', reason, round: facts.round, handoff, published: null }
+  const failed = { status: 'fail', reason, round: facts.round, handoff: handoffFor({ ...facts, status: 'fail', summary: reason, next: 'Lead: re-plan the item; the dispatcher returns it on attempt 1 and escalates it on attempt 2.' }) }
+  if (!facts.publishing) return { ...failed, published: null }
   phase('Publish')
   const check = { name: CHECK_NAME, head_sha: facts.head, status: 'completed', conclusion: 'failure', output: { title: `eval-diff: round ${facts.round} is over the cap`, summary: reason } }
   const status = { state: 'failure', context: STATUS_CONTEXT, description: `round ${facts.round} is over the ${maxRounds}-round cap` }
-  const body = `eval-diff on \`${facts.head.slice(0, 12)}\`: **fail**, review round ${facts.round} is over the ${maxRounds}-round cap; the item returns to its lead.\n${markerFor(facts.token, facts.pr, facts.round, facts.head, [])}`
-  const result = await publish(facts.repo, [checkAction(facts.repo, check, status), commentAction(facts.repo, facts.item ? 'issue' : 'pr', facts.item || facts.pr, facts.token, body)])
-  return { status: 'fail', reason, round: facts.round, handoff, published: result ? result.actions : null }
+  const { token, body } = markedComment(`eval-diff on \`${facts.head.slice(0, 12)}\`: **fail**, review round ${facts.round} is over the ${maxRounds}-round cap; the item returns to its lead.`, facts.pr, facts.round, facts.head, [], facts.newest)
+  return publishVerdict(facts.repo, [checkAction(facts.repo, check, status), commentAction(facts.repo, facts.item ? 'issue' : 'pr', facts.item || facts.pr, token, body)], failed)
 }
 
 const input = normaliseArgs(args)
@@ -735,8 +762,7 @@ const trustGlobs = globsFrom(scope.trust_core_paths)
 const labels = scope.labels || []
 const tier = (labels.find(name => name.startsWith('tier:')) || '').slice('tier:'.length)
 const publishing = scope.mode === 'github' && !input.dryRun
-const token = fnv(`${pr}|${round}|${head}`)
-const facts = { repo, pr, item, head, round, token, publishing, spentAtStart, modelId: models[reviewers[0]] || '' }
+const facts = { repo, pr, item, head, round, publishing, spentAtStart, modelId: models[reviewers[0]] || '', newest: markers.find(m => m.round === round) }
 
 if (last && last.head === head && last.round === round && !input.force) {
   log(`Round ${round} already reviewed head ${head.slice(0, 12)}; nothing to do (pass force=true to review it again).`)
@@ -850,19 +876,11 @@ const check = {
   output: { title: `eval-diff round ${round}: ${status} (${countText})`, summary: `${handoff.summary} The findings are in the ${CHECK_NAME} comment on the issue.` },
 }
 const commitStatus = { state: status === 'pass' ? 'success' : status === 'fail' ? 'failure' : 'error', context: STATUS_CONTEXT, description: `round ${round}: ${status}, ${countText}`.slice(0, 140) }
-const marker = markerFor(token, pr, round, head, tagged)
-const lead = `eval-diff round ${round} of ${maxRounds} on \`${head.slice(0, 12)}\` (${reviewerIds}): **${status}**, ${countText}.`
-const comment = `${lead}\n\n${summary}\n${marker}`
+const { token, body: comment } = markedComment(`eval-diff round ${round} of ${maxRounds} on \`${head.slice(0, 12)}\` (${reviewerIds}): **${status}**, ${countText}.\n\n${summary}`, pr, round, head, tagged, facts.newest)
 
 const result = { status, round, pr, item, head, range, writers, reviewers, findings: tagged, shadow, skipped, handoff, proposed }
 if (!publishing) {
   log(scope.mode === 'local' ? 'Local diff: nothing is published.' : 'Dry run: nothing is published.')
   return { ...result, published: null, check, comment }
 }
-const published = await publish(repo, [
-  checkAction(repo, check, commitStatus),
-  commentAction(repo, item ? 'issue' : 'pr', item || pr, token, comment),
-  ...proposed.map(issue => issueAction(repo, issue)),
-])
-if (!published) return incomplete('the publisher did not return; a re-run skips whatever the comment marker shows was posted', { round })
-return { ...result, published: published.actions }
+return await publishVerdict(repo, [checkAction(repo, check, commitStatus), commentAction(repo, item ? 'issue' : 'pr', item || pr, token, comment), ...proposed.map(issue => issueAction(repo, issue))], result)

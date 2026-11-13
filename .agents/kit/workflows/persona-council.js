@@ -150,8 +150,8 @@ function inert(text) {
     .replace(/-->/g, '--&gt;')
     .replace(/@(?=[A-Za-z0-9])/g, '@' + ZERO_WIDTH_SPACE)
     .replace(/`{3,}/g, "'''")
-    // dontAsk refuses a here-document with a quote inside braces, as quoted code and JSON have.
-    .replace(/[{}]/g, brace => (brace === '{' ? '&#123;' : '&#125;'))
+    // dontAsk refuses quoted JSON in a here-document, and guard-command a quoted kit record.
+    .replace(/[{}]/g, brace => (brace === '{' ? '&#123;' : '&#125;')).replace(/\b(ready|lease|state|handoff|meta|lane)\.(?=v1)/gi, '$1&#46;')
 }
 
 // A marker's record is percent-encoded: Claude Code in dontAsk refuses a here-document that

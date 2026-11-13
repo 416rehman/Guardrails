@@ -13,11 +13,16 @@
 //! another, after checking out the seed scope's branch, new from the fetched base tip when it
 //! does not exist yet. Without `--print` or `--seed` the session is interactive, still in
 //! `dontAsk`. It refuses to run inside an agent session or while Claude Code does not trust the
-//! repository folder (`trust`), and a fable session holds a machine-wide lock: one at a time.
+//! repository folder (`trust`). A fable session holds a machine-wide lock, one at a time, and a
+//! printed session on an item holds `.agent/state/session-<n>-<agent>.lock` in its checkout, so
+//! the same agent's next session on that item never runs beside it, even one a stopped dispatcher
+//! left running. A launch a lock refuses exits with `--busy-exit`, the code the dispatcher passes,
+//! or else with harness.toml's `[launch] busy_exit`.
 
 mod harness;
 mod item;
 mod kit;
+mod locks;
 pub mod trust;
 
 use std::io::Write as _;
@@ -29,8 +34,7 @@ use anyhow::{Context, Result, bail};
 use super::form::Form;
 use super::issue::tier_name;
 use super::tracker::{GhTracker, Tracker, missing_step};
-use crate::cli::{self, Spec};
-use crate::config::limits::Limits;
+use crate::cli::{self, Parsed, Spec};
 use crate::config::protected::SeedScope;
 use crate::config::session::{
     AGENT_VARIABLE, ItemSnapshot, ItemStatus, LAUNCHER_MODEL_VARIABLE, SCOPE_VARIABLE,
@@ -40,15 +44,15 @@ use crate::git;
 use crate::github::{EXIT_OWNER_STEP, Gh, Mode};
 use crate::kit::claude_config;
 use crate::kit::{CHIEF_ARCHITECT, OWNERSHIP_SENTENCE};
-use crate::lock::Lock;
 use crate::repo::Repo;
 
-use self::harness::harness_text;
 pub use self::harness::{HARNESS_FILE, claude_from, claude_program};
+use self::harness::{harness_code, harness_text};
 use self::item::fetch_item;
 pub use self::item::{acceptance_path, snapshot_of};
 use self::kit::model_name;
 pub use self::kit::{Caps, LaunchKit, ModelChoice, protected_change_agents};
+pub use self::locks::{fable_lock_path, fable_session_running, session_lock_path, session_running};
 use self::trust::{Trust, Untrusted};
 
 pub const CLAUDE_VARIABLE: &str = "GRDR_CLAUDE";
@@ -61,14 +65,13 @@ const SPEC: Spec = Spec {
         "--resume",
         "--model",
         "--effort",
+        "--busy-exit",
     ],
 };
 const EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 const PROJECT_SETTINGS: &str = ".claude/settings.json";
 /// Anything no allow rule or hook approves is refused, never asked (owner instruction 7).
 const PERMISSION_MODE: &str = "dontAsk";
-/// One fable session at a time on this machine (design/_review/03: on demand, never in a loop).
-const FABLE_LOCK: &str = "grdr-fable-session.lock";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Prompting {
@@ -102,6 +105,9 @@ pub struct Request {
     pub model: Option<String>,
     /// An effort the caller asks for; otherwise the item's size row in usage.toml, else the roster.
     pub effort: Option<String>,
+    /// The exit code for a launch a lock refuses, which the caller reads as one to start again
+    /// later: the dispatcher passes its own, since a worktree's harness.toml may predate the key.
+    pub busy_exit: Option<u8>,
 }
 
 /// Everything about one launch, decided before anything starts.
@@ -116,6 +122,11 @@ pub struct Plan {
     pub turns: u32,
     pub effort: Option<String>,
     pub snapshot: Option<ItemSnapshot>,
+    /// The request's, else `[launch] busy_exit`, which a worktree branched from a base without it
+    /// lacks; there a person's launch reports a refusal by a lock as an error.
+    pub busy_exit: Option<u8>,
+    /// The lock a printed session on an item holds while it runs.
+    pub session_lock: Option<PathBuf>,
 }
 
 /// `kit launch`.
@@ -127,34 +138,7 @@ pub fn command(args: &[String]) -> Result<ExitCode> {
         );
     }
     let parsed = cli::parse(args, &SPEC)?;
-    let Some(agent) = parsed.positional.first().cloned() else {
-        bail!(
-            "usage: cargo xtask kit launch <agent> [--item <n>] [--seed] [--print <prompt>] [--session-id <id> | --resume <id>] [--dry-run]"
-        );
-    };
-    let session = match (parsed.value("--session-id"), parsed.value("--resume")) {
-        (Some(_), Some(_)) => bail!("--session-id and --resume exclude each other"),
-        (Some(id), None) => SessionStart::Named(id.to_owned()),
-        (None, Some(id)) => SessionStart::Resume(id.to_owned()),
-        (None, None) => SessionStart::New,
-    };
-    let request = Request {
-        agent,
-        item: parsed.value("--item").map(parse_item_number).transpose()?,
-        scope: if parsed.has("--seed") {
-            LaunchScope::Seed
-        } else {
-            LaunchScope::Ordinary
-        },
-        prompting: parsed
-            .value("--print")
-            .map_or(Prompting::Interactive, |prompt| {
-                Prompting::Print(prompt.to_owned())
-            }),
-        session,
-        model: parsed.value("--model").map(str::to_owned),
-        effort: parsed.value("--effort").map(str::to_owned),
-    };
+    let request = request_of(&parsed)?;
     let repo = Repo::discover()?;
     let trust = trust::check(&repo)?;
     if let Trust::Refused(step) = trust {
@@ -177,6 +161,45 @@ pub fn command(args: &[String]) -> Result<ExitCode> {
         check_out_seed_branch(&repo, &Form::load(&repo)?, &scope.branch)?;
     }
     start(&plan)
+}
+
+/// The launch that `kit launch`'s arguments ask for.
+fn request_of(parsed: &Parsed) -> Result<Request> {
+    let Some(agent) = parsed.positional.first().cloned() else {
+        bail!(
+            "usage: cargo xtask kit launch <agent> [--item <n>] [--seed] [--print <prompt>] [--session-id <id> | --resume <id>] [--dry-run]"
+        );
+    };
+    let session = match (parsed.value("--session-id"), parsed.value("--resume")) {
+        (Some(_), Some(_)) => bail!("--session-id and --resume exclude each other"),
+        (Some(id), None) => SessionStart::Named(id.to_owned()),
+        (None, Some(id)) => SessionStart::Resume(id.to_owned()),
+        (None, None) => SessionStart::New,
+    };
+    Ok(Request {
+        agent,
+        item: parsed.value("--item").map(parse_item_number).transpose()?,
+        scope: if parsed.has("--seed") {
+            LaunchScope::Seed
+        } else {
+            LaunchScope::Ordinary
+        },
+        prompting: parsed
+            .value("--print")
+            .map_or(Prompting::Interactive, |prompt| {
+                Prompting::Print(prompt.to_owned())
+            }),
+        session,
+        model: parsed.value("--model").map(str::to_owned),
+        effort: parsed.value("--effort").map(str::to_owned),
+        busy_exit: parsed
+            .value("--busy-exit")
+            .map(|raw| {
+                raw.parse::<u8>()
+                    .with_context(|| format!("--busy-exit {raw} is not an exit code from 0 to 255"))
+            })
+            .transpose()?,
+    })
 }
 
 /// The seed session works on `branch`: as it is when it exists, else new from the fetched base
@@ -294,6 +317,14 @@ pub fn plan(
         Some(value) => env.push((SCOPE_VARIABLE, value.to_owned())),
         None => unset.push(SCOPE_VARIABLE),
     }
+    let session_lock = match (&prompting, request.item) {
+        (Prompting::Print(_), Some(number)) => Some(session_lock_path(repo, number, name)),
+        _ => None,
+    };
+    let busy_exit = match request.busy_exit {
+        Some(code) => Some(code),
+        None => harness_code(repo, "launch", "busy_exit")?,
+    };
     let (mut args, stdin) = arguments(name, &model.id, turns, prompting, &request.session);
     for rule in &kit.plugin_rules {
         args.extend(["--allowedTools".to_owned(), rule.clone()]);
@@ -325,6 +356,8 @@ pub fn plan(
         turns,
         effort,
         snapshot,
+        busy_exit,
+        session_lock,
     })
 }
 
@@ -361,26 +394,11 @@ pub fn scrubbed_env(user: &std::path::Path, project: &std::path::Path) -> Option
     (!blanked.is_empty()).then(|| serde_json::json!({ "env": blanked }).to_string())
 }
 
-/// The machine-wide lock path for fable sessions.
-pub fn fable_lock_path() -> PathBuf {
-    std::env::temp_dir().join(FABLE_LOCK)
-}
-
-/// Whether a fable session already runs on this machine.
-pub fn fable_session_running() -> Result<bool> {
-    let heartbeat = Limits::built_with()?.orchestrate.launch.fable_heartbeat();
-    Ok(Lock::is_held(&fable_lock_path(), heartbeat))
-}
-
 /// Starts the planned session with this terminal, or the dispatcher's pipes, as its own.
 pub fn start(plan: &Plan) -> Result<ExitCode> {
-    let _fable = match plan.model.name.as_str() {
-        "fable" => Some(Lock::take(
-            fable_lock_path(),
-            Limits::built_with()?.orchestrate.launch.fable_heartbeat(),
-            "a fable session already runs on this machine; the chief architect runs one session at a time",
-        )?),
-        _ => None,
+    let _locks = match locks::take(plan) {
+        Ok(locks) => locks,
+        Err(error) => return locks::busy_exit(error, plan.busy_exit),
     };
     let mut command = Command::new(&plan.program);
     command.args(&plan.args);
@@ -537,6 +555,8 @@ fn with_ownership(name: &str, prompt: String) -> String {
     }
 }
 
+#[cfg(test)]
+mod lock_tests;
 #[cfg(test)]
 mod permission_tests;
 #[cfg(test)]

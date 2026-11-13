@@ -128,6 +128,7 @@ impl Dispatcher<'_> {
             model: job.model,
             effort: job.effort,
             scope: LaunchScope::Ordinary,
+            busy_exit: self.policy.busy_exit,
         };
         let run = self.launcher.spawn(&worktree, &spawned, watch)?;
         println!(
@@ -149,7 +150,8 @@ impl Dispatcher<'_> {
     }
 
     /// A planner records the issue as it left it, so it is planned again only after a change. A
-    /// session that ended at a usage limit records nothing and runs again after the window. An
+    /// session that ended at a usage limit records nothing and runs again after the window, and
+    /// one whose launch a lock refused records nothing and runs again on a later pass. An
     /// evaluator that ended without a verdict in its round runs once more; a second time the item
     /// is escalated instead of waiting out the verdict deadline.
     pub(super) fn after_assist(&mut self, assist: &Assist, ended: &Ended) -> Result<()> {
@@ -159,7 +161,7 @@ impl Dispatcher<'_> {
             assist.item,
             ended.describe()
         );
-        if matches!(ended, Ended::UsageLimited { .. }) {
+        if matches!(ended, Ended::UsageLimited { .. }) || self.lock_refused(ended) {
             self.assisted.remove_started(assist.item, &assist.agent);
             return self.assisted.save(&self.repo);
         }

@@ -1,7 +1,8 @@
 //! The merge queue in the dispatcher: a static-lane change lands as `<title> (#<pr>)` once the
 //! full verify passed on the squashed tree, an invalid pull request goes back to its worker, a
-//! failed light round raises the item to standard, and the seed's pull request, which has one
-//! attempt and a branch no session can rebase, goes to the chief architect when it cannot go on.
+//! failed light round raises the item to standard, and the seed's pull request, which nobody
+//! readies and whose branch no session can rebase, goes to the chief architect when it cannot go
+//! on.
 
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -22,11 +23,11 @@ use crate::orchestrate::tracker::{PullRequest, Tracker};
 use crate::testkit::{TempRepo, risk_tiers, tier};
 
 const SEED: &str = "agent = \"chief-architect\"\nscope = \"seed\"\nbranch = \"agent/seed\"\nmax_turns = 200\npaths = [\"docs/plan.md\"]\n";
-const CRITERIA: &str = "AC-1 | cargo test | exit 0 | oracle: sh";
+pub(super) const CRITERIA: &str = "AC-1 | cargo test | exit 0 | oracle: sh";
 const EVAL_DIFF: &str = "[agent.eval-diff]\ngroup = \"evaluator\"\ndescription = \"Diff.\"\nmodel = \"sonnet\"\neffort = \"high\"\ncap_role = \"evaluator-review\"\nmax_turns = 40\ntools = [\"Read\"]\ndisallowed_tools = [\"Edit\", \"Write\"]\ndeny_write = \"@protected\"\nnet = \"none\"\ntrigger = \"event\"\nbody = \"templates/agents/eval-diff.md\"\n";
 
 /// A bare `origin` with `main` pushed, so the queue can fetch and the worker can push.
-fn with_origin(setup: &Setup) -> TempRepo {
+pub(super) fn with_origin(setup: &Setup) -> TempRepo {
     let origin = TempRepo::create();
     git(
         origin.root(),
@@ -39,7 +40,7 @@ fn with_origin(setup: &Setup) -> TempRepo {
 }
 
 /// Commits the worker's tree on its branch, pushes it, and opens its pull request.
-fn push_and_open(setup: &Setup, item: u64, title: &str, body: &str) -> String {
+pub(super) fn push_and_open(setup: &Setup, item: u64, title: &str, body: &str) -> String {
     let worktree = setup
         .temp
         .root()
@@ -63,12 +64,12 @@ fn push_and_open(setup: &Setup, item: u64, title: &str, body: &str) -> String {
     head
 }
 
-fn valid_body(item: u64) -> String {
+pub(super) fn valid_body(item: u64) -> String {
     let block = meta_block(&form().meta(item, "claude-sonnet-5-5", 1)).unwrap();
     format!("Work item: #{item}\nCloses #{item}\n\n{block}")
 }
 
-fn until_verified(dispatcher: &mut Dispatcher) {
+pub(super) fn until_verified(dispatcher: &mut Dispatcher) {
     let started = Instant::now();
     while !dispatcher.idle() {
         assert!(
@@ -80,7 +81,7 @@ fn until_verified(dispatcher: &mut Dispatcher) {
     }
 }
 
-fn to_review<'a>(setup: &'a Setup, item: u64, file: &str) -> Dispatcher<'a> {
+pub(super) fn to_review<'a>(setup: &'a Setup, item: u64, file: &str) -> Dispatcher<'a> {
     setup.ready_issue(item, &[], "lead-core");
     setup.fake.respond(1, DONE, 0).writes(1, file, "Words.\n");
     setup

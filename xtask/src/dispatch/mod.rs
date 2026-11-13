@@ -181,8 +181,20 @@ pub fn claim(repo: &Repo, tracker: &dyn Tracker, any_tier: bool) -> Result<ExitC
 #[cfg(test)]
 mod assist_tests;
 #[cfg(test)]
+mod fable_tests;
+#[cfg(test)]
+mod kill_tests;
+#[cfg(test)]
 mod landing_tests;
 #[cfg(test)]
 mod preflight_tests;
 #[cfg(test)]
+mod restart_tests;
+#[cfg(test)]
+mod seed_tests;
+#[cfg(test)]
+mod send_back_tests;
+#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod worktree_tests;

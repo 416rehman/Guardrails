@@ -1,10 +1,12 @@
-//! Leases on GitHub (team/01 sections 3 and 9): granting one swaps `status:ready` for
-//! `status:leased`, assigns the issue and posts `lease.v1` with the attempt, agent, model, branch,
-//! acceptance digest and session id; ending one swaps the status and posts `state.v1`. A failed or
-//! stalled attempt returns to `status:ready`, and after the last attempt goes to
-//! `status:escalated` with a team/01 section 6 packet. A usage limit posts nothing.
+//! Leases on GitHub (team/01 sections 3 and 9): granting one swaps the issue's status (`ready`,
+//! or `proposed` when the seed's issue starts again) for `status:leased`, assigns the issue and
+//! posts `lease.v1` with the attempt, agent, model, branch, acceptance digest and session id;
+//! ending one swaps the status and posts `state.v1`. A failed or stalled attempt returns to
+//! `status:ready`, and after the last attempt goes to `status:escalated` with a team/01 section 6
+//! packet. A usage limit posts nothing.
 
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
 
@@ -30,8 +32,16 @@ pub struct Held {
     pub caps: Caps,
     /// Sessions started in this attempt.
     pub sessions: u32,
-    /// Time the worker has run in this attempt; paused time is not counted.
-    pub worked: std::time::Duration,
+    /// Time the worker has run in this attempt, counting a session of it that a stopped dispatcher
+    /// left running (`count_wait`); paused time is not counted.
+    pub worked: Duration,
+    /// When the slot last waited for its own session lock, while it keeps waiting: a launch the
+    /// lock refused, or a fable session's wait while the lock is held.
+    pub refused_at: Option<Instant>,
+    /// Whether a session this dispatcher did not start, such as one a stopped dispatcher left
+    /// running, held the slot's session lock when the slot last tried to start; once it lets go,
+    /// its hand-off decides what follows.
+    pub left_session: bool,
 }
 
 /// One status change and why.
@@ -59,6 +69,14 @@ impl Held {
     pub fn session(&self) -> Option<&str> {
         self.record.session.as_deref()
     }
+
+    /// Counts a wait for the slot's own session lock, which took `spent`, as worked time: the
+    /// session holding the lock runs this item, so waits in a row count the wall time since the
+    /// first of them began.
+    pub fn count_wait(&mut self, spent: Duration) {
+        self.worked += self.refused_at.map_or(spent, |at| at.elapsed());
+        self.refused_at = Some(Instant::now());
+    }
 }
 
 /// Leases `candidate` with `model`, and checks that the newest lease is this one. `session` is
@@ -84,7 +102,12 @@ pub fn grant(
     };
     let edit = IssueEdit {
         add: status_label(ItemStatus::Leased).into_iter().collect(),
-        remove: status_label(ItemStatus::Ready).into_iter().collect(),
+        remove: candidate
+            .issue
+            .status()
+            .and_then(status_label)
+            .into_iter()
+            .collect(),
         assign_self: true,
     };
     tracker.edit(number, &edit)?;
@@ -185,16 +208,27 @@ pub fn end_attempt(
         )?;
         return Ok(Outcome::Retry);
     }
-    transition(
-        tracker,
-        lease.item,
-        lease.attempt,
-        ItemStatus::Leased,
-        ItemStatus::Escalated,
-        reason,
-    )?;
-    tracker.comment(lease.item, &packet(lease, reason))?;
+    escalate(tracker, lease, reason, None)?;
     Ok(Outcome::Escalate)
+}
+
+/// Ends `lease`'s attempt at `status:escalated` with the packet, whatever attempts are left;
+/// `detail` follows the reason on the `state.v1` line.
+pub fn escalate(
+    tracker: &dyn Tracker,
+    lease: &Lease,
+    reason: Reason,
+    detail: Option<&str>,
+) -> Result<()> {
+    let change = Change {
+        item: lease.item,
+        attempt: lease.attempt,
+        from: ItemStatus::Leased,
+        to: ItemStatus::Escalated,
+        reason,
+    };
+    transition_with(tracker, &change, detail)?;
+    tracker.comment(lease.item, &packet(lease, reason))
 }
 
 /// The one-screen escalation packet of team/01 section 6; it goes to the item's lead, never to a

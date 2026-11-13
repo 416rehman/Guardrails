@@ -381,7 +381,7 @@ impl ClaudeLimits {
 }
 
 impl LaunchLimits {
-    pub fn fable_heartbeat(&self) -> Duration {
+    pub fn lock_heartbeat(&self) -> Duration {
         Duration::from_secs(self.fable_heartbeat_s)
     }
 }
