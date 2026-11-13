@@ -43,6 +43,8 @@ const KIT_FILES: &[&str] = &[
 /// What the workflows write for the dot of a record name; an issue title is plain text, so it
 /// shows there as written.
 const RECORD_ESCAPE: &str = "&#46;";
+/// Where audit.js's record agent writes a runner-less run record, before the run's label.
+const RECORD_DRAFT: &str = ".agent/state/audit-run-";
 
 /// What the scripts built: each publisher command, the review's hand-off by how it ran, what each
 /// forced re-review cites, the findings the next round lists, what a review cites when gh reads
@@ -50,11 +52,38 @@ const RECORD_ESCAPE: &str = "&#46;";
 #[derive(Deserialize)]
 struct Built {
     commands: Vec<Published>,
+    audit: Audit,
     handoffs: BTreeMap<String, Value>,
     reruns: BTreeMap<String, Citation>,
     prior: Prior,
     reread: Citation,
     unread: BTreeMap<String, Unread>,
+}
+
+/// The runner-less record prompt audit.js builds, and every audit.js prompt by its step.
+#[derive(Deserialize)]
+struct Audit {
+    record: RecordPrompt,
+    prompts: Vec<StepPrompt>,
+}
+
+/// The record agent's prompt beside the run records the script built it from.
+#[derive(Deserialize)]
+struct RecordPrompt {
+    prompt: String,
+    runs: Vec<RecordRun>,
+}
+
+#[derive(Deserialize)]
+struct RecordRun {
+    label: String,
+    record: Value,
+}
+
+#[derive(Deserialize)]
+struct StepPrompt {
+    step: String,
+    prompt: String,
 }
 
 #[derive(Deserialize)]
@@ -120,11 +149,21 @@ struct Comment {
 /// gate reads them.
 pub fn record(report: &mut Report, only: Option<&str>, verbose: bool) -> Result<()> {
     let wanted = |handler: Handler| only.is_none_or(|only| only == handler.name());
-    if !wanted(Handler::GuardCommand) && !wanted(Handler::StopGate) {
+    if !wanted(Handler::GuardCommand) && !wanted(Handler::StopGate) && !wanted(Handler::GuardPath) {
         return Ok(());
     }
     let kit = Repo::discover()?;
     let limits = limits::load(&kit)?;
+    if wanted(Handler::GuardPath) {
+        for case in record_draft_cases(&kit)? {
+            let label = format!("guard-path/{}", case.name);
+            let result = run_case(Handler::GuardPath, "evaluator", &case, &limits);
+            report.record(&label, result, verbose);
+        }
+    }
+    if !wanted(Handler::GuardCommand) && !wanted(Handler::StopGate) {
+        return Ok(());
+    }
     let built = match build(&kit, &limits) {
         Ok(built) => built,
         Err(error) => {
@@ -141,6 +180,16 @@ pub fn record(report: &mut Report, only: Option<&str>, verbose: bool) -> Result<
         report.record(
             "guard-command/workflow-issue-titles",
             titles(&built),
+            verbose,
+        );
+        report.record(
+            "guard-command/workflow-audit-record-draft",
+            record_drafts(&built.audit.record),
+            verbose,
+        );
+        report.record(
+            "guard-command/workflow-audit-no-json-heredoc",
+            no_brace_heredocs(&built.audit.prompts),
             verbose,
         );
     }
@@ -191,28 +240,70 @@ fn build(kit: &Repo, limits: &HookLimits) -> Result<Built> {
 
 /// One guard-command case per publisher command, as `eval-diff` on the kit's own data.
 fn cases(kit: &Repo, built: &Built) -> Result<Vec<Case>> {
-    let mut files = BTreeMap::new();
-    for path in KIT_FILES {
-        files.insert((*path).to_owned(), kit.read(path)?);
-    }
-    let env = BTreeMap::from([
-        ("GRDR_AGENT".to_owned(), AGENT.to_owned()),
-        ("GRDR_WORK_ITEM".to_owned(), ITEM.to_string()),
-    ]);
+    let files = kit_files(kit)?;
     Ok(built
         .commands
         .iter()
-        .map(|published| Case {
-            name: format!("workflow-{}", published.name),
-            preset: None,
-            env: env.clone(),
-            input: json!({"tool_name": "Bash", "tool_input": {"command": published.command}}),
-            expect: Expect::Allow,
-            contains: None,
-            files: files.clone(),
-            sign_off: false,
+        .map(|published| {
+            let input = json!({"tool_name": "Bash", "tool_input": {"command": published.command}});
+            kit_case(
+                &files,
+                format!("workflow-{}", published.name),
+                input,
+                Expect::Allow,
+            )
         })
         .collect())
+}
+
+/// The record agent, as `eval-diff`, may write its run record draft and nothing beside it: not
+/// the old record path and not the item snapshot the kit writes.
+fn record_draft_cases(kit: &Repo) -> Result<Vec<Case>> {
+    let files = kit_files(kit)?;
+    let write = |path: String| json!({"tool_name": "Write", "tool_input": {"file_path": path}});
+    Ok(vec![
+        kit_case(
+            &files,
+            "workflow-audit-record-draft".to_owned(),
+            write(format!("{RECORD_DRAFT}a01.json")),
+            Expect::Approve,
+        ),
+        kit_case(
+            &files,
+            "workflow-audit-record-old-path".to_owned(),
+            write(".agent/audit/a01/run.json".to_owned()),
+            Expect::Block,
+        ),
+        kit_case(
+            &files,
+            "workflow-audit-record-not-the-snapshot".to_owned(),
+            write(format!(".agent/state/item-{ITEM}.json")),
+            Expect::Block,
+        ),
+    ])
+}
+
+fn kit_files(kit: &Repo) -> Result<BTreeMap<String, String>> {
+    KIT_FILES
+        .iter()
+        .map(|path| Ok(((*path).to_owned(), kit.read(path)?)))
+        .collect()
+}
+
+fn kit_case(files: &BTreeMap<String, String>, name: String, input: Value, expect: Expect) -> Case {
+    Case {
+        name,
+        preset: None,
+        env: BTreeMap::from([
+            ("GRDR_AGENT".to_owned(), AGENT.to_owned()),
+            ("GRDR_WORK_ITEM".to_owned(), ITEM.to_string()),
+        ]),
+        input,
+        expect,
+        contains: None,
+        files: files.clone(),
+        sign_off: false,
+    }
 }
 
 fn titles(built: &Built) -> Result<()> {
@@ -229,6 +320,84 @@ fn titles(built: &Built) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// The record prompt holds no here-document, and for each run names its draft path with a body
+/// that parses as the record the script built.
+fn record_drafts(record: &RecordPrompt) -> Result<()> {
+    let mut instructions = record.prompt.clone();
+    for run in &record.runs {
+        let path = format!("{RECORD_DRAFT}{}.json", run.label);
+        let body = draft_body(&record.prompt, &path)?;
+        instructions = instructions.replace(body, "");
+        let written: Value = serde_json::from_str(body)
+            .with_context(|| format!("the body audit.js gives for {path} is not JSON"))?;
+        if written != run.record {
+            bail!("the body audit.js gives for {path} differs from the record it built");
+        }
+    }
+    if instructions
+        .lines()
+        .any(|line| heredoc_delimiter(line).is_some())
+    {
+        bail!("audit.js's record prompt still writes through a here-document");
+    }
+    Ok(())
+}
+
+/// The lines between `BEGIN <path>` and `END <path>`, which the record agent writes to `path`.
+fn draft_body<'a>(prompt: &'a str, path: &str) -> Result<&'a str> {
+    let (_, after) = prompt
+        .split_once(&format!("BEGIN {path}\n"))
+        .with_context(|| format!("audit.js's record prompt names no Write to {path}"))?;
+    let (body, _) = after
+        .split_once(&format!("\nEND {path}"))
+        .with_context(|| format!("audit.js's record prompt never ends the body for {path}"))?;
+    Ok(body)
+}
+
+/// Claude Code in dontAsk refuses a quoted here-document whose body carries JSON, so no audit.js
+/// prompt may hand one to an agent.
+fn no_brace_heredocs(prompts: &[StepPrompt]) -> Result<()> {
+    let refused: Vec<String> = prompts
+        .iter()
+        .flat_map(|step| {
+            brace_heredocs(&step.prompt)
+                .into_iter()
+                .map(move |command| format!("{}: {command}", step.step))
+        })
+        .collect();
+    if !refused.is_empty() {
+        bail!(
+            "an audit.js prompt gives a here-document whose body holds a brace: {}",
+            refused.join("; ")
+        );
+    }
+    Ok(())
+}
+
+/// The command line of each here-document in `prompt` whose body holds `{` or `}`.
+fn brace_heredocs(prompt: &str) -> Vec<&str> {
+    let mut found = Vec::new();
+    let mut lines = prompt.lines();
+    while let Some(line) = lines.next() {
+        let Some(delimiter) = heredoc_delimiter(line) else {
+            continue;
+        };
+        let braced = lines
+            .by_ref()
+            .take_while(|body| *body != delimiter)
+            .any(|body| body.contains(['{', '}']));
+        if braced {
+            found.push(line);
+        }
+    }
+    found
+}
+
+fn heredoc_delimiter(line: &str) -> Option<&str> {
+    let (_, quoted) = line.rsplit_once("<<'")?;
+    quoted.strip_suffix('\'')
 }
 
 fn handoffs(kit: &Repo, built: &Built) -> Result<()> {
@@ -387,6 +556,22 @@ mod tests {
                 value.split_once('"').unwrap().0.to_owned()
             })
             .collect()
+    }
+
+    #[test]
+    fn the_runner_less_audit_record_round_trips() {
+        let kit = Repo::discover().unwrap();
+        let limits = limits::load(&kit).unwrap();
+        let built = build(&kit, &limits).unwrap();
+        assert!(!built.audit.record.runs.is_empty());
+        record_drafts(&built.audit.record).unwrap();
+        no_brace_heredocs(&built.audit.prompts).unwrap();
+    }
+
+    #[test]
+    fn a_json_heredoc_is_found_and_a_plain_one_is_not() {
+        let prompt = "cat > a <<'D1'\nplain\nD1\ncat > b <<'D2'\n{\"x\": 1}\nD2";
+        assert_eq!(brace_heredocs(prompt), vec!["cat > b <<'D2'"]);
     }
 
     #[test]
