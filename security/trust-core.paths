@@ -32,9 +32,14 @@ programs/grdr-updater/**
 # Cryptography
 crates/grdr-crypto/**
 
-# Policy evaluator semantics (the policy module of grdr-core until it splits out)
+# Policy evaluator semantics: both evaluators of design/12 section 1 item 6. The policy module of
+# grdr-core until it splits out, and the fast path that answers when the engine is gone with the
+# compile module that writes its rows
 crates/grdr-core/src/policy.rs
 crates/grdr-core/src/policy/**
+crates/grdr-fastpath/**
+crates/grdr-core/src/compile/fastpath.rs
+crates/grdr-core/src/compile/fastpath/**
 
 # Tenant context (TenantCtx, taken by every port method) and row-level security
 crates/grdr-ports/src/tenant.rs
@@ -43,6 +48,7 @@ crates/grdr-rel-postgres/migrations/**
 
 # unsafe in the FFI
 crates/grdr-ffi/**
+crates/grdr-fastpath-ffi/**
 
 # Approval helper
 programs/grdr-approve/**
