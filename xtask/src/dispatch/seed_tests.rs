@@ -7,7 +7,7 @@
 
 use super::assist_tests::handoff;
 use super::fable_tests::refused;
-use super::landing_tests::{CRITERIA, valid_body, with_origin};
+use super::landing_tests::{CRITERIA, until_verified, valid_body, with_origin};
 use super::tests::{DONE, Setup, leases, settle, transitions};
 use crate::config::session::ItemStatus;
 use crate::orchestrate::issue::acceptance;
@@ -226,6 +226,7 @@ fn the_decision_on_a_seed_branch_that_no_longer_merges_offers_no_new_session() {
     let mut dispatcher = setup.dispatcher();
     dispatcher.set_verifier(verify.program().to_path_buf());
     dispatcher.step_github().unwrap();
+    until_verified(&mut dispatcher);
     assert_eq!(
         transitions(&setup.found(SEED)),
         vec![(ItemStatus::Escalated, Reason::MergeConflict)]

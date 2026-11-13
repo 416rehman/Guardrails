@@ -16,7 +16,9 @@ use super::review::failed_rounds;
 use super::{Dispatcher, LOCAL_POLL};
 use crate::config::session::ItemStatus;
 use crate::dispatch::lease::{self, Change};
-use crate::dispatch::merge::{self, Checks, Prepared, Tree, Verified, Verifying, Writer};
+use crate::dispatch::merge::{
+    self, Checks, Prepared, Preparing, Tree, Verified, Verifying, Writer,
+};
 use crate::dispatch::worker;
 use crate::git;
 use crate::orchestrate::form::Expected;
@@ -30,7 +32,18 @@ use crate::repo::Repo;
 /// The queue's one verify slot.
 pub(super) enum Landing {
     Idle,
+    Preparing(Box<Preparing>),
     Verifying(Box<Verifying>),
+}
+
+impl Landing {
+    fn tree(&self) -> Option<&Tree> {
+        match self {
+            Landing::Idle => None,
+            Landing::Preparing(preparing) => Some(&preparing.tree),
+            Landing::Verifying(running) => Some(&running.tree),
+        }
+    }
 }
 
 impl Dispatcher<'_> {
@@ -44,11 +57,16 @@ impl Dispatcher<'_> {
     ) -> Result<()> {
         let n = issue.number;
         if acceptance_changed(issue, lease) {
-            if let Landing::Verifying(running) = &mut self.landing
-                && running.tree.item == n
-            {
-                running.stop();
-                self.landing = Landing::Idle;
+            match &mut self.landing {
+                Landing::Verifying(running) if running.tree.item == n => {
+                    running.stop();
+                    self.landing = Landing::Idle;
+                }
+                Landing::Preparing(preparing) if preparing.tree.item == n => {
+                    preparing.cancelled = true;
+                    self.step_queue()?;
+                }
+                _ => {}
             }
             return self.acceptance_moved(lease, ItemStatus::InReview);
         }
@@ -116,68 +134,113 @@ impl Dispatcher<'_> {
         if self.verified.get(&request.number) == Some(&tree) {
             return self.merge(issue, request, &tree);
         }
-        self.verify(issue, lease, found, tree)
+        self.verify(issue, lease, tree)
     }
 
-    fn verify(&mut self, issue: &Issue, lease: &Lease, found: &[Record], tree: Tree) -> Result<()> {
-        if let Landing::Verifying(running) = &self.landing {
-            let what = if running.tree == tree {
+    fn verify(&mut self, issue: &Issue, lease: &Lease, tree: Tree) -> Result<()> {
+        if let Some(busy) = self.landing.tree() {
+            let what = if *busy == tree {
                 "passed review; the merge queue is verifying it".to_owned()
             } else {
                 format!(
                     "passed review; waits for the queue to verify #{}",
-                    running.tree.item
+                    busy.item
                 )
             };
             self.notice(issue.number, &what);
             return Ok(());
         }
-        let writer = Writer::of(&self.kit, issue, lease);
-        let prepared =
-            match writer.and_then(|writer| merge::start(&self.repo, &self.queue, &tree, &writer)) {
-                Ok(prepared) => prepared,
-                Err(error) => {
-                    self.notice(
-                        issue.number,
-                        &format!("passed review; the queue cannot verify: {error:#}"),
-                    );
-                    return Ok(());
-                }
-            };
-        match prepared {
-            Prepared::Started(running) => {
+        let writer = match Writer::of(&self.kit, issue, lease) {
+            Ok(writer) => writer,
+            Err(error) => {
+                self.notice(
+                    issue.number,
+                    &format!("passed review; the queue cannot verify: {error:#}"),
+                );
+                return Ok(());
+            }
+        };
+        let preparing = Preparing::begin(&self.repo, &self.queue, &tree, &writer);
+        self.landing = Landing::Preparing(Box::new(preparing));
+        Ok(())
+    }
+
+    /// Takes over a readied queue worktree: its verify becomes the running one, or its conflict
+    /// goes back to the item while it is still in review with that pull request.
+    fn prepared(&mut self, preparing: Preparing) -> Result<()> {
+        let tree = preparing.tree.clone();
+        let cancelled = preparing.cancelled;
+        let detail = match preparing.finish() {
+            Ok(Prepared::Started(mut running)) if cancelled => {
+                running.stop();
+                return Ok(());
+            }
+            Ok(Prepared::Started(running)) => {
                 println!(
                     "dispatch: #{} verifying {} on {} (log {})",
-                    issue.number,
+                    tree.item,
                     tree.head,
                     tree.base_tip,
                     running.log.display()
                 );
                 self.landing = Landing::Verifying(running);
-                Ok(())
+                return Ok(());
             }
-            Prepared::Conflict(detail) if self.is_seed_lease(lease) => {
-                let change = Change {
-                    item: issue.number,
-                    attempt: lease.attempt,
-                    from: ItemStatus::InReview,
-                    to: ItemStatus::Escalated,
-                    reason: Reason::MergeConflict,
-                };
-                let detail = format!(
-                    "The seed branch no longer merges onto {}: {detail}. No session can merge or rebase the seed branch, so the chief architect decides how it continues.",
-                    tree.base
+            Ok(Prepared::Conflict(detail)) => detail,
+            Err(error) => {
+                self.notice(
+                    tree.item,
+                    &format!("passed review; the queue cannot verify: {error:#}"),
                 );
-                lease::transition_with(self.tracker, &change, Some(&detail))
+                return Ok(());
             }
-            Prepared::Conflict(detail) => {
-                let detail = format!(
-                    "The branch no longer merges onto {}: {detail}. A session cannot merge or rebase, so push nothing and stop; the attempt then ends and the next one starts from the current base.",
-                    tree.base
-                );
-                self.queue_refused(issue, lease, found, Reason::MergeConflict, &detail)
-            }
+        };
+        if cancelled {
+            return Ok(());
         }
+        let Some((issue, lease, found)) = self.still_in_review(&tree)? else {
+            return Ok(());
+        };
+        if self.is_seed_lease(&lease) {
+            let change = Change {
+                item: issue.number,
+                attempt: lease.attempt,
+                from: ItemStatus::InReview,
+                to: ItemStatus::Escalated,
+                reason: Reason::MergeConflict,
+            };
+            let detail = format!(
+                "The seed branch no longer merges onto {}: {detail}. No session can merge or rebase the seed branch, so the chief architect decides how it continues.",
+                tree.base
+            );
+            return lease::transition_with(self.tracker, &change, Some(&detail));
+        }
+        let detail = format!(
+            "The branch no longer merges onto {}: {detail}. A session cannot merge or rebase, so push nothing and stop; the attempt then ends and the next one starts from the current base.",
+            tree.base
+        );
+        self.queue_refused(&issue, &lease, &found, Reason::MergeConflict, &detail)
+    }
+
+    /// The item of `tree` with its current lease and records, while it is still in review with
+    /// that pull request.
+    fn still_in_review(&mut self, tree: &Tree) -> Result<Option<(Issue, Lease, Vec<Record>)>> {
+        let issue = self.tracker.issue(tree.item)?;
+        let found = records::records(&issue);
+        let Some(lease) = records::current_lease(&found, tree.item).cloned() else {
+            return Ok(None);
+        };
+        let request = self.tracker.open_pull_request(&lease.branch)?;
+        if issue.status() != Some(ItemStatus::InReview)
+            || request.is_none_or(|request| request.number != tree.pr)
+        {
+            println!(
+                "dispatch: #{} left review while the queue verified it, so nothing is sent back",
+                tree.item
+            );
+            return Ok(None);
+        }
+        Ok(Some((issue, lease, found)))
     }
 
     fn merge(&mut self, issue: &Issue, request: &PullRequest, tree: &Tree) -> Result<()> {
@@ -252,6 +315,16 @@ impl Dispatcher<'_> {
     /// Polls the running verify; a pass is kept for the next GitHub pass to land, a failure
     /// sends the item back to its worker while it is still in review with that pull request.
     pub fn step_queue(&mut self) -> Result<()> {
+        if let Landing::Preparing(preparing) = &self.landing {
+            if !preparing.finished() {
+                return Ok(());
+            }
+            if let Landing::Preparing(preparing) =
+                std::mem::replace(&mut self.landing, Landing::Idle)
+            {
+                return self.prepared(*preparing);
+            }
+        }
         let Landing::Verifying(running) = &mut self.landing else {
             return Ok(());
         };
@@ -272,21 +345,9 @@ impl Dispatcher<'_> {
             }
             Verified::Running => Ok(()),
             Verified::Failed(detail) => {
-                let issue = self.tracker.issue(tree.item)?;
-                let found = records::records(&issue);
-                let Some(lease) = records::current_lease(&found, tree.item).cloned() else {
+                let Some((issue, lease, found)) = self.still_in_review(&tree)? else {
                     return Ok(());
                 };
-                let request = self.tracker.open_pull_request(&lease.branch)?;
-                if issue.status() != Some(ItemStatus::InReview)
-                    || request.is_none_or(|request| request.number != tree.pr)
-                {
-                    println!(
-                        "dispatch: #{} left review while its verify ran, so the failure sends nothing back",
-                        tree.item
-                    );
-                    return Ok(());
-                }
                 let detail = format!("{detail}.");
                 self.queue_refused(&issue, &lease, &found, Reason::VerifyFailed, &detail)
             }
@@ -304,7 +365,7 @@ impl Dispatcher<'_> {
                 eprintln!("queue: {error:#}; retrying on the next pass");
             }
             let before = self.verified.len();
-            while matches!(self.landing, Landing::Verifying(_)) {
+            while !matches!(self.landing, Landing::Idle) {
                 self.step_queue()?;
                 std::thread::sleep(LOCAL_POLL.min(self.policy.poll));
             }

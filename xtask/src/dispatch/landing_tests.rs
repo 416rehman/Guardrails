@@ -441,6 +441,7 @@ fn a_seed_branch_that_no_longer_merges_goes_to_the_chief_architect() {
     let mut dispatcher = setup.dispatcher();
     dispatcher.set_verifier(verify.program().to_path_buf());
     dispatcher.step_github().unwrap();
+    until_verified(&mut dispatcher);
     assert_eq!(
         transitions(&setup.found(62)),
         vec![(ItemStatus::Escalated, Reason::MergeConflict)]

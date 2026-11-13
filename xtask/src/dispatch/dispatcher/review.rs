@@ -3,9 +3,10 @@
 //! them, `eval-tier` first. The verdicts are the evaluators' `handoff.v1` comments since the issue
 //! last entered review; a pass counts only from the model it was asked on. A failed round sends
 //! the item back to its worker until the rounds are used up, and a failed light round raises the
-//! item to standard; a round with no verdict within the deadline is escalated. Every send-back,
-//! the merge queue's included, uses one of the rounds, so no loop between the worker and the
-//! queue is unbounded. A passed change goes to the merge queue (`landing.rs`).
+//! item to standard; a round with no verdict within the deadline is escalated, and the deadline
+//! counts no time before this dispatcher started, since no evaluator of its could run then. Every
+//! send-back, the merge queue's included, uses one of the rounds, so no loop between the worker
+//! and the queue is unbounded. A passed change goes to the merge queue (`landing.rs`).
 
 use anyhow::Result;
 use serde_json::Value;
@@ -89,7 +90,7 @@ impl Dispatcher<'_> {
             .unwrap_or(0);
         let entered = found.get(since).and_then(|(at, _)| unix_of(at));
         let overdue = entered.is_some_and(|at| {
-            now_unix().saturating_sub(at) > self.policy.verdict_hours.saturating_mul(HOUR)
+            self.waited_since(at) > self.policy.verdict_hours.saturating_mul(HOUR)
         });
         let Some(request) = self.tracker.open_pull_request(&lease.branch)? else {
             if overdue {
@@ -354,6 +355,19 @@ impl Dispatcher<'_> {
             ItemStatus::Escalated,
             reason,
         )
+    }
+
+    /// Seconds a deadline that began at unix time `at` has run. Time before this dispatcher
+    /// started is left out: the sessions the deadline waits for are ones it starts, so a deadline
+    /// that ran while it was stopped would end before anyone could meet it.
+    pub(super) fn waited_since(&self, at: u64) -> u64 {
+        now_unix().saturating_sub(at.max(self.started))
+    }
+
+    /// Makes this dispatcher one that started at unix time `at`.
+    #[cfg(test)]
+    pub(crate) fn started_at(&mut self, at: u64) {
+        self.started = at;
     }
 
     /// Prints `what` for `item` once, until the notice changes.

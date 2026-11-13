@@ -1,6 +1,6 @@
-//! A branchless worktree that cannot move to the fetched tip, a planner's or a routine's, is made
-//! again there, and a routine whose worktree cannot be made does not stop the GitHub pass, so
-//! planning, review and landing go on.
+//! A routine's worktree that cannot move to the fetched tip is made again there, a planning
+//! worktree a past run left is made afresh at the tip, and a routine whose worktree cannot be made
+//! does not stop the GitHub pass, so planning, review and landing go on.
 
 use std::path::PathBuf;
 
@@ -86,9 +86,9 @@ fn a_routine_worktree_in_the_way_of_the_tip_is_made_again_there() {
 }
 
 #[test]
-fn a_planner_worktree_in_the_way_of_the_tip_is_made_again_there() {
+fn a_planning_worktree_a_past_run_left_is_made_afresh_at_the_tip() {
     let (setup, origin) = planned_setup("");
-    let (dir, tip) = untracked_in_the_way(&setup, &origin, "plan-lead-core");
+    let (dir, tip) = untracked_in_the_way(&setup, &origin, "plan-lead-core-96");
     setup.tracker.add(issue(
         96,
         &["status:proposed", "squad:core"],
@@ -97,6 +97,13 @@ fn a_planner_worktree_in_the_way_of_the_tip_is_made_again_there() {
     setup.fake.respond(1, DONE, 0);
     let mut dispatcher = setup.dispatcher();
     dispatcher.step_github().unwrap();
+    assert_eq!(git(&dir, &["rev-parse", "HEAD"]).trim(), tip);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("notes.md"))
+            .unwrap()
+            .trim_end(),
+        "Landed notes."
+    );
     settle(&mut dispatcher);
     let calls = setup.fake.calls();
     assert!(
@@ -105,7 +112,6 @@ fn a_planner_worktree_in_the_way_of_the_tip_is_made_again_there() {
             .any(|call| call.contains("lead-core --item 96")),
         "{calls:?}"
     );
-    assert_eq!(git(&dir, &["rev-parse", "HEAD"]).trim(), tip);
 }
 
 #[test]

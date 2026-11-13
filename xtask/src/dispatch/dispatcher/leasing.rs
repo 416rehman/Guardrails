@@ -1,7 +1,8 @@
 //! Taking work from the queue: rebuilding leases from the issues on restart, leasing ready issues
 //! into free writer slots in lease order, sending back any item whose acceptance section changed
-//! under its lease, expiring `kit claim` leases nobody finished, and moving leased issues on once
-//! their pull request opens and no hand-off is owed.
+//! under its lease, expiring `kit claim` leases nobody finished, moving leased issues on once
+//! their pull request opens and no hand-off is owed, and putting back a leased issue that has no
+//! lease record (`unrecorded.rs`).
 
 use std::time::Duration;
 
@@ -9,11 +10,12 @@ use anyhow::Result;
 
 use super::journal::note;
 use super::sessions::fix_owed;
+use super::unrecorded::lease_in_force;
 use super::{Dispatcher, Prompt, Slot};
 use crate::config::session::ItemStatus;
 use crate::dispatch::lease::{self, Change, Held};
 use crate::dispatch::queue::{self, Candidate, Verdict};
-use crate::dispatch::routines::{now_unix, unix_of};
+use crate::dispatch::routines::unix_of;
 use crate::dispatch::worker;
 use crate::orchestrate::ids;
 use crate::orchestrate::issue::{Issue, status_label};
@@ -197,14 +199,12 @@ impl Dispatcher<'_> {
         let number = candidate.issue.number;
         let snapshot = launch::snapshot_of(&candidate.issue, &self.kit, &candidate.agent)?;
         let model = self.kit.choose_model(&candidate.agent, Some(&snapshot))?;
-        let branch = match &self.kit.seed {
-            Some(seed) if self.is_seed_issue(&candidate.issue) => seed.branch.clone(),
-            _ => self.policy.branch_for(number, candidate.attempt),
-        };
+        let branch = self.branch_of(&candidate.issue, candidate.attempt);
         let name = worker::attempt_worktree(number, candidate.attempt);
         let worktree = self.worktree(&name, Some(&branch))?;
         let session = ids::session_id();
-        let record = lease::grant(self.tracker, &candidate, &model, &branch, Some(&session))?;
+        let record = lease::grant(self.tracker, &candidate, &model, &branch, Some(&session))
+            .inspect_err(|_| self.undo_unrecorded_grant(&candidate))?;
         println!(
             "dispatch: leased #{number} to {} on {}, attempt {}",
             record.agent, record.model, record.attempt
@@ -241,10 +241,19 @@ impl Dispatcher<'_> {
         }
     }
 
-    /// Leased issues this dispatcher does not hold: back to proposed, or the seed's to the chief
-    /// architect, when the acceptance section changed; to review once their pull request opens
-    /// unless a hand-off is owed, which its holder answers first; and a `kit claim` lease nobody
-    /// finished ends as expired after the role's wall clock times the lease factor.
+    /// The branch attempt `attempt` of `issue` works on: the seed scope's for the seed's issue.
+    pub(super) fn branch_of(&self, issue: &Issue, attempt: u32) -> String {
+        match &self.kit.seed {
+            Some(seed) if self.is_seed_issue(issue) => seed.branch.clone(),
+            _ => self.policy.branch_for(issue.number, attempt),
+        }
+    }
+
+    /// Leased issues this dispatcher does not hold: back to where a lease starts when no lease
+    /// record is in force; back to proposed, or the seed's to the chief architect, when the
+    /// acceptance section changed; to review once their pull request opens unless a hand-off is
+    /// owed, which its holder answers first; and a `kit claim` lease nobody finished ends as
+    /// expired after the role's wall clock times the lease factor.
     pub(super) fn reconcile(&mut self) -> Result<()> {
         let Some(label) = status_label(ItemStatus::Leased) else {
             return Ok(());
@@ -256,7 +265,8 @@ impl Dispatcher<'_> {
             let issue = self.tracker.issue(summary.number)?;
             let found = records::timed_records(&issue);
             let plain: Vec<Record> = found.iter().map(|(_, record)| record.clone()).collect();
-            let Some(lease) = records::current_lease(&plain, issue.number).cloned() else {
+            let Some(lease) = lease_in_force(&plain, issue.number).cloned() else {
+                self.put_back_unrecorded(&issue, &plain)?;
                 continue;
             };
             if acceptance_changed(&issue, &lease) {
@@ -350,7 +360,8 @@ impl Dispatcher<'_> {
         Ok(())
     }
 
-    /// A claim lease older than the role's wall clock times the lease factor.
+    /// A claim lease older than the role's wall clock times the lease factor, counted as every
+    /// deadline is (`waited_since`).
     fn claim_expired(&self, found: &[(String, Record)], lease: &Lease) -> bool {
         let posted = found.iter().rev().find_map(|(at, record)| match record {
             Record::Lease(l) if l == lease => unix_of(at),
@@ -361,7 +372,7 @@ impl Dispatcher<'_> {
             .wall_clock(&lease.agent, None, Caps::Role)
             .map(|clock| clock.saturating_mul(self.policy.lease_factor));
         match (posted, limit) {
-            (Some(at), Some(limit)) => now_unix().saturating_sub(at) > limit.as_secs(),
+            (Some(at), Some(limit)) => self.waited_since(at) > limit.as_secs(),
             _ => false,
         }
     }

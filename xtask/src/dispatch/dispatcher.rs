@@ -3,18 +3,19 @@
 //! agents beside the writers; the planners and evaluators that move issues on without a person
 //! (leads ready proposed issues and answer escalations, evaluators judge pull requests); and the
 //! merge queue that lands what passed. Sessions and the queue's verify are polled every second;
-//! GitHub is read on the policy's poll interval with jitter, so many dispatchers never call it in
-//! step, and after a failed pass it backs off with full jitter (P15).
+//! GitHub is read when a session ends and otherwise on the policy's poll interval (`pacing.rs`).
 
 mod assist;
 mod evaluators;
 mod journal;
 mod landing;
 mod leasing;
+mod pacing;
 mod planning;
 mod recurring;
 mod review;
 mod sessions;
+mod unrecorded;
 
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
@@ -24,16 +25,16 @@ use anyhow::{Result, bail};
 use self::assist::{Assist, AssistState};
 use self::journal::note;
 use self::landing::Landing;
+use self::pacing::Pacing;
 use super::lease::Held;
 use super::merge::{QueueConfig, Tree};
 use super::policy::Policy;
 use super::queue;
-use super::routines::{Routine, Schedule};
+use super::routines::{Routine, Schedule, now_unix};
 use super::worker::{self, Launcher, Upstream};
 use crate::config::session::ItemStatus;
 use crate::orchestrate::claude::{Ended, Running};
 use crate::orchestrate::form::Form;
-use crate::orchestrate::ids;
 use crate::orchestrate::issue::status_label;
 use crate::orchestrate::labels::LabelsFile;
 use crate::orchestrate::launch::{LaunchKit, trust};
@@ -111,8 +112,9 @@ pub struct Dispatcher<'a> {
     verified: BTreeMap<u64, Tree>,
     /// The last notice printed for an issue, so a waiting issue prints once.
     notices: BTreeMap<u64, String>,
-    /// GitHub passes failed in a row, for the backoff.
-    failed_passes: u32,
+    pacing: Pacing,
+    /// Unix seconds when this dispatcher started; no deadline counts time before it.
+    started: u64,
     /// A landed `.github/labels.toml` whose sync onto the repository has not succeeded yet.
     unsynced_labels: Option<LabelsFile>,
 }
@@ -170,7 +172,8 @@ impl<'a> Dispatcher<'a> {
             landing: Landing::Idle,
             verified: BTreeMap::new(),
             notices: BTreeMap::new(),
-            failed_passes: 0,
+            pacing: Pacing::new(),
+            started: now_unix(),
             unsynced_labels: None,
         })
     }
@@ -225,7 +228,6 @@ impl<'a> Dispatcher<'a> {
             );
         }
         self.adopt()?;
-        let mut next_github = Instant::now();
         let mut passes = 0u32;
         loop {
             if let Err(error) = self.step_sessions() {
@@ -234,35 +236,44 @@ impl<'a> Dispatcher<'a> {
             if let Err(error) = self.step_queue() {
                 eprintln!("dispatch: merge queue: {error:#}");
             }
-            if Instant::now() >= next_github {
+            if self.pass_due() {
                 let step = if !once || passes == 0 {
                     self.step_github()
                 } else {
                     Ok(())
                 };
-                let wait = match step {
-                    Ok(()) => {
-                        self.failed_passes = 0;
-                        jittered(self.policy.poll, self.policy.poll_jitter)
-                    }
-                    Err(error) => {
-                        self.failed_passes = self.failed_passes.saturating_add(1);
-                        let wait = backoff(
-                            self.policy.backoff_base,
-                            self.policy.backoff_cap,
-                            self.failed_passes,
-                        );
-                        eprintln!("dispatch: {error:#}; retrying in {} s", wait.as_secs());
-                        wait
-                    }
-                };
+                self.pace(step);
                 passes = passes.saturating_add(1);
-                next_github = Instant::now() + wait;
             }
             if once && passes > 0 && self.idle() {
                 return Ok(());
             }
             std::thread::sleep(LOCAL_POLL.min(self.policy.poll));
+        }
+    }
+
+    /// Whether the next GitHub pass is due: the poll interval ran out, or a session ended.
+    pub(crate) fn pass_due(&self) -> bool {
+        self.pacing.due()
+    }
+
+    /// Sets when the pass after one that ended as `step` is due.
+    pub(crate) fn pace(&mut self, step: Result<()>) {
+        match step {
+            Ok(()) => self.pacing.passed(&self.policy),
+            Err(error) => {
+                let wait = self.pacing.failed(&self.policy);
+                eprintln!("dispatch: {error:#}; retrying in {} s", wait.as_secs());
+            }
+        }
+    }
+
+    /// A session that ended as `ended` left its result on GitHub, so the next pass reads it now
+    /// (owner instruction 30). A launch a lock refused started no session; its retry keeps to
+    /// the poll interval.
+    fn pass_after(&mut self, ended: &Ended) {
+        if !self.lock_refused(ended) {
+            self.pacing.session_ended();
         }
     }
 
@@ -308,6 +319,7 @@ impl<'a> Dispatcher<'a> {
                     }),
                     Some(ended) => {
                         limited |= matches!(ended, Ended::UsageLimited { .. });
+                        self.pass_after(&ended);
                         let kept = held.clone();
                         self.after_session(held, ended, prompt, named)
                             .unwrap_or_else(|error| {
@@ -331,6 +343,7 @@ impl<'a> Dispatcher<'a> {
                 None => self.running_routines.push(routine),
                 Some(ended) => {
                     limited |= matches!(ended, Ended::UsageLimited { .. });
+                    self.pass_after(&ended);
                     self.after_routine(routine, &ended)?;
                 }
             }
@@ -340,6 +353,7 @@ impl<'a> Dispatcher<'a> {
                 None => self.assists.push(assist),
                 Some(ended) => {
                     limited |= matches!(ended, Ended::UsageLimited { .. });
+                    self.pass_after(&ended);
                     if let Err(error) = self.after_assist(&assist, &ended) {
                         eprintln!("dispatch: #{}: {error:#}", assist.item);
                     }
@@ -470,48 +484,5 @@ fn squad_leads(repo: &Repo) -> Result<BTreeMap<String, String>> {
         .unwrap_or_default())
 }
 
-/// `poll` plus or minus up to `jitter`, never more than `poll` itself, so dispatchers started
-/// together spread their reads.
-fn jittered(poll: Duration, jitter: Duration) -> Duration {
-    let millis = u64::try_from(poll.as_millis()).unwrap_or(u64::MAX);
-    let spread = u64::try_from(jitter.as_millis())
-        .unwrap_or(u64::MAX)
-        .min(millis);
-    let offset = ids::below(spread.saturating_mul(2).saturating_add(1));
-    Duration::from_millis(millis.saturating_sub(spread).saturating_add(offset))
-}
-
-/// Full-jitter exponential backoff after `failures` failed passes in a row: a uniform wait up to
-/// `min(cap, base * 2^failures)`. The loop's one-second session poll keeps a zero wait from
-/// spinning.
-fn backoff(base: Duration, cap: Duration, failures: u32) -> Duration {
-    let base = u64::try_from(base.as_millis()).unwrap_or(u64::MAX);
-    let cap = u64::try_from(cap.as_millis()).unwrap_or(u64::MAX);
-    let ceiling = base.saturating_mul(2u64.saturating_pow(failures)).min(cap);
-    Duration::from_millis(ids::below(ceiling.saturating_add(1)))
-}
-
 #[cfg(test)]
 mod refusal_tests;
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_backoff_grows_with_full_jitter_up_to_its_cap() {
-        for failures in [1, 2, 5, 40, u32::MAX] {
-            let wait = backoff(Duration::from_secs(30), Duration::from_secs(900), failures);
-            let grown = 30u64.saturating_mul(2u64.saturating_pow(failures)).min(900);
-            assert!(
-                wait <= Duration::from_secs(grown),
-                "{failures}: {wait:?} above {grown} s"
-            );
-        }
-        let poll = jittered(Duration::from_secs(60), Duration::from_secs(6));
-        assert!(poll >= Duration::from_secs(54) && poll <= Duration::from_secs(66));
-        assert_eq!(
-            jittered(Duration::from_secs(60), Duration::ZERO),
-            Duration::from_secs(60)
-        );
-    }
-}

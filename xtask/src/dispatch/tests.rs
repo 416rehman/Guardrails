@@ -15,7 +15,7 @@ use crate::testkit::{TempRepo, risk_tiers, tier};
 
 /// A fake session can take seconds to print on a loaded runner, so no session here stalls unless
 /// its test asks for `Setup::stalling_dispatcher`.
-const HARNESS: &str = "[dispatch]\nprotected_change_agents = [\"lead-agent-kit\", \"chief-architect\"]\nmax_writers = 1\nmax_gardeners = 1\nmax_planners = 1\nmax_evaluators = 2\nstall_seconds = 60\npoll_seconds = 1\npoll_jitter_seconds = 0\nbackoff_base_seconds = 1\nbackoff_cap_seconds = 1\nlease_order = [\"blocks-others\", \"priority\", \"age\"]\n[limits]\nusage_limit_strings = [\"You've hit your session limit\"]\nretry_seconds = 0\n[queue]\nworktree = \"queue\"\nverify_args = [\"verify\"]\nverify_timeout_seconds = 60\n[workspace_trust]\ncheck = \"managed\"\n";
+const HARNESS: &str = "[dispatch]\nprotected_change_agents = [\"lead-agent-kit\", \"chief-architect\"]\nmax_writers = 1\nmax_gardeners = 1\nmax_planners = 1\nmax_planners_per_agent = 2\nmax_evaluators = 2\nstall_seconds = 60\npoll_seconds = 1\npoll_jitter_seconds = 0\nbackoff_base_seconds = 1\nbackoff_cap_seconds = 1\nlease_order = [\"blocks-others\", \"priority\", \"age\"]\n[limits]\nusage_limit_strings = [\"You've hit your session limit\"]\nretry_seconds = 0\n[queue]\nworktree = \"queue\"\nverify_args = [\"verify\"]\nverify_timeout_seconds = 60\n[workspace_trust]\ncheck = \"managed\"\n";
 /// Written right after `GITHUB`, so it joins that `[github]` table, which has no branch pattern.
 const BRANCH: &str = "branch = \"agent/{issue}/a{attempt}\"\n";
 /// Written right after `FORM`, so it joins that `[launch]` table.
@@ -89,7 +89,7 @@ impl Setup {
     }
 
     /// A dispatcher that takes one second without output as a stall.
-    fn stalling_dispatcher(&self) -> Dispatcher<'_> {
+    pub(super) fn stalling_dispatcher(&self) -> Dispatcher<'_> {
         let mut policy = Policy::load(&self.temp.repo(), None).unwrap();
         policy.session.stall = Duration::from_secs(1);
         self.dispatcher_under(policy).unwrap()

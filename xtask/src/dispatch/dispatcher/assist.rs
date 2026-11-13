@@ -149,9 +149,10 @@ impl Dispatcher<'_> {
         Ok(())
     }
 
-    /// A planner records the issue as it left it, so it is planned again only after a change. A
-    /// session that ended at a usage limit records nothing and runs again after the window, and
-    /// one whose launch a lock refused records nothing and runs again on a later pass. An
+    /// A planner records the issue as it left it, so it is planned again only after a change, and
+    /// its worktree is removed. A session that ended at a usage limit records nothing and runs
+    /// again after the window, and one whose launch a lock refused records nothing and runs again
+    /// on a later pass; the planning pass removes the worktree either of them leaves unused. An
     /// evaluator that ended without a verdict in its round runs once more; a second time the item
     /// is escalated instead of waiting out the verdict deadline.
     pub(super) fn after_assist(&mut self, assist: &Assist, ended: &Ended) -> Result<()> {
@@ -166,6 +167,7 @@ impl Dispatcher<'_> {
             return self.assisted.save(&self.repo);
         }
         if assist.purpose == Purpose::Plan {
+            self.remove_planning_worktree(&assist.agent, assist.item);
             let issue = self.tracker.issue(assist.item)?;
             self.assisted.planned.insert(
                 assist.item,

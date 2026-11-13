@@ -27,6 +27,8 @@ pub struct Policy {
     pub max_gardeners: u32,
     /// Planner sessions at once: leads, the product lead and the chief architect.
     pub max_planners: u32,
+    /// Planner sessions one agent runs at once, each on its own issue in its own worktree.
+    pub max_planners_per_agent: u32,
     /// Evaluator sessions at once.
     pub max_evaluators: u32,
     pub session: SessionRules,
@@ -73,6 +75,7 @@ struct DispatchKeys {
     max_writers: u32,
     max_gardeners: u32,
     max_planners: u32,
+    max_planners_per_agent: u32,
     max_evaluators: u32,
     poll_seconds: u64,
     poll_jitter_seconds: u64,
@@ -110,6 +113,7 @@ impl Policy {
             max_writers: max_writers.map_or(ceiling, |asked| asked.min(ceiling)),
             max_gardeners: dispatch.max_gardeners,
             max_planners: dispatch.max_planners,
+            max_planners_per_agent: dispatch.max_planners_per_agent,
             max_evaluators: dispatch.max_evaluators,
             session: SessionRules::load(repo)?,
             poll: Duration::from_secs(dispatch.poll_seconds),
@@ -175,7 +179,7 @@ pub(crate) mod tests {
     use crate::testkit::TempRepo;
 
     /// Every key the dispatcher reads from `.agents/harness.toml`, for tests that start one.
-    pub(crate) const HARNESS: &str = "[github]\nbranch = \"agent/{issue}/a{attempt}\"\n[dispatch]\nmax_writers = 3\nprotected_change_agents = [\"lead-agent-kit\", \"chief-architect\"]\nmax_gardeners = 1\nmax_planners = 1\nmax_evaluators = 2\nstall_seconds = 120\npoll_seconds = 60\npoll_jitter_seconds = 6\nbackoff_base_seconds = 30\nbackoff_cap_seconds = 900\nlease_order = [\"priority\", \"age\"]\n[limits]\nusage_limit_strings = [\"You've hit your session limit\"]\nretry_seconds = 60\n[launch]\nbusy_exit = 75\n";
+    pub(crate) const HARNESS: &str = "[github]\nbranch = \"agent/{issue}/a{attempt}\"\n[dispatch]\nmax_writers = 3\nprotected_change_agents = [\"lead-agent-kit\", \"chief-architect\"]\nmax_gardeners = 1\nmax_planners = 1\nmax_planners_per_agent = 2\nmax_evaluators = 2\nstall_seconds = 120\npoll_seconds = 60\npoll_jitter_seconds = 6\nbackoff_base_seconds = 30\nbackoff_cap_seconds = 900\nlease_order = [\"priority\", \"age\"]\n[limits]\nusage_limit_strings = [\"You've hit your session limit\"]\nretry_seconds = 60\n[launch]\nbusy_exit = 75\n";
 
     #[test]
     fn reads_the_kit_data_and_only_lowers_the_writer_ceiling() {
@@ -188,6 +192,7 @@ pub(crate) mod tests {
         assert_eq!(policy.session.stall, Duration::from_secs(120));
         assert_eq!(policy.session.retry_after_limit, Duration::from_secs(60));
         assert_eq!(policy.lease_order, vec![OrderKey::Priority, OrderKey::Age]);
+        assert_eq!((policy.max_planners, policy.max_planners_per_agent), (1, 2));
         assert_eq!(policy.branch_for(142, 2), "agent/142/a2");
         assert_eq!(policy.sessions_per_attempt("worker").unwrap(), 2);
         assert!(policy.sessions_per_attempt("lead").is_err());

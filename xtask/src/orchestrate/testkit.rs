@@ -38,6 +38,8 @@ struct Memory {
     pull_requests: BTreeMap<String, PullRequest>,
     labels: Vec<RemoteLabel>,
     calls: Vec<String>,
+    /// Edits still to fail after they were applied (`MemoryTracker::answer_edits_late`).
+    late_edits: u32,
     /// Bumped by every change, so `updatedAt` moves as it does on GitHub.
     revision: u64,
 }
@@ -165,6 +167,12 @@ impl MemoryTracker {
             .insert(branch.to_owned(), request);
     }
 
+    /// The next `count` edits are applied and then fail, as a `gh` call does that GitHub
+    /// carried out and answered after the timeout.
+    pub fn answer_edits_late(&self, count: u32) {
+        self.memory.borrow_mut().late_edits = count;
+    }
+
     pub fn set_labels(&self, labels: Vec<RemoteLabel>) {
         self.memory.borrow_mut().labels = labels;
     }
@@ -269,6 +277,10 @@ impl Tracker for MemoryTracker {
             }];
         }
         memory.touch(number);
+        if memory.late_edits > 0 {
+            memory.late_edits -= 1;
+            bail!("gh issue edit {number} timed out");
+        }
         Ok(())
     }
 

@@ -13,14 +13,22 @@ use crate::lock::{Busy, Lock};
 use crate::repo::Repo;
 
 /// One fable session at a time on this machine (design/_review/03: on demand, never in a loop).
-const FABLE_LOCK: &str = "grdr-fable-session.lock";
+pub(super) const FABLE_LOCK: &str = "grdr-fable-session.lock";
 pub(super) const FABLE_BUSY: &str =
     "a fable session already runs on this machine; the chief architect runs one session at a time";
 const SESSION_BUSY: &str = "this agent's session on this item already runs in this checkout";
 
 /// The machine-wide lock path for fable sessions.
+#[cfg(not(test))]
 pub fn fable_lock_path() -> PathBuf {
     std::env::temp_dir().join(FABLE_LOCK)
+}
+
+/// A test run's own fable lock, so its dispatchers neither wait on nor empty the machine's lock
+/// of a real session, and two runs at once keep apart.
+#[cfg(test)]
+pub fn fable_lock_path() -> PathBuf {
+    std::env::temp_dir().join(format!("{FABLE_LOCK}.test-{}", std::process::id()))
 }
 
 /// Whether a fable session already runs on this machine.

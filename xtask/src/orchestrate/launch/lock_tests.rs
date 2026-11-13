@@ -94,3 +94,17 @@ fn a_launch_exits_with_the_busy_code_it_was_given_where_harness_toml_has_none() 
     assert!(fake.calls().is_empty(), "{:?}", fake.calls());
     assert!(requested(&[&launch[..], &["--busy-exit", "300"]].concat()).is_err());
 }
+
+/// A real fable session holds the machine's lock while tests run; a test dispatcher that read or
+/// emptied it would wait on that session or free its lock.
+#[test]
+fn a_test_run_keeps_its_own_fable_lock_apart_from_the_machines() {
+    let machine = std::env::temp_dir().join(super::locks::FABLE_LOCK);
+    let own = fable_lock_path();
+    assert_ne!(own, machine);
+    assert!(
+        own.to_string_lossy()
+            .ends_with(&std::process::id().to_string()),
+        "{own:?}"
+    );
+}

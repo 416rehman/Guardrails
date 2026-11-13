@@ -10,6 +10,13 @@
 //! when it is escalated, where every seed attempt that ends without landing goes. Nobody plans it
 //! at proposed, where the dispatcher starts the seed session again instead (`leasing.rs`), or at
 //! blocked, which the chief architect may not move it from.
+//!
+//! Planners go to escalated issues first, then blocked ones, then proposed ones, and within a
+//! status by priority and then to the oldest issue. An agent plans up to
+//! `[dispatch] max_planners_per_agent` issues at once, each session in a worktree of its own that
+//! is removed once the session is over.
+
+use std::fs;
 
 use anyhow::Result;
 
@@ -17,26 +24,37 @@ use super::Dispatcher;
 use super::assist::{AssistJob, Purpose};
 use super::review::since_lease;
 use crate::config::session::ItemStatus;
+use crate::dispatch::worker;
+use crate::git;
 use crate::kit::CHIEF_ARCHITECT;
 use crate::orchestrate::issue::{Issue, status_label};
+use crate::orchestrate::launch;
 use crate::orchestrate::records::{self, Reason, Record};
+use crate::repo::Repo;
 
 const PRODUCT_LEAD: &str = "product-lead";
+/// An escalation holds up work already started, and a blocked issue may be what the proposed
+/// ones wait on, so both get a planner before any proposed issue.
 const PLANNED: &[ItemStatus] = &[
     ItemStatus::Escalated,
-    ItemStatus::Proposed,
     ItemStatus::Blocked,
+    ItemStatus::Proposed,
 ];
+const PLAN_WORKTREE: &str = "plan-";
 const FINISH: &str = "Finish by writing the handoff.v1 JSON to .agent/state/handoff-{n}-{agent}.json with the Write tool and running cargo xtask kit handoff --item {n} (skill grdr-handoff).";
 
 impl Dispatcher<'_> {
     pub(super) fn plan(&mut self) -> Result<()> {
         let capacity = usize::try_from(self.policy.max_planners).unwrap_or(0);
+        let each = usize::try_from(self.policy.max_planners_per_agent).unwrap_or(0);
+        self.clear_planning_worktrees();
         for status in PLANNED {
             let Some(label) = status_label(*status) else {
                 continue;
             };
-            for summary in self.tracker.open_with_label(&label)? {
+            let mut waiting = self.tracker.open_with_label(&label)?;
+            waiting.sort_by_cached_key(planning_rank);
+            for summary in waiting {
                 if self.assists_for(Purpose::Plan) >= capacity {
                     return Ok(());
                 }
@@ -49,13 +67,13 @@ impl Dispatcher<'_> {
                 let Some(agent) = self.planner_for(&summary, *status) else {
                     continue;
                 };
-                let busy = self.assists.iter().any(|assist| assist.agent == agent);
+                let full = self.planning_by(&agent) >= each;
                 let fable = self.is_fable(&agent) && self.fable_busy()?;
-                if busy || fable {
+                if full || fable {
                     continue;
                 }
                 let prompt = self.planning_prompt(&summary, *status, &agent)?;
-                let worktree = format!("plan-{agent}");
+                let worktree = planning_worktree(&agent, summary.number);
                 let job = AssistJob {
                     purpose: Purpose::Plan,
                     item: summary.number,
@@ -72,6 +90,54 @@ impl Dispatcher<'_> {
             }
         }
         Ok(())
+    }
+
+    /// The planning sessions `agent` runs now.
+    fn planning_by(&self, agent: &str) -> usize {
+        self.assists
+            .iter()
+            .filter(|assist| assist.purpose == Purpose::Plan && assist.agent == agent)
+            .count()
+    }
+
+    /// Removes every planning worktree no planner of this dispatcher runs in: one a usage-limit
+    /// pause or a stopped dispatcher left, or one that could not be removed when its session ended.
+    fn clear_planning_worktrees(&self) {
+        // An empty name gives the directory every worktree is under.
+        let Ok(entries) = fs::read_dir(worker::worktree_dir(&self.repo, "")) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Some((agent, item)) = planned_in(&name) else {
+                continue;
+            };
+            let running = self.assists.iter().any(|assist| {
+                assist.purpose == Purpose::Plan && assist.item == item && assist.agent == agent
+            });
+            if !running && self.kit.roster.agent(agent).is_some() {
+                self.remove_planning_worktree(agent, item);
+            }
+        }
+    }
+
+    /// Removes the worktree `agent` planned `item` in, with whatever the session left there. It
+    /// stays while a session holds its lock in it, such as one a stopped dispatcher left running,
+    /// or while a process still holds a file of it open; the next planning pass tries again.
+    pub(super) fn remove_planning_worktree(&self, agent: &str, item: u64) {
+        let dir = worker::worktree_dir(&self.repo, &planning_worktree(agent, item));
+        if !dir.exists() || launch::session_running(&Repo::at(&dir), item, agent).unwrap_or(true) {
+            return;
+        }
+        let target = dir.to_string_lossy().into_owned();
+        let _ = git::try_output(&self.repo, &["worktree", "remove", "--force", &target]);
+        if dir.exists() {
+            let _ = fs::remove_dir_all(&dir);
+        }
+        let _ = git::try_output(&self.repo, &["worktree", "prune"]);
+        if dir.exists() {
+            println!("dispatch: {target} is still in use; it is removed on a later pass");
+        }
     }
 
     /// The squad's lead, or the product lead when there is no squad lead or it is the issue's
@@ -215,5 +281,53 @@ impl Dispatcher<'_> {
         Ok(format!(
             "Issue #{n} is the seed's own and status:escalated: {why}. As {agent}, decide it (team/01 section 6): there is no one above you and no person to hand it to. {exits}"
         ))
+    }
+}
+
+/// Where an issue stands among those of its status: by priority, one with no priority label
+/// last, then the lowest number, since GitHub lists the newest issue first.
+fn planning_rank(issue: &Issue) -> (bool, Option<u8>, u64) {
+    let priority = issue.work_item().priority;
+    (priority.is_none(), priority, issue.number)
+}
+
+/// The worktree of one planning session, named for the agent and the issue so that two sessions
+/// of one agent never share a checkout.
+fn planning_worktree(agent: &str, item: u64) -> String {
+    format!("{PLAN_WORKTREE}{agent}-{item}")
+}
+
+/// The agent and the issue a planning worktree is named for.
+fn planned_in(worktree: &str) -> Option<(&str, u64)> {
+    let (agent, item) = worktree.strip_prefix(PLAN_WORKTREE)?.rsplit_once('-')?;
+    Some((agent, item.parse().ok()?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::orchestrate::testkit::issue;
+
+    #[test]
+    fn a_newest_first_list_is_planned_by_priority_and_then_from_the_oldest_issue() {
+        let mut listed = [
+            issue(40, &[], ""),
+            issue(39, &["priority:p2"], ""),
+            issue(38, &["priority:p0"], ""),
+            issue(37, &["priority:p2"], ""),
+            issue(36, &[], ""),
+        ];
+        listed.sort_by_cached_key(planning_rank);
+        let order: Vec<u64> = listed.iter().map(|issue| issue.number).collect();
+        assert_eq!(order, vec![38, 37, 39, 36, 40]);
+    }
+
+    #[test]
+    fn a_planning_worktree_names_its_agent_and_issue_and_no_other_worktree_reads_as_one() {
+        let name = planning_worktree("lead-core", 30);
+        assert_eq!(planned_in(&name), Some(("lead-core", 30)));
+        for other in ["plan-lead-core", "routine-garden-docs", "30-a1", "queue"] {
+            assert_eq!(planned_in(other), None, "{other}");
+        }
     }
 }

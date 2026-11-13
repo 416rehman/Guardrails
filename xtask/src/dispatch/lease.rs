@@ -3,7 +3,8 @@
 //! posts `lease.v1` with the attempt, agent, model, branch, acceptance digest and session id;
 //! ending one swaps the status and posts `state.v1`. A failed or stalled attempt returns to
 //! `status:ready`, and after the last attempt goes to `status:escalated` with a team/01 section 6
-//! packet. A usage limit posts nothing.
+//! packet. A usage limit posts nothing. A `status:leased` label whose `lease.v1` was never posted
+//! is withdrawn without a record.
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -121,6 +122,17 @@ pub fn grant(
         );
     }
     Ok(record)
+}
+
+/// Takes back a `status:leased` label whose `lease.v1` was never posted: the status goes to
+/// `to`, where the grant found it. No `state.v1` is posted, since no attempt was recorded to end.
+pub fn withdraw(tracker: &dyn Tracker, item: u64, to: ItemStatus) -> Result<()> {
+    let edit = IssueEdit {
+        add: status_label(to).into_iter().collect(),
+        remove: status_label(ItemStatus::Leased).into_iter().collect(),
+        assign_self: false,
+    };
+    tracker.edit(item, &edit)
 }
 
 /// Swaps the status label and records why in a `state.v1` comment.

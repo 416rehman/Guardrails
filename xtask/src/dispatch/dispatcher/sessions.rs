@@ -60,20 +60,15 @@ impl Dispatcher<'_> {
         held.worked += ended.report().elapsed;
         held.refused_at = None;
         held.left_session = false;
-        let reason = match &ended {
-            Ended::UsageLimited { .. } => {
-                return Ok(Some(Slot::Paused {
-                    held,
-                    prompt: Prompt::Resume,
-                }));
-            }
-            Ended::Stalled { .. } => Some(Reason::Stall),
-            Ended::OverTime { .. } => Some(Reason::LeaseExpired),
-            Ended::OverTurns { .. } | Ended::Exited { .. } => None,
-        };
-        if let Some(reason) = reason {
-            return self.fail(held, reason);
+        if let Ended::UsageLimited { .. } = &ended {
+            return Ok(Some(Slot::Paused {
+                held,
+                prompt: Prompt::Resume,
+            }));
         }
+        // Read before a stopped session fails its attempt: a session that handed off and then sat
+        // silent until it was stopped has already moved the issue or opened its pull request, and
+        // its work stands.
         let issue = self.tracker.issue(held.item())?;
         if issue.status() != Some(ItemStatus::Leased) {
             return Ok(self.released(&held, "the hand-off moved the issue"));
@@ -83,6 +78,14 @@ impl Dispatcher<'_> {
             Some(HandedOn::Continue) => return self.start(held, Prompt::Continue),
             Some(HandedOn::Review) => return self.in_review(&held),
             None => {}
+        }
+        let stopped = match &ended {
+            Ended::Stalled { .. } => Some(Reason::Stall),
+            Ended::OverTime { .. } => Some(Reason::LeaseExpired),
+            Ended::UsageLimited { .. } | Ended::OverTurns { .. } | Ended::Exited { .. } => None,
+        };
+        if let Some(reason) = stopped {
+            return self.fail(held, reason);
         }
         let owes_fix = fix_owed(&found, &held.record);
         let owed = self.handoff_owed(&found, &held.record);

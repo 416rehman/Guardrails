@@ -3,13 +3,23 @@
 //! lead, the seed's own issue waits for the seed's hand-off and its escalation then goes to the
 //! chief architect, issues in review get `eval-tier` first and `eval-diff` on the other model, a
 //! failed round goes back to the worker with the fix prompt even when it waited for a slot, and a
-//! held lease whose acceptance section changed goes back to proposed.
+//! held lease whose acceptance section changed goes back to proposed. Planners go to blocked
+//! issues before proposed ones and by priority within a status; a lead plans several issues at
+//! once up to its cap, each in a worktree of its own that is removed once no session runs in it,
+//! while the chief architect still decides one escalation at a time.
+
+use std::path::PathBuf;
+use std::time::Duration;
 
 use super::tests::{DONE, Setup, settle, transitions};
+use super::worker::{self, Launcher, Prepare, Upstream};
 use crate::config::session::ItemStatus;
+use crate::lock::Lock;
+use crate::orchestrate::launch::session_lock_path;
 use crate::orchestrate::records::{LEASE_SCHEMA, Lease, Reason, lease_comment};
 use crate::orchestrate::testkit::{body, git, issue};
 use crate::orchestrate::tracker::Tracker;
+use crate::repo::Repo;
 use crate::testkit::{risk_tiers, tier};
 
 pub(super) const LEAD: &str = "[agent.lead-core]\ngroup = \"lead\"\ndescription = \"Core lead.\"\nmodel = \"opus\"\neffort = \"high\"\ncap_role = \"lead\"\nmax_turns = 40\ntools = [\"Read\"]\ndisallowed_tools = [\"Edit\", \"Write\"]\ndeny_write = \"@protected\"\nnet = \"A\"\ntrigger = \"dispatch\"\nbody = \"templates/agents/lead-core.md\"\n";
@@ -369,4 +379,159 @@ fn an_unknown_evaluator_stops_the_review() {
             .iter()
             .any(|call| call.starts_with("merge"))
     );
+}
+
+/// Lets `planners` planner sessions run at once; the harness lets one agent run two of them.
+fn allow_planners(setup: &Setup, planners: u32) {
+    let path = setup.temp.repo().path(".agents/harness.toml");
+    let harness = std::fs::read_to_string(&path).unwrap();
+    let raised = harness.replace("max_planners = 1", &format!("max_planners = {planners}"));
+    std::fs::write(&path, raised).unwrap();
+}
+
+/// A lead for squad core, and `issues` filed for that squad with their labels.
+fn core_issues(issues: &[(u64, &[&str])]) -> Setup {
+    let setup = Setup::new("");
+    setup.temp.add_agents(LEAD);
+    setup.temp.write(".agents/owners.toml", OWNERS);
+    for (number, labels) in issues {
+        let all = [&["squad:core"][..], *labels].concat();
+        setup
+            .tracker
+            .add(issue(*number, &all, "A gap a gardener filed."));
+    }
+    setup
+}
+
+/// The issue each session was started on, in start order.
+fn items(setup: &Setup) -> Vec<u64> {
+    let item = |call: &String| {
+        call.split(" --item ")
+            .nth(1)?
+            .split(' ')
+            .next()?
+            .parse()
+            .ok()
+    };
+    setup.fake.calls().iter().filter_map(item).collect()
+}
+
+fn planning_worktree(setup: &Setup, item: u64) -> PathBuf {
+    worker::worktree_dir(&setup.temp.repo(), &format!("plan-lead-core-{item}"))
+}
+
+#[test]
+fn planners_go_to_blocked_issues_before_proposed_ones_and_by_priority_within_a_status() {
+    let setup = core_issues(&[
+        (71, &["status:proposed"]),
+        (72, &["status:proposed", "priority:p2"]),
+        (73, &["status:proposed", "priority:p0"]),
+        (74, &["status:blocked"]),
+        (75, &["status:blocked", "priority:p1"]),
+    ]);
+    let mut dispatcher = setup.dispatcher();
+    for call in 1..=5 {
+        setup.fake.respond(call, DONE, 0);
+        dispatcher.step_github().unwrap();
+        settle(&mut dispatcher);
+    }
+    assert_eq!(
+        items(&setup),
+        vec![75, 74, 73, 72, 71],
+        "{:?}",
+        setup.fake.calls()
+    );
+}
+
+#[test]
+fn a_lead_plans_several_issues_at_once_up_to_its_cap_each_in_its_own_worktree() {
+    let proposed: &[&str] = &["status:proposed"];
+    let setup = core_issues(&[(81, proposed), (82, proposed), (83, proposed)]);
+    allow_planners(&setup, 4);
+    for call in 1..=3 {
+        setup.fake.respond(call, DONE, 0);
+    }
+    let mut dispatcher = setup.dispatcher();
+    dispatcher.step_github().unwrap();
+    assert!(
+        planning_worktree(&setup, 81).join(".git").exists()
+            && planning_worktree(&setup, 82).join(".git").exists(),
+        "each session has its own checkout"
+    );
+    assert!(
+        !planning_worktree(&setup, 83).exists(),
+        "the third issue waits for one of the lead's two sessions"
+    );
+    settle(&mut dispatcher);
+    let mut together = items(&setup);
+    together.sort_unstable();
+    assert_eq!(together, vec![81, 82], "{:?}", setup.fake.calls());
+    assert!(
+        !planning_worktree(&setup, 81).exists() && !planning_worktree(&setup, 82).exists(),
+        "a planning worktree is removed once its session ended"
+    );
+    dispatcher.step_github().unwrap();
+    settle(&mut dispatcher);
+    assert_eq!(items(&setup).last(), Some(&83), "{:?}", setup.fake.calls());
+}
+
+#[test]
+fn the_chief_architect_decides_one_escalation_at_a_time_whatever_the_agent_cap() {
+    let escalated: &[&str] = &["status:escalated"];
+    let setup = core_issues(&[(85, escalated), (86, escalated)]);
+    allow_planners(&setup, 4);
+    for call in 1..=4 {
+        setup.fake.respond(call, DONE, 0);
+    }
+    let mut dispatcher = setup.dispatcher();
+    dispatcher.step_github().unwrap();
+    settle(&mut dispatcher);
+    assert_eq!(
+        setup.fake.calls().len(),
+        2,
+        "the lead reads both escalations at once: {:?}",
+        setup.fake.calls()
+    );
+    for (decided, sessions) in [(85, 3), (86, 4)] {
+        dispatcher.step_github().unwrap();
+        settle(&mut dispatcher);
+        let calls = setup.fake.calls();
+        let expected = format!("chief-architect --item {decided}");
+        assert!(
+            calls.len() == sessions && calls.last().is_some_and(|call| call.starts_with(&expected)),
+            "{calls:?}"
+        );
+    }
+}
+
+#[test]
+fn a_planning_worktree_left_behind_is_removed_once_no_session_runs_in_it() {
+    let setup = core_issues(&[]);
+    let launcher = Launcher {
+        program: setup.fake.program().to_path_buf(),
+        leading: Vec::new(),
+        prepare: Prepare::CopyOnly,
+    };
+    let upstream = Upstream {
+        remote: "origin",
+        base: "main",
+    };
+    let left =
+        |name: &str| worker::worktree(&setup.temp.repo(), name, None, &launcher, upstream).unwrap();
+    let (ended, running) = (left("plan-lead-core-90"), left("plan-lead-core-91"));
+    let attempt = left("92-a1");
+    let lock = Lock::take(
+        session_lock_path(&Repo::at(&running), 91, "lead-core"),
+        Duration::from_secs(30),
+        "the session a stopped dispatcher left running",
+    )
+    .unwrap();
+    let mut dispatcher = setup.dispatcher();
+    dispatcher.step_github().unwrap();
+    assert!(!ended.exists(), "no session runs in it");
+    assert!(running.exists(), "a session still runs in it");
+    drop(lock);
+    dispatcher.step_github().unwrap();
+    assert!(!running.exists(), "its session ended");
+    assert!(attempt.exists(), "an attempt's worktree is not a planner's");
 }

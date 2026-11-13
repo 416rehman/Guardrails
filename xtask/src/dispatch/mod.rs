@@ -183,6 +183,8 @@ mod assist_tests;
 #[cfg(test)]
 mod fable_tests;
 #[cfg(test)]
+mod flow_tests;
+#[cfg(test)]
 mod kill_tests;
 #[cfg(test)]
 mod landing_tests;

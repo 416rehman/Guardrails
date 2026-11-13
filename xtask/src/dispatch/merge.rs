@@ -38,6 +38,9 @@ use crate::orchestrate::records::{self, Lease};
 use crate::orchestrate::tracker::{CheckRollup, CheckState, GhTracker, PullRequest};
 use crate::repo::Repo;
 
+mod preparing;
+pub use preparing::Preparing;
+
 const SPEC: Spec = Spec {
     flags: &["--once", "--dry-run"],
     options: &[],
