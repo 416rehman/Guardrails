@@ -29,6 +29,9 @@ pub struct Policy {
     pub max_planners: u32,
     /// Planner sessions one agent runs at once, each on its own issue in its own worktree.
     pub max_planners_per_agent: u32,
+    /// Issues carrying any of these labels are not the dispatcher's: work on the agent
+    /// environment itself, which the setup session does directly (owner instruction 31).
+    pub skip_labels: Vec<String>,
     /// Evaluator sessions at once.
     pub max_evaluators: u32,
     pub session: SessionRules,
@@ -72,6 +75,8 @@ struct GithubKeys {
 
 #[derive(Deserialize)]
 struct DispatchKeys {
+    #[serde(default)]
+    skip_labels: Vec<String>,
     max_writers: u32,
     max_gardeners: u32,
     max_planners: u32,
@@ -114,6 +119,7 @@ impl Policy {
             max_gardeners: dispatch.max_gardeners,
             max_planners: dispatch.max_planners,
             max_planners_per_agent: dispatch.max_planners_per_agent,
+            skip_labels: dispatch.skip_labels,
             max_evaluators: dispatch.max_evaluators,
             session: SessionRules::load(repo)?,
             poll: Duration::from_secs(dispatch.poll_seconds),

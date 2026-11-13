@@ -97,6 +97,10 @@ max_planners = 2                 # leads, the product lead and the chief archite
 # with many proposed issues does not specify them one after another. max_planners still caps the
 # total, and a fable agent runs one session at a time whatever this says.
 max_planners_per_agent = 3
+# Issues about the agent environment itself (the kit, the dispatcher, hooks, gates, CI, labels,
+# governance) are not the dispatcher's: the setup session does them directly (owner instruction 31),
+# so it leases, plans, reviews and lands only product work.
+skip_labels = ["meta", "squad:agent-kit"]
 stall_seconds = 300              # Symphony's default; the lease and attempt rules are team/01 section 9
 poll_seconds = 60
 poll_jitter_seconds = 6          # a GitHub pass starts up to this long before or after its interval

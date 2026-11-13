@@ -23,6 +23,7 @@ use crate::dispatch::lease::{self, Held, Outcome};
 use crate::dispatch::worker::{self, Job};
 use crate::orchestrate::claude::Ended;
 use crate::orchestrate::ids;
+use crate::orchestrate::issue::Issue;
 use crate::orchestrate::launch::{self, SessionStart};
 use crate::orchestrate::records::{self, Lease, Reason, Record};
 use crate::repo::Repo;
@@ -366,6 +367,20 @@ impl Dispatcher<'_> {
 
     /// Whether a fable session runs: one this dispatcher started, whose `kit launch` may not
     /// hold the machine lock yet, or any session that holds it.
+    /// The open issues labelled `label` that are the dispatcher's: an issue carrying one of the
+    /// policy's skip labels is work on the agent environment, done outside it.
+    pub(super) fn listed(&self, label: &str) -> Result<Vec<Issue>> {
+        let mut issues = self.tracker.open_with_label(label)?;
+        issues.retain(|issue| {
+            !self
+                .policy
+                .skip_labels
+                .iter()
+                .any(|skip| issue.has_label(skip))
+        });
+        Ok(issues)
+    }
+
     /// Whether `ended` is a fable session `agent` ran that met a limit on its model alone; it ran
     /// no work, so no attempt counts, and fable work waits out the retry interval from now.
     pub(super) fn fable_limited(&mut self, agent: &str, ended: &Ended) -> bool {

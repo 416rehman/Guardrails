@@ -26,8 +26,7 @@ impl Dispatcher<'_> {
             return Ok(None);
         };
         Ok(self
-            .tracker
-            .open_with_label(&label)?
+            .listed(&label)?
             .iter()
             .filter_map(|issue| unix_of(&issue.created_at))
             .max())

@@ -187,7 +187,7 @@ impl<'a> Dispatcher<'a> {
         let Some(label) = status_label(ItemStatus::Proposed) else {
             return Ok(None);
         };
-        for issue in self.tracker.open_with_label(&label)? {
+        for issue in self.listed(&label)? {
             if self.awaits_seed_handoff(&issue)? {
                 return Ok(Some(issue.number));
             }

@@ -269,6 +269,11 @@ color = "d93f0b"
 description = "High risk tier (cargo xtask risk); full lane: eval-security, eval-adversarial, cross-model review"
 
 [[label]]
+name = "meta"
+color = "000000"
+description = "Work on the agent environment itself, done directly and never through the dispatcher"
+
+[[label]]
 name = "trust-core"
 color = "7057ff"
 description = "Touches security/trust-core.paths; two independent passing evaluators on different models"

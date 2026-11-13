@@ -42,7 +42,7 @@ impl Dispatcher<'_> {
         let Some(label) = status_label(ItemStatus::Leased) else {
             return Ok(());
         };
-        for summary in self.tracker.open_with_label(&label)? {
+        for summary in self.listed(&label)? {
             if self.held().contains(&summary.number) {
                 continue;
             }
@@ -108,7 +108,7 @@ impl Dispatcher<'_> {
             return Ok(());
         };
         let writers = usize::try_from(self.policy.max_writers).unwrap_or(0);
-        for summary in self.tracker.open_with_label(&label)? {
+        for summary in self.listed(&label)? {
             let n = summary.number;
             if !self.is_seed_issue(&summary) || self.held().contains(&n) || self.assisting(n) {
                 continue;
@@ -166,7 +166,7 @@ impl Dispatcher<'_> {
             return Ok(Vec::new());
         };
         let mut candidates = Vec::new();
-        for summary in self.tracker.open_with_label(&label)? {
+        for summary in self.listed(&label)? {
             if self.held().contains(&summary.number) {
                 continue;
             }
@@ -258,7 +258,7 @@ impl Dispatcher<'_> {
         let Some(label) = status_label(ItemStatus::Leased) else {
             return Ok(());
         };
-        for summary in self.tracker.open_with_label(&label)? {
+        for summary in self.listed(&label)? {
             if self.held().contains(&summary.number) {
                 continue;
             }

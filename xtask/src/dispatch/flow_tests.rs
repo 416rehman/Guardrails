@@ -140,6 +140,28 @@ fn due_after_its_sessions(dispatcher: &mut Dispatcher) -> bool {
 }
 
 #[test]
+fn an_issue_with_a_skip_label_is_left_to_the_setup_session() {
+    let setup = Setup::new("");
+    let path = setup.temp.repo().path(".agents/harness.toml");
+    let harness = std::fs::read_to_string(&path).unwrap().replace(
+        "[dispatch]
+",
+        "[dispatch]
+skip_labels = [\"meta\"]
+",
+    );
+    std::fs::write(&path, harness).unwrap();
+    setup.ready_issue(71, &["meta"], "lead-core");
+    setup.fake.respond(1, DONE, 0);
+    let mut dispatcher = setup.dispatcher();
+    dispatcher.step_github().unwrap();
+    settle(&mut dispatcher);
+    assert_eq!(dispatcher.held(), Vec::<u64>::new());
+    assert!(setup.fake.calls().is_empty(), "{:?}", setup.fake.calls());
+    assert_eq!(statuses(&setup, 71), vec!["status:ready".to_owned()]);
+}
+
+#[test]
 fn a_session_stopped_as_stalled_after_it_handed_off_blocked_posts_nothing() {
     let setup = Setup::new("");
     setup.ready_issue(40, &[], "lead-core");

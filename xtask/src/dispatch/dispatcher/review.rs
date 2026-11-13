@@ -59,7 +59,7 @@ impl Dispatcher<'_> {
         let Some(label) = status_label(ItemStatus::InReview) else {
             return Ok(());
         };
-        for summary in self.tracker.open_with_label(&label)? {
+        for summary in self.listed(&label)? {
             if self.assisting(summary.number) || self.held().contains(&summary.number) {
                 continue;
             }

@@ -52,7 +52,7 @@ impl Dispatcher<'_> {
             let Some(label) = status_label(*status) else {
                 continue;
             };
-            let mut waiting = self.tracker.open_with_label(&label)?;
+            let mut waiting = self.listed(&label)?;
             waiting.sort_by_cached_key(planning_rank);
             for summary in waiting {
                 if self.assists_for(Purpose::Plan) >= capacity {
