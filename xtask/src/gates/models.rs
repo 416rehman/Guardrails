@@ -175,9 +175,10 @@ pub fn rule_problems(kit: &Kit) -> Vec<String> {
             on_fable.push(agent.as_str());
         }
     }
-    if on_fable != [CHIEF_ARCHITECT] {
+    // None runs on fable while its allowance is used up and the chief architect falls back.
+    if !on_fable.is_empty() && on_fable != [CHIEF_ARCHITECT] {
         problems.push(format!(
-            "exactly one agent, {CHIEF_ARCHITECT}, may run on fable; on fable now: {}",
+            "at most one agent, {CHIEF_ARCHITECT}, may run on fable; on fable now: {}",
             list(&on_fable)
         ));
     }

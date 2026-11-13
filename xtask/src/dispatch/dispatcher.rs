@@ -115,6 +115,9 @@ pub struct Dispatcher<'a> {
     pacing: Pacing,
     /// Unix seconds when this dispatcher started; no deadline counts time before it.
     started: u64,
+    /// When a fable session last met a limit on its model alone; fable work waits out
+    /// `[limits] retry_seconds` from then.
+    fable_limited_at: Option<Instant>,
     /// A landed `.github/labels.toml` whose sync onto the repository has not succeeded yet.
     unsynced_labels: Option<LabelsFile>,
 }
@@ -174,6 +177,7 @@ impl<'a> Dispatcher<'a> {
             notices: BTreeMap::new(),
             pacing: Pacing::new(),
             started: now_unix(),
+            fable_limited_at: None,
             unsynced_labels: None,
         })
     }

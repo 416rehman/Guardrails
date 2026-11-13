@@ -648,7 +648,20 @@ CLAUDE_CODE_SUBAGENT_MODEL = \"claude-haiku-4-5\"
         assert!(render::render(&repo, &kit).is_err());
         let rule = models::rule_problems(&kit);
         assert_eq!(rule.len(), 1, "{rule:#?}");
-        assert!(rule[0].contains("exactly one agent, chief-architect, may run on fable"));
+        assert!(rule[0].contains("at most one agent, chief-architect, may run on fable"));
+    }
+
+    #[test]
+    fn the_chief_architect_may_fall_back_from_fable() {
+        let temp = TempRepo::create();
+        edit(
+            &temp,
+            ".agents/roster.toml",
+            "model = \"fable\"",
+            "model = \"opus\"",
+        );
+        let kit = Kit::load(&temp.repo()).unwrap();
+        assert_eq!(models::rule_problems(&kit), Vec::<String>::new());
     }
 
     #[test]

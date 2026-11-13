@@ -203,6 +203,9 @@ usage_limit_strings = [
 on_limit = "pause"               # keep the worktree, session id and lease; stop new leases
 resume = "after-window-reset"    # `claude --resume <session-id>`, trust-core, security and release first
 retry_seconds = 1800
+# A limit on one model only, such as Fable's weekly allowance: that model's sessions start nothing
+# until retry_seconds have passed and count no attempt, while every other model keeps its window.
+model_limit_strings = ["You've reached your Fable limit"]
 counts_as_attempt = false        # no lease or attempt comment is posted for a pause
 counts_as_round = false
 counts_as_stall = false

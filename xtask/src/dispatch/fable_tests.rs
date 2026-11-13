@@ -16,6 +16,9 @@ use crate::orchestrate::records::{
 use crate::orchestrate::testkit::{FakeProgram, body, issue, ready_for};
 use crate::orchestrate::tracker::Tracker;
 
+/// What Claude Code prints when the account's Fable allowance is used up.
+const FABLE_LIMITED: &str = "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"num_turns\":1,\"result\":\"You've reached your Fable limit. Switch to another model, or manage usage credits, to continue.\"}\n";
+
 pub(super) fn two_writers(setup: &Setup) {
     let path = setup.temp.repo().path(".agents/harness.toml");
     let harness = std::fs::read_to_string(&path).unwrap();
@@ -146,6 +149,38 @@ fn a_fable_decision_the_lock_refused_is_started_again() {
         "{}",
         calls[1]
     );
+}
+
+#[test]
+fn a_fable_session_its_model_limit_refused_counts_no_attempt_and_waits() {
+    let setup = Setup::new("");
+    setup.temp.add_agents(EVALUATORS);
+    failed_in_review(&setup, 80);
+    let path = setup.temp.repo().path(".agents/harness.toml");
+    let harness = std::fs::read_to_string(&path).unwrap().replace(
+        "retry_seconds = 0
+",
+        "retry_seconds = 3600
+model_limit_strings = [\"You've reached your Fable limit\"]
+",
+    );
+    std::fs::write(&path, harness).unwrap();
+    setup.fake.respond(1, FABLE_LIMITED, 1);
+    let mut dispatcher = setup.dispatcher();
+    dispatcher.step_github().unwrap();
+    settle(&mut dispatcher);
+    assert_eq!(setup.status(80), Some(ItemStatus::Leased));
+    assert_eq!(dispatcher.held(), vec![80]);
+    assert_eq!(
+        transitions(&setup.found(80)),
+        vec![
+            (ItemStatus::InReview, Reason::PullRequestOpen),
+            (ItemStatus::Leased, Reason::EvaluatorFindings)
+        ]
+    );
+    dispatcher.step_github().unwrap();
+    settle(&mut dispatcher);
+    assert_eq!(setup.fake.calls().len(), 1, "{:?}", setup.fake.calls());
 }
 
 #[test]

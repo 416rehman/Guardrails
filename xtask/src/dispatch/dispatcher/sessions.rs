@@ -11,7 +11,7 @@
 //! which runs the item, so that wait counts against the lease. Once it uses the lease while that
 //! session still runs, the item escalates instead of starting another attempt beside it.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 
@@ -55,6 +55,9 @@ impl Dispatcher<'_> {
             ended.describe()
         );
         if self.lock_refused(&ended) {
+            return self.after_refusal(held, prompt, named, &ended);
+        }
+        if self.fable_limited(&held.record.agent, &ended) {
             return self.after_refusal(held, prompt, named, &ended);
         }
         held.worked += ended.report().elapsed;
@@ -363,7 +366,32 @@ impl Dispatcher<'_> {
 
     /// Whether a fable session runs: one this dispatcher started, whose `kit launch` may not
     /// hold the machine lock yet, or any session that holds it.
+    /// Whether `ended` is a fable session `agent` ran that met a limit on its model alone; it ran
+    /// no work, so no attempt counts, and fable work waits out the retry interval from now.
+    pub(super) fn fable_limited(&mut self, agent: &str, ended: &Ended) -> bool {
+        let text = ended
+            .report()
+            .result
+            .as_ref()
+            .map(|result| result.text.as_str());
+        let met = self.is_fable(agent)
+            && text.is_some_and(|text| {
+                (self.policy.session.model_limit_strings.iter())
+                    .any(|limit| text.contains(limit.as_str()))
+            });
+        if met {
+            self.fable_limited_at = Some(Instant::now());
+        }
+        met
+    }
+
     pub(super) fn fable_busy(&self) -> Result<bool> {
+        let limited = self
+            .fable_limited_at
+            .is_some_and(|at| at.elapsed() < self.policy.session.retry_after_limit);
+        if limited {
+            return Ok(true);
+        }
         let own = self.slots.iter().any(
             |slot| matches!(slot, Slot::Working { held, .. } if self.is_fable(&held.record.agent)),
         ) || self

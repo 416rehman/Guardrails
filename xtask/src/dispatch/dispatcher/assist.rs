@@ -162,7 +162,9 @@ impl Dispatcher<'_> {
             assist.item,
             ended.describe()
         );
-        if matches!(ended, Ended::UsageLimited { .. }) || self.lock_refused(ended) {
+        let fable_limited = self.fable_limited(&assist.agent, ended);
+        if matches!(ended, Ended::UsageLimited { .. }) || self.lock_refused(ended) || fable_limited
+        {
             self.assisted.remove_started(assist.item, &assist.agent);
             return self.assisted.save(&self.repo);
         }

@@ -35,6 +35,9 @@ pub struct SessionRules {
     /// How long after a usage limit the window is tried again (`[limits] retry_seconds`).
     pub retry_after_limit: Duration,
     pub limit_strings: Vec<String>,
+    /// A session's result naming one of these hit a limit on its model alone
+    /// (`[limits] model_limit_strings`).
+    pub model_limit_strings: Vec<String>,
     pub poll: Duration,
     /// After the process exits, how long to wait for a grandchild that still holds the pipes.
     pub drain_grace: Duration,
@@ -57,6 +60,8 @@ struct StallKey {
 #[derive(Deserialize)]
 struct LimitKeys {
     usage_limit_strings: Vec<String>,
+    #[serde(default)]
+    model_limit_strings: Vec<String>,
     retry_seconds: u64,
 }
 
@@ -148,6 +153,7 @@ impl SessionRules {
             stall: Duration::from_secs(file.dispatch.stall_seconds),
             retry_after_limit: Duration::from_secs(file.limits.retry_seconds),
             limit_strings: file.limits.usage_limit_strings,
+            model_limit_strings: file.limits.model_limit_strings,
             poll: limits.poll(),
             drain_grace: limits.drain_grace(),
             turn_margin: limits.turn_margin,

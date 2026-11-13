@@ -42,6 +42,7 @@ fn runner(fake: &FakeProgram) -> Runner {
             stall: Duration::from_secs(30),
             retry_after_limit: Duration::ZERO,
             limit_strings: vec!["You've hit your session limit".into()],
+            model_limit_strings: Vec::new(),
             poll: Duration::from_millis(50),
             drain_grace: Duration::from_secs(2),
             turn_margin: 2,
