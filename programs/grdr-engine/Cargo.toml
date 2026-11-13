@@ -1,0 +1,17 @@
+[package]
+name = "grdr-engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[package.metadata.grdr]
+layer = 4
+privilege = "sandboxed"
+surface = "internal"
+renders = "none"
+squad = "endpoint"
+
+[lints]
+workspace = true

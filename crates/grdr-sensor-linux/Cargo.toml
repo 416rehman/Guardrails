@@ -1,0 +1,17 @@
+[package]
+name = "grdr-sensor-linux"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[package.metadata.grdr]
+layer = 3
+privilege = "none"
+surface = "internal"
+renders = "none"
+squad = "linux"
+
+[lints]
+workspace = true

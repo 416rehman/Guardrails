@@ -1,0 +1,171 @@
+# The layer table and the same-layer edge list of design/03 section 2, as data that
+# `cargo xtask archlint` (WI-0003) reads with `cargo metadata`. A crate depends only on lower
+# layers plus the edges listed here; adding an edge is an RFC (D-61). Each crate's
+# `[package.metadata.grdr]` repeats its layer, and the two must agree.
+
+[layers]
+0 = "schema"
+1 = "core"
+2 = "ports and shared libraries"
+3 = "adapters"
+4 = "programs"
+
+[crate.grdr-proto]
+layer = 0
+path = "crates/grdr-proto"
+
+[crate.grdr-schema]
+layer = 0
+path = "crates/grdr-schema"
+
+[crate.grdr-model]
+layer = 1
+path = "crates/grdr-model"
+
+[crate.grdr-core]
+layer = 1
+path = "crates/grdr-core"
+
+[crate.grdr-llm-proto]
+layer = 1
+path = "crates/grdr-llm-proto"
+
+[crate.grdr-fastpath]
+layer = 1
+path = "crates/grdr-fastpath"
+
+[crate.grdr-ffi]
+layer = 1
+path = "crates/grdr-ffi"
+
+[crate.grdr-wasm]
+layer = 1
+path = "crates/grdr-wasm"
+
+[crate.grdr-fastpath-ffi]
+layer = 1
+path = "crates/grdr-fastpath-ffi"
+
+[crate.grdr-ports]
+layer = 2
+path = "crates/grdr-ports"
+
+[crate.grdr-ports-testkit]
+layer = 2
+path = "crates/grdr-ports-testkit"
+
+[crate.grdr-crypto]
+layer = 2
+path = "crates/grdr-crypto"
+
+[crate.grdr-wire]
+layer = 2
+path = "crates/grdr-wire"
+
+[crate.grdr-sensor-linux]
+layer = 3
+path = "crates/grdr-sensor-linux"
+
+[crate.grdr-sensor-linux-bpf]
+layer = 3
+path = "bpf/grdr-sensor-linux-bpf"
+workspace = "excluded"
+
+[crate.grdr-agents]
+layer = 3
+path = "crates/grdr-agents"
+
+[crate.grdr-store-local]
+layer = 3
+path = "crates/grdr-store-local"
+
+[crate.grdr-sandbox-engine]
+layer = 3
+path = "crates/grdr-sandbox-engine"
+
+[crate.grdr-daemon]
+layer = 4
+path = "programs/grdr-daemon"
+
+[crate.grdr-engine]
+layer = 4
+path = "programs/grdr-engine"
+
+[crate.grdr-hook]
+layer = 4
+path = "programs/grdr-hook"
+
+[crate.grdr]
+layer = 4
+path = "programs/grdr"
+
+# Crates of design/03 section 2 that WI-0041 creates with the interface system; not yet created.
+[planned.grdr-strings]
+layer = 2
+path = "crates/grdr-strings"
+created_by = "WI-0041"
+
+[planned.grdr-messages]
+layer = 2
+path = "crates/grdr-messages"
+created_by = "WI-0041"
+
+# The complete same-layer edge list. Layers 3 and 4 have none: adapters meet only in a program,
+# and no program depends on another.
+[[same_layer_edge]]
+from = "grdr-schema"
+to = "grdr-proto"
+
+[[same_layer_edge]]
+from = "grdr-core"
+to = "grdr-model"
+
+[[same_layer_edge]]
+from = "grdr-llm-proto"
+to = "grdr-model"
+
+[[same_layer_edge]]
+from = "grdr-ffi"
+to = "grdr-model"
+
+[[same_layer_edge]]
+from = "grdr-wasm"
+to = "grdr-model"
+
+[[same_layer_edge]]
+from = "grdr-core"
+to = "grdr-fastpath"
+scope = "table layout only"
+
+[[same_layer_edge]]
+from = "grdr-fastpath-ffi"
+to = "grdr-fastpath"
+scope = "its only dependency"
+
+[[same_layer_edge]]
+from = "grdr-ffi"
+to = "grdr-core"
+
+[[same_layer_edge]]
+from = "grdr-ffi"
+to = "grdr-fastpath"
+
+[[same_layer_edge]]
+from = "grdr-wasm"
+to = "grdr-core"
+
+[[same_layer_edge]]
+from = "grdr-wasm"
+to = "grdr-fastpath"
+
+[[same_layer_edge]]
+from = "grdr-ports-testkit"
+to = "grdr-ports"
+
+[[same_layer_edge]]
+from = "grdr-wire"
+to = "grdr-crypto"
+
+[[same_layer_edge]]
+from = "grdr-messages"
+to = "grdr-strings"

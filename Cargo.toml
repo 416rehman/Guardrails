@@ -2,6 +2,45 @@
 resolver = "3"
 members = ["crates/*", "programs/*", "xtask"]
 exclude = ["bpf/grdr-sensor-linux-bpf"]
+# design/03 section 8: layers 0 to 2, the store, the agent adapters and the four programs, all of
+# which build with stable Rust alone (ARCH-011); the OS back ends and launchers build on request.
+default-members = [
+  "crates/grdr-proto",
+  "crates/grdr-schema",
+  "crates/grdr-model",
+  "crates/grdr-core",
+  "crates/grdr-llm-proto",
+  "crates/grdr-fastpath",
+  "crates/grdr-ffi",
+  "crates/grdr-wasm",
+  "crates/grdr-fastpath-ffi",
+  "crates/grdr-ports",
+  "crates/grdr-ports-testkit",
+  "crates/grdr-crypto",
+  "crates/grdr-wire",
+  "crates/grdr-store-local",
+  "crates/grdr-agents",
+  "programs/grdr-daemon",
+  "programs/grdr-engine",
+  "programs/grdr-hook",
+  "programs/grdr",
+  "xtask",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "Apache-2.0"
+
+# Workspace crates that another member depends on; every such edge is listed in architecture.toml.
+[workspace.dependencies]
+grdr-proto = { path = "crates/grdr-proto", version = "0.1.0" }
+grdr-model = { path = "crates/grdr-model", version = "0.1.0" }
+grdr-core = { path = "crates/grdr-core", version = "0.1.0" }
+grdr-fastpath = { path = "crates/grdr-fastpath", version = "0.1.0" }
+grdr-ports = { path = "crates/grdr-ports", version = "0.1.0" }
+grdr-crypto = { path = "crates/grdr-crypto", version = "0.1.0" }
 
 # Every member inherits this table with `[lints] workspace = true` (owner instruction 15); test
 # code may unwrap, expect, panic and index through clippy.toml. Cargo refuses crate entries next
