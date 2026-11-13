@@ -8,7 +8,7 @@ publish = false
 
 [package.metadata.grdr]
 layer = 3
-privilege = "none"
+privilege = "privileged"
 surface = "internal"
 renders = "none"
 squad = "linux"

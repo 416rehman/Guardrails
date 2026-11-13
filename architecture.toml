@@ -1,6 +1,6 @@
-# The layer table and the same-layer edge list of design/03 section 2, as data that
+# The layer table and the same-layer edges of design/03 section 2, as data that
 # `cargo xtask archlint` (WI-0003) reads with `cargo metadata`. A crate depends only on lower
-# layers plus the edges listed here; adding an edge is an RFC (D-61). Each crate's
+# layers plus the edges and rules listed here; adding an edge is an RFC (D-61). Each crate's
 # `[package.metadata.grdr]` repeats its layer, and the two must agree.
 
 [layers]
@@ -110,27 +110,18 @@ layer = 2
 path = "crates/grdr-messages"
 created_by = "WI-0041"
 
-# The complete same-layer edge list. Layers 3 and 4 have none: adapters meet only in a program,
-# and no program depends on another.
+# The complete same-layer edge list: the rule below and the single edges after it. Layers 3 and 4
+# have none: adapters meet only in a program, and no program depends on another.
+
+# Every crate of the layer, created now or later, except those listed, may depend on `to`.
+[[same_layer_rule]]
+layer = 1
+to = "grdr-model"
+except = ["grdr-fastpath", "grdr-fastpath-ffi"]
+
 [[same_layer_edge]]
 from = "grdr-schema"
 to = "grdr-proto"
-
-[[same_layer_edge]]
-from = "grdr-core"
-to = "grdr-model"
-
-[[same_layer_edge]]
-from = "grdr-llm-proto"
-to = "grdr-model"
-
-[[same_layer_edge]]
-from = "grdr-ffi"
-to = "grdr-model"
-
-[[same_layer_edge]]
-from = "grdr-wasm"
-to = "grdr-model"
 
 [[same_layer_edge]]
 from = "grdr-core"

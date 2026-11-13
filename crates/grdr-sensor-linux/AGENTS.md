@@ -1,6 +1,6 @@
 # grdr-sensor-linux
 
-layer: 3   privilege: none
+layer: 3   privilege: privileged
 surface: internal   squad: linux   trust core: no (its kernel programs under `bpf/` are)
 design: docs/design/10-sensor-linux-containers-ci.md; docs/design/03 section 2; notes: none yet
 
@@ -11,6 +11,8 @@ takes the kernel crate as a Cargo dependency.
 
 ## Invariants
 - No dependency on another layer 3 crate (ARCH-002).
+- No content parser in its closure, as it links into the privileged daemon (ARCH-004).
+- No panic path and checked arithmetic (workspace lints, `clippy::arithmetic_side_effects`).
 - Feature decisions come from the runtime probe, never the distribution name (design/10).
 - `unsafe` only with a `// SAFETY:` comment; the crate forbids it until its first need.
 
