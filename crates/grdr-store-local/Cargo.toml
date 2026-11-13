@@ -1,0 +1,17 @@
+[package]
+name = "grdr-store-local"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[package.metadata.grdr]
+layer = 3
+privilege = "none"
+surface = "internal"
+renders = "none"
+squad = "endpoint"
+
+[lints]
+workspace = true

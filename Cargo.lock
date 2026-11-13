@@ -97,6 +97,119 @@ dependencies = [
 ]
 
 [[package]]
+name = "grdr"
+version = "0.1.0"
+
+[[package]]
+name = "grdr-agents"
+version = "0.1.0"
+
+[[package]]
+name = "grdr-core"
+version = "0.1.0"
+dependencies = [
+ "grdr-fastpath",
+ "grdr-model",
+]
+
+[[package]]
+name = "grdr-crypto"
+version = "0.1.0"
+
+[[package]]
+name = "grdr-daemon"
+version = "0.1.0"
+
+[[package]]
+name = "grdr-engine"
+version = "0.1.0"
+
+[[package]]
+name = "grdr-fastpath"
+version = "0.1.0"
+
+[[package]]
+name = "grdr-fastpath-ffi"
+version = "0.1.0"
+dependencies = [
+ "grdr-fastpath",
+]
+
+[[package]]
+name = "grdr-ffi"
+version = "0.1.0"
+dependencies = [
+ "grdr-core",
+ "grdr-fastpath",
+ "grdr-model",
+]
+
+[[package]]
+name = "grdr-hook"
+version = "0.1.0"
+
+[[package]]
+name = "grdr-llm-proto"
+version = "0.1.0"
+dependencies = [
+ "grdr-model",
+]
+
+[[package]]
+name = "grdr-model"
+version = "0.1.0"
+
+[[package]]
+name = "grdr-ports"
+version = "0.1.0"
+
+[[package]]
+name = "grdr-ports-testkit"
+version = "0.1.0"
+dependencies = [
+ "grdr-ports",
+]
+
+[[package]]
+name = "grdr-proto"
+version = "0.1.0"
+
+[[package]]
+name = "grdr-sandbox-engine"
+version = "0.1.0"
+
+[[package]]
+name = "grdr-schema"
+version = "0.1.0"
+dependencies = [
+ "grdr-proto",
+]
+
+[[package]]
+name = "grdr-sensor-linux"
+version = "0.1.0"
+
+[[package]]
+name = "grdr-store-local"
+version = "0.1.0"
+
+[[package]]
+name = "grdr-wasm"
+version = "0.1.0"
+dependencies = [
+ "grdr-core",
+ "grdr-fastpath",
+ "grdr-model",
+]
+
+[[package]]
+name = "grdr-wire"
+version = "0.1.0"
+dependencies = [
+ "grdr-crypto",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

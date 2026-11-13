@@ -1,0 +1,17 @@
+[package]
+name = "grdr-daemon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[package.metadata.grdr]
+layer = 4
+privilege = "privileged"
+surface = "internal"
+renders = "none"
+squad = "endpoint"
+
+[lints]
+workspace = true

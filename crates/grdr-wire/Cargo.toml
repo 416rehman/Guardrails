@@ -1,0 +1,19 @@
+[package]
+name = "grdr-wire"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[package.metadata.grdr]
+layer = 2
+privilege = "none"
+surface = "public"
+renders = "none"
+squad = "core"
+
+[dependencies]
+grdr-crypto.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,35 @@
+[package]
+name = "grdr-sensor-linux-bpf"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "GPL-2.0-only OR BSD-2-Clause"
+publish = false
+
+# Its own workspace root, so Cargo never joins it to a workspace above it.
+[workspace]
+
+[package.metadata.grdr]
+layer = 3
+privilege = "privileged"
+surface = "internal"
+renders = "none"
+squad = "linux"
+
+# A copy of the root `[workspace.lints]`, which a crate outside the workspace cannot inherit.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+indexing_slicing = "deny"
+string_slice = "deny"
+get_unwrap = "deny"
+panic_in_result_fn = "deny"
+exit = "deny"
+arithmetic_side_effects = "deny"
