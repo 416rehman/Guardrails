@@ -43,12 +43,13 @@ pub const KIT_STATE: &[&str] = &[
     ".agent/state/**",
 ];
 /// What an agent writes itself under `.agent/`: its hand-off, the bodies of issues and comments it
-/// posts, its predictions (skill grdr-start-item), the evaluator's expectation log until the
-/// evidence writer of WI-0002 owns it (skill grdr-evaluate), and the files a widened session
-/// stages for `kit place`.
+/// posts, its predictions (skill grdr-start-item), the run records an audit keeps without its
+/// runner (audit.js), the evaluator's expectation log until the evidence writer of WI-0002 owns
+/// it (skill grdr-evaluate), and the files a widened session stages for `kit place`.
 const AGENT_DRAFTS: &[&str] = &[
     ".agent/state/handoff-*",
     ".agent/state/proposed-*",
+    ".agent/state/audit-run-*",
     ".agent/state/research-*",
     ".agent/state/threat-model-*",
     ".agent/state/*.AGENTS.draft.md",

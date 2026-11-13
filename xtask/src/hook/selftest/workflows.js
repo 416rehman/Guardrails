@@ -6,7 +6,8 @@
 // over the round cap, and with a comment gh reads back only on the second try or never, or whose
 // second read does not return or reports no action. The audit issue and the council comments
 // come from the scripts' own builders. Reads {root, repository, records, item, maxRounds} on
-// stdin; prints {commands, handoffs, reruns, prior, reread, unread}.
+// stdin; prints {commands, audit, handoffs, reruns, prior, reread, unread}, where audit holds the
+// runner-less record prompt with the records it was built from, and the audit.js prompts built.
 const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
@@ -212,16 +213,33 @@ function unreadComment(run, thread, cause) {
   }
 }
 
-function audit() {
-  const script = declarations('audit.js', ['issueFor', 'publishPrompt'])
-  const result = {
+function auditResult() {
+  return {
     prompt: 'A07', arm: 'power', closure: [], run_id: 'r1', title: `The record reader drops ${quote}`, label: 'CONFIRMED', severity: 3,
     proof: { status: 'not-reproduced' }, smallest_fix: `Accept ${quote}.`, checked_by: 'runner',
     evidence: [{ path: 'xtask/src/orchestrate/handoff/tests.rs', line: 26, quote }],
     verdicts: [{ model: 'opus', verdict: 'UPHELD', reason: quote }], fingerprint: 'f1', token: 'grdrau1',
   }
-  const issue = script.issueFor(result, { scope: 'xtask', commit_sha: HEAD }, [])
-  return commands('audit', script.publishPrompt(input.repository, [issue]))
+}
+
+function auditPublishPrompt() {
+  const script = declarations('audit.js', ['issueFor', 'publishPrompt'])
+  const issue = script.issueFor(auditResult(), { scope: 'xtask', commit_sha: HEAD }, [])
+  return script.publishPrompt(input.repository, [issue])
+}
+
+// Runner-less run records whose results quote a here-document and every kit record, as
+// audit.js builds them for its record agent.
+function auditRecord() {
+  const { recordPrompt } = declarations('audit.js', ['recordPrompt'])
+  const runs = ['a01', 'a07'].map(label => ({
+    label, run_id: `r-${label}`,
+    record: {
+      schema: 'audit-run.v1', run: { label, quote }, commit: HEAD, scope: 'xtask', trigger: 'manual',
+      results: [{ ...auditResult(), state: 'open', evidence: [{ path: 'x.rs', line: 1, quote: `cat <<'EOF'\n${quote}\nEOF` }] }], skipped: [],
+    },
+  }))
+  return { prompt: recordPrompt(runs), runs: runs.map(({ label, record }) => ({ label, record })) }
 }
 
 function council() {
@@ -273,8 +291,11 @@ async function main() {
   const unreturned = await review({ thread: stalled, read: () => '', readBack: 'not at all' })
   const actionless = commentThread()
   const unreported = await review({ thread: actionless, read: () => '', readBack: 'no action' })
+  const record = auditRecord()
+  const publishing = auditPublishPrompt()
   return {
-    commands: [...alone.commands, ...audit(), ...council()],
+    commands: [...alone.commands, ...commands('audit', publishing), ...council()],
+    audit: { record, prompts: [{ step: 'publish', prompt: publishing }, { step: 'record', prompt: record.prompt }] },
     handoffs: {
       'without an audit': alone.handoff, 'after an audit': audited.handoff, 'on a forced re-review': changed.run.handoff,
       'back on the first verdict': back.run.handoff, 'in the next round': next.handoff, 'after a second read': reread.handoff,
