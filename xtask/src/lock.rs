@@ -11,6 +11,7 @@ use std::io::{ErrorKind, Read as _, Seek as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
@@ -23,6 +24,8 @@ pub struct Lock {
     /// What this holder wrote, so letting go never empties a lock another holder took over.
     holder: String,
     released: Arc<AtomicBool>,
+    /// Dropped with the lock, which ends the heartbeat thread's wait.
+    _held: mpsc::Sender<()>,
 }
 
 /// A fresh holder has the lock.
@@ -66,9 +69,11 @@ impl Lock {
         let written = pid_line.clone();
         let released = Arc::new(AtomicBool::new(false));
         let stop = Arc::clone(&released);
+        let (held, let_go) = mpsc::channel::<()>();
         std::thread::spawn(move || {
-            loop {
-                std::thread::sleep(beat);
+            // The wait ends when the lock drops its sender, so no heartbeat thread outlives its
+            // lock by a beat; a process that takes many locks would run out of threads.
+            while let Err(RecvTimeoutError::Timeout) = let_go.recv_timeout(beat) {
                 if stop.load(Ordering::SeqCst) || !beat_once(&heartbeat, &written, &stop) {
                     return;
                 }
@@ -78,6 +83,7 @@ impl Lock {
             path,
             holder: pid_line,
             released,
+            _held: held,
         })
     }
 
@@ -358,6 +364,28 @@ mod tests {
         drop(keeping);
         wait_for_line(&path, &line);
         drop(holder);
+        let _ = fs::remove_file(&path);
+    }
+
+    /// A process that takes many locks, as the release race above does, keeps no waiting thread
+    /// for a lock it let go of.
+    #[test]
+    fn a_heartbeat_ends_when_its_lock_is_dropped() {
+        let path =
+            std::env::temp_dir().join(format!("xtask-lock-ended-{}.lock", std::process::id()));
+        let _ = fs::remove_file(&path);
+        let lock = Lock::take(path.clone(), Duration::from_secs(60), "busy").unwrap();
+        let released = Arc::clone(&lock.released);
+        drop(lock);
+        let started = std::time::Instant::now();
+        // The heartbeat thread holds the only other clone.
+        while Arc::strong_count(&released) > 1 {
+            assert!(
+                started.elapsed() < Duration::from_secs(10),
+                "the heartbeat still waits"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
         let _ = fs::remove_file(&path);
     }
 

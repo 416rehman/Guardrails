@@ -76,9 +76,12 @@ fn a_routine_worktree_in_the_way_of_the_tip_is_made_again_there() {
         "pass: {pass:?}; calls: {calls:?}"
     );
     assert_eq!(git(&dir, &["rev-parse", "HEAD"]).trim(), tip);
+    // Git checks the file out with the line ending its `core.autocrlf` asks for.
     assert_eq!(
-        std::fs::read_to_string(dir.join("notes.md")).unwrap(),
-        "Landed notes.\n"
+        std::fs::read_to_string(dir.join("notes.md"))
+            .unwrap()
+            .trim_end(),
+        "Landed notes."
     );
 }
 
