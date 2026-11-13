@@ -90,9 +90,9 @@ squash_subject = "{title} (#{pr})"
 
 [dispatch]
 max_writers = 3                  # calibration row of the concurrency ladder (S-20)
-max_evaluators = 6
+max_evaluators = 12
 max_gardeners = 1
-max_planners = 1                 # leads, the product lead and the chief architect planning issues
+max_planners = 8                 # leads, the product lead and the chief architect planning issues
 # Planner sessions one agent runs at once, each on its own issue in its own worktree, so a lead
 # with many proposed issues does not specify them one after another. max_planners still caps the
 # total, and a fable agent runs one session at a time whatever this says.
