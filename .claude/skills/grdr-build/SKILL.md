@@ -21,13 +21,15 @@ The product is built in end-to-end slices, never one layer after another. The sl
 - Every product issue carries the `slice:N` label of the slice it serves. An issue with no slice label gets one from its squad's lead before it is worked.
 - The lowest open epic is the current slice. Find it with `gh issue list --label epic --state open --json number,title,labels,body`.
 
+**Nothing in the plan is missed.** Every work item listed in a design document's "## Work breakdown" section (ids such as W-1.1, 04-21, EN-A1, P-1, 14.1.1, I2.1, E3.2) has a GitHub issue whose title or body names the item id and the document (`design/NN`). When a slice starts, its leads check this for every document the slice draws on and file each missing item (`gh issue list --state all --search "<id> design/NN"`). Before the loop reports the plan done, the leads check it for every design document. A design change that adds a work item files its issue in the same pull request.
+
 Each layer an epic names has a lead: endpoint `lead-endpoint`, with `lead-windows`, `lead-macos`, `lead-linux` for the sensors and `lead-adapters` for agent hooks; wire `lead-core`; server ingest, storage and API `lead-server`; console `lead-interfaces`; CLI `lead-endpoint`; docs `product-lead`. Any other area takes its lead from `.claude/owners.toml`.
 
 ## One iteration
 
 1. **Check the stop conditions** (below). If one holds, stop and report it.
 2. **Read GitHub.** The open epics, and the open issues with their labels: `gh issue list --state open --limit 500 --json number,title,labels,body`. For each candidate, its open blockers: `gh api repos/{owner}/{repo}/issues/<n>/dependencies/blocked_by --jq '[.[] | select(.state == "open")] | length'`. Leave out `good-first-issue`, `extractive` and issues already in progress (a branch `issue/<n>` or an open pull request on it).
-3. **Start the slice.** A slice has started when the epic carries one comment per layer it names, `Layer <name> filed: #a, #b, ...`. Until it does, spawn the lead of each missing layer, in parallel. Each reads the epic and its design documents, then the existing issues for its layer (including one-line stubs that still need a spec), writes the spec into each stub with `grdr-write-spec`, files every issue the slice still needs in its layer with the work-item form and the `slice:N` label (spec citing the doc section, write set, acceptance criteria, "blocked by" links), gives unlabelled issues of its squad a slice, and posts the layer comment on the epic. No layer is left for later, and no implementer starts in the slice before it has started.
+3. **Start the slice.** A slice has started when the epic carries one comment per layer it names, `Layer <name> filed: #a, #b, ...`. Until it does, spawn the lead of each missing layer, in parallel. Each reads the epic and its design documents, then the existing issues for its layer (including one-line stubs that still need a spec), writes the spec into each stub with `grdr-write-spec`, checks that every Work breakdown item of those documents has an issue, files every issue the slice still needs in its layer with the work-item form and the `slice:N` label (spec citing the doc section, write set, acceptance criteria, "blocked by" links), gives unlabelled issues of its squad a slice, and posts the layer comment on the epic. No layer is left for later, and no implementer starts in the slice before it has started.
 4. **Pick.** The highest-priority open issue labelled with the current slice whose blockers are closed; ties by oldest number.
    - It has a usable spec (spec, write set, acceptance criteria with a check and an oracle each): work it.
    - It has none: spawn its squad's lead to write one with `grdr-write-spec`, read it again, then work it.
@@ -40,7 +42,7 @@ Each layer an epic names has a lead: endpoint `lead-endpoint`, with `lead-window
 
 Stop the loop and say why when:
 
-- no open epic is left and every open issue is closed or waits on an outside precondition: list those preconditions (signing programmes, store and developer accounts, hardware, legal steps) with their issues, and say that the next slice needs an epic;
+- no open epic is left, every Work breakdown item of every design document has an issue (the leads checked it this iteration), and every open issue is closed or waits on an outside precondition: list those preconditions (signing programmes, store and developer accounts, hardware, legal steps) with their issues, and say that the next slice needs an epic;
 - the same issue failed three rounds in `grdr-work-issue`: report the issue, its branch and the open findings;
 - CI on `main` is red (`gh run list --branch main --limit 5`): report the failing run and do not start new work;
 - the account's usage limit is reached.
