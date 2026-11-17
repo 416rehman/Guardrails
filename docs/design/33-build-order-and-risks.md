@@ -1,18 +1,18 @@
 # 33. Build order, experiments and risks
 
-_Status: draft 5 against spine version 4, rulings R-01 to R-71 and `_review/02-owner-answers.md`, then the owner's kit instructions (`_review/04-owner-kit-instructions.md`; 7, 22, 23, 25 and 28 change this document) and the ten-million-endpoint (P15), air-gap (P16) and cohesion (P17) reviews. Owning squad: Direction group (programme manager and chief architect, `team/02` section 3). Specifies D-50, D-63 and spine sections 6 to 10. Read with: `00-decisions.md`; `team/01` (ladder, metrics); `team/06` (bootstrap checklist, WI-0001 to WI-0053); 24 (release); 30 (governance); 32 (cost model, hosted preconditions); 34 (lifecycle, design partners); 35 (security review); 36 (entity, counsel). Other documents state their own prerequisites; the dependency graph of the whole product is here and in spine section 7._
+_Status: draft 5 against spine version 4, rulings R-01 to R-71 and `_review/02-owner-answers.md`, then the owner's kit instructions (`_review/04-owner-kit-instructions.md`; 7, 22, 23, 25 and 28 change this document) and the ten-million-endpoint (P15), air-gap (P16) and cohesion (P17) reviews, and ADR-0029 (2026-11-17), which removed the agent harness and orders the build by slices. Owning squad: Direction group (programme manager and chief architect, `team/02` section 3). Specifies D-50, D-63 and spine sections 6 to 10. Read with: `00-decisions.md`; `team/01` (metrics); skill `grdr-build` (slices); `team/06` (bootstrap checklist, WI-0001 to WI-0053); 24 (release); 30 (governance); 32 (cost model, hosted preconditions); 34 (lifecycle, design partners); 35 (security review); 36 (entity, counsel). Other documents state their own prerequisites; the dependency graph of the whole product is here and in spine section 7._
 
 ## Summary
 
-This document describes the complete product as a set of components with prerequisites, not as a schedule. It holds the dependency graph, the acceptance clauses per capability, the external preconditions, the experiments (spikes) that can still reverse a decision, and the risk register. Key choices:
+This document describes the complete product as a set of components with prerequisites, built in end-to-end slices, not as a schedule. It holds the slices, the dependency graph, the acceptance clauses per capability, the external preconditions, the experiments (spikes) that can still reverse a decision, and the risk register. Key choices:
 
-1. **Prerequisites, not phases.** Work can start on any component whose prerequisites exist (spine section 7). There are no milestones, horizons or dates; the only ordering is what one component requires of another, of a spike verdict, of a decision or of something outside the team's control.
+1. **Slices and prerequisites, not phases.** The product is built in end-to-end slices 0 to 10, each an epic issue whose scenario must work on Windows, macOS and Linux through every layer it names; slice 0, the walking skeleton, comes first (section 3; ADR-0029). Inside and across slices, the only other ordering is what one component requires of another, of a spike verdict, of a decision or of something outside the team's control (spine section 7). There are no milestones, horizons or dates.
 2. **Acceptance is per capability.** Each capability area lists acceptance clauses with an oracle per clause. A release ships the capabilities whose clauses are green; nothing else gates it.
 3. **Windows joins Tier 1 when S-04 passes in full.** It ships at Tier 2 once the Defender and free-EDR arm of S-04 passes, and moves to Tier 1 when the Falcon arm and the D-23 interference test pass (D-50).
 4. **Trust-core review is the evaluators'.** `eval-security` and `eval-adversarial` review every trust-core change in clean contexts, and two independent evaluators on different models must pass it; a component without the review D-62 sets stays in the internal ring, and a kernel component leaves it through that route plus any free external audit that has arrived (D-62, D-63; owner instruction 7).
 5. **The hosted service requires the `distributed` load test and funded infrastructure** (spine section 7; 32 section 16). Self-hosting is the default way to run the platform and needs neither.
-6. **Spikes block named work items.** The dispatcher refuses an item in a spike's `blocks` list until the spike has a verdict.
-7. **The register is data.** `docs/plan/risks.toml` triggers are computed by the `team/01` section 12 metrics job; a fired trigger executes its response.
+6. **Spikes block named work items.** Each item in a spike's `blocks` list carries a "blocked by" link to the spike's issue, so no session works it until the spike has a verdict (skill `grdr-build`).
+7. **The register is data.** `docs/plan/risks.toml` triggers are computed from the issues and CI by the metrics job (`team/01` section 11); a fired trigger's response is applied by the programme manager.
 8. **Kill criteria at three levels**: spike fallbacks, component rules (internal ring, demotion) and decisions: the owner's on licence, hosting and paid offers, the chief architect's on the wedge.
 9. **Zero budget, one Claude subscription, no human gate.** Work is measured in share of the subscription's usage windows, calibrated by S-20, and no step waits for a person (owner instruction 7). Money appears only as external preconditions: Apple's annual Developer Program fee (the one unavoidable cost, question 8), and the driver, hosted infrastructure, paid certifications and live-cloud tests, which require a sponsor, a partner, revenue or donated credits. No default needs a new third-party account (owner instruction 23).
 10. **Scale and the air gap are release conditions.** S-23's fleet herd simulation gates every change to the uplink scheduler and every release (P15), and the air-gap conformance run S-31 gates every server release (P16).
@@ -36,7 +36,7 @@ This document describes the complete product as a set of components with prerequ
 
 ### 1. Planning mechanics
 
-Four files under `docs/plan/` hold the plan: `build-order.toml` (components and capabilities, their `requires`, acceptance clauses and an oracle per clause: harness scenario, CI job, signed or drill record), `spikes.toml`, `preconditions.toml` and `risks.toml`. `cargo xtask plan check` validates them in `verify`, and `PLAN.md`'s dependency table and D-50 matrix are generated from them and `support.toml` (03 F3). For each release the chief architect assembles `docs/agents/releases/<version>.md` with a run link per clause of every capability the release claims, `eval-release` re-runs the oracles on the release commit, and the merge queue lands the release pull request, after which release-please creates the tags (owner instruction 7). A clause is met, or the capability it belongs to is not claimed in that release, by decision record; there is no "met with exceptions".
+Four files under `docs/plan/` hold the plan: `build-order.toml` (components and capabilities, their `requires`, acceptance clauses and an oracle per clause: harness scenario, CI job, signed or drill record), `spikes.toml`, `preconditions.toml` and `risks.toml`. A plan check in CI validates them, and `PLAN.md`'s dependency table and D-50 matrix are generated from them and `support.toml` (03 F3). For each release the chief architect assembles `docs/agents/releases/<version>.md` with a run link per clause of every capability the release claims, the release candidate check (skill `grdr-cut-release`) re-runs the oracles on the release commit, and the orchestrating session squash-merges the release pull request, after which release-please creates the tags (owner instruction 7). A clause is met, or the capability it belongs to is not claimed in that release, by decision record; there is no "met with exceptions".
 
 Support tiers (D-50). Promotion needs a named maintainer and 30 green days; an adapter with no Tier 1 owner for two releases is demoted, then removed (`l10` F3, F10).
 
@@ -53,11 +53,11 @@ Support tiers (D-50). Promotion needs a named maintainer and 30 green days; an a
 
 ### 2. Capabilities and acceptance
 
-The groups below are areas of the product, not stages. Order comes only from each row's prerequisites and from section 3. Scope names the owning document's epics. Assurance per operating system is in section 4. Every capability, in addition to its clauses, requires D-50 completeness for the Tier 1 cells it touches: all five jobs work in each cell at the section 4 level, and fault injection finds zero silent fail-open. The oracle is the generated `PLAN.md` matrix with no empty cell and a green `eval-release` run per cell.
+The groups below are areas of the product, not stages: a capability is built across the slices whose scenarios need it, and order comes only from the slices and the prerequisites of section 3. Scope names the owning document's epics. Assurance per operating system is in section 4. Every capability, in addition to its clauses, requires D-50 completeness for the Tier 1 cells it touches: all five jobs work in each cell at the section 4 level, and fault injection finds zero silent fail-open. The oracle is the generated `PLAN.md` matrix with no empty cell and a green release candidate check per cell.
 
 #### 2.1 Foundations
 
-*Scope.* Bootstrap (`team/06` B1 to B9); Loonaro's accounts and names (36 LBC-1, LBC-2, LBC-10); kit, `verify`, merge queue, dispatcher (WI-0001 to WI-0013, and the kit items WI-0042 to WI-0053); schemas at `v1alpha1` (04 E1, E2); sans-IO core with C ABI and `wasm32` skeletons (03 B); Cedar schema and S-15 (12 E1); shell canonicaliser as the S-20 item (WI-0019); harness and held-out evaluator (WI-0027, WI-0028); tier A lab on free hosted CI runners, which runs the held-out suite (D-64); signed test binary (24-1); the Linux x64 thin slice (WI-0020 to WI-0026, WI-0031); cost model (32 OPS-01).
+*Scope.* Bootstrap (`team/06` B1 to B9); Loonaro's accounts and names (36 LBC-1, LBC-2, LBC-10); the CI gates and repository rules (WI-0001 to WI-0013; the kit items WI-0042 to WI-0053 ended with the harness, ADR-0029); schemas at `v1alpha1` (04 E1, E2); sans-IO core with C ABI and `wasm32` skeletons (03 B); Cedar schema and S-15 (12 E1); shell canonicaliser as the S-20 item (WI-0019); harness and held-out evaluator (WI-0027, WI-0028); tier A lab on free hosted CI runners, which runs the held-out suite (D-64); signed test binary (24-1); the Linux x64 thin slice (WI-0020 to WI-0026, WI-0031); cost model (32 OPS-01).
 
 *Requires.* Nothing for the repository to be public, which it is from its first push (owner instruction 28): `SECURITY.md` is in the seed, and `GOVERNANCE.md`, `MAINTAINERS.md`, the covenant and the recorded D-66 search are work items of this group; RFC 0001 accepted (30-17). Trust-core items in the slice (WI-0016, WI-0018, WI-0021 to WI-0023) require the trust-core evaluators (D-63, R-41; owner instruction 7).
 
@@ -65,7 +65,7 @@ The groups below are areas of the product, not stages. Order comes only from eac
 
 #### 2.2 Standalone
 
-*Scope.* Claude Code and Codex on Linux and macOS, Windows at the tier S-04 allows; both profiles (D-48); broker, shim, fail-safe table, install channel with canary proof, assurance record (07 E1 to E6, D-49); Essentials and Watch packs (12 E5.1, 13 E4.1); local policy, replay, history; discovery passes 1 and 2 (05); observed identifiers and credential inventory (15, D-27); Linux reconciliation (07 E5.2); config integrity; protected paths and decoys (16 A, E1); CLI and local console subset served by `grdr console serve` (27 E2, 28 E1 to E4; D-42); local audit chain (04-15); mirrored intelligence (14 E14.1, E14.2); packages (24 E2); pack format, TUF client and project-root ceremony (22-18 to 22-21); PSIRT tooling (35 SP-E7); the development fleet runs under the last signed release.
+*Scope.* Claude Code and Codex on Linux and macOS, Windows at the tier S-04 allows; both profiles (D-48); broker, shim, fail-safe table, install channel with canary proof, assurance record (07 E1 to E6, D-49); Essentials and Watch packs (12 E5.1, 13 E4.1); local policy, replay, history; discovery passes 1 and 2 (05); observed identifiers and credential inventory (15, D-27); Linux reconciliation (07 E5.2); config integrity; protected paths and decoys (16 A, E1); CLI and local console subset served by `grdr console serve` (27 E2, 28 E1 to E4; D-42); local audit chain (04-15); mirrored intelligence (14 E14.1, E14.2); packages (24 E2); pack format, TUF client and project-root ceremony (22-18 to 22-21); PSIRT tooling (35 SP-E7); the owner's machine runs the last signed release in front of the agents (`team/01` section 9).
 
 *Requires.* Foundations; the S-04 verdict for Windows; content lands on evaluator passes with evidence, and community content leaves Watch only with those passes from two evaluators on different models (13 section 17; owner instruction 7); D-62's review of the privileged core, updater, shim and approval helper before their first stable-channel release, run by the trust-core evaluators (35 section 5).
 
@@ -103,14 +103,29 @@ Beta without an SLA, then SOC 2 Type I, then Type II. Requires evidence in `ops/
 
 Rebuilt white-label, own reputation scanning, optional Windows driver on its own release train, more cells, tile log and receipts, registry correlation and ID-JAG, third-party scorecard rerun, foundation transfer. Each has the external precondition spine section 7 names (an embedding partner, data from many organisations, a driver sponsor or partner, an external witness, an independent party, a foundation's acceptance). Acceptance: conformance listings; transfer executed when the covenant's trigger is met. Seams kept in the core regardless: reserved `Sealed` fields and the `transparency` member (04-19, 21 K5), the brand manifest (D-66), the driver adapter behind the Windows sensor trait (D-17), reserved pack kinds (19 AI-01).
 
-### 3. Dependency graph
+### 3. Slices and dependency graph
 
-A component can be built when its upstream interfaces are at `v1alpha1` and the spikes it depends on have verdicts. Spine section 7 holds the full component table with external preconditions; the table below adds the epic-level edges this plan schedules work against.
+The product is built in end-to-end slices, never one layer after another (skill `grdr-build`; ADR-0029). Each slice is an epic issue labelled `epic` and `slice:N` whose body states a scenario that must work on Windows, macOS and Linux at once, through every layer it names, and the design documents it draws on; the epic is authoritative and the table below summarises it. Every product issue carries the `slice:N` label of the slice it serves. The lowest open epic is the current slice, and work runs at most one slice ahead. A slice closes when `eval-acceptance` drives its scenario end to end on all three systems. Slices order the work; they carry no dates.
+
+| Slice | Epic | Works end to end on Windows, macOS and Linux | Draws on |
+|---|---|---|---|
+| 0 | Walking skeleton | Install, run Claude Code, one built-in policy blocks a risky shell command with a block message; the decision event flows through spool and uplink to `embedded` server ingest, bus and lake, the API, the CLI and a minimal console page; signed release binaries; a docs quickstart to the first block | 03, 04, 07 to 12, 20, 22, 24, 27, 34 |
+| 1 | Policy and approvals | Essentials applies; Ask raises an approval in the tray and console and mints a single-use grant; server-edited policy is signed, distributed and shown in console and CLI | 12, 18, 21, 23, 27, 28 |
+| 2 | Sensing and attribution | OS sensors observe exec, file and network per session; effects join to the session and tool call; hook claims cross-checked; session graph on the server, in the API and the console | 06 to 10, 20 |
+| 3 | Discovery and inventory | Catalogued and bespoke agents found with their MCP servers, skills, plugins, endpoints and credentials; device and fleet inventory | 05, 20, 27 |
+| 4 | Detection and content | A suspicious sequence detected on the device with intelligence; signed packs updated on endpoints; triage in the console | 13, 14, 19, 22 |
+| 5 | Data protection and identity | A planted secret cannot be read or leaked; redaction by capture level; brokered short-lived credentials; per-session sealing | 15, 16, 21 |
+| 6 | Network and MCP | Traffic through the endpoint proxy, MCP calls through the broker or gateway, recorded and shown | 17 |
+| 7 | Fleet and updates | Enrolment, ringed policy, content and binary updates with no protection gap, device health, halting a rollout | 22, 24 |
+| 8 | Response and SOC | Response actions and the scoped kill switch; session-centred incidents worked from the review queue | 18 |
+| 9 | Integrations and embedding | Imports, SIEM export, an enhancer pack, an embedded engine or broker up to a white-label build | 04, 25, 26 |
+| 10 | Scale, tenancy and hosted | `ha` and `distributed` with many organisations, the provider tier, compliance evidence, the hosted service with cells | 20, 21, 29, 32 |
+
+Slice 0 puts the thinnest working form of every layer in place, and each later slice widens layers that already run. The slices do not replace the edges below: a component is built when its upstream interfaces are at `v1alpha1` and the spikes it depends on have verdicts, whichever slice builds it. Inside a slice and across slices, an issue is "blocked by" the issues that build what its component requires and by the spikes that can overturn it (section 7), and a slice whose scenario needs a component builds the form of it the scenario needs together with that form's prerequisites. Spine section 7 holds the full component table with external preconditions; the table below adds the epic-level edges.
 
 | Component (document, epic) | Requires |
 |---|---|
-| Kit, `verify`, merge queue, dispatcher (`team/06`) | Nothing |
-| Schema (04) | Kit |
+| Schema (04) | Nothing |
 | Core (03) and Cedar schema (12) | Schema; S-15 |
 | Decision protocol and shim (07) | Core |
 | Daemon hub (11) | Shim |
@@ -121,7 +136,7 @@ A component can be built when its upstream interfaces are at `v1alpha1` and the 
 | Essentials (12) | Core; benign corpus |
 | macOS tier 1 (09) | Daemon |
 | Discovery passes 1 and 2 (05) | Core |
-| Release pipeline (24) | Kit and merge queue; platform signing identities only for platform-signed artefacts (section 6) |
+| Release pipeline (24) | The CI gates (`team/05`); platform signing identities only for platform-signed artefacts (section 6) |
 | Packs and TUF (22) | Pack verifier; project-root ceremony |
 | Windows sensor (08) | Daemon; S-04 |
 | Containment (10, 09, 08) | Launcher; S-10; S-11 |
@@ -137,12 +152,11 @@ A component can be built when its upstream interfaces are at `v1alpha1` and the 
 | Credential broker (15) | Launcher; server `identity` and `keys` targets |
 | Hosted service (32) | `distributed`; hosted preconditions (section 2.6) |
 
-Longest chains: to standalone acceptance, kit and queue, schema, core and Cedar, decision protocol and shim, daemon hub, Linux observe programs (evaluator-reviewed), cross-check, harness, then the install channel and Essentials. To the self-hosted server: S-01, then S-02 and S-03, then storage ports. Platform signing identities add signatures where a vendor programme exists and gate no release (owner instruction 23).
+Longest chains: to standalone acceptance, schema, core and Cedar, decision protocol and shim, daemon hub, Linux observe programs (evaluator-reviewed), cross-check, harness, then the install channel and Essentials. To the self-hosted server: S-01, then S-02 and S-03, then storage ports. Platform signing identities add signatures where a vendor programme exists and gate no release (owner instruction 23).
 
 ```mermaid
 flowchart LR
-  KIT[Kit and merge queue] --> SCH[04 schema]
-  SCH --> CORE[03 core, 12 Cedar]
+  SCH[04 schema] --> CORE[03 core, 12 Cedar]
   CORE --> DEC[07 protocol and shim]
   DEC --> HUB[11 daemon hub]
   HUB --> BPF[10 observe eBPF, evaluator-reviewed]
@@ -152,7 +166,7 @@ flowchart LR
   CORE --> ESS[12 Essentials]
   HUB --> MAC[09 macOS tier 1]
   CORE --> DISC[05 discovery passes 1 and 2]
-  KIT --> REL[24 release pipeline]
+  CI[CI gates] --> REL[24 release pipeline]
   INST --> SA[Standalone acceptance]
   ESS --> SA
   MAC --> SA
@@ -209,7 +223,7 @@ On a clean machine with no account, each proven by a harness scenario or CI job:
 7. `grdr audit verify` passes; `grdr uninstall` restores every changed file byte for byte.
 8. Docs, `SECURITY.md`, support statement and release policy are published.
 
-A release meeting these goes to the preview channel for the development fleet and the developer cohort (34 DP-3), and to the stable channel when clauses 6 to 8 of section 2.2 hold.
+A release meeting these goes to the preview channel for the owner's machine and the developer cohort (34 DP-3), and to the stable channel when clauses 6 to 8 of section 2.2 hold.
 
 ### 6. External preconditions
 
@@ -251,7 +265,7 @@ Human actions that unblock work (`team/06` section 11). None blocks building, re
 | The repository `416rehman/Guardrails` on the owner's personal account, public from its first push (owner instruction 28), with the buddy as collaborator and no organisation (owner instruction 5, `_review/04-owner-kit-instructions.md`) | Work-item issues, CI |
 | DNS records, mail forwarding for the security and conduct addresses, SPF, DKIM and DMARC for the brand manifest's domain | Hosts off their GitHub-hosted defaults; the security address (35 section 4.1) |
 | Hardware-backed two-factor authentication on the owner's GitHub account, which every agent uses (a platform authenticator such as the TPM or Secure Enclave where no separate security key is available) | Account security (35 section 8) |
-| Optional: per-role GitHub Apps; a Claude Code token for agent runs on GitHub-hosted runners (`claude setup-token` needs a browser) | Separate identities per role; hosted agent runs. The local dispatcher runs every role on the owner's `gh` login and logged-in Claude Code and needs neither (owner instruction 23) |
+| Optional: per-role GitHub Apps; a Claude Code token for agent runs on GitHub-hosted runners (`claude setup-token` needs a browser) | Separate identities per role; hosted agent runs. The orchestrating session runs every agent on the owner's `gh` login and logged-in Claude Code and needs neither (owner instruction 23) |
 | Counsel through free legal programmes | First release, scorecard, stable channel |
 | First EDR or MDR conversation; design-partner letter (LBC-22) | Falcon arm, L3 pilot, WESP |
 | Willingness-to-pay conversations (LBC-12) | G-licence |
@@ -284,10 +298,10 @@ None is scheduled. Each runs once its prerequisites exist and is due before the 
 | S-17 Local surfaces | CLI, tray, local console | Zero widening | D-31, D-48 | None: standalone does not ship until it passes |
 | S-18 Uplink | A stub (22-2), then the real server (22-9) | Kill in 60 s everywhere | D-36 | Failing rung named with a fix (22-2); that topology is published as unsupported until the fix passes, and no server release ships with one open |
 | S-19 Rune | Rig; view-model crate | Idle under 1%; flat 48 h | D-43 | Web-only desktop |
-| S-20 Calibration | WI-0019 with three writers | Usage per accepted item measured per review lane; no owner step per item; gap under 5; no item fails because of a usage limit | D-47, D-63 | Writers stay three |
+| S-20 Calibration | WI-0019 with three writers | Usage per accepted item measured per risk tier; no owner step per item; gap under 5; no item fails because of a usage limit | D-47, D-63 | Writers stay three |
 | S-21 Fast path | Fast-path library | Fast-path row; 90% agreement | D-41, D-60 | L3 sidecar only |
-| S-22 Outsider build | WI-0002 | `verify` under 15 min; fix merged with no private help | Spine section 5 | None: the first public release requires it |
-| S-23 Fleet herd simulation | The uplink scheduler crate; `xtask fleet-sim` at 1 million devices on a free runner, 10 million on a tier B machine | After every common event, no request class above 2× its steady per-cell rate and new TLS connections under 2,000 a second per cell; kill on 99% of online devices within 10 s | P15, D-36, D-37, D-56 | None: a change to the scheduler, admission, nudge pacing or rollout ramp does not land, and no release ships, while it fails |
+| S-22 Outsider build | WI-0002 | The gates green on a clean clone in under 15 min; fix merged with no private help | Spine section 5 | None: the first public release requires it |
+| S-23 Fleet herd simulation | The uplink scheduler crate; the fleet herd simulator at 1 million devices on a free runner, 10 million on a tier B machine | After every common event, no request class above 2× its steady per-cell rate and new TLS connections under 2,000 a second per cell; kill on 99% of online devices within 10 s | P15, D-36, D-37, D-56 | None: a change to the scheduler, admission, nudge pacing or rollout ramp does not land, and no release ships, while it fails |
 | S-24 Cell load test | `uplink-sim`; one `distributed` cell from donated capacity (D-64); a 5,000-uplink `ha` arm on a free runner | Each dimension of the cell's capacity vector published at 70% of its first failing point; `decision` acknowledgement p99 under 2 s throughout | D-33, D-35, D-58 | The cell cap stays at 50,000 endpoints and self-hosted `distributed` and multi-cell installations stay gated; on failure the cap drops to the largest size that passes |
 | S-25 Wire bytes, batching and dictionaries | S-01's captures; a free runner | Default `spine` interval the shortest at which framing and signatures are at most 30% of upload, never above 30 s; a dictionary per lane only where it saves over 30% | D-36, D-52 | Current defaults stay: 10 s `spine` interval, no dictionary, 04's current wire form |
 | S-26 Free origins and TUF through caches | GitHub Releases, GitHub Pages and jsDelivr's GitHub mirror (owner instruction 23); free runners | At least 99% cache hits on immutable paths; zero `tamper` findings from lag alone; `timestamp.json` never more than 300 s stale | D-37 | A failing origin is replaced in `updates.sources`; the first public release requires a pass |
@@ -303,11 +317,11 @@ Document spikes that can overturn a decision: S-CM1 (D-65, D-01; fail changes wh
 
 ### 8. Capacity
 
-The agent team runs on the owner's Claude subscription (D-47). Work is measured in share of the subscription's usage windows, not dollars. The dispatcher caps concurrent agents, pauses when a usage limit is reached, resumes after the window resets and never fails work because of a limit; every recurring agent has a usage cap per run. Writers follow the `team/01` ladder, throttled by evaluator capacity and by the usage window, whichever binds; no person's time is a limit (owner instruction 7). Review spends tokens in proportion to the change: the classifier's `static`, `light`, `standard` and `full` lanes (owner instruction 8). S-20 measures usage and evaluator rounds per accepted item; RM-7 records the result and sets writer concurrency from it. If S-20 shows more usage per item, concurrency drops; scope does not.
+The agent team runs on the owner's Claude subscription (D-47). Work is measured in share of the subscription's usage windows, not dollars. `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` caps how many agents run at once, and `grdr-build` works at most three issues at once; a usage limit can end a session, the owner resumes it, and a limit is never a reason to skip a check (`team/01` section 8). Writers are throttled by evaluator capacity and by the usage window, whichever binds; no person's time is a limit (owner instruction 7). Review spends tokens in proportion to the change: the issue's risk tier picks the evaluators (`.claude/risk-tiers.toml`; owner instruction 8). S-20 measures usage and evaluator rounds per accepted item; RM-7 records the result and sets how many issues run at once from it. If S-20 shows more usage per item, concurrency drops; scope does not.
 
 Model tokens for model-driven efficacy runs come from the same subscription and carry their own usage cap per run (D-45, R-61). There is no money for lab hardware, paid audits, paid certifications or hosted infrastructure; each appears in section 6 as an external precondition.
 
-CI time follows owner instruction 22. Targets: verify fast under 3 minutes and full under 15 on a 4-vCPU hosted runner. The local dispatcher's verify is the primary gate on every change and hosted CI is a backstop. Pull requests build only the crates whose inputs changed (from `cargo metadata` and the diff) and the merge queue builds the whole workspace; the Rust cache action and sccache on local disk, `cargo nextest` partitions and a fast linker (mold on Linux, lld elsewhere) cut the rest; the macOS, Windows and kernel matrix runs on the merge queue and nightly, not on every push. The repository is public from its first push (owner instruction 28), so standard hosted runners are free and the full matrix runs in CI from the first commit. The Linux-only form, with the matrix through `matrix-run` on the owner's machine, stays only as the fallback for a private fork or copy, where GitHub's free plan gives 2,000 runner minutes a month with macOS minutes counted at ten times and Windows at twice.
+CI time follows owner instruction 22. Targets: the Rust gates under 3 minutes for a one-crate change and under 15 on a 4-vCPU hosted runner. CI runs the gates on every pull request and on `main`, and decides (`team/05`). Pull requests build only the crates whose inputs changed (from `cargo metadata` and the diff) and `main` builds the whole workspace; the Rust cache action and sccache on local disk, `cargo nextest` partitions and a fast linker (mold on Linux, lld elsewhere) cut the rest; the macOS, Windows and kernel matrix runs on `main` and nightly, not on every pull request. The repository is public from its first push (owner instruction 28), so standard hosted runners are free and the full matrix runs in CI from the first commit. The Linux-only form, with the matrix through `matrix-run` on the owner's machine, stays only as the fallback for a private fork or copy, where GitHub's free plan gives 2,000 runner minutes a month with macOS minutes counted at ten times and Windows at twice.
 
 ### 9. Risk register
 
@@ -315,7 +329,7 @@ L and I are low, medium or high; high impact means a release cannot ship or a ho
 
 | Id | Risk | L | I | Early signal | Mitigation | Owner |
 |---|---|---|---|---|---|---|
-| R-01 | Review queue saturates | H | H | Over 20 items in `status:in-review` or oldest over 48 h | Writers to three (D-63); trust-core, security and release items first | Programme manager |
+| R-01 | Review queue saturates | H | H | Over 20 issues waiting on evaluators or the oldest over 48 h | Writers to three (D-63); trust-core, security and release items first | Programme manager |
 | R-02 | Trust-core evaluators stall or disagree | M | H | A trust-core item with fewer than two passing evaluators on different models after three rounds | Component stays in the internal ring (D-63, R-41); the item goes to its lead, then the chief architect (owner instruction 7) | `security` lead |
 | R-03 | No platform signing identity: the free signing programme declines, or Apple's fee is unpaid | M | H | No acceptance recorded in `preconditions.toml` when a release is ready (manual) | Releases ship Sigstore-signed with provenance and marked "not platform-signed"; apply to another free open-source signing programme; macOS then at tier 1 only (D-18; owner instruction 23) | Owner |
 | R-04 | Evaluators pass a poisoned community rule | L | M | A community rule halted or reverted in a ring | Watch entry, the benign corpus, rings and gates; the two passes must come from different models (30 section 4) | `content` lead |
@@ -329,8 +343,8 @@ L and I are low, medium or high; high impact means a release cannot ship or a ho
 | R-12 | Entitlement withheld | M | M | Refusal recorded (manual) | Endpoint Security only through a partner; macOS keeps tiers 1 and 2 | Owner |
 | R-13 | Test fitting or held-out leakage | M | H | Margin above 5 points; canary GUID in a context | Release blocked; set rotated | `lab` lead |
 | R-14 | Harness silently tests nothing (Claude Code's docs say `--bare`, which skips hooks, will become the `-p` default; g08 verification 8) | M | H | Hook-fired canary missing | Flags pinned per scenario; scenario fails without a hook | `lab` lead |
-| R-15 | Subscription usage runs away or hits limits | M | M | A usage limit reached; usage per accepted item over twice the S-20 baseline | Dispatcher pauses and resumes after the window resets, no work fails; above twice baseline, writers cut and new feature work paused until it is back under; trust-core, security and release work first | Owner |
-| R-16 | Injection into build agents or our supply chain | M | H | Threat-detection hit; foreign signature naming our repository (35 SP-31) | Read-only jobs; fleet guard is the last signed release | `security` lead |
+| R-15 | Subscription usage runs away or hits limits | M | M | A usage limit reached; usage per accepted item over twice the S-20 baseline | A limit ends a session, the owner resumes it and no check is skipped; above twice baseline, writers cut and new feature work paused until it is back under; trust-core, security and release work first | Owner |
+| R-16 | Injection into build agents or our supply chain | M | H | Threat-detection hit; foreign signature naming our repository (35 SP-31) | Read-only jobs; the owner's machine runs the last signed release in front of the agents | `security` lead |
 | R-17 | Signing account suspended | L | H | Account notice (manual) | The buddy as second administrator; re-sign drill (24-27) | Owner |
 | R-18 | Volume or storage misses targets | M | H | S-01 p95 over 100,000 events; S-02 or S-03 fail | Roll-ups and quotas (D-52, D-68); spike fallbacks | `server` lead |
 | R-19 | Key dependency abandoned (`tough`, the ETW crate, `rsigma`, `datafusion-ducklake`, `connectrpc` 0.x) | H | M | Six months without commits or an unpatched advisory | Behind our traits; fork plan per crate | `core` lead |
@@ -340,9 +354,9 @@ L and I are low, medium or high; high impact means a release cannot ship or a ho
 | R-23 | Counsel opinions adverse (copyright, inbound terms, CRA support period) | M | H | Opinion pending when a release needs it (manual) | Adjust `AI_POLICY.md` and `CONTRIBUTING.md`; lengthen gaps between LTS lines, not support | Owner |
 | R-24 | A blocking mark found for Guardrails ADR | M | M | Search finding (manual) | The brand manifest changes the display name; `grdr` stays (36 section 1) | Owner |
 | R-25 | A paid line makes the free sensor a CRA manufacturer product, with Article 14 reporting already in force (brief 28 verification 3) | H | H | Any item of `ops/paid-offer-gate.md` opened while counsel's CRA opinion is pending | No paid line, hosted beta included if it charges, before the opinion and a tabletop-tested 24-hour reporting process (32 OPS-27, D-46) | Owner |
-| R-26 | Automation is bound to one account | M | H | Subscription terms or limits change, or the account is restricted (manual) | Verify current terms; the local dispatcher uses the owner's logged-in Claude Code and stores no token (owner instruction 23); a hosted-run token, if one is made, lives only as a CI secret and rotates on any suspected leak; the repository and its issues hold all state and the kit is harness-neutral, so people can continue the work | Owner |
+| R-26 | Automation is bound to one account | M | H | Subscription terms or limits change, or the account is restricted (manual) | Verify current terms; every session uses the owner's logged-in Claude Code and stores no token (owner instruction 23); a hosted-run token, if one is made, lives only as a CI secret and rotates on any suspected leak; the repository and its issues hold all state and `AGENTS.md` is the map any agent tool reads, so people can continue the work | Owner |
 | R-27 | Zero budget blocks a precondition | H | M | A section 6 row whose condition needs money stays unmet (manual) | Apple's fee unpaid: macOS not platform-signed, tier 1 only. No driver sponsor: Windows stays driverless. No free audit: kernel components leave the internal ring on the evaluator route, and the release notes say so. No hosting funds: self-hosting only, which is also the ten-million-endpoint path (P15). No incumbent licences: Defender and free programmes, other cells untested | Owner |
-| R-28 | Subscription data terms do not give zero retention | M | M | Terms check when the dispatcher's plan is recorded (36 LBC-28; manual) | Agents make embargoed fixes in the sealed enclave with network tools off; the terms are recorded with each advisory (owner instruction 7; 35 section 4.5) | `security` lead |
+| R-28 | Subscription data terms do not give zero retention | M | M | Terms check when the subscription plan is recorded (36 LBC-28; manual) | Agents make embargoed fixes in the sealed enclave with network tools off; the terms are recorded with each advisory (owner instruction 7; 35 section 4.5) | `security` lead |
 | R-29 | Free origins do not carry the fleet | M | H | S-26 fails, or an origin throttles or changes its terms | Replace the origin in `updates.sources`; self-hosted devices fetch from the operator's pull-through `content` cache, so the project origin serves about one fetch per installation per file (P15) | `fleet` lead |
 | R-30 | A step needs the internet in an air-gapped site | M | H | S-31 records a frame or DNS query outside the lab | Release gate 24-28 blocks the release until the step has an in-network equivalent or reports `requires internet` (P16) | `release` lead |
 
@@ -351,7 +365,7 @@ L and I are low, medium or high; high impact means a release cannot ship or a ho
 | Decision | Trigger | Decider | Outcomes |
 |---|---|---|---|
 | G-Windows | S-04 verdict per arm | Chief architect | Windows at Tier 2, Tier 1, or not shipped |
-| G-release | Each release | The merge queue lands the release pull request after `eval-release` re-runs every clause (owner instruction 7) | Ship the capabilities whose clauses are green; others are not claimed |
+| G-release | Each release | The orchestrating session squash-merges the release pull request after the release candidate check (skill `grdr-cut-release`) re-runs every clause (owner instruction 7) | Ship the capabilities whose clauses are green; others are not claimed |
 | G-licence | Before the first public release | Owner, with LBC-12's conversations | Server licence confirmed or changed; never revisited after the first public release (D-02) |
 | G-Rune | S-19 verdict | Chief architect | Rune or web-only desktop |
 | G-wedge | An incumbent ships a D-65 lead, or the RM-9 report | Chief architect, by RFC (owner instruction 7) | D-65 leads kept, reordered or dropped |
@@ -403,7 +417,7 @@ Every figure is a target until the scorecard publishes it as measured, with its 
 
 ## Interfaces and contracts
 
-- `docs/plan/*.toml` (this document): read by `xtask plan check`, the dispatcher (spike `blocks`), the metrics job and the `PLAN.md` generator.
+- `docs/plan/*.toml` (this document): read by the plan check in CI, the metrics job and the `PLAN.md` generator. A spike's `blocks` list is mirrored by "blocked by" links on GitHub.
 - `support.toml` and the generated matrix (03 F3, 24-26): tiers from section 1.
 - `docs/agents/releases/<version>.md`: signed evidence packs per release (`team/06` section 1 for the bootstrap pack).
 - `ops/hosted-gate.md`, `ops/paid-offer-gate.md` (32); `legal/counsel-register.yaml` (36), ordered by the decisions that need each opinion.
@@ -416,7 +430,7 @@ likelihood = "high"            # low | medium | high
 impact = "high"
 signal = { any = [ { metric = "review_queue_items", op = ">", value = 20 },
                    { metric = "review_queue_oldest_hours", op = ">", value = 48 } ] }
-response = "writers-to-three"   # executed by the dispatcher
+response = "writers-to-three"   # applied by the programme manager
 owner = "programme-manager"
 ```
 
@@ -426,7 +440,7 @@ Standalone requires the standalone capabilities and nothing else. The self-hoste
 
 ## Extension points
 
-Contributors add a spike, risk or precondition by a work item editing `docs/plan/*.toml`; `plan check` validates it. Community adapters enter at Tier 2 through the contrib repository and never block a release. Community rules are accepted and stay in Watch until two independent evaluators on different models pass them (30 section 4).
+Contributors add a spike, risk or precondition by a work item editing `docs/plan/*.toml`; the plan check validates it. Community adapters enter at Tier 2 through the contrib repository and never block a release. Community rules are accepted and stay in Watch until two independent evaluators on different models pass them (30 section 4).
 
 ## Security and privacy
 
@@ -436,34 +450,34 @@ Embargoed risks (an unfixed bypass, a custody weakness) live in the private PSIR
 
 | Property | Oracle |
 |---|---|
-| Every claimed capability has evidence | `plan check` fails a release commit with an unlinked or failing clause for a claimed capability |
-| Evidence is real | `eval-release` re-runs every clause's oracle on the release commit |
-| No build before its spike | Dispatcher test: a `blocks` item is refused while its spike has no verdict |
-| No build before its prerequisite | Dispatcher test: an item whose `requires` are unmet is refused |
+| Every claimed capability has evidence | The plan check in CI fails a release commit with an unlinked or failing clause for a claimed capability |
+| Evidence is real | The release candidate check (`grdr-cut-release`) re-runs every clause's oracle on the release commit |
+| No build before its spike | The plan check fails when a `blocks` item has no "blocked by" link to its spike's issue; `grdr-build` works no issue with an open blocker |
+| No build before its prerequisite | The plan check fails when an issue lacks the "blocked by" link a `requires` edge implies; `grdr-build` works no issue with an open blocker |
 | Triggers fire | Replayed metric history crossing a threshold opens the escalation within one metrics run |
 | Traceability complete | The `PLAN.md` generator fails on an empty cell |
-| No schedule creeps back | `plan check` fails any design document carrying a milestone tag, horizon tag or schedule date |
+| No schedule creeps back | The plan check fails any design document carrying a milestone tag, horizon tag or schedule date |
 
 ## Work breakdown
 
-- RM-1 `docs/plan/` schemas and `plan check` in `verify`. Accept: a clause without an oracle, a spike without a fallback, a precondition without an owner and a risk without an owner each fail.
+- RM-1 `docs/plan/` schemas and the plan check in CI. Accept: a clause without an oracle, a spike without a fallback, a precondition without an owner and a risk without an owner each fail.
 - RM-2 Risk triggers in the metrics job. Accept: replayed history crossing R-01 caps writers at three.
-- RM-3 Spike `blocks` and component `requires` in the dispatcher. Accept: both refusal tests.
-- RM-4 Precondition tracker seeded from section 6. Accept: `plan check` fails a row without item, blocks, owner or condition; the digest lists every unmet precondition and the work it blocks.
+- RM-3 Spike `blocks` and component `requires` as "blocked by" links on the issues. Accept: both refusal checks of the test table (a missing link fails the plan check, and `grdr-build` works no issue with an open blocker).
+- RM-4 Precondition tracker seeded from section 6. Accept: the plan check fails a row without item, blocks, owner or condition; the digest lists every unmet precondition and the work it blocks.
 - RM-5 Evidence-pack template and the bootstrap pack. Accept: the bootstrap pack lists each `team/06` section 11 action and each component held in the internal ring.
 - RM-6 `PLAN.md` generator. Accept: output equals spine section 7 plus this document's additions; an empty cell fails.
-- RM-7 Calibration record from S-20 and S-01. Requires: S-20 and S-01 verdicts. Accept: section 8 holds measured usage and evaluator rounds per item; dispatcher concurrency is set from them.
+- RM-7 Calibration record from S-20 and S-01. Requires: S-20 and S-01 verdicts. Accept: section 8 holds measured usage and evaluator rounds per item; the number of issues run at once is set from them.
 - RM-8 Public status page separating shipped from not yet built. Accept: no unshipped item in the shipped list.
 - RM-9 Aggregate adoption report. Accept: byte-identical rebuild from one snapshot; no per-person field.
 - RM-10 Wedge review. Requires: RM-9. Accept: a G-wedge decision record filed by RFC whenever its trigger fires, citing the RM-9 report and a re-verification of 01's lead table.
-- RM-11 Release review. Accept: `eval-release` re-run green on the release commit for every clause of every claimed capability; the release pull request landed by the merge queue and tagged by release-please; scorecard published; each owner question the release needs recorded.
+- RM-11 Release review. Accept: the release candidate check (`grdr-cut-release`) re-run green on the release commit for every clause of every claimed capability; the release pull request squash-merged by the orchestrating session and tagged by release-please; scorecard published; each owner question the release needs recorded.
 
 ## Risks, open questions and spikes
 
 | Item | Settled by |
 |---|---|
-| Plan rot: documents state prerequisites against outdated scope | `plan check` of every document's prerequisites against `build-order.toml` |
-| Schedule creep: milestones, horizons or dates reappear | `plan check` (section "Test and evaluation strategy") |
+| Plan rot: documents state prerequisites against outdated scope | The plan check of every document's prerequisites against `build-order.toml` |
+| Schedule creep: milestones, horizons or dates reappear | The plan check (section "Test and evaluation strategy") |
 | Open: the third incumbent for D-23 (proposed: Elastic, free) | Chief architect, before the D-23 interference test (owner instruction 7) |
 | Open: whether Loonaro pays Apple's annual fee (question 8) | Owner; without it macOS ships Sigstore-signed but not platform-signed or notarised, with tier 1 only |
 
