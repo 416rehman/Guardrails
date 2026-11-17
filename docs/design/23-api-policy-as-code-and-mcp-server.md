@@ -104,7 +104,7 @@ Names follow AIP-122. Every organisation-scoped resource sits under `organisatio
 | Usage | `.../usage`, `providers/{p}/usage` | Get; `ListRecords` (cursor); `ExportStatement` (LRO) | 32 |
 | Operation | `.../operations/{op}` | Get, List, `Cancel`, `Wait` | this |
 
-Custom methods use one verb per meaning across resources (`Approve` and `Deny` for anything a person decides, `Revoke`, `RotateKey`, `Cancel`), listed in `proto/grdr/api/verbs.txt`; `xtask api verbs` rejects an unlisted verb.
+Custom methods use one verb per meaning across resources (`Approve` and `Deny` for anything a person decides, `Revoke`, `RotateKey`, `Cancel`), listed in `proto/grdr/api/verbs.txt`; a CI check rejects an unlisted verb.
 
 **Console users are not monitored principals.** A `User` is a named sign-in account. Monitored humans appear only as pseudonyms in activity resources (P8). A user's link to their own pseudonym, used for "My activity", lives in the identity vault (21) and is never returned by the API.
 
@@ -324,7 +324,7 @@ The method's `(grdr.api.audit)` option decides the class; a test enumerates ever
 
 ### 14. Documentation generation
 
-From the release descriptors: API reference per service with each field's data class and filterability, the operator API's included; the OpenAPI document; the scope and role catalogue with the invariants; the error reason registry; the webhook event catalogue with JSON Schemas; the MCP tool reference from the tool definitions; CLI reference from the argument parser; Terraform docs via `tfplugindocs`; changelog from the descriptor diff. `verify` regenerates them and fails on drift. Publishing belongs to 34.
+From the release descriptors: API reference per service with each field's data class and filterability, the operator API's included; the OpenAPI document; the scope and role catalogue with the invariants; the error reason registry; the webhook event catalogue with JSON Schemas; the MCP tool reference from the tool definitions; CLI reference from the argument parser; Terraform docs via `tfplugindocs`; changelog from the descriptor diff. CI regenerates them and fails on drift. Publishing belongs to 34.
 
 ### 15. The operator API (D-70)
 
@@ -399,12 +399,12 @@ Threats and where this document answers them: injection through our own data (AD
 | Terraform | Embedded server | Acceptance tests; widening apply fails until approved |
 | Realm separation | Expected `UNAUTHENTICATED` | Every `grdr.api` method with operator-realm tokens and every `grdr.operator` method with console, API and MCP tokens; the descriptor test finds no content-class field in `grdr.operator` |
 | Air gap | The air-gap conformance run of 24-28 (S-31), steps 4 and 5 | An allow-listed CIMD client imported by file authenticates with zero outbound fetches; a `jwks-file` issuer enrols a CI job |
-| Docs | Generator | Drift fails `verify` |
+| Docs | Generator | Drift fails CI |
 
 ## Work breakdown
 
 **E1 Contract and serving**
-- 23-1 `proto/grdr/api` skeleton with the method options and lint configuration. Accept: `buf lint`, `api-linter` and `buf breaking` run in `verify`; a method missing an option fails the build.
+- 23-1 `proto/grdr/api` skeleton with the method options and lint configuration. Accept: `buf lint`, `api-linter` and `buf breaking` run in CI; a method missing an option fails the build.
 - 23-2 `api` target on one Tower stack with tonic CI binding. Requires 23-1. Accept: Connect conformance suite green; golden vectors identical across bindings.
 - 23-3 Request mechanics library (section 3). Accept: property tests for page tokens (tamper, expiry, re-check), filter parser against AIP-160 examples, idempotency and etag semantics; a method marked deprecated returns `Deprecation`, `Sunset` and the `Link` header and its use appears in the per-client count.
 - 23-4 Operations on the Jobs port. Accept: an LRO survives a server kill and completes; `Cancel` stops it.
@@ -432,7 +432,7 @@ Threats and where this document answers them: injection through our own data (AD
 - 23-18 Outbox, webhooks, change feed. Accept: reference libraries verify every delivery; a `410` disables the endpoint; a redirect is not followed and a private or link-local target is refused in hosted mode (SSRF suite, SR-48); feed replay from a cursor returns no gaps; a destination capped at 500 requests a second converges under adaptive concurrency within 60 s with zero loss (SP-N1, 25).
 - 23-19 Rust, TypeScript, Go and Python SDKs and OpenAPI. Accept: each SDK passes the same scripted scenario against the embedded server.
 - 23-20 Terraform provider core and provider-tier resources. Requires 23-19. Accept: acceptance tests; widening apply fails with the pending change named.
-- 23-21 Documentation generators. Accept: drift fails `verify`.
+- 23-21 Documentation generators. Accept: drift fails CI.
 
 **E6 MCP server, CLI, limits**
 - 23-22 MCP server, tools, untrusted envelope, proposals, client allow-list. Requires 23-5 and 23-13. Accept: the injection test passes; no tool output contains pack text or grant state (asserted by schema); a token for a client id not enabled for proposals carries `mcp:read` only; a narrowing proposal from an `AgentSession` does not reach `ROLLING_OUT` without a human approval.

@@ -4,12 +4,12 @@ _Status: draft 5 against spine version 4, rulings R-01 to R-62, and the owner's 
 
 ## Summary
 
-This is the process half of product security: who decides, what evidence a change needs, how releases are proven, how vulnerabilities and incidents are handled, and how the agent fleet that writes the code is kept from becoming the attack path. Doc 02 owns the code rules (SD-01 to SD-13) and requirements (SR-01 to SR-50), 22 the update protocol and roots, 24 the pipeline. This document binds them to roles, clocks and gates.
+This is the process half of product security: who decides, what evidence a change needs, how releases are proven, how vulnerabilities and incidents are handled, and how the agent team that writes the code is kept from becoming the attack path. Doc 02 owns the code rules (SD-01 to SD-13) and requirements (SR-01 to SR-50), 22 the update protocol and roots, 24 the pipeline. This document binds them to roles, clocks and gates.
 
 Key choices:
 
-1. **Agents run the security programme, and no step needs a person** (owner instruction 7). `lead-security` leads the PSIRT: it triages private reports in a sealed lane, classifies them, sets severity and runs the embargo. `eval-security` and `eval-adversarial` review every high-tier and trust-core change. release-please and the merge queue release, and artefacts are signed keylessly. Separation of duties holds between agents and deterministic software: the writer of a fix never evaluates it, and a trust-core change needs two independent passing evaluators on different models. Loonaro, as manufacturer, files the regulatory reports agents prepare (section 4.7).
-2. **Tiers come from a deterministic classifier configured on the base branch.** A model may raise a tier, never lower it; circuit breakers tighten tiers on revert and incident rates.
+1. **Agents run the security programme, and no step needs a person** (owner instruction 7). `lead-security` leads the PSIRT: it triages private reports in a sealed lane, classifies them, sets severity and runs the embargo. `eval-security` and `eval-adversarial` review every high-tier and trust-core change. release-please releases once its release pull request is squash-merged, and artefacts are signed keylessly. Separation of duties holds between agents and deterministic software: the writer of a fix never evaluates it, and a trust-core change needs two independent passing evaluators on different models. Loonaro, as manufacturer, files the regulatory reports agents prepare (section 4.7).
+2. **Tiers come from path rules read from `main`.** The issue's `tier:` label is a floor; `eval-tier` applies `.claude/risk-tiers.toml` to the diff and may raise a tier, never lower it; circuit breakers tighten tiers on revert and incident rates.
 3. **Trust-core evidence is a fixed bundle**: reference model and differential test, matrix run, 72-hour soak for runtime components, cross-model review by the model that did not write the change, threat delta, `eval-security` and `eval-adversarial` reviews with two independent passes on different models, and the review reference D-62 sets for the component.
 4. **Every parser, normaliser, verifier and evaluator has a named oracle and fuzz time** (section 2.5).
 5. **Three report classes**: vulnerability (CVE, CSAF advisory, VEX per supported line), security-relevant content gap (advisory, no CVE, embargoed), content gap (public). Rendering a request as a boundary is a vulnerability (P1).
@@ -17,7 +17,7 @@ Key choices:
 7. **Releases are proven three ways**: SLSA Build L3 provenance with the builder identity checked; Sigstore keyless signatures through GitHub's OIDC identity, with Rekor inclusion proofs carried for offline checks; and an independent rebuild in its own GitHub Actions environment that must match, whose signature is the second of 22's `binaries` threshold, so no person holds a key (owner instructions 7 and 23). Only the project root can authorise a binary; a deployment root (operator, cell or OEM) authorises policy and configuration and nothing else (D-37).
 8. **No cash bounty**; there is no money for one. Reporters get credit, and reports need a reproducer. A cash programme requires revenue from the hosted service or a sponsor.
 9. **We run the Cyber Resilience Act manufacturer process from the first public release**, since a free sensor tied to a paid hosted service is likely a manufacturer product (research/28 verification row 3).
-10. **The development fleet runs under the last signed release** with a published fleet pack, in disposable sandboxes, with no standing credentials; agents that read outsider text cannot write or hold secrets (D-47).
+10. **Agents run in their own worktrees inside Claude Code's sandbox, with no credentials of their own**; once a signed release exists, the owner's machine runs it in front of them with the published fleet pack; agents that read outsider text cannot write or hold secrets (D-47; `team/01` section 9).
 11. **Vulnerability work is proactive and free** (owner instruction 22): latest stable versions at bootstrap, a short cooldown after it, CodeQL, Semgrep OSS, ClusterFuzzLite, Grype, a ZAP baseline scan and a ratcheted OpenSSF Scorecard beside the existing gates, KEV and EPSS to order remediation, and variant analysis that turns every fixed vulnerability into an audit over the whole tree.
 
 ## Requirements
@@ -25,7 +25,7 @@ Key choices:
 | # | Requirement | Source |
 |---|---|---|
 | PS-1 | Threat modelling on every change that crosses a trust boundary or adds an untrusted input | D-63; 02 R10 |
-| PS-2 | Classifier-set review tiers and lanes; trust core always needs two independent passing evaluators on different models; no evaluator judges its own change | D-63; owner instructions 7 and 8; research/h09 |
+| PS-2 | Review tiers from path rules, raised and never lowered; trust core always needs two independent passing evaluators on different models; no evaluator judges its own change | D-63; owner instructions 7 and 8; research/h09 |
 | PS-3 | Trust-core evidence and the review D-62 sets before the internal ring is left | D-62, D-63; c9 F7; l01 F10 |
 | PS-4 | Machine-enforced memory-safety and `unsafe` policy | SD-01, SD-02; research/37 |
 | PS-5 | Fuzz and differential obligations per component with real oracles | D-10, SD-04; research/32 |
@@ -37,7 +37,7 @@ Key choices:
 | PS-11 | CRA 24-hour, 72-hour and 14-day clocks met: agents run the clocks and draft the reports, Loonaro files them, and D-46's human-staffed team exists before any paid offer | D-46; research/28, 34 |
 | PS-12 | Audits and penetration tests per component, by the evaluator route, free programmes for open-source projects and qualified volunteers | D-62, D-19; owner instruction 7; spine section 7 |
 | PS-13 | Incident response for the hosted service and for a compromised release, key or pack | D-63; research/37 |
-| PS-14 | Fleet isolation, credentials and injection defences; fleet runs the last signed release | D-47; research/21, h09 |
+| PS-14 | Agent isolation, credentials and injection defences; once a signed release exists, the agents run under it | D-47; research/21, h09 |
 | PS-15 | Metrics with thresholds that trigger action | Owner request; D-63 |
 
 ## Design
@@ -47,33 +47,33 @@ Key choices:
 | Role | Held by | Duties |
 |---|---|---|
 | PSIRT lead | `lead-security` | Triage in the sealed lane (section 4.1), class, severity, embargo, regulatory report drafts, advisory publication |
-| Release authority | release-please and the merge queue; `lead-release` keeps the release checklist (30 section 3) | Release pull requests land through the queue; release-please creates tags and releases; Sigstore keyless signing and the rebuilder environment's threshold signature (owner instruction 7) |
+| Release authority | release-please, once its release pull request is squash-merged; `lead-release` keeps the release checklist (30 section 3) | Release pull requests land like any other pull request; release-please creates tags and releases; Sigstore keyless signing and the rebuilder environment's threshold signature (owner instruction 7) |
 | Trust-core reviewers | `eval-security` and `eval-adversarial` in clean contexts for every family (Rust privileged code, eBPF, macOS, Windows, web), with two independent passing evaluators on different models; free external audits from programmes for open-source projects when granted; a qualified volunteer's documented review adds evidence (D-62) | Review, audit, delta review |
 | Security evaluator (agent) | Evaluator pool | Security review, fuzz triage, VEX reachability on public advisories, threat-delta checks, variant analysis |
 | Advisory drafter (agent) | Embargo enclave only | Patches, tests and advisory drafts under section 4.5 |
 | Regulatory filer | Loonaro, through its account on ENISA's Single Reporting Platform | Files the reports `lead-security` drafts (section 4.7) |
 
-Security work has a reserved share of the subscription's usage windows in `.agents/kit/usage.toml`, with triage and trust-core review first (D-47). When the security queue overruns its share two weeks running, the programme manager schedules no new trust-core work, only fixes.
+Security work goes first in the subscription's usage windows, triage and trust-core review before anything else (D-47). When open security work grows two weeks running, the programme manager schedules no new trust-core work, only fixes.
 
 ### 2. Secure development lifecycle
 
 #### 2.1 Threat modelling per change
 
-Each work item carries a `security` block that the planner fills and the security evaluator checks: (1) trust boundaries touched (02 TB-1 to TB-15); (2) any new input, parser, listener, IPC message, read from user-writable space, destination or privilege; (3) SRs implemented, weakened or with changed tests; (4) can it widen policy, capture, grants, egress or privilege; (5) behaviour on failure, hang and hostile input; (6) what a reviewer must read first. A yes to 2 or 4 makes the change at least medium tier and requires a `threats.yaml` delta or a written justification. A new parser without a registered fuzz target fails `verify`. Each trust-core component and each new process has a component threat model in its design document before its first merge.
+Each work item carries a `security` block that the planner fills and the security evaluator checks: (1) trust boundaries touched (02 TB-1 to TB-15); (2) any new input, parser, listener, IPC message, read from user-writable space, destination or privilege; (3) SRs implemented, weakened or with changed tests; (4) can it widen policy, capture, grants, egress or privilege; (5) behaviour on failure, hang and hostile input; (6) what a reviewer must read first. A yes to 2 or 4 makes the change at least medium tier and requires a `threats.yaml` delta or a written justification. A new parser without a registered fuzz target fails CI. Each trust-core component and each new process has a component threat model in its design document before its first merge.
 
 #### 2.2 Classifier, tiers and circuit breakers
 
-The classifier is `cargo xtask risk`, configured by `.agents/risk-tiers.toml`, whose `[trust_core]` reads 02's `security/trust-core.paths` (the one name fixed in `team/06` section 2.2), both read from the base branch. It emits a check run with `tier`, `reasons[]` and `evidence_required[]`.
+The tier rules are `.claude/risk-tiers.toml`, whose `[trust_core]` reads 02's `security/trust-core.paths` (the one name fixed in `team/06` section 2.2), both read from `main`. `eval-tier` reports `tier`, `reasons[]` and `evidence_required[]` for the diff, and the session works the issue at that tier (skill `grdr-work-issue`).
 
 | Tier | Triggers (any) | Merge rule |
 |---|---|---|
-| High | `trust-core.paths`; any `unsafe`; public crate API, wire format, Cedar schema or pack format; new dependency or major bump; removed or weakened security or SR test; Essentials pack or fail-safe table; CI, release, classifier, hook or agent-kit instructions | `full` lane: `eval-security` and `eval-adversarial` in clean contexts plus cross-model review by the model that did not write the change (D-47); a trust-core change needs two independent passing evaluators on different models; section 2.3 evidence where it applies |
-| Medium | Layer 3 adapters, server targets, other parsers, first-party content outside Essentials, installer logic | `standard` lane: the tier's evaluators (`team/02` section 10); `eval-tier` samples at least 20% after landing |
-| Low | Documentation, additive tests, flagged layer 4 interface changes | `light` lane (one `eval-diff` pass) or `static` lane (deterministic proofs only), as the classifier sets (owner instruction 8) |
+| High | `trust-core.paths`; any `unsafe`; public crate API, wire format, Cedar schema or pack format; new dependency or major bump; removed or weakened security or SR test; Essentials pack or fail-safe table; CI, release, tier-rule, hook or agent instructions | `eval-security` and `eval-adversarial` in clean contexts plus cross-model review by the model that did not write the change (D-47); a trust-core change needs two independent passing evaluators on different models; section 2.3 evidence where it applies |
+| Medium | Layer 3 adapters, server targets, other parsers, first-party content outside Essentials, installer logic | The tier's evaluators (`team/02` section 10); `eval-tier` samples at least 20% after landing |
+| Low | Documentation, additive tests, flagged layer 4 interface changes | One `eval-diff` pass and `eval-docs` (owner instruction 8) |
 
-AI review stops after three rounds (D-47). Low-tier changes land on their lane's checks, so the low tier holds only the triggers above, and no path moves into it, until the incident evaluation set holds 50 cases (research/h09).
+AI review stops after three rounds (D-47). Low-tier changes land on that one pass, so the low tier holds only the triggers above, and no path moves into it, until the incident evaluation set holds 50 cases (research/h09).
 
-Breakers (targets, `security/breakers.toml`): a low-tier revert rate over 3% in 28 days, or one V1 or V2 vulnerability (section 4.3) traced to a low-tier merge, makes low merge as medium for 28 days; a medium sampled defect rate over 5% sends every medium change through the `full` lane's evaluators for 28 days; a trust-core regression in ring 1 freezes trust-core work to fixes until the regression has a three-arm proof and a new oracle; two V1s in a quarter freeze features on that layer and put its re-review first in the trust-core review queue. Only `lead-security` releases a breaker, with a root-cause note that `eval-security` accepts in a check run.
+Breakers (targets, `security/breakers.toml`): a low-tier revert rate over 3% in 28 days, or one V1 or V2 vulnerability (section 4.3) traced to a low-tier merge, makes low merge as medium for 28 days; a medium sampled defect rate over 5% sends every medium change through the high tier's evaluators for 28 days; a trust-core regression in ring 1 freezes trust-core work to fixes until the regression has a three-arm proof and a new oracle; two V1s in a quarter freeze features on that layer and put its re-review first in the trust-core review queue. Only `lead-security` releases a breaker, with a root-cause note that `eval-security` accepts in its verdict.
 
 #### 2.3 Trust-core evidence
 
@@ -121,7 +121,7 @@ Trust-core corpora stay private until the code is two releases old. No OSS-Fuzz 
 
 - **Admission.** A new direct dependency is high tier with a justification record (purpose, why not std or an existing crate, maintainers, `unsafe`, build script, proc macro, licence) and a registry-existence check against invented names (research/h09).
 - **Latest at bootstrap.** The seed pins the newest stable version (never a prerelease, canary or lab build) of every dependency, tool, action and toolchain when it is written: the Rust toolchain, every crate (`cargo update`, then each direct requirement raised to its newest major where the code builds), Node LTS, pnpm and the web packages, every GitHub Action by its latest release SHA, every plugin and skill pin and every container base. The cooldown does not apply to the seed. Each pinned version must still pass: not yanked, no open advisory (osv-scanner, `cargo deny advisories`), licence on the allow-list, and provenance or a signature where the ecosystem offers one (npm provenance, Sigstore, crates.io trusted publishing) (owner instruction 22).
-- **Sources and cooldown.** crates.io and vendored `third_party/` only; pnpm with strict `minimumReleaseAge`, `blockExoticSubdeps` and `trustPolicy: no-downgrade`; build tools pinned by checksum and never linked. Dependabot proposes updates daily with a cooldown of 3 days for patch and minor releases and 7 days for majors (owner instruction 22), held in `.github/dependabot.yml`; it needs no account beyond the repository (owner instruction 23), and pnpm's `minimumReleaseAge` in `pnpm-workspace.yaml` repeats the 3 days. Cargo's `registry.global-min-publish-age` carries the same value in `.cargo/config.toml` once the pinned toolchain has it stable (research/32 row 4 reads it as stabilised in Rust 1.100; before that it is `-Zmin-publish-age`). The Cargo setting does not check versions already in the lockfile and `cargo update` can downgrade them, so an `xtask` check also rejects any lockfile entry added in the change whose publish time falls inside the cooldown for its update class. Security fixes skip the cooldown: `eval-security` reads the diff, and the update lands in the lane its diff earns. `garden-deps` keeps the tree at the newest versions and opens a work issue for every major that needs code changes.
+- **Sources and cooldown.** crates.io and vendored `third_party/` only; pnpm with strict `minimumReleaseAge`, `blockExoticSubdeps` and `trustPolicy: no-downgrade`; build tools pinned by checksum and never linked. Dependabot proposes updates daily with a cooldown of 3 days for patch and minor releases and 7 days for majors (owner instruction 22), held in `.github/dependabot.yml`; it needs no account beyond the repository (owner instruction 23), and pnpm's `minimumReleaseAge` in `pnpm-workspace.yaml` repeats the 3 days. Cargo's `registry.global-min-publish-age` carries the same value in `.cargo/config.toml` once the pinned toolchain has it stable (research/32 row 4 reads it as stabilised in Rust 1.100; before that it is `-Zmin-publish-age`). The Cargo setting does not check versions already in the lockfile and `cargo update` can downgrade them, so a CI check (S04, `team/05`) also rejects any lockfile entry added in the change whose publish time falls inside the cooldown for its update class. Security fixes skip the cooldown: `eval-security` reads the diff, and the update lands in the tier its diff earns. `garden-deps` keeps the tree at the newest versions and opens a work issue for every major that needs code changes.
 - **Audit and bans.** `cargo vet` with imported audit sets, unaudited count ratcheted down; `cargo auditable`; CycloneDX 1.7 SBOM per artefact; 03's do-not-use list enforced by `cargo-deny`, including the `rsigma` daemon, runtime and MCP crates.
 - **Watch.** Nightly `osv-scanner` and `cargo-deny advisories` over lockfiles, SBOMs and shipped images, with Grype as a second image scanner, plus a watch list of components we reference by digest (PostgreSQL, NATS, rustls and aws-lc-rs, Cedar, YARA-X, `tough`, SQLite). NATS carried 27 advisories and OpenBao 38 in 2026 (research/h05).
 - **Proactive scanning** (owner instruction 22; all free for open source). gitleaks locally and in Actions; CodeQL for Rust and TypeScript in Actions, with GitHub's secret scanning and push protection, from the first push, because the repository is public from it (owner instruction 28) and CodeQL's terms allow automated analysis only of open-source code published in a public GitHub repository (read 2026-11-11), so it has no local or private form (owner instructions 22 and 23). Semgrep OSS rules for Rust and the web; OpenSSF Scorecard weekly, its score ratcheted; an OWASP ZAP baseline scan of the console and API against the `embedded` server in CI. A finding becomes a work issue, or a recorded false positive with its reason.
@@ -141,7 +141,7 @@ Trust-core corpora stay private until the code is two releases old. No OSS-Fuzz 
 
 #### 3.1 Provenance
 
-A reusable GitHub workflow builds every artefact with SLSA Build L3 provenance (`actions/attest-build-provenance`) and cosign 3 bundles logged to Sigstore's public log, signed keylessly through GitHub's OIDC identity (research/25; owner instruction 23). Each artefact's Rekor inclusion proof travels with it, so verification works offline (P16). Verification checks the certificate identity (repository, workflow path, ref, trigger), not the presence of an attestation, because a 2026 package compromise forged Sigstore provenance (research/21 item 103). The release key signs only artefacts that pass this check. `grdr verify-artefact` runs offline. The trusted root and the expected identities (repository, workflow path, ref pattern, issuer, SLSA builder id) come from `release-manifest.json` verified under the project root, never from the bundle under test or the network, and it checks the SLSA v1 predicate's subject digest, builder id, build type, source repository and ref. Install documentation gives each verification command in an online and an offline form. The air-gap bundle may also carry `grdr-source-<v>.tar` (vendored crates and pnpm store, pinned toolchains), so a site can rebuild with `cargo xtask dist --offline` and compare Linux digests with ours.
+A reusable GitHub workflow builds every artefact with SLSA Build L3 provenance (`actions/attest-build-provenance`) and cosign 3 bundles logged to Sigstore's public log, signed keylessly through GitHub's OIDC identity (research/25; owner instruction 23). Each artefact's Rekor inclusion proof travels with it, so verification works offline (P16). Verification checks the certificate identity (repository, workflow path, ref, trigger), not the presence of an attestation, because a 2026 package compromise forged Sigstore provenance (research/21 item 103). The release key signs only artefacts that pass this check. `grdr verify-artefact` runs offline. The trusted root and the expected identities (repository, workflow path, ref pattern, issuer, SLSA builder id) come from `release-manifest.json` verified under the project root, never from the bundle under test or the network, and it checks the SLSA v1 predicate's subject digest, builder id, build type, source repository and ref. Install documentation gives each verification command in an online and an offline form. The air-gap bundle may also carry `grdr-source-<v>.tar` (vendored crates and pnpm store, pinned toolchains), so a site can rebuild with the distribution build offline and compare Linux digests with ours.
 
 #### 3.2 Reproducible builds
 
@@ -154,7 +154,7 @@ D-37's two roots are held apart. The project root is ours alone and is the only 
 | Key | Custody |
 |---|---|
 | Project root and project `targets` | Threshold two across two GitHub Actions environments, the release signer's and the independent rebuilder's. Each key is generated inside its environment's job and stored as that environment's secret from stdin, never printed (owner instruction 23); each environment accepts jobs only from the default branch. No person holds a root key (22 section 6.2) |
-| `binaries` | The release environment's key plus the rebuilder environment's key, each usable only by its environment's jobs on merge-queue release commits |
+| `binaries` | The release environment's key plus the rebuilder environment's key, each usable only by its environment's jobs on release commits on `main` |
 | `content` | Online key, usable only by the content release job after its evaluator checks |
 | Project snapshot, timestamp, `rollout` | Online keys in the release environment; `rollout` is also usable by the halt job, so a halt never waits |
 | Where the online project keys live | Environment secrets on the free CI runners, with a zero budget; a cloud KMS is one configuration change where donated cloud credits or a sponsor pay for it (22 section 6). A stolen secret of one environment alone cannot authorise a binary, because the threshold needs the other |
@@ -162,10 +162,10 @@ D-37's two roots are held apart. The project root is ours alone and is the only 
 | Self-hosted deployment root | The operator's. We ship the ceremony command and recommend 2 of 3 tokens; we hold nothing |
 | Apple Developer ID, notarisation | Requires Apple's Developer Program for Loonaro (annual fee, spine question 8); without it macOS ships with Sigstore signatures and provenance, marked not platform-signed and not notarised, at tier 1 only (D-18, D-59). Organisation account, two administrators (the owner and the buddy) with hardware second factors; the Developer ID certificates are secrets of the release-signer environment, used only by the release job (24 section 10) |
 | Windows user-mode signing | Through a free open-source signing programme (for example SignPath Foundation), verified at setup (D-17); Loonaro's account with two administrators (the owner and the buddy), workload identity access from the release environment |
-| deb and rpm repository keys | Encrypted secrets of the release environment, usable only by merge-queue release jobs; hardware-backed where a sponsor or donated KMS provides it |
+| deb and rpm repository keys | Encrypted secrets of the release environment, usable only by release jobs on `main`; hardware-backed where a sponsor or donated KMS provides it |
 | Approver keys | Each approver's own WebAuthn authenticator (22) |
 
-The project's key ceremony is 22 section 6.2's workflow in `release/ceremony/`, dispatched only when a protected change to that path lands on `main`: a job in each environment generates its keys inside the job, stores them as that environment's secrets from stdin and publishes only public keys and signed metadata, and the transcript of key ids and output hashes is committed. Root rotation runs yearly and on suspicion; a suspected exposure of an environment means rotation within 30 days (target). No agent session and no person reads a private key: the keys exist only inside their environments' jobs, and no role's `gh` calls can read environment secrets (`guard-command`). Agents never handle `fleet`, approver or organisation keys. Recovery codes for Apple, Microsoft, GitHub, the signing programme and any KMS are held offline by Loonaro.
+The project's key ceremony is 22 section 6.2's workflow in `release/ceremony/`, dispatched only when a protected change to that path lands on `main`: a job in each environment generates its keys inside the job, stores them as that environment's secrets from stdin and publishes only public keys and signed metadata, and the transcript of key ids and output hashes is committed. Root rotation runs yearly and on suspicion; a suspected exposure of an environment means rotation within 30 days (target). No agent session and no person reads a private key: the keys exist only inside their environments' jobs, and GitHub returns no environment secret's value to any `gh` call. Agents never handle `fleet`, approver or organisation keys. Recovery codes for Apple, Microsoft, GitHub, the signing programme and any KMS are held offline by Loonaro.
 
 #### 3.4 Release authority and checklist
 
@@ -245,7 +245,7 @@ No audit is paid for (zero budget). Every scope below gets D-62's review route, 
 
 | Scope | Gate |
 |---|---|
-| CI, merge queue, release workflow, key custody, fleet isolation | First public signed release |
+| CI, release workflow, key custody, agent isolation | First public signed release |
 | `grdr-daemon`, updater, `grdr-hook`, `grdr-crypto`, IPC peer authentication, `grdr-approve`, pack verifier | First stable-channel release of these components (D-62) |
 | The observe-only eBPF programs that Linux reconciliation ships (kernel components) | They leave the internal ring |
 | Windows service, ETW and WFP adapters; macOS shell and launch sandbox; `grdr-run` back ends with escape testing; the Linux `cgroup_sock` enforce program that fences launched trees (R-40, a kernel component); `grdr-proxy`, MCP broker, interception CA | Each leaves the internal ring |
@@ -281,15 +281,15 @@ Requires the hosted service and its preconditions (D-63). Doc 32 owns on-call, s
 
 The yank record is a requirement on 22 and 11: a signed list in `binaries` or `content` targets metadata of `{digest, reason: superseded | defective | compromised, superseded_by, advisory}`. A device on a yanked digest reports health `withdrawn` in `grdr doctor` and the console and is offered the superseding artefact; for `compromised` the offer skips the percentage gate but still passes ring 0 with a bake `lead-security` shortens per incident (22: nothing skips ring 0). Order of communication: pre-disclosure members and providers, then the advisory and status page, then release notes. No free-text push exists, since packs cannot carry URLs to fetch or commands; host patterns appear only as typed match fields (P7, SR-25). Standalone installs with updates off learn of a yank only on a manual check, and the advisory says so.
 
-### 7. The development fleet
+### 7. Agent sessions
 
-- **Isolation.** One disposable VM per work item with only its worktree mounted. Self-hosted runners (the owner's and the buddy's machines, tier B) run merge-queue commits only (D-64). Public recurring agents use GitHub Agentic Workflows (generally available 2026-10-28; read-only is a default, so its configuration is high tier, research/h09).
-- **Credentials.** None standing in a worker. Every agent uses the owner's `gh` login through the token-injecting egress proxy, so the token never enters the VM, and `guard-command` limits each role's `gh` calls: an implementer pushes only its `agent/<n>/a<attempt>` branch and cannot merge, edit workflows, publish or read secrets (owner instructions 6 and 23). Per-role GitHub Apps are an optional later hardening; their installation tokens "expire after 1 hour" (https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app). The fleet runs on the owner's logged-in Claude Code through the local dispatcher, which stores no token (owner instruction 23); agent runs on GitHub-hosted runners are optional. With the credential broker, the fleet uses it in `inject` mode (requires the credential broker, D-27). The dispatcher caps concurrent agents, pauses when a usage limit is reached and resumes after the window resets, and every recurring agent has a usage cap per run (D-47).
+- **Isolation.** Each implementer and evaluator runs in its own git worktree inside Claude Code's sandbox, with network limited to the registries, docs.rs and GitHub and with the allow list and deny rules of `.claude/settings.json` (`team/01` section 9, `team/03`). Self-hosted runners (the owner's and the buddy's machines, tier B) run `main` and scheduled jobs only (D-64). Public recurring agents use GitHub Agentic Workflows (generally available 2026-10-28; read-only is a default, so its configuration is high tier, research/h09).
+- **Credentials.** None in any agent session. Every agent acts under the owner's logged-in Claude Code and `gh` login, whose credential files the deny rules keep unreadable, and the permission rules keep an implementer to pushing its `issue/<n>` branch: it cannot merge, edit workflows, publish or read secrets, and only the orchestrating session merges (owner instructions 6 and 23). Per-role GitHub Apps are an optional later hardening; their installation tokens "expire after 1 hour" (https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app). No agent stores a token (owner instruction 23); agent runs on GitHub-hosted runners are optional. With the credential broker, agent sessions use it in `inject` mode (requires the credential broker, D-27). A usage limit can end a session; the owner resumes it and no check is skipped, and every recurring agent has a usage cap per run (D-47).
 - **Input lanes.** Agents reading outsider text (issues, fork pull requests, external contributions) have no write access and no secrets (SD-06) and emit typed records (labels, reproduction status, fixed-vocabulary summary); raw text never reaches a writer. Ingest strips and flags hidden Unicode. About 2.5 hidden injections appear per 100,000 GitHub items (research/22).
-- **Instructions are protected paths.** `AGENTS.md`, `.agents/`, `.claude/`, hook and permission files, workflows, `security/`, `supply-chain/` and acceptance tests are read-only mounts and rejected by the CI diff check for bot changes; hooks are advisory because agents write blocked files through the shell (research/h09).
-- **Last signed release.** Fleet hosts run the Protected profile at ring 0 with the published `grdr.fleet` pack: Block for agent-lineage writes to protected paths, credential stores and publish commands; egress only to the model route, dependency mirror and documentation hosts; Ask for `elevate`. The guard is never built from the working tree; if the current release is unusable the fleet pins N-1, and with no usable signed release it stops. Fleet sessions feed the benign corpus (13).
-- **Skills and plugins.** A private marketplace pins each entry by commit, verifies the resolved commit after checkout (a 2026 pin bypass used a branch named like the pinned hash, research/22), applies the dependency cooldown of section 2.6 except where owner instruction 2 waived it for the listed third-party plugins, and takes updates as high-tier changes. Scanner verdicts are not a control (research/h09).
-- **Watching the fleet.** Our product's findings on fleet sessions reach `lead-security` daily; seeded canary instructions in test issues measure whether any is obeyed.
+- **Instructions are protected paths.** `AGENTS.md`, `.claude/` (agents, skills, settings and hooks), workflows, `security/`, `supply-chain/` and golden files are denied to the Edit tool by `.claude/settings.json` and change only in an issue whose write set names them. The shell can still write them (research/h09), so the evaluators check every diff against its issue's write set and a write outside it is a blocker (`team/05` section 5).
+- **Last signed release.** Once a signed release exists, the owner's machine runs it in front of the agents in the Protected profile at ring 0 with the published `grdr.fleet` pack: Block for agent-lineage writes to protected paths, credential stores and publish commands; egress only to the model route, dependency mirror and documentation hosts; Ask for `elevate`. The guard is never built from the working tree; if the current release is unusable the machine pins N-1. Agent sessions feed the benign corpus (13).
+- **Skills and plugins.** Any plugin or skill the project settings enable is pinned by commit, its resolved commit verified after checkout (a 2026 pin bypass used a branch named like the pinned hash, research/22), under the dependency cooldown of section 2.6 except where owner instruction 2 waived it for the listed third-party plugins, and updates are high-tier changes; today the settings enable none (`team/03`). Scanner verdicts are not a control (research/h09).
+- **Watching the agents.** Our product's findings on agent sessions reach `lead-security` daily; seeded canary instructions in test issues measure whether any is obeyed.
 
 ### 8. Attacks on our supply chain
 
@@ -302,13 +302,13 @@ The yank record is a requirement on 22 and 11: a signed list in `binaries` or `c
 | Invented or look-alike dependency (h09) | Existence check, admission by `eval-licence` and `eval-security`, cooldown |
 | Compromised upstream release (Shai-Hulud lineage; LiteLLM through a compromised Trivy dependency, research/21) | Cooldown, `cargo vet` diffs, vendored offline builds, SBOM watch |
 | Retagged CI action (research/32) | SHA pinning, `zizmor`, least-privilege permissions |
-| Hijacked CI OIDC token publishes packages (item 102) | Publishing only from the release environment, restricted to the default branch and merge-queue release commits, and a binary needs the rebuilder environment's matching signature as well |
-| Malicious skill in the fleet (ClawHavoc; scanner bypasses) | Pinned private marketplace; fleet pack egress limits |
-| Compromised release of the coding agent the fleet runs (Amazon Q, item 4; Cline, item 30) | Agent versions pinned by digest in the worker image and taken as high-tier changes after the section 2.6 cooldown; the `grdr.fleet` pack judges the agent's effects at the OS, not its claims |
-| Owner account takeover (every agent uses the owner's login) | Hardware-backed two-factor authentication; no person holds a root key; `guard-command` role limits; the transparency-log monitor (SP-31) flags a signature that no merge-queue release commit explains. The account reaches both key environments, which per-role Apps and a rebuilder outside the account would split (risks table) |
+| Hijacked CI OIDC token publishes packages (item 102) | Publishing only from the release environment, restricted to the default branch's release commits, and a binary needs the rebuilder environment's matching signature as well |
+| Malicious skill in an agent session (ClawHavoc; scanner bypasses) | Skills and plugins pinned by commit, none enabled unless the project settings name them; the sandbox's network limits |
+| Compromised release of the coding agent the team runs (Amazon Q, item 4; Cline, item 30) | Coding-agent updates on the owner's machine wait out the section 2.6 cooldown; once a signed release runs there, the `grdr.fleet` pack judges the agent's effects at the OS, not its claims |
+| Owner account takeover (every agent uses the owner's login) | Hardware-backed two-factor authentication; no person holds a root key; the permission rules of `.claude/settings.json`; the transparency-log monitor (SP-31) flags a signature that no release commit on `main` explains. The account reaches both key environments, which per-role Apps and a rebuilder outside the account would split (risks table) |
 | Build host injects code | Isolated L3 builder; independent rebuild in its own environment |
 | Forged provenance (item 103) | Builder identity verified |
-| Release key misuse | Key usable only by the release environment's merge-queue jobs; threshold with the rebuilder environment's key; transparency-log monitor for our identities |
+| Release key misuse | Key usable only by the release environment's jobs on `main`; threshold with the rebuilder environment's key; transparency-log monitor for our identities |
 | Poisoned rule (mass Block, widening) | Evaluator passes with evidence for every rule, from two evaluators on different models for community content, and `eval-security` for a ceiling of `contain` or above (13 section 17); widening lint; benign corpus; rings and gates |
 | Poisoned upstream feed in the mirrored intelligence pack (OpenSSF malicious-packages, GHSA, KEV; D-32) marks a popular package malicious | Feed entries only restrict; 14's guard list holds any rapid-lane entry naming a high-prevalence artefact in Watch until the standard lane confirms it; the device circuit breaker caps a delta at Ask after three new Block matches in an hour |
 | Verifier and interpreter disagree (CrowdStrike Channel File 291, research/37) | Differential fuzzing; trial load; rings |
@@ -334,7 +334,7 @@ Thresholds are targets. The programme dashboard is SP-30.
 | Mutation score per trust-core crate; unaudited crates | Never down; falling | Merge or dependency freeze |
 | Low revert rate; medium sampled defect rate | Under 3%; under 5% | Breakers |
 | Fleet canary instructions obeyed | Zero | Fleet stopped |
-| Fleet sessions run under an attested signed release | 100% | Fleet stopped |
+| Agent sessions on the owner's machine run under an attested signed release, once one exists | 100% | Agent work stopped |
 | Lab yank drill: gate trip to halt flag published; 95% of lab devices off the build | 15 min; 24 h | 22 and 11 revised |
 | Regulatory clocks met, drill and live | 100% | `lead-security`'s clock runbook and the filing step reviewed |
 | OpenSSF Best Practices and OSPS Baseline | OSPS level 1 once the governance files land, level 2 before the first stable-channel release, level 3 before the server's first release; Best Practices passing before the first stable-channel release, silver before the server's first release (29, 30) | Checklist item |
@@ -342,10 +342,10 @@ Thresholds are targets. The programme dashboard is SP-30.
 ## Interfaces and contracts
 
 - `SECURITY.md`, `security/predisclosure.md` (this document); `AI_POLICY.md` security section (with 30).
-- `.agents/risk-tiers.toml` (format in `team/01`), `security/breakers.toml`, classifier check run `{tier, reasons[], evidence_required[]}` (merge queue, `team/05`).
+- `.claude/risk-tiers.toml` (format in `team/01`), `security/breakers.toml`, `eval-tier`'s report `{tier, reasons[], evidence_required[]}` (skill `grdr-work-issue`, `team/05`).
 - 02's `trust-core.paths`, `threats.yaml`, `requirements.yaml` (read here).
 - `security/unsafe-register.toml`; `security/fuzz-targets.toml` `{target, oracle, fuzz_time, component}`; variant-analysis prompts in `audits/` (`team/04`).
-- Evidence template fields `threat_delta`, `reference_model`, `diff_test_job`, `matrix_run`, `soak_run`, `cross_model_review`, `trust_core_review`, `audit_ref`, `tier` (merge queue).
+- Evidence template fields `threat_delta`, `reference_model`, `diff_test_job`, `matrix_run`, `soak_run`, `cross_model_review`, `trust_core_review`, `audit_ref`, `tier` (checked at landing, SP-6).
 - `security/advisories/<id>/`: CSAF 2.0 source, OpenVEX per line, OSV export, published as a feed on the project domain.
 - `release/checklist.toml`; `release.json` (digests, provenance, rebuild attestations, SBOM, VEX, audit references, approvals) (with 24).
 - Yank record in targets metadata and health state `withdrawn` (requirement on 22 and 11); `grdr verify-artefact` (requirement on 24).
@@ -366,7 +366,7 @@ Reporters use `SECURITY.md`. Contributors add fuzz targets with an oracle in `fu
 
 ## Security and privacy
 
-The programme holds unpublished vulnerabilities, reproducers, reporter identities and member contacts. Contacts live outside the repositories, readable only by the sealed triage lane and the pre-disclosure distribution job; reporters are credited only with consent; enclaves keep nothing 30 days after publication. Fleet sessions are recorded by our product at the default capture level and never attached to public issues. Report text and fleet inputs are untrusted, as P3 treats claims.
+The programme holds unpublished vulnerabilities, reproducers, reporter identities and member contacts. Contacts live outside the repositories, readable only by the sealed triage lane and the pre-disclosure distribution job; reporters are credited only with consent; enclaves keep nothing 30 days after publication. Agent sessions are recorded by our product, once it runs in front of them, at the default capture level and never attached to public issues. Report text and agent inputs are untrusted, as P3 treats claims.
 
 ## Test and evaluation strategy
 
@@ -391,12 +391,12 @@ The programme holds unpublished vulnerabilities, reproducers, reporter identitie
 - SP-2 PSIRT and release roles: `lead-security` as PSIRT lead, `lead-release` for the release checklist, Loonaro's filing account for regulatory reports. Accept: a tabletop runs from report to advisory with no person; the filing step reaches the platform's acknowledgement, or the record says why no test route exists.
 
 **SP-E2 Tiers**
-- SP-3 Classifier and check run. Accept: every seeded case classifies as specified from base-branch configuration.
+- SP-3 Tier rules in `.claude/risk-tiers.toml` and `eval-tier`'s report. Accept: every seeded case gets the tier specified, from the rules on `main`.
 - SP-4 Breakers. Accept: replayed history over each threshold changes the tier within one queue cycle.
-- SP-5 Work-item `security` block and evaluator check. Accept: a parser without a fuzz target, or a yes to question 2 or 4 without a register delta, fails `verify`.
+- SP-5 Work-item `security` block and evaluator check. Accept: a parser without a fuzz target, or a yes to question 2 or 4 without a register delta, fails CI.
 
 **SP-E3 Trust core**
-- SP-6 Evidence template enforced by the merge queue. Accept: a trust-core change missing a field cannot enter the queue.
+- SP-6 Evidence template enforced at landing by a CI check on the pull request body. Accept: a trust-core change missing a field cannot land.
 - SP-7 Delta-review ledger. Accept: an unsigned delta stops promotion past ring 0.
 - SP-8 Review route per family (Rust privileged code, eBPF, macOS, Windows, web): `eval-security` and `eval-adversarial` on different models; applications to the free audit programmes of section 5; a register of qualified volunteer reviewers whose reviews add evidence. Accept: each component's record names its evaluator reviews before its first trust-core work item lands, and any external audit or volunteer review it received.
 
@@ -431,10 +431,10 @@ The programme holds unpublished vulnerabilities, reproducers, reporter identitie
 - SP-25 Hosted security incident process (with 32). Requires the hosted service's preconditions. Accept: rehearsed by the owner and the buddy before the first tenant (D-63).
 
 **SP-E10 Fleet**
-- SP-26 Worker image, token-injecting egress proxy, role scopes in `guard-command`. Accept: an implementer session cannot merge, edit workflows or read environment secrets; no token is readable in a VM.
+- SP-26 Agent session limits: worktree isolation, the sandbox and the permission rules of `.claude/settings.json`. Accept: an implementer session cannot merge, edit workflows or read environment secrets; no token is readable in a session.
 - SP-27 Reader lane, typed outputs, hidden-character stripping. Accept: canary test passes.
-- SP-28 `grdr.fleet` pack and pin-to-signed procedure (a signed test build until the first signed release exists, then signed releases). Accept: hosts attest signed builds; a working-tree guard is refused.
-- SP-29 Private marketplace with post-checkout commit check. Accept: a branch named like a pinned hash is refused.
+- SP-28 `grdr.fleet` pack and the pin-to-signed procedure for the owner's machine, from the first signed release. Accept: hosts attest signed builds; a working-tree guard is refused.
+- SP-29 Plugin and skill pins with a post-checkout commit check. Accept: a branch named like a pinned hash is refused.
 
 **SP-E11 Metrics**
 - SP-30 Programme dashboard from CI, the advisory store and drills. Accept: every section 9 row shows a live value and threshold.
@@ -446,13 +446,13 @@ The programme holds unpublished vulnerabilities, reproducers, reporter identitie
 |---|---|
 | SP-S1: where byte-identical builds fail (MSI, pkg, signed Mach-O, Authenticode) | Build twice on separate hosts (two free runner images, or a runner and a tier B machine); pass when each artefact has an automated equality or payload check |
 | SP-S2: GitHub private reporting against a hosted platform that is free for open-source projects, without bounty | Three synthetic reports through each, scored on private fork, CVE request, embargo control, reporter contact, export; the result decides SP-21 |
-| A takeover of the owner's GitHub account reaches every agent role and both key environments | Hardware-backed two-factor authentication; the transparency-log monitor (SP-31) and the rebuilder's public attestations flag a signature with no merge-queue release commit behind it; per-role GitHub Apps and a rebuilder environment outside the account are the later hardening (owner instruction 23) |
+| A takeover of the owner's GitHub account reaches every agent role and both key environments | Hardware-backed two-factor authentication; the transparency-log monitor (SP-31) and the rebuilder's public attestations flag a signature with no release commit on `main` behind it; per-role GitHub Apps and a rebuilder environment outside the account are the later hardening (owner instruction 23) |
 | Free external audits may not be granted, and qualified volunteers may not be found | Apply to each free programme of section 5; without a grant the evaluator route covers every component, kernel components included, and the release notes state which components have no external audit (D-62, as owner instruction 7 amends it) |
 | Cedar's differential harness is tested only on Amazon Linux 2 (research/32) | Run it in that distribution's container in tier A CI; otherwise keep our own generators |
 | Zero-retention terms under the owner's Claude subscription | Recorded before SP-19 and with each advisory; not a gate (owner instruction 7) |
 | CRA class and manufacturer status | Counsel (D-46, 36), free foundation legal programmes first; the process runs regardless |
 | CRA Article 13(8) sets a support period of at least five years unless expected use is shorter (research/34 row 3); D-58 publishes 24 months per LTS | Counsel's opinion before the first paid offer (D-46, D-58) decides the support statement; section 4.4's supported lines follow it |
-| Who holds the `release` role | Answered by owner instruction 7: release-please and the merge queue release, `lead-release` keeps the checklist, and no person holds the role (30 section 3) |
+| Who holds the `release` role | Answered by owner instruction 7: release-please releases once its release pull request is squash-merged, `lead-release` keeps the checklist, and no person holds the role (30 section 3) |
 
 ## Deviations from the spine and objections
 

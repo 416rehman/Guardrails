@@ -1,19 +1,19 @@
 # 30. Open-source governance and community
 
-_Status: draft 5 (spine v4, rulings R-43, R-49, R-57, R-58 and `_review/02-owner-answers.md` applied, then the owner's kit instructions in `_review/04-owner-kit-instructions.md`: 3, 5, 6, 7, 20, 22, 23, 25, 27 and 28 change this document, and instruction 7 supersedes R-49's human release manager and R-58's human content approvals). Owning squad: Direction group (`chief-architect`, `team/02` section 3; agents draft and decide, with no human gate). Read with: `00-decisions.md` (spine v4, authoritative; section 7 for prerequisites), 02 (threat model: TB-11, ADV-9, SD-05, SD-06, SD-13), 03 (layers, public crates, repository layout, stability classes), 13 (content maturity, approvals, contribution workflow), 22 (trust roots and ceremonies), 24 (build, signing, reproducibility), 26 (embedding options and host contract), 33 (build order), 34 (release lines and support windows, support statement), 35 (security programme, `SECURITY.md`), 36 (legal, brand, trademark policy, commercial terms), `team/01` (operating model), `team/03` (fleet egress proxy), `team/05` (quality gates and merge queue)._
+_Status: draft 5 (spine v4, rulings R-43, R-49, R-57, R-58 and `_review/02-owner-answers.md` applied, then the owner's kit instructions in `_review/04-owner-kit-instructions.md`: 3, 5, 6, 7, 20, 22, 23, 25, 27 and 28 change this document, and instruction 7 supersedes R-49's human release manager and R-58's human content approvals). Owning squad: Direction group (`chief-architect`, `team/02` section 3; agents draft and decide, with no human gate). Read with: `00-decisions.md` (spine v4, authoritative; section 7 for prerequisites), 02 (threat model: TB-11, ADV-9, SD-05, SD-06, SD-13), 03 (layers, public crates, repository layout, stability classes), 13 (content maturity, approvals, contribution workflow), 22 (trust roots and ceremonies), 24 (build, signing, reproducibility), 26 (embedding options and host contract), 33 (build order), 34 (release lines and support windows, support statement), 35 (security programme, `SECURITY.md`), 36 (legal, brand, trademark policy, commercial terms), `team/01` (operating model), `team/03` (skills and project settings), `team/05` (quality gates and CI)._
 
 ## Summary
 
 This document turns D-02 (licence), D-03 (neutral ownership) and D-61 (governance and contribution) into files, CI checks and procedures. It also fixes the release and support policy that governance commits to, the conformance-mark programme, community health metrics and the launch of the public project. Key choices:
 
 1. **One root `LICENSE` (Apache-2.0) per repository**, SPDX headers on every file, with the collective notice "The <Project> Authors" (contributors keep their copyright). Other licence texts live only beside the code they cover, so GitHub's licence detection reports `Apache-2.0` for every repository.
-2. **A machine-readable do-not-read list** (`supply-chain/do-not-read.toml`) that the fleet's egress and token proxy enforces by host and path, and that binds humans by policy: agents never fetch listed copyleft or source-available sources; humans may read but never copy or paraphrase.
-3. **No DCO, no sign-off, no commit trailers** (owner instructions 7 and 27). Every commit is one Conventional Commit line. The pull request carries `Closes #<n>` and a metadata block naming the harness, the model that wrote the change and the attempt. Contributions are received under Apache-2.0 section 5, as `CONTRIBUTING.md` states, and the merge queue lands a pull request on deterministic gates and the evaluators its tier requires.
-4. **One rule set for everyone** (`AI_POLICY.md`): accepted work item, the metadata block (harness and model, or `none`), evidence template, the same gates. The merge queue lands every change, so no identity holds a merge right; an evaluator's check run counts only from an agent that did not write the change; agents hold no code-owner entry and no steering vote, and CI rejects any bot in `MAINTAINERS.md` or `CODEOWNERS`.
+2. **A machine-readable do-not-read list** (`supply-chain/do-not-read.toml`) that the agent sessions' network rules enforce by host and path (30-04), and that binds humans by policy: agents never fetch listed copyleft or source-available sources; humans may read but never copy or paraphrase.
+3. **No DCO, no sign-off, no commit trailers** (owner instructions 7 and 27). Every commit is one Conventional Commit line. The pull request carries `Closes #<n>` and a metadata block naming the tool and model that wrote the change. Contributions are received under Apache-2.0 section 5, as `CONTRIBUTING.md` states, and a pull request is squash-merged once CI is green and the evaluators its tier requires pass.
+4. **One rule set for everyone** (`AI_POLICY.md`): accepted work item, the metadata block (tool and model, or `none`), evidence template, the same gates. A change lands only by the squash merge of a pull request whose gates and evaluators passed, and no person's approval is a step; an evaluator's check run counts only from an agent that did not write the change; agents hold no code-owner entry and no steering vote, and CI rejects any bot in `MAINTAINERS.md` or `CODEOWNERS`.
 5. **The covenant is a separate file (`COVENANT.md`) that no governance body can weaken.** It lists every asset that controls installed sensors, the transfer trigger with measurable definitions, and a fallback if no foundation accepts in time.
 6. **Two lanes.** Content (content repository) is open to anyone, gated by fixtures, the benign corpus and evaluators: `eval-acceptance`, `eval-adversarial` and `eval-licence` pass every rule, and a community rule needs those passes from two evaluators on different models (13 section 17; owner instruction 7, replacing R-58's human approvals). It enters in Watch; outside content merges once `grdr content test` and the contributor guides exist. Code needs an accepted work item; an unvouched contributor's pull request without one is closed automatically.
-7. **The pull-request gate is public `verify` only.** The held-out suite scores every merged change on `main` nightly regardless of origin, and additionally gates the steward's agent work items before merge. A held-out failure attributed to an outside change gets a public reproducer.
-8. **Releases** follow 34 section 9: one product bundle version over separately versioned components (owner instructions 3 and 17), `0.x` until the `v1` freeze; from 1.0 the supported lines are the current minor, the two before it and the live LTS (first LTS the first minor at least 90 days after 1.0, then every twelfth, 24 months of public security fixes; D-58, R-43). release-please opens each release pull request, the merge queue lands it and release-please creates the tags; artefacts are signed keylessly through GitHub's OIDC identity, so no person cuts or signs a release (owner instruction 7, replacing R-49's human release manager). Security fixes are never paid.
+7. **The pull-request gate is the public gates only** (`cargo fmt`, `cargo clippy`, `cargo test`, `cargo deny` and the scans, run by CI). The held-out suite scores every merged change on `main` nightly regardless of origin, and additionally gates the steward's agent work items before merge. A held-out failure attributed to an outside change gets a public reproducer.
+8. **Releases** follow 34 section 9: one product bundle version over separately versioned components (owner instructions 3 and 17), `0.x` until the `v1` freeze; from 1.0 the supported lines are the current minor, the two before it and the live LTS (first LTS the first minor at least 90 days after 1.0, then every twelfth, 24 months of public security fixes; D-58, R-43). release-please opens each release pull request, it is squash-merged once CI is green, and release-please creates the tags; artefacts are signed keylessly through GitHub's OIDC identity, so no person cuts or signs a release (owner instruction 7, replacing R-49's human release manager). Security fixes are never paid.
 9. **Conformance marks belong to the project and move with it under D-03.** A listing needs public, reproducible evidence in the conformance registry and the D-51 privacy floor. Loonaro sells test runs, never the mark.
 10. **Health metrics are aggregate and public**, and include the two transfer-trigger counters, so anyone can see when D-03 fires.
 
@@ -24,16 +24,16 @@ This document turns D-02 (licence), D-03 (neutral ownership) and D-61 (governanc
 | R1 | Every component is under an OSI-approved licence: Apache-2.0 code and content, `GPL-2.0-only OR BSD-2-Clause` eBPF programs, `Apache-2.0 OR CC-BY-4.0` docs | D-02, P11; owner: "fully open source"; brief 28 |
 | R2 | An embedder's licence scanner detects each repository's licence without manual review | D-02; brief 28 section 1 (mixed repositories report `NOASSERTION`) |
 | R3 | No code or content enters the project that carries a copyleft, source-available or attribution-in-UI obligation, except unmodified MPL-2.0 dependencies outside the embeddable closure and imported intelligence kept under its source licence in a separate tree | D-02 do-not-read list; briefs 28, g06 (DRL 1.1, ELv2; malcontent third-party rules); l09 F10 |
-| R4 | Every commit on a default branch is one Conventional Commit line with no trailer, and every pull request names its work item and the harness and model that wrote it; there is no DCO check | Owner instructions 7 and 27; D-61; brief 28 section 3 (only humans certify the DCO); c9 F8 |
+| R4 | Every commit on a default branch is one Conventional Commit line with no trailer, and every pull request names its work item and the tool and model that wrote it; there is no DCO check | Owner instructions 7 and 27; D-61; brief 28 section 3 (only humans certify the DCO); c9 F8 |
 | R5 | Steward agents and outside contributors follow the same contribution rules and the same public gate | D-61, D-45; l09 F2, F3 |
-| R6 | The merge queue lands every change, so no identity holds a merge right; no evaluator judges a change it wrote; no agent holds a code-owner entry or a steering vote | D-61; owner instruction 7; h09 (self-approval never counts) |
+| R6 | A change lands only by the squash merge of a pull request whose gates and evaluators passed, and no approval by any identity is a step; no evaluator judges a change it wrote; no agent holds a code-owner entry or a steering vote | D-61; owner instruction 7; h09 (self-approval never counts) |
 | R7 | Changes to the spine, public crates, wire formats and the Cedar schema pass a public RFC, reviewed by the persona council and `eval-architecture` and decided by the chief architect, with no waiting period | D-61; owner instruction 7; 03 section 7 |
 | R8 | The covenant names every asset that controls installed sensors and a measurable transfer trigger | D-03; l09 F4; brief 28 section 4 (NATS) |
 | R9 | The foundation is chosen after pre-read meetings, before the transfer trigger fires; CNCF first, OpenSSF second, AAIF conditional | D-03; brief h05 sections 1 and 4 |
-| R10 | A stranger builds and changes the core with stable Rust only and gets a green `verify` in under 15 minutes (target) | Spine section 5, S-22; l09 F7 |
+| R10 | A stranger builds and changes the core with stable Rust only and gets the gates green in under 15 minutes (target) | Spine section 5, S-22; l09 F7 |
 | R11 | Releases are reproducible, signed, under the source licence, with no usage thresholds | D-03, D-46; brief 28 day-one commitment 4 |
 | R12 | Conformance marks require passing published kits and the privacy floor | D-60, D-51; brief 27 (marks are trademark policy) |
-| R13 | Public maintenance can continue without any one person's account and never depends on a closed feature: the repository and its issues hold all state and the agent kit is harness-neutral, so people or another harness can carry on if access to the owner's Claude subscription is lost | D-47, D-61 (agent kit harness-neutral); spine section 9 ("Automation is bound to one account"); l09 F9; h09 (scheduled tasks act as the owner) |
+| R13 | Public maintenance can continue without any one person's account and never depends on a closed feature: the repository and its issues hold all state and `AGENTS.md` is a map any agent tool can follow, so people or another agent tool can carry on if access to the owner's Claude subscription is lost | D-47, D-61; spine section 9 ("Automation is bound to one account"); l09 F9; h09 (scheduled tasks act as the owner) |
 | R14 | Contribution text is untrusted input to development agents | 02 ADV-9, SD-06; brief 31 weak points |
 
 ## Design
@@ -63,7 +63,7 @@ SPDX-License-Identifier: Apache-2.0
 SPDX-FileCopyrightText: The <Project> Authors
 ```
 
-`<Project>` is the D-66 name, substituted from the brand manifest when the file is generated. Generated files carry the header of their generator's input. Data files that cannot hold comments (JSON fixtures) are covered by a `.license` sidecar or by a path rule in `supply-chain/licences.toml`. `cargo xtask licence-lint` fails on a missing or unlisted identifier, and on any `GPL` identifier outside `bpf/`.
+`<Project>` is the D-66 name, substituted from the brand manifest when the file is generated. Generated files carry the header of their generator's input. Data files that cannot hold comments (JSON fixtures) are covered by a `.license` sidecar or by a path rule in `supply-chain/licences.toml`. The licence lint (`licence-lint`, 30-02) fails on a missing or unlisted identifier, and on any `GPL` identifier outside `bpf/`.
 
 **NOTICE.** The main repository's `NOTICE` holds one copyright line plus the notices that vendored third-party code under `third_party/` requires, nothing else, so redistributors carry the minimum Apache-2.0 section 4(d) burden. The content repository has no `NOTICE`; rule authorship is metadata (`provenance.authors`) and never a display duty, which keeps white-label builds free of attribution-in-UI (brief 27; DRL 1.1 is the counter-example). Apache-2.0 still requires a copy of the licence and retained notices in source form; "no attribution duty" in D-02 means no attribution in the product's interface (l09 F10).
 
@@ -78,7 +78,7 @@ SPDX-FileCopyrightText: The <Project> Authors
 | Banned from linking or vendoring | `GPL-*` (outside `bpf/`), `LGPL-*`, `AGPL-*`, `SSPL-1.0`, `BUSL-1.1`, `Elastic-2.0`, `FSL-*`, `DRL-1.0`, `DRL-1.1`, `CC-BY-SA-*`, `CC-BY-NC-*`, no licence | Development tools under these licences may be installed, never vendored, linked or redistributed |
 | Aggregated in the air-gap bundle | Any licence that allows redistribution, copyleft included | Only as separate programs, images and packages in the bundle, each copyleft one with its source in `sources/`; never linked into or vendored by our code |
 
-A new licence on the allow-list or a vendored file changes `supply-chain/`, which is gate configuration and a trust-core path (D-63; 03 section 11; `team/05` owns the check). That is a protected change: its own work item, implemented by `lead-agent-kit`, landed after `eval-licence`, `eval-security` and one more evaluator on the other model pass (owner instruction 7). A new dependency inside the policy is high tier (35 section 2.6) and `eval-licence` checks it. Development tools under banned licences, such as the CC-BY-SA-4.0 `trailofbits/skills` that the fleet installs unmodified through its private marketplace (h09), are pinned by commit and never vendored, edited or paraphrased; whether installing them creates any obligation for our repository is an open question for counsel (h09).
+A new licence on the allow-list or a vendored file changes `supply-chain/`, which is gate configuration and a trust-core path (D-63; 03 section 11; `team/05` owns the check). That is a protected change: its own issue whose write set names it, worked by `lead-agent-kit`, landed after `eval-licence`, `eval-security` and one more evaluator on the other model pass (owner instruction 7). A new dependency inside the policy is high tier (35 section 2.6) and `eval-licence` checks it. Development tools under banned licences, such as the CC-BY-SA-4.0 `trailofbits/skills` (h09), are installed only unmodified and pinned by commit, and never vendored, edited or paraphrased; whether installing them creates any obligation for our repository is an open question for counsel (h09).
 
 **The air-gap bundle.** One bundle carries everything every profile needs, third-party images, charts, binaries and packages included, so nothing is fetched on a connected host (owner instruction 20; 24 section 7). This policy decides what may enter it. A component is bundled only if its licence allows redistribution. Each copyleft component travels with its complete corresponding source and our patches in `sources/`, which meets the GPL's route of accompanying the binary with source and needs no written offer. The third-party images are ones we build from source on a minimal base, reproducible, signed and with SBOM and provenance, so their contents and licences are known; a generated `THIRD-PARTY-NOTICES` file and the CycloneDX SBOM list every component, its licence and its source (36 section 6). A component whose terms forbid redistribution cannot become redistributable by a customer accepting terms: it is replaced by a redistributable equivalent or stays optional, and nothing needed to install, enrol, update, detect, respond or operate depends on it. The FIDO Metadata Service BLOB is the one known case (its current terms to be confirmed); the bundle carries a curated authenticator list built from redistributable sources instead (21). The supply-chain gate checks every bundled component against this rule. The operator accepts the terms at import, on one screen that groups the bundled licences (24 section 7).
 
@@ -95,17 +95,17 @@ A new licence on the allow-list or a vendored file changes `supply-chain/`, whic
 | `hardenrun/aif`, `securetron-gh/aifw` | proprietary or none | all | No usable licence (h04, h05) |
 | `openai/tart` | FSL-1.1-ALv2 | all | Source-available (31 verification); lab hosts may run its release binaries, agents never fetch its source |
 
-Enforcement differs by actor because the risk differs. Agents can reproduce text verbatim, so the fleet's egress and token proxy (`team/03`), which already terminates every GitHub and registry request, refuses requests whose host and path prefix match an entry (repository, raw, archive and API paths; registry package names) and logs each attempt as a finding against the work item. The proxy cannot remove text a model learned in training; the contribution statement in `AI_POLICY.md`, review and the snippet-match scan (36 L-14) cover that residue. Humans may read listed sources to understand a technique, but must not copy, translate or paraphrase code or rule logic; `CONTRIBUTING.md` says so and the PR template asks. Adding an entry is a normal pull request; removing one is an RFC.
+Enforcement differs by actor because the risk differs. Agents can reproduce text verbatim, so the agent sessions' network rules (the project settings and sandbox of `team/03`) refuse requests whose host and path prefix match an entry (repository, raw, archive and API paths; registry package names), and each refused attempt is reported as a finding on the work item. No network rule can remove text a model learned in training; the contribution statement in `AI_POLICY.md`, review and the snippet-match scan (36 L-14) cover that residue. Humans may read listed sources to understand a technique, but must not copy, translate or paraphrase code or rule logic; `CONTRIBUTING.md` says so and the PR template asks. Adding an entry is a normal pull request; removing one is an RFC.
 
 ### 2. Commits, landing and provenance (D-61; owner instructions 7 and 27)
 
-Only humans can certify the DCO (brief 28 section 3, verification row 7), and no step of this project needs a person (owner instruction 7), so the project has no DCO and no sign-off. Provenance comes from the record every pull request carries; landing comes from deterministic gates and evaluators that did not write the change.
+Only humans can certify the DCO (brief 28 section 3, verification row 7), and no step of this project needs a person (owner instruction 7), so the project has no DCO and no sign-off. Provenance comes from the record every pull request carries; landing comes from the gates and from evaluators that did not write the change.
 
-1. **Workers** commit on `agent/<n>/a<attempt>` branches under the owner's `gh` login, with each role's `gh` calls limited by `guard-command` (owner instructions 5, 6 and 23). Every commit message is one line: a Conventional Commit subject, `type(scope): summary`, with a lower-case type from the allowed list and at most 72 characters, and with no body and no trailer (no `Co-Authored-By` or `Signed-off-by` either). `guard-command` refuses any other message and gate V24 checks every commit on the branch.
-2. **The pull request** title is a valid subject. Its body carries `Closes #<issue>`, so GitHub links and closes the work item, and a collapsed metadata block with the harness, the model id that wrote the change and the attempt, which the review pass reads to pick the other model; the `handoff.v1` comment repeats them.
-3. **Evaluators** are set by the risk tier and the lane `cargo xtask risk` computes (35 section 2.2; owner instruction 8): deterministic proofs only in the `static` lane, one `eval-diff` pass in `light`, the tier's evaluators in `standard`, and in `full` (high tier and trust core) `eval-security` and `eval-adversarial` in clean contexts plus cross-model review by the model that did not write the change. A trust-core change needs two independent passing evaluators on different models (D-63). An evaluator's check run counts only from an agent that did not write the change.
-4. **The merge queue** (`cargo xtask queue`, deterministic software, `team/05`) squash-merges a pull request once verify is green on the rebased head, CI is green where it runs, every evaluator the tier requires has passed, at most three review rounds were used and the branch is current. The squash commit is the pull-request title plus ` (#<pr>)`, the form release-please reads; it copies neither the pull-request body nor the branch's messages. The merge closes the issue.
-5. **The record.** The squash commit, the pull request with its metadata block and check runs, and the issue's lease and hand-off comments are the provenance of every change on `main`. The queue refuses a pull request whose title is not a valid subject or whose body lacks `Closes #<n>` for a work item.
+1. **Implementers** commit on `issue/<n>` branches under the owner's `gh` login, within the permission rules of `.claude/settings.json` (owner instructions 5, 6 and 23). Every commit message is one line: a Conventional Commit subject, `type(scope): summary`, with a lower-case type from the allowed list and at most 72 characters, and with no body and no trailer (no `Co-Authored-By` or `Signed-off-by` either). Review refuses any other message until the commit-form check of 30-08 runs in CI.
+2. **The pull request** title is a valid subject. Its body carries `Closes #<issue>`, so GitHub links and closes the work item, and a collapsed metadata block with the tool and the model id that wrote the change, from which the session picks the other model for cross-model review.
+3. **Evaluators** are set by the issue's `tier:` label and `.claude/risk-tiers.toml`, raised and never lowered by `eval-tier` (35 section 2.2; owner instruction 8): `eval-diff` for low tier, the tier's set for medium, and for high tier and the trust core `eval-security` and `eval-adversarial` in clean contexts plus cross-model review by the model that did not write the change. A trust-core change needs two independent passing evaluators on different models (D-63). An evaluator's verdict counts only from an agent that did not write the change.
+4. **Landing.** The orchestrating session (skill `grdr-work-issue`, `team/05`) squash-merges a pull request once CI is green, every evaluator the tier requires has passed and at most three review rounds were used. The squash commit is the pull-request title as one line with an empty body, the form release-please reads; it copies neither the pull-request body nor the branch's messages. The merge closes the issue.
+5. **The record.** The squash commit, the pull request with its metadata block, checks and evaluator findings, and the issue are the provenance of every change on `main`. A pull request whose title is not a valid subject or whose body lacks `Closes #<n>` for a work item does not land (30-08).
 
 Outside contributors follow the same form, and their commits need no sign-off. A contribution is submitted under Apache-2.0 section 5, as `CONTRIBUTING.md` says (36 L-12). The first public release requires counsel's opinion on copyright in agent-written code and on the inbound terms (c9 F8; 36 owns it); with no budget, free legal help for open-source projects (foundation legal programmes) is the first route. The working assumption, to be confirmed by that opinion, is that where agent output carries no copyright the Apache-2.0 grant still covers every copyrightable part and the header stays accurate.
 
@@ -121,12 +121,12 @@ When our people contribute upstream, they follow the upstream's rule, not ours: 
 | Owner | One named human from the steward | Sets direction through written instructions (`_review/04-owner-kit-instructions.md`) and answers the spine's open questions; decides the foundation application and the transfer date until the steering group forms (spine question 5). Holds no gate in building, reviewing, landing or releasing (owner instruction 7) | Steward |
 | Second maintainer | The owner's buddy | A maintainer for every area; holds the owner's account-level duties (the repository's settings under the owner's account, the covenant assets) if the owner is absent, as the covenant's succession clause states (R-57) | Owner, recorded in `MAINTAINERS.md` |
 | Chief architect | The `chief-architect` agent (`team/02`) | Owns the decision spine; accepts, rejects or postpones RFCs after the persona council and `eval-architecture` review them, with written reasons (owner instruction 7) | The roster |
-| Release manager | `lead-release`, an agent, per release line | Keeps the release pull request and `release/checklist.toml` green and owns backports and the support statement for the line; release-please creates the tags and the merge queue lands the release pull request (owner instruction 7, replacing R-49's human role) | The roster |
+| Release manager | `lead-release`, an agent, per release line | Keeps the release pull request and `release/checklist.toml` green and owns backports and the support statement for the line; release-please creates the tags once the release pull request is squash-merged (owner instruction 7, replacing R-49's human role) | The roster |
 | Maintainer | Human, per area in `MAINTAINERS.md`, affiliation recorded | Code-owner entry for the area, which requests their review and never requires it; vote on maintainer additions; RFC shepherd | Section 4 ladder |
 | Trust-core maintainer | Maintainer named for paths in `security/trust-core.paths` | Reviews changes on those paths when available; the review adds evidence and never gates (owner instruction 7) | Steering vote after 10 shadowed trust-core reviews |
 | Content reviewer | Human, per content domain; a volunteer or maintainer | Reviews content in the domain when available; the review adds evidence, and the content lane's gates are section 4's | Section 4 ladder |
 | Contributor | Anyone who follows `CONTRIBUTING.md` | Open issues, RFCs and pull requests | Nobody: open to anyone |
-| Agent | A roster agent (`team/02`), launched by the dispatcher | Files, readies and implements work-item issues, reviews as an evaluator and drafts RFCs (owner instructions 6 and 7); never merges (the queue does), never evaluates its own change, never holds a code-owner entry or a steering vote | The roster |
+| Agent | A roster agent (`team/02`), spawned by the orchestrating session (skill `grdr-work-issue`) | Files, specifies and implements work-item issues, reviews as an evaluator and drafts RFCs (owner instructions 6 and 7); never merges (the orchestrating session does), never evaluates its own change, never holds a code-owner entry or a steering vote | The roster |
 
 **Steering group.** Forms when the second external maintainer is added (D-61). Seats: every maintainer up to five; above five, annual election by maintainers, one vote each. The steward holds at most two seats, and fewer than half while the group has fewer than five (with three or four seats, one); steward-affiliated maintainers choose among themselves who sits. It decides maintainer additions that drew an objection, trust-core maintainer additions, code of conduct escalations (members with a conflict recuse), the foundation application and the transfer date under D-03. It gates nothing in building, reviewing, landing or releasing, and it changes the agent gates of D-61 and D-63 only through a spine RFC. Decisions are by lazy consensus over seven days; any member may call a vote, decided by simple majority. Until it forms, the owner decides the foundation application and the transfer date and the chief architect decides the rest; every decision with its reason is written to `docs/decisions/`. `governance-check` enforces the seat cap from the affiliations in `MAINTAINERS.md`.
 
@@ -136,14 +136,14 @@ When our people contribute upstream, they follow the upstream's rule, not ours: 
 
 - **Required for:** `design/00-decisions.md`; public crates (layers 0 to 2, `grdr-ffi`, `grdr-wasm`); protobuf packages, the pack format, the provider protocol and the host contract; the Cedar schema; a new same-layer edge (03); a stability-class change in `surfaces.toml`; `GOVERNANCE.md`, `CONTRIBUTING.md`, `AI_POLICY.md`, `COVENANT.md`, the licence policy, removal from the do-not-read list, and the release and support policy.
 - **States:** Draft (pull request open) → Review (the persona council and `eval-architecture` review it, and anyone may comment) → Accepted, Rejected or Postponed (decided by the chief architect, with written reasons) → Implemented (linked work items closed). There is no waiting period (owner instruction 7); a comment that arrives after the decision and shows a defect opens a new RFC.
-- **Rules:** every RFC names its author, agent or person, and its metadata block names the harness and model that drafted it. Comment must be possible without an account on any service other than the code host. A security fix under embargo (D-62) may change a public surface without an RFC; a retroactive RFC opens when the fix is disclosed.
+- **Rules:** every RFC names its author, agent or person, and its metadata block names the tool and model that drafted it. Comment must be possible without an account on any service other than the code host. A security fix under embargo (D-62) may change a public surface without an RFC; a retroactive RFC opens when the fix is disclosed.
 - **CI:** `rfc-required` fails a pull request that touches an RFC-gated path, a `cargo semver-checks` break, a `buf breaking` break or a `surfaces.toml` class change unless its metadata block names an accepted RFC (`RFC: <nnnn>`).
 
 ### 4. Contribution lanes and the ladder
 
 **Content lane** (content repository). Declarative files only: rules, session rules, fingerprints and agent adapter manifests, housekeeping profiles, policy packs, mappings, integration manifests, corpus samples. Each pull request carries fixtures; CI loads it in the production interpreter of every supported engine line and replays the public part of the benign corpus (13). A first-party rule lands once `eval-acceptance`, `eval-adversarial` and `eval-licence` pass with their evidence, beside the fixtures and the benign-corpus replay; a community rule needs those passes from two evaluators on different models; a ceiling of `contain` or above also needs `eval-security` (13 section 17; owner instruction 7, replacing R-58's human approvals). A content reviewer's review adds evidence and never gates. Outside content pull requests are accepted from the content repository's first push and merge once `grdr content test` and the guides exist (Requires: 30-15; 13 section 17; 03 G2). Every community rule enters at `experimental` and in Watch; promotion follows 13's data gates, and a community rule without its two evaluator passes stays in Watch (D-61; 13 section 17; Deviations item 2). Corpus samples must be inert and are scanned before merge.
 
-**Code lane** (main and contrib repositories). Work items are GitHub issues in the main repository, `416rehman/Guardrails`, and nowhere else (owner instruction 5, `_review/04-owner-kit-instructions.md`); an accepted work item is an issue that a squad lead, the product lead or the programme manager has readied, with a `ready.v1` comment and `status:ready` (`team/01` section 3). Every change links an accepted work item; the CI check `work-item-linked` fails a pull request without one, whoever opened it. Outside contributors take items labelled `open-to-contributors`, or file an issue, which enters at `status:proposed`, and wait for `status:ready`. A pull request from a person not on the vouch list that links no accepted item is closed automatically with a pointer to the process; the vouch list is public in `governance/vouched.txt`, managed with Ghostty's `vouch` tooling (brief 28). Items labelled `good-first-issue` are reserved for a person's first code contribution, and the steward's fleet never claims them (extending LLVM's rule of no AI on good first issues, brief 28). Contributions that cost more to review than they are worth are labelled `extractive` and closed with a reason (LLVM's label).
+**Code lane** (main and contrib repositories). Work items are GitHub issues in the main repository, `416rehman/Guardrails`, and nowhere else (owner instruction 5, `_review/04-owner-kit-instructions.md`); an accepted work item is an issue whose spec, write set and acceptance criteria a squad lead, the product lead or the programme manager has written (`team/01` section 1). Every change links an accepted work item; the CI check `work-item-linked` fails a pull request without one, whoever opened it. Outside contributors take items labelled `open-to-contributors`, or file an issue and wait for a lead to specify it. A pull request from a person not on the vouch list that links no accepted item is closed automatically with a pointer to the process; the vouch list is public in `governance/vouched.txt`, managed with Ghostty's `vouch` tooling (brief 28). Items labelled `good-first-issue` are reserved for a person's first code contribution, and the steward's agents never take them (extending LLVM's rule of no AI on good first issues, brief 28). Contributions that cost more to review than they are worth are labelled `extractive` and closed with a reason (LLVM's label).
 
 **The ladder.** Numbers are entry criteria, not quotas; a maintainer may nominate earlier with reasons.
 
@@ -159,23 +159,23 @@ Inactive for six months: emeritus, rights removed, name kept. Removal for cause:
 
 ### 5. Public gate and held-out suite (D-45)
 
-| | Public `verify` | Held-out suite |
+| | Public gates | Held-out suite |
 |---|---|---|
 | Who can run it | Anyone, locally and in CI | The evaluator service; every human maintainer can read it |
 | Gates | Every pull request in every repository | Every release; every steward agent work item before merge; nightly over `main`, whatever the origin |
 | Output | Full logs | Category counts to agents; full results to maintainers |
 | Publication | Always public | Each set published two releases after use and replaced |
 
-Why the asymmetry before merge: the steward's fleet produces volume that fits visible tests; in SpecBench the 90th-percentile gap between visible and held-out results grows by about 27 points per tenfold code size, a worst-case trend with a weak fit (R² 0.21; h09 verification row 5). The rule binds by origin of volume, not by kind of author: an outside contributor may ask a maintainer to run the held-out suite on their pull request and receives the same category counts an agent does. When the nightly run attributes a failure to an outside change, a maintainer posts a public reproducer, never the held-out item itself (l09 F2).
+Why the asymmetry before merge: the steward's agents produce volume that fits visible tests; in SpecBench the 90th-percentile gap between visible and held-out results grows by about 27 points per tenfold code size, a worst-case trend with a weak fit (R² 0.21; h09 verification row 5). The rule binds by origin of volume, not by kind of author: an outside contributor may ask a maintainer to run the held-out suite on their pull request and receives the same category counts an agent does. When the nightly run attributes a failure to an outside change, a maintainer posts a public reproducer, never the held-out item itself (l09 F2).
 
 ### 6. Repository hygiene for outsiders
 
 - **Stable Rust only** for default members (ARCH-011 in 03). The MSRV is the current stable minus two minor releases, declared as `rust-version` in the workspace manifest; CI builds default members with both the MSRV and current stable, and no `rust-toolchain` file pins a newer one. No nightly feature anywhere in the default build; prebuilt signed kernel objects are fetched so no kernel, Swift, Node or GPU toolchain is needed.
 - **Public crates** (layers 0 to 2, which include `grdr-ffi` and `grdr-wasm`) are published to crates.io under the `grdr-` prefix with `cargo semver-checks` and `cargo public-api` diffs; everything else is `publish = false` (03).
-- **`verify`** is the only gate, the same command for hooks, every harness and CI (D-47). S-22 measures a stranger's time to green: target under 15 minutes on clean hosted Windows, macOS and Linux runners (4 vCPU, `team/05`).
+- **The gates** are `cargo fmt`, `cargo clippy`, `cargo test` and `cargo deny`, the same commands for a person, an agent and CI (`team/05`; D-47 as amended by ADR-0029). S-22 measures a stranger's time to green: target under 15 minutes on clean hosted Windows, macOS and Linux runners (4 vCPU, `team/05`).
 - **Contrib repository.** One directory per adapter with `OWNER` (a named human), the port test kit version it passed and a `dist.toml` snippet. It is Tier 2, never gates a release, and an adapter red for two releases is removed (P6; 03 section 12). `grdr-ports-testkit` is a public crate, so the kit is runnable without the main repository.
-- **Agent kit is open and harness-neutral.** `AGENTS.md`, `.agents/` skills and hooks, and the work-item issue form and labels are in the main repository. A second harness lands a canary work item monthly in CI, under a usage cap per run (l09 F9; D-47). It runs on the owner's Claude subscription where the subscription's current terms allow that harness, otherwise on a free local model; it never needs a paid key. Recurring agents run from the local dispatcher on the owner's machine with the owner's logged-in Claude Code (owner instruction 23), so they act under the owner's account; agent runs on GitHub-hosted runners are optional and need a token only the owner can create. The spine accepts that dependency as a risk (section 9, "Automation is bound to one account"); R13 holds because the repository and its issues hold all state and this kit is harness-neutral, not because the automation is account-neutral. Where a workflow uses GitHub Agentic Workflows (bot-neutral identity model, h09), its controls are configurable, so each workflow pins read-only agent jobs and sets threat detection to block (`continue-on-error: false`) instead of the default warn mode (31 verification row 9; h09 verification row 8); `team/05` checks both settings.
-- **Untrusted text.** Agents that read issue, pull-request or discussion text from outsiders have no write access and no secrets (SD-06). The subscription token they need is held by the fleet's egress and token proxy (`team/03`) and never enters the job. Triage agents return labels and summaries through buffered outputs only.
+- **The agent team is open.** `AGENTS.md`, the agents and skills in `.claude/`, and the work-item issue form and labels are in the main repository; `AGENTS.md` is the map any agent tool reads. A second harness lands a canary work item monthly in CI, under a usage cap per run (l09 F9; D-47). It runs on the owner's Claude subscription where the subscription's current terms allow that harness, otherwise on a free local model; it never needs a paid key. Agents run in the owner's logged-in Claude Code session on the owner's machine (owner instruction 23), so they act under the owner's account; agent runs on GitHub-hosted runners are optional and need a token only the owner can create. The spine accepts that dependency as a risk (section 9, "Automation is bound to one account"); R13 holds because the repository and its issues hold all state and `AGENTS.md` serves any agent tool, not because the automation is account-neutral. Where a workflow uses GitHub Agentic Workflows (bot-neutral identity model, h09), its controls are configurable, so each workflow pins read-only agent jobs and sets threat detection to block (`continue-on-error: false`) instead of the default warn mode (31 verification row 9; h09 verification row 8); `team/05` checks both settings.
+- **Untrusted text.** Agents that read issue, pull-request or discussion text from outsiders have no write access and no secrets (SD-06). The subscription token never enters such a job's environment (30-21). Triage agents return labels and summaries through buffered outputs only.
 - **Per-crate design notes.** Each public crate has a design document in `docs/crates/`, reviewed by `eval-docs` (l09 F9), so the code is readable if access to the owner's subscription is lost or its limits change.
 
 ### 7. Release policy and support windows
@@ -183,7 +183,7 @@ Why the asymmetry before merge: the steward's fleet produces volume that fits vi
 34 section 9 owns version numbering and the support windows; this section fixes what governance commits to and repeats the windows only so `GOVERNANCE.md` can point at them. Changing any of it is an RFC.
 
 - **One product bundle version over separately versioned components** (owner instructions 3 and 17). Public crates, SDKs, endpoint and server programs, the eBPF object and the optional Windows driver carry their own versions and changelogs, proposed by release-please from the commit subjects; the bundle pins each by version and digest and carries the `compat` block of contract ranges (D-71). Packs, the wire major and the Cedar `schema_version` keep their own carriers (03 section 7). A deployment moves from bundle to bundle (34 section 9). `0.x` until the `v1` freeze, so the first public bundle is `0.1.0`; `1.0.0` comes with the `v1` freeze (03 section 7), labelled beta until D-60's embed pilot, which requires an embedding partner.
-- **Cadence.** A minor is cut whenever its release gates pass; patches as needed; content continuously through rings (13, 22). release-please opens the release pull request, the merge queue lands it, and release-please creates the tags and GitHub releases (owner instruction 7). The project's TUF keys live in two GitHub Actions environments, the release signer's and the independent rebuilder's, whose signatures form the threshold, so no person holds a key (owner instruction 23; 35 section 3.3).
+- **Cadence.** A minor is cut whenever its release gates pass; patches as needed; content continuously through rings (13, 22). release-please opens the release pull request, it is squash-merged once CI is green, and release-please creates the tags and GitHub releases (owner instruction 7). The project's TUF keys live in two GitHub Actions environments, the release signer's and the independent rebuilder's, whose signatures form the threshold, so no person holds a key (owner instruction 23; 35 section 3.3).
 - **Support.** Before 1.0, the latest minor only. From 1.0, security and S1 fixes for the current minor, the two before it and the live LTS line (D-58, R-43); upgrades hop at most two minors, with required stops. LTS: designated as 34 section 9 states (the first minor at least 90 days after 1.0 with no open S1 or S2 defect, then every twelfth minor), with public security and S1 fixes for 24 months and at most two live lines (D-58). Packs are published for every supported engine line (03). The server ingests from any sensor of the same wire major.
 - **Never paid:** security fixes for any supported line, pre-disclosure to redistributors meeting published criteria (D-04, D-62), signed binaries.
 - **Paid only after counsel:** maintenance of an LTS line beyond 24 months and OEM support periods (D-04, D-46, D-58; 36). Loonaro offers nothing paid until counsel's opinion exists; free foundation legal programmes are the first route to it. The CRA sets a five-year support floor for manufacturers in Article 13(8) (brief 34 verification row 3); counsel decides how it applies to Loonaro's distribution, and 34's `lifecycle.toml` records it without changing the public window.
@@ -204,13 +204,13 @@ Rules: every listing attests the D-51 floor for the listed product (no covert mo
 
 ### 9. Community health metrics
 
-A scheduled deterministic job (`cargo xtask health`, no model) generates `community/health.md` monthly from public code-host API data and opens it as a pull request, so no agent reads outsider text to produce it (SD-06). Metrics are per organisation or per project, never a ranking of individuals (the spirit of P8). Figures are measured; the right column holds targets.
+A scheduled deterministic job (30-28, no model) generates `community/health.md` monthly from public code-host API data and opens it as a pull request, so no agent reads outsider text to produce it (SD-06). Metrics are per organisation or per project, never a ranking of individuals (the spirit of P8). Figures are measured; the right column holds targets.
 
 | Metric | Definition | Target |
 |---|---|---|
 | First response | Median time from issue or pull request to first response, agent and human reported apart, by the author's affiliation | Reported; no gap between affiliations |
 | Content decision | Median time from content pull request to merge or close | Reported |
-| Outsider build | S-22 time to green `verify` per OS | Under 15 minutes |
+| Outsider build | S-22 time to green gates per OS | Under 15 minutes |
 | Reproducer promise | Held-out failures on outside changes with a public reproducer | 100% |
 | Outside share | Merged changes authored by people outside the steward, code and content separately | Reported |
 | Maintainer spread | Maintainers outside the steward; organisations with a maintainer | 2 and 2 (OpenSSF Incubating needs 3 from 2 organisations, brief 28) |
@@ -223,8 +223,8 @@ A scheduled deterministic job (`cargo xtask health`, no model) generates `commun
 
 ### 10. Launch: what each public step requires
 
-1. **The repository is public from its first push** (owner instruction 28). The seed carries the licence, `SECURITY.md` (35) and the commit-form gate V24, and the pre-push public gate runs on it (`team/06` section 11 item 9). Loonaro is the legal entity. Early work items write the rest, none of it a condition of being public: D-66's recorded name and namespace search (36 LBC-2); the covenant, governance files, `CODE_OF_CONDUCT.md`, `TRADEMARKS.md` (36) and empty `ADOPTERS.md`; the springing assignment in escrow (36 L-06); the buddy listed in `MAINTAINERS.md` as second maintainer; `licence-lint`, `rfc-required` and `work-item-linked` green.
-2. **Each repository is public from its creation:** the main repository from its first push, the content and contrib repositories when the work that needs each starts; what exists builds green on `verify`; discussions open; content pull requests accepted and queued (merged once `grdr content test` and the guides exist, section 4). The announcement's first line states the licences, that nothing is withheld, and that there is no telemetry by default. This adapts h04 implication 10 ("Apache-2.0, every component, no telemetry by default"), which is inexact because kernel programs and documentation are dual-licensed; h04 verification row B confirms the telemetry point is a real difference (OpenShell ships telemetry on by default). It must not say "nothing sent anywhere": the default anonymous update fetch exists (D-48). OpenSSF Scorecard published.
+1. **The repository is public from its first push** (owner instruction 28). The seed carries the licence and `SECURITY.md` (35), and the pre-push public gate runs on it (`team/06` section 11 item 9). Loonaro is the legal entity. Early work items write the rest, none of it a condition of being public: D-66's recorded name and namespace search (36 LBC-2); the covenant, governance files, `CODE_OF_CONDUCT.md`, `TRADEMARKS.md` (36) and empty `ADOPTERS.md`; the springing assignment in escrow (36 L-06); the buddy listed in `MAINTAINERS.md` as second maintainer; `licence-lint`, `rfc-required` and `work-item-linked` green.
+2. **Each repository is public from its creation:** the main repository from its first push, the content and contrib repositories when the work that needs each starts; what exists builds green on the gates; discussions open; content pull requests accepted and queued (merged once `grdr content test` and the guides exist, section 4). The announcement's first line states the licences, that nothing is withheld, and that there is no telemetry by default. This adapts h04 implication 10 ("Apache-2.0, every component, no telemetry by default"), which is inexact because kernel programs and documentation are dual-licensed; h04 verification row B confirms the telemetry point is a real difference (OpenShell ships telemetry on by default). It must not say "nothing sent anywhere": the default anonymous update fetch exists (D-48). OpenSSF Scorecard published.
 3. **The first public release requires:** the server-licence go or no-go review (D-02; owner question 6), after which the licence is never revisited; the covenant (step 1) says this review is pending and is the only one. Counsel's opinion on agent-written code, sought first through free foundation legal programmes. OpenSSF Best Practices "passing".
 4. **The first public release:** signed as section 7 states (Sigstore on every artefact; platform signatures where a vendor programme exists, otherwise marked "not platform-signed"), with the scorecard (D-45), the support statement (34) and the first health report. The 18-month clock of trigger (b) starts.
 5. **Once the contributor guides exist (30-15):** a contributor outside the team lands a Watch detection from the guide alone (03 G2); the first contrib adapter passes the kit; OWASP ACS conformance evidence submitted upstream (D-03; h05 implication 6).
@@ -253,7 +253,7 @@ Each is a covenant item or a tripwire in the health report:
 6. Telemetry, usage pings or crash reports on by default in any shape. The only default outbound traffic is the anonymous, mirrorable update fetch, which can be turned off and is listed by `grdr egress` (D-48).
 7. Using the marks against a fork that uses another name, or against an unmodified build saying "built from".
 8. Closing, slowing or deprioritising outside pull requests that compete with a paid service; the first-response metric is reported by affiliation.
-9. Steward seats above the cap, an agent holding a steering vote, or any identity, agent or person, landing a change outside the merge queue.
+9. Steward seats above the cap, an agent holding a steering vote, or any identity, agent or person, landing a change other than by the squash merge of a pull request whose gates and evaluators passed.
 10. A private roadmap: the roadmap and decision log are public, except embargoed security work.
 11. Archiving the repositories or abandoning a supported line without the transfer having happened.
 12. Bought stars, sock-puppet adopters or vouches.
@@ -275,8 +275,8 @@ RFC. COVENANT.md sits above it: nothing here can weaken the covenant.
 - The project is open source: Apache-2.0 for code and content, with the
   exceptions stated in CONTRIBUTING.md. Nothing is withheld.
 - AI agents plan, build, review and release the project, and no step
-  needs a person. The merge queue, which is deterministic software, lands
-  every change once its checks and the reviews its risk requires pass. An
+  needs a person. A change lands as a squash merge once its checks and
+  the reviews its risk requires pass. An
   agent never reviews its own change and never holds a code-owner entry or
   a vote in the steering group.
 - People may contribute, review and maintain. A person's review adds
@@ -307,8 +307,8 @@ evaluator have reviewed them, and writes down why.
 
 Release manager: the release agent of each release line. It keeps the
 release pull request and checklist green and owns backports; the release
-tooling creates the tags, and the merge queue lands the release pull
-request.
+pull request lands like any other, and the release tooling creates the
+tags.
 
 Maintainers: people listed in MAINTAINERS.md for one or more areas, with
 their affiliation. They review changes in their areas, appear in
@@ -483,10 +483,10 @@ no community rule goes beyond Watch without its two passing reviews.
 Repositories: the main repository and the contrib repository (community
 adapters).
 
-1. Every code change links an accepted work item: an issue labelled
-   "status:ready". Look for issues labelled "open-to-contributors", or open an
-   issue describing the problem and wait for the "status:ready" label. Pull
-   requests that link no accepted item are
+1. Every code change links an accepted work item: an issue with a spec,
+   a write set and acceptance criteria. Look for issues labelled
+   "open-to-contributors", or open an issue describing the problem and wait
+   for a lead to specify it. Pull requests that link no accepted item are
    closed automatically unless you are on the vouch list
    (governance/vouched.txt); if you are, they stay open but cannot merge
    until an accepted item is linked. You get on the list with one merged
@@ -495,12 +495,15 @@ adapters).
 2. "good-first-issue" items are kept for people making their first code
    contribution. The project's own agents never take them.
 3. Build: install stable Rust (the minimum version is `rust-version` in
-   the workspace Cargo.toml and is checked by CI) and run
-   `cargo xtask verify`. A clean clone should be green in under 15 minutes
+   the workspace Cargo.toml and is checked by CI) and run the gates:
+   `cargo fmt --all -- --check`,
+   `cargo clippy --workspace --locked --all-targets -- -D warnings`,
+   `cargo test --workspace --locked` and `cargo deny check`. CI runs the same
+   commands. A clean clone should be green in under 15 minutes
    on Windows, macOS or Linux, with no kernel, Swift, Node or GPU
    toolchain. If it is not, that is a bug; please report it.
-4. Keep to the layer rules. `verify` runs the architecture lint; its
-   messages say how to fix a violation.
+4. Keep to the layer rules of `architecture.toml`; review checks them until
+   the architecture lint (WI-0003) lands.
 5. Changes to public crates, wire formats, the pack format, the Cedar
    schema or anything else listed in GOVERNANCE.md need an accepted RFC
    first.
@@ -541,10 +544,12 @@ Commit messages are one line, for example:
     fix(grdr-core): return unresolved for here-doc bodies
 
 The pull request, not the commit, names the work item and the tools used.
+It lands as one squash commit whose message is the pull request title, so
+the title follows the same form.
 
 ## Tests you cannot see
 
-Pull requests are gated only by the public `verify`. The project also runs
+Pull requests are gated only by the public gates and reviews. The project also runs
 a held-out test suite before releases and every night on the main branch.
 Its tests are published two releases after use. If a held-out test fails
 because of your change, a maintainer posts a public reproducer. You may ask a maintainer to run the held-out suite on your
@@ -572,8 +577,9 @@ to those agents and to everyone else. It is changed only by RFC.
 ## The rules
 
 1. Every contribution has a responsible author: a person, or the project
-   agent named in its pull request. The merge queue lands every change, so
-   nobody holds a merge right. A review counts only when it comes from a
+   agent named in its pull request. A change lands only as the squash merge
+   of a pull request whose gates and reviews passed, and nobody's approval
+   is a step. A review counts only when it comes from a
    reviewer that did not write the change. Agents hold no code-owner entry
    and no vote in the steering group.
 
@@ -611,21 +617,18 @@ the change's risk tier and recorded in the pull request.
 
 ## How the project's own agents land changes
 
-The steward's agents commit on agent branches with one-line commit
+The steward's agents commit on issue branches with one-line commit
 messages. Each pull request names its work item and the model that wrote
-it. The merge queue squash-merges it once verify and CI pass on the
-rebased branch, every review its risk tier requires has passed, at most
-three review rounds were used and the branch is current. Reviews run in a
-clean context, and the cross-model review runs on the model that did not
-write the change. Every check run and review is recorded on the pull
+it. It is squash-merged once CI passes, every review its risk tier
+requires has passed and at most three review rounds were used. Reviews run
+in a clean context, and the cross-model review runs on the model that did
+not write the change. Every check and review is recorded on the pull
 request.
 
-Risk tiers: a change that deterministic checks can prove (comments,
-formatting, prose) lands on those checks alone; a small change gets one
-review pass; other changes get their tier's reviews; high-risk changes and
-every trust-core change get the security and adversarial reviews, and a
-trust-core change needs two independent passing reviews on different
-models.
+Risk tiers: a low-risk change gets one review pass; other changes get
+their tier's reviews; high-risk changes and every trust-core change get
+the security and adversarial reviews, and a trust-core change needs two
+independent passing reviews on different models.
 
 ## Quality bar
 
@@ -638,7 +641,7 @@ change to what a reviewer can check.
 ## Same gate for everyone
 
 Pull requests from people and from the project's agents pass the same
-public `verify`. The held-out suite scores every change on the main branch
+public gates. The held-out suite scores every change on the main branch
 nightly, whoever wrote it. The project's own agent work is also scored
 before merge, because it is produced in volume; anyone else may ask for the
 same pre-merge run.
@@ -660,17 +663,17 @@ their trailer rules, and a person is always the author of record.
 | File or interface | Format | Read by | Owner |
 |---|---|---|---|
 | `LICENSE`, `NOTICE`, `bpf/LICENSE-*`, `docs/LICENSE-CC-BY-4.0` | Text | Scanners, `licence-lint` | This doc |
-| `COVENANT.md`, `GOVERNANCE.md`, `CONTRIBUTING.md`, `AI_POLICY.md`, `CODE_OF_CONDUCT.md`, `ADOPTERS.md` | Markdown | People, `xtask governance-check` | This doc |
-| `MAINTAINERS.md` | Markdown with one TOML block: `name`, `handle`, `affiliation`, `role`, `areas`, `trust_core`, `since` | `xtask codeowners`, `governance-check` | This doc |
+| `COVENANT.md`, `GOVERNANCE.md`, `CONTRIBUTING.md`, `AI_POLICY.md`, `CODE_OF_CONDUCT.md`, `ADOPTERS.md` | Markdown | People, the governance check | This doc |
+| `MAINTAINERS.md` | Markdown with one TOML block: `name`, `handle`, `affiliation`, `role`, `areas`, `trust_core`, `since` | The CODEOWNERS generator (30-11), the governance check | This doc |
 | `.github/CODEOWNERS` | Generated from `MAINTAINERS.md` and `security/trust-core.paths`; requests review and is never a required approval; hand edits fail CI; any bot fails CI | Code host | This doc; 02 for the path list |
-| `security/trust-core.paths` additions | `MAINTAINERS.md` and `.github/` are gate configuration under D-63 and are listed | Change classifier | 02 owns the file |
+| `security/trust-core.paths` additions | `MAINTAINERS.md` and `.github/` are gate configuration under D-63 and are listed | `.claude/risk-tiers.toml` | 02 owns the file |
 | `SECURITY.md` | Markdown | People | 35 |
 | `TRADEMARKS.md`, escrow and assignment instruments | Markdown, legal | People | 36 |
 | `governance/assets.toml` | One entry per covenant asset: `id`, `kind`, `holder`, `custodian`, `transfer_method`, `verified_on` | Quarterly audit job | This doc; 22 for keys |
 | `governance/vouched.txt` | One handle per line | Auto-close job | This doc |
 | `supply-chain/licences.toml`, `supply-chain/do-not-read.toml` | TOML | `cargo deny`, vendoring check, agent egress allowlist (`team/03`) | This doc |
 | `rfcs/NNNN-*.md` | Markdown template: summary, motivation, design, compatibility, stability class, alternatives, unresolved | `rfc-required` | This doc |
-| Commit message and pull-request metadata | Commit: one Conventional Commit line, at most 72 characters, no body or trailer; squash commit: the pull-request title plus ` (#<pr>)`. Pull-request body: `Closes #<n>`, a collapsed metadata block (harness, model id or `none`, attempt, and `RFC: <nnnn>` where an RFC-gated surface changes) and the `release_note` block (34 section 14) | `guard-command`, V24, `rfc-required`, change classifier, merge queue, release-please | This doc; tiers from SD-13 |
+| Commit message and pull-request metadata | Commit: one Conventional Commit line, at most 72 characters, no body or trailer; squash commit: the pull-request title as one line. Pull-request body: `Closes #<n>`, a collapsed metadata block (tool, model id or `none`, and `RFC: <nnnn>` where an RFC-gated surface changes) and the `release_note` block (34 section 14) | The commit-form check (30-08), `rfc-required`, `.claude/risk-tiers.toml`, the landing step (30-09), release-please | This doc; tiers from SD-13 |
 | Pull-request evidence template | Sections: Work item; Testing (commands and output); Risk; How to revert; Not verified; three-arm proof for bug fixes; survival tests for removals (D-47) | Evaluators, reviewers | This doc; `team/05` |
 | Conformance registry | Repository of listings: mark, build digest, kit version, evidence links, expiry | Public | This doc; kits in 26 |
 | `community/health.md` | Generated monthly | Public | This doc |
@@ -689,8 +692,8 @@ Outsiders extend the project without touching the core through: content pull req
 ## Security and privacy
 
 - **Contribution as attack path (ADV-9, TB-11).** Poisoned rules or corpus samples: two independent evaluator passes on different models, Watch entry, inert-sample scan, the benign-corpus gate (13). Injection through issue or pull-request text: readers have no write access or secrets (SD-06). Malicious dependency: allow-list, `cargo vet`, the release-age cooldown (3 days for patch and minor releases, 7 for majors; owner instruction 22), `eval-licence` and `eval-security` (03).
-- **Account takeover.** Every agent runs under the owner's `gh` login (owner instruction 23), so `guard-command` limits each role's `gh` calls and a ruleset on `main` requires the verify and evaluator status checks, so nothing reaches `main` except the queue's merge of a green pull request. The owner and every maintainer use hardware-backed two-factor authentication. A GitHub App per role is an optional later hardening.
-- **Forged evaluator results.** Each tier's evaluators post required check runs bound to the pull request's head commit, and the queue re-checks them on the rebased head; `guard-command` lets only evaluator sessions post them, and never the writer's. `MAINTAINERS.md`, `.github/` and the gate configuration are trust-core paths, changed only by protected changes (owner instruction 7).
+- **Account takeover.** Every agent runs under the owner's `gh` login (owner instruction 23), so the permission rules of `.claude/settings.json` limit what each agent may run, and a ruleset on `main` requires the CI status checks, so nothing reaches `main` except the squash merge of a green pull request. The owner and every maintainer use hardware-backed two-factor authentication. A GitHub App per role is an optional later hardening.
+- **Forged evaluator results.** Each evaluator returns its verdict to the orchestrating session, bound to the commit it judged; the session merges only when every evaluator the tier requires passed on the pull request's head, and never takes a verdict from the writer (skill `grdr-work-issue`). `MAINTAINERS.md`, `.github/` and the gate configuration are trust-core paths, changed only in an issue whose write set names them (owner instruction 7).
 - **Sybil vouching.** Vouching and promotion need human maintainers' decisions recorded in public issues; health metrics flag bursts of new accounts.
 - **Contributor privacy.** `MAINTAINERS.md` affiliations are published with consent; health metrics aggregate by organisation; code of conduct reports are handled privately and reported only as counts.
 - **Embargoed work** follows D-62 and SD-08 (35); it is the only exception to the public roadmap.
@@ -703,8 +706,8 @@ Outsiders extend the project without touching the core through: content pull req
 | Every file has a valid header | `licence-lint` over the tree, plus seeded violations in a fixture |
 | No banned licence in any build closure | `cargo deny` per build profile, including `embedded`; seeded GPL dependency fails |
 | Agents cannot fetch do-not-read sources | Sandbox test: a scripted fetch to each listed host is denied and logged |
-| Every `main` commit is one valid line from a merged pull request | V24 over the history and the queue's title and `Closes #<n>` check; fixtures for a multi-line message, a trailer, a missing `Closes #<n>` and an unlisted type each fail |
-| No change lands without its evaluators | Seeded pull requests: a trust-core change with two passes on the same model, a check run posted from the writer's session and a stale check run on a pre-rebase head are each refused by the queue |
+| Every `main` commit is one valid line from a merged pull request | The commit-form check (30-08) over the history and the landing step's title and `Closes #<n>` check; fixtures for a multi-line message, a trailer, a missing `Closes #<n>` and an unlisted type each fail |
+| No change lands without its evaluators | Seeded pull requests: a trust-core change with two passes on the same model, a verdict from the writer's session and a verdict on a commit older than the head are each refused by the landing step (30-09) |
 | No bot holds rights; steward seats within the cap | `governance-check` parses `MAINTAINERS.md` and `CODEOWNERS` against the code host's App list, and the steering roster against declared affiliations; seeded bot entry and over-cap roster each fail |
 | Unlinked code changes cannot merge | `work-item-linked` fails a vouched contributor's pull request with no accepted item; auto-close fires for an unvouched one |
 | RFC-gated paths are gated | Seeded semver break, `buf breaking` break and `surfaces.toml` change without `RFC:` each fail |
@@ -718,9 +721,9 @@ Outsiders extend the project without touching the core through: content pull req
 
 **E1. Licence and notices**
 - 30-01 Root `LICENSE`, `NOTICE`, `bpf/` and `docs/` licence files in all repositories. Accept: GitHub API reports `Apache-2.0` for each repository.
-- 30-02 `licence-lint` and header insertion tool. Accept: seeded missing header and stray `GPL` identifier fail `verify`.
+- 30-02 `licence-lint` and header insertion tool. Accept: seeded missing header and stray `GPL` identifier fail CI.
 - 30-03 `supply-chain/licences.toml` wired into `cargo deny` per build profile. Accept: an MPL-2.0 dependency fails the `embedded` closure and passes a layer 4 program.
-- 30-04 `do-not-read.toml` wired into the fleet egress and token proxy (`team/03`). Accept: a scripted fetch of each entry's repository, raw, archive and API paths is refused and logged as a finding; a fetch of an unlisted repository on the same host succeeds.
+- 30-04 `do-not-read.toml` wired into the agent sessions' network rules (`.claude/settings.json`, `team/03`). Accept: a scripted fetch of each entry's repository, raw, archive and API paths is refused and logged as a finding; a fetch of an unlisted repository on the same host succeeds.
 
 **E2. Governance files and covenant**
 - 30-05 `COVENANT.md`, `GOVERNANCE.md`, `CONTRIBUTING.md`, `AI_POLICY.md`, `CODE_OF_CONDUCT.md`, `MAINTAINERS.md`, `ADOPTERS.md` from the texts in sections 14 to 16, with `<Project>` substituted. Accept: `governance-check` passes on `main`.
@@ -728,10 +731,10 @@ Outsiders extend the project without touching the core through: content pull req
 - 30-07 Springing assignment of marks, domain and GitHub organisation in escrow (36 drafts; counsel through free foundation legal programmes first). Accept: counsel's signed note in the decision log. The first release requires this item; the repository is public before it (owner instruction 28).
 
 **E3. Commit form and landing**
-- 30-08 Commit-form gate V24 and the queue's title and `Closes #<n>` check (with `team/05`). Accept: a multi-line message, a trailer and a pull request without `Closes #<n>` for a work item are each refused.
-- 30-09 Merge-queue landing step (with `team/05`). Accept: a pull request lands only with verify green on the rebased head, every evaluator its tier requires passed, at most three review rounds and a current branch; the squash commit is the title plus ` (#<pr>)`; the issue closes.
-- 30-10 Required evaluator check runs bound to the head commit. Accept: the seeded pull requests of the evaluator row under "Test and evaluation strategy" are each refused; a clean pull request lands.
-- 30-11 `xtask codeowners` generation. Accept: hand edit and bot entry both fail CI.
+- 30-08 Commit-form check in CI and the landing step's title and `Closes #<n>` check (with `team/05`). Accept: a multi-line message, a trailer and a pull request without `Closes #<n>` for a work item are each refused.
+- 30-09 Landing step of skill `grdr-work-issue` (with `team/05`). Accept: a pull request lands only with CI green on its head, every evaluator its tier requires passed, at most three review rounds and a branch current with `main`; the squash commit is the title as one line; the issue closes.
+- 30-10 Required evaluator verdicts bound to the head commit. Accept: the seeded pull requests of the evaluator row under "Test and evaluation strategy" are each refused; a clean pull request lands.
+- 30-11 CODEOWNERS generation from `MAINTAINERS.md`. Accept: hand edit and bot entry both fail CI.
 
 **E4. Contribution lanes**
 - 30-12 Issue and pull-request templates, labels, auto-close for unvouched unlinked pull requests, and the `work-item-linked` check. Accept: a test account's unlinked pull request is closed with the pointer comment; a vouched account's unlinked pull request stays open and cannot merge.
@@ -760,7 +763,7 @@ Outsiders extend the project without touching the core through: content pull req
 - 30-27 Engine mark and platform mark. Accept: the L3 pilot partner's listing reproduces from the published kit; a rebuilt build's listing fails when its disclosure surface is hidden. Requires: 30-25 and 30-26; an L3 embedding partner for the engine mark; a rebuilt white-label build (an embedding partner) for the platform mark.
 
 **E9. Health and launch**
-- 30-28 `cargo xtask health`. Accept: the report rebuilds byte-identical from the same API snapshot, uses no model, and reports first response by affiliation.
+- 30-28 Community health report job. Accept: the report rebuilds byte-identical from the same API snapshot, uses no model, and reports first response by affiliation.
 - 30-29 Launch checklist (section 10) as a tracked issue per step. Accept: each step closed with evidence.
 - 30-30 OpenSSF Scorecard, Best Practices passing and silver. Accept: badges live; "passing" is in place before the first public release.
 
@@ -773,7 +776,7 @@ Outsiders extend the project without touching the core through: content pull req
 
 | Risk or question | Response |
 |---|---|
-| Evaluator capacity or a usage limit stalls the queue | Items wait in `status:in-review` and nothing lands without its gates; the dispatcher pauses at a usage limit and resumes after the window resets, and the spine trigger (section 9: over 20 items or oldest over 48 hours) cuts writers to three |
+| Evaluator capacity or a usage limit stalls the work | Issues stay open and nothing lands without its gates; a usage limit ends a session, the owner resumes it and no check is skipped, and the spine trigger (section 9: over 20 items or oldest over 48 hours) cuts writers to three |
 | "Guardrails ADR" is a weak mark | 36 section 1: the recorded search states its strength; the name carries no house mark, so the D-03 transfer is not blocked; registration waits for funding (36 L-02) |
 | Counsel finds agent-written code unprotectable or the inbound terms weak (36 L-11, L-12) | Adjust `AI_POLICY.md` and `CONTRIBUTING.md` wording before the first public release; licence and gates are unaffected |
 | No outside contributors arrive | Trigger (b) still fires at 18 months; health report shows the gap; the second-harness canary and design notes keep the project forkable |
@@ -785,13 +788,13 @@ Outsiders extend the project without touching the core through: content pull req
 | Spike: outside agent kit run (l09 S2) | An outside engineer with their own model access and a second harness completes one medium item from the public repository alone; pass: merged within one day, no steward account needed |
 | Spike: foundation readiness (l09 S3) | Section 10 step 6 |
 
-Answered by the owner: the legal entity is Loonaro, the budget is zero with the agent team on the owner's Claude subscription, the owner's buddy is the second person (second maintainer and successor), the product is Guardrails ADR (spine question 4; owner instruction 25), and no step of building, reviewing, landing or releasing needs a person (owner instruction 7). Open questions for the owner: spine questions 5 (foundation preference and the transfer trigger), 6 (the server-licence review), 7 (a licence for the owner's own skills so the open agent kit can carry them; until answered they stay private and optional, outside the harness-neutral kit) and 8 (whether Loonaro pays Apple's annual Developer Program fee, which decides whether project macOS releases are also platform-signed and notarised).
+Answered by the owner: the legal entity is Loonaro, the budget is zero with the agent team on the owner's Claude subscription, the owner's buddy is the second person (second maintainer and successor), the product is Guardrails ADR (spine question 4; owner instruction 25), and no step of building, reviewing, landing or releasing needs a person (owner instruction 7). Open questions for the owner: spine questions 5 (foundation preference and the transfer trigger), 6 (the server-licence review), 7 (a licence for the owner's own skills so the open agent kit can carry them; until answered they stay private and optional, outside the open kit) and 8 (whether Loonaro pays Apple's annual Developer Program fee, which decides whether project macOS releases are also platform-signed and notarised).
 
 ## Deviations from the spine and objections
 
 1. **Open.** **D-03 trigger (b) assumes a foundation will accept on our date.** No foundation's acceptance is in our control (CNCF incubation alone takes 5 to 15 months). The body follows D-03 and adds a fallback in the covenant: if no listed foundation has accepted by the trigger date, the assets move within 90 days to a neutral non-profit holding body whose charter embeds the covenant, chosen by the steering group with counsel (36), and are offered to a foundation later. This adds to D-03 rather than changing it.
 2. **Superseded by owner instruction 7.** Content lands on evaluator passes with evidence, and community content needs them from two evaluators on different models (section 4; 13 section 17). Spine v4 D-61 and R-58 required human approvals: two (the owner and the buddy, or any two maintainers) for community content and one plus evaluator evidence for first-party content. Spine version 5 makes the change in D-61 (Deviations item 3). Original text: **D-61 "until two humans exist".** The body read it as 13 did: the two approvals could be the owner plus a contracted external detection reviewer.
-3. **Settled by owner instruction 7 and spine version 5.** Batch signing, owner approval of high-tier and trust-core changes and the proposed trust-core stand-in RFC are gone: no person approves a landing, the merge queue lands on gates and evaluators (section 2), and the buddy's role is succession (section 13 item 13). This also removes the objection that D-61 and D-63 could not survive the owner's absence or the D-03 transfer. Spine version 5 removes the owner and the buddy from these duties in D-61 and D-63, and 02's SD-05 now names the evaluator route.
+3. **Settled by owner instruction 7 and spine version 5.** Batch signing, owner approval of high-tier and trust-core changes and the proposed trust-core stand-in RFC are gone: no person approves a landing, a change lands on gates and evaluators (section 2), and the buddy's role is succession (section 13 item 13). This also removes the objection that D-61 and D-63 could not survive the owner's absence or the D-03 transfer. Spine version 5 removes the owner and the buddy from these duties in D-61 and D-63, and 02's SD-05 now names the evaluator route.
 4. **Open.** **D-02's server-licence review against a covenant published earlier.** The covenant is published by an early work item in a repository public from its first push (D-03), but D-02 allows one server-licence review before the first public release. The body makes the covenant name that review as pending and final, and limits bad-faith item 1 to relicensing after the first public release, so the two do not conflict.
 
 ## Sources

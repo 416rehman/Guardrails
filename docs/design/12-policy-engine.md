@@ -512,7 +512,7 @@ Cedar's evaluator has a Lean model upstream; we do not re-model it. We pin the c
 | Builder round-trip | Parser and formatter | proptest, 100% required |
 | Native denials are a subset of Cedar always-denies | Enforced set with free grants and labels | Enumeration per target and agent version |
 
-Normalisers have their own oracles under D-10 (real shells, kernel path resolution, each agent's parser) and feed this engine's raw-input tests. Short runs gate pull requests through `verify`; long runs are nightly on free hosted CI runners; the corpus is in the repository; every fix carries the three-arm proof.
+Normalisers have their own oracles under D-10 (real shells, kernel path resolution, each agent's parser) and feed this engine's raw-input tests. Short runs gate pull requests in CI; long runs are nightly on free hosted CI runners; the corpus is in the repository; every fix carries the three-arm proof.
 
 ## Interfaces and contracts
 

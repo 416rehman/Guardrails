@@ -379,7 +379,7 @@ Erasure is 20's (D-57); integration secrets are destroyed with the organisation'
 
 **Stability classes** (D-60) are per capability in the manifest: experimental, beta, stable, plus deprecated. Nothing is stable before an external embed pilot completes (03).
 
-**What "supported" means.** Tier 1: first-party squad owner; fixtures and the fault set pass on every supported engine; nightly sandbox lane or a cassette younger than 90 days; documented data flow, scopes and failure mode; release-blocking. Tier 2: a named maintainer (a community member, or a first-party squad for integrations that are not release-blocking; deviation 3), the same fixture gate, may lag a release. Tier 3: experimental, off by default, shown as such on every screen. An entry leaves Tier 3 only with `vendor_api.verified: true`, which needs a verified brief or recorded sandbox cassettes (SP25-2). A community integration leaves Tier 3 only after two independent evaluators on different models pass it (`eval-security` and one more on the other model) and the merge queue lands the change (D-61 as owner instruction 7 amends it). `vendor_api.sunset` drives a gardener job that opens a work item 180 days before a vendor retires an API (the SecOps Ingestion API, 2027-07-20, is the first).
+**What "supported" means.** Tier 1: first-party squad owner; fixtures and the fault set pass on every supported engine; nightly sandbox lane or a cassette younger than 90 days; documented data flow, scopes and failure mode; release-blocking. Tier 2: a named maintainer (a community member, or a first-party squad for integrations that are not release-blocking; deviation 3), the same fixture gate, may lag a release. Tier 3: experimental, off by default, shown as such on every screen. An entry leaves Tier 3 only with `vendor_api.verified: true`, which needs a verified brief or recorded sandbox cassettes (SP25-2). A community integration leaves Tier 3 only after two independent evaluators on different models pass it (`eval-security` and one more on the other model) and the change is squash-merged once CI is green (D-61 as owner instruction 7 amends it). `vendor_api.sunset` drives a gardener job that opens a work item 180 days before a vendor retires an API (the SecOps Ingestion API, 2027-07-20, is the first).
 
 ## Interfaces and contracts
 
@@ -423,7 +423,7 @@ An outside contributor adds an integration without touching the core:
 3. `grdr integration record` captures cassettes against a vendor sandbox; the scrubber runs before anything is written.
 4. Write the field and state maps; reuse a 04 mapping or propose a new mapping file there.
 5. `grdr integration test` runs fixtures, the fault set, the SSRF suite and the verifier rules on every supported engine.
-6. Open the pull request; the merge queue lands it at Tier 3, off by default, once verify and the evaluators its review lane requires pass (D-61 as owner instructions 7 and 8 amend it).
+6. Open the pull request; it lands at Tier 3, off by default, once CI is green and the evaluators its tier calls for pass (D-61 as owner instructions 7 and 8 amend it).
 7. Promotion to Tier 2 needs a named maintainer, 30 days without regression and documentation; Tier 1 needs a squad owner and the section 15 gate.
 
 Logic a manifest cannot express goes to a WebAssembly component; a missing primitive is an RFC. Contributions are Apache-2.0; AGPL code (Tracecat), Elastic License 2.0 rules and DRL-licensed Sigma rules are never copied into the repositories.

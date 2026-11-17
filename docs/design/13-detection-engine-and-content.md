@@ -307,7 +307,7 @@ Essentials' `elevate` rule (Ask from agent lineage in the protected profile, Wat
 | `agents/<agent>/` | Adapter manifests with config map and housekeeping profiles |
 | `mappings/` | Pinned ATLAS, ASI, SAF-MCP and ATT&CK releases, plus migration tables |
 | `corpora/{positive,negative,goodlog}/`, `l0/` | Inert fixtures, public benign corpus, L0 sources |
-| `conformance/`, `schema/`, `.agents/skills/`, `CODEOWNERS` | Engine vectors, schemas, contributor skills |
+| `conformance/`, `schema/`, `.claude/skills/`, `CODEOWNERS` | Engine vectors, schemas, contributor skills |
 
 Packs are selectors, never copies (g06): `grdr.essentials` (policy), `grdr.det.core`, `grdr.det.experimental`, `grdr.det.tripwires`, `grdr.analysers`, `grdr.config-map`, `grdr.l0`.
 
@@ -336,7 +336,7 @@ For organisation-authored rules, `grdr content lint` and `test` run these checks
 
 A bot proposes promotions from this evidence, never from age (Sigma's only promotion rule is 300 days unchanged, with its automation disabled; g06 verification). Rules below 50% precision over 20 verdicts are demoted automatically. Essentials admission is 12's gate (D-53).
 
-**Benign corpus ("goodlog").** Recorded sessions from our development fleet, which runs under the product (D-47): D-64's tier B machines and the free hosted CI runners, since there is no money for lab hardware. Targets: 2,000 sessions (Claude Code and Codex, Linux and macOS), which Essentials admission and the `test` gate require (E5.2); 10,000 across four agents and three systems for the whole catalogue. SWE-chat v2 (17,968 sessions, ODC-BY; brief 39, `c8` S1) is a second set. Samples are redacted on the device and approved by `eval-acceptance` and a second evaluator on the other model, with their evidence (D-61, R-58), and can only make tests fail. `known-fps.yaml` lists reviewed exceptions; a held-out slice stays private until rotation (P11).
+**Benign corpus ("goodlog").** Recorded sessions from our development fleet, the machines that run the product in front of the agents once a signed release exists (`team/01` section 9): D-64's tier B machines and the free hosted CI runners, since there is no money for lab hardware. Targets: 2,000 sessions (Claude Code and Codex, Linux and macOS), which Essentials admission and the `test` gate require (E5.2); 10,000 across four agents and three systems for the whole catalogue. SWE-chat v2 (17,968 sessions, ODC-BY; brief 39, `c8` S1) is a second set. Samples are redacted on the device and approved by `eval-acceptance` and a second evaluator on the other model, with their evidence (D-61, R-58), and can only make tests fail. `known-fps.yaml` lists reviewed exceptions; a held-out slice stays private until rotation (P11).
 
 **Shadow and rings.** Shadow means experimental status, or a pack in Watch. Rings, bake times (detection content: 2, 4 and 12 hours) and the D-37 gates are 22's (section 7). This document adds three detection-channel gates to `rollout-gates.toml`: a rule's finding rate above five times its ring baseline; any load error; `detect-lag` on more than 1% of devices. An analyser vocabulary ships on the policy channel and is held by 22's deny-rate and prompt-rate gates. The rapid lane carries indicators and verdicts only, never changes a ceiling or status, and still bakes (D-37). Rollback is a new signed release.
 
@@ -366,7 +366,7 @@ Standalone keeps tunables and suppressions in the device and user layers; organi
 ### 15. Precision and recall reporting
 
 Each detection pack release ships `content-report.json` inside the signed pack, so the rule pages (27) render from local data in every shape, air-gapped included, and the same file feeds the public scorecard (spine D-45; the harness document is pending), per rule:
-- recall on the public `verify` scenarios by family, and on the held-out set once that set is published two releases later (D-45);
+- recall on the public scenarios that CI runs, by family, and on the held-out set once that set is published two releases later (D-45);
 - benign hits per 1,000 sessions;
 - firing rate in rings 0 and 1;
 - detection latency;
@@ -499,7 +499,7 @@ Packs of detections, session rules, vocabularies, YARA-X rules and tripwires (se
 | SP13-1 Sigma fit | Can `rsigma-eval` run without JSON? One author wrote about 2,100 of its 2,400 commits, and its sibling crates had five 2026 advisories (20, 11) | Write all 46 rows. Pass: 80% expressible, a fork patch under 500 lines, and section 7's device target met at 300 rules. Otherwise our own matcher over `rsigma-parser` |
 | S-14, S-07 (spine) | Benign opaque rate; row 12 base rate | Under 2% opaque, or row 13 and `destructive.opaque-command` stay in Watch; 07 owns S-07 |
 | SP13-3 L0 backends | Do pySigma backends exist for LogScale and XQL, under which licences, and which targets have a local engine for `executed` runs? | Convert `grdr.l0`. Pass: 80% of rules for KQL and SPL with fixtures executed |
-| SP13-4 Corpus cost | Evaluator review cost per corpus session, in turns and share of the usage window (the unit `garden-cost` measures) | Measured over 100 sessions; the corpus routine stays inside its `usage_cap` in `.agents/kit/usage.toml` |
+| SP13-4 Corpus cost | Evaluator review cost per corpus session, in turns and share of the usage window | Measured over 100 sessions; each corpus run stays inside the usage cap its issue states |
 | SP13-5 Batched retro | Does one scan per (cell, table, day) carry a large rule change (section 7, P15)? | A 46-rule change over 24 hours of a simulated 50,000-endpoint cell at 100,000 events: each file read once; under 2 core-hours (estimate); findings equal to live evaluation |
 | `PathFacts` latency | Cold-cache symlink resolution inside hook deadlines | Measured inside S-15 |
 

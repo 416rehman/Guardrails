@@ -270,7 +270,7 @@ The oracle for each important property:
 | Containment composes | Each Tier 1 agent's own sandbox inside ours (S-11); a failure fixes that agent to `delegate`, which falls back to `wrap-tools` where its own sandbox cannot run on the host (D-21) |
 | CI attribution | A malicious-package fixture in each CI; the event must carry the OIDC identity and the package+version (§11) |
 
-The held-out suite (D-45) gates the kernel-enforcement release; `verify` runs the short matrix on every pull request, the full matrix nightly.
+The held-out suite (D-45) gates the kernel-enforcement release; CI runs the short matrix on every pull request, the full matrix nightly.
 
 ## Work breakdown
 

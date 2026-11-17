@@ -9,7 +9,7 @@ This document fixes the names, the business model, and the legal work that must 
 Key choices:
 
 1. **One brand manifest, three classes of name.** Wire and ABI identifiers (`grdr.*`, `Grdr`, `grdr_`, `GRDR-`) are fixed once D-66's search is recorded, before the first release, and never rebranded. OS identities change only in a rebuilt build. Display strings change through a Provider co-brand profile at runtime. ARCH-009 enforces it.
-2. **The product is Guardrails ADR (agent detection and response)**, the owner's answer to D-66's question 4 (owner instruction 25); Loonaro stays the legal entity that publishes it. A recorded, scripted search still runs before the first release, as a work item, not a condition of the repository being public (owner instruction 28): `xtask name-check` over eleven package and organisation namespaces and a knockout trademark search, both recorded. A formal clearance opinion is outside the zero budget and is taken only when free legal help provides one.
+2. **The product is Guardrails ADR (agent detection and response)**, the owner's answer to D-66's question 4 (owner instruction 25); Loonaro stays the legal entity that publishes it. A recorded, scripted search still runs before the first release, as a work item, not a condition of the repository being public (owner instruction 28): the name check (LBC-1) over eleven package and organisation namespaces and a knockout trademark search, both recorded. A formal clearance opinion is outside the zero budget and is taken only when free legal help provides one.
 3. **The billing unit is the active endpoint-month.** It is device-level, fits P8, and matches the usage ledger (D-68) and MSP practice. It compares with the market's per-user anchors only if developers average about one persistent endpoint each; that is an assumption the conversations in section 14 test.
 4. **Two hosted plans are shown by default: Free and Team.** Enterprise, Provider wholesale, self-hosted support, live intelligence and OEM sit behind "View all plans". Plans differ only in quotas, retention, support and contract terms. A lint rejects any feature flag in the plan catalogue (P11).
 5. **Proposed prices sit below the public anchors**: Team USD 12 per active endpoint-month billed annually (USD 15 monthly), Provider wholesale USD 6. Team carries a minimum monthly charge that covers support cost, set together with the prices (R-46, 32); Provider wholesale has no minimum. All prices are proposals until spike S-01 and the willingness-to-pay conversations report.
@@ -64,7 +64,7 @@ Key choices:
 
 **Process.**
 
-1. `xtask name-check <name>...` queries each registry's public API and records query, response code and timestamp in `brand/clearance/<date>.json`. It is never re-run over an old record; reruns append.
+1. The name check, given one or more names, queries each registry's public API and records query, response code and timestamp in `brand/clearance/<date>.json`. It is never re-run over an old record; reruns append.
 2. A knockout trademark search on the four databases is recorded in the same file, with links. An agent does this; it is not legal clearance.
 3. **[Counsel] L-01**: a clearance opinion on "Guardrails ADR" in classes 9 and 42 (add 41 if training is sold). It is outside the zero budget, is taken when free legal help provides one, and gates nothing.
 4. Reserving the npm scope, PyPI organisation and Docker Hub organisation needs an account in Loonaro's name, which agents never create (owner instruction 23); each is an external precondition of the first publication to that registry, and nothing else waits on it. The repository stays under the owner's GitHub account with no organisation (owner instruction 5). Placeholder packages are not published: crates.io and PyPI discourage squatting. Real packages follow when the first public crate exists.
@@ -82,7 +82,7 @@ Key choices:
 
 ### 2. The brand manifest
 
-`brand/brand.toml` is the only file that contains a user-visible name (ARCH-009). `cargo xtask dist` reads it through the distribution manifest `dist.toml` (03). The schema is in the seed; the co-brand runtime requires the provider tier (D-35).
+`brand/brand.toml` is the only file that contains a user-visible name (ARCH-009). The distribution build reads it through the distribution manifest `dist.toml` (03). The schema is in the seed; the co-brand runtime requires the provider tier (D-35).
 
 | Class | Examples | Who may change it | When |
 |---|---|---|---|
@@ -93,7 +93,7 @@ Key choices:
 Rules:
 
 - A Class B GUID is generated once per brand and never reused.
-- The manifest also holds the project domain and the values derived from it: the docs, hosted-service and update hosts, the mail sending domain, and the security and conduct addresses (owner instruction 25). Loonaro's manifest sets the domain to `guardrailshq.com`; until its DNS exists, the docs and update hosts are GitHub-hosted addresses under the repository owner's account (GitHub Pages and GitHub Releases), so nothing waits on DNS. The DNS records, mail forwarding and SPF, DKIM and DMARC need the registrar or DNS host, which the kit does not reach; the setup step prints the records to add.
+- The manifest also holds the project domain and the values derived from it: the docs, hosted-service and update hosts, the mail sending domain, and the security and conduct addresses (owner instruction 25). Loonaro's manifest sets the domain to `guardrailshq.com`; until its DNS exists, the docs and update hosts are GitHub-hosted addresses under the repository owner's account (GitHub Pages and GitHub Releases), so nothing waits on DNS. The DNS records, mail forwarding and SPF, DKIM and DMARC need the registrar or DNS host, which no agent reaches; the setup step prints the records to add.
 - Class C links are display-only. Update, intelligence and enrolment endpoints are configuration (22): `dist.toml` writes the defaults from the manifest's hosts into the default configuration that packages install, no program compiles one in, and a co-brand profile cannot change them, so `grdr egress` never changes with a runtime rebrand; `network.mode = "isolated"` drops them all (24 section 3).
 - A self-hosted deployment sets its own domain, hosts and addresses in boot configuration and runtime settings and never contacts or depends on Loonaro's domain; a white-label or partner build swaps the whole manifest (D-41 L6; owner instruction 26). Compiled code holds no domain, host, URL, port, address, product or company name; check S7 blocks one.
 - The disclosure surface (D-51) always shows the real software, version and signing publisher, even under co-brand: "Protected by Acme. Software: Guardrails ADR 1.4, signed by Loonaro."
@@ -181,7 +181,7 @@ Templates live in `legal/terms/` as versioned Markdown. Each change produces a d
 
 ### 6. Licence and notice compliance
 
-`supply-chain/licences.toml` is enforced by `cargo-deny` for Rust and an equivalent checker for the web console and SDKs, and gated in `verify`. Notices are in every release artefact.
+`supply-chain/licences.toml` is enforced by `cargo-deny` for Rust and an equivalent checker for the web console and SDKs, and gated in CI. Notices are in every release artefact.
 
 | Closure | Allowed | Denied |
 |---|---|---|
@@ -196,7 +196,7 @@ Changing the allow-list is a protected change (owner instruction 7) through the 
 
 Notices:
 
-- `cargo xtask dist` emits `THIRD-PARTY-NOTICES` per artefact from the SBOM (24) and the Apache-2.0 `NOTICE` chain (section 4(d)), and one for the air-gap bundle beside its CycloneDX SBOM, listing every component, its licence and its source.
+- The distribution build emits `THIRD-PARTY-NOTICES` per artefact from the SBOM (24) and the Apache-2.0 `NOTICE` chain (section 4(d)), and one for the air-gap bundle beside its CycloneDX SBOM, listing every component, its licence and its source.
 - `grdr notices show` prints it. The desktop app and console show it under Settings, About, "Open-source notices".
 - A test fails if any SBOM component lacks a notice entry.
 
@@ -240,7 +240,7 @@ Questions for counsel, **[Counsel] L-11** to **L-15**:
 |---|---|---|---|
 | L-11 | Which parts of agent-written code are protected by copyright, in the US and EU, given the owner's instructions and the specifications agents write from them? | Enforceability of Apache-2.0 conditions; what we warrant to OEMs | The issue records the specification a change implements and the pull request's metadata block records the harness and model that wrote it (owner instructions 5 and 27) |
 | L-12 | With no DCO or sign-off (owner instruction 7), do Apache-2.0 section 5 and the contribution terms in `CONTRIBUTING.md` give the project a sound inbound licence for outside contributions, and what record should each pull request keep? | The whole inbound chain | `CONTRIBUTING.md` states that a contribution is submitted under Apache-2.0 section 5; the pull request records its author and its metadata block |
-| L-13 | Do Anthropic's terms for the owner's Claude subscription assign output to us and give indemnities; do they permit headless Claude Code sessions run by the local dispatcher and scheduled routines under the owner's account; and do their data terms give zero retention? The answer is recorded for embargoed fixes and support bundles and gates neither (owner instruction 7) | Ownership, third-party claims, the agent team's runs and the embargo record | `legal/model-terms.yaml` lists the plan, date read and clause for each harness the fleet uses |
+| L-13 | Do Anthropic's terms for the owner's Claude subscription assign output to us and give indemnities; do they permit Claude Code sessions with subagents, any headless runs and scheduled routines under the owner's account; and do their data terms give zero retention? The answer is recorded for embargoed fixes and support bundles and gates neither (owner instruction 7) | Ownership, third-party claims, the agent team's runs and the embargo record | `legal/model-terms.yaml` lists the plan, date read and clause for each agent tool the team uses |
 | L-14 | Residual risk of verbatim reproduction of copyleft code | Licence contamination of the embedded closure | A snippet-match scan of each merged diff against a licence-indexed corpus; any copyleft match blocks the merge; do-not-read list (D-02) |
 | L-15 | Patent exposure of agent-written code, and whether to do freedom-to-operate searches | OEM indemnity scope | No searches before counsel advises; Apache-2.0 patent grant from contributors |
 
@@ -388,7 +388,7 @@ Each step can happen once its prerequisites hold; none is scheduled.
 | `SanctionsScreen` port | `screen(org_name, country, ip_country) -> {clear, review, deny, list_version}` | Hosted sign-up and payment |
 | `legal/subprocessors.yaml`, `legal/terms/` | Versioned data and documents; generate public pages and change feeds | 34 (publication), customers |
 | `legal/counsel-register.yaml` | `{id, question, blocks, status, opinion_ref}`, where `blocks` lists work items and offers | Planner: an open item blocks the work items and offers it lists |
-| `supply-chain/licences.toml`, `THIRD-PARTY-NOTICES` | Allow and deny lists per closure; per-artefact notices | 24 (SBOM), `verify` |
+| `supply-chain/licences.toml`, `THIRD-PARTY-NOTICES` | Allow and deny lists per closure; per-artefact notices | 24 (SBOM), CI |
 
 ## Behaviour by deployment shape
 
@@ -424,7 +424,7 @@ Each step can happen once its prerequisites hold; none is scheduled.
 | Rename is mechanical | Build with a test manifest (`project_name = "Acme Sentinel"`, new reverse-DNS) on three operating systems. Every Class B and C name changes, Class A identifiers are unchanged, the coexistence pack regenerates (11), and the 04-4 test passes; a test manifest with another domain changes every docs link, address and packaged default, and no binary contains the old domain, a host or a product name (check S7) |
 | Co-brand cannot hide the real software | UI test: with a co-brand profile, the disclosure surface and About still show product, version and signer |
 | No withheld feature | `plans-lint` rejects feature keys; a differential test runs the same scenario suite against Free and Team configurations with identical verdicts |
-| Licence compliance | `cargo-deny` and the npm checker in `verify`; the embedded closure check; every SBOM component has a notice entry |
+| Licence compliance | `cargo-deny` and the npm checker in CI; the embedded closure check; every SBOM component has a notice entry |
 | No copyleft regurgitation | Snippet-match scan per merged diff; a seeded GPL fragment in a test branch is caught |
 | Usage statements are correct | Statement totals equal a recount from the raw ledger; a tampered statement fails signature verification |
 | Pricing and plan surface constraints | Component tests: two plan cards visible by default and the toggle reveals the rest; the primary call to action requires no account; the join form, calculator and enquiry render with every field except contact address pre-filled; the setup checklist never renders at 0%; no emoji code point in any plan string; every padding and margin value is a spacing token |
@@ -436,7 +436,7 @@ Each step can happen once its prerequisites hold; none is scheduled.
 
 **Epic LBC-A: names and brand**
 
-- LBC-1 `xtask name-check` over the eleven namespaces with append-only records. *Accept:* the run for `grdr` reproduces the spine's 2026-11-10 result for the six registries the spine checked; network failures are recorded as `unknown`, never `free`.
+- LBC-1 The name check over the eleven namespaces with append-only records. *Accept:* the run for `grdr` reproduces the spine's 2026-11-10 result for the six registries the spine checked; network failures are recorded as `unknown`, never `free`.
 - LBC-2 Knockout trademark search and namespace record for "Guardrails ADR" and `grdr`; counsel's clearance (L-01) when free legal help provides it. *Accept:* the search record is filed in `brand/clearance/`; D-66's question 4 is marked answered in the spine.
 - LBC-3 `brand.toml` schema and loader; Class A, B and C enforcement; Loonaro's manifest with the product name, short name, domain, hosts and addresses (owner instruction 25). *Accept:* the rename oracle passes.
 - LBC-4 `TRADEMARKS.md` (L-03) and escrowed springing assignment (L-06). *Accept:* both published or filed before the first release.
@@ -444,9 +444,9 @@ Each step can happen once its prerequisites hold; none is scheduled.
 
 **Epic LBC-B: licence compliance**
 
-- LBC-6 `licences.toml` and checks in `verify`. *Accept:* adding a GPL crate to the embedded closure fails `verify`.
+- LBC-6 `licences.toml` and checks in CI. *Accept:* adding a GPL crate to the embedded closure fails CI.
 - LBC-7 Per-artefact `THIRD-PARTY-NOTICES`, `grdr notices show`, the About screen entry, and the air-gap bundle's notices with `sources/` for every copyleft component. *Accept:* notice completeness test is green for every release artefact and the air-gap bundle.
-- LBC-8 Snippet-match scan in the merge queue (L-14). *Accept:* the seeded-fragment test is caught.
+- LBC-8 Snippet-match scan in CI on every pull request (L-14). *Accept:* the seeded-fragment test is caught.
 - LBC-9 Astryx, the icon library and Rune: verify their licences before adoption. *Accept:* entries in `licences.toml` with source links.
 
 **Epic LBC-C: entity and accounts**
@@ -454,7 +454,7 @@ Each step can happen once its prerequisites hold; none is scheduled.
 - LBC-10 Loonaro's registration and D-U-N-S number; acceptance into a free open-source signing programme for Windows user-mode binaries; Apple's Developer Program if the owner decides to pay its fee (spine question 8); EU representative decision. *Accept:* signed Windows test binaries and signed Linux packages; signed and notarised macOS test binaries if the Program is joined, otherwise the macOS tier 1 build, Sigstore-signed and not platform-signed, is recorded as such in the release notes and the ceiling matrix.
 - LBC-11 `legal/counsel-register.yaml` seeded with L-01 to L-23 and wired to the planner. *Accept:* the gate oracle refuses to close a test work item listed in an open entry's `blocks`.
 - LBC-27 `docs/legal/export.md`, counsel's export opinion (L-16) and the efficacy-harness review (L-18). *Accept:* both register items closed before the harness is published; the export page lists every algorithm the SBOM's crypto crates provide.
-- LBC-28 `legal/model-terms.yaml` for every harness and model plan the fleet uses: the owner's Claude subscription, the local dispatcher's headless sessions, any hosted agent runs and scheduled routines (L-13). *Accept:* a CI check fails when the fleet configuration names a provider or plan with no entry, or an entry older than 180 days.
+- LBC-28 `legal/model-terms.yaml` for every agent tool and model plan the team uses: the owner's Claude subscription, its Claude Code sessions, any hosted agent runs and scheduled routines (L-13). *Accept:* a CI check fails when the agent configuration in `.claude/` names a provider or plan with no entry, or an entry older than 180 days.
 
 **Epic LBC-D: commercial model**
 

@@ -396,7 +396,7 @@ Head-to-head numbers are published only for Apache-2.0 tools, with configuration
 
 **Epic CM-A: map as data**
 
-- CM-1 Schemas for capabilities, claims and Guardrails records. *Accept:* an invalid status or missing `as_of` fails `verify`.
+- CM-1 Schemas for capabilities, claims and Guardrails records. *Accept:* an invalid status or missing `as_of` fails CI.
 - CM-2 Seed files from this document. *Accept:* the generated matrix equals section 4 cell for cell. *Requires:* CM-1.
 - CM-3 Generator and lints (staleness, negative overclaim, `PLAN.md` binding). *Accept:* removing a `PLAN.md` row fails the build. *Requires:* CM-1.
 
@@ -411,7 +411,7 @@ Head-to-head numbers are published only for Apache-2.0 tools, with configuration
 
 **Epic CM-D: parity gates**
 
-- CM-9 Bind T1 to T17 to scenarios and the RFP response. *Accept:* `verify` fails when a T item has no scenario id; the response marks each item met, partly met or unmet with its prerequisites.
+- CM-9 Bind T1 to T17 to scenarios and the RFP response. *Accept:* CI fails when a T item has no scenario id; the response marks each item met, partly met or unmet with its prerequisites.
 - CM-10 Analyst mapping page: Gartner guardian-agent areas, Forrester agentic control plane, Latio categories, KuppingerCole AI-VOP and ATDR. *Accept:* every analyst category maps to a capability id or is listed as not covered; published with 34.
 
 **Epic CM-E: upkeep**

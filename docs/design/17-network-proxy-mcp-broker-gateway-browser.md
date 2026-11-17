@@ -239,7 +239,7 @@ Adapters evaluate only stateless policies (D-40), never return policy text (D-38
 
 The extension requires the engine in WebAssembly. A managed fleet needs no store; store listings serve unmanaged installs only (spine section 7).
 
-**Building it.** The extension is a pnpm workspace like every JavaScript and TypeScript workspace of the project. Work on it loads, in order, `ui-architect`, `frontend-design` (for new screens) and `modern-web-guidance` with its `chrome-extensions` pack, as `.agents/kit/path-skills.toml` maps them; where the guidance and this document differ, this document, 27's stack and D-44 win, and built-in browser AI APIs are used only where a spec asks for them (P2, P8).
+**Building it.** The extension is a pnpm workspace like every JavaScript and TypeScript workspace of the project. Work on it loads, in order, `ui-architect`, `frontend-design` (for new screens) and `modern-web-guidance` with its `chrome-extensions` pack, as `AGENTS.md` names the skills for each kind of path; where the guidance and this document differ, this document, 27's stack and D-44 win, and built-in browser AI APIs are used only where a spec asks for them (P2, P8).
 
 **Self-hosted packages.** Each release builds them, lists them as `binaries` targets under `project/targets/browser/` and carries them in the air-gap bundle, so the update repository, any mirror or `content` serves them:
 - Chrome, Edge and Brave: a CRX3 signed with the project's extension key in the release environment, with its update manifest. The key fixes the id that the native-messaging allow-list and the coexistence pack name.

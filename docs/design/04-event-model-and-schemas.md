@@ -484,13 +484,13 @@ Rules 1 to 8 are brief 23's; rule 9 is ours.
 
 | Check | Tool | Gate |
 |---|---|---|
-| Lint and naming | `buf lint`, `grdr-schema-lint` | `verify` |
-| Wire compatibility | `buf breaking` against the last release tag (`WIRE_JSON` in alpha, `FILE` after freeze) | `verify` |
-| Every field has `data_class`; content has `content_kind`; no float in `policy_readable` | `grdr-schema-lint` | `verify` |
-| Field registry, Cedar schema, Sigma taxonomy and lake column manifest are regenerated and unchanged | Drift test | `verify` |
-| Golden vectors decode and re-encode byte-identically in every binding, with unknown fields injected | `grdr-proto` test | `verify` |
+| Lint and naming | `buf lint`, `grdr-schema-lint` | CI (`verify.yml`) |
+| Wire compatibility | `buf breaking` against the last release tag (`WIRE_JSON` in alpha, `FILE` after freeze) | CI (`verify.yml`) |
+| Every field has `data_class`; content has `content_kind`; no float in `policy_readable` | `grdr-schema-lint` | CI (`verify.yml`) |
+| Field registry, Cedar schema, Sigma taxonomy and lake column manifest are regenerated and unchanged | Drift test | CI (`verify.yml`) |
+| Golden vectors decode and re-encode byte-identically in every binding, with unknown fields injected | `grdr-proto` test | CI (`verify.yml`) |
 | Canary strings (prompt, commit message, secret, personal path) never reach upload, feed, export or review input at the default level. Inside an `EvidenceSpan` the prompt and commit-message canaries may not appear at all and the secret and personal-path canaries must be redacted | Privacy canary test (l07 spike 1) | Release |
-| Every class has exactly one lane per phase and fidelity or classification outcome, and one feed event id | `grdr-schema-lint` over the generated lane table | `verify` |
+| Every class has exactly one lane per phase and fidelity or classification outcome, and one feed event id | `grdr-schema-lint` over the generated lane table | CI (`verify.yml`) |
 | Pack reads are declared and within class ceiling | Pack validator | Content CI |
 
 Lake flattening (format owned by 20): column name is the field path joined by `_`; three physical tables per organisation, one per retention class (`decision` 13 months, `activity` 184 days, `content` 30 days), with each category of section 4 a view over them filtered by a `category` column (R-16); content columns live in the `content` table keyed by `event_id` under per-session keys (D-57). The column manifest is generated from the field registry.
@@ -814,7 +814,7 @@ Envelope fields not shown in examples 2 to 5 are as in example 1. Hex values are
 Every issue carries an acceptance test. A Requires note marks the few places where ordering matters.
 
 **E1. Schema repository and tooling**
-- 04-1 Create `proto/grdr/**`, `buf.yaml`, lint and breaking configuration. Accept: `verify` fails on a renumbered field and on a reused enum value.
+- 04-1 Create `proto/grdr/**`, `buf.yaml`, lint and breaking configuration. Accept: CI fails on a renumbered field and on a reused enum value.
 - 04-2 `grdr-schema-lint`, the generated field registry and the generated lane table. Accept: a field without `data_class` fails; a class with two lanes for one phase and outcome fails; registry, Cedar schema and Sigma taxonomy drift tests pass.
 - 04-3 Spike SP-1 codec and binding. Accept: byte-identical archive with unknown fields through two bindings after a 72-hour soak.
 - 04-4 Register option numbers and take package and provider names from the brand manifest (D-66). Accept: no option number in 50000 to 99999 remains; renaming the namespace in the manifest regenerates every package and feed name with no hand edit.

@@ -247,7 +247,7 @@ Everything in this section, except the penetration-test and trust-core review ro
 
 - CC6 from roles and just-in-time elevation (21);
 - CC7 from our own findings and the synthetic sensor (D-56);
-- CC8 from the merge queue, the evidence template, risk tiers, the evaluators' check runs and each pull request's metadata block (D-61, D-63; owner instructions 7 and 27), where every change names the evaluators that passed it and the model that wrote it;
+- CC8 from the squash-merged pull requests, risk tiers, CI runs and each pull request's body (D-61, D-63; owner instructions 7 and 27), where every change names the evaluators that passed it and the model that wrote it;
 - A1.2 and A1.3 from 20's restore drills.
 
 We dogfood an open-source GRC tool and do not build one.
