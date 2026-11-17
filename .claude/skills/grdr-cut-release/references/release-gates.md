@@ -5,21 +5,21 @@ engineering), team/04 sections 5 and 9 (the release audit set and its gate), D-4
 Where a figure here and its source differ, the source wins and the difference is a finding against
 this file.
 
-Every row is run on the candidate commit of SKILL.md section 3 and cited by evidence id. A row that
+Every row is run on the candidate commit of SKILL.md section 3 and cited by its command and result. A row that
 cannot run is `not run` with its reason and blocks the release.
 
-## Before the tag: the `release-candidate` workflow runs these
+## Before the tag: this skill runs these
 
 | Gate | Requirement | Evidence |
 |---|---|---|
-| Tier 1 matrix | Every Tier 1 cell of `support.toml` green (D-50) | `cargo xtask matrix-run <job> --cells tier1 --commit <sha>` (skill `grdr-matrix-run`) |
+| Tier 1 matrix | Every Tier 1 cell of `support.toml` green (D-50) | The matrix runner on the Tier 1 cells at the candidate commit (skill `grdr-matrix-run`) |
 | Conformance suites | Every conformance suite for the shipped components passes (design/24 section 10, step 7) | The conformance jobs' check runs on the candidate |
-| Release audit set | team/04 section 9's release row: M01 to M05, B02, B04, B05, B07, B08, B09, C05, D02, D04, F01, F02, F04, F05, F07, F08, G04, H02, I04, J02, K04, on the candidate, diffed against the previous release | Skill `grdr-audit`, then the runner's diff. Blocks on any severity 1 result from S1 to S5, or severity 1 or 2 from F04 or F08, in `upheld`, `triage`, `proven` or `regressed`; a result still `open` blocks until its verification finishes |
+| Release audit set | team/04 section 9's release row: M01 to M05, B02, B04, B05, B07, B08, B09, C05, D02, D04, F01, F02, F04, F05, F07, F08, G04, H02, I04, J02, K04, on the candidate, diffed against the previous release | Skill `grdr-audit`, then the diff against the previous release's results. Blocks on any severity 1 result from S1 to S5, or severity 1 or 2 from F04 or F08, in `upheld`, `triage`, `proven` or `regressed`; a result still `open` blocks until its verification finishes |
 | Harness thin slice | Thin-slice scenarios pass (Linux x64, Claude Code and one scripted bespoke agent); the held-out evaluator returns category counts | `scorecard/<version>.json`, signed with its run manifest |
 | Silent fail-open | Zero in at least 1,000 fault injections per Tier 1 cell (kill, hang, socket black-hole, disk full, corrupt bundle); Degraded visible within 60 s | Scorecard `fault_injection` track |
 | Essentials block reliability | Zero failures in 3,000 scripted attempts per Tier 1 cell; zero block-induced task failures on the benign workload (D-53) | Scorecard prevention track |
 | First value | Inventory, timeline and a deterministic block within five minutes on a clean machine, scripted and timed | Scorecard |
-| Coexistence | Zero detections from Defender, Falcon and one more incumbent on install, run and uninstall, read from the incumbent's own log or API. Falcon and the other licensed incumbent run only on a licence from a design partner or a free vendor programme; without one the cell is not run and broad release stays blocked (D-23, D-64) | Coexistence cells through `matrix-run` |
+| Coexistence | Zero detections from Defender, Falcon and one more incumbent on install, run and uninstall, read from the incumbent's own log or API. Falcon and the other licensed incumbent run only on a licence from a design partner or a free vendor programme; without one the cell is not run and broad release stays blocked (D-23, D-64) | Coexistence cells through the matrix runner |
 | Prompts | Median 3 or fewer and p95 8 or fewer per developer-day on the development fleet's replayed history | Scorecard |
 | Held-out margin | Tuning minus held-out under 5 points on every track (spine section 9) | Category counts from the held-out evaluator service only (D-45) |
 | Discovery | Precision 95% against LLM-calling non-agents; held-out recall 85% on at least 200 generated bespoke agents on Linux, Windows and macOS; the macOS cell requires the Network Extension | Scorecard discovery track |
@@ -33,7 +33,7 @@ cannot run is `not run` with its reason and blocks the release.
 | Air-gap bundle contents | The bundle and its delta carry every artefact and third-party component every profile needs, with `THIRD-PARTY-NOTICES`, the CycloneDX SBOM and `sources/` for each copyleft component; a component whose terms forbid redistribution is absent and optional (owner instruction 20) | The bundle manifest and the licence gate's report |
 | Fleet scale (P15) | The herd simulation of spike S-23 passes at 10 million devices; a fixed `retry_after_ms` or an unjittered timer fails it | Simulation job check run |
 | Compatibility matrix | Every supported sensor line against the server (N-2 to N+1), every pack against every supported engine line, the driver and eBPF interface ranges and the upgrade path's hops, generated from `support.toml` (D-71) | Matrix job check run |
-| Shipped locales | Every token of every `shipped` locale translated with a current `source_hash` and an `equivalent` or `minor` verdict; a locale that fails is demoted to `preview` for the release and the notes say so (D-69) | `cargo xtask interface check` evidence |
+| Shipped locales | Every token of every `shipped` locale translated with a current `source_hash` and an `equivalent` or `minor` verdict; a locale that fails is demoted to `preview` for the release and the notes say so (D-69) | The interface check's output (skill `grdr-interface`) |
 
 Statistical rule (team/05 section 16): a zero-tolerance target is met only by zero failures in at least
 the stated number of trials. Every cell runs at least ten repetitions and reports Wilson intervals.
@@ -42,7 +42,7 @@ Never round a rate into a pass.
 ## After the tag: the release workflow runs these
 
 You cannot produce this evidence before release-please's tag starts `.github/workflows/release.yml`.
-List each row in the hand-off's `next` as something the release workflow confirms before it signs the
+List each row in your report's `Next` as something the release workflow confirms before it signs the
 TUF targets.
 
 | Step | Requirement |

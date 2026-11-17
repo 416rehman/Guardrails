@@ -1,0 +1,55 @@
+# Which evaluators judge a change (team/02 section 10). The grdr-work-issue skill reads it to pick
+# the evaluators for an issue, and eval-tier reads it to raise a tier the path rules call for. The
+# highest matching tier wins. A tier may be raised, never lowered.
+[trust_core]
+paths_file = "security/trust-core.paths"     # design/02 owns the list
+# Owner instruction 7: a trust-core change lands only after passing evaluators on two models.
+distinct_models = 2
+evaluators = ["eval-security", "eval-adversarial"]
+
+[high]
+paths = ["proto/**", "schema/**", "spec/**", "crates/grdr-{proto,schema,model,ports,wire}/**",
+         "AGENTS.md", "**/AGENTS.md", "**/REVIEW.md", "CLAUDE.md", ".claude/**", "specs/**", "Cargo.lock"]
+triggers = ["new_dependency", "major_bump", "public_api_change", "wire_or_pack_format_change",
+            "unsafe_added", "fail_mode_change", "security_test_weakened", "essentials_or_failsafe_change",
+            "acceptance_changed_after_spec"]
+# `eval-architecture` reviews every code tier's change for hard-coded behaviour and values (owner
+# instruction 9); the low tier holds docs and additive changes behind a flag, where it has nothing
+# to judge.
+evaluators = ["eval-diff", "eval-acceptance", "eval-security", "eval-adversarial", "eval-architecture"]
+
+[medium]
+paths = ["crates/**", "programs/**", "platform/**", "web/**", "desktop/**", "deploy/**", "lab/**"]
+triggers = []
+evaluators = ["eval-diff", "eval-acceptance", "eval-security", "eval-architecture"]
+
+[low]
+paths = ["docs/**", "**/*.md"]
+triggers = ["tests_only_addition", "additive_behind_flag"]
+evaluators = ["eval-diff"]
+# Until the incident eval set (lab/reviewer-evals/, team/02 TR-06) holds 50 cases, low tier is
+# limited to docs and additive changes behind a flag (h09); everything else is at least medium.
+
+# The evaluators an issue's kind: label adds to its tier's set.
+[kinds]
+docs = ["eval-docs"]
+ui = ["eval-ux", "eval-a11y", "eval-acceptance", "eval-docs"]
+api = ["eval-api"]
+dependency = ["eval-licence"]
+gate = ["eval-architecture"]
+installer = ["eval-platform", "eval-acceptance"]
+content = ["eval-acceptance", "eval-adversarial", "eval-licence"]
+adapter = ["eval-acceptance", "eval-platform"]
+rfc = ["eval-architecture"]
+
+# The evaluators a change adds when its diff shows the trigger, as [kinds] does.
+[trigger_evaluators]
+new_dependency = ["eval-licence"]
+public_api_change = ["eval-api"]
+wire_or_pack_format_change = ["eval-api"]
+runtime_trust_core = ["eval-platform", "eval-performance"]
+
+# Paths whose change takes eval-ux and eval-a11y whatever the kind.
+[interface]
+paths = ["web/**", "site/**", "interface/**", "desktop/**", "programs/grdr/**", "programs/grdr-tray/**",
+         "programs/grdr-approve/**", "platform/*/installer/**"]

@@ -2,9 +2,8 @@
 # A change under any of them is high tier and takes the full lane, except a lockfile change
 # inside the supply-chain policy (D-63). The full lane is eval-security and eval-adversarial in
 # clean contexts, cross-model review by the model that did not write it, and two independent
-# passing evaluators on different models (owner instruction 7). Read by
-# `cargo xtask risk` through .agents/risk-tiers.toml and by `cargo xtask governance-sync` for
-# .github/CODEOWNERS.
+# passing evaluators on different models (owner instruction 7). Read through
+# .claude/risk-tiers.toml by the grdr-work-issue skill and eval-tier.
 # Module globs fix where that code lives inside its crate; moving the code means a change here.
 
 # eBPF programs
@@ -58,12 +57,9 @@ security/trust-core.paths
 security/breakers.toml
 security/scorecard.toml
 .github/**
-.agents/**
 .claude/**
 AGENTS.md
 CLAUDE.md
-xtask/**
-deploy/fleet/**
 audits/**
 governance/**
 MAINTAINERS.md

@@ -1,6 +1,6 @@
 name: Proposal
 description: Something the product or project should do.
-labels: ["kind:feature", "status:proposed"]
+labels: ["kind:feature"]
 body:
   - type: textarea
     id: problem

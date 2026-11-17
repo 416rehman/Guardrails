@@ -3,9 +3,8 @@ name: grdr-remove-code
 description: Delete code, flags or features. Use for any removal or "replace X with Y" item.
 license: Apache-2.0
 metadata:
-  version: "1"
+  version: "2"
   owner: agent-kit
-  requires: none
   closes-by: test
 ---
 
@@ -15,9 +14,8 @@ A removal is finished when the target is gone, not when it can no longer run. In
 of passing patches wrapped the target in a guard instead of deleting it. So a removal closes only with
 a survival test, a test that fails while the target remains, and a diff that deletes rather than hides.
 
-The item is issue `#<n>`, where `<n>` is `GRDR_WORK_ITEM`. Read it with `gh issue view <n> --comments`;
-its write set and tier are in `.agent/state/item-<n>.json`, which `cargo xtask kit launch` wrote (skill
-`grdr-start-item`).
+The item is issue `#<n>`, named in your prompt. Read it with `gh issue view <n> --comments`; its
+write set and tier are in its body and labels (skill `grdr-start-item`).
 
 ## 1. Name the target
 
@@ -31,14 +29,14 @@ afterwards. If the item does not say what Y is, stop with status `impossible` an
 CI files. Put each hit in one of three groups: deleted by this item, moved to Y, or outside the write
 set.
 
-- A hit on a protected path (`.agents/kit/protected-paths.toml`) goes into `protected_change_requests`.
-- A hit outside the write set is another item's work. File it as a `status:proposed` issue with the
-  `rg` output as evidence (skill `grdr-handoff`) and name that issue in `next`. Never edit it here.
-- If the removal cannot be completed without either, hand off with status `blocked`.
+- A hit on gate configuration (AGENTS.md, "Rules") becomes its own issue, named in your report.
+- A hit outside the write set is another item's work. File it as a new issue with the
+  `rg` output as evidence (skill `grdr-handoff`) and name that issue in your report's `Next`. Never edit it here.
+- If the removal cannot be completed without either, report `blocked`.
 
 ## 3. Check whether the target is a public surface
 
-Run `cargo xtask risk` on your diff once you have one; removing a public item raises the tier. A
+Compare your diff with `.claude/risk-tiers.toml` once you have one; removing a public item raises the tier. A
 target is a public surface when it is listed in `surfaces.toml`, belongs to a public crate (layers 0
 to 2), is a protobuf field or package, is part of the Cedar schema or pack format, or is a CLI command,
 configuration key or HTTP API.
@@ -46,7 +44,7 @@ configuration key or HTTP API.
 - Public crates, wire formats and the Cedar schema change only through an accepted RFC (D-61).
 - Every public surface needs a `deprecations.toml` entry whose `earliest_removal` has passed, plus its
   migration page, or CI fails the removal (design/34 section 10).
-- If either is missing, hand off `blocked` with the escalation packet of `team/01` section 6 (skill
+- If either is missing, report `blocked` with the escalation packet of `team/01` section 6 (skill
   `grdr-handoff`). Do not add the deprecation entry and remove the target in the same item.
 
 ## 4. Write the survival test first
@@ -60,9 +58,9 @@ a caller observes:
 - a replaced code path: the input that used to reach X now produces Y's output, asserted on the output;
 - a removed dependency: the crate's dependency closure no longer contains it.
 
-Prefer a behavioural test. If only a structural one can tell, record why in the hand-off `decisions`.
+Prefer a behavioural test. If only a structural one can tell, record why in your report's decisions.
 
-Run `cargo xtask prove --arm before --test <path::name>`. It must fail. If it passes, the test does not
+Run it on the code before your deletion (arm 1 of `grdr-fix-bug/references/three-arm-by-hand.md`). It must fail. If it passes, the test does not
 see the target: fix the test, never the code under it.
 
 ## 5. Delete
@@ -87,15 +85,15 @@ A removal often leaves state behind: a boolean that once chose between X and Y, 
 one value left, an `Option` that is now always set. Remove it or make the type say what remains
 (skill `grdr-structure`, rules 3 and 5). Never keep it alive with a new guard or comment.
 
-Tests that exercised only the target go with it. List each deleted test in `decisions` with the
-reason: the test-diff ratchet and the evaluator read test deletions first. Never weaken a test that
-stays. Tests on protected paths (`conformance/vectors/`, `tests/golden/`, `**/*.snap`) change only
-through `protected_change_requests`.
+Tests that exercised only the target go with it. List each deleted test in your report's decisions with
+the reason: the evaluators read test deletions first. Never weaken a test that
+stays. Tests agents may not edit (`conformance/vectors/`, `tests/golden/`, `**/*.snap`) change only
+through their own issue.
 
 ## 6. Prove and audit your own diff
 
-1. `cargo xtask prove --arm after` must pass, and `cargo xtask prove --arm revert` must fail. The
-   results land in `.agent/evidence/prove.json`.
+1. Arms 2 and 3 of `grdr-fix-bug/references/three-arm-by-hand.md`: the survival test passes with the
+   deletion and fails with the deletion reverted.
 2. Read your diff as the evaluator will and answer E04's question: did this remove what the item says,
    or wrap it in a guard, fallback or flag?
 3. `rg` every target name again. The only hits left are the survival test, the `deprecations.toml`
@@ -103,20 +101,10 @@ through `protected_change_requests`.
 
 ## 7. Finish
 
-- `cargo xtask verify --fast` (skill `grdr-verify`). The full form adds diff-scoped mutation testing,
-  which shows whether the tests that remain still bite.
+- The gates of `grdr-verify`. Where `cargo mutants` is installed, run it on the touched crates to see
+  whether the tests that remain still bite.
 - The commit subject follows the repository's Conventional Commit form and marks a removed public
   surface as breaking with `!`. release-please builds the changelog entry and the version bump from
   that subject, so write it for the person who upgrades.
-- Hand off with `grdr-handoff`. Put the survival test's runs in `evidence`, name the test in `summary`,
-  and fill the pull-request section "Survival tests (removals)".
-
-## Commands this skill names
-
-A command that has not landed yet shows as an unknown subcommand.
-
-| Command | Added by | Until it exists |
-|---|---|---|
-| `cargo xtask verify --fast` | WI-0002 (team/03 K4) | Follow `grdr-verify`, and list every gate that did not run under what was not verified |
-| `cargo xtask prove` | WI-0002 (team/03 K4, team/05 QG-10) | Run the survival test with `cargo nextest run` before and after the deletion, attach both outputs with their exit codes, and list the revert arm as not verified; CI replays it |
-| `cargo xtask risk` | WI-0007 | Compare your changed paths with `.agents/risk-tiers.toml` and `security/trust-core.paths`; if either is missing or you are unsure, take the higher tier. A model may raise a tier, never lower it |
+- Finish with `grdr-handoff`. Put the survival test's runs and exit codes in your report and name the
+  test in its summary.

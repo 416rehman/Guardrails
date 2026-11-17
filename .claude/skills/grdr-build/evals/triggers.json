@@ -1,0 +1,22 @@
+[
+  {"query": "Build the product.", "should_trigger": true},
+  {"query": "Keep building.", "should_trigger": true},
+  {"query": "Work through the issues until the plan is done.", "should_trigger": true},
+  {"query": "/loop grdr-build", "should_trigger": true},
+  {"query": "Start building Guardrails from the issues and keep going until nothing is workable.", "should_trigger": true},
+  {"query": "Carry on building the product where the last loop stopped.", "should_trigger": true},
+  {"query": "Work the open issues in build order, three at a time where they are independent.", "should_trigger": true},
+  {"query": "Run one more build iteration and tell me what landed.", "should_trigger": true},
+  {"query": "Nothing is workable; have the next area's lead break its design document into issues and keep building.", "should_trigger": true},
+  {"query": "Loop over the issues and build the endpoint first.", "should_trigger": true},
+  {"query": "Fix issue #142.", "should_trigger": false},
+  {"query": "Work issue #388 with the team.", "should_trigger": false},
+  {"query": "Review the diff on issue/212 as eval-diff.", "should_trigger": false},
+  {"query": "Write the spec for #44 so each criterion names an oracle.", "should_trigger": false},
+  {"query": "Run the gates on my branch.", "should_trigger": false},
+  {"query": "What does design/33 say about the build order?", "should_trigger": false},
+  {"query": "Cut the 0.3.0 release candidate.", "should_trigger": false},
+  {"query": "Run audit A01 on crates/grdr-core.", "should_trigger": false},
+  {"query": "Draft an RFC for the receipt ring.", "should_trigger": false},
+  {"query": "Explain how risk tiers pick evaluators.", "should_trigger": false}
+]

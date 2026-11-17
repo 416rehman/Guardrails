@@ -1,7 +1,7 @@
 [
   {"query": "Issue #60 adds grdr-export (layer 3, internal, privilege none). Create the crate.", "should_trigger": true},
   {"query": "The policy module now has a second consumer, the in-browser policy check. Split it out of grdr-core into its own crate.", "should_trigger": true},
-  {"query": "run cargo xtask new-crate grdr-redact --layer 1 --privilege none --surface internal and finish the setup around it", "should_trigger": true},
+  {"query": "create grdr-redact at layer 1, privilege none, surface internal, and finish the setup around it", "should_trigger": true},
   {"query": "Add the new layer 4 program grdr-uplink for the fleet squad's item, with its metadata and test layout.", "should_trigger": true},
   {"query": "We need a grdr-conformance tool crate for the adapter conformance suite. Scaffold it so archlint accepts it.", "should_trigger": true},
   {"query": "How do I set up [package.metadata.grdr] and the crate AGENTS.md for a new grdr-bus-log adapter crate?", "should_trigger": true},

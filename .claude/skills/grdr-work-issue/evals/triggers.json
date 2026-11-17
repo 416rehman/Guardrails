@@ -1,0 +1,22 @@
+[
+  {"query": "Fix issue #142.", "should_trigger": true},
+  {"query": "Work issue #388 with the team.", "should_trigger": true},
+  {"query": "Implement #412, the spool writer item.", "should_trigger": true},
+  {"query": "Work the next issue.", "should_trigger": true},
+  {"query": "Pick the highest-priority open issue whose blockers are closed and land it.", "should_trigger": true},
+  {"query": "Do #57 end to end: implementer, evaluators, pull request, merge.", "should_trigger": true},
+  {"query": "Land issue #90; its spec looks thin, so get the lead to finish it first.", "should_trigger": true},
+  {"query": "Work issues #201 and #205 in parallel; their write sets don't overlap.", "should_trigger": true},
+  {"query": "eval-diff failed round 2 on #142. Send the findings back to the implementer and carry on with the issue.", "should_trigger": true},
+  {"query": "Keep working the next issue until none is left.", "should_trigger": true},
+  {"query": "You are impl-rust on #142. Read the issue and start implementing.", "should_trigger": false},
+  {"query": "As eval-diff, judge the diff on issue/57.", "should_trigger": false},
+  {"query": "Write the spec and acceptance criteria for #77.", "should_trigger": false},
+  {"query": "Run the A01 audit on grdr-core.", "should_trigger": false},
+  {"query": "Run cargo clippy and the tests on my change.", "should_trigger": false},
+  {"query": "Explain what risk tier #301 should have. No changes.", "should_trigger": false},
+  {"query": "File an issue for the grdr doctor panic, don't fix it.", "should_trigger": false},
+  {"query": "Write the one-line commit subject for my change.", "should_trigger": false},
+  {"query": "Prepare the 0.7.0 release candidate evidence.", "should_trigger": false},
+  {"query": "Add a new evaluator agent definition to .claude/agents.", "should_trigger": false}
+]

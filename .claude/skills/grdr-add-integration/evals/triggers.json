@@ -4,7 +4,7 @@
   {"query": "add PagerDuty as a paging target, threat and tamper findings only", "should_trigger": true},
   {"query": "Import CrowdStrike Falcon's host inventory as an ingest dialect so discovery pass 4 can diff it.", "should_trigger": true},
   {"query": "A design partner wants our findings in Microsoft Sentinel. Build the export.", "should_trigger": true},
-  {"query": "GRDR_WORK_ITEM=915 names ServiceNow as a response target that opens an incident for each contain action.", "should_trigger": true},
+  {"query": "Issue #915 names ServiceNow as a response target that opens an incident for each contain action.", "should_trigger": true},
   {"query": "Write the manifest for a Slack notify integration and its fault-set fixtures.", "should_trigger": true},
   {"query": "the Datadog logs sink drops records on 429 instead of honouring Retry-After. fix the manifest and add a golden for it", "should_trigger": true},
   {"query": "Add an Elastic ingest dialect for their endpoint alerts index.", "should_trigger": true},

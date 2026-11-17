@@ -1,11 +1,11 @@
 ---
 name: grdr-interface
-description: Build or change anything a person or an agent reads, from the one interface system. Use after ui-architect, before writing or editing any screen, desktop view, tray menu, approval dialog, CLI human output, block or agent message, notification, email, report, docs component, extension UI, installer text or language token, and whenever a hook or gate reports an interface check UX1 to UX8.
+description: Build or change anything a person or an agent reads, from the one interface system. Use after ui-architect, before writing or editing any screen, desktop view, tray menu, approval dialog, CLI human output, block or agent message, notification, email, report, docs component, extension UI, installer text or language token, and whenever a review reports an interface check UX1 to UX8.
 license: Apache-2.0
 metadata:
-  version: "1"
+  version: "2"
   owner: interfaces
-  requires: "K15 (the interface checks in post-edit, stop-gate and gate V26), WI-0041 (the interface system foundation)"
+  requires: "WI-0041 (the interface system foundation)"
   closes-by: lint
 ---
 
@@ -17,10 +17,9 @@ One object has one name, one icon, one set of words and states, and one confirma
 
 1. `ui-architect`: what the surface must do, and the never rules.
 2. `frontend-design`, for a new screen or a new pattern only.
-3. `modern-web-guidance`, for anything under `web/`, `site/` or the browser extension: platform features, compatibility, the security topics.
-4. This skill: how it is built here.
+3. This skill: how it is built here.
 
-`.agents/kit/path-skills.toml` holds the order for each path, and the `PreToolUse` hook repeats it the first time you edit a matching file. Where the skills disagree, D-44, the D-51 disclosure floor and D-31's OS-native approvals win, then the plan's stack in `docs/design/27`, then the guidance.
+AGENTS.md lists the interface paths that take these skills. Where the skills disagree, D-44, the D-51 disclosure floor and D-31's OS-native approvals win, then the plan's stack in `docs/design/27`, then the guidance.
 
 ## Astryx first
 
@@ -31,7 +30,7 @@ Every interface element on the web is an Astryx component (owner instruction 21)
 - Imports, enforced by ARCH-101 to ARCH-104: `@astryxdesign/*` only inside `web/packages/ui`; `web/packages/kit` imports only `@grdr/ui`, `@grdr/tokens` and `@grdr/i18n`; applications import interface code only from `@grdr/kit`, `@grdr/ui`, `@grdr/i18n`, `@grdr/tokens` and `@grdr/api`; `react-aria-components` and `react-aria` only in files listed in the exception registry.
 - Large tables use Astryx Table with its virtualisation plugin. The embeddable kit for partner products (D-41, D-42) renders Astryx inside a shadow root with Astryx's stylesheet adopted there. The operator plane is web, so it uses Astryx directly through `@grdr/ui`.
 
-**The exception registry**, `web/packages/ui/exceptions.toml`, is the only route to anything else. Each entry names the need, the Astryx gap at the pinned version (component name, and its release notes or upstream issue), why composing Astryx components cannot meet it, the exit condition ("replace when Astryx ships X") and the owning squad. An entry lands only when `eval-ux` and `lead-interfaces` both agree in check runs. Specialised widgets Astryx does not ship as stable (charts on ECharts behind one `Chart` component, CodeMirror, React Flow and Sigma graphs, TanStack Virtual if spike WEB-04 shows the table plugin fails the event grids) enter the same way, are wrapped once in `@grdr/ui` and styled from the tokens. A gardener checks each Astryx release against the registry and files the migration issue when an exit condition is met. If you think you need an exception, you file it as a `status:proposed` issue with those fields; you never write one into your item.
+**The exception registry**, `web/packages/ui/exceptions.toml`, is the only route to anything else. Each entry names the need, the Astryx gap at the pinned version (component name, and its release notes or upstream issue), why composing Astryx components cannot meet it, the exit condition ("replace when Astryx ships X") and the owning squad. An entry lands only when `eval-ux` and `lead-interfaces` both agree. Specialised widgets Astryx does not ship as stable (charts on ECharts behind one `Chart` component, CodeMirror, React Flow and Sigma graphs, TanStack Virtual if spike WEB-04 shows the table plugin fails the event grids) enter the same way, are wrapped once in `@grdr/ui` and styled from the tokens. A gardener checks each Astryx release against the registry and files the migration issue when an exit condition is met. If you think you need an exception, you file it as a new issue with those fields; you never write one into your item.
 
 **Beyond the web.** The Rune desktop, the tray, the approval dialogs and email cannot render Astryx. They use Astryx's component names, anatomy, variants and states and the same tokens, through their own kits (`grdr-desktop/src/kit/`, the notification kit, the terminal kit `term`), so a dialog behaves the same everywhere.
 
@@ -45,13 +44,13 @@ Every interface element on the web is an Astryx component (owner instruction 21)
 6. **Mutations go through `useAction(Service.Method)`,** which renders the method's confirmation class (`none`, `consequence`, `typed`, `propose`, `quorum`). Never build a confirmation (UX8).
 7. **Link by route id.** Titles and icons come from `interface/routes.toml`, shortcuts from `interface/shortcuts.toml` (UX8).
 8. **Direction-neutral layout.** Logical properties only; identifiers, paths, hashes and the canonical call in a left-to-right isolate; agent-, tool- and model-written text only through `Quoted` from the untrusted envelope (UX6, SR-36).
-9. **Register a new pattern; never write a one-off.** `cargo xtask scaffold pattern <id>` writes the entry (anatomy, tokens, token ids, states, accessibility contract, renderers) and one fixture per state. The same change adds a story and a Rune golden per fixture and an implementation for every renderer the entry lists (UX7, U02, U08).
-10. **Never edit generated output** (`grdr-messages`, `@grdr/i18n`, `@grdr/tokens`, token modules). Change the source and run `cargo xtask interface gen`.
-11. **Before the hand-off** run `cargo xtask interface check` and `cargo xtask verify --fast`. Fix each finding as its message says. There is no exemption file and no inline suppression for UX1 to UX8; a false positive is fixed in the check by an agent-kit item.
+9. **Register a new pattern; never write a one-off.** Write its entry in `interface/patterns.toml` (anatomy, tokens, token ids, states, accessibility contract, renderers) and one fixture per state. The same change adds a story and a Rune golden per fixture and an implementation for every renderer the entry lists (UX7, U02, U08).
+10. **Never edit generated output** (`grdr-messages`, `@grdr/i18n`, `@grdr/tokens`, token modules). Change the source and run the generator the interface system provides (WI-0041).
+11. **Before the report** check your diff against UX1 to UX8 (`references/checks.md`) and run the gates of `grdr-verify`. No tool runs UX1 to UX8 now; `eval-ux` checks them again. There is no exemption and no inline suppression; a rule that is wrong is fixed in the rule, in its own issue.
 
 ## Language tokens (D-69)
 
-- A token is one keyed Unicode MessageFormat 2 message in `interface/strings/src/<namespace>.mf2.toml`, with `msg`, `desc` (what it means and where it shows), `max` (graphemes) and `risk` (`normal`, or `safety` for approvals, widening, block messages, privacy disclosure and legal text). `cargo xtask scaffold token <id>` writes it and its accessor; you call the accessor.
+- A token is one keyed Unicode MessageFormat 2 message in `interface/strings/src/<namespace>.mf2.toml`, with `msg`, `desc` (what it means and where it shows), `max` (graphemes) and `risk` (`normal`, or `safety` for approvals, widening, block messages, privacy disclosure and legal text). Write it in its namespace file; you call its generated accessor.
 - Three tiers: `term.*` (the spine's vocabulary from `schema/vocabulary.toml`, one approved form per locale), `common.*` (any string used on two or more surfaces) and the surface namespaces. Ids are `<namespace>.<area>.<name>` in lower snake case.
 - One sentence is one token with typed arguments. Every external variable is declared with `.input` and a function, and carries `grdr:class=<data class>` where it holds data; a `content`-class argument in `notify.*` or `email.*` fails compilation (P8).
 - The product name is `{:grdr:brand}` and a vocabulary term `{name :grdr:term}`; both resolve at compile time from `brand/brand.toml` and the vocabulary.
@@ -63,7 +62,7 @@ Every interface element on the web is an Astryx component (owner instruction 21)
 
 ## Checks and their fixes
 
-`references/checks.md` lists UX1 to UX8, the interface lint rules ARCH-101 to ARCH-106 and gates U01 to U11 with the fix each message states. The checks run in `post-edit` on files under an interface path, in `stop-gate`, and in gate V26; duplicate code is gate V27. A finding prints as `ERROR V26 UX3: ...` with the line "load the ui-architect skill, then grdr-interface".
+`references/checks.md` lists UX1 to UX8, the interface lint rules ARCH-101 to ARCH-106 and gates U01 to U11 with the fix for each. They are a review rubric: you apply them to your own diff, and `eval-ux` applies them again, until the work item that builds a tool for them lands.
 
 ## Applying
 

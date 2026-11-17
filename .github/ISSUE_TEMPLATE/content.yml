@@ -1,6 +1,6 @@
 name: Content
 description: A rule, detection, fingerprint or pack entry. Content enters in Watch.
-labels: ["kind:content", "status:proposed"]
+labels: ["kind:content"]
 body:
   - type: dropdown
     id: rule-kind

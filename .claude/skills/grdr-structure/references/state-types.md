@@ -11,7 +11,7 @@ Before touching code, list:
 3. **Transitions**: from, event, to. One row each.
 4. **Data per state**: what is known only in that state. A field that is `None` in some states belongs to the states where it is `Some`.
 5. **Exits**: for every non-terminal state, the event that leaves it on success, failure, cancel, timeout or restart. A state with no exit is a hang; add the exit before the type.
-6. **Combinations the old fields allowed that no transition produces.** These are the bugs the new type removes. Name one in the hand-off.
+6. **Combinations the old fields allowed that no transition produces.** These are the bugs the new type removes. Name one in your report.
 
 ## 2. Rust: an enum that owns its data
 

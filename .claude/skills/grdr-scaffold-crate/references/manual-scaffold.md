@@ -1,6 +1,6 @@
 # Scaffold a crate by hand
 
-Use this only while `cargo xtask new-crate` does not exist (cargo reports no `xtask` command, or `xtask` reports an unknown subcommand). It produces what the command will produce, so the result passes the same checks.
+The steps that create a crate. The result is what the architecture lint and the reviewers expect.
 
 ## 1. Create the package
 
@@ -13,7 +13,7 @@ These are the commands WI-0001 uses for the initial crates (team/06 section 13 s
 
 ## 2. Edit the package manifest
 
-`crates/<name>/Cargo.toml` is not protected (only the root `Cargo.toml` is). Add:
+`crates/<name>/Cargo.toml` is yours to write (only the root `Cargo.toml` is denied to agents). Add:
 
 ```toml
 [package.metadata.grdr]
@@ -35,9 +35,9 @@ Keep `edition`, `version` and `license` consistent with the sibling crates; read
 
 ## 4. Draft the crate `AGENTS.md`
 
-`crates/<name>/AGENTS.md` matches the protected glob `**/AGENTS.md`, so write the draft in `.agent/state/<name>.AGENTS.draft.md` and post it as a comment on the item's issue headed `Proposed crates/<name>/AGENTS.md`. Follow the template of team/06 section 5: the front block (layer, privilege, surface, squad, trust core, stability for public crates, design reference), then Purpose, Invariants (each with the test, lint or type that holds it), Allowed dependencies, How to test (command, oracle, fuzz and differential targets), Data classes, Limits, Do not. At most 60 lines.
+`crates/<name>/AGENTS.md` matches the denied glob `**/AGENTS.md`, so write the draft in `target/<name>.AGENTS.draft.md` and post it as a comment on the item's issue headed `Proposed crates/<name>/AGENTS.md`. Follow the template of team/06 section 5: the front block (layer, privilege, surface, squad, trust core, stability for public crates, design reference), then Purpose, Invariants (each with the test, lint or type that holds it), Allowed dependencies, How to test (command, oracle, fuzz and differential targets), Data classes, Limits, Do not. At most 60 lines.
 
-## 5. Check before the hand-off
+## 5. Check before the report
 
 ```sh
 cargo metadata --format-version 1 --no-deps > /dev/null    # the workspace sees the crate
@@ -45,4 +45,4 @@ cargo build -p <name>
 cargo test -p <name>
 ```
 
-Then `grdr-verify`. Record each command as an evidence entry. List every protected entry from step 5 of `SKILL.md` in `protected_change_requests`.
+Then `grdr-verify`. Put each command and its exit code in your report, with the issue for the entries of step 5 of `SKILL.md`.

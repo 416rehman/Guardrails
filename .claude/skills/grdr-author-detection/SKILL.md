@@ -3,7 +3,7 @@ name: grdr-author-detection
 description: Write a detection or session rule with tests. Use for any item that adds or tunes detection content.
 license: Apache-2.0
 metadata:
-  version: "1"
+  version: "2"
   owner: agent-kit
   requires: grdr content test (design/03 G2)
   closes-by: test
@@ -18,11 +18,10 @@ test evidence.
 
 `grdr-content` is created under the same GitHub profile as the main repository when the first
 content item starts. Until it exists only built-in rules in this repository can land; for any other
-rule hand off `blocked` and name the missing repository. Creating it is the owner's step.
+rule, report `blocked` and name the missing repository. Creating it is the owner's step.
 
-The item is issue `#<n>`, where `<n>` is `GRDR_WORK_ITEM`. Read it with `gh issue view <n> --comments`;
-its write set and tier are in `.agent/state/item-<n>.json`, which `cargo xtask kit launch` wrote (skill
-`grdr-start-item`).
+The item is issue `#<n>`, named in your prompt. Read it with `gh issue view <n> --comments`; its
+write set and tier are in its body and labels (skill `grdr-start-item`).
 
 ## Pick the kind first (D-09)
 
@@ -43,7 +42,7 @@ rule plus a policy rule: record that in `decisions` and use `grdr-author-policy`
    duty (D-02).
 2. Log source: `product: grdr`, `category` the event category, `service` the action class. Field names
    come from the log-source taxonomy (design/13 section 3), generated from the field registry. Use them
-   exactly. If the field you need is missing, never invent one: file it as a `status:proposed` issue
+   exactly. If the field you need is missing, never invent one: file it as a new issue
    against the field registry (skill `grdr-handoff`) and name that issue in `next`.
 3. Match only with `contains`, `startswith`, `endswith`, `re` (linear time), `cidr`, `exists` and
    `expand`. A correlation groups by `session.root` or `session.id` unless it declares device or
@@ -83,7 +82,7 @@ rule plus a policy rule: record that in `decisions` and use `grdr-author-policy`
    rule, never the corpus. Adding a sample to `corpora/goodlog/` or an entry to `known-fps.yaml` needs its own
    item that `eval-security` and an evaluator on the other model approve.
 
-Attach each command, its exit code and its log path as evidence. A rule you could not load in every
+Put each command and its exit code in your report. A rule you could not load in every
 engine is not done, whatever the fixtures say.
 
 ## Tuning an existing rule
@@ -98,14 +97,14 @@ engine is not done, whatever the fixtures say.
 
 - New rules enter `experimental`, with the ceiling forced to `record`, and the pack ships at Watch.
   Never set a higher status or ceiling yourself; the promotion bot proposes it from evidence.
-- First-party content lands when its evaluators pass in check runs. Community content needs two
+- First-party content lands when its evaluators pass. Community content needs two
   passing evaluators on different models. A ceiling of `contain` or above also needs `eval-security`
   and `eval-adversarial` to pass (owner instruction 7). You supply evidence; the approvals belong to
   evaluators, never to you.
 - A rule bound for Essentials follows `grdr-author-policy` and D-53.
 
 Finish with `grdr-handoff`. For a change in this repository (built-in rules, the `detect` module),
-also run `cargo xtask verify --fast`.
+also run the gates of `grdr-verify`.
 
 ## Commands this skill names
 
@@ -113,6 +112,5 @@ A command that has not landed yet shows as an unknown subcommand.
 
 | Command | Added by | Until it exists |
 |---|---|---|
-| `grdr content test` | design/03 G2, with design/13 E5.1 for the CI checks; no reserved item, so `lead-content` files it as an issue | The rule cannot be verified, so the item cannot be done. Write nothing that claims a result; hand off `blocked`, naming G2 in `next` |
+| `grdr content test` | design/03 G2, with design/13 E5.1 for the CI checks; no reserved item, so `lead-content` files it as an issue | The rule cannot be verified, so the item cannot be done. Write nothing that claims a result; report `blocked`, naming G2 in `next` |
 | `grdr policy test` | design/12 E4.1 | As above, for session rules |
-| `cargo xtask verify --fast` | WI-0002 | Follow `grdr-verify` |

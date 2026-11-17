@@ -7,7 +7,7 @@
   {"query": "I want a finding when a session reads a .env file and then posts to a paste site within ten minutes, temporal_ordered and grouped by session.root.", "should_trigger": true},
   {"query": "grdr.det.cred-store-read misses the agent-store path class. Extend it, bump the version and add fixtures for it.", "should_trigger": true},
   {"query": "write a detection that flags an agent setting git core.hooksPath to an empty directory, ceiling notify", "should_trigger": true},
-  {"query": "GRDR_WORK_ITEM=730 adds an event_count correlation for a session spawning more than 20 sub-agents in five minutes.", "should_trigger": true},
+  {"query": "Issue #730 adds an event_count correlation for a session spawning more than 20 sub-agents in five minutes.", "should_trigger": true},
   {"query": "The cred-store-read rule misses reads done through `cat ~/.ssh/id_ed25519 | base64`. Add that case and a fixture that proves it.", "should_trigger": true},
   {"query": "Write a Cedar forbid in grdr.secrets that asks before non-agent processes read password-manager vaults.", "should_trigger": false},
   {"query": "The detect-lag metric reports 0 even when the engine has stalled. Fix it in grdr-core::detect, kind:bug.", "should_trigger": false},
@@ -16,7 +16,7 @@
   {"query": "Write the spec for the promotion bot that proposes moving rules from experimental to test.", "should_trigger": false},
   {"query": "Run the M03 security power prompt over grdr-core::detect on the frozen commit.", "should_trigger": false},
   {"query": "Add an agent adapter manifest for Kiro in grdr-content.", "should_trigger": false},
-  {"query": "You are eval-acceptance: judge the hand-off on #702 against the acceptance criteria its ready.v1 comment pinned.", "should_trigger": false},
+  {"query": "You are eval-acceptance: judge the change on issue/702 against the issue's acceptance criteria.", "should_trigger": false},
   {"query": "As lead-content, triage the twelve proposed detection requests garden-intel filed overnight and ready the two with fixtures attached.", "should_trigger": false},
   {"query": "Write the OCSF 1.9 export mapping for the finding class under schema/mappings.", "should_trigger": false}
 ]

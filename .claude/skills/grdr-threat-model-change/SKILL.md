@@ -3,9 +3,8 @@ name: grdr-threat-model-change
 description: Threat-model a change. Use for high-tier items, trust-core paths, new IPC, new parsers, new network listeners and new privileges.
 license: Apache-2.0
 metadata:
-  version: "1"
+  version: "2"
   owner: agent-kit
-  requires: none
   closes-by: test
 ---
 
@@ -13,12 +12,12 @@ metadata:
 
 The register in design/02 is the threat model of the whole product. This skill maps one change onto it: which assets the change touches, who can reach it, which trust boundaries it crosses or adds, and which test proves each control. A threat model whose controls have no tests is a list of hopes.
 
-Who uses it: a lead while specifying a high-tier or trust-core item (before it is readied), an implementer on such an item, and `eval-security` reviewing one. The item is GitHub issue `#<n>` (`GRDR_WORK_ITEM`); the threat model is posted on it as a comment (step 7). Evaluators put the same content in their verdict's `findings` and summary instead.
+Who uses it: a lead while specifying a high-tier or trust-core item (before it is worked), an implementer on such an item, and `eval-security` reviewing one. The item is GitHub issue `#<n>`, named in your prompt; the threat model is posted on it as a comment (step 7). Evaluators put the same content in their verdict's `findings` and summary instead.
 
 ## 1. Scope
 
 1. List the paths the change touches and the processes they run in (design/03 section 4).
-2. Run `cargo xtask risk` on the diff (WI-0007) for the tier and its reasons. Until that command exists, classify by hand with `.agents/risk-tiers.toml` and `security/trust-core.paths`: the highest matching row wins, and say "classified by hand". A model may raise a tier, never lower it.
+2. Classify the tier with `.claude/risk-tiers.toml` and `security/trust-core.paths`: the highest matching row wins; give its reasons. A model may raise a tier, never lower it.
 3. Note which of the triggers apply: high tier, a trust-core path, new IPC, a new parser or decoder, a new network listener, a new privilege.
 
 ## 2. Map onto design/02
@@ -51,7 +50,7 @@ For each way the changed code can fail (error, timeout, panic, missing or expire
 ## 6. Requirements and tests
 
 - List the existing SR and SD ids (design/02 sections 3.8 and 3.10) the change must keep.
-- Propose new SR ids for controls the register lacks: wording, component, oracle and test id. `security/requirements.yaml` and `security/threats.yaml` are protected, so the proposal goes in the threat model and the hand-off's `protected_change_requests`.
+- Propose new SR ids for controls the register lacks: wording, component, oracle and test id. `security/requirements.yaml` and `security/threats.yaml` are gate data outside your write set, so the proposal goes in the threat model and its own issue, named in your report.
 - Name one test per control: a negative test from an unprivileged account, a fault-injection case, a differential fuzz target for a parser, a race test with injected delay for a check-then-use window. A control without a test id is listed under residual risks, not under controls.
 - Trust-core changes also need a reference model with differential tests, matrix and soak evidence, and two passing evaluators on different models (owner instruction 7). Kernel components leave the internal ring only with the review D-62 sets.
 
@@ -59,12 +58,12 @@ The security power prompts M01 to M05 (team/04 section 8) cover fail-open paths,
 
 ## 7. Write the output
 
-Write it to `.agent/state/threat-model-<n>.md` and post it as a comment on the issue: `gh issue comment <n> --body-file .agent/state/threat-model-<n>.md`; a role without the Write tool passes the same text with `--body-file -` and a quoted here-document. A lead writing the spec links the comment from the spec section, so the item is readied with its threat model; an implementer links it from the hand-off's summary. A later revision is a new comment, never an edit of the old one. In this order:
+Write it to `target/threat-model-<n>.md` and post it as a comment on the issue: `gh issue comment <n> --body-file target/threat-model-<n>.md`; a role without the Write tool passes the same text with `--body-file -` and a quoted here-document. A lead writing the spec links the comment from the spec section, so the item is worked with its threat model; an implementer links it from the report's summary. A later revision is a new comment, never an edit of the old one. In this order:
 
 ```markdown
 ## Threat model #<n>: <change in one line>
 
-- Tier: <tier> (<reasons>; classified by `cargo xtask risk` | by hand)
+- Tier: <tier> (<reasons>; from `.claude/risk-tiers.toml`)
 - Triggers: <high tier | trust core | new IPC | new parser | new listener | new privilege>
 - Paths and processes: <list>
 
@@ -85,4 +84,4 @@ Kept: SR-nn, SD-nn. Proposed: wording, component, oracle, test id.
 `eval-security` and `eval-adversarial` on Opus; cross-model review by the other of Opus and Sonnet; for trust core, two passing evaluators on different models (owner instruction 7).
 ```
 
-Every claim cites `path:line` or a design section. Write "none" for an empty section rather than leaving it out, so a reader can tell "did not look" from "found nothing" (P9). A suspected vulnerability in existing code goes to private intake, never into this comment, the issue or any public text (D-62): hand off `blocked` as skill `grdr-handoff` describes.
+Every claim cites `path:line` or a design section. Write "none" for an empty section rather than leaving it out, so a reader can tell "did not look" from "found nothing" (P9). A suspected vulnerability in existing code goes to private intake, never into this comment, the issue or any public text (D-62): report `blocked` as skill `grdr-handoff` describes.

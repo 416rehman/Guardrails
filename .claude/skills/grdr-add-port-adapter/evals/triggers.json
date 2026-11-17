@@ -8,7 +8,7 @@
   {"query": "grdr-bus-log now fails the crash-point cases in grdr-ports-testkit after the commit-fence change. Fix the adapter.", "should_trigger": true},
   {"query": "Write the SensorBackend for a vendor's eBPF sensor and describe it with a HostProfile.", "should_trigger": true},
   {"query": "implement the SecretStore port on macOS using the Keychain", "should_trigger": true},
-  {"query": "GRDR_WORK_ITEM=1017: change grdr-blob's put_versioned so object keys honour the TenantPath prefix for the new retention rules.", "should_trigger": true},
+  {"query": "Issue #1017: change grdr-blob's put_versioned so object keys honour the TenantPath prefix for the new retention rules.", "should_trigger": true},
   {"query": "Write the RFC for adding a lag-per-partition method to the Bus port trait.", "should_trigger": false},
   {"query": "Export findings to a customer's S3 bucket as OCSF Parquet through an integration manifest.", "should_trigger": false},
   {"query": "Add the Jira ticketing integration for policy-violation findings.", "should_trigger": false},

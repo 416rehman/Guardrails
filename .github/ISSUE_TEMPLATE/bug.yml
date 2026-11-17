@@ -1,6 +1,6 @@
 name: Bug
 description: Something the product does wrong. Never a vulnerability; SECURITY.md has the private route.
-labels: ["kind:bug", "status:proposed"]
+labels: ["kind:bug"]
 body:
   - type: textarea
     id: summary

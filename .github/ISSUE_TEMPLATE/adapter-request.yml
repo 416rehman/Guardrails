@@ -1,6 +1,6 @@
 name: Adapter request
 description: Support for an agent, an agent version or a hook dialect.
-labels: ["kind:adapter", "status:proposed"]
+labels: ["kind:adapter"]
 body:
   - type: input
     id: agent-name
