@@ -1,8 +1,10 @@
 # Bootstrap entry review
 
+Historical record of the 2026-11-12 seed session: the agent harness it describes was removed on 2026-11-17 (ADR-0029), and `AGENTS.md` and skill `grdr-work-issue` describe how work happens now.
+
 Written by the chief architect in the seed session (docs/team/06 section 14, steps 5 and 6), for the `[WI-0000]` issue #1. It records where the project stands when the agent team starts: what waits on something outside the team, which work items are trust core, which spikes can start, and where the documents disagree. Statuses are "not started" unless docs/design/_review/04-owner-kit-instructions.md records otherwise. Nothing here is scheduled; order is stated only as prerequisites.
 
-This is a historical record. The agent harness it describes (`.agents/`, the `cargo xtask` kit commands, the dispatcher, the merge queue and the `status:` labels) was removed later; `AGENTS.md` and skill `grdr-work-issue` describe how work happens now, and statuses below are as they stood at the seed.
+Statuses below are as they stood at the seed.
 
 ## 1. Work items filed
 
