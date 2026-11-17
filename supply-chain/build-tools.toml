@@ -1,7 +1,6 @@
 # Build and scan tools, pinned by version and, for container images, by digest (design/24
-# section 12, team/05 section 3). The workflows read their pins here; `cargo xtask tools install`
-# (WI-0002) adds the rest of team/06 section 12's table with each download's SHA-256. Tools are
-# installed and run, never linked or redistributed, so a copyleft tool licence is allowed here.
+# section 12, team/05 section 3). The workflows read their pins here. Tools are installed and run,
+# never linked or redistributed, so a copyleft tool licence is allowed here.
 
 [tool.gitleaks]
 version = "8.30.1"

@@ -1,7 +1,7 @@
 # Dependency updates with no new account (owner instructions 22 and 23). Version updates wait
 # 3 days after a patch or minor release and 7 after a major; security updates skip the cooldown
-# and reach eval-security through the lane their diff earns. Grouping keeps the pull requests few;
-# the merge queue lands each one under the title it carries. GitHub Actions cooldowns take one
+# and are reviewed by eval-security. Grouping keeps the pull requests few; each lands as one
+# squash commit under the title it carries. GitHub Actions cooldowns take one
 # value for every update type, so actions use the patch and minor value. `.github/zizmor.yml`
 # sets zizmor's cooldown minimum to the same 3 days.
 # pnpm workspaces join as `npm` entries when web/ exists; Dependabot reads pnpm-lock.yaml.

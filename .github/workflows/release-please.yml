@@ -1,7 +1,7 @@
 name: release-please
 
 # Decoupled versions (owner instruction 3): release-please keeps the release pull request open
-# against main and, once the merge queue lands it, creates each component's tag and GitHub
+# against main and, once it is squash-merged, creates each component's tag and GitHub
 # release itself (owner instruction 7). Tags made with the workflow token start no other
 # workflow, so the artefacts of the released crates are packaged, signed and attested here.
 

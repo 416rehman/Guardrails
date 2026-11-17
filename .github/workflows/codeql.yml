@@ -43,8 +43,11 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           visibility=$(gh api "repos/$REPOSITORY" --jq .visibility)
-          languages='["rust", "actions"]'
-          if [ -f pnpm-workspace.yaml ]; then languages='["rust", "actions", "javascript-typescript"]'; fi
+          # CodeQL fails a language it finds no source for, so Rust joins once a crate lands.
+          languages='["actions"'
+          if [ -n "$(git ls-files '*.rs')" ]; then languages="$languages, \"rust\""; fi
+          if [ -f pnpm-workspace.yaml ]; then languages="$languages, \"javascript-typescript\""; fi
+          languages="$languages]"
           {
             echo "public=$([ "$visibility" = public ] && echo true || echo false)"
             echo "languages=$languages"
