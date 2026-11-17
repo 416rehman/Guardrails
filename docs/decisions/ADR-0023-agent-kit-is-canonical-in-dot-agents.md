@@ -1,12 +1,14 @@
 # ADR-0023: The agent kit is canonical in `.agents/`, and `.claude/` is rendered
 
-- Status: proposed
+- Status: superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-47, D-61, P14
 - Requires: nothing
 - RFC: not required: restates D-47 and D-61 as repository mechanism
 - Work items: [WI-0005]
+
+Superseded by ADR-0029 (2026-11-17): `.claude/agents/` and `.claude/skills/` are the source and are edited by hand; there is no `.agents/` kit and no `kit render` or `kit check`.
 
 ## Context
 The kit is part of the open project and must survive a change of harness (D-61; spine section 9, "automation is bound to one account"). Hand-edited harness configuration drifts from the roster and cannot be reviewed as data.

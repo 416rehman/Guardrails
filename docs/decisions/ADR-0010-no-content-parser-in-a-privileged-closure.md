@@ -1,12 +1,14 @@
 # ADR-0010: No content parser in the dependency closure of a privileged program
 
-- Status: proposed
+- Status: proposed, partly superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-20, D-63
 - Requires: nothing
 - RFC: not required: restates D-20 as repository mechanism
 - Work items: [WI-0003]
+
+Partly superseded by ADR-0029 (2026-11-17): `verify` under Enforced by means CI (`verify.yml`).
 
 ## Context
 The privileged core holds the floor policy and the actuators. A parser of untrusted content in that process turns any parser bug into a privileged one (brief 37; reviews c3, l01, l10).

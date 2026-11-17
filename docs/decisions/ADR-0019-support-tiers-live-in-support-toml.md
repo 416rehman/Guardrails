@@ -1,12 +1,14 @@
 # ADR-0019: Support tiers live in `support.toml` and generate the release-blocking jobs
 
-- Status: proposed
+- Status: proposed, partly superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-50, D-71
 - Requires: nothing
 - RFC: not required: restates D-50 as repository mechanism
 - Work items: [WI-0013]; the generated-matrix check is a work item still to be filed
+
+Partly superseded by ADR-0029 (2026-11-17): `verify` under Enforced by means CI, and a protected-change item is an issue whose write set names `support.toml`.
 
 ## Context
 "Supported" meant different things in different design documents (reviews l10, l12). A tier written in prose is not what CI runs.

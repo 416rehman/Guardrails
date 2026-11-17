@@ -1,12 +1,14 @@
 # ADR-0004: Apache-2.0 code, dual-licensed eBPF, dual-licensed docs, no CLA and no sign-off
 
-- Status: proposed
+- Status: proposed, partly superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-02, D-61
 - Requires: nothing
 - RFC: not required: restates D-02 as repository mechanism
 - Work items: [WI-0004]
+
+Partly superseded by ADR-0029 (2026-11-17): the commit form is checked in review until the commit-form check of `design/30` item 30-08 runs in CI; gate V24 is gone.
 
 ## Context
 EDR vendors can embed and foundations can accept only a permissive licence (briefs 28, 10, 27; review c6). Kernel programs must be GPL-compatible to load. Owner instruction 7 removed commit signatures and DCO checks with every other human gate.

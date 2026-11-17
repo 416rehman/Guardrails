@@ -1,12 +1,14 @@
 # ADR-0018: Supply chain: latest at bootstrap, then cooldowns, audits, pinned actions and a do-not-use list
 
-- Status: proposed
+- Status: proposed, partly superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-62, D-63; `design/02` SD-03, SD-12
 - Requires: nothing
 - RFC: not required: restates D-62 and D-63 as repository mechanism
 - Work items: [WI-0004]
+
+Partly superseded by ADR-0029 (2026-11-17): `verify` under Enforced by means CI (`verify.yml`, `scan.yml`), and an update lands with the evaluators its tier calls for, not in a lane.
 
 ## Context
 A security product that ships a compromised dependency harms every host it protects. Freshly published malicious releases are usually caught within days, and unpinned actions are mutable (briefs 32, h09). The owner asked for the newest versions at bootstrap and proactive vulnerability work (owner instruction 22).

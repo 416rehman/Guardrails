@@ -1,12 +1,14 @@
 # ADR-0005: Five layers, the initial crates, and a module becomes a crate on its second consumer
 
-- Status: proposed
+- Status: proposed, partly superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: section 5, P5, P6, P17
 - Requires: nothing
 - RFC: not required: restates section 5 as repository mechanism
 - Work items: [WI-0001], [WI-0003]
+
+Partly superseded by ADR-0029 (2026-11-17): ARCH-001 to ARCH-026 run as the architecture lint in CI (WI-0003), not `cargo xtask archlint`; the comparison with each crate's `AGENTS.md` is review, and "full verify" means the CI gates.
 
 ## Context
 One core has to run in the sensor, the proxy, the server and other vendors' products (P5), so dependency direction must hold mechanically. The simplicity review found that a crate per concept made the workspace unreadable (l10).

@@ -1,12 +1,14 @@
 # ADR-0022: Errors carry registered codes, logs take only `LogSafe` values, and every bound is a named limit
 
-- Status: proposed
+- Status: proposed, partly superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: P8, P9, P14, section 5
 - Requires: nothing
 - RFC: not required: restates P8, P9 and section 5 as repository mechanism
 - Work items: [WI-0001], [WI-0003], [WI-0014]
+
+Partly superseded by ADR-0029 (2026-11-17): there is no `.agents/kit/limits.toml`, and `limits.toml` holds every bound; the structure checks S6 and S7 are clippy's deny lints and review, not `post-edit`, `stop-gate` or gate V20.
 
 ## Context
 A panic in a sensor is an outage on someone else's machine, an unbounded buffer is a denial of service, and a log line with content in it is a privacy breach (owner instructions 15 and 26; review l07).

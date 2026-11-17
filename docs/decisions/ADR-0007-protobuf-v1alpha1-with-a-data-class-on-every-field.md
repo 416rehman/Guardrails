@@ -1,12 +1,14 @@
 # ADR-0007: The canonical model is protobuf `v1alpha1` with a `data_class` on every field
 
-- Status: proposed
+- Status: proposed, partly superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-06, D-51, P8
 - Requires: nothing
 - RFC: not required while packages are `v1alpha1`; required for any change after the freeze
 - Work items: [WI-0014]
+
+Partly superseded by ADR-0029 (2026-11-17): `verify` under Enforced by means CI (`verify.yml`).
 
 ## Context
 The event model is the contract between sensors, server, lake and exports. Privacy by schema (P8) works only if every field states what kind of data it holds, so the capture level can be applied as a filter on the device (briefs 23, 26, 34; reviews c1, l07).

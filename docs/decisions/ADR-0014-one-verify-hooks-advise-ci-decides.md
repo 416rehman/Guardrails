@@ -1,12 +1,14 @@
 # ADR-0014: One `verify`; hooks advise, and the merge queue and CI decide
 
-- Status: proposed
+- Status: superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-47, D-64
 - Requires: nothing
 - RFC: not required: restates D-47 as repository mechanism
 - Work items: [WI-0002], [WI-0005], [WI-0006]
+
+Superseded by ADR-0029 (2026-11-17): the gates are the plain `cargo fmt`, `cargo clippy`, `cargo test` and `cargo deny` commands that CI runs in `verify.yml`; there is no `cargo xtask verify`, merge queue, kit binary or fleet container.
 
 ## Context
 Edit hooks are bypassed through the shell, and a crashed Stop hook fails open (brief h09). A gate that differs between a hook, a harness and CI is three gates.

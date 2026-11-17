@@ -1,12 +1,14 @@
 # ADR-0001: Decisions are recorded as ADRs, and public surfaces change by RFC
 
-- Status: proposed
+- Status: proposed, partly superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-61
 - Requires: nothing
 - RFC: not required: this record adopts the process D-61 already states
 - Work items: [WI-0008]
+
+Partly superseded by ADR-0029 (2026-11-17): gate V05 and the protected-change lease under Enforced by are now the deny rules of `.claude/settings.json` and an issue whose write set names the path.
 
 ## Context
 The spine holds seventy-one decisions and the design documents specify them. Decisions made after it need one place and one form, and a change to what outsiders build against (the spine, a public crate, a wire format, the pack format, the Cedar schema) needs review before code exists. The stakeholder reviews found that undocumented decisions were re-argued in every design document (`design/_review/00-resolution.md`; brief 28).

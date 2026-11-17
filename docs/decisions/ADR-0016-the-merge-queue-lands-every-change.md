@@ -1,12 +1,14 @@
 # ADR-0016: The merge queue lands every change, commits are one line, and no agent or person votes
 
-- Status: proposed
+- Status: superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-61, D-63
 - Requires: nothing
 - RFC: not required: restates D-61 as amended by owner instructions 7 and 27
 - Work items: [WI-0010], [WI-0043], [WI-0007]
+
+Superseded by ADR-0029 (2026-11-17): the orchestrating session squash-merges each pull request once its evaluators pass and CI is green; commits stay one line with no body, trailer or credit, and no agent or person votes.
 
 ## Context
 An integrator agent became the bottleneck in the teams studied, and human sign-off was removed by owner instruction 7. release-please reads squash subjects, and the owner's `cleanup` gate refuses multi-line messages (owner instruction 27).

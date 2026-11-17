@@ -1,12 +1,14 @@
 # ADR-0009: Normalisers return resolved, unresolved or malformed, and each has a differential fuzz target
 
-- Status: proposed
+- Status: proposed, partly superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-10; `design/02` SD-04
 - Requires: nothing
 - RFC: not required: restates D-10 as repository mechanism
 - Work items: [WI-0019]; the `verify` rule is a work item still to be filed
+
+Partly superseded by ADR-0029 (2026-11-17): the `verify` rule under Enforced by is a CI check in `verify.yml`.
 
 ## Context
 A normaliser that guesses is a bypass. The shell canonicaliser, the path resolver and the protocol parsers each stand between untrusted input and a verdict, and each has a real consumer that decides what the input means (briefs 09, 21, 32; reviews c2, c5, l06).

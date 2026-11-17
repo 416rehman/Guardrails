@@ -1,12 +1,14 @@
 # ADR-0028: One name and one path per artefact, as `team/06` section 2.2 lists them
 
-- Status: proposed
+- Status: proposed, partly superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: section 5, P17
 - Requires: nothing
 - RFC: not required: no spine change; the table binds the team and design documents
 - Work items: [WI-0005]
+
+Partly superseded by ADR-0029 (2026-11-17): the risk-tier file is `.claude/risk-tiers.toml`, protected paths are the deny rules of `.claude/settings.json`, there is no queue, `meta.v1` block, `kit check` or `status:` label; the one-table rule stands.
 
 ## Context
 The design and team documents named different paths and forms for the same things: the spine path, the RFC directory, the risk-tier file, the protected-path list, the merge-queue branch, bot identities, CLI exit codes and others. Agents follow whichever document they read last.

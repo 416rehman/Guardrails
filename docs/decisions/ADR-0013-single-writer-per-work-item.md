@@ -1,12 +1,14 @@
 # ADR-0013: One writer per work item; the repository holds code and decisions, and issues hold the work
 
-- Status: proposed
+- Status: superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-47
 - Requires: nothing
 - RFC: not required: restates D-47 as repository mechanism
 - Work items: [WI-0011], [WI-0005]
+
+Superseded by ADR-0029 (2026-11-17): one implementer per issue is now held by skill `grdr-work-issue`, not a dispatcher lease, and auto memory is off in `.claude/settings.json`.
 
 ## Context
 Parallel writers on one item overwrite each other, and peers that coordinate through locks ran at the throughput of one to three agents (brief 31). An agent with private memory makes decisions the repository cannot show.

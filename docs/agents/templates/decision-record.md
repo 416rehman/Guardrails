@@ -1,6 +1,6 @@
 # ADR-NNNN: <the decision as one sentence>
 
-- Status: proposed | accepted | superseded by ADR-MMMM
+- Status: proposed | accepted | proposed, partly superseded by ADR-MMMM | superseded by ADR-MMMM
 - Date: YYYY-MM-DD
 - Decided by: <role> (the chief architect for the spine and the plan)
 - Spine: D-nn, Pn, or "local: no spine decision"

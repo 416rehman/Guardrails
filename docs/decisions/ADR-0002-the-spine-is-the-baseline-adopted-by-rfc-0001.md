@@ -1,12 +1,14 @@
 # ADR-0002: The spine is the baseline, adopted by RFC 0001
 
-- Status: proposed
+- Status: proposed, partly superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-61
 - Requires: RFC 0001 reviewed by the persona council and `eval-architecture`
 - RFC: 0001
 - Work items: [WI-0008]
+
+Partly superseded by ADR-0029 (2026-11-17): gate V05, the fleet container's mount and the protected-change lease under Enforced by are now the deny rules of `.claude/settings.json` and a chief-architect issue whose write set names the spine.
 
 ## Context
 `docs/design/00-decisions.md` was written before the repository had a process. It is at version 5: version 4 applied the owner's answers, and version 5 the owner's kit instructions (P14 to P17, D-69 to D-71, S-23 to S-31). `docs/team/06` section 9 still says "Spine v4". Every later change to the spine is an RFC, so the starting text needs one adoption on record.

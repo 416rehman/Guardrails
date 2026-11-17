@@ -1,12 +1,14 @@
 # ADR-0017: The public gate is `verify`; the held-out suite gates releases and agent work items
 
-- Status: proposed
+- Status: proposed, partly superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-45
 - Requires: the efficacy harness and the replay model endpoint
 - RFC: not required: restates D-45 as repository mechanism
 - Work items: [WI-0027], [WI-0028], [WI-0012]
+
+Partly superseded by ADR-0029 (2026-11-17): the public pull-request gate is the plain CI gates in `verify.yml`, not `cargo xtask verify`; the held-out suite's role stands.
 
 ## Context
 A team that can read its own test set fits to it (brief g08; reviews c8, c9, l09). An outside contributor must still be able to run every gate their pull request faces.

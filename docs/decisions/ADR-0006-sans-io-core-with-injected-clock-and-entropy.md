@@ -1,12 +1,14 @@
 # ADR-0006: The core does no I/O and takes time and randomness as inputs
 
-- Status: proposed
+- Status: proposed, partly superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-05, P5
 - Requires: nothing
 - RFC: not required: restates D-05 as repository mechanism
 - Work items: [WI-0003], [WI-0016]
+
+Partly superseded by ADR-0029 (2026-11-17): `verify` under Enforced by means CI (`verify.yml`).
 
 ## Context
 Replay, simulation, differential testing and embedding all need the same events and bundle to produce the same verdicts and findings on every host (briefs 27, 37). A core that reads a clock, a file or a socket cannot be replayed.

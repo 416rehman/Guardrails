@@ -1,12 +1,14 @@
 # ADR-0015: Risk tiers come from paths, review lanes from the diff, and a trust-core change needs two models
 
-- Status: proposed
+- Status: proposed, partly superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-63; `design/02` SD-13
 - Requires: nothing
 - RFC: not required: restates D-63 as repository mechanism
 - Work items: [WI-0007]
+
+Partly superseded by ADR-0029 (2026-11-17): the `tier:` label, `.claude/risk-tiers.toml` and `eval-tier` replace `cargo xtask risk` and the review lanes; the tiers and the two-model rule for the trust core stand.
 
 ## Context
 Most changes are small or checkable without a model, and every evaluator pass spends the shared usage window (owner instruction 8). The trust core is where one missed defect harms hosts (reviews c9, l01).

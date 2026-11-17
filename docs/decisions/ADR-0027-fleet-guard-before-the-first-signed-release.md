@@ -1,12 +1,14 @@
 # ADR-0027: Before the first signed release, the fleet guard is a tagged CI build in Watch
 
-- Status: proposed
+- Status: superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-47
 - Requires: [WI-0006] for the fleet image; the first signed release to end this arrangement
 - RFC: not required: a reading of D-47 recorded in `team/06`, Deviations
 - Work items: [WI-0006]
+
+Superseded by ADR-0029 (2026-11-17): there is no fleet container or fleet image; once a signed release exists, the owner's machine runs it in front of the agents.
 
 ## Context
 D-47 says the development fleet runs under the last signed release of the product. No release exists at bootstrap. The guard must never be the working tree, because an injected change could then weaken the guard that watches it (spine section 9, "injection into build agents").

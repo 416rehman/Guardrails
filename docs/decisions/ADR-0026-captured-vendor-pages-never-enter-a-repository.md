@@ -1,12 +1,14 @@
 # ADR-0026: Captured vendor pages never enter a repository
 
-- Status: proposed
+- Status: proposed, partly superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-02
 - Requires: nothing
 - RFC: not required: local to repository contents
 - Work items: [WI-0004]
+
+Partly superseded by ADR-0029 (2026-11-17): the path check runs in CI, not `verify`.
 
 ## Context
 The research behind the plan captured vendor documentation pages into `research/_sources/`. They are third-party copyrighted text. The research briefs written from them are ours and are imported under `docs/references/research/`.

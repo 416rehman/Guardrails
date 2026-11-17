@@ -1,12 +1,14 @@
 # ADR-0024: Work items are GitHub issues in one repository, labels are their state, and agents drive the queue
 
-- Status: proposed
+- Status: proposed, partly superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-47, D-61
 - Requires: nothing
 - RFC: not required: restates D-47 as owner instructions 5 and 6 word it
 - Work items: [WI-0009], [WI-0011], [WI-0005]
+
+Partly superseded by ADR-0029 (2026-11-17): branches are `issue/<n>`, and there are no status labels or transitions, `ready.v1` or lease records, attempts, `.agents/harness.toml`, dispatcher checks, `guard-command` or `kit ready`; `GH_REPO` names the repository, and the rest stands.
 
 ## Context
 The owner ruled that the only place for work items is GitHub issues, with no local tooling, no organisation and no GitHub Project, and that agents, not a person, put work in the queue (owner instructions 5 and 6).

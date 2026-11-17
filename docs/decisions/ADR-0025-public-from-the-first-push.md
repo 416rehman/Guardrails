@@ -1,12 +1,14 @@
 # ADR-0025: The repository is public from the first push, after the pre-push public gate on the seed
 
-- Status: proposed
+- Status: proposed, partly superseded by ADR-0029
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-02, D-62, D-64
 - Requires: nothing
 - RFC: not required: restates owner instruction 28
 - Work items: [WI-0004]; the gate itself ran at setup (`team/06` section 11 items 6 and 9)
+
+Partly superseded by ADR-0029 (2026-11-17): gitleaks runs in `scan.yml`, not `verify`, and no check reads the push-protection setting until a CI job does; `cargo xtask github check` is gone.
 
 ## Context
 The owner ruled that the repository stays public (owner instruction 28). A public history cannot be recalled, and free hosted runners, CodeQL and Scorecard are available only to a public repository.
