@@ -1,6 +1,6 @@
 ---
 name: grdr-work-issue
-description: Work a GitHub issue of this repository end to end with the agent team in .claude/agents. Use when asked to fix, work, implement, do or land issue #n, or to work the next issue. The main session orchestrates; agents spec, implement and evaluate; the session opens and squash-merges the pull request.
+description: "Work a GitHub issue of this repository end to end with the agent team in .claude/agents. Use when asked to fix, work, implement, do or land issue #n, or to work the next issue. The main session orchestrates; agents spec, implement and evaluate; the session opens and squash-merges the pull request."
 license: Apache-2.0
 metadata:
   version: "2"
