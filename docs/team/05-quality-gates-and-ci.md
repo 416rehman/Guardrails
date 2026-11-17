@@ -38,6 +38,7 @@ Owned elsewhere: the tier rules (`.claude/risk-tiers.toml`), tier table, circuit
 | Tests | `cargo test --workspace --locked` | Same |
 | Dependencies, licences, advisories (S01) | `cargo deny check` with `deny.toml` | Same |
 | Secrets, workflows, lockfiles, source | gitleaks, zizmor, osv-scanner, Semgrep OSS (`scan.yml`) | Every pull request, `main`, nightly |
+| Docs rules of design/34 a script can check | `.claude/hooks/docs-check.mjs --ci` from the base branch (`docs.yml`); the same script is the session's PreToolUse hook | Every pull request |
 | Code scanning, repository health | CodeQL (`codeql.yml`), OpenSSF Scorecard (`scorecard.yml`) | Pull requests and weekly; Scorecard weekly |
 
 While no crate exists under `crates/` or `programs/`, the workspace has no members, Cargo refuses every command, and `verify.yml` skips the Rust jobs.

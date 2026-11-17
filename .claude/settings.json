@@ -22,6 +22,20 @@
     "GH_REPO": "416rehman/Guardrails",
     "SEMGREP_GUARDIAN_AUTO_UPDATE": "0"
   },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/docs-check.mjs\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  },
   "model": "claude-sonnet-5-5",
   "permissions": {
     "allow": [

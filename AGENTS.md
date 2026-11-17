@@ -50,6 +50,49 @@ report (skill `grdr-handoff`) to that session.
 - Trust-core paths (`security/trust-core.paths`) need `eval-security`, `eval-adversarial`
   and two passing evaluators on different models (high tier; D-63, owner instruction 7).
 
+## Docs (design/34)
+Docs are kept up to date in the same pull request as the change. `.claude/hooks/docs-check.mjs`
+and the `docs` CI job check the rules marked (checked); `eval-docs` judges every pull request
+against all of them.
+- Every change that alters behaviour, an interface, a configuration key, a CLI command or a
+  design decision updates its docs: the design section it implements (`docs/design/NN`) when
+  the built behaviour differs from or refines it, and the docs site for anything a user or
+  operator sees. Otherwise the body says `Docs: unchanged because <reason>` (§1, §3 F3;
+  checked).
+- The docs site is Docusaurus 3 in `site/`; its content is `docs/product/` by Diataxis type
+  (`tutorials`, `how-to`, `concepts`, `operate`, `embed`, `lifecycle`), with runbooks in
+  `docs/runbooks/`, training in `docs/training/`, translations in `docs/i18n/<locale>/` (§1).
+- Each page under `docs/product/` has front matter `id`, `type`, `personas`, `shapes`,
+  `covers`, `owner_squad`, `stability` (§1; checked). A change to a surface a page `covers`
+  touches that page (§3 F3).
+- `docs/product/reference/_generated/` is generated from proto, the Cedar schema, the
+  configuration schema, the CLI tree and the registries: change the source and regenerate,
+  never edit it by hand (§1, §2). Proto comments are the reference prose (§2).
+- The site loads no third-party script, font, analytics or cookie, and marks every link to
+  another origin external (§1, §3 F11; checked for scripts, fonts and analytics). Install
+  pages show signed packages and their verification, never `curl | sh` (§1; checked).
+- Product name, CLI name, paths and endpoints come from the brand manifest and versions from
+  release metadata, never literals (§1, §3 F6).
+- Words come from the glossary `schema/vocabulary.toml`: Mode, never posture; no case object;
+  no coined synonyms. British English, sentence case, buttons a verb and an object, messages
+  say what happened, why and the one next step, with no apology, blame, exclamation or
+  "please" (§3 F6, §15, §17).
+- Every error and health code and preflight id has an anchored page under `/codes/<code>`,
+  and every degraded or critical health code and server alert a runbook in `docs/runbooks/`
+  with the runbook front matter (§5, §6, §3 F7).
+- Screenshots are generated from the pattern stories, never hand-made; images carry alt text
+  and diagrams a text description (§1, §3 F10, §15).
+- Examples use RFC 2606 names and fake keys; `grdr-test` code blocks must run (Security, §3 F4).
+- Pages about an adapter, target, control point, integration or dialect show its support
+  tier; Tier 3 pages sit under Experimental (§12). Paid support and response targets are
+  never promised before D-46's preconditions hold (§8).
+- A removal or break of a beta or stable surface needs a `deprecations.toml` entry with its
+  replacement and migration page, inside its stability class's rules; experimental changes
+  are listed in the release notes (§10).
+- Every pull request that closes an issue carries a `[release_note]` block in its body:
+  `category` (feature, fix, security, deprecation, breaking, known-issue, none), `audiences`,
+  `surfaces`, `text`, and `action_required` for breaking and deprecation (§14; checked).
+
 ## Expected practice (evaluators check)
 - Five layers, one direction (`architecture.toml`): layers 0 and 1 do no I/O and read no
   clock or randomness; take `now` and `entropy`. No content parser in a privileged program

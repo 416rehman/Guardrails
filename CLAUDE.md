@@ -9,6 +9,8 @@
   subagents, one per issue.
 - "Build the product", "keep building" or `/loop`: follow skill `grdr-build`, one iteration
   at a time, with all state on GitHub.
+- Docs change with the code: follow "Docs (design/34)" in AGENTS.md. The PreToolUse hook
+  `.claude/hooks/docs-check.mjs` holds `gh pr create` and `gh pr merge` until its checks pass.
 - `.claude/agents/*.md` and `.claude/skills/` are the source of truth; edit them by hand.
 - Implementers and evaluators run with `isolation: "worktree"`. Pass `model: "opus"` to the
   implementer of a `tier:high` or `trust-core` issue, and run `eval-diff` a second time on
