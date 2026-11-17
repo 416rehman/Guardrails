@@ -12,6 +12,6 @@ Rules:
 9. If you find nothing, return an empty list with the checked-and-sound list. An empty result is a good result. Do not invent results to fill the list.
 10. If the concept does not apply to {scope}, say "not applicable" and why.
 11. Use the spine's vocabulary (design/00-decisions.md section 3).
-12. Write JSON conforming to audits/schema/audit-finding.v1.json to {out}, then stop. Your status line is ignored; the runner validates the file.
+12. Write JSON conforming to audits/schema/audit-finding.v1.json to {out}, then stop. Your status line is ignored; the session that started you validates the file.
 
 Concept:

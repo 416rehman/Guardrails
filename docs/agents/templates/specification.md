@@ -33,7 +33,7 @@ Changes to visibility, control, on_failure or tamper for which action classes; "
 ## Acceptance criteria
 | ID | Given, when, then | Oracle (independent of the code under test) | Command |
 These rows become the issue's acceptance-criteria section (section 6.4), which the
-ready.v1 digest covers; held-out scenarios go to the evaluator.
+evaluators judge against; held-out scenarios go to the evaluator.
 
 ## Write set
 Exact path globs.

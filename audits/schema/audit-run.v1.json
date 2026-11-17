@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:grdr:audits:audit-run.v1",
   "title": "audit-run.v1",
-  "description": "One audit run (docs/team/04 section 4), written by the runner to audit-ledger/runs/<yyyy>/<mm>/<run_id>.json with its results. Skipped prompts keep \"did not look\" apart from \"found nothing\" (P9).",
+  "description": "One audit run (docs/team/04 section 4), written by the run to audit-ledger/runs/<yyyy>/<mm>/<run_id>.json with its results. Skipped prompts keep \"did not look\" apart from \"found nothing\" (P9).",
   "type": "object",
   "required": [
     "schema", "run_id", "prompt", "arm", "pair_id", "commit", "scope", "trigger", "harness",
@@ -62,7 +62,7 @@
     },
     "tokens_in": { "type": "integer", "minimum": 0 },
     "tokens_out": { "type": "integer", "minimum": 0 },
-    "usage_window_share": { "type": ["number", "null"], "minimum": 0, "description": "Share of the subscription's usage window the run consumed; null when the runner did not measure it." },
+    "usage_window_share": { "type": ["number", "null"], "minimum": 0, "description": "Share of the subscription's usage window the run consumed; null when the run did not measure it." },
     "paused_for_limit": { "type": "number", "minimum": 0, "description": "Seconds spent waiting for a usage window to reset; a paused run is never failed or empty." },
     "duration_s": { "type": "number", "minimum": 0 },
     "results_returned": { "type": "integer", "minimum": 0, "maximum": 15 },

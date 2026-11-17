@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:grdr:audits:audit-finding.v1",
   "title": "audit-finding.v1",
-  "description": "Audit findings (docs/team/04 section 4): the finder's report a run writes to {out}, the verifier's report, and the ledger record the runner keeps per fingerprint. A development-process record, never the product's Finding.",
+  "description": "Audit findings (docs/team/04 section 4): the finder's report a run writes to {out}, the verifier's report, and the ledger record kept per fingerprint. A development-process record, never the product's Finding.",
   "oneOf": [
     { "$ref": "#/$defs/finder_report" },
     { "$ref": "#/$defs/verifier_report" },
@@ -28,7 +28,7 @@
     "class_key": {
       "type": "string",
       "pattern": "^(injected-instruction|[a-z0-9]+(-[a-z0-9]+)*:[a-z0-9]+(-[a-z0-9]+)*)$",
-      "description": "From the prompt's `Class keys` line, or `injected-instruction` (preamble rule 3). The runner rejects any other value."
+      "description": "From the prompt's `Class keys` line, or `injected-instruction` (preamble rule 3). The run rejects any other value."
     },
     "label": { "enum": ["CONFIRMED", "LIKELY", "SMELL"] },
     "severity": { "type": "integer", "minimum": 1, "maximum": 4 },
@@ -44,7 +44,7 @@
       "minLength": 1,
       "maxLength": 600,
       "pattern": "^[^\\n]*(\\n[^\\n]*){0,2}$",
-      "description": "Exact text at the cited line, at most 3 lines; the runner discards a span that does not match the file at the commit."
+      "description": "Exact text at the cited line, at most 3 lines; the run discards a span that does not match the file at the commit."
     },
     "span_fields": {
       "type": "object",
@@ -52,7 +52,7 @@
       "properties": {
         "path": { "type": "string", "minLength": 1, "pattern": "^[^/\\\\][^\\\\]*$", "description": "Repository-relative, forward slashes." },
         "line": { "type": "integer", "minimum": 1 },
-        "item": { "type": "string", "minLength": 1, "description": "Enclosing function, impl or type path, or the heading path in a document. The runner resolves it when absent." },
+        "item": { "type": "string", "minLength": 1, "description": "Enclosing function, impl or type path, or the heading path in a document. The run resolves it when absent." },
         "quote": { "$ref": "#/$defs/quote" }
       }
     },
@@ -208,7 +208,7 @@
         "state": { "$ref": "#/$defs/state" },
         "run_id": { "$ref": "#/$defs/uuid_v7" },
         "at": { "$ref": "#/$defs/timestamp" },
-        "by": { "type": "string", "minLength": 1, "description": "Roster name, the runner, or a person's login." }
+        "by": { "type": "string", "minLength": 1, "description": "Roster name, the run (runner), or a person's login." }
       }
     },
     "issue": {

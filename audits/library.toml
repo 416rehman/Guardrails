@@ -1,7 +1,6 @@
-# Power-prompt registry (docs/team/04). `cargo xtask audit` reads it from the base branch; README.md
-# says how. Gate configuration under D-63: a change is a trust-core work item. Model names resolve
-# through .agents/models.toml; token caps per trigger window are .agents/kit/usage.toml's
-# [routine.audit-*] rows and the usage brake its [audit_brake].
+# Power-prompt registry (docs/team/04). Skill grdr-audit reads it from the base branch; README.md
+# says how. Gate configuration under D-63: a change is a trust-core work item. Model names are the
+# Agent tool's aliases: opus is claude-opus-5-5, sonnet is claude-sonnet-5-5.
 
 [files]
 preamble = "preamble.md"
@@ -22,7 +21,7 @@ overlap_model = "sonnet"           # advisory overlap judgement (team/04 section
 finder_max_turns = 40
 verifier_max_turns = 20
 prover_max_turns = 40
-usage_cap_tokens = 750_000         # per run; a run's cap is the lower of this and its trigger's per-run cap
+usage_cap_tokens = 750_000         # per run
 control_concept = "Find the bugs in {scope}."
 control_pairing = { first_runs = 8, then_every = 4, every_run_when_only = ["w4", "release", "model-upgrade"] }
 shadow_days = 14                   # a new or major-bumped prompt files no issues and blocks nothing
@@ -31,11 +30,11 @@ shadow_days = 14                   # a new or major-bumped prompt files no issue
 allowed_models = ["opus", "sonnet"]   # no audit pass runs on fable
 
 # Where results go. The repositories are created under the owner's profile when this work starts
-# (owner instruction 5); until then the runner writes the ledger to `local` and says so.
+# (owner instruction 5); until then a run keeps its results in `local` and says so.
 [ledger]
 public = "416rehman/audit-ledger"
 private = "416rehman/audit-ledger-private"   # security candidates under embargo (D-62)
-local = ".agent/audit-ledger"
+local = "target/audit-ledger"
 
 # A security candidate goes to the private ledger only: never an issue, comment or pull request.
 [embargo]
@@ -46,7 +45,7 @@ theme_severity = { boundaries = 2 }   # B-theme results at severity 2 or worse
 # Upheld results that are not security candidates become GitHub issues (owner instructions 5 and 6).
 [issues]
 repository = "416rehman/Guardrails"
-labels = ["status:proposed", "kind:gardening"]   # plus squad:<owner of the locus> from .agents/owners.toml
+labels = ["kind:gardening"]   # plus squad:<owner of the locus> from .claude/owners.toml
 max_per_week = 8                     # team/04 section 6; prompts with always_file are not held back
 rank = ["severity", "proof", "trust-core"]
 title = "[{prompt_id}] {title}"
@@ -60,15 +59,12 @@ blocking_states = ["open", "upheld", "triage", "proven", "regressed"]   # per pr
 [trigger.pr]
 cadence = "pull-request"
 scope = "diff"
-routine = "audit-pr"                 # per-run and per-pull-request caps, at most six power runs
-started_by = "eval-diff"             # inside the `review` workflow, first and final rounds
+started_by = "eval-diff"             # in the first and final review rounds
 order = ["M01", "M02", "M03", "M04", "M05"]   # then library order; the rest are recorded as skipped
-forks = "merge-queue"                # pull requests from forks are audited when they enter the queue
 
 [trigger.nightly]
 cadence = "nightly"
 scope = "rotation"
-routine = "audit-nightly"
 started_by = "garden-architecture"
 security_rotation = ["M01", "M02", "M03", "M04", "M05"]   # one a night
 
@@ -76,36 +72,31 @@ security_rotation = ["M01", "M02", "M03", "M04", "M05"]   # one a night
 cadence = "weekly"
 scope = "repo"                       # the five crates with the most churn when the tree does not fit the cap
 churn_crates = 5
-routine = "audit-weekly"
 started_by = "garden-architecture"
 
 [trigger.w4]
 cadence = "every-fourth-week"
 scope = "repo"
-routine = "audit-weekly"             # inside the weekly cap
 started_by = "garden-architecture"
 buckets = 4
 
 [trigger.release]
 cadence = "release"
 scope = "release-head"               # findings diffed against the previous release
-routine = "audit-release"
 started_by = "release workflow"
 
 [trigger.model-upgrade]
 cadence = "model-upgrade"
 scope = "kit"
-routine = "audit-model-upgrade"
 started_by = "lead-agent-kit"
 adopt_when = { max_recall_loss_points = 10 }   # Y01; the new model is not used for audits before
 
 [trigger.incident]
 cadence = "incident"
 scope = "repo"
-routine = "audit-incident"
 started_by = "incident review"
 
-# Diff shapes a pull-request filter can require, beyond paths. The runner matches them with
+# Diff shapes a pull-request filter can require, beyond paths. A run matches them with
 # ast-grep on the changed items; `line_regex` (Rust regex, on added and removed lines) is the
 # fallback until those rules exist, and errs toward running the prompt.
 [shape.type-field]
@@ -138,7 +129,7 @@ line_regex = '\basync\b|\.await\b|\bselect!|\b(Mutex|RwLock|Semaphore|Notify|mps
 description = "The pull-request title, body or a commit subject claims a removal"
 text_regex = '(?i)\b(remove[sd]?|removal|delete[sd]?|deletion|drop(s|ped)?)\b'
 
-# Nightly rotation (team/04 section 9). The runner takes the next entry whose paths exist, so the
+# Nightly rotation (team/04 section 9). A run takes the next entry whose paths exist, so the
 # cycle grows as crates arrive; the pull request that adds a crate adds it here (work item 10).
 [[rotation]]
 name = "grdr-hook"
@@ -544,7 +535,7 @@ closes-by = ["lint", "test"]
 id = "E01"
 name = "near-duplicates"
 title = "Near duplicates"
-version = "2.0.0"                  # looks in the V27 duplicate-code report first (P17)
+version = "2.0.0"                  # looks in a duplicate-code report first (P17)
 theme = "duplication"
 triggers = ["weekly"]
 closes-by = ["type", "test"]
@@ -786,7 +777,7 @@ closes-by = ["lint", "test", "decision"]
 id = "H04"
 name = "stale-agent-instructions"
 title = "Stale agent instructions"
-version = "1.0.0"
+version = "1.1.0"
 theme = "docs"
 triggers = ["model-upgrade", "w4"]
 bucket = 4

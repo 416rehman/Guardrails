@@ -15,7 +15,7 @@ What forces the decision; evidence with research brief or review ids.
 What we do, in the spine's vocabulary.
 
 ## Enforced by
-The lint code, test, CI job, protected path or schema rule that keeps this true.
+The lint code, test, CI job, deny rule or schema rule that keeps this true.
 "Review only" is allowed and must say who reviews and on what event.
 
 ## Consequences

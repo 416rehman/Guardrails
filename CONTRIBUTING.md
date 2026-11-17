@@ -6,22 +6,21 @@ applies to every contribution, whoever or whatever wrote it.
 
 ## How the project works
 
-Guardrails ADR is built agent-first. A team of Claude Code agents, defined
-in `.agents/` and started by `cargo xtask dispatch`, finds, files, readies,
-implements and reviews the work. No step of building, reviewing, landing or
-releasing waits for a person:
+Guardrails ADR is built agent-first, with plain Claude Code. The team is the
+subagents in `.claude/agents/`; a session told to work an issue follows the
+skill `.claude/skills/grdr-work-issue/` and spawns them:
 
 - Every work item is a GitHub issue in this repository. Labels carry its
-  status and fields; the agent that readies an item never implements it.
-- An implementer works on one item in its own branch and opens a pull
-  request. Evaluator agents that did not write the change review it, and
-  `cargo xtask verify` checks it.
-- The merge queue, deterministic software, squash-merges a pull request
-  once verify, CI and the evaluators its risk tier requires have passed.
+  fields; the agent that writes an issue's spec never implements it.
+- An implementer works on one issue in its own worktree and branch
+  `issue/<n>`. Evaluator agents that did not write the change review it in
+  clean contexts, as many as its risk tier calls for.
+- When they pass and CI is green, the session opens a pull request with
+  `Closes #<n>` and squash-merges it as one commit.
 - release-please opens the release pull requests and creates the tags and
   GitHub releases; artefacts are signed keylessly with Sigstore.
 
-You contribute through the same issues, pull requests and gate as the
+You contribute through the same issues, pull requests and gates as the
 agents.
 
 ## Before you start
@@ -37,8 +36,7 @@ agents.
 - JavaScript and TypeScript use pnpm only, at the version `packageManager`
   pins in `package.json`: `pnpm install --frozen-lockfile`, `pnpm add`,
   `pnpm exec` and `pnpm dlx <package>@<version>`. npm, npx, yarn and bun
-  commands are refused in agent sessions, and verify fails on their
-  lockfiles. The npm registry is only where packages are fetched from and
+  commands and their lockfiles are refused in review. The npm registry is only where packages are fetched from and
   published to.
 - Do not copy, translate or paraphrase code or rule logic from sources
   listed in supply-chain/do-not-read.toml (for example Elastic detection
@@ -81,10 +79,10 @@ no community rule goes beyond Watch without its two passing reviews.
 Repositories: the main repository and the contrib repository (community
 adapters).
 
-1. Every code change links an accepted work item: an issue labelled
-   "status:ready". Look for issues labelled "open-to-contributors", or open an
-   issue describing the problem and wait for the "status:ready" label. Pull
-   requests that link no accepted item are
+1. Every code change links an accepted work item: an issue with a spec,
+   a write set and acceptance criteria. Look for issues labelled
+   "open-to-contributors", or open an issue describing the problem and wait
+   for a lead to specify it. Pull requests that link no accepted item are
    closed automatically unless you are on the vouch list
    (governance/vouched.txt); if you are, they stay open but cannot merge
    until an accepted item is linked. You get on the list with one merged
@@ -93,12 +91,15 @@ adapters).
 2. "good-first-issue" items are kept for people making their first code
    contribution. The project's own agents never take them.
 3. Build: install stable Rust (the minimum version is `rust-version` in
-   the workspace Cargo.toml and is checked by CI) and run
-   `cargo xtask verify`. A clean clone should be green in under 15 minutes
+   the workspace Cargo.toml and is checked by CI) and run the gates:
+   `cargo fmt --all -- --check`,
+   `cargo clippy --workspace --locked --all-targets -- -D warnings`,
+   `cargo test --workspace --locked` and `cargo deny check`. CI runs the same
+   commands. A clean clone should be green in under 15 minutes
    on Windows, macOS or Linux, with no kernel, Swift, Node or GPU
    toolchain. If it is not, that is a bug; please report it.
-4. Keep to the layer rules. `verify` runs the architecture lint; its
-   messages say how to fix a violation.
+4. Keep to the layer rules of `architecture.toml`; review checks them until
+   the architecture lint (WI-0003) lands.
 5. Changes to public crates, wire formats, the pack format, the Cedar
    schema or anything else listed in GOVERNANCE.md need an accepted RFC
    first.
@@ -139,12 +140,12 @@ Commit messages are one line, for example:
     fix(grdr-core): return unresolved for here-doc bodies
 
 The pull request, not the commit, names the work item and the tools used.
-The merge queue lands it as one commit whose message is the pull request
-title followed by ` (#<pr>)`, so the title follows the same form.
+It lands as one squash commit whose message is the pull request title, so
+the title follows the same form.
 
 ## Tests you cannot see
 
-Pull requests are gated only by the public `verify`. The project also runs
+Pull requests are gated only by the public gates and reviews. The project also runs
 a held-out test suite before releases and every night on the main branch.
 Its tests are published two releases after use. If a held-out test fails
 because of your change, a maintainer posts a public reproducer. You may ask
