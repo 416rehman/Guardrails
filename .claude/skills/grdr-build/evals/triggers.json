@@ -5,7 +5,7 @@
   {"query": "/loop grdr-build", "should_trigger": true},
   {"query": "Start building Guardrails from the issues and keep going until nothing is workable.", "should_trigger": true},
   {"query": "Carry on building the product where the last loop stopped.", "should_trigger": true},
-  {"query": "Work the open issues in build order, three at a time where they are independent.", "should_trigger": true},
+  {"query": "Work the open issues of the current slice, three at a time where they are independent.", "should_trigger": true},
   {"query": "Run one more build iteration and tell me what landed.", "should_trigger": true},
   {"query": "Nothing is workable; have the next area's lead break its design document into issues and keep building.", "should_trigger": true},
   {"query": "Loop over the issues and build the endpoint first.", "should_trigger": true},

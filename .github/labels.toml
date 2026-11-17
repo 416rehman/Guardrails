@@ -196,6 +196,17 @@ name = "kind:rfc"
 color = "5319e7"
 description = "An RFC's design issue: the persona council comments here, the chief architect decides"
 
+# Slices (skill grdr-build): an epic issue states one end-to-end scenario; each slice:N label is
+# created with its epic, slice:0 first, and every product issue carries the label of its slice
+[[label]]
+name = "epic"
+color = "3e4b9e"
+description = "An end-to-end slice: the scenario it makes work on Windows, macOS and Linux"
+[[label]]
+name = "slice:0"
+color = "bfd4f2"
+description = "Serves slice 0, the first end-to-end slice"
+
 # Size: non-test changed lines; larger work is split into sub-issues
 [[label]]
 name = "size:XS"

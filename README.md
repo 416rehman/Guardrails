@@ -27,7 +27,8 @@ skill `grdr-work-issue`. It reads the issue, has the squad's lead write a missin
 implementer in its own worktree, runs the evaluators the issue's risk tier calls for, sends their
 findings back for at most three rounds, then opens the pull request and squash-merges it once CI
 passes. Independent issues can be worked in parallel subagents. "Build the product", or `/loop` with
-skill `grdr-build`, repeats this over the issues in the build order until the plan is done.
+skill `grdr-build`, repeats this slice by slice: each slice is an epic issue with an end-to-end scenario
+that must work on Windows, macOS and Linux through every layer before the slice closes.
 
 To start, install Rust with rustup (`rustup toolchain install` reads `rust-toolchain.toml`), the
 GitHub CLI logged in with `gh auth login`, and Claude Code logged in to the subscription that runs
