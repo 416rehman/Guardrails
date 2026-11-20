@@ -47,14 +47,7 @@ Pick the evaluators from `.claude/risk-tiers.toml`:
 
 Run `eval-tier` first when the issue has no `tier:` label or the diff reaches paths outside the write set, and use the tier it returns. A tier is raised, never lowered.
 
-When a criterion names a `workflow_dispatch` run, start it after the implementer's last push and before you spawn the other evaluators, so they find a finished run on the commit they judge:
-
-1. `git fetch origin main issue/<n>`, then `git diff --quiet origin/main origin/issue/<n> -- .github/workflows/`. A dispatch runs the workflow file of the dispatched commit, so a branch that edits a workflow writes its own oracle. If the command exits non-zero, start no run: the criterion is `cannot-evaluate` and goes back to the spec author.
-2. `gh workflow run <file> --ref issue/<n>`, with the inputs (`-f`) the criterion's check names. `.claude/settings.json` lists the workflows a session may start; `lab.yml` lands with #1667.
-3. `gh workflow run` prints no run id. Find it with `gh run list --workflow <file> --event workflow_dispatch --branch issue/<n> --json databaseId,headSha,status,conclusion`: the newest run whose `headSha` equals `git rev-parse origin/issue/<n>`. A new run takes a few seconds to appear, so list once more if the first list lacks it; a dispatch that exited 0 with no run on the head at that second list is `cannot-evaluate`.
-4. `gh run watch <id>`. One call can outlast a tool call's time limit, so repeat it until `gh run view <id> --json status` shows `completed`, for no longer than the `timeout-minutes` the workflow sets; a run still not completed then is `cannot-evaluate`.
-
-Never start a second run on a head whose run failed: a failed run on the head fails the criterion, and the evaluators choose among runs as `grdr-evaluate` says. Tell each evaluator what happened in these steps. Every round that pushes a new head starts a new run on it.
+When a criterion names a `workflow_dispatch` run, the run must be finished on the head before you spawn the other evaluators. After the implementer's last push, `git fetch origin main issue/<n>` and follow `grdr-evaluate` section 3, "A `workflow_dispatch` run as the oracle", with `<sha>` set to `git rev-parse origin/issue/<n>`. It checks the paths the run reads from the checkout, starts the run with `gh workflow run <file> --ref issue/<n>` (`verify.yml` for the gates) only when no run on the head counts yet, and waits for it. `.claude/settings.json` lists the workflows a session may start; `lab.yml` lands with #1667. Tell each evaluator what happened. Every round that pushes a new head starts a new run on it.
 
 Then spawn the rest in one message so they run in parallel, each with `isolation: "worktree"` and a clean prompt: the issue number, the branch, the round, and the implementer's decisions as claims to check. Each fetches the branch (`git fetch origin issue/<n>` then `git switch --detach FETCH_HEAD`), reads the design sections the Spec names, follows `grdr-evaluate` and returns `pass`, `fail` or `cannot-evaluate` with findings. A change that contradicts its design document fails. Never give an evaluator another evaluator's verdict.
 
@@ -68,10 +61,11 @@ At most three rounds. After a third round with a failure, stop and report to the
 
 When every evaluator passed and the implementer's report shows the gates green:
 
-1. `gh pr create --base main --head issue/<n> --title "<subject>" --body "<two-line summary and the decisions list>\n\nCloses #<n>"`, with a `[release_note]` block (design/34 §14: `category`, `audiences`, `surfaces`, `text`, and `action_required` for breaking and deprecation) and a `Docs: unchanged because <reason>` line when the change touches no docs. The title is one Conventional Commit subject of at most 72 characters, true to the change (`feat`, `fix`, `docs`, `refactor`, ...).
-2. `gh pr checks <pr> --watch`. A failed check goes back to the implementer as one more round.
-3. `gh pr merge <pr> --squash --subject "<subject>" --body "" --delete-branch`, so the commit on `main` is that one line.
-4. Report to the owner: the pull request, the evaluators and rounds, and the decisions where the spec was silent.
+1. `git fetch origin issue/<n>`; `<sha>` is `git rev-parse origin/issue/<n>`. Every evaluator's last verdict names the commit it judged, and each must be `<sha>`. An evaluator whose pass names an earlier commit runs once more on `<sha>`, reviewing the commits since; that run is not a new round. Land nothing on a verdict for any other commit.
+2. `gh pr create --base main --head issue/<n> --title "<subject>" --body "<two-line summary and the decisions list>\n\nCloses #<n>"`, with a `[release_note]` block (design/34 §14: `category`, `audiences`, `surfaces`, `text`, and `action_required` for breaking and deprecation) and a `Docs: unchanged because <reason>` line when the change touches no docs. The title is one Conventional Commit subject of at most 72 characters, true to the change (`feat`, `fix`, `docs`, `refactor`, ...).
+3. `gh pr checks <pr> --watch`. A failed check goes back to the implementer as one more round.
+4. `gh pr merge <pr> --squash --match-head-commit <sha> --subject "<subject>" --body "" --delete-branch`, so the commit on `main` is that one line and GitHub refuses the merge if the branch moved after the evaluators judged it.
+5. Report to the owner: the pull request, the evaluators and rounds, and the decisions where the spec was silent.
 
 ## Parallel issues
 
