@@ -25,6 +25,17 @@
   "hooks": {
     "PreToolUse": [
       {
+        "matcher": "Edit|Write|NotebookEdit|MultiEdit|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/gate-paths.mjs\"",
+            "timeout": 30,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
         "matcher": "Bash|PowerShell",
         "hooks": [
           {
@@ -83,6 +94,9 @@
       "Bash(gh workflow run lab.yml --ref issue/*)",
       "Bash(gh run download *)",
       "Bash(gh run watch *)",
+      "Bash(node .claude/hooks/grant.mjs open *)",
+      "Bash(node .claude/hooks/grant.mjs close *)",
+      "Bash(node .claude/hooks/grant.mjs print *)",
       "Bash(git fetch *)",
       "Bash(git switch *)",
       "Bash(git rev-parse *)",
@@ -219,34 +233,11 @@
       "Edit(/fuzz/corpus/regressions/**)",
       "Edit(/spec/**)",
       "Edit(/specs/**)",
-      "Edit(/security/**)",
-      "Edit(/audits/**)",
-      "Edit(/architecture.toml)",
-      "Edit(/surfaces.toml)",
-      "Edit(/support.toml)",
-      "Edit(/limits.toml)",
-      "Edit(/supply-chain/**)",
-      "Edit(/third_party/**)",
       "Edit(/governance/**)",
-      "Edit(/brand/**)",
-      "Edit(/web/packages/ui/exceptions.toml)",
-      "Edit(/dist.toml)",
       "Edit(/release-please-config.json)",
       "Edit(/.release-please-manifest.json)",
       "Edit(/release/**)",
       "Edit(**/CHANGELOG.md)",
-      "Edit(/deny.toml)",
-      "Edit(**/clippy.toml)",
-      "Edit(/rustfmt.toml)",
-      "Edit(/rust-toolchain.toml)",
-      "Edit(/.cargo/**)",
-      "Edit(/Cargo.toml)",
-      "Edit(/Cargo.lock)",
-      "Edit(/pnpm-lock.yaml)",
-      "Edit(/pnpm-workspace.yaml)",
-      "Edit(/.github/**)",
-      "Edit(**/AGENTS.md)",
-      "Edit(**/REVIEW.md)",
       "Edit(/docs/agents/status/**)",
       "Edit(/docs/references/research/**)",
       "Edit(/LICENSE)",

@@ -5,7 +5,9 @@ name: verify
 # nightly run and a manual run cover Linux, macOS and Windows on GitHub's free standard runners
 # (owner instruction 28); a private copy falls back to Linux with no nightly run, because private
 # runner minutes are limited. Until a crate lands under crates/ or programs/ the workspace has no
-# members, Cargo refuses every command, and the Rust steps are skipped.
+# members, Cargo refuses every command, and the Rust steps are skipped. The kit hooks job runs the
+# tests of .claude/hooks on every run; it fetches the full history because they read the static deny
+# list at an earlier commit.
 
 on:
   pull_request:
@@ -89,6 +91,31 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --locked --all-targets -- -D warnings
       - run: cargo test --workspace --locked
+
+  kit-hooks:
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
+    name: kit hooks (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(needs.plan.outputs.systems) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - run: node --test ".claude/hooks/**/*.test.mjs"
 
   deny:
     needs: plan
