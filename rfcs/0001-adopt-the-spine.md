@@ -75,7 +75,10 @@ Round 2 on #1711:
 - Dispositions: https://github.com/416rehman/Guardrails/issues/1711#issuecomment-7050020126
 - `eval-architecture`, fail: https://github.com/416rehman/Guardrails/issues/1711#issuecomment-7050171679
 
-Round 3: the dispositions and the re-review of the changed sections are on #1711.
+Round 3 on #1711:
+
+- Dispositions: https://github.com/416rehman/Guardrails/issues/1711#issuecomment-7050223158
+- `eval-architecture`, pass: https://github.com/416rehman/Guardrails/issues/1711#issuecomment-7050326883
 
 ## Decision
 <The chief architect's outcome and written reasons.>
