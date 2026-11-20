@@ -37,6 +37,15 @@ Unit tests passing is not evidence that a criterion holds. For each criterion:
 3. Use the surface the criterion names: the built `grdr` binaries for CLI and files; the local console through the Playwright MCP server once it exists; another operating system, architecture or kernel through skill `grdr-matrix-run`.
 4. Record the command and exit code.
 
+**A `workflow_dispatch` run as the oracle.** A pull request runs `verify.yml` on Linux only, so a macOS or Windows result exists only in a manual run on the branch. When a criterion names one:
+
+1. `gh run list --workflow <file> --event workflow_dispatch --branch issue/<n> --json databaseId,headSha,status,conclusion`.
+2. Take the run whose `headSha` equals `git rev-parse origin/issue/<n>`, and read it with `gh run view <id> --json headSha,jobs`. A run on any other commit counts for nothing.
+3. Compare each job the criterion names (`fmt, clippy and tests (macos-26)`, for example) with its `expect`. A job that is missing, skipped or did not conclude `success` fails the criterion; a repository made private plans only the Linux job, and that shows here.
+4. With no completed run on the head, start one with `gh workflow run <file> --ref issue/<n>`, wait for it with `gh run watch <id>`, and read it as above. If it does not start or does not complete, the criterion is `cannot-evaluate`.
+
+A criterion that reads macOS or Windows results from `gh pr checks` can never be met on a pull request. It is `cannot-evaluate`, naming the criterion, and the issue goes back to its spec author.
+
 A criterion you could not exercise is `cannot-evaluate`, never `pass` (P9). That includes a criterion whose surface does not exist yet, and a matrix cell with no machine (`requires hardware`).
 
 ## 4. Check the proofs yourself
