@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+# The host-contract index as data (#241 R8): one [[document]] table per document of
+# spec/host-contract/, each with its path, the design/26 section it specifies and its status
+# (pending or written), and an optional data array naming the machine-readable files that go with
+# it. Each host-contract item sets its own entry; no other key changes without a new item.
+
+[[document]]
+path = "c-abi.md"
+design_section = "26 sections 2 and 3, C interfaces and error model"
+status = "written"
+data = ["status-codes.toml"]

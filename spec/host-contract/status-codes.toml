@@ -1,0 +1,74 @@
+# SPDX-License-Identifier: Apache-2.0
+# grdr_status codes of both C interfaces (spec/host-contract/c-abi.md section 6). A value is never
+# reused: a retired code keeps its row with retired = true, and a new code takes the next free
+# value. handle_after is one of usable, usable-state-unchanged, no-handle, last-known-good,
+# previous-profile, poisoned, recreate-from-snapshot. grdr_status_str returns a row's name, or
+# unknown_name for a value with no row.
+
+unknown_name = "GRDR_E_UNKNOWN"
+
+[[status]]
+name = "GRDR_OK"
+value = 0
+meaning = "Success."
+handle_after = "usable"
+
+[[status]]
+name = "GRDR_E_ARG"
+value = 1
+meaning = "An argument is invalid: a null pointer, a struct_size below the struct's base size, or a value outside its documented range. For the fast path, also an input field out of range."
+handle_after = "usable"
+
+[[status]]
+name = "GRDR_E_ABI"
+value = 2
+meaning = "ABI mismatch: grdr_abi_check failed, or a table blob's abi_min exceeds the fast-path library."
+handle_after = "no-handle"
+
+[[status]]
+name = "GRDR_E_DECODE"
+value = 3
+meaning = "A malformed input message or state bytes."
+handle_after = "usable-state-unchanged"
+
+[[status]]
+name = "GRDR_E_BUNDLE"
+value = 4
+meaning = "Bundle rejected. For the fast path, a table blob that fails a TV rule, or an evaluation that reaches the blob's eval_cap; the tables loaded before stay in use."
+handle_after = "last-known-good"
+
+[[status]]
+name = "GRDR_E_PROFILE"
+value = 5
+meaning = "Host profile invalid."
+handle_after = "previous-profile"
+
+[[status]]
+name = "GRDR_E_RESOURCE"
+value = 6
+meaning = "Memory cap reached, or a host allocator callback returned null."
+handle_after = "usable-state-unchanged"
+
+[[status]]
+name = "GRDR_E_BUDGET"
+value = 7
+meaning = "Step budget exhausted."
+handle_after = "usable-state-unchanged"
+
+[[status]]
+name = "GRDR_E_STATE"
+value = 8
+meaning = "Call out of order, or state bytes from another bundle. For the fast path, label bits from another bundle: labels_bundle_tag differs from the loaded tables."
+handle_after = "usable"
+
+[[status]]
+name = "GRDR_E_POISONED"
+value = 9
+meaning = "The handle was poisoned earlier."
+handle_after = "recreate-from-snapshot"
+
+[[status]]
+name = "GRDR_E_INTERNAL"
+value = 10
+meaning = "An internal consistency check failed: a bug caught without panicking."
+handle_after = "poisoned"
