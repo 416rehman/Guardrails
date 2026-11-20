@@ -1,0 +1,53 @@
+{
+  "schema": "grdr.kit.gate-paths.v1",
+  "entries": [
+    {
+      "agents": ["lead-agent-kit", "chief-architect"],
+      "globs": [
+        ".claude/agents/**", ".claude/skills/**", ".claude/hooks/**", ".claude/gate-paths.json", ".claude/risk-tiers.toml",
+        ".claude/owners.toml", "CLAUDE.md", "AGENTS.md", ".github/**", "architecture.toml", "Cargo.toml", "rust-toolchain.toml",
+        ".cargo/**", "deny.toml", "**/clippy.toml", "rustfmt.toml", "pnpm-workspace.yaml", "supply-chain/**", "security/**",
+        "audits/**", "web/packages/ui/exceptions.toml", "surfaces.toml", "support.toml", "**/REVIEW.md"
+      ]
+    },
+    {
+      "agents": ["*"],
+      "globs": ["*/**/AGENTS.md", "limits.toml", "dist.toml", "brand/**", "third_party/**", "Cargo.lock", "pnpm-lock.yaml"]
+    }
+  ],
+  "never_grantable": [
+    "conformance/vectors/**", "tests/golden/**", "**/*.snap", "**/__screenshots__/**", "fuzz/corpus/regressions/**", "spec/**",
+    "specs/**", "governance/**", "release-please-config.json", ".release-please-manifest.json", "release/**", "**/CHANGELOG.md",
+    "docs/agents/status/**", "docs/references/research/**", "LICENSE", "NOTICE", "COVENANT.md", "GOVERNANCE.md",
+    "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "SECURITY.md", "MAINTAINERS.md", "AI_POLICY.md", "ADOPTERS.md", "TRADEMARKS.md",
+    ".claude/settings.json", ".git/**"
+  ],
+  "always_writable": ["target/**"],
+  "shell_prefixes": [
+    "git status", "git diff", "git log", "git show", "git ls-files", "git add", "git commit -m", "git blame", "rg", "cargo",
+    "gh issue view", "node --test", "node .claude/hooks/grant.mjs"
+  ],
+  "grant_tool": ".claude/hooks/grant.mjs",
+  "grants_dir": ".claude/grants",
+  "issue": {
+    "branch_prefix": "issue/",
+    "agent_label_prefix": "agent:",
+    "write_set_heading": "### Write set",
+    "open_state": "OPEN"
+  },
+  "high_tier": {
+    "labels": ["tier:high", "trust-core"],
+    "requires": [".github/workflows/write-set.yml"]
+  },
+  "messages": {
+    "GRDR-KIT-0001": "{detail} is a gate path, and this session holds no grant for it. Gate paths change only in their own issue, written by the agent its grant names.",
+    "GRDR-KIT-0002": "{detail} is outside this agent's worktree. Write only inside your own worktree.",
+    "GRDR-KIT-0003": "{detail} is outside the write set of this issue's grant. File the change you need as a new issue.",
+    "GRDR-KIT-0004": "The command names the gate path {detail}. Change a gate path with the file tools under a grant, or run a read-only command.",
+    "GRDR-KIT-0005": "{detail} is the grant tool or the grants directory, which only the main session uses.",
+    "GRDR-KIT-0006": "{detail} cannot be granted to this issue's agent. It changes only in an issue worked by an agent its gate-list entry names.",
+    "GRDR-KIT-0007": "The grant is invalid: {detail}. Fix the issue or the grant file, then run grant.mjs open again.",
+    "GRDR-KIT-0009": "Grants are opened and closed only from the main checkout, not {detail}. Run grant.mjs from the main checkout.",
+    "GRDR-KIT-0010": "This high-tier issue cannot be granted until {detail} is on main. Land that first."
+  }
+}

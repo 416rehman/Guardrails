@@ -122,7 +122,7 @@ describe("R2, file tools", () => {
 describe("R3, shell tools", () => {
   test("a: a subagent naming the grant tool or the grants directory is refused with 0005", () => {
     assert.equal(shellCode("w2", LEAD, "cat .claude/grants/2.json"), "GRDR-KIT-0005");
-    assert.equal(shellCode("w2", LEAD, `rm ${join(repo.main, ".claude", "grants", "2.json")}`), "GRDR-KIT-0005");
+    assert.equal(shellCode("w2", LEAD, `rm ${join(repo.main, ".claude", "grants", "2.json").replaceAll("\\", "/")}`), "GRDR-KIT-0005");
     assert.equal(shellCode("main", MAIN, "cat .claude/grants/2.json"), null);
   });
   test("b: a redirection or tee into a gate-list path is refused with 0004, prefix or not", () => {
@@ -139,7 +139,8 @@ describe("R3, shell tools", () => {
     assert.equal(shellCode("w2", LEAD, "rm -rf $(echo .github)"), "GRDR-KIT-0004");
     assert.equal(shellCode("w2", LEAD, "(cd crates; cat ../Cargo.toml)"), "GRDR-KIT-0004");
     assert.equal(shellCode("w2", LEAD, "cp x --target-directory=.cargo"), "GRDR-KIT-0004");
-    assert.equal(shellCode("w2", LEAD, "rm -rf .git*"), "GRDR-KIT-0004");
+    assert.equal(shellCode("w2", LEAD, "rm -rf .cl*"), "GRDR-KIT-0004");
+    assert.equal(shellCode("w2", LEAD, "rm -rf .git*"), null);
     assert.equal(shellCode("w2", LEAD, "cd /nonexistent; rm -rf .github"), "GRDR-KIT-0004");
     assert.equal(shellCode("w2", LEAD, "Remove-Item -Recurse .github", "PowerShell"), "GRDR-KIT-0004");
     assert.equal(shellCode("w2", LEAD, "Set-Location .claude; Remove-Item hooks", "PowerShell"), "GRDR-KIT-0004");

@@ -94,6 +94,7 @@ const MODES = ["default", "plan", "acceptEdits", "auto", "dontAsk", "bypassPermi
 const AGENT_TYPES = ["lead-agent-kit", "impl-rust", "chief-architect", "eval-diff"];
 const PREFIXED = [["git", "status"], ["git", "diff"], ["git", "log"], ["git", "add"], ["rg", "foo"], ["cargo", "test"], ["node", "--test"], ["gh", "issue", "view", "5"]];
 const UNPREFIXED = [["rm", "-rf"], ["cat"], ["mkdir", "-p"], ["echo", "hi"], ["cp", "x"]];
+const DEPTH_NAMES = ["AGENTS.md", "clippy.toml", "REVIEW.md"];
 const SEPARATORS = [" && ", " || ", " ; ", " | ", "\n", " & "];
 const REDIRECTS = [" > ", " >> ", " 2> ", " &> ", " >| "];
 
@@ -111,7 +112,8 @@ export function rng(seed) {
 const pick = (random, list) => list[Math.floor(random() * list.length)];
 
 export function writeSetPredicate(lines) {
-  return (rel) => rel.startsWith("target/") || lines.some((line) => (line.endsWith("/**") ? rel.startsWith(line.slice(0, -2)) : rel === line));
+  const covers = (line, rel) => (line.endsWith("/**") ? rel === line.slice(0, -3) || rel.startsWith(line.slice(0, -2)) : rel === line);
+  return (rel) => covers("target/**", rel) || lines.some((line) => covers(line, rel));
 }
 
 // `world.grants` maps a worktree to "invalid" or to the `agent` and `inWriteSet` of its grant.
@@ -178,7 +180,7 @@ function generateCommand(random, world, callerRoot, dialect) {
     else if (roll < 0.4) segments.push({ kind: "tee", words: [], target: pathWord() });
     else {
       const prefixed = random() < 0.4;
-      const words = Array.from({ length: Math.floor(random() * 3) }, pathWord);
+      const words = Array.from({ length: Math.floor(random() * 3) }, () => ({ ...pathWord(), option: random() < 0.15 }));
       segments.push({ kind: prefixed ? "prefixed" : "plain", head: pick(random, prefixed ? PREFIXED : UNPREFIXED), words, redirect: random() < 0.25 ? pathWord() : null });
     }
   }
@@ -196,23 +198,35 @@ function renderSegment(random, world, dialect, segment) {
   if (segment.kind === "cd") return `${pick(random, dialect === "PowerShell" ? ["cd", "Set-Location", "pushd"] : ["cd", "pushd"])} ${word(segment.target, false)}`;
   if (segment.kind === "grant") return `node ${segment.words[0].rel} open 9`;
   if (segment.kind === "tee") return `tee ${random() < 0.3 ? "-a " : ""}${word(segment.target, false)}`;
-  const words = segment.words.map((w) => word(w, true));
+  const words = segment.words.map((w) => word(w, w.option));
   const redirect = segment.redirect ? `${pick(random, REDIRECTS)}${word(segment.redirect, false)}` : "";
   return [...segment.head, ...words].join(" ") + redirect;
 }
 
 function renderWord(random, world, dialect, w, optionForm) {
-  const raw = w.root === undefined ? w.rel || "." : `${w.root === "outside" ? world.outside : world.roots[w.root]}${w.rel ? `/${w.rel}` : ""}`;
+  const raw = rawWord(world, w);
   const text = world.windows ? flipCase(random, dialect === "PowerShell" && random() < 0.5 ? raw.replaceAll("/", "\\") : raw) : raw;
   const quoted = pick(random, [text, text, `'${text}'`, `"${text}"`]);
-  return optionForm && random() < 0.15 ? `--out=${quoted}` : quoted;
+  return optionForm ? `--out=${quoted}` : quoted;
+}
+
+// R3 also reads `--out=<value>` as a path relative to the base, which only the entries that
+// match at any depth can name: a last segment AGENTS.md, clippy.toml or REVIEW.md after a `/`.
+function optionWordLabel(world, w) {
+  const segments = `--out=${rawWord(world, w)}`.split("/");
+  return segments.length > 1 && DEPTH_NAMES.includes(segments.at(-1)) ? holds : plain;
+}
+
+function rawWord(world, w) {
+  return w.root === undefined ? w.rel || "." : `${w.root === "outside" ? world.outside : world.roots[w.root]}${w.rel ? `/${w.rel}` : ""}`;
 }
 
 function modelShell(world, caller, segments) {
   let bases = [{ root: caller.root, prefix: "" }];
   const analysed = [];
   for (const segment of segments) {
-    const labelsOf = (w) => (w.root !== undefined ? [labelAt(w.root, w.rel)] : bases.map((b) => labelAt(b.root, join(b.prefix, w.rel))));
+    const valueLabels = (w) => (w.root !== undefined ? [labelAt(w.root, w.rel)] : bases.map((b) => labelAt(b.root, join(b.prefix, w.rel))));
+    const labelsOf = (w) => (w.option ? [...valueLabels(w), optionWordLabel(world, w)] : valueLabels(w));
     const targets = segment.kind === "tee" ? [segment.target] : segment.redirect ? [segment.redirect] : [];
     const words = segment.kind === "cd" ? [segment.target] : segment.words;
     analysed.push({ checked: segment.kind === "plain" || segment.kind === "tee", words: words.flatMap(labelsOf), writes: targets.flatMap(labelsOf) });
