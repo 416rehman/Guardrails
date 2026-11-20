@@ -21,14 +21,33 @@ The team uses plain Claude Code: subagents in `.claude/agents/`, skills in `.cla
 | `attribution` | `commit` and `pr` empty, so Claude Code adds no co-author line (owner instruction 27) |
 | `env` | `CARGO_TERM_COLOR=never`, `DISABLE_TELEMETRY=1`, `GH_REPO` (the repository issues live in), `GH_PROMPT_DISABLED`, `GH_NO_UPDATE_NOTIFIER`, the subagent concurrency cap, and `ANTHROPIC_DEFAULT_HAIKU_MODEL` set to the Sonnet id, so anything that names `haiku` runs on Sonnet |
 | `model`, `availableModels` | `claude-sonnet-5-5` by default; the three ids of the model rule |
-| `permissions.allow` | Build, test, lint, format and `cargo deny` commands, git reads and branch commands, `git add`, `git commit -m`, `git push`, the `gh issue`, `gh pr` and `gh run` calls agents make, the read-only contract, licence and mutation checks, `pnpm install --frozen-lockfile`, `mcp__playwright__*`, one `WebFetch(domain:...)` rule per research domain, and `WebSearch`. Agents run with `permissionMode: dontAsk`, so a command outside this list is refused, not asked |
+| `permissions.allow` | Build, test, lint, format and `cargo deny` commands, git reads and branch commands, `git add`, `git commit -m`, `git push`, the `gh issue`, `gh pr` and `gh run` calls agents make, the read-only contract, licence and mutation checks, `pnpm install --frozen-lockfile`, `mcp__playwright__*`, one `WebFetch(domain:...)` rule per research domain, `WebSearch`, and `node .claude/hooks/grant.mjs open`, `close` and `print`. Agents run with `permissionMode: dontAsk`, so a command outside this list is refused, not asked |
 | `permissions.ask` | `cargo add`, `cargo install`, `pnpm add` |
-| `permissions.deny` | `Edit` of gate configuration and other protected paths (security, supply chain, lint and deny configuration, the Cargo workspace files, `.github/`, golden files and snapshots, governance files, `.claude/settings.json`); reads of credential and user settings files; force push, `reset --hard`, `--no-verify`, signed-off commits, the `gh release` writes, publishing, snapshot acceptance, and gh account, secret, repository and label administration |
-| `hooks` | One PreToolUse hook on Bash and PowerShell, `.claude/hooks/docs-check.mjs`: a dependency-free Node script that holds `gh pr create` and `gh pr merge` until the design/34 docs rules a script can check pass (docs change with code or the body says `Docs: unchanged because <reason>`, the `[release_note]` block, page front matter, no third-party requests or `curl \| sh` on the site). It lets the command through on its own errors |
+| `permissions.deny` | `Edit` of the paths no issue may grant (golden files, vectors and snapshots, `spec/` and `specs/`, governance and release files, the status and research documents, the root governance documents, `.git/` and `.claude/settings.json`; the gate list's `never_grantable` holds the same globs); reads of credential and user settings files; force push, `reset --hard`, `--no-verify`, signed-off commits, the `gh release` writes, publishing, snapshot acceptance, and gh account, secret, repository and label administration |
+| `hooks` | Two PreToolUse hooks. `.claude/hooks/gate-paths.mjs` on the file and shell tools, with `onFailure: "block"`, holds the gate paths (below). `.claude/hooks/docs-check.mjs` on Bash and PowerShell is a dependency-free Node script that holds `gh pr create` and `gh pr merge` until the design/34 docs rules a script can check pass (docs change with code or the body says `Docs: unchanged because <reason>`, the `[release_note]` block, page front matter, no third-party requests or `curl \| sh` on the site). It lets the command through on its own errors |
 | `sandbox` | Enabled, no unsandboxed commands, credential directories unreadable, network to the crate, npm, GitHub and buf registries |
 | `autoMemoryEnabled`, `disableAutoMode`, `disableBypassPermissionsMode` | `false`, `disable`, `disable` |
 
-A deny rule blocks the file tools, not a shell redirect, so it is early feedback; evaluators and CI judge the diff regardless. An issue whose write set names a denied path is worked by `lead-agent-kit` or the chief architect, and the owner lifts the rule for that change.
+A static deny rule cannot be lifted for one subagent, and a hook's `allow` does not override it, so the paths an issue may write are not in the deny list. They are the gate list, `.claude/gate-paths.json`: each entry is a glob and the agents it may be granted to, either `lead-agent-kit` and `chief-architect` (gate configuration, D-63) or `*` (any implementer an issue names, for crate `AGENTS.md` files, `limits.toml`, `brand/` and the lockfiles). The file also holds the shell prefixes, the grant tool, the grants directory, the high-tier labels and precondition paths, and the message of each code.
+
+Before it spawns an implementer, the main session runs `node .claude/hooks/grant.mjs open <n>` from the main checkout. That writes the grant `.claude/grants/<n>.json` (gitignored, schema `grdr.kit.grant.v1`) with the issue's one `agent:` label, `branch` `issue/<n>` and its write set, and `close <n>` removes it. `open` refuses a closed issue, an issue without exactly one `agent:` label or without a write set, and a write-set line that is not relative or names a never-grantable path. It also refuses a `tier:high` or `trust-core` issue until `.github/workflows/write-set.yml` (#1668) is on main.
+
+`gate-paths.mjs` reads the gate list and the grants from the main checkout (`CLAUDE_PROJECT_DIR`), never from the caller's worktree, so a branch cannot weaken it before it merges. It only denies, and its decision does not depend on the permission mode, so it holds under `bypassPermissions`, where allow rules have no effect. A call is a subagent's when its input has `agent_id`. Only the agent the grant names, on the grant's branch, may write a gate path, and only inside its write set and `target/`. Shell commands that write to or name a gate path are refused unless they start with a read-only prefix. Its codes:
+
+| Code | Refuses |
+|---|---|
+| `GRDR-KIT-0001` | A gate path written without a matching grant |
+| `GRDR-KIT-0002` | A subagent writing outside its own worktree |
+| `GRDR-KIT-0003` | A write outside the grant's write set and `target/` |
+| `GRDR-KIT-0004` | A shell command that redirects into, or names, a gate path |
+| `GRDR-KIT-0005` | The grants directory, by any session, or the grant tool, by a subagent |
+| `GRDR-KIT-0006` | A gate path the grant's agent may not be granted |
+| `GRDR-KIT-0007` | An invalid grant, or an issue `grant.mjs` cannot grant |
+| `GRDR-KIT-0008` | The hook or `grant.mjs` failing: every file and shell call is refused |
+| `GRDR-KIT-0009` | `grant.mjs open` or `close` run outside the main checkout |
+| `GRDR-KIT-0010` | A high-tier grant before its precondition path is on main |
+
+`onFailure` needs Claude Code v2.1.295 or later. An older client ignores it, so a crash or timeout of the hook lets the call through, while a failure the hook handles still refuses with `GRDR-KIT-0008`. Text checks cannot follow every shell route (variables, `eval`, a script file, native Windows with no sandbox): the CI write-set job (#1668) and the evaluators' diff check hold those. `node --test ".claude/hooks/**/*.test.mjs"` runs the hook's tests, and the `kit hooks` job of `verify.yml` runs them on the three systems.
 
 ## 2. The owner's installed skills
 

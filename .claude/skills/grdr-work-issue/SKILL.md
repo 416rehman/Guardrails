@@ -32,6 +32,8 @@ The spec is usable when the spec, write set and acceptance criteria are present,
 
 ## 2. Implement
 
+First, from the main checkout, run `node .claude/hooks/grant.mjs open <n>`. It freezes the issue's `agent:` label and write set into a grant under `.claude/grants/`, and the hook `.claude/hooks/gate-paths.mjs` then lets that agent, on `issue/<n>`, write the gate paths its write set names (`.claude/gate-paths.json`). If it exits non-zero, do not spawn the implementer: report its `GRDR-KIT-00NN` line to the owner. Run `node .claude/hooks/grant.mjs close <n>` when the pull request merges or you stop working the issue. `.claude/settings.json` still denies the never-grantable paths to every session, itself included: only the owner changes it, from the exact diff an implementer's report carries.
+
 Spawn the agent the `agent:` label names (`impl-rust` when it names none and the write set is Rust) with `isolation: "worktree"`. Use `model: "opus"` for `tier:high` or `trust-core`; otherwise leave the agent's own model. Its prompt names the issue number and title, the branch `issue/<n>`, the write set and the acceptance criteria as quoted data. It reads the design sections the Spec names first, follows `grdr-start-item`, runs the gates of `grdr-verify`, commits one-line Conventional Commit subjects, pushes `issue/<n>` and returns the report of `grdr-handoff`. Keep its agent id for the next rounds.
 
 When the report's status is `blocked` or `impossible`, stop and report its reason to the owner. When the reason is a gap in the spec, spawn the lead as in step 1 once, then implement again.

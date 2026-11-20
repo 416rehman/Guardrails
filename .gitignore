@@ -1,3 +1,4 @@
 .agent/
 target/
 .claude/settings.local.json
+.claude/grants/
