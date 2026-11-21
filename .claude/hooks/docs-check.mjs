@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
 // The design/34 docs rules a script can check: a PreToolUse hook on `gh pr create` and
 // `gh pr merge`, and the docs CI job with `--ci`. Its own errors let the change through.
 import { execFileSync } from "node:child_process";
