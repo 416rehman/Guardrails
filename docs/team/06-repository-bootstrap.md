@@ -255,8 +255,8 @@ The plan section of the item's issue, written by the squad lead; ticked complete
 # Plan #<n>: <title>
 
 - Implementer: impl-rust | impl-kernel | impl-apple | impl-web | impl-content | impl-docs
-- Usage cap: implementer <share of a usage window>, evaluation <share>, turns <n>; hand off
-  at 80% of either
+- Usage cap: implementer <share of a usage window>, evaluation <share>; hand off at 80% of
+  either
 - Evaluators: per tier and change kind (`team/02` section 10)
 
 ## Tasks

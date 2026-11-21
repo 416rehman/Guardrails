@@ -47,7 +47,7 @@ The root manifest's `members = ["crates/*", "programs/*"]` already picks up the 
 - Layers 0 to 2 and privileged crates: no `unwrap`, `expect`, unchecked indexing or unchecked arithmetic.
 - Every queue, map, cache, body size and recursion depth has a named bound in `limits.toml`.
 - Log macros take `LogSafe` values only. No brand string outside `brand/`.
-- No new dependency in this item. A dependency is its own high-tier item; `cargo add` is denied for implementers.
+- No new dependency in this item. A dependency is its own high-tier item, and an implementer never runs `cargo add`.
 - Every file follows skill `grdr-structure` from its first line: declaration order, the 500-line limit, state types instead of flags.
 
 ## 5. Request the entries agents may not write

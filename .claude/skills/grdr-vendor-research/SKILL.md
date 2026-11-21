@@ -98,5 +98,5 @@ A part with nothing in it says "None found" and names what you searched.
 | Missing | What to do |
 |---|---|
 | A domain is not in your allow rules | The source is "not checked", with its URL, in the comment |
-| `WebSearch` is denied for your role | Use the URLs the briefs cite only and say so |
+| `WebSearch` is not in your role's tools | Use the URLs the briefs cite only and say so |
 | The issue does not exist yet | Put the comment in your report and stop; a lead files the item |
