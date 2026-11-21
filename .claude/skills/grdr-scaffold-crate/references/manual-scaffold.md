@@ -13,7 +13,7 @@ These are the commands WI-0001 uses for the initial crates (team/06 section 13 s
 
 ## 2. Edit the package manifest
 
-`crates/<name>/Cargo.toml` is yours to write (only the root `Cargo.toml` is denied to agents). Add:
+`crates/<name>/Cargo.toml` is yours to write (an ordinary issue never writes the root `Cargo.toml`). Add:
 
 ```toml
 [package.metadata.grdr]
@@ -35,7 +35,7 @@ Keep `edition`, `version` and `license` consistent with the sibling crates; read
 
 ## 4. Draft the crate `AGENTS.md`
 
-`crates/<name>/AGENTS.md` matches the denied glob `**/AGENTS.md`, so write the draft in `target/<name>.AGENTS.draft.md` and post it as a comment on the item's issue headed `Proposed crates/<name>/AGENTS.md`. Follow the template of team/06 section 5: the front block (layer, privilege, surface, squad, trust core, stability for public crates, design reference), then Purpose, Invariants (each with the test, lint or type that holds it), Allowed dependencies, How to test (command, oracle, fuzz and differential targets), Data classes, Limits, Do not. At most 60 lines.
+`crates/<name>/AGENTS.md` matches the protected glob `**/AGENTS.md`, which an ordinary issue does not write, so write the draft in `target/<name>.AGENTS.draft.md` and post it as a comment on the item's issue headed `Proposed crates/<name>/AGENTS.md`. Follow the template of team/06 section 5: the front block (layer, privilege, surface, squad, trust core, stability for public crates, design reference), then Purpose, Invariants (each with the test, lint or type that holds it), Allowed dependencies, How to test (command, oracle, fuzz and differential targets), Data classes, Limits, Do not. At most 60 lines.
 
 ## 5. Check before the report
 

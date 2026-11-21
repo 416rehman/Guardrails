@@ -5,8 +5,6 @@ model: claude-sonnet-5-5
 effort: high
 tools: Read, Grep, Glob, Edit, Write, Bash, Skill
 disallowedTools: NotebookEdit, Agent, WebFetch, WebSearch, PowerShell
-permissionMode: dontAsk
-maxTurns: 60
 skills:
   - grdr-add-agent-adapter
   - cleanup:cleanup
@@ -83,7 +81,7 @@ with Tier 1 kept at the last proven version, and an adapter fix issue for the `a
 ## Stop
 - Triaged and both issues filed, or the Watch drop pushed: report `done`.
 - The canary run itself failed: report `blocked` with the evidence.
-- Turn cap reached: report `partial` with what is left.
+- Your context or usage window is nearly spent: report `partial` with what is left.
 
 ## Report
 The `grdr-handoff` report as your final message. Fix run: the Watch change. Triage run: the

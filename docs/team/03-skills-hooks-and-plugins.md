@@ -6,7 +6,7 @@ _Status: draft 6. Specifies D-47 for the tooling layer. Owning squad: `agent-kit
 
 The team uses plain Claude Code: subagents in `.claude/agents/`, skills in `.claude/skills/`, and the project settings in `.claude/settings.json`. There is no custom binary, no rendering step and no plugin catalogue in the repository.
 
-1. **Three layers, each with one job.** Skills tell an agent how to do a task. The project settings and the sandbox limit what a session can run, read and reach. CI decides: it runs the gates and the security scans on every pull request, so nothing depends on an agent following a skill.
+1. **Three layers, each with one job.** Skills tell an agent how to do a task. The project settings set the model, the environment and the docs-check hook, and limit nothing: agent sessions have no permission limits (ADR-0035). CI decides: it runs the gates and the security scans on every pull request, so nothing depends on an agent following a skill.
 2. **The session is the orchestrator.** Skill `grdr-work-issue` turns "fix issue #n" into a lead, an implementer and evaluators spawned with the Agent tool (`team/01` section 1). Fan-out work (audits, the persona council, broad reviews) is the same: the session spawns subagents in parallel.
 3. **The owner's installed skills each get a lane** (section 2), and project skills are prefixed `grdr-` so they never collide with the owner's or built-in skills (section 3).
 4. **Plugins are the owner's user-scope installs.** The project enables none; agents use what the owner has installed (`cleanup`, `frontend-design` and the like). A third-party skill or plugin enters the project only by the rules of section 5.
@@ -21,14 +21,16 @@ The team uses plain Claude Code: subagents in `.claude/agents/`, skills in `.cla
 | `attribution` | `commit` and `pr` empty, so Claude Code adds no co-author line (owner instruction 27) |
 | `env` | `CARGO_TERM_COLOR=never`, `DISABLE_TELEMETRY=1`, `GH_REPO` (the repository issues live in), `GH_PROMPT_DISABLED`, `GH_NO_UPDATE_NOTIFIER`, the subagent concurrency cap, and `ANTHROPIC_DEFAULT_HAIKU_MODEL` set to the Sonnet id, so anything that names `haiku` runs on Sonnet |
 | `model`, `availableModels` | `claude-sonnet-5-5` by default; the three ids of the model rule |
-| `permissions.allow` | Build, test, lint, format and `cargo deny` commands, git reads and branch commands, `git add`, `git commit -m`, `git push`, the `gh issue`, `gh pr` and `gh run` calls agents make, the read-only contract, licence and mutation checks, `pnpm install --frozen-lockfile`, `mcp__playwright__*`, one `WebFetch(domain:...)` rule per research domain, and `WebSearch`. Agents run with `permissionMode: dontAsk`, so a command outside this list is refused, not asked |
-| `permissions.ask` | `cargo add`, `cargo install`, `pnpm add` |
-| `permissions.deny` | `Edit` of gate configuration and other protected paths (security, supply chain, lint and deny configuration, the Cargo workspace files, `.github/`, golden files and snapshots, governance files, `.claude/settings.json`); reads of credential and user settings files; force push, `reset --hard`, `--no-verify`, signed-off commits, the `gh release` writes, publishing, snapshot acceptance, and gh account, secret, repository and label administration |
+| `permissions.allow` | Build, test, lint, format and `cargo deny` commands, git reads and branch commands, `git add`, `git commit -m`, `git push`, the `gh issue`, `gh pr` and `gh run` calls agents make, the read-only contract, licence and mutation checks, `pnpm install --frozen-lockfile`, `mcp__playwright__*`, one `WebFetch(domain:...)` rule per research domain, and `WebSearch`. In `bypassPermissions` the list neither refuses nor asks; its `WebFetch` rules are the research domain list `grdr-vendor-research` follows |
+| `permissions.defaultMode` | `bypassPermissions`. Claude Code does not start a session in this mode from project settings, so the owner starts the orchestrating session with `claude --permission-mode bypassPermissions`; subagents set no `permissionMode` and run in the session's mode. A contributor's clone keeps the mode its user chose |
+| `permissions.deny` | Empty, and there is no `permissions.ask`: no session rule refuses or asks (ADR-0035) |
 | `hooks` | One PreToolUse hook on Bash and PowerShell, `.claude/hooks/docs-check.mjs`: a dependency-free Node script that holds `gh pr create` and `gh pr merge` until the design/34 docs rules a script can check pass (docs change with code or the body says `Docs: unchanged because <reason>`, the `[release_note]` block, page front matter, no third-party requests or `curl \| sh` on the site). It lets the command through on its own errors |
-| `sandbox` | Enabled, no unsandboxed commands, credential directories unreadable, network to the crate, npm, GitHub and buf registries |
-| `autoMemoryEnabled`, `disableAutoMode`, `disableBypassPermissionsMode` | `false`, `disable`, `disable` |
+| `sandbox` | `enabled` is not set, so the project neither turns the sandbox on nor off and each user's own settings decide (the owner's turn it off); the other keys apply only where a user turns it on |
+| `autoMemoryEnabled`, `disableAutoMode` | `false`, `disable` |
 
-A deny rule blocks the file tools, not a shell redirect, so it is early feedback; evaluators and CI judge the diff regardless. An issue whose write set names a denied path is worked by `lead-agent-kit` or the chief architect, and the owner lifts the rule for that change.
+The repository ships no `PermissionRequest` hook: it would strip the prompts from every contributor who clones the repository. The owner's own sessions answer permission requests from their local, gitignored `.claude/settings.local.json` (ADR-0035).
+
+Gate paths are held by the gates, not by the session (ADR-0035). An issue whose write set names one is worked by `lead-agent-kit` or the chief architect, who writes it directly; the evaluators check every diff against its issue's write set, and CI judges it.
 
 ## 2. The owner's installed skills
 
@@ -113,7 +115,7 @@ No GitHub MCP server: GitHub only through `gh`. No fetch-anything documentation 
 | Item | Risk or question | Settled by |
 |---|---|---|
 | An agent skips a skill | A skill is guidance; an agent can ignore it | Evaluators check the diff against the same rules; CI runs the gates |
-| Deny rules cover the file tools only | An agent can write a denied path through the shell | Evaluators flag any change outside the write set as a blocker; CI judges the diff |
+| No session permission limits (ADR-0035) | An agent can write any path, a gate path included, and nothing refuses or asks first | Evaluators flag any change outside the write set as a blocker; CI judges the diff before it merges |
 | Owner skills' provenance | `cleanup`, `autopilot`, `ui-architect`, `auto-dev-via-github-issues` and `write-like-a-normal-staff-senior-developer` have no stated licence; the open kit cannot carry them until they do | Owner question 7 in the spine (licence them, or keep them private and optional) |
 | `autopilot` drift | The skill says it never stops by itself; it may ignore the overlay | `grdr-work-issue` lands only through evaluators and CI |
 | Plugins on the owner's machine | A user-scope plugin runs in every session the owner starts here | The owner's choice; nothing in the repository depends on one beyond `cleanup` and `frontend-design` |

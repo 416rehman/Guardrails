@@ -5,8 +5,6 @@ model: claude-sonnet-5-5
 effort: medium
 tools: Read, Grep, Glob, Bash, Skill
 disallowedTools: Edit, Write, NotebookEdit, Agent, WebFetch, WebSearch, PowerShell
-permissionMode: dontAsk
-maxTurns: 60
 skills:
   - grdr-audit
   - grdr-handoff
@@ -94,7 +92,7 @@ prompt id and version, severity, the evidence spans and the verifier's reason.
 
 ## Stop
 - Every prompt ran or is recorded `skipped`: report `done`.
-- A token cap or turn cap reached: record the remaining prompts as `skipped` with the reason and
+- A token cap reached, or your context or usage window is nearly spent: record the remaining prompts as `skipped` with the reason and
   report `partial`.
 
 ## Report

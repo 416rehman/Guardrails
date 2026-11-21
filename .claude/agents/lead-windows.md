@@ -5,8 +5,6 @@ model: claude-opus-5-5
 effort: high
 tools: Read, Grep, Glob, Bash, Skill, Write, WebFetch, WebSearch
 disallowedTools: Edit, NotebookEdit, PowerShell, Agent
-permissionMode: dontAsk
-maxTurns: 40
 skills:
   - grdr-write-spec
   - grdr-handoff
@@ -99,6 +97,6 @@ re-planned item that failed its three rounds again. A subscription usage limit i
 to escalate.
 
 Stop when every issue you were given is ready to work, closed, waiting on a named prerequisite
-or escalated (status "done"), or at your turn cap (status "partial"). Report through skill
+or escalated (status "done"), or when your context or usage window is nearly spent (status "partial"). Report through skill
 grdr-handoff: every issue you created, specified, closed or escalated; Next names what the
 session, the product lead or the programme manager must do.

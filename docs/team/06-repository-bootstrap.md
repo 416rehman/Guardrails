@@ -42,11 +42,11 @@ flowchart LR
 
 ### 2.1 The main repository
 
-Top-level directories follow `design/03` section 11. This table fixes everything a bootstrap needs below them. "Protected" means the deny rules of `.claude/settings.json` keep the Edit tool off it and only an issue whose write set names it changes it (`team/05` section 5). "Trust core" means `security/trust-core.paths` lists it (D-63; `design/02`). A directory is created by the first work item that writes into it.
+Top-level directories follow `design/03` section 11. This table fixes everything a bootstrap needs below them. "Protected" means only an issue whose write set names it changes it, held by the evaluators and CI, not by a session permission (`team/05` section 5, ADR-0035); the protected-path list below the table is the authority, and the column describes it. "Trust core" means `security/trust-core.paths` lists it (D-63; `design/02`). A directory is created by the first work item that writes into it.
 
 | Path | Content | Squad | Protected |
 |---|---|---|---|
-| `AGENTS.md`, `CLAUDE.md` | Map for every agent session; Claude Code additions (sections 3 and 4) | agent-kit | Trust core |
+| `AGENTS.md`, `CLAUDE.md` | Map for every agent session; Claude Code additions (sections 3 and 4) | agent-kit | Yes, trust core |
 | `LICENSE`, `NOTICE`, `COVENANT.md`, `GOVERNANCE.md`, `CONTRIBUTING.md`, `AI_POLICY.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `MAINTAINERS.md`, `ADOPTERS.md`, `TRADEMARKS.md` | Texts from `design/30` sections 13 to 16 and `design/35`; trademark text from `design/36` | security | Yes |
 | `REVIEW.md` and `*/REVIEW.md` | "What failure looks like here" per area; reviewers read it from the base branch only | Area squad | Yes |
 | `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `.cargo/config.toml`, `deny.toml`, `clippy.toml`, `rustfmt.toml` | Workspace, the no-panic workspace lints (owner instruction 15), pins, lint and dependency policy | core, release | Yes, trust core |
@@ -78,11 +78,72 @@ Top-level directories follow `design/03` section 11. This table fixes everything
 | `docs/architecture/`, `docs/crates/`, `docs/extending/`, `docs/release/` | Layer and port guides; per-crate design notes; contributor how-tos; re-sign runbook | core, docs owners | No |
 | `docs/team/` | `team/01` to `team/06` | agent-kit | Yes |
 | `docs/agents/status/`, `docs/agents/templates/` | The bootstrap records; the crate `AGENTS.md`, decision-record and specification templates. The work items themselves, with their spec, plan, acceptance criteria and discussion, are GitHub issues (section 7) and never files (owner instruction 5) | Chief architect | `status/` yes |
-| `.claude/` | The agent team: `agents/*.md` (one file per role, edited by hand), `skills/` (the `grdr-` skills, `grdr-work-issue` among them), `settings.json`, `risk-tiers.toml`, `owners.toml` | agent-kit | `settings.json`; all of it trust core |
+| `.claude/` | The agent team: `agents/*.md` (one file per role, edited by hand), `skills/` (the `grdr-` skills, `grdr-work-issue` among them), `settings.json`, `risk-tiers.toml`, `owners.toml` | agent-kit | Yes, trust core |
 | `.github/` | `ISSUE_TEMPLATE/` (the work-item form `work-item.yml` and the intake forms), `labels.toml`, `dependabot.yml`, `CODEOWNERS` (generated), `rulesets/`, `workflows/` | agent-kit | Yes, trust core |
 | `.agent/` | Per-session scratch and worktrees; in `.gitignore` | Any session | No |
 
 The main repository is `416rehman/Guardrails` on the owner's personal GitHub account; there is no organisation and no GitHub Project (owner instruction 5). The Cargo namespace stays `grdr` (D-66). The other repositories are created under the same account only when the work that needs each one starts: `grdr-content` (packs, rules, fingerprints, adapter manifests; the open lane), `grdr-contrib` (community adapters), `grdr-heldout` (held-out suite, private, behind the evaluator service, D-45), `audit-bench` (`team/04`, private). Their names change with the namespace under D-66; GitHub keeps redirects.
+
+**Protected paths.** This list is the single list of protected paths: an ordinary issue changes none of them, and a change to one is its own issue whose write set names it (`team/05` section 5, D-63). The evaluators check every diff against it, and the write-set job of #1668 reads this block from the base commit; a missing or empty block fails both closed. One glob per line, relative to the repository root. `**/` matches zero or more folders, so `**/AGENTS.md` also names the root `AGENTS.md`; `*` matches within one folder; matching ignores case:
+
+```text
+**/*.snap
+**/.claude/**
+**/AGENTS.md
+**/CHANGELOG.md
+**/CLAUDE.local.md
+**/CLAUDE.md
+**/REVIEW.md
+**/__screenshots__/**
+**/clippy.toml
+.cargo/**
+.github/**
+.release-please-manifest.json
+ADOPTERS.md
+AI_POLICY.md
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+COVENANT.md
+Cargo.lock
+Cargo.toml
+GOVERNANCE.md
+LICENSE
+MAINTAINERS.md
+NOTICE
+SECURITY.md
+TRADEMARKS.md
+architecture.toml
+audits/**
+brand/**
+conformance/vectors/**
+deny.toml
+dist.toml
+docs/PLAN.md
+docs/agents/status/**
+docs/decisions/**
+docs/design/**
+docs/references/research/**
+docs/team/**
+fuzz/corpus/regressions/**
+governance/**
+limits.toml
+pnpm-lock.yaml
+pnpm-workspace.yaml
+release-please-config.json
+release/**
+rfcs/**
+rust-toolchain.toml
+rustfmt.toml
+security/**
+spec/**
+specs/**
+support.toml
+supply-chain/**
+surfaces.toml
+tests/golden/**
+third_party/**
+web/packages/ui/exceptions.toml
+```
 
 ### 2.2 One name per artefact
 
@@ -99,9 +160,9 @@ The main repository is `416rehman/Guardrails` on the owner's personal GitHub acc
 | Signers | An allowed-signers file (`team/01`); keys in `MAINTAINERS.md` (`design/30`) | None: no person signs a commit, a batch or a tag, and releases are signed keylessly (owner instructions 7 and 23); `.github/CODEOWNERS` is written from `MAINTAINERS.md` | No person holds a key |
 | Squad ids | `SQ-01` to `SQ-18` (`team/01`); `lead-<id>` (`team/02`); thirteen squads in `PLAN.md` | `team/02` ids are labels and `owners.toml` keys; `SQ-nn` kept as aliases (section 8) | Lead names are what agents are called |
 | Merge target | `next` (`team/01`); `queue/pending` (`design/30`, `team/05`) | `main`: the session squash-merges into it directly | Owner instruction 7 removed the batch sign-off that `queue/pending` staged for, and only a merge into the default branch closes the issue |
-| Bot identities | `grdr-agent` and `grdr-queue` Apps (`team/01`, `design/30`); `grdr-worker[bot]` and `grdr-gate[bot]` (`team/05`); `grdr-release` (release research) | The owner's `gh` login for every agent, with each agent's tool list and the project permission rules limiting its calls; release-please runs with the workflow token. The `grdr-agent` and `grdr-evaluator` Apps are an optional later hardening | Owner instruction 23: no step may need a new account |
+| Bot identities | `grdr-agent` and `grdr-queue` Apps (`team/01`, `design/30`); `grdr-worker[bot]` and `grdr-gate[bot]` (`team/05`); `grdr-release` (release research) | The owner's `gh` login for every agent, with each agent's tool list setting its calls and no session permission limits (ADR-0035); release-please runs with the workflow token. The `grdr-agent` and `grdr-evaluator` Apps are an optional later hardening | Owner instruction 23: no step may need a new account |
 | release-please components of the product bundle and the `grdr` program | `grdr`, tag `grdr-v<version>`, for both: 24 section 10 gives the bundle that tag and every component the tag `<component>-v<version>`, and the program `programs/grdr` is named `grdr` | The bundle is component `grdr`, tag `grdr-v<version>`, version in `release/VERSION`. The program is component `grdr-cli`, tag `grdr-cli-v<version>`, set by `component` on its `programs/grdr` entry in `release-please-config.json`; it keeps the endpoint programs' shared version (24 summary item 1), and its Cargo package stays `grdr` | release-please keys its releases by component, and a second package with the same component silently overwrites the earlier package's tag-to-path mapping, with only a logged warning. The bundle keeps the tag that 24 section 10 and its `release/X.Y` branches already use, so only the program's release configuration carries the new name |
-| Protected-path list | `security/protected.paths` (`team/01`, `team/05`); a protected-paths file in the removed kit directory (`team/02`, `team/03`) | The `deny` rules of `.claude/settings.json` (`team/05` section 5); no `acceptance/**`, because acceptance criteria live in the issue | Claude Code reads its permission rules there; one list |
+| Protected-path list | `security/protected.paths` (`team/01`, `team/05`); a protected-paths file in the removed kit directory (`team/02`, `team/03`) | The protected-path list of section 2.1 (`team/05` section 5); no `acceptance/**`, because acceptance criteria live in the issue | Sessions have no permission limits, so the evaluators read the list (ADR-0035); one list |
 | Plugin marketplace | A separate repository (`team/03` before owner instruction 5); a directory in the main one (before the harness was removed) | None: the project enables no plugins, and sessions use the plugins the owner installed | Plain Claude Code |
 | Skill-path data file | A skill-paths file (cohesion review); a path-skills file (owner instruction 18) | None: `AGENTS.md` names the skills each kind of path needs | One map |
 | CLI exit codes | 23 section 11 (4 not permitted); 28 section 10 (3 refused, 4 unreachable); 11 (2 critical); team/05 section 3 (2 gate failed) | 23 section 11: 0 to 5 | One meaning per code (P17) |
@@ -255,8 +316,8 @@ The plan section of the item's issue, written by the squad lead; ticked complete
 # Plan #<n>: <title>
 
 - Implementer: impl-rust | impl-kernel | impl-apple | impl-web | impl-content | impl-docs
-- Usage cap: implementer <share of a usage window>, evaluation <share>, turns <n>; hand off
-  at 80% of either
+- Usage cap: implementer <share of a usage window>, evaluation <share>; hand off at 80% of
+  either
 - Evaluators: per tier and change kind (`team/02` section 10)
 
 ## Tasks
@@ -522,7 +583,7 @@ Agents do the rest: the trademark and package-registry search D-66 asks for (pub
 | 3 | Decide owner question 8. If yes: enrol Loonaro in the Apple Developer Program as an organisation and request the Endpoint Security entitlement once the Team ID exists. If no: macOS artefacts ship with Sigstore signatures, marked not platform-signed, with tier 1 only | D-18; spine section 7 | macOS platform signatures in WI-0012; macOS tiers 2 and 3 | Team ID and entitlement request reference recorded, or the decision recorded |
 | 4 | Optional: apply as Loonaro to a free open-source signing programme for Windows user-mode binaries (for example SignPath Foundation), checking at setup that it covers every PE and MSI file and accepts the reusable workflow of `design/24` section 10. Without it, Windows artefacts ship with Sigstore signatures, marked not platform-signed. The optional Windows driver needs an EV certificate and Microsoft's hardware programme, which depend on a sponsor or partner (D-17), and is not part of this item | `design/24` signing table; D-17; owner instruction 23 | Windows platform signatures in WI-0012; needs a public repository, which this one is from its first push | Acceptance and signing policy recorded, or the artefacts recorded as not platform-signed |
 | 5 | Set up DNS for `guardrailshq.com` at its registrar or DNS host: the documentation, update and other hosts `brand/brand.toml` lists under `on_domain`, mail forwarding for `security@` and `conduct@`, and SPF, DKIM and DMARC for the sending domain; the setup step prints the exact records. Then each `value` in `brand/brand.toml` moves to its `on_domain` value through a protected change. Until then the defaults point at GitHub-hosted addresses and nothing waits on DNS (owner instruction 25) | D-62, D-66 | The security address in `SECURITY.md`; hosted mail | Records resolve; the brand values moved |
-| 6 | Repository settings, applied at setup with the owner's `gh` login (owner instruction 28): allow GitHub Actions to create and approve pull requests, one setting (release-please opens its own), and keep the default workflow token read-only; turn on Dependabot alerts and security updates, private vulnerability reporting, and secret scanning with push protection; apply the branch rules on `main` from `.github/rulesets/main.json` once WI-0010 has written them (changes only through pull requests, the hosted `verify` check required, no force push or deletion). Agents cannot change repository settings (the project permission rules deny `gh repo edit`) | `team/05` sections 4, 9 and 15; D-62 | release-please; Dependabot security updates; `SECURITY.md`'s first route; push protection on the first push; the branch rules | `gh api` shows each setting |
+| 6 | Repository settings, applied at setup with the owner's `gh` login (owner instruction 28): allow GitHub Actions to create and approve pull requests, one setting (release-please opens its own), and keep the default workflow token read-only; turn on Dependabot alerts and security updates, private vulnerability reporting, and secret scanning with push protection; apply the branch rules on `main` from `.github/rulesets/main.json` once WI-0010 has written them (changes only through pull requests, the hosted `verify` check required, no force push or deletion). Agents do not change repository settings, a process rule review checks (ADR-0035) | `team/05` sections 4, 9 and 15; D-62 | release-please; Dependabot security updates; `SECURITY.md`'s first route; push protection on the first push; the branch rules | `gh api` shows each setting |
 | 7 | Optional: put a licence on the owner's public `416rehman/claude-mods` repository (`team/03` proposes Apache-2.0) | It carries the `cleanup` plugin the commit rules use, and it states none | Recommending `cleanup` to contributors | Licence file in place, or the gap recorded |
 | 8 | Optional later hardening, none of it on the critical path: a Claude Code token for GitHub-hosted agent runs (`claude setup-token` needs a browser; piped straight into the repository secret `CLAUDE_CODE_OAUTH_TOKEN` through stdin); the `grdr-agent` and `grdr-evaluator` GitHub Apps, installed on the one repository, so each role posts as its App; a Semgrep account sign-in, without which Guardian scans nothing | Owner instruction 23 | Hosted model jobs; check runs instead of commit statuses; Guardian scans | Recorded as done, or as not wanted |
 | 9 | Run the pre-push public gate on the seed commit, before the first push (owner instruction 28): gitleaks over the whole tree and history clean; no `research/_sources/` path in the tree or the history; no personal data (home-directory paths, private contact details) beyond the names and addresses the project publishes. The checks run as the setup session's commands (section 13 step 3). GitHub's secret scanning and push protection, on for the public repository from item 6, back the gate on every later push | ADR-0025, ADR-0026, D-62 | The first push; every later push | gitleaks and the path check exit 0 on the seed commit before `git push` |
@@ -628,7 +689,7 @@ The owner opens Claude Code in the repository and says "work the next issue", or
 | Actions cost | Standard hosted runners are free for the public repository (brief 31 verification 8), and the Actions spending limit stays at zero, so a larger runner or a storage overage stops a job instead of billing. If the repository were ever made private, the workflows would fall back to Linux only within the free plan's 2,000 minutes (owner instructions 22 and 28) |
 | A usage limit is reached | The session stops; the owner starts it again after the window resets, and it continues from the issue and its branch (D-47). No item fails because of a limit; trust-core, security and release items go first (spine section 9) |
 | The owner's account is restricted | The repository and its issues hold all state, and `AGENTS.md` and the agent files are plain Markdown, so the work continues from a clone under another account (spine section 9); a hosted CI token, if one exists, is rotated through stdin |
-| Every agent shares the owner's login | Each agent's tool list and the project permission rules limit what it can do, and evaluators check every diff against its issue's write set; the optional Apps add GitHub-side scopes later |
+| Every agent shares the owner's login | Each agent's tool list sets what it can call, sessions have no permission limits (ADR-0035), and evaluators check every diff against its issue's write set; the optional Apps add GitHub-side scopes later |
 | A seed with a secret, personal data or third-party text reaches the public repository | The pre-push public gate of section 11 item 9 runs on the seed commit before the first push, so a finding is fixed by amending the unpushed commit; push protection blocks a recognised secret on every later push, and a secret that still lands is rotated at its issuer at once, because a public history cannot be recalled |
 | Documents drift on paths again | ADR-0028 and `garden-docs`; leads cite section 2.2 in reviews |
 

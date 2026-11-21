@@ -72,7 +72,7 @@ Do not rely on that to ship something the schema does not describe.
    standard fault set: 429 with `Retry-After`, 5xx storms, timeouts, malformed bodies, partial success,
    oversized records, a redirect to another host, DNS rebinding and duplicate delivery. It also runs the
    SSRF suite and the verifier rules on every supported engine.
-5. In this repository agents may not edit `tests/golden/**` or `**/*.snap` (`.claude/settings.json`). A
+5. In this repository agents may not edit `tests/golden/**` or `**/*.snap` (`team/05` section 5). A
    new or changed golden file there becomes its own issue, named in your report.
 
 Put each command and its exit code in your report.

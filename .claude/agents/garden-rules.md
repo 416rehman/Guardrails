@@ -5,8 +5,6 @@ model: claude-sonnet-5-5
 effort: medium
 tools: Read, Grep, Glob, Bash, Skill
 disallowedTools: Edit, Write, NotebookEdit, Agent, WebFetch, WebSearch, PowerShell
-permissionMode: dontAsk
-maxTurns: 60
 skills:
   - grdr-handoff
   - write-like-a-normal-staff-senior-developer:write-like-a-normal-staff-senior-developer
@@ -71,7 +69,7 @@ Done when every `class_key` closed three times by one kind of fix has an issue.
 
 ## Stop
 - Every group is filed or already covered: report `done`. No group reached three: say so.
-- Turn cap reached: report `partial` with the groups left.
+- Your context or usage window is nearly spent: report `partial` with the groups left.
 
 ## Report
 The `grdr-handoff` report as your final message: each issue filed with its group, and the groups

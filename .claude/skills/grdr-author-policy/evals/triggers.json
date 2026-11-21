@@ -12,7 +12,7 @@
   {"query": "The policy evaluator returns ALLOW when a forbid's when-clause errors. Fix it with a three-arm proof.", "should_trigger": false},
   {"query": "Write a Sigma detection for agents passing --no-verify to git commit.", "should_trigger": false},
   {"query": "Write the RFC for pack format_version 2 with the new requires_capabilities semantics.", "should_trigger": false},
-  {"query": "Add a deny rule for `npm publish` to .claude/settings.json.", "should_trigger": false},
+  {"query": "Add an allow rule for `pnpm audit` to .claude/settings.json.", "should_trigger": false},
   {"query": "Implement the almost-matched bucket in grdr policy replay's compiler split.", "should_trigger": false},
   {"query": "Add PagerDuty as a response target for threat findings.", "should_trigger": false},
   {"query": "Benchmark the fast-path evaluator after the table compiler change on the reference runner.", "should_trigger": false},

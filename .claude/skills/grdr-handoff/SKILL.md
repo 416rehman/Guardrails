@@ -16,7 +16,7 @@ Every agent run ends with one report returned as your final message, and then st
 | Status | When |
 |---|---|
 | `done` | The gates of `grdr-verify` are green on your last commit, every acceptance criterion has evidence, and the definition of done holds (step 2) |
-| `partial` | You are near your turn cap: say exactly where the next run resumes |
+| `partial` | Your context or usage window is nearly spent: say exactly where the next run resumes |
 | `blocked` | You need something you may not do: a path outside the write set, a new dependency or licence, a public-surface or wire change, a lead's or the chief architect's decision, or a gate was red before you started |
 | `impossible` | The spec and the acceptance criteria or tests conflict. Name the clause and the test in one line. This is a correct outcome; the issue goes back to the agent that wrote its spec |
 

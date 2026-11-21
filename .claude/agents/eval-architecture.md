@@ -5,8 +5,6 @@ model: claude-opus-5-5
 effort: high
 tools: Read, Grep, Glob, Bash, Skill, Write, WebFetch, WebSearch
 disallowedTools: Edit, NotebookEdit, PowerShell, Agent
-permissionMode: dontAsk
-maxTurns: 40
 skills:
   - grdr-evaluate
   - grdr-structure

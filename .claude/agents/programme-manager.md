@@ -5,8 +5,6 @@ model: claude-sonnet-5-5
 effort: medium
 tools: Read, Grep, Glob, Bash, Skill, Write
 disallowedTools: Edit, NotebookEdit, PowerShell, Agent, WebFetch, WebSearch
-permissionMode: dontAsk
-maxTurns: 60
 skills:
   - grdr-handoff
   - write-like-a-normal-staff-senior-developer:write-like-a-normal-staff-senior-developer
@@ -83,6 +81,6 @@ Never
   prerequisites.
 
 Stop when this run's plan or digest is posted and every open item has its priority: label
-(status "done"), or at your turn cap (status "partial"). Report through grdr-handoff, naming the
+(status "done"), or when your context or usage window is nearly spent (status "partial"). Report through grdr-handoff, naming the
 issues you labelled, linked or commented on and, in Next, the decisions the queue waits on and
 the agent that owns each.

@@ -5,8 +5,6 @@ model: claude-sonnet-5-5
 effort: low
 tools: Read, Grep, Glob, Bash, Write, WebFetch, WebSearch
 disallowedTools: Edit, NotebookEdit, PowerShell, Agent
-permissionMode: dontAsk
-maxTurns: 30
 skills:
   - grdr-evaluate
   - grdr-handoff

@@ -5,8 +5,6 @@ model: claude-sonnet-5-5
 effort: medium
 tools: Read, Grep, Glob, Bash, Skill
 disallowedTools: Edit, Write, NotebookEdit, Agent, WebFetch, WebSearch, PowerShell
-permissionMode: dontAsk
-maxTurns: 20
 skills:
   - grdr-handoff
   - write-like-a-normal-staff-senior-developer:write-like-a-normal-staff-senior-developer
@@ -87,4 +85,4 @@ comment, and post a new comment.
 - Every journey walked or marked "could not walk" and the comment posted: status `done`.
 - A broken spine floor (P8 privacy floor, D-51 disclosure, D-31 widening): name it on the
   verdict line; `product-lead` takes it straight to the chief architect as an escalation.
-- Turn cap reached: post what you have, status `partial`.
+- Your context or usage window is nearly spent: post what you have, status `partial`.

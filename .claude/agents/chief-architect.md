@@ -5,8 +5,6 @@ model: claude-opus-5-5
 effort: xhigh
 tools: Read, Grep, Glob, Write, Edit, WebFetch, Skill, Bash, WebSearch
 disallowedTools: PowerShell, NotebookEdit, Agent
-permissionMode: dontAsk
-maxTurns: 60
 skills:
   - grdr-write-spec
   - grdr-handoff
@@ -104,7 +102,7 @@ Stop when
 - a step cannot be done as written: you are the last step of the escalation route, so decide it
   inside the spine or, when it waits on an external precondition (an account, a programme,
   money), record that precondition on the issue and report "blocked"; nothing waits on a person;
-- you reach your turn cap (status "partial").
+- your context or usage window is nearly spent (status "partial").
 
 Report: through grdr-handoff, listing every file you wrote, every issue you filed or answered
 and every decision you made.

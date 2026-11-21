@@ -47,18 +47,18 @@ The root manifest's `members = ["crates/*", "programs/*"]` already picks up the 
 - Layers 0 to 2 and privileged crates: no `unwrap`, `expect`, unchecked indexing or unchecked arithmetic.
 - Every queue, map, cache, body size and recursion depth has a named bound in `limits.toml`.
 - Log macros take `LogSafe` values only. No brand string outside `brand/`.
-- No new dependency in this item. A dependency is its own high-tier item; `cargo add` is denied for implementers.
+- No new dependency in this item. A dependency is its own high-tier item, and an implementer never runs `cargo add`.
 - Every file follows skill `grdr-structure` from its first line: declaration order, the 500-line limit, state types instead of flags.
 
 ## 5. Request the entries agents may not write
 
-The crate needs entries in files the `deny` rules of `.claude/settings.json` keep from agents. File them as one issue for `lead-agent-kit` with the reason for each, name it in your report, and post the exact text to add as one comment on the item's issue, headed with the target path (`gh issue comment <n> --body-file <file>`):
+The crate needs entries in files an ordinary issue may not change (`team/05` section 5). File them as one issue for `lead-agent-kit` with the reason for each, name it in your report, and post the exact text to add as one comment on the item's issue, headed with the target path (`gh issue comment <n> --body-file <file>`):
 
 | File | Entry |
 |---|---|
 | `architecture.toml` | The crate and its layer. A same-layer edge is an RFC, never part of this item |
 | `limits.toml` | One key per bound from step 4 |
-| `crates/<name>/AGENTS.md` (`**/AGENTS.md` is denied to agents) | The whole file, from the template of team/06 section 5 |
+| `crates/<name>/AGENTS.md` (no ordinary issue writes `**/AGENTS.md`) | The whole file, from the template of team/06 section 5 |
 | `.claude/owners.toml` | The owning squad, so every path has one owner |
 | `security/trust-core.paths` | Only for a privileged crate or another D-63 class; a privileged crate outside it is a review blocker |
 | `audits/library.toml` | The nightly rotation and the path filters of the prompts that apply (team/04 work item 10) |

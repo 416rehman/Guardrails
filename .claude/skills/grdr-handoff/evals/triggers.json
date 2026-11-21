@@ -2,7 +2,7 @@
   {"query": "The gates are green for #142. Wrap up the issue, push the branch and report back.", "should_trigger": true},
   {"query": "I can't finish #18 because the acceptance criteria point at a golden vector under tests/golden/ that agents may not create. Report blocked and file the change it needs.", "should_trigger": true},
   {"query": "AC-2 on issue #31 contradicts R4 in its spec section. Stop here and report it the sanctioned way.", "should_trigger": true},
-  {"query": "I'm at 66 of 80 turns on #30 and won't finish the last two tasks. Write a partial report so the next run can resume cleanly.", "should_trigger": true},
+  {"query": "My usage window is nearly spent on #30 and I won't finish the last two tasks. Write a partial report so the next run can resume cleanly.", "should_trigger": true},
   {"query": "Fill in the decisions where the spec was silent for my change on #26, least confident first, and write the final report.", "should_trigger": true},
   {"query": "Finish up #9: commit with a one-line subject, push issue/9 and report.", "should_trigger": true},
   {"query": "what goes in the three_arm and revert fields of the handoff for my bug fix on #50?", "should_trigger": true},

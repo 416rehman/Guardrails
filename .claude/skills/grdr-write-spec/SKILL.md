@@ -28,7 +28,7 @@ Work items are GitHub issues in the one repository `GH_REPO` names. An item's sp
 
 The templates are team/06 sections 6.1 (decision record), 6.2 (specification) and 6.4 (acceptance criteria); for an issue, the spec section takes 6.2's sections from Problem to Open questions, and the form's own fields carry the header. Decisions that outlive an item become decision records; everything else stays in the issue.
 
-Never edit `docs/design/`: a change to the spine is an RFC. `docs/decisions/`, `specs/`, `spec/` and `security/` are denied to agents too: post the draft as a comment on the issue headed with its target path and file the change as its own issue, as `references/routes.md` describes.
+Never edit `docs/design/`: a change to the spine is an RFC. An ordinary issue does not write `docs/decisions/`, `specs/`, `spec/` or `security/` either, a rule the evaluators check: post the draft as a comment on the issue headed with its target path and file the change as its own issue, as `references/routes.md` describes.
 
 ## 2. Rules for the content
 
@@ -47,7 +47,7 @@ Never edit `docs/design/`: a change to the spine is an RFC. `docs/decisions/`, `
 12. **Models.** Name the agent, never the model: the orchestrating session picks Opus or Sonnet from the tier and paths. No text names Haiku or another vendor's model, and no item is bound to Fable.
 13. **Mechanism plus content** (P14). The spec names the mechanism the feature extends (a port, pack, manifest, configuration key, registry or plugin seam) and states the product's own behaviour as default content or configuration on it. A vendor, agent, threshold, workflow or policy written into code is a defect in the spec, as is a host, name, bound or string that is not data (owner instruction 26).
 14. **Requirements you are unsure of.** When completeness or the industry minimum is unclear, load `grdr-vendor-research` first and cite its issue comment; a novel idea it finds becomes its own new issue, never extra scope in this one.
-15. **Property statements** under `specs/` (Quint, Kani) are denied to agents and high tier: `eval-security` and an evaluator on the other model approve every stated property, because the checker proves only what was stated (D-63, owner instruction 7). Draft them and file them as their own issue.
+15. **Property statements** under `specs/` (Quint, Kani) are not written in an ordinary issue and are high tier: `eval-security` and an evaluator on the other model approve every stated property, because the checker proves only what was stated (D-63, owner instruction 7). Draft them and file them as their own issue.
 
 ## 3. Write the issue
 

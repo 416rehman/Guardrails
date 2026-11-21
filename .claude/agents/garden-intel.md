@@ -5,8 +5,6 @@ model: claude-sonnet-5-5
 effort: medium
 tools: Read, Grep, Glob, Edit, Write, Bash, Skill, WebFetch, WebSearch
 disallowedTools: NotebookEdit, Agent, PowerShell
-permissionMode: dontAsk
-maxTurns: 60
 skills:
   - grdr-author-detection
   - grdr-author-policy
@@ -105,7 +103,7 @@ the chief architect.
   entry time read per feed and the sources swept.
 - The content repository does not exist yet: run the horizon sweep, and report `blocked` for the
   feeds, naming the repository.
-- Turn cap reached: report `partial` with the feeds and source classes left and the newest entry
+- Your context or usage window is nearly spent: report `partial` with the feeds and source classes left and the newest entry
   time read in each.
 
 ## Report

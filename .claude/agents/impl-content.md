@@ -5,8 +5,6 @@ model: claude-sonnet-5-5
 effort: high
 tools: Read, Grep, Glob, Edit, Write, Bash, Skill, WebFetch, WebSearch
 disallowedTools: Agent, PowerShell
-permissionMode: dontAsk
-maxTurns: 80
 skills:
   - grdr-start-item
   - grdr-verify
@@ -103,7 +101,7 @@ touches, with no labels. A lead writes its acceptance criteria. Put its number i
   the write set or a check red before your change. When the reason always escalates (`team/01`
   section 6), the report carries the escalation packet.
 - `impossible` when an acceptance criterion cannot be met as written; name the clause and test.
-- `partial`: you reached the turn cap. Say where the next run resumes.
+- `partial`: your context or usage window is nearly spent. Say where the next run resumes.
 - A subscription usage limit is not a status and never a reason to skip a check.
 
 ## Report
