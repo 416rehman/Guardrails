@@ -37,21 +37,7 @@ Unit tests passing is not evidence that a criterion holds. For each criterion:
 3. Use the surface the criterion names: the built `grdr` binaries for CLI and files; the local console through the Playwright MCP server once it exists; another operating system, architecture or kernel through skill `grdr-matrix-run`.
 4. Record the command and exit code.
 
-**A `workflow_dispatch` run as the oracle.** A pull request runs `verify.yml` on Linux only, so a macOS or Windows result exists only in a run dispatched on the branch. When a criterion names one, `<sha>` is the commit you judge, `git rev-parse HEAD`:
-
-1. Check what the run reads from the checkout: `.github/` (workflows and actions), `.cargo/` and `rust-toolchain.toml`. A dispatch runs the files of the dispatched commit, so a branch that edits them writes its own oracle: it can keep a job named for macOS and run it on Linux, and `gh run view` shows no runner label.
-   - If `git diff --quiet origin/main...<sha> -- .github/ .cargo/ rust-toolchain.toml` exits non-zero, the change itself edits them. No run on the branch counts, so the criterion is `cannot-evaluate` and goes back to the spec author.
-   - Otherwise, if `git diff --quiet origin/main <sha> -- .github/ .cargo/ rust-toolchain.toml` exits non-zero, `main` changed them after the branch forked. The criterion is `cannot-evaluate` until the branch is rebased onto `origin/main`; say "rebase" in the finding.
-2. List the runs on the head, filtered by GitHub: `gh run list --workflow <file> --event workflow_dispatch --commit <sha> --limit 100 --json databaseId,headSha,attempt,status,conclusion`, and keep those whose `headSha` is `<sha>`. A run on any other commit counts for nothing. A list of 100 runs may hide older ones, so it is `cannot-evaluate`. `gh workflow run` prints no run id, so this list is also how you find a run you started.
-3. Read every listed run with `gh run view <id> --json attempt,status,conclusion,jobs` and apply one rule:
-   - queued or in progress: wait for it (step 5) and start no other;
-   - `cancelled` with no jobs: the concurrency group cancelled it before it started, so ignore it;
-   - `attempt` above 1: a re-run replaces the earlier attempt's result under the same id, so the criterion fails;
-   - any job that concluded anything but `success` or `skipped` (a job that hits its `timeout-minutes` concludes `cancelled`): the criterion fails, even if a later run passed, because a run that fails and then passes is flaky, not green (`grdr-matrix-run`).
-
-   Otherwise the newest run that concluded `success` counts.
-4. In that run, compare each job the criterion names (`fmt, clippy and tests (macos-26)`, for example) with its `expect`. The run's own `conclusion` is not evidence: a run concludes `success` with every Rust job skipped. A job that is missing, skipped, never expanded from its matrix (its name still shows `${{ matrix.os }}`) or did not conclude `success` fails the criterion; a repository made private plans only the Linux job, and that shows here.
-5. When the head has no run, or only ignored ones, and `git rev-parse origin/issue/<n>` is `<sha>`, start one: `gh workflow run <file> --ref issue/<n>`, with the inputs (`-f`) the criterion's check names. Find it as in step 2, listing once more if the first list lacks it; a dispatch that exited 0 with no run at the second list is `cannot-evaluate`. Wait with `gh run watch <id>`, repeated until `gh run view <id> --json status` shows `completed`, because one call can outlast a tool call's time limit. The bound is the sum of the `timeout-minutes` of the jobs along the workflow's longest `needs` chain, doubled to allow for queueing. A dispatch that exits non-zero, or a run not completed within the bound, makes the criterion `cannot-evaluate`.
+**A `workflow_dispatch` run as the oracle.** A pull request runs `verify.yml` on Linux only, so a macOS or Windows result exists only in a run dispatched on the branch. When a criterion names one, follow `references/dispatch-run.md` as it is on `main` (section 1), with `<sha>` set to `git rev-parse HEAD`. You never start a run: when no run on the head counts, return `cannot-evaluate` with the finding "no run on head", and the session dispatches one and runs you once more on the same head.
 
 A criterion that reads macOS or Windows results from `gh pr checks` can never be met on a pull request. It is `cannot-evaluate`, naming the criterion, and the issue goes back to its spec author.
 
