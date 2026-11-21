@@ -1,8 +1,8 @@
 #![deny(clippy::arithmetic_side_effects)]
 
 mod analyze;
-mod session;
-mod policy;
+mod compile;
 mod detect;
 mod discover;
-mod compile;
+mod policy;
+mod session;
