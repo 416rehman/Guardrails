@@ -1,0 +1,14 @@
+[package]
+name = "grdr-hook"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[package.metadata.grdr]
+layer = 4
+privilege = "untrusted"
+surface = "internal"
+renders = "agent"
+
+[lints]
+workspace = true

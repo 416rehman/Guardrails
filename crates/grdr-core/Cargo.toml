@@ -1,0 +1,14 @@
+[package]
+name = "grdr-core"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[package.metadata.grdr]
+layer = 1
+privilege = "none"
+surface = "public"
+renders = "none"
+
+[lints]
+workspace = true

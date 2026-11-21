@@ -1,0 +1,337 @@
+# The layer table, the same-layer edges and the ARCH-004 decoders of design/03 section 2, as data
+# the architecture lint (design/03 A2, #1580) reads beside `cargo metadata`. A crate depends only
+# on lower layers plus the rule and edges listed here; adding an edge is an RFC (D-61). Each
+# created crate's `[package.metadata.grdr]` repeats its layer, and the two must agree. Gate
+# configuration under D-63.
+
+[layers]
+0 = "schema"
+1 = "core"
+2 = "ports and shared libraries"
+3 = "adapters"
+4 = "programs"
+tool = "test and tool crates"
+
+# May depend on any layer; nothing depends on one except as a dev-dependency, and none is linked
+# into a layer 4 program (ARCH-001, design/03 section 2).
+[tool]
+depends_on = "any"
+dependents_only_as = "dev"
+linked_into_programs = false
+
+# Every crate of design/03 section 2. `created = false` marks one the workspace does not have yet.
+# A `member = false` crate sits outside the workspace, so `cargo metadata` of the root does not
+# list it and `manifest` locates it.
+
+[crates.grdr-proto]
+layer = 0
+created = true
+
+[crates.grdr-schema]
+layer = 0
+created = true
+
+[crates.grdr-model]
+layer = 1
+created = true
+
+[crates.grdr-core]
+layer = 1
+created = true
+
+[crates.grdr-llm-proto]
+layer = 1
+created = true
+
+[crates.grdr-mcp-proto]
+layer = 1
+created = false
+
+[crates.grdr-fastpath]
+layer = 1
+created = true
+
+[crates.grdr-ffi]
+layer = 1
+created = true
+
+[crates.grdr-wasm]
+layer = 1
+created = true
+
+[crates.grdr-fastpath-ffi]
+layer = 1
+created = true
+
+[crates.grdr-compat]
+layer = 1
+created = false
+
+[crates.grdr-review]
+layer = 1
+created = false
+
+[crates.grdr-ports]
+layer = 2
+created = true
+
+[crates.grdr-ports-testkit]
+layer = 2
+created = true
+
+[crates.grdr-crypto]
+layer = 2
+created = true
+
+[crates.grdr-wire]
+layer = 2
+created = true
+
+[crates.grdr-strings]
+layer = 2
+created = false
+
+[crates.grdr-messages]
+layer = 2
+created = false
+
+[crates.grdr-ui-model]
+layer = 3
+created = false
+
+[crates.grdr-sensor-linux]
+layer = 3
+created = true
+
+[crates.grdr-sensor-linux-bpf]
+layer = 3
+created = true
+member = false
+manifest = "bpf/grdr-sensor-linux-bpf/Cargo.toml"
+# Built to an object the back end loads, so no crate may take a Cargo dependency on it.
+cargo_dependency = false
+
+[crates.grdr-agents]
+layer = 3
+created = true
+
+[crates.grdr-store-local]
+layer = 3
+created = true
+
+[crates.grdr-sandbox-engine]
+layer = 3
+created = true
+
+[crates.grdr-sensor-macos]
+layer = 3
+created = false
+
+[crates.grdr-sensor-windows]
+layer = 3
+created = false
+
+[crates.grdr-update]
+layer = 3
+created = false
+
+[crates.grdr-broker]
+layer = 3
+created = false
+
+[crates.grdr-export]
+layer = 3
+created = false
+
+[crates.grdr-rel-sqlite]
+layer = 3
+created = false
+
+[crates.grdr-rel-postgres]
+layer = 3
+created = false
+
+[crates.grdr-lake]
+layer = 3
+created = false
+
+[crates.grdr-bus-log]
+layer = 3
+created = false
+
+[crates.grdr-blob]
+layer = 3
+created = false
+
+[crates.grdr-integrations]
+layer = 3
+created = false
+
+[crates.grdr-bus-nats]
+layer = 3
+created = false
+
+[crates.grdr-identity]
+layer = 3
+created = false
+
+[crates.grdr-driver-windows]
+layer = 3
+created = false
+
+[crates.grdr-daemon]
+layer = 4
+created = true
+
+[crates.grdr-engine]
+layer = 4
+created = true
+
+[crates.grdr-hook]
+layer = 4
+created = true
+
+[crates.grdr]
+layer = 4
+created = true
+
+[crates.grdr-uplink]
+layer = 4
+created = false
+
+[crates.grdr-updater]
+layer = 4
+created = false
+
+[crates.grdr-approve]
+layer = 4
+created = false
+
+[crates.grdr-proxy]
+layer = 4
+created = false
+
+[crates.grdr-mcp]
+layer = 4
+created = false
+
+[crates.grdr-run]
+layer = 4
+created = false
+
+[crates.grdr-tray]
+layer = 4
+created = false
+
+[crates.grdr-desktop]
+layer = 4
+created = false
+
+[crates.grdr-server]
+layer = 4
+created = false
+
+[crates.grdr-acp]
+layer = 4
+created = false
+
+[crates.grdr-infer]
+layer = 4
+created = false
+
+[crates.grdr-policy-ref]
+layer = "tool"
+created = false
+
+[crates.grdr-schema-lint]
+layer = "tool"
+created = false
+
+[crates.grdr-conformance]
+layer = "tool"
+created = false
+
+[crates.grdr-interface-gen]
+layer = "tool"
+created = false
+
+# Families design/03 section 2 names by prefix ("other grdr-sandbox-*", "grdr-judge-*"). A crate
+# listed by name above wins over its family.
+
+[families."grdr-sandbox-*"]
+layer = 3
+
+[families."grdr-judge-*"]
+layer = 3
+
+# The complete same-layer edge list. Layers 3 and 4 have none: adapters meet only in a program, and
+# no program depends on another.
+
+# Every crate of the layer, created now or later, except those listed, may depend on `to`.
+[[same_layer_rule]]
+layer = 1
+to = "grdr-model"
+except = ["grdr-fastpath", "grdr-fastpath-ffi"]
+
+[[same_layer_edge]]
+from = "grdr-schema"
+to = "grdr-proto"
+
+[[same_layer_edge]]
+from = "grdr-core"
+to = "grdr-fastpath"
+scope = "table layout only"
+
+[[same_layer_edge]]
+from = "grdr-fastpath-ffi"
+to = "grdr-fastpath"
+scope = "its only dependency"
+
+[[same_layer_edge]]
+from = "grdr-ffi"
+to = "grdr-core"
+
+[[same_layer_edge]]
+from = "grdr-ffi"
+to = "grdr-fastpath"
+
+[[same_layer_edge]]
+from = "grdr-wasm"
+to = "grdr-core"
+
+[[same_layer_edge]]
+from = "grdr-wasm"
+to = "grdr-fastpath"
+
+[[same_layer_edge]]
+from = "grdr-ports-testkit"
+to = "grdr-ports"
+
+[[same_layer_edge]]
+from = "grdr-wire"
+to = "grdr-crypto"
+
+[[same_layer_edge]]
+from = "grdr-messages"
+to = "grdr-strings"
+
+# ARCH-004 (ADR-0010): the closure of every `privilege = "privileged"` program and of the programs
+# named here holds none of `content_parsers`, except the decoders below. `grdr-agents` holds the
+# hook dialect translators; `grdr-update` is admitted only where its decoder entry says.
+[arch004]
+also_programs = ["grdr-hook"]
+content_parsers = ["grdr-core", "grdr-llm-proto", "grdr-mcp-proto", "grdr-agents", "grdr-update", "cedar-policy", "yara-x", "rsigma-*", "serde_json", "regex"]
+
+# A decoder is admitted in the closures `only_in` names, or in every closure ARCH-004 checks when
+# it has no `only_in`. `admits` lists the content parsers it may bring with it there; nothing else
+# in its own closure is exempt.
+[[arch004.decoder]]
+crate = "grdr-proto"
+decodes = "IPC frames, through the generated protobuf codec"
+admits = []
+
+[[arch004.decoder]]
+crate = "grdr-update"
+decodes = "TUF metadata"
+only_in = ["grdr-updater"]
+admits = ["serde_json"]
