@@ -37,6 +37,7 @@ Owned elsewhere: the tier rules (`.claude/risk-tiers.toml`), tier table, circuit
 | Lints, warnings denied, with the workspace's no-panic deny lints (section 8) | `cargo clippy --workspace --locked --all-targets -- -D warnings` | Same |
 | Tests | `cargo test --workspace --locked` | Same |
 | Dependencies, licences, advisories (S01) | `cargo deny check` with `deny.toml` | Same |
+| Kit hook tests: the hooks and tools under `.claude/hooks/` | `node --test ".claude/hooks/**/*.test.mjs"`, quoted so that the test runner expands the pattern, with the TAP reporter | `verify.yml` job `kit hooks`, every run on each system the plan picks, crate or not |
 | Secrets, workflows, lockfiles, source | gitleaks, zizmor, osv-scanner, Semgrep OSS (`scan.yml`) | Every pull request, `main`, nightly |
 | Docs rules of design/34 a script can check | `.claude/hooks/docs-check.mjs --ci` from the base branch (`docs.yml`); the same script is the session's PreToolUse hook | Every pull request |
 | Code scanning, repository health | CodeQL (`codeql.yml`), OpenSSF Scorecard (`scorecard.yml`) | Pull requests and weekly; Scorecard weekly |
@@ -100,7 +101,7 @@ flowchart LR
 
 | Workflow | Runs | When |
 |---|---|---|
-| `verify.yml` | Plans the systems from the event and the repository's visibility: Linux on pull requests; Linux, macOS and Windows on `main`, nightly and a manual run in a public repository, which this one is from its first push, and Linux only in a private fork or copy; skips the Rust jobs while the workspace has no members; runs `cargo fmt`, `cargo clippy` and `cargo test`, and `cargo deny check` | Every pull request and push to `main`, and nightly |
+| `verify.yml` | Plans the systems from the event and the repository's visibility: Linux on pull requests; Linux, macOS and Windows on `main`, nightly and a manual run in a public repository, which this one is from its first push, and Linux only in a private fork or copy; skips the Rust jobs while the workspace has no members; runs `cargo fmt`, `cargo clippy` and `cargo test`, and `cargo deny check`; the `kit hooks` job runs the kit hook tests under `.claude/hooks/` with Node's test runner on every run, on each planned system, whether or not a crate exists | Every pull request and push to `main`, and nightly |
 | `scan.yml` | gitleaks, zizmor (its settings in `.github/zizmor.yml`), osv-scanner, Semgrep OSS failing on the finding levels `[tool.semgrep-rules] severities` of `supply-chain/build-tools.toml` names | Every pull request, every push to `main`, nightly |
 | `codeql.yml`, `scorecard.yml` | CodeQL for Rust and TypeScript with GitHub secret scanning and push protection; OpenSSF Scorecard weekly, its score ratcheted by `security/scorecard.toml` | CodeQL on every pull request, every push to `main` and weekly; Scorecard weekly; both from the first push, the repository being public from it (owner instruction 28), and skipped in a private fork or copy. CodeQL has no local or private form: its terms (read 2026-11-11) allow automated analysis only of open-source code published in a public GitHub repository, so it runs only in CI |
 | `fuzz.yml` | ClusterFuzzLite over every fuzz target | Once `.clusterfuzzlite/project.yaml` exists |
