@@ -1,0 +1,98 @@
+# Repository paths and what the rules of supply-chain/licence-headers.toml give each under its
+# glob dialect. A lint's path matching is right when it gives every case's `header`, `expression`
+# (for a required header) and `gpl` outcome. `header = "none"` marks an extension that takes no
+# header.
+schema = "grdr.licence-headers.glob-cases.v1"
+
+[[case]]
+path = "third_party/vale/lib.rs"
+header = "exempt"
+gpl = "refused"
+
+[[case]]
+path = "Third_Party/vale/lib.rs"
+header = "required"
+expression = "Apache-2.0"
+gpl = "refused"
+
+[[case]]
+path = "crates/x/third_party/y.rs"
+header = "required"
+expression = "Apache-2.0"
+gpl = "refused"
+
+[[case]]
+path = "crates/x/third_party/y/lib.rs"
+header = "required"
+expression = "Apache-2.0"
+gpl = "refused"
+
+[[case]]
+path = "supply-chain/fixtures/licence-lint/stray-gpl/lib.rs"
+header = "exempt"
+gpl = "skipped"
+
+[[case]]
+path = "supply-chain/fixtures/cargo-deny/git-source/src/lib.rs"
+header = "required"
+expression = "Apache-2.0"
+gpl = "refused"
+
+[[case]]
+path = "tools/x.PS1"
+header = "required"
+expression = "Apache-2.0"
+gpl = "refused"
+
+[[case]]
+path = "docs/guide.md"
+header = "none"
+gpl = "refused"
+
+[[case]]
+path = "crates/x/supply-chain/fixtures/y.rs"
+header = "required"
+expression = "Apache-2.0"
+gpl = "refused"
+
+[[case]]
+path = "crates/x/supply-chain/fixtures/licence-lint/y.rs"
+header = "required"
+expression = "Apache-2.0"
+gpl = "refused"
+
+[[case]]
+path = "crates/x/supply-chain/fixtures/y/lib.rs"
+header = "required"
+expression = "Apache-2.0"
+gpl = "refused"
+
+[[case]]
+path = "bpf/probe.c"
+header = "required"
+expression = "GPL-2.0-only OR BSD-2-Clause"
+gpl = "allowed"
+
+[[case]]
+path = "bpf/a/b/probe.c"
+header = "required"
+expression = "GPL-2.0-only OR BSD-2-Clause"
+gpl = "allowed"
+
+[[case]]
+path = "BPF/probe.c"
+header = "required"
+expression = "Apache-2.0"
+gpl = "refused"
+
+[[case]]
+path = "src/bpf/probe.c"
+header = "required"
+expression = "Apache-2.0"
+gpl = "refused"
+
+[[case]]
+path = "bpfx/probe.c"
+header = "required"
+expression = "Apache-2.0"
+gpl = "refused"

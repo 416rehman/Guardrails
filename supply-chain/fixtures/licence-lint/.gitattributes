@@ -1,0 +1,2 @@
+# Some fixtures seed CR, CRLF and a BOM on purpose, so git stores and checks out every byte as is.
+* -text
