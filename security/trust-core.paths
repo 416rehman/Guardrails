@@ -78,3 +78,6 @@ dist.toml
 supply-chain/**
 release-please-config.json
 .release-please-manifest.json
+# RFC 0001: the pin registry and the committed review evidence the RFC checks read
+rfcs/pins.toml
+rfcs/evidence/**
