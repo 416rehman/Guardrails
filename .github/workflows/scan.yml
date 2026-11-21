@@ -36,11 +36,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - id: pins
-        run: >-
-          python3 -I -c 'import sys, tomllib;
-          tool = tomllib.load(open(sys.argv[1], "rb"))["tool"][sys.argv[2]];
-          print("\n".join(f"{k}={v}" for k, v in tool.items() if isinstance(v, str)))'
-          supply-chain/build-tools.toml gitleaks >> "$GITHUB_OUTPUT"
+        uses: $/.github/actions/pins
+        with:
+          tool: gitleaks
+          keys: image config
       - name: Scan the new commits, or the whole history on a schedule
         env:
           IMAGE: ${{ steps.pins.outputs.image }}
@@ -71,16 +70,30 @@ jobs:
         with:
           persist-credentials: false
       - id: pins
-        run: >-
-          python3 -I -c 'import sys, tomllib;
-          tool = tomllib.load(open(sys.argv[1], "rb"))["tool"][sys.argv[2]];
-          print("\n".join(f"{k}={v}" for k, v in tool.items() if isinstance(v, str)))'
-          supply-chain/build-tools.toml zizmor >> "$GITHUB_OUTPUT"
+        uses: $/.github/actions/pins
+        with:
+          tool: zizmor
+          keys: version
       - uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
         with:
           version: ${{ steps.pins.outputs.version }}
           advanced-security: false
           annotations: true
+
+  pins:
+    name: Pin reader (seeded fixtures)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: python3 -I .github/actions/pins/test_read_pins.py
 
   osv-scanner:
     name: Dependencies (osv-scanner)
@@ -115,17 +128,15 @@ jobs:
         with:
           persist-credentials: false
       - id: semgrep
-        run: >-
-          python3 -I -c 'import sys, tomllib;
-          tool = tomllib.load(open(sys.argv[1], "rb"))["tool"][sys.argv[2]];
-          print("\n".join(f"{k}={v}" for k, v in tool.items() if isinstance(v, str)))'
-          supply-chain/build-tools.toml semgrep >> "$GITHUB_OUTPUT"
+        uses: $/.github/actions/pins
+        with:
+          tool: semgrep
+          keys: image
       - id: rules
-        run: >-
-          python3 -I -c 'import sys, tomllib;
-          tool = tomllib.load(open(sys.argv[1], "rb"))["tool"][sys.argv[2]];
-          print("\n".join(f"{k}={v}" for k, v in tool.items() if isinstance(v, str)))'
-          supply-chain/build-tools.toml semgrep-rules >> "$GITHUB_OUTPUT"
+        uses: $/.github/actions/pins
+        with:
+          tool: semgrep-rules
+          keys: repository commit severities
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ steps.rules.outputs.repository }}

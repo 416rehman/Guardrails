@@ -1,0 +1,44 @@
+name: Build-tool pins
+description: >-
+  Reads the keys a job uses from one tool's table in supply-chain/build-tools.toml into outputs,
+  and fails with a GRDR-SUPPLY code when a value of that table spans lines or a key's value is not
+  of its form (read_pins.py).
+
+inputs:
+  tool:
+    description: The table name under [tool], such as gitleaks.
+    required: true
+  keys:
+    description: The keys the job reads, separated by spaces.
+    required: true
+
+# One output per form in read_pins.py FORMS; keep the two in step.
+outputs:
+  version:
+    description: Release version.
+    value: ${{ steps.read.outputs.version }}
+  image:
+    description: Container image pinned by digest.
+    value: ${{ steps.read.outputs.image }}
+  config:
+    description: Repository path of the tool's configuration.
+    value: ${{ steps.read.outputs.config }}
+  repository:
+    description: owner/name of a repository read at run time.
+    value: ${{ steps.read.outputs.repository }}
+  commit:
+    description: Full commit id in that repository.
+    value: ${{ steps.read.outputs.commit }}
+  severities:
+    description: Finding levels that fail the job, separated by spaces.
+    value: ${{ steps.read.outputs.severities }}
+
+runs:
+  using: composite
+  steps:
+    - id: read
+      shell: bash
+      env:
+        TOOL: ${{ inputs.tool }}
+        KEYS: ${{ inputs.keys }}
+      run: python3 -I "$GITHUB_ACTION_PATH/read_pins.py" supply-chain/build-tools.toml "$TOOL" "$KEYS" >> "$GITHUB_OUTPUT"

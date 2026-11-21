@@ -54,11 +54,10 @@ jobs:
           persist-credentials: false
       - run: rustup toolchain install
       - id: pins
-        run: >-
-          python3 -I -c 'import sys, tomllib;
-          tool = tomllib.load(open(sys.argv[1], "rb"))["tool"][sys.argv[2]];
-          print("\n".join(f"{k}={v}" for k, v in tool.items() if isinstance(v, str)))'
-          supply-chain/build-tools.toml zap >> "$GITHUB_OUTPUT"
+        uses: $/.github/actions/pins
+        with:
+          tool: zap
+          keys: image
       - name: Start the embedded server and wait until it is ready
         env:
           LOG: ${{ runner.temp }}/server.log
