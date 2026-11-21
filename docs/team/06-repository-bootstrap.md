@@ -46,7 +46,7 @@ Top-level directories follow `design/03` section 11. This table fixes everything
 
 | Path | Content | Squad | Protected |
 |---|---|---|---|
-| `AGENTS.md`, `CLAUDE.md` | Map for every agent session; Claude Code additions (sections 3 and 4) | agent-kit | Trust core |
+| `AGENTS.md`, `CLAUDE.md` | Map for every agent session; Claude Code additions (sections 3 and 4) | agent-kit | Yes, trust core |
 | `LICENSE`, `NOTICE`, `COVENANT.md`, `GOVERNANCE.md`, `CONTRIBUTING.md`, `AI_POLICY.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `MAINTAINERS.md`, `ADOPTERS.md`, `TRADEMARKS.md` | Texts from `design/30` sections 13 to 16 and `design/35`; trademark text from `design/36` | security | Yes |
 | `REVIEW.md` and `*/REVIEW.md` | "What failure looks like here" per area; reviewers read it from the base branch only | Area squad | Yes |
 | `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `.cargo/config.toml`, `deny.toml`, `clippy.toml`, `rustfmt.toml` | Workspace, the no-panic workspace lints (owner instruction 15), pins, lint and dependency policy | core, release | Yes, trust core |
@@ -78,7 +78,7 @@ Top-level directories follow `design/03` section 11. This table fixes everything
 | `docs/architecture/`, `docs/crates/`, `docs/extending/`, `docs/release/` | Layer and port guides; per-crate design notes; contributor how-tos; re-sign runbook | core, docs owners | No |
 | `docs/team/` | `team/01` to `team/06` | agent-kit | Yes |
 | `docs/agents/status/`, `docs/agents/templates/` | The bootstrap records; the crate `AGENTS.md`, decision-record and specification templates. The work items themselves, with their spec, plan, acceptance criteria and discussion, are GitHub issues (section 7) and never files (owner instruction 5) | Chief architect | `status/` yes |
-| `.claude/` | The agent team: `agents/*.md` (one file per role, edited by hand), `skills/` (the `grdr-` skills, `grdr-work-issue` among them), `settings.json`, `risk-tiers.toml`, `owners.toml` | agent-kit | `settings.json`; all of it trust core |
+| `.claude/` | The agent team: `agents/*.md` (one file per role, edited by hand), `skills/` (the `grdr-` skills, `grdr-work-issue` among them), `settings.json`, `risk-tiers.toml`, `owners.toml` | agent-kit | `settings.json` and `hooks/`; all of it trust core |
 | `.github/` | `ISSUE_TEMPLATE/` (the work-item form `work-item.yml` and the intake forms), `labels.toml`, `dependabot.yml`, `CODEOWNERS` (generated), `rulesets/`, `workflows/` | agent-kit | Yes, trust core |
 | `.agent/` | Per-session scratch and worktrees; in `.gitignore` | Any session | No |
 

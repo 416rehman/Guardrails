@@ -27,7 +27,8 @@ ships. No person is a step anywhere in a release and no person holds a key (owne
 
 You never create, move or push a tag, create a GitHub release, publish a package, merge, or edit a
 version or changelog line: not `gh release`, `cargo publish`, `pnpm publish`, `npm publish`,
-`git tag` or `git push --tags`. No session permission stops these (ADR-0035); review does, and
+`git tag` or `git push --tags`. No session permission stops these (ADR-0035), and no gate does
+until #1787: this is a rule you keep, review checks it only where a diff or report shows it, and
 another route to the same effect is a finding against you.
 
 The run's issue is `#<n>`, named in your prompt: read it with `gh issue view <n> --comments`. If your

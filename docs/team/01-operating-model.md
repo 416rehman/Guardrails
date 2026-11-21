@@ -172,7 +172,7 @@ Three names, by the owner's rule (`design/_review/03-models-and-orchestration.md
 
 ## 9. Isolation
 
-Implementers and evaluators each run in their own git worktree (`isolation: "worktree"`), so no two agents share a working tree. Agent sessions have no permission limits (ADR-0035): the owner starts the orchestrating session in `bypassPermissions`, no agent file sets `permissionMode`, so every agent runs in that mode, the project settings deny and ask nothing and leave Claude Code's sandbox off, and a `PermissionRequest` hook answers allow to any request that would still ask. What an agent may change is its issue's write set, which the evaluators and CI check. Windows and macOS code is written on the Linux side; OS-specific results come from CI on free hosted runners (D-64), and a job that needs hardware nobody has is reported as "requires hardware", never counted as a pass.
+Implementers and evaluators each run in their own git worktree (`isolation: "worktree"`), so no two agents share a working tree. Agent sessions have no permission limits (ADR-0035): the owner starts the orchestrating session in `bypassPermissions`, no agent file sets `permissionMode`, so every agent runs in that mode, and the project settings deny and ask nothing and leave Claude Code's sandbox off. The repository ships no `PermissionRequest` hook: the owner's own sessions answer permission requests from their local, gitignored settings, and a clone keeps the mode its user chose. What an agent may change is its issue's write set, which the evaluators and CI check. Windows and macOS code is written on the Linux side; OS-specific results come from CI on free hosted runners (D-64), and a job that needs hardware nobody has is reported as "requires hardware", never counted as a pass.
 
 Credentials stay with the owner's logins; no agent reads them, and no signing key exists on any agent host: artefacts are signed keylessly through GitHub's OIDC identity (owner instruction 23).
 
@@ -241,7 +241,7 @@ Read from the issues and CI when the programme manager or the owner asks; metric
 |---|---|
 | Evaluators pass changes they should fail, with no person reading | Reverts or escaped defects rise: the tier's evaluator set widens for that squad, and the incident eval set scores every evaluator on each model release |
 | One `gh` login for every agent | GitHub's history cannot tell agents apart: the pull request and reports name each agent |
-| No session refuses or asks before an agent acts (ADR-0035) | A mistaken or misled agent is caught after it acts: the evaluators and CI judge every diff before it merges, and a defect a refusal would have stopped becomes a CI job or a review rule |
+| No session refuses or asks before an agent acts (ADR-0035) | An action that ends up in a diff is caught after it acts: the evaluators and CI judge the diff before it merges. An action that leaves no diff is held only by the process rules, and merging only through a pull request is a rule the session follows until #1719 adds a branch rule. A defect a refusal would have stopped becomes a CI job or a review rule |
 | Subscription usage limits bind | Fewer agents at once; trust-core, security and release work first |
 | Automation is bound to the owner's account | The repository and issues hold all state, so the work can continue under another account (spine section 9) |
 

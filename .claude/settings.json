@@ -34,18 +34,6 @@
           }
         ]
       }
-    ],
-    "PermissionRequest": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/permission-allow.mjs\"",
-            "timeout": 10
-          }
-        ]
-      }
     ]
   },
   "model": "claude-sonnet-5-5",
