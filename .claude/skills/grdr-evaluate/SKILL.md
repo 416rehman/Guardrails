@@ -59,6 +59,7 @@ A criterion you could not exercise is `cannot-evaluate`, never `pass` (P9). That
 
 ## 4. Check the proofs yourself
 
+- **The write set.** Review and CI hold the protected paths, not the session (ADR-0035). Run `git diff --name-only origin/main...origin/issue/<n>` and match every path against the issue's Write set globs and the protected-path list of `team/06` section 2.1. A path outside the write set, or a protected path in an issue not worked by `lead-agent-kit` or the chief architect, is a blocker.
 - **Bug fixes.** Re-run the three arms of `grdr-fix-bug/references/three-arm-by-hand.md`. A missing or non-reproducing arm is a blocker.
 - **Removals.** Run the survival test and confirm it fails when the removed code is restored; look for a guard left where the code should have been deleted.
 - **Weakened tests** (team/04 G01). In the diff of every test file: a removed or loosened assertion, a new `#[ignore]` or skip, a changed expected value with no spec change, special-casing of fixture paths, golden-vector ids or canary values. Each is a blocker.

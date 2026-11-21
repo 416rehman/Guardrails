@@ -42,7 +42,7 @@ flowchart LR
 
 ### 2.1 The main repository
 
-Top-level directories follow `design/03` section 11. This table fixes everything a bootstrap needs below them. "Protected" means only an issue whose write set names it changes it, held by the evaluators and CI, not by a session permission (`team/05` section 5, ADR-0035). "Trust core" means `security/trust-core.paths` lists it (D-63; `design/02`). A directory is created by the first work item that writes into it.
+Top-level directories follow `design/03` section 11. This table fixes everything a bootstrap needs below them. "Protected" means only an issue whose write set names it changes it, held by the evaluators and CI, not by a session permission (`team/05` section 5, ADR-0035); the protected-path list below the table is the authority, and the column describes it. "Trust core" means `security/trust-core.paths` lists it (D-63; `design/02`). A directory is created by the first work item that writes into it.
 
 | Path | Content | Squad | Protected |
 |---|---|---|---|
@@ -84,6 +84,67 @@ Top-level directories follow `design/03` section 11. This table fixes everything
 
 The main repository is `416rehman/Guardrails` on the owner's personal GitHub account; there is no organisation and no GitHub Project (owner instruction 5). The Cargo namespace stays `grdr` (D-66). The other repositories are created under the same account only when the work that needs each one starts: `grdr-content` (packs, rules, fingerprints, adapter manifests; the open lane), `grdr-contrib` (community adapters), `grdr-heldout` (held-out suite, private, behind the evaluator service, D-45), `audit-bench` (`team/04`, private). Their names change with the namespace under D-66; GitHub keeps redirects.
 
+**Protected paths.** This list is the single list of protected paths: an ordinary issue changes none of them, and a change to one is its own issue whose write set names it (`team/05` section 5, D-63). The evaluators check every diff against it, and the write-set job of #1668 reads this block from the base commit. One glob per line, relative to the repository root:
+
+```text
+**/*.snap
+**/__screenshots__/**
+**/AGENTS.md
+**/CHANGELOG.md
+**/REVIEW.md
+**/clippy.toml
+.cargo/**
+.claude/hooks/**
+.claude/settings.json
+.github/**
+.release-please-manifest.json
+ADOPTERS.md
+AI_POLICY.md
+CLAUDE.md
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+COVENANT.md
+Cargo.lock
+Cargo.toml
+GOVERNANCE.md
+LICENSE
+MAINTAINERS.md
+NOTICE
+SECURITY.md
+TRADEMARKS.md
+architecture.toml
+audits/**
+brand/**
+conformance/vectors/**
+deny.toml
+dist.toml
+docs/PLAN.md
+docs/agents/status/**
+docs/decisions/**
+docs/design/**
+docs/references/research/**
+docs/team/**
+fuzz/corpus/regressions/**
+governance/**
+limits.toml
+pnpm-lock.yaml
+pnpm-workspace.yaml
+release-please-config.json
+release/**
+rfcs/**
+rust-toolchain.toml
+rustfmt.toml
+security/**
+spec/**
+specs/**
+support.toml
+supply-chain/**
+surfaces.toml
+tests/golden/**
+third_party/**
+web/packages/ui/exceptions.toml
+```
+
 ### 2.2 One name per artefact
 
 | Artefact | Variants in other documents | Decision | Reason |
@@ -101,7 +162,7 @@ The main repository is `416rehman/Guardrails` on the owner's personal GitHub acc
 | Merge target | `next` (`team/01`); `queue/pending` (`design/30`, `team/05`) | `main`: the session squash-merges into it directly | Owner instruction 7 removed the batch sign-off that `queue/pending` staged for, and only a merge into the default branch closes the issue |
 | Bot identities | `grdr-agent` and `grdr-queue` Apps (`team/01`, `design/30`); `grdr-worker[bot]` and `grdr-gate[bot]` (`team/05`); `grdr-release` (release research) | The owner's `gh` login for every agent, with each agent's tool list setting its calls and no session permission limits (ADR-0035); release-please runs with the workflow token. The `grdr-agent` and `grdr-evaluator` Apps are an optional later hardening | Owner instruction 23: no step may need a new account |
 | release-please components of the product bundle and the `grdr` program | `grdr`, tag `grdr-v<version>`, for both: 24 section 10 gives the bundle that tag and every component the tag `<component>-v<version>`, and the program `programs/grdr` is named `grdr` | The bundle is component `grdr`, tag `grdr-v<version>`, version in `release/VERSION`. The program is component `grdr-cli`, tag `grdr-cli-v<version>`, set by `component` on its `programs/grdr` entry in `release-please-config.json`; it keeps the endpoint programs' shared version (24 summary item 1), and its Cargo package stays `grdr` | release-please keys its releases by component, and a second package with the same component silently overwrites the earlier package's tag-to-path mapping, with only a logged warning. The bundle keeps the tag that 24 section 10 and its `release/X.Y` branches already use, so only the program's release configuration carries the new name |
-| Protected-path list | `security/protected.paths` (`team/01`, `team/05`); a protected-paths file in the removed kit directory (`team/02`, `team/03`) | The Protected column of section 2.1 (`team/05` section 5); no `acceptance/**`, because acceptance criteria live in the issue | Sessions have no permission limits, so the evaluators read the list (ADR-0035); one list |
+| Protected-path list | `security/protected.paths` (`team/01`, `team/05`); a protected-paths file in the removed kit directory (`team/02`, `team/03`) | The protected-path list of section 2.1 (`team/05` section 5); no `acceptance/**`, because acceptance criteria live in the issue | Sessions have no permission limits, so the evaluators read the list (ADR-0035); one list |
 | Plugin marketplace | A separate repository (`team/03` before owner instruction 5); a directory in the main one (before the harness was removed) | None: the project enables no plugins, and sessions use the plugins the owner installed | Plain Claude Code |
 | Skill-path data file | A skill-paths file (cohesion review); a path-skills file (owner instruction 18) | None: `AGENTS.md` names the skills each kind of path needs | One map |
 | CLI exit codes | 23 section 11 (4 not permitted); 28 section 10 (3 refused, 4 unreachable); 11 (2 critical); team/05 section 3 (2 gate failed) | 23 section 11: 0 to 5 | One meaning per code (P17) |
