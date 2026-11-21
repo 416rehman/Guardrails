@@ -11,7 +11,7 @@ Decision record: none yet
 
 To comment, write on issue #474 of this repository; you need no account on any service other than the code host. A security fix under embargo (D-62) may change a public surface without an RFC; open a retroactive RFC when the fix is disclosed.
 
-This is revision 2. It answers round 1: `eval-architecture` (fail, five majors) and the nine persona council seats (one blocking finding, from seat 7). The comment "RFC 0004 round 2: dispositions" on #474 lists every finding and where it went. The text below is normative on its own.
+This is revision 3, the last review round. Revision 2 answered round 1: `eval-architecture` (fail, five majors) and the nine persona council seats (one blocking finding, from seat 7). This revision answers round 2: `eval-architecture` (fail, one major and five minors) and seat 7, whose blocker round 2 found resolved. The comments "RFC 0004 round 2: dispositions" and "RFC 0004 round 3: dispositions" on #474 list every finding and where it went. The text below is normative on its own.
 
 ## Summary
 Each FFI crate generates its C header from a descriptor in its own integration test, `tests/header_drift.rs`. It commits the header, and a C source of layout asserts beside it, under `include/`.
@@ -25,11 +25,11 @@ A tool crate, `grdr-cabi-testkit`, owns the rest of the drift test behind an `En
 - status codes and version constants against the registry and the library;
 - every `#[unsafe(no_mangle)]` export against the descriptor.
 
-Every failure names its next step. A new CI job, `c-headers`, compiles every committed header and layout source on the three systems, as C and as C++, with warnings as errors.
+Every failure names its next step. A new CI job, `c-headers`, compiles every committed header and layout source as C and as C++, with warnings as errors. It runs on the systems `verify.yml`'s `plan` job selects: gcc and clang on Linux for every pull request, and MSVC and Apple clang as well on the dispatched run on the head, on pushes to `main` and nightly.
 
 No dependency is added. cbindgen is not used, the licence policy does not change, and `Cargo.lock` gains no third-party package. `grdr.h` and `grdr_macos.h` use the same method: what differs between headers is content in each descriptor, including the status block, the version scheme, the SPDX identifier and the contract document.
 
-A runnable sketch on #474 shows the check passing on two stand-in crates, failing on each of 24 seeded changes (among them the five round 1 found undetected), and passing on the one it should accept. It also shows 15 seeded unit tests of the testkit and a clean gcc and MSVC build of the generated files.
+A runnable sketch on #474 shows the check passing on two stand-in crates and failing on each of 27 seeded changes. Those include the five that round 1 found undetected and the three that round 2 did. It passes on the two changes it should accept. It also runs 20 seeded unit tests of the testkit, and gcc and MSVC build the generated files cleanly.
 
 ## Motivation
 EM-2 (#418) cannot be readied until this is decided. Its R5 asks for a test that fails when `grdr_fastpath.h` differs from the exported functions and `#[repr(C)]` types. Design/26 EM-2 says the "header [is] generated and diffed in CI". Design/03 section 7 gates the C ABI on "Generated header diffed". `c-abi.md` (#246) says the generated headers of EM-2 and EM-4 "are diffed against this text". #388 R12 asks the same for `grdr.h`, and #247 R7 for `grdr_macos.h`. Three headers need one answer.
@@ -50,7 +50,7 @@ The constraints:
 ### 2. Terms
 - The **descriptor** is the list of a header's content, written in the crate's `tests/header_drift.rs` with the testkit's macros. Its parts are the status block, version, typedefs, enums, constants, opaque types, structs, functions, SPDX identifier and contract.
 - To **render** is to produce the header and its layout source from the descriptor and, where the header has a status block, `status-codes.toml`. Rendering depends on nothing else, and in particular not on the host: the files are byte-identical on Windows and Linux in the sketch.
-- To **bless** is to run the drift test with `GRDR_BLESS_HEADERS=1`. It writes both rendered files to `include/` and then fails the run, so a bless never passes CI. It writes nothing if any comment text would break the C.
+- To **bless** is to run the drift test with `GRDR_BLESS_HEADERS=1`. It writes both rendered files to `include/`, creating the directory when it is missing (round 2 finding 5), and then fails the run, so a bless never passes CI. It writes nothing if any comment text would break the C.
 - The **contract section** of a header is the `## ` section, in the document the descriptor names, whose heading names the header file in backticks: section 2 of `c-abi.md` for `grdr_fastpath.h`, section 3 for `grdr.h`.
 - A **check id** (`HDR-1` to `HDR-5`) names one kind of failure. Like the `TV-n` rules of `tables.md`, it appears only in test output, never at run time and never in output an administrator sees. It takes no `GRDR-<AREA>-<NNNN>` code and no `/codes` page.
 
@@ -63,7 +63,7 @@ The constraints:
 | The header and its layout source | `crates/<crate>/include/<file>.h` and `<file>_layout.c`, generated, LF only (`.gitattributes` already sets `eol=lf`) | as the crate |
 | The interface text | `spec/host-contract/c-abi.md` for the two C ABI headers; the document #247's lead names for `grdr_macos.h` | ecosystem, through the chief architect |
 | Status names and values | `spec/host-contract/status-codes.toml` | as above |
-| Compiling every committed header | the `c-headers` job of `.github/workflows/verify.yml` | agent-kit |
+| Compiling every committed header | the `c-headers` job of `.github/workflows/verify.yml`, on the systems its `plan` job selects | agent-kit |
 | What a contributor reads | `crates/grdr-cabi-testkit/AGENTS.md`, pointed to from each FFI crate's `AGENTS.md`, and one page under `docs/product/embed/` | core; docs |
 
 A `tool` crate may depend on any layer, and nothing depends on it except as a dev-dependency (design/03 section 2, ARCH-001). So the FFI crates take it as a dev-dependency with no new same-layer edge and no list. Being a tool crate, it may also read and write files, which is why it owns the whole drift test and not only the pure parts.
@@ -89,9 +89,10 @@ What the compiler holds:
 - **D5. Data class and encoding.** Every field carries a `DataClass` (`Identifier`, `Structural`, `Derived`, `ContentArgument`, `ContentBody`; design/04 section 2). The macro syntax requires it, and the header prints it beside the field. A byte field (a pointer to a byte or `void`, or an array of bytes) must carry an `Encoding`: `Utf8`, `InField("<field>")`, `NetworkOrder`, `Binary` or `Opaque`. Any other field must carry none; `HDR-1` checks both ways. No encoding implies a terminator.
 
 What `HDR-1` holds, because the compiler cannot:
-- **D6. Spellings.** `CType` maps the Rust primitives to the `<stdint.h>` names, `usize` to `size_t`, `c_void` and `()` to `void`, and `Option<unsafe extern "C" fn(..)>` to a C function pointer, with rustc's sizes and alignments. `as "<name>"` spells a type by a typedef, and the name must be in the header's closed typedef table: the descriptor's typedefs, the status block's typedef and the enums' typedefs. The typedef's underlying type must equal the Rust type's `CType`. The only other name allowed is the builtin `char`, over a one-byte Rust type. So the round 1 seed `u32 as "size_t"` fails (seed A).
+- **D6. Spellings.** `CType` maps the Rust primitives to the `<stdint.h>` names, `usize` to `size_t`, `c_void` and `()` to `void`, and `Option<unsafe extern "C" fn(..)>` to a C function pointer, with rustc's sizes and alignments. `as "<name>"` spells a type by a typedef, and the name must be in the header's closed typedef table: the descriptor's typedefs, the status block's typedef and the enums' typedefs. The typedef's underlying type must equal the Rust type's `CType`. The only other name allowed is the builtin `char`, over a one-byte Rust type. On a pointer to a one-byte type it names the pointee, so `*const c_char as "char"` is `const char *` (round 2 finding 3; `c_char` alone renders as `int8_t`, because Rust's `c_char` is an alias). So the round 1 seed `u32 as "size_t"` fails (seed A), and `as "char"` over a pointer to a wider type fails too.
 - **D7. Array parameters and function-pointer fields.** `"entropy": *const u8 [32]` renders the C array parameter `const uint8_t entropy[32]`, which C reads as a pointer. `[n]` is allowed only after a pointer parameter, with n above 0. The length is not in the Rust type, so `HDR-3` holds it against the contract. A function-pointer field lists its parameter names, `("ctx", "size", "align")`, one per parameter.
-- **D8. Names.** A struct, enum, function or constant takes its C name from the last segment of a two-segment Rust path, `ffi::<name>`, so every described item is at the crate root. If #405 defines the input and verdict in `grdr-fastpath`, the FFI crate re-exports them under the C names. Parameter names are C names, written as strings, because `in` is a Rust keyword.
+- **D8. Names.** A struct, enum, function or constant takes its C name from the last segment of a two-segment Rust path, `ffi::<name>`, so every described item is at the crate root. If #405 defines the input and verdict in `grdr-fastpath`, the FFI crate re-exports them under the C names. Parameter names are C names, written as strings, because `in` is a Rust keyword. Status constants are listed with `c_status!(ffi::GRDR_OK)`, which takes the name from the item as `c_const!` does, so a name cannot be paired with another constant's value (round 2 seed X2).
+- **D9. Enums cross only as return values.** C may pass any value of an integer typedef, and a Rust enum holding an undeclared value is undefined behaviour. So `HDR-1` refuses a Rust enum type, at any depth, in a parameter or a struct field, and allows it only as a function's return value by value (round 2 seed X4). Where C writes the value, the export takes the integer type, spelled by the enum's typedef (`"prior": i32 as "grdr_macos_status"`), and converts it with a checked `match` that returns an error status for an undeclared value.
 
 What differs between headers is content, not code (P14): the file name, guard, SPDX identifier, summary, contract document and section, an optional status block, and an optional version. A version is `{ major, minor, packed macro, minor_bits, runtime }`, so the `major << 16 | minor` scheme of `c-abi.md` is data. A Rust constant left out of the descriptor is not part of the C surface; that is allowed, and seed s9 shows it.
 
@@ -100,15 +101,15 @@ What differs between headers is content, not code (P14): the file name, guard, S
 
 | Id | Fails when | Example detail, and its next step |
 |---|---|---|
-| `HDR-1` types and layout | A struct's offsets, size or alignment from rustc differ from the C layout of its listed fields, computed with rustc's sizes and alignments on the host. Also: a by-value use before declaration, or of an opaque type or `void`; a spelling outside the typedef table or over another type (D6); `[n]` misplaced, or wrong function-pointer names (D7); a missing or extra encoding (D5); an enum value that differs as described (D4) | `grdr_fp_input.dest_kind: rustc offset 64, C layout 68`; next: list the fields in the struct's order with their Rust types, and keep `#[repr(C)]` on the struct |
+| `HDR-1` types and layout | A struct's offsets, size or alignment from rustc differ from the C layout of its listed fields, computed with rustc's sizes and alignments on the host. Also: a by-value use before declaration, or of an opaque type or `void`; a spelling outside the typedef table or over another type (D6); `[n]` misplaced, or wrong function-pointer names (D7); a missing or extra encoding (D5); an enum value that differs as described (D4); a Rust enum in a parameter or field (D9) | `grdr_fp_input.dest_kind: rustc offset 64, C layout 68`; next: list the fields in the struct's order with their Rust types, and keep `#[repr(C)]` on the struct |
 | `HDR-2` text | A committed file is missing, has CR line endings, or differs from its rendering. Also: comment text in the descriptor or a registry `meaning` contains `*/` or `/*` (round 1's seed B). Bless then refuses to write | `include/grdr_fastpath.h: line 116: committed ..., rendered ...`; next: run the bless command (section 8), then run it again without the variable, and never edit the file by hand |
-| `HDR-3` contract | A rendered declaration (`#define`, typedef, opaque type, struct, prototype) is missing from the contract section's `c` code blocks, or one stated there is missing from the header. Comparison is by C token sequence, comments stripped. Also: an offset or size the contract states in a field's comment differs from the 64-bit layout, or the contract or its section is missing | `in the header, not in ../../spec/host-contract/c-abi.md: #define GRDR_FP_DEST_UNIX 4u`; next: change that section first, through its RFC or protected-change item (D-60), or undo the Rust and descriptor change |
+| `HDR-3` contract | A rendered declaration (`#define`, typedef, opaque type, struct, prototype) is missing from the contract section's `c` code blocks, or one stated there is missing from the header. Comparison is by C token sequence, comments stripped. Also: an offset or size the contract states in a field's comment differs from the 64-bit layout, or the contract or its section is missing | `in the header, not in ../../spec/host-contract/c-abi.md: #define GRDR_FP_DEST_UNIX 4u`; next: that section is protected (D-60), so open an issue asking for the change and stop, or undo the Rust and descriptor change |
 | `HDR-4` constants | The registry uses a form outside the reader's subset, repeats a key, a name or a value, or its rows that are not retired differ from the Rust status constants the descriptor lists. Also: the crate's `grdr_status_str`, where the descriptor passes it, returns other than each row's name and the registry's `unknown_name`; or the version function returns other than the packed version constants | `Rust GRDR_E_STATE = 8 has no such row`; next: make `status-codes.toml` and the Rust constants agree, and remember that a new code needs an RFC (c-abi.md section 6) |
-| `HDR-5` exports | The crate has a `build.rs`; a source line contains `include!`, `#[path`, `global_asm!` or `export_name`; a `no_mangle` appears anywhere but a line of `src/lib.rs` that is exactly `#[unsafe(no_mangle)]` at the top level, followed by a top-level `pub extern "C" fn` or `pub unsafe extern "C" fn`; an export is not described; or a described function is not exported there | `src/private.rs:1: an export outside the top level of src/lib.rs`; next: write each export at the top level of `src/lib.rs` and describe it with `c_fn!` |
+| `HDR-5` exports | The crate has a `build.rs`; a source line contains `include!`, `#[path`, `global_asm!`, `export_name` or `rustfmt::skip`; a top-level `pub extern "C" fn` in `src/lib.rs` has no `#[unsafe(no_mangle)]` among the attribute lines above it; a `no_mangle` appears anywhere but a line of `src/lib.rs` that is exactly `#[unsafe(no_mangle)]` at the top level, followed by a top-level `pub extern "C" fn` or `pub unsafe extern "C" fn`; an export is not described; or a described function is not exported there | `src/private.rs:1: an export outside the top level of src/lib.rs`; next: write each export at the top level of `src/lib.rs` and describe it with `c_fn!` |
 
 Rules the checks rest on:
 - **Two layout models.** `HDR-1` uses rustc's own sizes and alignments on the host, so it is right on any target, including one where `uint64_t` aligns to 4 inside a struct. `HDR-3` and the layout source use the 64-bit model: natural alignment and 8-byte pointers, which every 64-bit target this repository builds shares. On a 64-bit host the two agree, so an offset the contract states is checked against rustc. `LP64_POINTER_BYTES` and the 100-column `WIDTH` are part of the rendered form (section 6), not `limits.toml` entries.
-- **Exports.** Only crates that allow `unsafe` can export a symbol, because `unsafe_code` covers `no_mangle`, `export_name` and `global_asm!`; rustc 1.99.1 reports "usage of the unsafe `no_mangle` attribute" under `forbid(unsafe_code)`. Those crates are the FFI crates and the OS adapters. Requiring every export to be written out at the top level of `src/lib.rs`, and refusing `include!`, `#[path]` and `build.rs`, closes round 1's seeds D1, D2 and G. The scan is textual and relies on rustfmt's form. It is the first check to remove if it ever gives a false failure, rather than loosen. #473's check of the archive's defined symbols stays, independent of it.
+- **Exports.** Only crates that allow `unsafe` can export a symbol, because `unsafe_code` covers `no_mangle`, `export_name` and `global_asm!`; rustc 1.99.1 reports "usage of the unsafe `no_mangle` attribute" under `forbid(unsafe_code)`. Those crates are the FFI crates and the OS adapters. Requiring every export to be written out at the top level of `src/lib.rs`, and refusing `include!`, `#[path]` and `build.rs`, closes round 1's seeds D1, D2 and G. rustfmt indents every nested item, and `cargo fmt --check` is a gate, so a line at column 0 is a top-level line; `rustfmt::skip` is refused because it removes that guarantee. A top-level `extern "C" fn` with no export attribute is refused because it can only be a decoy for the descriptor's coercion. Together these close round 2's seed X1. The scan is textual and relies on rustfmt's form. It is the first check to remove if it ever gives a false failure, rather than loosen. #473's check of the archive's defined symbols stays, independent of it.
 - **Registry reader.** It accepts comments, blank lines, top-level keys (`unknown_name`), `[[status]]`, and `key = value` where the value is a decimal integer, `true`, `false`, or a double-quoted string with no escape and no inner quote. Any other line, or a repeated key, is `HDR-4` with its line number. `handle_after` is behaviour, so #388's handle-state tests check it, not the header.
 - **Contract reader.** It is a tokeniser and stays one: identifiers and numbers (with suffixes such as `1u`) are one token each, and each other non-space character is one token. Each `#define` line is one declaration, and every other declaration ends at a `;` outside braces. Other preprocessor lines are skipped. A stated offset is the first number in a field's comment inside a `typedef struct ... {` block, and a stated size is the first number after its closing brace. No expression is evaluated.
 - **No waits, no skips.** The test reads and writes files and makes no process, network or clock call, so nothing in it waits. It has no skip path on any host.
@@ -126,31 +127,31 @@ The header carries no offsets or sizes, because they differ between targets. The
 Every line ends in LF. The product name never appears; the `grdr` namespace stays fixed under a rebrand (ADR-0003). Person-facing status text is not in the header: `grdr_status_str` returns identifiers (c-abi.md section 3; D-69).
 
 ### 7. The C compiler step
-The `c-headers` job of `verify.yml` runs on the three hosted systems on every pull request:
-- ubuntu-26.04 with gcc and clang;
-- macos-26 with Apple clang;
-- windows-2025 with MSVC, found through `vswhere` and `vcvars64.bat`.
+The `c-headers` job of `verify.yml` takes its systems from the workflow's `plan` job, as the `rust` job does: `needs: plan`, with the matrix `fromJSON(needs.plan.outputs.systems)`. It adds no system list of its own. `plan` gives pull requests Linux only (owner instruction 28, runner minutes). It gives every system to a dispatched run, a push to `main` and the nightly run of the public repository, and Linux only to a private copy. So:
+- **On every pull request**, ubuntu-26.04 compiles with gcc and with clang.
+- **On the dispatched run on the head commit**, macos-26 adds Apple clang and windows-2025 adds MSVC, found through `vswhere` and `vcvars64.bat`. The same holds on pushes to `main` and nightly. An item reads those two results the way #418's AC-8 reads the `rust` jobs. It finds the `workflow_dispatch` run of `verify.yml` on `issue/<n>` whose `headSha` equals the branch head, and expects the jobs `c-headers (macos-26)` and `c-headers (windows-2025)` to have conclusion `success`. The dispatch rules are those #454 put on `main`.
+- **In a private copy**, only gcc and clang run. MSVC and Apple clang never compile its headers. That is the copy's choice of runner minutes, and the release that ships a header comes from the public repository.
 
-For each `crates/*/include/*.h` it:
+On each system it runs, for each `crates/*/include/*.h`, the job:
 1. Fails if `<stem>_layout.c` or the crate's `tests/header_drift.rs` is missing. That catches a header whose drift test was deleted.
 2. Compiles the header alone as C99 and as C++11: `-fsyntax-only` under gcc and clang, and a one-line translation unit under MSVC.
 3. Compiles the layout source as C11 and as C++11.
 4. Compiles one translation unit that includes every header twice, which checks the shared `GRDR_STATUS_DEFINED` guard.
 
-The flags are `-Wall -Wextra -Wpedantic -Werror` under gcc and clang, and `/W4 /WX` under MSVC. A missing compiler fails the job; nothing is skipped. The job is gate configuration, so lead-agent-kit builds it, and it blocks #418.
+The flags are `-Wall -Wextra -Wpedantic -Werror` under gcc and clang, and `/W4 /WX` under MSVC. On a system the plan gives it, a missing compiler fails the job; nothing is skipped there. The job is gate configuration, so lead-agent-kit builds it, and it blocks #418.
 
 The sketch ran the same compiles by hand. gcc 14.2.0 built C99, C11, C17, C++11, C++17 and C++20 under `-Wpedantic -Werror`, and MSVC built C11 and C++17 under `/W4 /WX`; all exited 0. A 32-bit leg (`-m32`) was not checked, because the image has no 32-bit libc headers. Section 11 makes that leg a condition of any 32-bit pilot.
 
 ### 8. Changing a header
 A change to a C ABI is a public-surface change: D-60 for any function, field or code beyond design/26, and RFC 0004 for the header's form. So a header change opens with an issue, not a pull request. In order:
-1. The contract section of `c-abi.md` (and `status-codes.toml`, for a code) gains the declaration, through its RFC or protected-change item.
+1. The contract section of `c-abi.md` (and `status-codes.toml`, for a code) gains the declaration, through its RFC or protected-change item. A contributor who reaches `HDR-3` opens an issue asking for that change and stops there; only the chief architect's item edits the file.
 2. The Rust items change.
 3. The descriptor changes. Until it does, D1 to D4 stop the build.
 4. Bless with `GRDR_BLESS_HEADERS=1 cargo test --locked -p <crate> --test header_drift`, which fails by design, then run `cargo test --locked -p <crate> --test header_drift` again, which passes only if steps 1 to 3 agree. In PowerShell the variable is set with `$env:GRDR_BLESS_HEADERS = "1"` and in cmd with `set GRDR_BLESS_HEADERS=1`; clear it afterwards.
 
 The descriptor of `grdr_fastpath.h` and of `grdr.h` is on a trust-core path. Every change to those headers therefore takes `eval-security`, `eval-adversarial` and two passing evaluators on different models (D-63).
 
-This section, the check table of section 5 and the bless command in its three shells become `crates/grdr-cabi-testkit/AGENTS.md`. Each FFI crate's `AGENTS.md` points to it from "How to test", and `docs/product/embed/` gains one page for embedders: vendoring the header and layout source, the version rule of section 9, and what may be stripped (section 11). An agent reads the crate `AGENTS.md` at the start of every run that touches the crate.
+This section, the check table of section 5 and the bless command in its three shells become `crates/grdr-cabi-testkit/AGENTS.md`. The testkit item's acceptance includes a check that the `AGENTS.md` check table equals section 5's table word for word, so the two cannot drift (seat 7, round 2). Each FFI crate's `AGENTS.md` points to it from "How to test", and `docs/product/embed/` gains one page for embedders: vendoring the header and layout source, the version rule of section 9, and what may be stripped (section 11). An agent reads the crate `AGENTS.md` at the start of every run that touches the crate.
 
 ### 9. Proposed section 2.4 of `c-abi.md`
 `HDR-3` needs the constants in a `c` block. Section 2 states the values only in comments. This RFC adds the names, a packed version macro and the load rule. The text to insert before section 3:
@@ -201,17 +202,17 @@ Data classes (P8): the check reads source, interface text and registry files, al
 - `grdr-cabi-testkit` is internal. It changes by ordinary items, except where a change alters a rendered header, which is an amendment as above.
 
 ### 12. Sketch
-Round 2 is posted on #474 in four parts:
-- Part 1, the testkit's `lib.rs`, `cty.rs`, `content.rs`, `layout.rs` and `contract.rs`: https://github.com/416rehman/Guardrails/issues/474#issuecomment-7056962665
-- Part 2, `render.rs`, `registry.rs`, `exports.rs` and `run.rs`: https://github.com/416rehman/Guardrails/issues/474#issuecomment-7056962928
-- Part 3, the seeded unit tests, two stand-in crates with their descriptors, the stand-in contract and section 9's text: https://github.com/416rehman/Guardrails/issues/474#issuecomment-7056963229
-- Part 4, `build.sh`, the C leg scripts, the Windows, Linux, gcc and MSVC results and the generated files: https://github.com/416rehman/Guardrails/issues/474#issuecomment-7056963512
+Round 3 is posted on #474 in four parts:
+- Part 1, the testkit's `lib.rs`, `cty.rs`, `content.rs`, `layout.rs` and `contract.rs`: https://github.com/416rehman/Guardrails/issues/474#issuecomment-7057263319
+- Part 2, `render.rs`, `registry.rs`, `exports.rs` and `run.rs`: https://github.com/416rehman/Guardrails/issues/474#issuecomment-7057263597
+- Part 3, the seeded unit tests, two stand-in crates with their descriptors, the stand-in contract and section 9's text: https://github.com/416rehman/Guardrails/issues/474#issuecomment-7057263847
+- Part 4, `build.sh`, the C leg scripts, the Windows, Linux, gcc and MSVC results and the generated `grdr_macos.h`: https://github.com/416rehman/Guardrails/issues/474#issuecomment-7057264094
 
-`build.sh` builds with `rustup run 1.99.1 rustc --edition 2024 -D warnings` against #246's `c-abi.md` (commit ca039ed) with section 9's text inserted, and #246's `status-codes.toml`. Its exit status is the number of outcomes that differ from the expected column. It exited 0 on Windows 11 (`x86_64-pc-windows-msvc`) and on Linux x86_64 (image `rust:1.99.1`, no network), with every row the same on both. The four generated files are byte-identical on the two systems. The testkit's 15 seeded unit tests pass: a clean tree; a missing header and a missing contract; an unreadable directory; bless writing and failing; bless on a clean tree; a comment delimiter in a meaning; both spelling failures; a repeated registry key; the status-string hook; each hidden form and a misplaced export; array parameters and function-pointer fields; a byte field with no encoding; a stated offset; one status block across two headers; and the version and enum checks.
+`build.sh` builds with `rustup run 1.99.1 rustc --edition 2024 -D warnings` against #246's `c-abi.md` (commit ca039ed) with section 9's text inserted, and #246's `status-codes.toml`. Its exit status is the number of outcomes that differ from the expected column. It exited 0 on Windows 11 (`x86_64-pc-windows-msvc`) and on Linux x86_64 (image `rust:1.99.1`, no network), and `diff` of the two outputs is empty. The four generated files are byte-identical on the two systems. The testkit's 20 seeded unit tests pass: a clean tree; a missing header and a missing contract; an unreadable directory; bless writing and failing; bless on a clean tree; a comment delimiter in a meaning; both spelling failures; a repeated registry key; the status-string hook; each hidden form and a misplaced export; array parameters and function-pointer fields; a byte field with no encoding; a stated offset; one status block across two headers; the version and enum checks; a status name taken from its item; `const char *`, and `as "char"` over a wider pointee; an enum refused in a parameter and a field; `rustfmt::skip` and an unexported top-level fn; and `StdEnv` creating a missing `include/`.
 
 | Case (crate) | Expected, result |
 |---|---|
-| Bless into an empty `include/` (both) | fail, fails: `HDR-2`; files written |
+| Bless into a crate with no `include/` (both) | fail, fails: `HDR-2`; directory and files written |
 | Clean tree after the bless (both) | pass, passes |
 | s1 a parameter type changed in Rust | fail, E0308 at the descriptor line |
 | s2, s2b the header or the layout source edited by hand | fail, `HDR-2` |
@@ -237,14 +238,19 @@ Round 2 is posted on #474 in four parts:
 | m1 a status variant added in Rust (`grdr_macos.h`) | fail, E0004 |
 | m2 the `i32` enum described as `u32` (`grdr_macos.h`) | fail, `HDR-1`, `HDR-2`, `HDR-3` |
 | m3 a contract declaration changed (`grdr_macos.h`) | fail, `HDR-3` |
+| X1 the real export in a `#[rustfmt::skip]` inline module, a root decoy for the descriptor (round 2) | fail, `HDR-5` twice: `rustfmt::skip`, and a top-level `extern "C" fn` without the export attribute |
+| X2 `GRDR_E_STATE` and `GRDR_E_POISONED` values swapped in Rust (round 2) | fail, `HDR-4` |
+| X4 the status enum taken as a parameter (`grdr_macos.h`, round 2) | fail, `HDR-1` (D9), with `HDR-2` and `HDR-3` from the changed text |
+| X4b the same parameter as `i32 as "grdr_macos_status"`, contract updated, blessed (`grdr_macos.h`) | pass, passes |
+| `grdr_macos_name` returning `*const c_char as "char"` (`grdr_macos.h`, clean tree) | renders `const char *grdr_macos_name(void);`, and gcc and MSVC accept it as C and C++ |
 
 ### 13. Mechanisms
 | Decision | Mechanism | Built by |
 |---|---|---|
-| The committed files are the rendering of their descriptor and the registry | `HDR-2` in each crate's `header_drift` test, run by `cargo test --workspace` in `verify.yml` on the three systems | The testkit item; #418, #388, #247 |
-| The descriptor matches the Rust items | D1 to D4 at compile time; `compile_fail` doctests in the testkit for each, and in `grdr-fastpath-ffi` one that describes `grdr_fp_arena_size` with a wrong parameter type (#418 AC-5's seeded change) | The testkit item; #418 |
-| Spellings, layout, encodings, data classes | `HDR-1` over rustc's layout on every CI host; the macro syntax for data classes | The testkit item |
-| A C compiler accepts every header and its layout | The `c-headers` job; no skip path | The `c-headers` item, blocking #418 |
+| The committed files are the rendering of their descriptor and the registry | `HDR-2` in each crate's `header_drift` test, run by `cargo test --workspace` in `verify.yml`'s `rust` job on the systems its `plan` job selects: Linux on pull requests, all three on the dispatched run on the head, pushes to `main` and nightly | The testkit item; #418, #388, #247 |
+| The descriptor matches the Rust items | D1 to D4 at compile time; `c_status!` names (D8); `compile_fail` doctests in the testkit for each, and in `grdr-fastpath-ffi` one that describes `grdr_fp_arena_size` with a wrong parameter type (#418 AC-5's seeded change) | The testkit item; #418 |
+| Spellings, layout, encodings, data classes, enum positions | `HDR-1` over rustc's layout on every system `plan` selects; the macro syntax for data classes; D9 for enums | The testkit item |
+| A C compiler accepts every header and its layout | The `c-headers` job on `plan`'s systems: gcc and clang on every pull request; MSVC and Apple clang read from the dispatched run on the head, as #418's AC-8 reads the `rust` jobs | The `c-headers` item, blocking #418 |
 | The header matches its contract | `HDR-3`, declarations and stated offsets; section 2.4 in `c-abi.md` | The testkit item; the `c-abi.md` item |
 | One status block for both C ABI headers | `content::grdr_status`; a seeded unit test rendering two headers | The testkit item |
 | Every export is described, and visible | `HDR-5`; `unsafe_code` forbidden outside the FFI and OS adapter crates (workspace lints); #473's archive symbol check | The testkit item; #473 |
@@ -261,7 +267,7 @@ Each lands through an issue whose write set names its file, after acceptance.
 - **design/03 section 7.** The C ABI row's gate reads "Header generated by the crate's drift test, diffed against the committed header and `c-abi.md`, and compiled as C and C++ by `c-headers` (RFC 0004); no panic crosses the boundary".
 - **`spec/host-contract/c-abi.md`.** Section 2.4 (section 9 above). The sentence "The generated headers of EM-2 and EM-4 are diffed against this text" gains "declaration by declaration and offset by offset, as RFC 0004 section 5 describes".
 - **`architecture.toml`.** `grdr-cabi-testkit` with `layer = "tool"` and no dependency.
-- **`.github/workflows/verify.yml`.** The `c-headers` job of section 7.
+- **`.github/workflows/verify.yml`.** The `c-headers` job of section 7, with `needs: plan` and `plan`'s systems.
 - **`.claude/risk-tiers.toml`.** `crates/grdr-cabi-testkit/**` at high tier, because a testkit change can weaken a check without changing any header.
 - **`supply-chain/`, design/26.** No change.
 
@@ -270,19 +276,19 @@ This RFC is normative. Each lead writes these changes back into its item before 
 - **#418.**
   - R5 reads: "`include/grdr_fastpath.h` and `include/grdr_fastpath_layout.c` are generated by `tests/header_drift.rs` with `grdr-cabi-testkit`, as RFC 0004 rules, and every export is written at the top level of `src/lib.rs`".
   - Plan step 4 and AC-5 keep `cargo test --locked -p grdr-fastpath-ffi --test header_drift`, with the oracle "RFC 0004's checks `HDR-1` to `HDR-5`, and the crate's `compile_fail` doctest for a changed signature".
-  - A criterion reads the `c-headers` job's conclusion on the head commit, in the form of AC-8.
+  - A criterion reads the `c-headers` jobs on all three systems from the `workflow_dispatch` run of `verify.yml` on the head commit of `issue/418`, in the form of AC-8: `c-headers (ubuntu-26.04)`, `c-headers (macos-26)` and `c-headers (windows-2025)`, each with conclusion `success`.
   - Blocked by the testkit item, the `c-abi.md` 2.4 item and the `c-headers` item.
   - R4 stands, since the testkit is a workspace crate: `Cargo.lock` gains only its dev-dependency edge, which the testkit item adds.
 - **#246.** If still open, it carries section 2.4. Otherwise the `c-abi.md` item does.
 - **#378.** R5 (b) is answered by this RFC, and its RFC cites RFC 0004. R5 (c) is answered for headers by the `c-headers` job; the C harness of EM-4 stays its own.
-- **#388.** R12 and plan step 4 follow #418's form for `grdr.h`, under the test name `header_drift`. Its descriptor passes `grdr_status_str` to `content::grdr_status`. `grdr_engine_config`'s callbacks use D7's function-pointer fields, `grdr_engine_step`'s `entropy[32]` uses D7's array parameter, and `grdr_engine_version`'s `const char *` uses `as "char"`.
-- **#247.** R7 follows the same method for `grdr_macos.h`: its `#[repr(i32)]` status through `c_enum!` and `c_enum_type!`, no status block, no version unless its lead adds one. Its lead names the contract section `HDR-3` reads, in a document the item owns. AC-1, which compiles C with the system compiler, overlaps the `c-headers` job and may stay.
+- **#388.** R12 and plan step 4 follow #418's form for `grdr.h`, under the test name `header_drift`. Its descriptor lists the status constants with `c_status!` and passes `grdr_status_str` to `content::grdr_status`. `grdr_engine_config`'s callbacks use D7's function-pointer fields, and `grdr_engine_step`'s `entropy[32]` uses D7's array parameter. The `const char *` returns of `grdr_engine_version` and `grdr_status_str` are `*const c_char as "char"` (D6). `grdr_status_str` takes `grdr_status`, an integer, never an enum (D9).
+- **#247.** R7 follows the same method for `grdr_macos.h`: its `#[repr(i32)]` status through `c_enum!` and `c_enum_type!`, as a return value only, with any parameter that carries a status taking `i32` and a checked conversion (D9); no status block, and no version unless its lead adds one. Its lead names the contract section `HDR-3` reads, in a document the item owns. AC-1, which compiles C with the system compiler, overlaps the `c-headers` job and may stay.
 - **#405.** If the `#[repr(C)]` types live in `grdr-fastpath`, the FFI crate re-exports them under their C names (D8).
 - **#473.** No change.
 - **#1771.** Becomes a release gate as section 11 says.
 
 Filed on acceptance, each linked as it blocks:
-- the `grdr-cabi-testkit` item (core). It covers the crate with its `architecture.toml` and `owners.toml` rows, and the dev-dependency lines in the FFI crates' manifests and `Cargo.lock` (a trust-core path through `grdr-fastpath-ffi`). It also carries the seeded unit tests, the `compile_fail` doctests, the testkit `AGENTS.md`, and a measure of the time the drift tests add to `cargo test --workspace`. It is blocked by #2 and the risk-tier item, and it blocks #418 and #388;
+- the `grdr-cabi-testkit` item (core). It covers the crate with its `architecture.toml` and `owners.toml` rows, and the dev-dependency lines in the FFI crates' manifests and `Cargo.lock` (a trust-core path through `grdr-fastpath-ffi`). It also carries the seeded unit tests, the `compile_fail` doctests, and the testkit `AGENTS.md`, whose check table a criterion compares with section 5's word for word. It also measures the time the drift tests add to `cargo test --workspace`. It is blocked by #2 and the risk-tier item, and it blocks #418 and #388;
 - the `c-headers` job item (agent-kit), blocking #418;
 - the risk-tier item (agent-kit);
 - the `c-abi.md` section 2.4 item, unless #246 carries it, blocking #418;
@@ -323,6 +329,8 @@ The options:
 - **(j) A C compile inside `cargo test`, driven by `CC`.** Every contributor's `cargo test --workspace` would then need a configured C compiler, and on Windows that means finding MSVC without the `cc` crate. Rejected for the `c-headers` job, which runs where the compilers are known.
 - **(k) Explicit padding fields, so no offset depends on the target (seat 5).** Section 2.1 of #246 leaves implicit padding after `dest_port`, and pointers differ between 32- and 64-bit targets in any case. Declined: alignment comes from rustc (section 5), and a 32-bit target gets its own compiler leg before a pilot.
 - **(l) Fewer per-field docs, taken from `c-abi.md` (seat 8).** The header must state each field's data class and encoding, which `c-abi.md` does not carry, so the descriptor keeps one doc per field. Offsets left the header instead.
+- **(m) A system list of the `c-headers` job's own (revision 2).** It would be a second planner beside `plan`, overriding owner instruction 28 for one job, or it would promise three systems that a pull request and a private copy never get. Rejected for `plan`'s systems and the dispatched run (section 7).
+- **(n) A Rust enum in a parameter, read with a validity check.** A Rust enum holding an undeclared value is undefined behaviour before any check can run. Rejected for D9.
 
 ## Drawbacks
 - The descriptor is a third statement of each signature beside the Rust and the header. The compiler holds it to the Rust, but each change edits it. Changing one exported function takes three hand edits (contract, Rust, descriptor) and a bless.
@@ -337,7 +345,7 @@ The options:
 2. **Where #405 puts the `#[repr(C)]` types.** Either way works (D8).
 3. **The contract document for `grdr_macos.h`.** #247's lead names it. Until it exists, `grdr_macos.h` cannot pass `HDR-3`, which fails closed.
 4. **Not checked here:**
-   - macOS; clang; a 32-bit compile (`-m32`, no 32-bit headers in the image); which compilers the hosted runner images carry, which the `c-headers` item confirms.
+   - macOS; clang; MSVC and Apple clang through the real `verify.yml`, since only the hand-run compiles of section 7 were made; a 32-bit compile (`-m32`, no 32-bit headers in the image); which compilers the hosted runner images carry, which the `c-headers` item confirms.
    - `cargo test` itself, because the workspace has no members; the sketch was built with `rustc` directly.
    - `compile_fail` doctests, which the sketch replaces with seeded builds (s1, s3, s4, m1).
    - The time the drift tests add, which the testkit item measures.
@@ -355,7 +363,11 @@ Round 1, on `1b539ad`:
 - Seat 8 (simplicity), none blocking. https://github.com/416rehman/Guardrails/issues/474#issuecomment-7056595274
 - Seat 9 (international), none blocking. https://github.com/416rehman/Guardrails/issues/474#issuecomment-7056623795
 
-Round 2: pending, on this revision. The dispositions are on #474.
+Round 2, on `8c17cff`:
+- `eval-architecture`: fail, one major (the `c-headers` systems) and five minors. https://github.com/416rehman/Guardrails/issues/474#issuecomment-7057123430
+- Seat 7 (contributor), none blocking; round 1's blocker resolved. https://github.com/416rehman/Guardrails/issues/474#issuecomment-7057016370
+
+Round 3: pending, on this revision, and the last round. The dispositions are on #474.
 
 ## Decision
 Pending.
