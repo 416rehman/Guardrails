@@ -108,6 +108,8 @@ layer = 3
 created = true
 member = false
 manifest = "bpf/grdr-sensor-linux-bpf/Cargo.toml"
+# Built to an object the back end loads, so no crate may take a Cargo dependency on it.
+cargo_dependency = false
 
 [crates.grdr-agents]
 layer = 3
@@ -314,17 +316,22 @@ from = "grdr-messages"
 to = "grdr-strings"
 
 # ARCH-004 (ADR-0010): the closure of every `privilege = "privileged"` program and of the programs
-# named here holds none of `content_parsers`, except the decoders below.
+# named here holds none of `content_parsers`, except the decoders below. `grdr-agents` holds the
+# hook dialect translators; `grdr-update` is admitted only where its decoder entry says.
 [arch004]
 also_programs = ["grdr-hook"]
-content_parsers = ["grdr-core", "grdr-llm-proto", "grdr-mcp-proto", "cedar-policy", "yara-x", "rsigma-*", "serde_json", "regex"]
+content_parsers = ["grdr-core", "grdr-llm-proto", "grdr-mcp-proto", "grdr-agents", "grdr-update", "cedar-policy", "yara-x", "rsigma-*", "serde_json", "regex"]
 
-# A decoder without `only_in` is admitted in every closure ARCH-004 checks.
+# A decoder is admitted in the closures `only_in` names, or in every closure ARCH-004 checks when
+# it has no `only_in`. `admits` lists the content parsers it may bring with it there; nothing else
+# in its own closure is exempt.
 [[arch004.decoder]]
 crate = "grdr-proto"
 decodes = "IPC frames, through the generated protobuf codec"
+admits = []
 
 [[arch004.decoder]]
 crate = "grdr-update"
 decodes = "TUF metadata"
 only_in = ["grdr-updater"]
+admits = ["serde_json"]
