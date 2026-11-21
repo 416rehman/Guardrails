@@ -155,7 +155,7 @@ Section 3 gains the matching block for `grdr.h` (`GRDR_ABI_MAJOR`, `GRDR_ABI_MIN
 ### 9. What the check does not cover
 - **How a C compiler reads the header.** `#[repr(C)]` follows the platform's C layout, so `HDR-1`, checked against rustc, is the C layout as long as `CType`'s map is right. To check the map itself, the test writes `<file>_layout.c`, which includes the header and asserts every `sizeof` and `offsetof` rustc reported, as C11 and as C++. The sketch builds it with MSVC as C11 and C++17 under `/W4 /WX`, and both pass. A compiler step joins `cargo test` when #378 R5 (c) rules on how a test reaches the host compiler. #247 AC-1 already does it on macOS with the system compiler. A C program linked against the library checks symbol names, never signatures, so a C leg is an addition to D1 to D3, never a replacement for them.
 - **Behaviour.** Which status a function returns, and when, is #418's differential and argument tests.
-- **Compatibility across releases.** D-71 and design/03 section 7 also gate a header against its last release: within a major, declarations are only added, and structs only grow trailing fields. That diff is a separate check. It can reuse the contract tokeniser on the header at the release tag. No item builds it yet, and this RFC files one (section 15).
+- **Compatibility across releases.** D-71 and design/03 section 7 also gate a header against its last release: within a major, declarations are only added, and structs only grow trailing fields. That diff is a separate check. It can reuse the contract tokeniser on the header at the release tag. No item built it, so #1771 now does (section 14).
 
 Data classes (P8): the check reads source, interface text and registry files, all `structural`. It logs nothing at run time and adds no field to any message. Assurance effect (P1): none. No action class changes `visibility`, `control`, `on_failure` or `tamper`.
 
@@ -235,7 +235,7 @@ Filed on acceptance, each linked as it blocks:
 - the design/03 and design/26 amendments of section 13;
 - the `risk-tiers.toml` row (agent-kit).
 
-Filed with this draft, because no item covers it whatever this RFC decides: the C header compatibility check of section 9.
+Filed with this draft, because no item covered it whatever this RFC decides: #1771, the C header compatibility check of section 9.
 
 ## Surfaces changed
 - `grdr_fastpath.h` (C ABI, experimental): generated form. New constants `GRDR_FP_ABI_MAJOR` and `GRDR_FP_ABI_MINOR`, and names for the values section 2 already fixes. No function, field or status code changes.
@@ -273,7 +273,7 @@ Each alternative below was checked against what shipping projects do. rustls-ffi
 - The status block carries each code's `meaning` in English as a comment. That is developer text in a source file, not a product string, but a reword of a `meaning` regenerates both headers.
 
 ## Unresolved questions
-1. **The compatibility check across releases** (section 9). Filed as its own item; it does not block this RFC.
+1. **The compatibility check across releases** (section 9). Filed as #1771; it does not block this RFC.
 2. **The C compiler step in `cargo test` on all three hosts.** This waits on #378 R5 (c). Until then, the layout-assert source is written, and the sketch's MSVC run is the evidence that the renderer's spelling compiles.
 3. **Function-pointer fields and array parameters** for `grdr.h`. The sketch does not render them; the testkit item builds them, with seeded tests.
 4. **Where #405 puts the `#[repr(C)]` types.** Either way works (D6).
