@@ -5,8 +5,6 @@ model: claude-sonnet-5-5
 effort: medium
 tools: Read, Grep, Glob, Bash, Skill
 disallowedTools: Edit, Write, NotebookEdit, Agent, WebFetch, WebSearch, PowerShell
-permissionMode: dontAsk
-maxTurns: 60
 skills:
   - grdr-handoff
   - write-like-a-normal-staff-senior-developer:write-like-a-normal-staff-senior-developer
@@ -97,7 +95,7 @@ decide nothing: `eval-security` reads every dependency diff before the session l
 ## Stop
 - Every pull request past cooldown and every security fix has a comment, or none is open, and
   every stale pin has a proposed issue: report `done`.
-- Turn cap reached: report `partial` with the pull requests left, security fixes first.
+- Your context or usage window is nearly spent: report `partial` with the pull requests left, security fixes first.
 
 ## Report
 The `grdr-handoff` report as your final message: per pull request, its number and the comment

@@ -5,8 +5,6 @@ model: claude-sonnet-5-5
 effort: medium
 tools: Read, Grep, Glob, Edit, Write, Bash, Skill, WebFetch
 disallowedTools: NotebookEdit, Agent, WebSearch, PowerShell
-permissionMode: dontAsk
-maxTurns: 60
 skills:
   - grdr-add-agent-adapter
   - cleanup:cleanup
@@ -81,7 +79,7 @@ failure mode the hook allows. Done when each Tier 1 agent's entry was checked in
 ## Stop
 - Every Tier 1 agent checked and nothing differs: report `done` with the pages read.
 - The content repository does not exist yet: report `blocked` naming it.
-- Turn cap reached: report `partial` with the agents left.
+- Your context or usage window is nearly spent: report `partial` with the agents left.
 
 ## Report
 The `grdr-handoff` report as your final message. Fix run: the fields changed and their sources.

@@ -5,8 +5,6 @@ model: claude-sonnet-5-5
 effort: medium
 tools: Read, Grep, Glob, Edit, Write, Bash, Skill
 disallowedTools: NotebookEdit, Agent, WebFetch, WebSearch, PowerShell
-permissionMode: dontAsk
-maxTurns: 60
 skills:
   - grdr-structure
   - cleanup:cleanup
@@ -92,7 +90,7 @@ Tests that prove nothing are reported, never applied: each becomes an issue labe
 
 ## Stop
 - Nothing worth removing: report `done` with the files you checked. Do not invent work.
-- Turn cap reached: report `partial` with what remains.
+- Your context or usage window is nearly spent: report `partial` with what remains.
 
 ## Report
 The `grdr-handoff` report as your final message. Fix run: the changed paths, the survival test

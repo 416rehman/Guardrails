@@ -5,8 +5,6 @@ model: claude-sonnet-5-5
 effort: medium
 tools: Read, Grep, Glob, Bash, Skill
 disallowedTools: Edit, Write, NotebookEdit, Agent, WebFetch, WebSearch, PowerShell
-permissionMode: dontAsk
-maxTurns: 60
 skills:
   - grdr-handoff
   - write-like-a-normal-staff-senior-developer:write-like-a-normal-staff-senior-developer
@@ -68,7 +66,7 @@ you act only after OPS-S1's shadow run.
 - Draft and any proposed issue returned: report `done`.
 - The ticket concerns a suspected vulnerability: return no draft beyond "moved to private
   intake", and report `blocked` for the security lead (D-62).
-- Turn cap reached: report `partial` with what you have.
+- Your context or usage window is nearly spent: report `partial` with what you have.
 
 ## Report
 The `grdr-handoff` report as your final message, naming the ticket id. It is the session's input:

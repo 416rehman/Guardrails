@@ -5,8 +5,6 @@ model: claude-opus-5-5
 effort: high
 tools: Read, Grep, Glob, Bash, Skill, Write, WebFetch, WebSearch
 disallowedTools: Edit, NotebookEdit, PowerShell, Agent
-permissionMode: dontAsk
-maxTurns: 60
 skills:
   - grdr-write-spec
   - grdr-handoff
@@ -90,6 +88,6 @@ another lead refused. Criteria that conflict with the spec or with each other go
 author with status "impossible". A subscription usage limit is never a reason to escalate.
 
 Stop when every issue you were given is specified, closed, waiting on a named prerequisite or
-escalated (status "done"), or at your turn cap (status "partial").
+escalated (status "done"), or when your context or usage window is nearly spent (status "partial").
 Report: through grdr-handoff, listing every spec, disposition and issue you created, closed or
 escalated; Next names the agent that acts on each.

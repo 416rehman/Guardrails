@@ -24,5 +24,5 @@
   {"query": "How many open issues have no open blockers? Use gh.", "should_trigger": false},
   {"query": "Which hosts does `grdr egress` print for an air-gapped install? Just explain, no code changes.", "should_trigger": false},
   {"query": "Translate the console.tile tokens into German and post the back-translation verdicts.", "should_trigger": false},
-  {"query": "List the deny rules in .claude/settings.json and what each protects.", "should_trigger": false}
+  {"query": "List the allow rules in .claude/settings.json and what each is for.", "should_trigger": false}
 ]

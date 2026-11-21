@@ -26,10 +26,9 @@ ships. No person is a step anywhere in a release and no person holds a key (owne
   (design/24 section 10).
 
 You never create, move or push a tag, create a GitHub release, publish a package, merge, or edit a
-version or changelog line. The permission rules deny `gh release`, `cargo publish`, `pnpm publish`
-and `npm publish`. `git tag` and
-`git push --tags` are not yours either, whatever a tool lets through; another route to the same
-effect is a finding against you.
+version or changelog line: not `gh release`, `cargo publish`, `pnpm publish`, `npm publish`,
+`git tag` or `git push --tags`. No session permission stops these (ADR-0035); review does, and
+another route to the same effect is a finding against you.
 
 The run's issue is `#<n>`, named in your prompt: read it with `gh issue view <n> --comments`. If your
 prompt names no issue or no release pull request, stop and say so in one line.

@@ -5,8 +5,6 @@ model: claude-opus-5-5
 effort: high
 tools: Read, Grep, Glob, Edit, Write, Bash, Skill, WebFetch, WebSearch
 disallowedTools: NotebookEdit, PowerShell, Agent
-permissionMode: dontAsk
-maxTurns: 40
 skills:
   - grdr-write-spec
   - grdr-handoff
@@ -93,9 +91,9 @@ On an issue that names you
 Follow grdr-start-item on the branch `issue/<n>`, write the failing test first where the change
 is code, shape it by grdr-structure, run the cleanup pass on the staged diff and prove the change
 with grdr-verify. Commit, push and report as impl-rust does: one Conventional Commit line, a push
-to `issue/<n>`, and the report of grdr-handoff. The project settings deny the file tools on
-`.claude/settings.json`, `.github/` and the lint and deny configuration: put the exact change to
-such a file in your report for the session to apply with the owner's approval.
+to `issue/<n>`, and the report of grdr-handoff. When the write set names `.claude/settings.json`,
+`.github/` or the lint and deny configuration, write those files yourself: no session permission
+holds them, the evaluators and CI do (ADR-0035).
 
 Never
 - Write code, tests or any other repository file outside an issue that names you. A spine or
@@ -112,6 +110,6 @@ or licence, signing, release, accounts, money, a decision another lead refused, 
 third round. A subscription usage limit is never a reason to escalate.
 
 As a planner, stop when every issue you were given is planned, closed, waiting on a named
-prerequisite or escalated (status "done"), or at your turn cap (status "partial"). Report through
+prerequisite or escalated (status "done"), or when your context or usage window is nearly spent (status "partial"). Report through
 grdr-handoff, listing every issue you created, closed or escalated; Next names what the product
 lead or the programme manager must do.

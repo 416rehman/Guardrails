@@ -18,5 +18,5 @@
   {"query": "cargo build is really slow on my Windows box, can you suggest how to speed up incremental builds for this workspace?", "should_trigger": false},
   {"query": "Write the specification for the --json output of grdr doctor so another tool can parse it.", "should_trigger": false},
   {"query": "Run the windows-with-defender matrix cell for my change to grdr-sensor-windows and give me the ten-line result.", "should_trigger": false},
-  {"query": "What is the difference between the trust-core list and the deny rules in .claude/settings.json? Just explain, no changes.", "should_trigger": false}
+  {"query": "What is the difference between the trust-core list and the protected files of team/05 section 5? Just explain, no changes.", "should_trigger": false}
 ]

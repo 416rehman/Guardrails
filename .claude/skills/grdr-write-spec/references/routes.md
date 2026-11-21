@@ -16,7 +16,7 @@ The chief architect drafts it in `rfcs/NNNN-<title>.md` and is its author of rec
 
 ## Files agents may not edit
 
-The `deny` rules of `.claude/settings.json` keep agents from editing these. Post the proposed content as a comment on the item's issue, headed with the target path, and file the change as its own issue, named in your report.
+An ordinary issue does not edit these, and the evaluators fail a diff that does (ADR-0035). Post the proposed content as a comment on the item's issue, headed with the target path, and file the change as its own issue, named in your report.
 
 | Target | Lands by |
 |---|---|
