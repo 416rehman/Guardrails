@@ -15,15 +15,15 @@ The owner, on 2026-11-21: development is agent-driven with no person in the loop
 
 ## Decision
 - Agent sessions run with no permission limits. In `.claude/settings.json`, `permissions.deny` is empty, `permissions.ask` and `permissions.disableBypassPermissionsMode` are gone, `permissions.defaultMode` is `bypassPermissions` and `sandbox.enabled` is `false`. No agent file sets `permissionMode`, so every subagent runs in the session's mode.
-- Claude Code does not start a session in `bypassPermissions` from project settings, so the owner starts the orchestrating session with `claude --permission-mode bypassPermissions` (`CLAUDE.md`). The project value records the intended mode.
+- A `PermissionRequest` hook, `.claude/hooks/permission-allow.mjs`, answers allow to every permission request Claude Code would otherwise show a person, so no session asks, whatever its mode. Claude Code does not start a session in `bypassPermissions` from project settings, so the owner still starts the orchestrating session with `claude --permission-mode bypassPermissions` (`CLAUDE.md`); without it every action goes through the hook. The project value records the intended mode.
 - Gate paths are protected by the gates only. A protected change is still its own issue whose write set names the path, worked by `lead-agent-kit` or the chief architect and landed after `eval-security` and an evaluator on the other model pass (D-63). Every evaluator checks the diff against the issue's write set and fails a write outside it; CI judges the diff (`verify.yml`, `docs.yml`, and the write-set job of #1668 once it lands); the docs-check hook holds `gh pr create` and `gh pr merge`.
 - The rules agents follow (stay inside the write set, read no secrets, escalate a new dependency, leave signing and releases alone) are process rules in `AGENTS.md` and the skills, checked by review. No session refuses or asks on their behalf.
-- The allow list, `env`, the hooks and the model stay. In `bypassPermissions` the allow list neither refuses nor asks; its `WebFetch` entries remain the research domain list that `grdr-vendor-research` follows.
+- The allow list, `env`, the PreToolUse docs-check hook and the model stay; the `PermissionRequest` hook is the one addition, by the owner's direction on #1782. In `bypassPermissions` the allow list neither refuses nor asks; its `WebFetch` entries remain the research domain list that `grdr-vendor-research` follows.
 - No agent file sets `maxTurns`, so no agent stops at a turn limit; an agent reports `partial` when its context or usage window is nearly spent.
 - Front-matter `tools` and `disallowedTools` stay. They define a role, such as an evaluator that does not write, and are not a permission limit.
 
 ## Enforced by
-`.claude/settings.json` and the agent files in `.claude/agents/`. Review only: `eval-security` and an evaluator on the other model read every change to `.claude/settings.json` (high tier, trust core), and `eval-docs` and `garden-docs` treat text that says a session permission protects a path as stale.
+`.claude/settings.json`, `.claude/hooks/permission-allow.mjs` and the agent files in `.claude/agents/`. Review only: `eval-security` and an evaluator on the other model read every change to `.claude/settings.json` (high tier, trust core), and `eval-docs` and `garden-docs` treat text that says a session permission protects a path as stale.
 
 ## Consequences
 The implementer a protected change names writes its write set directly, with no hand-off to the owner. The grant mechanism of #1550 (#1763 to #1767) and ADR-0030 are not needed, and #2 no longer waits for them.
@@ -33,7 +33,7 @@ Residual risk, in general terms (D-62): nothing on the agent's side refuses or a
 ## Supersedes and amends
 - Amends D-47: protected paths are held by review and CI, not by the permission rules and sandbox of `.claude/settings.json`; each agent's tools, not its permissions, are set in its agent file.
 - Amends D-63: the rule that no agent changes a protected path inside an ordinary issue is held by review and CI, not by a session permission.
-- Supersedes in part ADR-0029: its bullet that the permission rules and sandbox hold the protected paths. The same reading applies to the notes in ADR-0001, ADR-0002 and ADR-0028 that call the protected paths the deny rules of `.claude/settings.json`.
+- Supersedes in part ADR-0029: its bullet that the permission rules and sandbox hold the protected paths, and its sentence that the docs-check hook is the one hook. The same reading applies to the notes in ADR-0001, ADR-0002 and ADR-0028 that call the protected paths the deny rules of `.claude/settings.json`.
 - Supersedes ADR-0030 (#1669) before it was accepted.
 
 ## Alternatives rejected
