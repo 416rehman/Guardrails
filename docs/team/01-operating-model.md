@@ -103,7 +103,7 @@ A path has exactly one owning squad in `.claude/owners.toml`. An issue whose wri
 
 The `[kinds]` row of the issue's kind, the `[interface]` paths (`eval-ux`, `eval-a11y`) and the triggers the diff shows add specialists. Until the incident eval set (`lab/reviewer-evals/`) holds 50 cases, low tier is limited to docs and additive changes behind a flag (h09).
 
-Gate configuration (`.claude/settings.json`, `.github/`, lint and deny configuration, `security/`, `supply-chain/`) changes only in an issue whose write set names it, worked by `lead-agent-kit` or the chief architect; the project's permission rules deny the edit to any other session.
+Gate configuration (`.claude/settings.json`, `.github/`, lint and deny configuration, `security/`, `supply-chain/`) changes only in an issue whose write set names it, worked by `lead-agent-kit` or the chief architect. No session permission enforces this: the evaluators fail a diff that writes one outside its write set, and CI judges it (ADR-0035).
 
 **Who holds the duties a person held.** Owner instruction 7 replaced every human gate: evaluators on two models replace owner and buddy review of high-tier and trust-core changes; the chief architect decides RFCs after the persona council and `eval-architecture` review them, with no waiting period; release-please and keyless signing replace signed tags; escalations go to the issue's lead and then the chief architect.
 
@@ -172,7 +172,7 @@ Three names, by the owner's rule (`design/_review/03-models-and-orchestration.md
 
 ## 9. Isolation
 
-Implementers and evaluators each run in their own git worktree (`isolation: "worktree"`), so no two agents share a working tree. The project's `.claude/settings.json` sets the rest: an allow list of commands, deny rules for secrets and gate configuration, and Claude Code's sandbox with network limited to the registries, docs.rs and GitHub. Agents with `permissionMode: dontAsk` can run only what the allow list names. Windows and macOS code is written on the Linux side; OS-specific results come from CI on free hosted runners (D-64), and a job that needs hardware nobody has is reported as "requires hardware", never counted as a pass.
+Implementers and evaluators each run in their own git worktree (`isolation: "worktree"`), so no two agents share a working tree. Agent sessions have no permission limits (ADR-0035): the owner starts the orchestrating session in `bypassPermissions`, no agent file sets `permissionMode`, so every agent runs in that mode, and the project settings deny and ask nothing and leave Claude Code's sandbox off. What an agent may change is its issue's write set, which the evaluators and CI check. Windows and macOS code is written on the Linux side; OS-specific results come from CI on free hosted runners (D-64), and a job that needs hardware nobody has is reported as "requires hardware", never counted as a pass.
 
 Credentials stay with the owner's logins; no agent reads them, and no signing key exists on any agent host: artefacts are signed keylessly through GitHub's OIDC identity (owner instruction 23).
 
@@ -241,6 +241,7 @@ Read from the issues and CI when the programme manager or the owner asks; metric
 |---|---|
 | Evaluators pass changes they should fail, with no person reading | Reverts or escaped defects rise: the tier's evaluator set widens for that squad, and the incident eval set scores every evaluator on each model release |
 | One `gh` login for every agent | GitHub's history cannot tell agents apart: the pull request and reports name each agent |
+| No session refuses or asks before an agent acts (ADR-0035) | A mistaken or misled agent is caught after it acts: the evaluators and CI judge every diff before it merges, and a defect a refusal would have stopped becomes a CI job or a review rule |
 | Subscription usage limits bind | Fewer agents at once; trust-core, security and release work first |
 | Automation is bound to the owner's account | The repository and issues hold all state, so the work can continue under another account (spine section 9) |
 

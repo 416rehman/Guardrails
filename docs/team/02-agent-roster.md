@@ -9,7 +9,7 @@ The team is 64 agent definitions in `.claude/agents/`: direction (3), domain lea
 Decisions made here:
 
 1. **One file per agent.** `.claude/agents/<name>.md` holds an agent's front matter and prompt and is edited by hand. A change to one is a `squad:agent-kit` issue, high tier (`.claude/risk-tiers.toml`).
-2. **Two permission layers.** Front-matter tools (what it can call) and the project's `.claude/settings.json` (which commands are allowed, which paths are denied, and the sandbox), with each agent in its own worktree.
+2. **Tools and the write set, no permission limits.** Front-matter tools set what an agent can call, and its issue's write set what it may change, which the evaluators and CI check. Sessions have no permission limits (ADR-0035), and each agent runs in its own worktree.
 3. **Verdicts are reports, never approvals.** Evaluators return `pass`, `fail` or `cannot-evaluate` to the orchestrating session, which merges only when every one passed (D-63).
 4. **Models may only raise a tier.** Path rules in `.claude/risk-tiers.toml` (which reads `security/trust-core.paths`) set the floor; `eval-tier` may raise it, never lower it (P2 applied to our own process).
 5. **Everything runs on the owner's Claude subscription** (D-47), through the owner's logged-in Claude Code (owner instruction 23). Work is measured in share of the subscription's usage windows, never in dollars.
@@ -25,10 +25,10 @@ Fields follow the Claude Code sub-agents page (read 2026-11-10).
 | `model` | The exact id of one of three names (`design/_review/03`): `claude-fable-5-2` for `chief-architect` only; `claude-opus-5-5` for medium-to-heavy work; `claude-sonnet-5-5` for everything else. No Haiku and no other vendor's model. The orchestrating session passes `model: "opus"` to the implementer of a high-tier or trust-core issue, and runs `eval-diff` on both models for such a change |
 | `effort` | Set on every agent, at a level the bound model has |
 | `tools`, `disallowedTools` | Each agent's own list. A role that loads `grdr-vendor-research` has `WebFetch` and `WebSearch` (owner instruction 14) |
-| `permissionMode` | `dontAsk` on every agent, so it runs only what `.claude/settings.json` allows. Read-only agents add `Edit, Write, NotebookEdit` to `disallowedTools` |
+| `permissionMode` | Never set: every agent runs in the orchestrating session's mode, `bypassPermissions` (ADR-0035). Read-only agents add `Edit, Write, NotebookEdit` to `disallowedTools`, which defines the role, not a permission |
 | `isolation` | Not set in the file; the session spawns implementers and evaluators with `isolation: "worktree"` |
 | `memory`, `mcpServers` | Never set: the repository and the issue are the memory (D-47); MCP servers come only from the project settings (Playwright, `team/03`) |
-| `maxTurns` | The role's turn cap. At the cap the agent reports `partial` |
+| `maxTurns` | Never set: no agent has a turn limit (ADR-0035). An agent reports `partial` when its context or usage window is nearly spent |
 | `skills` | Preloaded in order: project skills and the owner's user-scope skills such as `cleanup:cleanup` |
 
 ### 1.2 The common block

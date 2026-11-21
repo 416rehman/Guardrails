@@ -12,6 +12,9 @@
 - Docs change with the code: follow "Docs (design/34)" in AGENTS.md. The PreToolUse hook
   `.claude/hooks/docs-check.mjs` holds `gh pr create` and `gh pr merge` until its checks pass.
 - `.claude/agents/*.md` and `.claude/skills/` are the source of truth; edit them by hand.
+- Start the orchestrating session with `claude --permission-mode bypassPermissions`: agent
+  sessions have no permission limits (ADR-0035), Claude Code ignores that mode in project
+  settings, and every subagent runs in the session's mode.
 - Implementers and evaluators run with `isolation: "worktree"`. Pass `model: "opus"` to the
   implementer of a `tier:high` or `trust-core` issue, and run `eval-diff` a second time on
   the other model for such a change. Sessions default to `claude-sonnet-5-5`; only
