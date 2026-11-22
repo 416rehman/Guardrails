@@ -1,0 +1,68 @@
+# ADR-0038: The slice-0 surface of grdr-schema is the one RFC 0007 states, built under the constraints of its decision
+
+- Status: accepted
+- Date: 2026-11-22
+- Decided by: chief architect
+- Spine: D-05, D-23, D-31, D-48, D-51, D-60, D-61, D-63, D-66, D-69, P1, P8, P9, P10, P14, P15, P17
+- Requires: the review of RFC 0007 on #1710 by the nine persona council seats, `eval-architecture`, `eval-security` and `eval-adversarial`
+- RFC: 0007 ([`rfcs/0007-grdr-model-and-grdr-schema-slice-0-surface.md`](../../rfcs/0007-grdr-model-and-grdr-schema-slice-0-surface.md)), accepted on #1710
+- Work items: #1710; #278, #279, #280, #282, #329, #1384, #1582, #1591, #1636, #1688, #1719, #1768, #1850, #1851, #1852, #1853, #1858; #1942 to #1945, filed on acceptance
+
+## Context
+#278 (the error-code registry) and #279 (`limits.toml` and its generated module) are the base of every crate that returns a coded error or reads a bound, and both cited RFC 0001 as their route, which adopts the spine text and no crate surface. `grdr-schema` is a public crate in layer 0, so its surface changes only by RFC (D-61), and RFC 0002, RFC 0003 and RFC 0005 already named types and rows no document stated ([RFC 0007, Motivation](../../rfcs/0007-grdr-model-and-grdr-schema-slice-0-surface.md#motivation)).
+
+RFC 0007 went through six revisions on #1710. The decided text is RFC file blob `0dac0a359f4c60d270866b71d824ceb8e849c3f9`, written against the spine pin `a80859235e7a2a4444648d6fa8d389d78dde6be9`. On that blob every evaluator the review calls for passed, each naming that blob and the base, with minors and no blocker or major:
+- `eval-architecture` (Sonnet), https://github.com/416rehman/Guardrails/issues/1710#issuecomment-7075913144;
+- `eval-security` (Sonnet), https://github.com/416rehman/Guardrails/issues/1710#issuecomment-7076020476;
+- `eval-adversarial` (Opus), https://github.com/416rehman/Guardrails/issues/1710#issuecomment-7076300540;
+- `eval-security` (Opus), https://github.com/416rehman/Guardrails/issues/1710#issuecomment-7076371659.
+
+The nine seats reviewed revision 5 (`e54cd5d`), and the session ruled that their reviews carry over to revision 6, whose changes touch nothing they judged (https://github.com/416rehman/Guardrails/issues/1710#issuecomment-7075613695). Eight support and seat 8 supports with changes; none reports a broken spine floor. Seat 4, whose closed findings revision 6 touched, has since confirmed its review for `0dac0a3` (https://github.com/416rehman/Guardrails/issues/1710#issuecomment-7076765150). No verdict on #1710 fails `0dac0a3`. The decision rests on the `eval-architecture` pass, as the RFC's Review section asks.
+
+The orchestrating session makes the owner's decisions (#1828). Its exit rule decides an RFC after the first round with no blocker or major and writes that round's minors, and the seats' asked changes, into the decision as constraints (https://github.com/416rehman/Guardrails/issues/1828#issuecomment-7074036273). Its decision, https://github.com/416rehman/Guardrails/issues/1710#issuecomment-7076380695, accepts the RFC on `0dac0a3`. The RFC's [Decision section](../../rfcs/0007-grdr-model-and-grdr-schema-slice-0-surface.md#decision) quotes the rulings it relies on as text.
+
+## Decision
+**Accepted.** The slice-0 surface of `grdr-schema` is RFC 0007 at RFC file blob `0dac0a359f4c60d270866b71d824ceb8e849c3f9`, with the spine pin above as its base ([RFC 0007, Design](../../rfcs/0007-grdr-model-and-grdr-schema-slice-0-surface.md#design)). In outline:
+- RFC 0007 states the `codes` and `limits` modules and their formats. The `grdr-model` surface, `ErrorDetail` with `Code::detail()`, and the lake column manifest type go to #1850, #1851 and #1852, each with its own prerequisites (section 1).
+- `grdr-schema` has no normal dependency, does no I/O, allocates nothing and renders nothing. Only each module's generated file builds a code, an entry or a row, through a seal that only it can write. A checked retry policy is built there or by `RetryLimits::new` and `narrow`, which check every rule. By-value parity assertions stop a shadow, and a `layout` test holds the module tree to seven files through rustc's dep-info and a token scan (section 2, R10).
+- A `Code` exists only for an active entry; a retired entry is metadata. The rendered code `GRDR-<AREA>-<NNNN>`, its token ids and its anchor are derived once, the prefix is the pinned wire namespace, and an entry's area, number, reason, class and Connect code never change, held by the `history` check run from the base build (sections 3 and 4).
+- Every bound is a `limits.toml` row with a unit, a range, a scope and an effect; a row that widens collection or retention is raised only through D-31. A `SettingLink` reads its range from its row. Every retry ceiling and floor is one of thirteen rows, `check` is the one copy of the rules, and with no new traffic a table makes at most `free_retries_ceiling + 1` retries in a budget window as #282 R8 counts it. A table built at run time only narrows a registered exponential table (sections 5 and 6).
+- The hand-written files, the generators and their tests take twelve trust-core lines. The generated files are content, held by the required drift step (section 8). Both modules are `experimental`, and the codes are stable wire identifiers from the first release (section 11).
+
+**No pin and no evidence.** RFC 0007 decides no pinned path, so its Decision section holds no decision line, `rfcs/pins.toml` is unchanged, and nothing is added under `rfcs/evidence/` ([RFC 0001, "RFC states"](../../rfcs/0001-adopt-the-spine.md#design); [ADR-0036](ADR-0036-the-amended-spine-is-the-baseline-adopted-by-rfc-0001.md), "Evidence added in route"). The decided RFC file differs from `0dac0a3` only in `State:`, `Decision record:` and the Decision section, as the RFC's Review section allows.
+
+**Constraints.** The decision binds these constraints, each on the issues the RFC's Decision section names for it. Where a constraint and the RFC text differ, the constraint wins for those issues.
+1. Round 6 evaluator minors, all on #279 unless named: the least slot count of 2 is where a window starts to slide, and a higher count lengthens the span between two allowances without changing the allowance per counted window; the rate oracle asserts the one-second form for tables whose window less one slot is at least one second, whatever the call does after a refusal, and also over every table `check` accepts at `RETRY_BOUNDS`, driven by a worst-case spender, so a lowered floor turns it red; it reads `RETRY_BOUNDS` and names the `interval-floor` and `free-retries-ceiling` rows when it fails; the budget fixture states a ratio of 1000; a `retry-bounds` row is refused unless it is `fixed` and `none`, and `slots-ceiling` is refused with a `min` below 2; one macro list gives the retry-bounds rows from which the struct, the required set and both refusals derive; a row's scope data is one private enum; floor `min` and ceiling `max` carry design/22's figures, and where design/22 gives none, a floor's `min` and `max` and a ceiling's `max` equal the seed value, with #1944 giving each floor a reason and a direction; the row parity compares fields in the registry, never through `scope`; the `cases` test adds `SettingLink` and `RetryLimits` struct expressions and `scope` on a local copy; `check` refuses a schedule of more than 65,536 entries whatever bounds it is given; and a design document gives a value's reason and names its row, with #1944 writing that wording into design/03 and design/22.
+2. The seats' asked changes, as the session ruled on seat 8 (https://github.com/416rehman/Guardrails/issues/1710#issuecomment-7076937496): seat 8's cuts 1, 2 and 5 as build order, each part a sub-issue, the target surface unchanged and no part accepting what a later part would refuse, with the refusals in `check`; #279 builds `SettingLink`, `clamp` and `rows` for #1591 to consume, where seat 8 asked for #1591; cuts 3 and 4 declined because the RFC's own Alternatives reject review alone for the registry and the module tree (#278, #279, #1943); seat 6's persisted effective values, a missing record raising a health code and an event, and new-install defaults for effect rows (#279, #1591); seat 1's structural component and rule in `ErrorDetail`, with #1851 blocking #1384 (#1851, #1384); seat 3's export gate on `history` for #329, the registry file and truncating bounds (#1943, #1719, #329, #1636, #279); seat 5's stable fields for any published registry file and the reserved-area rule (#1636, #1858); seats 4 and 9 on role-keyed `fix` tokens and token `max` and `risk = safety` (#1853); and the notes of seats 4, 2 and 7: an `owner` accessor on `BoundEntry` (#279), the administrator's route to raise a retry timeout (#1591), and the status comment in #278's criteria (#278).
+3. The round 4 constraints posted on #278, #279, #282, #1582, #1591, #1850, #1851 and #1853 stand, with #279's items 3 to 5 now RFC text.
+4. AC-3: RFC 0007's `limits::Scope` keeps its name, and RFC 0002 renames its `Scope<'a>` in its next revision and names both RFCs (#1688).
+5. The gate item's construction step requires `layout` and `cases` from #278 and `units` only once `src/limits/generated.rs` exists, as its drift step runs per module, and `layout` holds the files of the modules that exist until #279 widens it to seven (#1943, #278, #279).
+
+**What this acceptance binds.** The surface of the RFC text and these constraints change only by an amendment of RFC 0007 (section 11). #1851, #1852 and #1858 are amendments already open. #1942 to #1945 carry the changes the RFC files on acceptance.
+
+## Enforced by
+- RFC 0007 section 8, one mechanism per decision, each built by the item it names: the seal, the `registry` modules and the by-value parity assertions (#278, #279); the `layout`, `units` and `cases` tests and the manifest's `build = false` and `autotests = false` (#278, #279); the `drift` tests and the required drift and construction steps (#278, #279, #1943); the registry check `history`, run from the base build (#278, #1943, #1719); one fixture per refusal and per `RetryRule`, the differential test of `check` and the rate oracle (#279).
+- ARCH-017 reading `codes::ALL` and ARCH-019 with the patterns of section 8 (#1582). Until #1582 lands, review holds them.
+- The twelve `security/trust-core.paths` lines of section 8 (#1943), so every change to the mechanism takes the full trust-core lane.
+- ADR-0020's stability gate over the `[[crate]]` row of #1942, with `cargo public-api` and `cargo semver-checks`.
+- The `eval-tier` flags of #1945 for rows whose effect is not `none` and for `retry-bounds.*` rows.
+- Each constraint by the issue it binds: its lead writes it into the item before readying it, and the item's evaluators check it on its pull request. Until each item lands, a constraint holds by review only.
+
+## Consequences
+- #278 and #279 have one stated surface to specify against and name RFC 0007 as their route. #279 grows by the `LIMITS` area, the bound keys, the retry bounds, `narrow` and the rate oracle, and may land in parts under constraint 2a.
+- A pull request that registers a code is high tier through `crates/grdr-schema/**` and `schema/**`, so it takes `eval-security`, `eval-adversarial` and a second `eval-diff`; with the drift step green it is judged on its TOML and token diff. A pull request that adds or changes a `limits.toml` row is trust core (D-63; `security/trust-core.paths`; design/03 section 11), so it lands only through the full lane, as RFC 0007 section 6 says.
+- Every change to the hand-written files, the generators or their tests takes the full trust-core lane, and the `layout` test fixes the crate's file list.
+- Retiring a code removes its constant, which breaks a downstream crate that names it, while the crate is `experimental`.
+- The rate oracle asserts the one-second form two ways (constraint 1b): for tables whose window less one slot is at least a second, where it holds whatever the rows are; and over every table `check` accepts at `RETRY_BOUNDS`, driven by a worst-case spender, where it holds at the seed rows. A row change that defeats the second, such as a lowered `interval-floor`, turns the oracle red in the full lane.
+
+## Alternatives rejected
+- Those of [RFC 0007, Alternatives](../../rfcs/0007-grdr-model-and-grdr-schema-slice-0-surface.md#alternatives).
+- A pin record and evidence files for this decision: RFC 0007 decides no pinned path, and evidence without a decision line is out of route (ADR-0036).
+- Writing the constraints into the RFC's Design text: the exit rule makes them constraints, and the decided file may differ from the reviewed blob only in its state, its decision record and its Decision section.
+- Seat 8's cuts 3 and 4, splitting the gate item and deferring `layout`, `units` and `cases`: they would hold the registry and the module tree by review alone, which the RFC's Alternatives reject. The session declined them (https://github.com/416rehman/Guardrails/issues/1710#issuecomment-7076937496), and each test is required from the part that builds what it tests (constraint 5).
+
+## Revisit when
+- A verdict by an evaluator of RFC 0007's review fails `0dac0a3`, or a later comment shows a defect in the accepted text; either opens an amendment of RFC 0007 (`docs/design/30` section 3).
+- #1851, #1852 or #1858 is accepted, each as an amendment of RFC 0007.
+- RFC 0002 is decided without the rename of constraint 4, or RFC 0003 with row names or codes other than section 7 gives.
+- A `limits.toml` change moves a retry floor or ceiling far enough that the rate oracle's worst-case one-second assertion fails at the build's rows (constraint 1b).
