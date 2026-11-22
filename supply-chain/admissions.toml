@@ -1,0 +1,98 @@
+# Registry crates admitted before their first consumer adds them to Cargo.lock, with the closure
+# they bring (design/24 section 12, team/05 section 9). Each crate row is the name, version,
+# licence expression and crates.io checksum the consumer's lockfile entry must match. Every
+# expression here is satisfied by the permissive class of licences.toml alone. The cargo-vet
+# store of #1801 takes over these audits once it exists; until then eval-licence and
+# eval-security read this file.
+# A row published inside the cooldown of design/35 section 2.6 carries `not_before`, the publish
+# time plus the cooldown. No consumer may add that row to Cargo.lock before its `not_before`.
+# The justification fields are those design/35 section 2.6 lists; it names no keys, so the keys
+# are plain words for them.
+
+[[admission]]
+issue = 1575
+crates = ["cargo_metadata", "toml", "serde"]
+consumers = [
+  { crate = "grdr-archlint", kind = "normal", issue = 1580 },
+  { crate = "grdr-schema", kind = "dev", only = ["toml", "serde"], issue = 278 },
+]
+resolver = "cargo 1.99.1, resolver 3, default features"
+checked = [
+  "cargo-deny 0.22.0 check licenses advisories bans sources with deny.toml: exit 0",
+  "RustSec advisory-db commit 55e1c3dfbd834237a05bbbf7b50ba3b5be27b662: no advisory",
+  "OSV querybatch, crates.io ecosystem: no id for any row",
+  "crates.io sparse index: every checksum matches, no row yanked",
+]
+# Build-time code in grdr-archlint's graph, serde's `derive` feature included. grdr-schema's dev
+# graph runs the build scripts of proc-macro2, quote, serde and serde_core and the serde_derive
+# proc macro. No build script does more than read Cargo's environment, run $RUSTC or its wrappers
+# for version and compile probes, and write under OUT_DIR. The proc macros are not audited line
+# by line.
+build_scripts = ["camino", "proc-macro2", "quote", "serde", "serde_core", "serde_json", "thiserror", "zmij"]
+proc_macros = ["serde_derive", "thiserror-impl"]
+# indexmap, hashbrown and equivalent are in the lockfile only through toml's optional
+# `preserve_order` feature, which no consumer enables.
+closure = [
+  { name = "cargo_metadata", version = "0.23.1", licence = "MIT", checksum = "ef987d17b0a113becdd19d3d0022d04d7ef41f9efe4f3fb63ac44ba61df3ade9" },
+  { name = "toml", version = "1.2.2+spec-1.1.0", licence = "MIT OR Apache-2.0", checksum = "5426cb1b964690d913f6c5c1a1ae0b42f428ec506bb4d452876d7a209c9bca3b", not_before = "2026-11-24T04:25:29Z" },
+  { name = "camino", version = "1.2.6", licence = "MIT OR Apache-2.0", checksum = "bbbad30e4b4c14a39e3cc8aed085a12a327257c316619c93581e017bc52be591" },
+  { name = "cargo-platform", version = "0.3.3", licence = "MIT OR Apache-2.0", checksum = "dd0061da739915fae12ea00e16397555ed4371a6bb285431aab930f61b0aa4ba" },
+  { name = "equivalent", version = "1.0.3", licence = "Apache-2.0 OR MIT", checksum = "00d174d5400e5e8fd687ad1049e2f578285fa914201b1af7e8b112a4546bd826" },
+  { name = "hashbrown", version = "0.17.1", licence = "MIT OR Apache-2.0", checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a" },
+  { name = "indexmap", version = "2.14.2", licence = "Apache-2.0 OR MIT", checksum = "cc4e190f5d26ca7051642629da2c52fc03bde85a03197c99408dcd291734c855" },
+  { name = "itoa", version = "1.0.19", licence = "MIT OR Apache-2.0", checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4" },
+  { name = "memchr", version = "2.8.3", licence = "Unlicense OR MIT", checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98" },
+  { name = "proc-macro2", version = "1.0.107", licence = "MIT OR Apache-2.0", checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9" },
+  { name = "quote", version = "1.0.47", licence = "MIT OR Apache-2.0", checksum = "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001" },
+  { name = "semver", version = "1.0.28", licence = "MIT OR Apache-2.0", checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd" },
+  { name = "serde", version = "1.0.229", licence = "MIT OR Apache-2.0", checksum = "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba" },
+  { name = "serde_core", version = "1.0.229", licence = "MIT OR Apache-2.0", checksum = "67dca2c9c51e58a4791a4b1ed58308b39c64224d349a935ab5039aa360942a48" },
+  { name = "serde_derive", version = "1.0.229", licence = "MIT OR Apache-2.0", checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348" },
+  { name = "serde_json", version = "1.0.154", licence = "MIT OR Apache-2.0", checksum = "e7e9cc8b1b85264074fbcc02a88680c4096b1e47df8f739dceb03bf482f04bd6" },
+  { name = "serde_spanned", version = "1.1.3", licence = "MIT OR Apache-2.0", checksum = "9c187e0a369471c550af028cba56d4f4fa2a489ad28151ae95a4d340a2a8b782" },
+  { name = "syn", version = "3.0.10", licence = "MIT OR Apache-2.0", checksum = "4ae9ccbea3a7b0b09443036490c8f34a8b1b760fd345e5c0dae0aac718faea79" },
+  { name = "thiserror", version = "2.0.21", licence = "MIT OR Apache-2.0", checksum = "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e" },
+  { name = "thiserror-impl", version = "2.0.21", licence = "MIT OR Apache-2.0", checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524" },
+  { name = "toml_datetime", version = "1.1.3+spec-1.1.0", licence = "MIT OR Apache-2.0", checksum = "173f25c883cd2176a2d8212155638c0a60d484a9d84546d270866f40f56b6e49" },
+  { name = "toml_parser", version = "1.1.6+spec-1.1.0", licence = "MIT OR Apache-2.0", checksum = "e6769c452d71ba30696c6b37770c439a9cc9110f47f7d5cdbeda79840ef5ea31", not_before = "2026-11-24T04:25:29Z" },
+  { name = "toml_writer", version = "1.2.0+spec-1.1.0", licence = "MIT OR Apache-2.0", checksum = "009dbb7700f11c55ef83aebbe4c0e9cf1f1ac0844bd8d6f00dc38f302026e13a" },
+  { name = "unicode-ident", version = "1.0.27", licence = "(MIT OR Apache-2.0) AND Unicode-3.0", checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563" },
+  { name = "winnow", version = "1.0.5", licence = "MIT", checksum = "8c3b93199df0ab874cdf0c6a94f0a0dc3423fe41f1cafb62b8bd7b1deb277aef" },
+  { name = "zmij", version = "1.0.23", licence = "MIT", checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b" },
+]
+
+# Maintainers are the crates.io owners; the registry check is the name and checksum in the
+# crates.io index (research/h09).
+[[admission.justification]]
+crate = "cargo_metadata"
+purpose = "grdr-archlint reads the workspace graph from `cargo metadata` into typed packages, targets and dependency kinds (#1580)"
+why_not_std = "std parses no JSON, and no workspace crate models Cargo's metadata format, which changes with Cargo releases"
+maintainers = ["oli-obk"]
+maintainer_risk = "one owner account; it reaches only grdr-archlint, a tool crate no shipped crate may depend on (ARCH-001, #1580)"
+unsafe = "none: no `unsafe` in its sources"
+build_script = "none"
+proc_macro = "none"
+licence = "MIT"
+registry_check = "present in the crates.io index at the recorded checksum, not yanked"
+
+[[admission.justification]]
+crate = "toml"
+purpose = "grdr-archlint reads architecture.toml (#1580); the grdr-schema test generators read schema/codes (#278, #279)"
+why_not_std = "std parses no TOML and no admitted crate does; Cargo itself depends on this crate"
+maintainers = ["epage", "github:toml-rs:maintainers"]
+unsafe = "none: `#![forbid(unsafe_code)]` at the crate root"
+build_script = "none"
+proc_macro = "none"
+licence = "MIT OR Apache-2.0"
+registry_check = "present in the crates.io index at the recorded checksum, not yanked"
+
+[[admission.justification]]
+crate = "serde"
+purpose = "derives Deserialize for the models of architecture.toml and schema/codes that toml and cargo_metadata deserialise into"
+why_not_std = "std has no deserialisation framework, and toml and cargo_metadata already bring serde, so the direct use adds no crate"
+maintainers = ["dtolnay", "github:serde-rs:publish"]
+unsafe = "two blocks, both `str::from_utf8_unchecked` (src/core/format.rs:16, src/core/ser/impls.rs:821)"
+build_script = "build.rs runs `$RUSTC --version` and writes OUT_DIR/private.rs"
+proc_macro = "serde_derive, through the `derive` feature"
+licence = "MIT OR Apache-2.0"
+registry_check = "present in the crates.io index at the recorded checksum, not yanked"
