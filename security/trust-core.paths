@@ -4,6 +4,7 @@
 # clean contexts, cross-model review by the model that did not write it, and two independent
 # passing evaluators on different models (owner instruction 7). Read through
 # .claude/risk-tiers.toml by the grdr-work-issue skill and eval-tier.
+# Each line is a git :(glob) pathspec from the root; `**/` matches zero or more folders.
 # Module globs fix where that code lives inside its crate; moving the code means a change here.
 
 # eBPF programs
@@ -67,7 +68,14 @@ Cargo.toml
 Cargo.lock
 rust-toolchain.toml
 .cargo/**
-deny.toml
+**/deny.toml
+**/deny.*.toml
+**/.deny.toml
+**/.deny.exceptions.toml
+**/.config/deny.toml
+**/.config/deny.exceptions.toml
+**/.cargo/deny.toml
+**/.cargo/deny.exceptions.toml
 **/clippy.toml
 rustfmt.toml
 architecture.toml
