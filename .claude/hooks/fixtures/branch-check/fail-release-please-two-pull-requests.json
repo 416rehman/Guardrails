@@ -1,0 +1,12 @@
+{
+  "repo": "example/repo",
+  "default_branch": "main",
+  "branches": ["main", "release-please--branches--main"],
+  "pulls": [
+    {"number": 831, "head": "release-please--branches--main", "head_repo": "example/repo", "author": {"login": "github-actions", "type": "Bot"}, "body": "Release pull request from release-please.", "closing_issues": [], "closing_total": 0},
+    {"number": 832, "head": "release-please--branches--main", "head_repo": "example/repo", "author": {"login": "github-actions", "type": "Bot"}, "body": "Release pull request from release-please, against another base.", "closing_issues": [], "closing_total": 0}
+  ],
+  "expect": [
+    {"kind": "second-pull-request", "subject": "release-please--branches--main"}
+  ]
+}

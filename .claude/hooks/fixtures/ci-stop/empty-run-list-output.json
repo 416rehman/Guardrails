@@ -1,0 +1,11 @@
+{
+  "about": "gh run list prints nothing for verify, which is not a list of runs, so CI cannot be judged; scan is green and provides a required check, so reading the empty output as no runs would wrongly read green",
+  "expect": "could not judge",
+  "answers": [
+    ["api repos/{owner}/{repo}/rules/branches/main", "cargo-deny\nSecrets (gitleaks)\n"],
+    ["workflow list", "415167656\n415167653\n"],
+    ["run list --workflow 415167656 --branch main --event push --limit 1", ""],
+    ["run list --workflow 415167653 --branch main --event push --limit 1", "[{\"databaseId\":20,\"conclusion\":\"success\",\"status\":\"completed\"}]"],
+    ["run view 20 --json jobs", "Secrets (gitleaks)\n"]
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "about": "verify's latest push run on main is still running after poll_limit polls; a required workflow that has not finished is red",
+  "expect": "red",
+  "answers": [
+    ["api repos/{owner}/{repo}/rules/branches/main", "cargo-deny\n"],
+    ["workflow list", "415167656\n"],
+    ["run list --workflow 415167656 --branch main --event push --limit 1", "[{\"databaseId\":13,\"conclusion\":\"\",\"status\":\"queued\"}]"],
+    ["run view 13 --json status,conclusion", "{\"status\":\"in_progress\",\"conclusion\":\"\"}"],
+    ["run view 13 --json jobs", "cargo-deny\n"]
+  ],
+  "never_asked": ["run watch "]
+}

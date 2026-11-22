@@ -1,0 +1,12 @@
+{
+  "about": "verify's latest push run on main is still running; the procedure polls it until it completes, and it failed",
+  "expect": "red",
+  "answers": [
+    ["api repos/{owner}/{repo}/rules/branches/main", "cargo-deny\n"],
+    ["workflow list", "415167656\n"],
+    ["run list --workflow 415167656 --branch main --event push --limit 1", "[{\"databaseId\":12,\"conclusion\":\"\",\"status\":\"in_progress\"}]"],
+    ["run view 12 --json status,conclusion", ["{\"status\":\"in_progress\",\"conclusion\":\"\"}", "{\"status\":\"completed\",\"conclusion\":\"failure\"}"]],
+    ["run view 12 --json jobs", "cargo-deny\n"]
+  ],
+  "expect_polls": 2
+}

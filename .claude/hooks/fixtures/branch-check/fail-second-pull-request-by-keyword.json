@@ -1,0 +1,15 @@
+{
+  "repo": "example/repo",
+  "default_branch": "main",
+  "branches": ["main", "issue/20", "issue/21", "issue/22", "issue/23"],
+  "pulls": [
+    {"number": 320, "head": "issue/20", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Closes #20", "closing_issues": [{"number": 20, "repo": "example/repo"}], "closing_total": 1},
+    {"number": 321, "head": "issue/21", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Two-line summary.\r\n\r\nThis also fixes #20, which the other pull request covers.", "closing_issues": [{"number": 20, "repo": "example/repo"}], "closing_total": 1},
+    {"number": 322, "head": "issue/22", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #22\nResolved: #30", "closing_issues": [{"number": 30, "repo": "example/repo"}], "closing_total": 1},
+    {"number": 323, "head": "issue/23", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Closes #23, closes #30", "closing_issues": [{"number": 23, "repo": "example/repo"},{"number": 30, "repo": "example/repo"}], "closing_total": 2}
+  ],
+  "expect": [
+    {"kind": "second-pull-request", "subject": "#20"},
+    {"kind": "second-pull-request", "subject": "#30"}
+  ]
+}

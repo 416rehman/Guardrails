@@ -1,0 +1,9 @@
+{
+  "about": "gh workflow list returns exactly workflow_list_limit workflows, so the list may be cut short and CI cannot be judged",
+  "expect": "could not judge",
+  "rules": {"workflow_list_limit": 2},
+  "answers": [
+    ["api repos/{owner}/{repo}/rules/branches/main", "cargo-deny\n"],
+    ["workflow list --limit 2", "415167656\n415167653\n"]
+  ]
+}

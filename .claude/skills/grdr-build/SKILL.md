@@ -3,7 +3,7 @@ name: grdr-build
 description: Build the whole product by working the repository's issues one iteration at a time, slice by slice, through grdr-work-issue. Use when asked to build the product, keep building or work through the issues, and when a /loop run names this skill or building the product.
 license: Apache-2.0
 metadata:
-  version: "2"
+  version: "3"
   owner: agent-kit
 ---
 
@@ -27,7 +27,7 @@ Each layer an epic names has a lead: endpoint `lead-endpoint`, with `lead-window
 
 ## One iteration
 
-1. **Check the stop conditions** (below). If one holds, stop and report it.
+1. **Check the stop conditions** (below). If one holds, stop and report it. Then check the branches against the owner's rule, one issue, one branch `issue/<n>`, one pull request (`grdr-work-issue`, "Branches and pull requests"): run `node .claude/hooks/branch-check.mjs` and read it by its last line, as that section says. It is clean only with exit 0 and the summary `branch-check: <owner/repo>: ... findings: 0.` as the last line. It has findings only with exit 1 and the summary as the last line: repair each `finding:` line as that section's table says before picking new work. Its `info:` lines about fork pull requests need nothing and never stop the loop.
 2. **Read GitHub.** The open epics, and the open issues with their labels: `gh issue list --state open --limit 500 --json number,title,labels,body`. For each candidate, its open blockers: `gh api repos/{owner}/{repo}/issues/<n>/dependencies/blocked_by --jq '[.[] | select(.state == "open")] | length'`. Leave out `good-first-issue`, `extractive` and issues already in progress (a branch `issue/<n>` or an open pull request on it).
 3. **Start the slice.** A slice has started when the epic carries one comment per layer it names, `Layer <name> filed: #a, #b, ...`. Until it does, spawn the lead of each missing layer, in parallel. Each reads the epic and its design documents, then the existing issues for its layer (including one-line stubs that still need a spec), writes the spec into each stub with `grdr-write-spec`, checks that every Work breakdown item of those documents has an issue, files every issue the slice still needs in its layer with the work-item form and the `slice:N` label (spec citing the doc section, write set, acceptance criteria, "blocked by" links), gives unlabelled issues of its squad a slice, and posts the layer comment on the epic. No layer is left for later, and no implementer starts in the slice before it has started.
 4. **Pick.** The highest-priority open issue labelled with the current slice whose blockers are closed; ties by oldest number.
@@ -44,7 +44,17 @@ Stop the loop and say why when:
 
 - no open epic is left, every Work breakdown item of every design document has an issue (the leads checked it this iteration), and every open issue is closed or waits on an outside precondition: list those preconditions (signing programmes, store and developer accounts, hardware, legal steps) with their issues, and say that the next slice needs an epic;
 - the same issue failed three rounds in `grdr-work-issue`: report the issue, its branch and the open findings;
-- CI on `main` is red (`gh run list --branch main --limit 5`): report the failing run and do not start new work;
+- CI on `main` is red: report the failing run and do not start new work. Judge it by each required workflow's latest `push` run on `main`, never by the newest runs of any kind, which scheduled runs crowd out:
+  1. The required checks are the ruleset's, read page by page: `gh api repos/{owner}/{repo}/rules/branches/main --paginate --jq '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context'`. If the call fails, the list is empty, or it is as long as `required_check_limit` in `.claude/hooks/ci-rules.json`, CI could not be judged: stop.
+  2. For each workflow in `gh workflow list --limit <workflow_list_limit> --json id --jq '.[].id'` (could not judge when the list is as long as that limit), its latest push run is `gh run list --workflow <id> --branch main --event push --limit 1 --json databaseId,conclusion,status`. Empty output is not "no runs": it means could not judge. A workflow with no push run on `main` has nothing to judge. A run still in progress is polled with `gh run view <databaseId> --json status,conclusion` every `poll_interval_seconds`, at most `poll_limit` times; one still unfinished after that reads red.
+  3. A workflow is required when one of its jobs is a required check. Read the jobs of that latest push run with `gh run view <databaseId> --json jobs --jq '.jobs[].name'`. A run that never started (`startup_failure`) has no jobs. For such a run, and for any run with no jobs, read the jobs of the workflow's last successful run of merged code instead: `gh run list --workflow <id> --branch main --event push --status success --limit 1 --json databaseId`. Never read them from a run of another branch or event: a pull request can rename its jobs, and its run would make a red `main` read green. If no such run exists, the workflow counts as red. Job names are read from runs, never from the workflow file, because a matrix names its jobs only when it runs.
+  4. CI is red when a required workflow's latest push run concluded anything other than `success`, `startup_failure` included.
+  5. If no workflow provides any of the required checks, CI could not be judged: stop.
+
+  `node .claude/hooks/ci-stop.mjs` runs these five steps with these commands, tested offline by `node --test .claude/hooks/ci-stop.test.mjs`. It exits 0 green, 1 red and 2 could not judge, and its last line is `ci-stop: <green|red>: required workflows ...` only when it judged. Read it as the branch check is read: green only with exit 0 and the summary `ci-stop: green: ...` as the last line, red only with exit 1 and the summary `ci-stop: red: ...` as the last line. Exit 0 without the summary as the last line, exit 2, and any other status mean could not judge.
+
+  `branch-check.yml` has no push trigger and no required check, so it never counts here. Its result reaches the loop only through the branch check of step 1;
+- the branch check could not look (its last line is not the summary, whatever the status, or it exited 2 or any status other than 0 and 1), or a finding is one its table sends to the owner: report the output and do not start new work;
 - the account's usage limit is reached.
 
 Under `/loop`, a stop means you do not schedule another iteration.

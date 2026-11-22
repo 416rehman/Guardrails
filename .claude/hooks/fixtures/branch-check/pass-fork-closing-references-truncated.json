@@ -1,0 +1,15 @@
+{
+  "repo": "example/repo",
+  "default_branch": "main",
+  "branches": ["main", "issue/60"],
+  "pulls": [
+    {"number": 960, "head": "issue/60", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #60", "closing_issues": [], "closing_total": 0},
+    {"number": 961, "head": "patch-1", "head_repo": "contributor/repo", "author": {"login": "example-contributor", "type": "User"}, "body": "Closes #1, closes #2, and 148 more.", "closing_issues": [{"number": 1, "repo": "example/repo"}, {"number": 2, "repo": "example/repo"}], "closing_total": 150}
+  ],
+  "expect": [],
+  "expect_fork_links": [
+    {"pull": 961, "issue": "1"},
+    {"pull": 961, "issue": "2"}
+  ],
+  "expect_truncated_forks": [961]
+}

@@ -1,0 +1,12 @@
+{
+  "repo": "example/repo",
+  "default_branch": "main",
+  "branches": ["main", "issue/30"],
+  "pulls": [
+    {"number": 1, "head": "issue/30", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #30", "closing_issues": [], "closing_total": 0},
+    {"number": 2, "head": "issue/30", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "", "closing_issues": [], "closing_total": 0}
+  ],
+  "expect": [
+    {"kind": "second-pull-request", "subject": "#30"}
+  ]
+}

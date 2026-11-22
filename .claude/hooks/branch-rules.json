@@ -1,0 +1,21 @@
+{
+  "work_branch": "^issue/([1-9][0-9]*)$",
+  "work_branch_form": "issue/<n>",
+  "reference_line": "^[ \\t]*refs[ \\t]+#([1-9][0-9]*)[ \\t]*$",
+  "exempt_from_name": [
+    {
+      "prefix": "dependabot/",
+      "authors": [{"login": "dependabot", "type": "Bot"}],
+      "why": "Dependabot names its own branches; the owner rule on #1875 exempts them from the issue/<n> name, not from having a pull request. GitHub's GraphQL API gives the dependabot[bot] app's login without the [bot] suffix"
+    },
+    {
+      "name": "release-please--branches--main",
+      "authors": [{"login": "github-actions", "type": "Bot"}],
+      "why": "release-please opens its one release pull request on this branch with the workflow token, as github-actions[bot]; #1893 exempts it from the issue/<n> name, not from having exactly one open pull request"
+    }
+  ],
+  "graphql_page_size": 100,
+  "closing_pages_limit": 50,
+  "fork_info_line_limit": 20,
+  "gh_output_limit_bytes": 268435456
+}

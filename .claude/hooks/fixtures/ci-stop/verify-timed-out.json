@@ -1,0 +1,10 @@
+{
+  "about": "verify's latest push run on main timed out; only success is green",
+  "expect": "red",
+  "answers": [
+    ["api repos/{owner}/{repo}/rules/branches/main", "cargo-deny\n"],
+    ["workflow list", "415167656\n"],
+    ["run list --workflow 415167656 --branch main --event push --limit 1", "[{\"databaseId\":15,\"conclusion\":\"timed_out\",\"status\":\"completed\"}]"],
+    ["run view 15 --json jobs", "cargo-deny\n"]
+  ]
+}

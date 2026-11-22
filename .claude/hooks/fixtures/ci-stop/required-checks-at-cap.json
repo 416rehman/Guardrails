@@ -1,0 +1,8 @@
+{
+  "about": "the paged ruleset read returns exactly required_check_limit checks, so the list may be cut short and CI cannot be judged",
+  "expect": "could not judge",
+  "rules": {"required_check_limit": 3},
+  "answers": [
+    ["api repos/{owner}/{repo}/rules/branches/main", "cargo-deny\nPlan the run\nSecrets (gitleaks)\n"]
+  ]
+}

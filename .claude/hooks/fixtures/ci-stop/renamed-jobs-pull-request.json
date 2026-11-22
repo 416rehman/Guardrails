@@ -1,0 +1,15 @@
+{
+  "about": "verify never starts on main and has no successful push run there; the newest successful verify run anywhere is a pull request whose verify.yml renames its jobs. Only merged code is read, so verify is red",
+  "expect": "red",
+  "answers": [
+    ["api repos/{owner}/{repo}/rules/branches/main", "Plan the run\ncargo-deny\nSecrets (gitleaks)\nfmt, clippy and tests (ubuntu-26.04)\n"],
+    ["workflow list", "415167656\n415167653\n"],
+    ["run list --workflow 415167656 --branch main --event push --limit 1", "[{\"databaseId\":11,\"conclusion\":\"startup_failure\",\"status\":\"completed\"}]"],
+    ["run list --workflow 415167656 --branch main --event push --status success", "[]"],
+    ["run list --workflow 415167656 --status success", "[{\"databaseId\":99}]"],
+    ["run view 99 --json jobs", "Plan\nrust (ubuntu-26.04)\n"],
+    ["run list --workflow 415167653 --branch main --event push --limit 1", "[{\"databaseId\":20,\"conclusion\":\"success\",\"status\":\"completed\"}]"],
+    ["run view 20 --json jobs", "Secrets (gitleaks)\n"]
+  ],
+  "never_asked": ["run list --workflow 415167656 --status success", "run view 99 ", "run view 11 "]
+}

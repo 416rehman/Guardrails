@@ -1,0 +1,14 @@
+{
+  "about": "verify's latest push run on main never started (startup_failure, no jobs); its last successful push run on main provides required checks, so it is red",
+  "expect": "red",
+  "answers": [
+    ["api repos/{owner}/{repo}/rules/branches/main", "Plan the run\ncargo-deny\nSecrets (gitleaks)\nfmt, clippy and tests (ubuntu-26.04)\n"],
+    ["workflow list", "415167656\n415167653\n"],
+    ["run list --workflow 415167656 --branch main --event push --limit 1", "[{\"databaseId\":11,\"conclusion\":\"startup_failure\",\"status\":\"completed\"}]"],
+    ["run list --workflow 415167656 --branch main --event push --status success", "[{\"databaseId\":10}]"],
+    ["run view 10 --json jobs", "Plan the run\nfmt, clippy and tests (ubuntu-26.04)\ncargo-deny\n"],
+    ["run list --workflow 415167653 --branch main --event push --limit 1", "[{\"databaseId\":20,\"conclusion\":\"success\",\"status\":\"completed\"}]"],
+    ["run view 20 --json jobs", "Secrets (gitleaks)\n"]
+  ],
+  "never_asked": ["run view 11 "]
+}

@@ -1,0 +1,13 @@
+{
+  "repo": "example/repo",
+  "default_branch": "main",
+  "branches": ["main", "issue/1875", "release-please--branches--main"],
+  "pulls": [
+    {"number": 1895, "head": "issue/1875", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #1875", "closing_issues": [], "closing_total": 0},
+    {"number": 1902, "head": "release-please--branches--main", "head_repo": "example/repo", "author": {"login": "github-actions", "type": "User"}, "body": "closes #1875", "closing_issues": [{"number": 1875, "repo": "example/repo"}], "closing_total": 1}
+  ],
+  "expect": [
+    {"kind": "bad-name", "subject": "release-please--branches--main"},
+    {"kind": "second-pull-request", "subject": "#1875"}
+  ]
+}

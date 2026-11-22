@@ -1,0 +1,11 @@
+{
+  "repo": "example/repo",
+  "default_branch": "main",
+  "branches": ["main", "іssue/30"],
+  "pulls": [
+    {"number": 1, "head": "іssue/30", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #30", "closing_issues": [], "closing_total": 0}
+  ],
+  "expect": [
+    {"kind": "bad-name", "subject": "іssue/30"}
+  ]
+}

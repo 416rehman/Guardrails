@@ -1,0 +1,39 @@
+name: branch-check
+
+# The owner rule of #1875, one issue, one branch issue/<n>, one pull request, checked against the
+# live repository whether or not a session runs it: hourly and on demand. A branch pushed with no
+# pull request starts no other workflow, so only a schedule sees it. Exit 1 (findings) and exit 2
+# (could not look) both fail the run; .claude/hooks/branch-check.mjs holds the rules.
+
+on:
+  schedule:
+    - cron: "41 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: branch-check
+  cancel-in-progress: false
+
+jobs:
+  branch-check:
+    name: One issue, one branch, one pull request
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .claude/hooks
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: node .claude/hooks/branch-check.mjs

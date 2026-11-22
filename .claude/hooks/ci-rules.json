@@ -1,0 +1,6 @@
+{
+  "poll_interval_seconds": 30,
+  "poll_limit": 120,
+  "workflow_list_limit": 200,
+  "required_check_limit": 500
+}

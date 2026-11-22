@@ -1,0 +1,9 @@
+{
+  "repo": "example/repo",
+  "default_branch": "main",
+  "branches": ["main", "issue/62"],
+  "pulls": [
+    {"number": 963, "head": "issue/62", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Closes #62, closes #63", "closing_issues": [{"number": 62, "repo": "example/repo"}, {"number": 63, "repo": "example/repo"}], "closing_total": 2}
+  ],
+  "expect": []
+}

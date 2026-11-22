@@ -1,0 +1,13 @@
+{
+  "about": "verify and scan succeeded on their latest push runs on main; docs has no push run",
+  "expect": "green",
+  "answers": [
+    ["api repos/{owner}/{repo}/rules/branches/main", "Plan the run\ncargo-deny\nDocs rules of design/34\nSecrets (gitleaks)\nWorkflows (zizmor)\nSource (Semgrep OSS)\nDependencies (osv-scanner)\nfmt, clippy and tests (ubuntu-26.04)\nPin reader (seeded fixtures)\n"],
+    ["workflow list", "415167656\n415167653\n421563259\n"],
+    ["run list --workflow 415167656 --branch main --event push --limit 1", "[{\"databaseId\":10,\"conclusion\":\"success\",\"status\":\"completed\"}]"],
+    ["run view 10 --json jobs", "Plan the run\nfmt, clippy and tests (macos-26)\nfmt, clippy and tests (windows-2025)\nfmt, clippy and tests (ubuntu-26.04)\ncargo-deny\n"],
+    ["run list --workflow 415167653 --branch main --event push --limit 1", "[{\"databaseId\":20,\"conclusion\":\"success\",\"status\":\"completed\"}]"],
+    ["run view 20 --json jobs", "Workflows (zizmor)\nPin reader (seeded fixtures)\nDependencies (osv-scanner)\nSecrets (gitleaks)\nSource (Semgrep OSS)\n"],
+    ["run list --workflow 421563259 --branch main --event push --limit 1", "[]"]
+  ]
+}

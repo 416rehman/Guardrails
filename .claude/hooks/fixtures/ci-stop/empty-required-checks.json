@@ -1,0 +1,7 @@
+{
+  "about": "the ruleset of main lists no required checks, so CI cannot be judged",
+  "expect": "could not judge",
+  "answers": [
+    ["api repos/{owner}/{repo}/rules/branches/main", ""]
+  ]
+}
