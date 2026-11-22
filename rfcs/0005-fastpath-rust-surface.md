@@ -3,11 +3,11 @@ Title: The fast-path Rust surface: grdr-fastpath types, load and eval, compile_f
 Author: chief-architect
 Harness: Claude Code
 Model: claude-opus-5-5
-State: Review
+State: Accepted
 Design issue: #405
 Spine: D-05, D-10, D-15, D-20, D-22, D-41, D-60, D-61, D-71, P5, P8, P9, P14, P17 (no spine text changes)
 Surfaces: the public crates `grdr-fastpath` (its first surface), `grdr-fastpath-ffi` (where its `#[repr(C)]` structs live) and `grdr-core` (module `compile::fastpath`); a new `[[crate]]` row kind in `surfaces.toml`, with three rows, all `experimental`; proposed changes to the host contract (`c-abi.md` and `status-codes.toml`, including a new status, a new input field, the cache key, the `GRDR_E_BUNDLE` row, the answer when the floor cannot answer, and arena and input custody; `tables.md`, including a new header field), carried by #246 and #245; proposals for `architecture.toml`, `limits.toml`, design/03, design/12 and design/26; one bundle manifest field, left to its own RFC. No wire format, Cedar schema or same-layer edge changes
-Decision record: none yet
+Decision record: docs/decisions/ADR-0037-the-fast-path-rust-surface-adopted-by-rfc-0005.md
 
 To comment, write on issue #405 of this repository; you need no account on any service other than the code host. A security fix under embargo (D-62) may change a public surface without an RFC; open a retroactive RFC when the fix is disclosed.
 
@@ -922,4 +922,167 @@ A comment that cannot compute an id says so on that line and is not a pass. The 
 The verdicts, the session's rulings and the required amendments are linked from the revision comments on #405. The required amendments of section 12 are posted on #246, #245 and #1538 before the decision.
 
 ## Decision
-None yet.
+Accepted by the chief architect under D-61, on RFC file blob `f6f1eadbff5d189d9966cea2dd3b044f901df7cb`, with the three contract blobs of section 0 and the spine pin in force, blob `a80859235e7a2a4444648d6fa8d389d78dde6be9`, as its base. The orchestrating session decided the outcome under the owner's delegation (#1828), and this section records it with the constraints that session made binding. [ADR-0037](../docs/decisions/ADR-0037-the-fast-path-rust-surface-adopted-by-rfc-0005.md) records the decision.
+
+This RFC decides no pinned path of `rfcs/pins.toml`, so this section holds no decision line, `rfcs/pins.toml` does not change, and no file is added under `rfcs/evidence/`. The move from `Review` to `Accepted` is the one RFC 0001's "RFC states" allows for an RFC that decides no pinned path and holds no line, and an evidence file added without a decision line would be out of route (ADR-0036, "Evidence added in route").
+
+### Review it rests on
+On blob `f6f1ead`, on #405, each verdict naming that RFC file blob, the base above and the three contract blobs:
+- `eval-architecture` (Sonnet), pass, minors 1 and 2, the delta `git diff 1d591bb f6f1ead` and the whole blob: https://github.com/416rehman/Guardrails/issues/405#issuecomment-7075428051
+- `eval-api` (Sonnet), pass, minor O1, the same delta: https://github.com/416rehman/Guardrails/issues/405#issuecomment-7075407504
+- `eval-security` round 6 (Opus), pass, minors MN13 and MN14: https://github.com/416rehman/Guardrails/issues/405#issuecomment-7075013043
+- `eval-adversarial` round 6 (Sonnet), pass, minors m1 to m3: https://github.com/416rehman/Guardrails/issues/405#issuecomment-7074929458
+- the nine seats, each supporting with changes and none reporting a broken spine floor: seat 1 https://github.com/416rehman/Guardrails/issues/405#issuecomment-7075042299, seat 2 https://github.com/416rehman/Guardrails/issues/405#issuecomment-7075067469, seat 3 https://github.com/416rehman/Guardrails/issues/405#issuecomment-7075044503, seat 4 https://github.com/416rehman/Guardrails/issues/405#issuecomment-7075055850, seat 5 https://github.com/416rehman/Guardrails/issues/405#issuecomment-7075081611, seat 6 https://github.com/416rehman/Guardrails/issues/405#issuecomment-7075059961, seat 7 https://github.com/416rehman/Guardrails/issues/405#issuecomment-7075052413, seat 8 https://github.com/416rehman/Guardrails/issues/405#issuecomment-7075062397, seat 9 https://github.com/416rehman/Guardrails/issues/405#issuecomment-7075085892
+
+The decision rests on the `eval-architecture` pass above, as the Review section asks. Every evaluator the review calls for passed `f6f1ead`, with `eval-architecture`, `eval-api` and `eval-adversarial` on the other model from the metadata block, and no verdict on #405 fails it, as the exit rule on #1828 asks (ruling 1 below).
+
+The required amendments of section 12 were posted before the decision: #246 https://github.com/416rehman/Guardrails/issues/246#issuecomment-7074820310, #245 https://github.com/416rehman/Guardrails/issues/245#issuecomment-7074820702 and #1538 https://github.com/416rehman/Guardrails/issues/1538#issuecomment-7074357164.
+
+### Session rulings it relies on
+1. The exit rule, https://github.com/416rehman/Guardrails/issues/1828#issuecomment-7074036273:
+   > An RFC is decided after the first round in which no evaluator reports a blocker or a major. Minor findings from that round, and changes asked by seats that support with changes, do not open another round. They are written into the decision as constraints, each tied to the issue that builds the surface, which must meet it. Every gate stays: each required evaluator must pass on the decided blob, and trust core still needs two models.
+2. The deciding round after round 4, https://github.com/416rehman/Guardrails/issues/405#issuecomment-7074036733:
+   > Round 5 is the deciding round under the new exit rule on #1828. It runs eval-security (Opus) and eval-adversarial (Sonnet), the two lanes that failed, as delta reviews. If neither reports a blocker or a major, the nine seats review once and the RFC is decided.
+3. Revision 6 and its constraints after round 5, https://github.com/416rehman/Guardrails/issues/405#issuecomment-7074638064:
+   > Nothing else changes. Round 6 is a delta review limited to these changes: eval-security on Opus and eval-adversarial on Sonnet. If neither reports a blocker or a major, the nine seats review once and the RFC is decided.
+4. The decision, https://github.com/416rehman/Guardrails/issues/405#issuecomment-7075095292:
+   > Orchestrating session decision (owner delegated all decisions, #1828): **RFC 0005 is decided as Accepted** on blob `f6f1eadbff5d189d9966cea2dd3b044f901df7cb`, under the exit rule on #1828.
+
+   > The decision record carries the following as binding constraints, each on the issue that builds it. They are not RFC text.
+5. The correction to the decision, which withdrew its "Earlier passes, still standing" basis, https://github.com/416rehman/Guardrails/issues/405#issuecomment-7075382924:
+   > Session correction (#1828): my decision comment 7075095292 treated the round 4 passes of eval-architecture and eval-api as still standing. They passed blob `1d591bb`, not the decided `f6f1ead`. Revisions 5 and 6 add public items, such as `loss_closed_classes` and `NarrowingRefused`, which neither evaluator has read. The exit rule requires every required evaluator to pass on the decided blob. Both now review `git diff 1d591bb f6f1ead`. #1913's pull request does not merge until both pass. If either fails, the RFC goes to revision 7 and the decision waits.
+
+   Both passed (Review it rests on), so the decision rests on passes on `f6f1ead` and on no earlier pass.
+6. Constraint 9 of the decision, as ruled for seat 8:
+   > Accepted: the C handle record, its check word and the C compile entry wait for the embedding slice. The slice-0 host is the Rust daemon, so #418's C work moves after slice 0. Compiler options with no first user (the `ScopeEnd` source ordering, `narrow` on expiries, `Facts::Relay`) are not built in slice 0. The three error mappings come down to `coded_by` and `code`.
+
+   > Declined: cutting RC2 to RC6, the reload state machine, or the `Arg` retry. Each closes an attack found in review, and a one-shot reload would worsen constraints 1 and 2.
+7. Constraint 11 of the decision, on the round 6 `eval-adversarial` m1:
+   > Round 6 adversarial m1 is taken in its strict reading: a `Pass` from the retry, for a contained process in a closed class, is answered as the closed answer (D-20). On #427 and #414.
+8. The session's round 3 rulings for this decision record, on `eval-architecture`'s review of it (https://github.com/416rehman/Guardrails/issues/1913#issuecomment-7075512044), https://github.com/416rehman/Guardrails/issues/1913#issuecomment-7075601428. They narrow constraint 9's last sentence, move 4b out of the decision and rebind constraints 2c, 3, 4d, 5a and 5b:
+   > - 2c binds #641, #727, #575 and #1734.
+   > - #1538 keeps only 2b, the slow background re-adoption, from group 2's coexistence part.
+   > - **2a stays bound to both #427 and #1538**, as eval-architecture judged correct.
+   > - 3 binds #1384, #1537 and #1853, plus a new item for the `FASTPATH` tokens.
+   > - 5a binds #706 and #1302.
+   > - 5b binds #760 and #1357.
+   > - 4d uses the existing `class` key and binds #278 and #427.
+   > - 4b is removed and becomes an amendment item.
+   > - 9c is narrowed: `status` stays the single copy, and only the five-pair match goes.
+   > - 1a also lists line 776.
+
+   The new item for the `FASTPATH` tokens is #1925, and the amendment item is #1926. Line 776 is #427's section 13 entry.
+
+### Constraints
+Each constraint binds the issues named after it. The lead of each issue writes it into the item before readying it, as section 13 asks, and it was posted on each issue under the heading "Constraint from RFC 0005 (decided, #1913)". Where a constraint and the text above differ, the constraint wins for the issues it binds. Where a constraint changes what a host does, the contract text of #245 or #246 takes the same rule, so that a partner host and our daemon answer one way (P17). That is why #245 appears beside #427 under 1a and 11-m1. The new items filed on acceptance are #1914 to #1921, listed after the constraints.
+
+1. Cold start (seats 1, 2 and 4).
+   - 1a. With no tables since start, deny-all applies only to processes inside session containers, and a person's own shell is never denied (D-15; design/07 section 10). This replaces "denies every floor lookup" in R2.17, in the R2.19 row for a load that fails with no tables since start, in section 10's row for a start before any tables were adopted, and in each of these places that say the same:
+     - #427's section 13 entry, "R8's deny-all stays for a start before any tables were adopted";
+     - the Alternatives line "deny-all stays only where the host holds no copy";
+     - the last sentence of the #245 amendment "When the floor cannot answer" (section 12), "A host that has adopted no tables since it started holds no copy, and denies every floor lookup";
+     - the #1538 amendment of R3 (section 12), "on first start, before any tables are adopted, #427's `floor-missing` holds and every floor lookup denies";
+     - #1538's AC-2, "on first start every class denies with floor-missing", which #1538's lead rewrites.
+
+     Binds #427, #1538 and #245, and #1921 for SR-new-W.
+   - 1b. The daemon persists the last bundle it adopted and verifies it again at start. Until the signature check of slice 7 exists, "verifies it again" means the adoption checks on the persisted bundle, the generation floor of D-37 included, and a compile in a fresh instance (#1538 R2). It never means a compiled blob kept from before. A persisted bundle that fails any check leaves no tables. Binds #1538, and #1921 for SR-new-Y.
+   - 1c. Hooks are enabled only after the first adoption. A hook request before the first adoption, from a harness that already holds a registered hook, is answered by the shim's fail-safe table (D-14), never by the daemon. Binds #1538 and #427.
+   - 1d. A `limits.toml` row bounds the window from start to the first adoption. When the bound elapses with no tables adopted, the device stays in the no-tables state of 1a. It is Degraded and reports a code of area `FASTPATH` that #427 registers beside the three of R4.3. It enables nothing, neither hooks nor endpoints, and changes no answer. Binds #1917 for the row, #1538 and #427, which read it, and #1925 for the code's tokens.
+2. Recovery (seats 1, 2 and 4).
+   - 2a. An audited re-adoption request, from the owner or an operator, is treated as an activation. A solo user has one unelevated command for it. The request names no bundle, path or table. The daemon authenticates its peer as it does every other privileged-side request (design/02, SR-01 and SR-04): it refuses the request from agent lineage inside a session and, where an operator is enrolled, from anyone but the operator. Requests count against a `limits.toml` rate row (#1917). #1930 owns the command and its handler. Binds #1930, #427 and #1538, and #1921 for SR-new-X.
+   - 2b. After a repeat `Changed` ends reloading, a slow, bounded background re-adoption from a freshly verified source follows a cooldown. A repeat still ends that cycle, and each attempt raises a finding. The cooldown also covers the requests of 2a, so a loop of requests gives at most the bounded number of adoptions. This adds rows to R2.19's table. Binds #427 and #1538, and #1917 for its retry policy and cooldown.
+   - 2c. An incumbent-EDR coexistence case is added to the coexistence pack, with a runbook naming the peer product as first suspect. Binds the coexistence-pack items #641, #727, #575 and #1734.
+3. Person-facing reasons (seats 1, 3, 6 and 9). The floor-missing denial, the daemon's state codes (the three of R4.3 and the one of 1d) and a deny over an `Unresolved` input each have a registered presentation row and language tokens. Each carries rule, reason and route (D-44), an LTR isolate for identifiers, and `risk = safety` on the denial text. Binds #1384 and #1537 for the block message, #1853, and #1925, which writes the `FASTPATH` code tokens, the presentation rows and the floor-missing block-message kinds and blocks #427.
+4. Evidence (seat 3).
+   - 4a. Every answer carries a stable `basis` (closed, open or served), the action class and an episode id. Binds #427, and #429, the receipt item that stamps every answer.
+   - 4b. Not a constraint. Seat 3's request that `Changed` carry the failed re-check number contradicts R1.5 and R4, where `Changed` is a leaf that carries no fault type. It is #1926, an amendment item for recording which re-check fired without changing `Error::Changed` (ruling 8 above).
+   - 4c. Inputs carry a resolution state, and a deny over an `Unresolved` input is filed as a coverage gap. Binds #427 and #429.
+   - 4d. Tamper findings are grouped by bundle digest and compiler version. A code's routing class is its `class` key in the registry (RFC 0007; #278 R2: `input`, `policy`, `retryable`, `fatal` or `internal`), so no new registry field is added. The `FASTPATH` codes take these values (`eval-architecture` M1, https://github.com/416rehman/Guardrails/issues/1913#issuecomment-7075660462):
+     - `retryable`: `Arg(Path)`, `Arg(Destination)` and `State`, which the call made again of R2.17 answers; entering floor-missing on `Changed`, where a reload starts at once; and a repeat, which 2b's background re-adoption follows;
+     - `fatal`: `Changed`, whose handle never answers again; a reload policy that gave up; and the 1d bound elapsing;
+     - `internal`: `Arg(Arena)`, `Arg(ActionClass)`, `Arg(PrincipalKind)`, `Arg(Reason)`, `Abi`, `Bundle(Rule(n))` and `Bundle(EvalCap)`. Our daemon loads only blobs its own compile instance writes (R3.7), so each is a defect in our daemon or compiler;
+     - no `FASTPATH` code is `input` or `policy`.
+
+     Binds #278 for the registry, and #427, which fills the key and groups the findings.
+5. Fleet (seat 4).
+   - 5a. Floor state, tamper findings and per-rule outcome counts go up as metadata. Binds #706, the heartbeat enforcement state and loss counters, and #1302, the device-side delivery.
+   - 5b. A pack promotion preview shows the classes added to the closed set for each organisation. Binds #760, the Watch promotion gate, and #1357, its console panel.
+6. Privacy (seat 6).
+   - 6a. An unresolved executable digest is passed only for processes attributed to a session or left `undetermined`, with a test. Binds #427 and #1769.
+   - 6b. `Blob` and `DeviceFacts` have no serialiser or `LogSafe` implementation, and a canary test checks this. Binds #414, and #412 for `Input`, `Path`, `Dest` and `Digest`.
+   - 6c. The verdict cache is memory-only, bounded by a row of #1917, and cleared on retirement. Binds #427, and #1769 as a default a partner host is told.
+   - 6d. A tamper finding names the device and the bundle only, never a principal, and reads "cause not determined". Binds #427.
+7. International (seat 9).
+   - 7a. A non-ASCII literal whose characters have no case mapping is compiled on case-insensitive volumes. `FoldNonAscii` stays for cased scripts. Binds #414.
+   - 7b. NFD and mark-order vectors go in `fastpath_path_form`, and a name that cannot be normalised becomes `Unresolved`. Binds #412 for the vectors and #418 for its differential, and #427 and #1769 for the host rule.
+   - 7c. The accepted vectors include U+200C, U+200F, U+061C, U+3000 and U+FF0F. Binds #412 and #418.
+8. Contributors (seat 7).
+   - 8a. Whichever of #245 and #246 lands first carries, in its pull request body, a table of every section 12 change: the change, the item that lands it, the file and section of the text it produces, and whether it has landed. Each later item that lands one updates its row in its own pull request body. Binds #245 and #246.
+   - 8b. Each item of section 13 has the review lane the table below gives. Binds every item it lists.
+   - 8c. Each oracle and named test of this RFC sits at a fixed path: `<crate or program root>/tests/<name>.rs`, or `tests/<name>/` when it needs more than one file. Each item writes the path into its plan. Binds #409, #410, #412, #414, #418 and #427.
+   - 8d. The `AGENTS.md` of `grdr-fastpath` gains a "Where things are" table. Binds #409.
+   - 8e. The decision record quotes the session rulings it relies on as text. Met by this section and ADR-0037 (#1913).
+9. Slice-0 build order (seat 8, ruled; ruling 6 above).
+   - 9a. The C handle record (R1.12), its check word and the C compile entry are built in the embedding slice. The slice-0 host is the Rust daemon, so #418's C work moves after slice 0. Binds #418 and #1918.
+   - 9b. The `ScopeEnd` source ordering, `narrow` on expiries and `Facts::Relay` are not built in slice 0. Binds #414, #1918 for `Facts::Relay` and #1919 for `ScopeEnd`.
+   - 9c. The ARCH-017 entries keep the fields of R4.1, `status` included, as the one copy of the leaf-to-status mapping (P17), and #418's `status_per_variant` reads it (ruling 8 above). No other copy of that mapping is built. The parent-swap check of R4.2 stays as a test in #418 (`eval-architecture` M2, https://github.com/416rehman/Guardrails/issues/1913#issuecomment-7075660462): it holds each entry's `status` to its parent's among the five parent statuses of R1.5, so an entry change that swaps two parents' statuses fails even when both mappings follow it. The five parent pairs are the parent level, not a copy of the leaves, so keeping them adds no copy. The session's instructions for this record's third round kept this check, which replaces "only the five-pair match goes" in ruling 8. Binds #1914 and #418.
+   - 9d. RC2 to RC6, the reload state machine of R2.19 and the `Arg` call made again of R2.17 are kept. Binds #410, #412 and #427.
+10. C interface for the embedding slice (seat 5).
+    - 10a. Arena writability is stated, or the flag moves to a word the host supplies. Binds #246 and #418.
+    - 10b. Static layout asserts for every supported target, with a zeroing initialiser, and later fields go only at the end. Binds #418 and #246.
+    - 10c. `grdr_fp_blob_info` exposes the header values. Binds #246 and #418.
+    - 10d. A host conformance kit covers path-form vectors, a fake library and cache-key vectors. Binds #1769.
+    - 10e. The host's MUSTs and defaults are stated. Binds #246 and #1769.
+11. Evaluator minors, each on the issues its verdict names.
+    - MN9 (round 5 `eval-security`, https://github.com/416rehman/Guardrails/issues/405#issuecomment-7074632321). A recompile on new device facts can clear a class's bit when it drops a fail-closed rule from the floor, so R2.17's "Adding a pack can only set bits" leaves that case out. #414's fold test adds an `Unknown` volume with a cased non-ASCII literal, such as `Données`, and expects `FoldNonAscii` in the floor report; 7a's uncased literal stays its own vector (`eval-security` F5, https://github.com/416rehman/Guardrails/issues/1913#issuecomment-7075853473). #1538 raises a finding when a recompile on new device facts moves an enforced rule from `InFloor` to `NoDeviceValue`, `Unmappable` or `FoldNonAscii`, naming the rule and the outcome, with a test. Binds #414 and #1538, and #1921 for SR-new-U.
+    - MN10 (same verdict). While the floor is missing, #1538's soak sends a hook request from a shared-host session for honeytoken use and expects the answer Drawbacks states, with `degraded_reason` `floor-missing`. Binds #1538.
+    - MN11 (same verdict). The check word folds the section directory as the `count` and `offset` of each of its ten entries, each widened to 32 bytes, and `ffi_record_changed` changes each entry on its own. Binds #418.
+    - MN12 (same verdict). Closed in the text by revision 6: R2.17's call made again on `Arg(Path)` or `Arg(Destination)`. Binds #427, which builds it and its R2.20 case.
+    - MN13 (round 6 `eval-security`). R2.20 adds one case with a mis-tagged projection and a refused path in one action, which expects three calls and the verdict at label bits 0 with the path `Unresolved`. #1769's kit tests a C host for the `State` call, for the `Arg` call with the value in its absent form and its bit set, for both in one action, and for nothing cached. The #245 bullet "When the floor cannot answer" says each call made again is on the same tables, with their tag. Binds #427, #1769 and #245, and #1921 for SR-new-V.
+    - MN14 (round 6 `eval-security`). A `State` now stops every floor row that reads a label from objecting, for every process, contained ones included, and for an honest engine whose projection comes from the other bundle during an activation as much as for a compromised one. This is a stated cost of the decision, beside the Drawbacks line on shared-host sessions. #427 marks the device Degraded and reports a code (R4.3) while calls keep returning `State` past a bound, a row of #1917. #1538's soak counts the `State` answers per activation. Binds #427, #1538 and #1917.
+    - F9 (round 5 `eval-adversarial`, https://github.com/416rehman/Guardrails/issues/405#issuecomment-7074554760). Closed in the text by revision 6: the contract sentences cover `grdr_fp_eval` only, a per-call error changes no state, and R2.20 holds the next action to the serving handle. Binds #427, #245 and #246, which build those texts and the case.
+    - C2 (same verdict). `fastpath_loss_classes` takes R3.11 as its one oracle: a floor row, or an enforced `@on_loss("block")` rule, sets a class's bit. It includes a rule made fail-closed by class default and one made fail-closed by a pack's `on-sensor-loss: block`, neither held by the floor, and expects their class's bit clear unless another rule sets it. Binds #414.
+    - C3 (same verdict). The check word's fixed bijection diffuses across its four 64-bit lanes, so a difference confined to one lane is not absorbed by an eight-byte field, and the `SAFETY` comment says so. Binds #418.
+    - C4 (same verdict). Step 2 of R1.11 reads the record by unaligned reads, and the record's flag is one byte, so a misaligned `t` is never undefined behaviour. The copy then fails the stored-address comparison or the check word and gives `GRDR_E_CHANGED`. The `ffi_record_changed` case "a record copied to another address" includes a misaligned address under Miri. Binds #418.
+    - m1 (round 6 `eval-adversarial`, strict reading; ruling 7 above). On the call made again on `State`, a `Deny` or `StepUp` answers the action, and a `Pass`, for a process inside a session container in a class whose bit is set in `loss_closed_classes`, is answered as the closed answer (D-20). #427 builds it with a `fastpath_reload` case: a `State` from an honest but stale projection with a taint row, the engine down, expects the closed answer. #414's `fastpath_loss_classes` covers a class closed through a row that requires a label. Binds #427, #414 and #245.
+    - m2 (same verdict). A C host that calls again with a value `Unresolved` sets the bit and clears the value. The #245 bullet says so, and #427's retry test gains a C case that expects a verdict, not `GRDR_E_ARG`, added when #418's FFI exists (9a). Binds #245 and #427.
+    - m3 (same verdict). The first status is reported even when the call made again answers. The #246 section 7 bullet gains that sentence, and #427 adds a `fastpath_reload` case for it. Binds #246 and #427.
+    - `eval-architecture` minor 1 (https://github.com/416rehman/Guardrails/issues/405#issuecomment-7075428051). The host's pre-check of a path or a destination name is limited to what the library cannot see. A host passes as `Unresolved` a value it could not resolve or cannot hold in the library's types: a path it could not resolve, an executable it could not hash, a path above `path_max_units`, a name it cannot normalise (7b). For the forms of R2.3a and `tables.md` section 3.3 it may pass the value as `Resolved` and rely on the call made again of R2.17, so the library stays the one checker of those forms. R2.3b's host duty and the #245 bullet "Unresolved values" say so. Binds #245 and #427.
+    - `eval-architecture` minor 2 (same verdict). The host's copy of `loss_closed_classes` is a field of the serving and floor-missing variants of #427's floor state type, never an `Option` beside it. The no-tables-since-start variant holds none, so its deny-all (1a) is a variant and not an absent value. Binds #427.
+    - `eval-api` O1 (https://github.com/416rehman/Guardrails/issues/405#issuecomment-7075407504). `tables.md` line 49, "The header is 224 bytes." in section 2, is among the sites where 224 becomes 232, beside section 4 item 3, section 5's opening paragraph, TV-5, TV-11 and TV-14 (section 12, `tables.md` item 12). Binds #245.
+    - `eval-security` F3 on this decision (https://github.com/416rehman/Guardrails/issues/1913#issuecomment-7075853473). Three requirements join #1921's scope beside SR-new-A to SR-new-V, in that verdict's wording:
+      - SR-new-W, cold-start scope. With no tables since start the host denies every action of a process inside a session container and nothing outside one; each answer carries `floor-missing`; the 1d bound changes no answer. Component: `tables.md` section 11 and #427's no-tables variant. Test: R2.20 no-tables cases for a contained process, the person's shell, a shared-host hook request and an undetermined process, with the bound elapsed.
+      - SR-new-X, re-adoption request. It names no bundle, path or table; it is accepted only from a peer authenticated by kernel handle, refused from agent lineage inside a session and, where an operator is enrolled, from anyone else; it is audited without content and bounded by a `limits.toml` row. Component: the daemon's request handler and the CLI row (#1930). Test: a negative test from an agent-lineage process and from a second uid, and a loop of requests that gives at most the bounded number of adoptions.
+      - SR-new-Y, persisted bundle. The daemon re-reads at start only the bundle, from the state directory its profile owns, through the adoption checks including the generation floor; any failure leaves no tables. Component: #1538. Test: a persisted copy with a lower generation and one failing a TV rule, each leaving no tables.
+
+      The requirements on the FFI's rules and handle record are oracled in the embedding slice, not slice 0 (9a): `ffi_record_changed`, `ffi_changed_sticky`, #418's C differential and seeded rule tests, `status_per_variant`, the Miri run of `grdr-fastpath-ffi` (#1475) and #1769's C host cases (MN13, m2). #1921 marks each such row with the slice its oracle runs in, so the register claims no control whose test cannot run yet (P9). Binds #1921.
+
+Review lanes (8b). Each lane is the `.claude/risk-tiers.toml` set for the item's tier, kind and diff, as `grdr-work-issue` reads it:
+
+| Items | Lane |
+|---|---|
+| #20, #71, #409, #410, #412, #414, #418, #1778 | High and trust core: the `[high]` set, `eval-api` for `public_api_change`, and two passing evaluators on different models |
+| #427, #1538, #1930 | As above, plus `eval-platform` and `eval-performance` for `runtime_trust_core` |
+| #388, #1918 | High and trust core (`crates/grdr-ffi/**`), with `eval-api` |
+| #1582, #1768, #1914, #1915, #1917 | High and trust core where the file is listed (`architecture.toml`, `surfaces.toml`, `limits.toml`), plus `eval-architecture` for `kind:gate` |
+| #1475 | High and trust core (`.github/**`), worked by lead-agent-kit |
+| #245, #246, #1769 | High (`spec/**`) |
+| #1916, #1921 | High |
+| #1920 | High and trust core (`crates/grdr-fastpath/**`) |
+| #1925 | Medium, plus `eval-ux` and `eval-a11y` for `interface/**` |
+| #1919, #1926 | The RFC route: the persona council, `eval-architecture`, `eval-security` and `eval-adversarial` |
+
+Filed on acceptance, as section 13 lists them, each blocked by #1913:
+- #1914, the `architecture.toml` change, blocking #414, #418 and #427;
+- #1915, the `surfaces.toml` row kind and rows, blocked by #1817;
+- #1916, the design/03, design/12 and design/26 amendments;
+- #1917, the `limits.toml` rows, blocked by #1768 and blocking #1538 and #427, with the rows of constraints 1d, 2a, 2b, 6c and MN14;
+- #1918, `grdr_engine_compile_fastpath`, blocked by #388 and #414;
+- #1919, the RFC for the bundle manifest field;
+- #1920, the fuzz item, blocked by #415, #409 and #412;
+- #1921, the security requirements SR-new-A to SR-new-Y, blocked by #1859.
+
+Filed in the decision's review, each blocked by #1913:
+- #1925, the `FASTPATH` code tokens, presentation rows and block-message kinds of constraint 3, blocked by #1853 and blocking #427;
+- #1926, the amendment item that takes seat 3's re-check number out of constraint 4b;
+- #1930, the re-adoption command and its daemon handler of constraint 2a, blocked by #427, #1538 and #1917.
