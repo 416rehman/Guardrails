@@ -24,8 +24,8 @@ paths = ["crates/grdr-crypto/**", "crates/grdr-wire/src/peer_auth.rs",
          "crates/grdr-wire/src/peer_auth/**", "security/**", "governance/**",
          "SECURITY.md", "GOVERNANCE.md", "AI_POLICY.md", "COVENANT.md", "MAINTAINERS.md",
          "programs/grdr-approve/**",
-         "LICENSE", "NOTICE", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "ADOPTERS.md",
-         "TRADEMARKS.md"]
+         "LICENSE", "docs/LICENSE*", "NOTICE", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md",
+         "ADOPTERS.md", "TRADEMARKS.md"]
 
 [squad.discovery]
 alias = ["SQ-02"]
@@ -113,7 +113,13 @@ paths = ["crates/grdr-export/**", "crates/grdr-integrations/**", "spec/**",
 [squad.release]
 alias = ["SQ-16"]
 lead = "lead-release"
-paths = ["deploy/**", "brand/**", "deny.toml", "dist.toml", "release/**",
+paths = ["deploy/**", "brand/**", "dist.toml", "release/**",
+         "deny.toml", "deny.*.toml", ".deny.toml", ".deny.exceptions.toml",
+         ".config/deny.toml", ".config/deny.exceptions.toml",
+         ".cargo/deny.toml", ".cargo/deny.exceptions.toml",
+         "**/deny.toml", "**/deny.*.toml", "**/.deny.toml", "**/.deny.exceptions.toml",
+         "**/.config/deny.toml", "**/.config/deny.exceptions.toml",
+         "**/.cargo/deny.toml", "**/.cargo/deny.exceptions.toml",
          ".github/workflows/release-please.yml", "release-please-config.json",
          ".release-please-manifest.json"]
 
