@@ -1,6 +1,14 @@
 # Build and scan tools, pinned by version and, for container images, by digest (design/24
 # section 12, team/05 section 3). The workflows read their pins here. Tools are installed and run,
-# never linked or redistributed, so a copyleft tool licence is allowed here.
+# never linked or redistributed, so a copyleft tool licence is allowed here. `install` is the
+# command a session runs to get a missing tool at its pinned version. A tool with an `image` runs
+# from that image, and its `install` pulls it.
+
+[tool.cargo-deny]
+version = "0.22.0"
+licence = "MIT OR Apache-2.0"
+source = "https://github.com/EmbarkStudios/cargo-deny"
+install = "cargo install --locked cargo-deny@0.22.0"
 
 [tool.gitleaks]
 version = "8.30.1"
@@ -8,11 +16,26 @@ licence = "MIT"
 source = "https://github.com/gitleaks/gitleaks"
 image = "ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
 config = "supply-chain/gitleaks.toml"
+install = "docker pull ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
 
 [tool.zizmor]
 version = "1.32.0"
 licence = "MIT"
 source = "https://github.com/zizmorcore/zizmor"
+install = "cargo install --locked zizmor@1.32.0"
+
+# `go` is the Go toolchain that builds the binary, and so its standard library. Its go.mod asks for
+# 1.27.3, which GO-2026-6859 affects; 1.27.4 is the first fixed release. `GOTOOLCHAIN` in `install`
+# makes the go command fetch and run exactly that toolchain whatever Go the host has. The module
+# and the toolchain carry no hash here: the go command checks both against the default checksum
+# database, so a session runs it with GOSUMDB at its default and no GONOSUMDB or GOPRIVATE entry
+# that matches them.
+[tool.osv-scanner]
+version = "2.7.1"
+licence = "Apache-2.0"
+source = "https://github.com/google/osv-scanner"
+go = "1.27.4"
+install = "env GOTOOLCHAIN=go1.27.4 go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.7.1"
 
 [tool.semgrep]
 version = "1.185.0"
