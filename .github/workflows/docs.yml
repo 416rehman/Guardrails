@@ -30,6 +30,15 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+        with:
+          install: "false"
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
       - env:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}

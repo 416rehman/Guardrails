@@ -39,6 +39,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+        with:
+          install: "false"
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
       - id: plan
         env:
           GH_TOKEN: ${{ github.token }}
@@ -59,6 +68,30 @@ jobs:
             echo "run=$run"
             echo "rust=$rust"
           } >> "$GITHUB_OUTPUT"
+
+  tree-paths:
+    name: Tree, matcher and toolchain readers (seeded fixtures)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+        with:
+          install: "false"
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      - run: python3 -I -B -m unittest discover -s .github/actions/tree-paths -p "test_*.py" -v
 
   rust:
     needs: plan
@@ -82,7 +115,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: rustup toolchain install
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -105,6 +144,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+        with:
+          install: "false"
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.RUSTUP_TOOLCHAIN }}
         with:
           command: check
