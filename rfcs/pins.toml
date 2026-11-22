@@ -1,0 +1,10 @@
+# The pin registry of RFC 0001 ("The pin registry"): one record per pinned path, naming the
+# blob id and SHA-256 of the text in force and the RFC whose decision line put it there.
+# A record is added only by an adoption, changes only by an apply and is never removed.
+# ADR-0036 records the decision that created this file.
+
+[[pin]]
+path = "docs/design/00-decisions.md"
+blob = "a80859235e7a2a4444648d6fa8d389d78dde6be9"
+sha256 = "8f6ea876777c0121ecec068c0bc4cef45932be45c1c2aff4140712db1e06628d"
+rfc = "0001"

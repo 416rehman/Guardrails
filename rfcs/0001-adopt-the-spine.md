@@ -3,11 +3,11 @@ Title: Adopt the spine as the baseline
 Author: chief-architect
 Harness: Claude Code
 Model: claude-opus-5-5
-State: Review
+State: Accepted
 Design issue: #1711
 Spine: D-47, D-61, D-62, D-63, P2
 Surfaces: docs/design/00-decisions.md
-Decision record: none yet
+Decision record: docs/decisions/ADR-0036-the-amended-spine-is-the-baseline-adopted-by-rfc-0001.md
 
 Comments go on the design issue, so commenting needs no account on any service other than the code host. A security fix under embargo (D-62) may change a public surface without an RFC; open a retroactive RFC when the fix is disclosed.
 
@@ -197,6 +197,28 @@ Round 3 on #1711:
 - `eval-architecture` on revision 6, `ab96233` (RFC blob `b3eacc9`), delta pass: https://github.com/416rehman/Guardrails/issues/1711#issuecomment-7069489546
 
 #55 holds the dispositions of its evaluation rounds and the round 4 verdicts of `eval-security` (pass) and `eval-adversarial` (fail) on `351f0b9`. Revision 6 replaces `648f2ff`. The seats reviewed the round 1 text. Before the decision, the seats and `eval-architecture` review the text the decision names, and their links go here.
+- Seat 1, solo developer, on RFC blob `b3eacc9`, no blocker: https://github.com/416rehman/Guardrails/issues/1711#issuecomment-7070260281
+- Seat 2, IT admin, on RFC blob `b3eacc9`, no blocker: https://github.com/416rehman/Guardrails/issues/1711#issuecomment-7070269323
+- Seat 3, SOC analyst, on RFC blob `b3eacc9`, no blocker: https://github.com/416rehman/Guardrails/issues/1711#issuecomment-7070283189
+- Seat 4, MSP operator, on RFC blob `b3eacc9`, no blocker: https://github.com/416rehman/Guardrails/issues/1711#issuecomment-7070292471
+- Seat 5, OEM partner, on RFC blob `b3eacc9`, no blocker: https://github.com/416rehman/Guardrails/issues/1711#issuecomment-7070305618
+- Seat 6, privacy officer, on RFC blob `b3eacc9`, no blocker: https://github.com/416rehman/Guardrails/issues/1711#issuecomment-7070319753
+- Seat 7, contributor, on RFC blob `b3eacc9`, no blocker: https://github.com/416rehman/Guardrails/issues/1711#issuecomment-7070329379
+- Seat 8, simplicity, on RFC blob `b3eacc9`, no blocker: https://github.com/416rehman/Guardrails/issues/1711#issuecomment-7070339061
+- Seat 9, international operator, on RFC blob `b3eacc9`, no blocker: https://github.com/416rehman/Guardrails/issues/1711#issuecomment-7070348276
+- Dispositions of the seat notes on RFC blob `b3eacc9`: https://github.com/416rehman/Guardrails/issues/1711#issuecomment-7070812061
 
 ## Decision
-<The chief architect's outcome and written reasons.>
+Accepted by the chief architect under D-61, on RFC file blob `b3eacc9fa915434ba22e75f481f99a42a28fb910`. It adopts the spine at blob `a80859235e7a2a4444648d6fa8d389d78dde6be9`. [ADR-0036](../docs/decisions/ADR-0036-the-amended-spine-is-the-baseline-adopted-by-rfc-0001.md) records the decision and supersedes ADR-0002.
+
+decision rfc=0001 path=docs/design/00-decisions.md proposed=a80859235e7a2a4444648d6fa8d389d78dde6be9 proposed-sha256=8f6ea876777c0121ecec068c0bc4cef45932be45c1c2aff4140712db1e06628d base=a80859235e7a2a4444648d6fa8d389d78dde6be9 rfc-file=b3eacc9fa915434ba22e75f481f99a42a28fb910 pass=7069489546 pass-sha256=12a4f5bdfb74168f5ca61d1b94ab6419b845f7f011912333c53c05de7adf34bb
+
+The line is an adoption. Its proposed text and base are the spine's blob on the parent, and the commit that adds it also adds the spine's record to `rfcs/pins.toml` and the pass's body as `rfcs/evidence/7069489546.md`, so it is applied where it is added (rule 3 of "In route").
+
+Reasons:
+1. The decision rests on the `eval-architecture` pass https://github.com/416rehman/Guardrails/issues/1711#issuecomment-7069489546. Its role lines match the line above role for role, and no verdict on #1711 fails those blobs.
+2. The text adopted is the text on `main`: on this decision's base, `git rev-parse origin/main:docs/design/00-decisions.md` prints the pinned blob and its bytes hash to the pinned SHA-256, so no revision is needed ("If the spine moves first").
+3. The nine seats reviewed this blob and raised no blocker. Every note has a disposition, linked under Review, and none needs this text to change.
+4. On #55, `eval-security` and `eval-diff`, on two models, passed a file that differs from this blob by one Review link line. Their minor findings are carried to #1741, #1759 and ADR-0036.
+5. The adoption changes no spine text and no product behaviour. Rejecting it leaves the first amending RFC with no recorded text to amend, and postponing it waits on nothing.
+6. ADR-0036 states what this acceptance binds, so that only a later RFC changes it, and how the route's other mechanisms change by protected change (seat 8, note 1).

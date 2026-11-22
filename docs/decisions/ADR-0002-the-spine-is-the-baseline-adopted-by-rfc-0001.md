@@ -1,6 +1,6 @@
 # ADR-0002: The spine is the baseline, adopted by RFC 0001
 
-- Status: proposed, partly superseded by ADR-0029
+- Status: superseded by ADR-0036
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-61
