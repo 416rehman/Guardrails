@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::{
     ActionClass, ApprovalGrade, ApprovalState, ControlPoint, FindingClass, FindingLifecycle,
-    FindingSeverity, GrantScope, Mode, Verdict,
+    FindingSeverity, GrantScope, Mode, SessionLabel, Verdict,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,6 +128,24 @@ pub struct Finding {
     pub summary: String,
     pub target: String,
     pub detected_at: Timestamp,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Incident {
+    pub id: String,
+    pub session_id: String,
+    pub device_id: String,
+    pub device_name: String,
+    pub agent_name: String,
+    pub title: String,
+    pub summary: String,
+    pub severity: FindingSeverity,
+    pub lifecycle: FindingLifecycle,
+    pub finding_ids: Vec<String>,
+    pub finding_count: usize,
+    pub labels: Vec<SessionLabel>,
+    pub first_seen: Timestamp,
+    pub last_seen: Timestamp,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

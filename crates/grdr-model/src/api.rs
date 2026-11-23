@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::domain::{
     ActionClass, ApprovalGrade, AssuranceLevel, AssuranceRecord, ControlPoint, FindingLifecycle,
-    GrantScope, InstallProfile, KillScope, KillSwitchState, Mode, Verdict,
+    GrantScope, InstallProfile, KillScope, KillSwitchState, Mode, SessionLabel, Verdict,
 };
 use crate::policy::{ActionAttempt, DecisionReceipt, PolicyPack, RuleMatch};
 
@@ -78,6 +78,8 @@ pub struct SessionSummary {
     pub step_up_count: u64,
     pub watch_hits: u64,
     pub assurance_level: AssuranceLevel,
+    #[serde(default)]
+    pub labels: Vec<SessionLabel>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -116,6 +118,8 @@ pub struct OverviewResponse {
     pub active_sessions: usize,
     pub pending_approvals: usize,
     pub open_findings: usize,
+    #[serde(default)]
+    pub open_incidents: usize,
     pub kill_switch: KillSwitchState,
     pub tiles: Vec<InsightTile>,
     pub setup_steps: Vec<SetupStep>,
@@ -300,6 +304,7 @@ pub fn summarize_sessions(
                 step_up_count: 0,
                 watch_hits: 0,
                 assurance_level: AssuranceLevel::Al2Guided,
+                labels: Vec::new(),
             });
         if attempt.timestamp < entry.started_at {
             entry.started_at = attempt.timestamp;

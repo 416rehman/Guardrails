@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { ModeControl } from "./components/ModeControl";
 import { Quoted } from "./components/Quoted";
 import { ModeBadge, VerdictBadge } from "./components/VerdictBadge";
+import { RespondPage } from "./pages/RespondPage";
+import { SessionsPage } from "./pages/SessionsPage";
 
 describe("Guardrails console UI primitives", () => {
   it("renders ModeControl segments and respects locked floor constraints", () => {
@@ -30,5 +32,60 @@ describe("Guardrails console UI primitives", () => {
     );
     expect(screen.getByText("STEP_UP")).toBeTruthy();
     expect(screen.getByText("Watch")).toBeTruthy();
+  });
+
+  it("renders enforcing session labels and correlated incidents", () => {
+    render(
+      <div>
+        <SessionsPage
+          sessions={[
+            {
+              id: "sess-1",
+              device_id: "dev-1",
+              device_name: "host-1",
+              agent_name: "claude-code",
+              started_at: "2026-11-23T00:00:00Z",
+              last_activity: "2026-11-23T00:01:00Z",
+              total_actions: 2,
+              blocked_count: 1,
+              step_up_count: 1,
+              watch_hits: 0,
+              assurance_level: "AL2",
+              labels: ["credential_accessed", "tainted_exfil_risk"],
+            },
+          ]}
+          searchQuery=""
+          onCreateRuleFromAttempt={() => {}}
+        />
+        <RespondPage
+          approvals={[]}
+          findings={[]}
+          incidents={[
+            {
+              id: "inc-dev-1-sess-1",
+              session_id: "sess-1",
+              device_id: "dev-1",
+              device_name: "host-1",
+              agent_name: "claude-code",
+              title: "claude-code session incident (2)",
+              summary: "Blocked control edit; Approval requested",
+              severity: "critical",
+              lifecycle: "open",
+              finding_ids: ["f1", "f2"],
+              finding_count: 2,
+              labels: ["credential_accessed"],
+              first_seen: "2026-11-23T00:00:00Z",
+              last_seen: "2026-11-23T00:01:00Z",
+            },
+          ]}
+          killSwitch={{ state: "inactive" }}
+          defaultSessionId="sess-1"
+          onUpdated={() => {}}
+        />
+      </div>,
+    );
+    expect(screen.getByText("Credential accessed")).toBeTruthy();
+    expect(screen.getByText("Tainted exfil risk")).toBeTruthy();
+    expect(screen.getByText("claude-code session incident (2)")).toBeTruthy();
   });
 });

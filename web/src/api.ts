@@ -7,6 +7,7 @@ import type {
   Finding,
   FindingLifecycle,
   GrantScope,
+  Incident,
   KillAction,
   KillScope,
   KillSwitchState,
@@ -85,6 +86,7 @@ export const api = {
       body: JSON.stringify({ approve, scope, note }),
     }),
   getFindings: () => requestJson<Finding[]>("/api/v1/findings"),
+  getIncidents: () => requestJson<Incident[]>("/api/v1/incidents"),
   updateFinding: (id: string, lifecycle: FindingLifecycle) =>
     requestJson<Finding>(`/api/v1/findings/${encodeURIComponent(id)}`, {
       method: "PATCH",

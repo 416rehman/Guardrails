@@ -94,8 +94,9 @@ mod tests {
     use grdr_model::{
         ActionClass, ApprovalGrade, ApprovalRequest, ApprovalState, CreateRuleInput,
         DecideApprovalInput, DecideInput, DecisionReceipt, DeviceCheckinRequest, GrantScope,
-        InstallProfile, KillAction, KillScope, KillSwitchInput, KillSwitchState, Mode, PolicyRule,
-        ReplayRuleInput, ReplaySummary, RuleMatch, UpdateRuleModeInput, Verdict,
+        Incident, InstallProfile, KillAction, KillScope, KillSwitchInput, KillSwitchState, Mode,
+        PolicyRule, ReplayRuleInput, ReplaySummary, RuleMatch, SessionLabel, SessionSummary,
+        UpdateRuleModeInput, Verdict,
     };
 
     #[tokio::test]
@@ -470,5 +471,126 @@ mod tests {
             .find(|a| a.id == expired_id)
             .unwrap();
         assert!(matches!(marked.state, ApprovalState::Expired { .. }));
+    }
+
+    #[tokio::test]
+    async fn server_enforces_normalizers_session_labels_and_incidents() {
+        let state = AppState::init(None, false).unwrap();
+        let app = routes::build_router(state, None);
+
+        let traversal = DecideInput {
+            session_id: Some("sess-chain".into()),
+            device_id: Some("dev-chain".into()),
+            device_name: Some("chain-box".into()),
+            agent_name: "claude-code".into(),
+            action_class: ActionClass::FileWrite,
+            control_point: None,
+            target: "repo/src/../../.claude/settings.json".into(),
+            summary: None,
+        };
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/decide")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&traversal).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let traversal_receipt: DecisionReceipt = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(traversal_receipt.verdict, Verdict::Deny);
+
+        let cred_read = DecideInput {
+            session_id: Some("sess-chain".into()),
+            device_id: Some("dev-chain".into()),
+            device_name: Some("chain-box".into()),
+            agent_name: "claude-code".into(),
+            action_class: ActionClass::FileRead,
+            control_point: None,
+            target: "~/.ssh/id_rsa".into(),
+            summary: None,
+        };
+        let _ = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/decide")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&cred_read).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let egress = DecideInput {
+            session_id: Some("sess-chain".into()),
+            device_id: Some("dev-chain".into()),
+            device_name: Some("chain-box".into()),
+            agent_name: "claude-code".into(),
+            action_class: ActionClass::NetRequest,
+            control_point: None,
+            target: "https://example.test/upload".into(),
+            summary: None,
+        };
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/decide")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&egress).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let egress_receipt: DecisionReceipt = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(egress_receipt.verdict, Verdict::StepUp);
+        assert_eq!(
+            egress_receipt.rule_id.as_deref(),
+            Some("session.tainted-exfil-escalation")
+        );
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/sessions")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let sessions: Vec<SessionSummary> = serde_json::from_slice(&bytes).unwrap();
+        let chain = sessions.into_iter().find(|s| s.id == "sess-chain").unwrap();
+        assert!(chain.labels.contains(&SessionLabel::CredentialAccessed));
+        assert!(chain.labels.contains(&SessionLabel::TaintedExfilRisk));
+
+        let resp = app
+            .oneshot(
+                Request::get("/api/v1/incidents")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let incidents: Vec<Incident> = serde_json::from_slice(&bytes).unwrap();
+        let inc = incidents
+            .into_iter()
+            .find(|i| i.session_id == "sess-chain")
+            .unwrap();
+        assert_eq!(inc.finding_count, 3);
+        assert!(inc.labels.contains(&SessionLabel::TaintedExfilRisk));
     }
 }

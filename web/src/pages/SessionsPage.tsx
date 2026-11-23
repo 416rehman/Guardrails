@@ -1,9 +1,28 @@
 import { useEffect, useState } from "react";
-import { PlusCircle, Shield } from "lucide-react";
+import { PlusCircle, Shield, Tag } from "lucide-react";
 import { api } from "../api";
 import { Quoted } from "../components/Quoted";
 import { VerdictBadge } from "../components/VerdictBadge";
-import type { ActionAttempt, SessionDetailResponse, SessionSummary } from "../types";
+import type { ActionAttempt, SessionDetailResponse, SessionLabel, SessionSummary } from "../types";
+
+const LABEL_NAMES: Record<SessionLabel, string> = {
+  credential_accessed: "Credential accessed",
+  untrusted_web_fetched: "Untrusted web fetched",
+  repeated_denials: "Repeated denials",
+  tainted_exfil_risk: "Tainted exfil risk",
+};
+
+function labelTone(label: SessionLabel): string {
+  switch (label) {
+    case "tainted_exfil_risk":
+    case "repeated_denials":
+      return "danger";
+    case "credential_accessed":
+      return "warning";
+    case "untrusted_web_fetched":
+      return "info";
+  }
+}
 
 interface SessionsPageProps {
   sessions: SessionSummary[];
@@ -75,6 +94,7 @@ export function SessionsPage({ sessions, searchQuery, onCreateRuleFromAttempt }:
                 <th>Session</th>
                 <th>Agent</th>
                 <th>Device</th>
+                <th>Enforcing labels</th>
                 <th>Actions</th>
                 <th>Blocked</th>
                 <th>Asked</th>
@@ -82,21 +102,37 @@ export function SessionsPage({ sessions, searchQuery, onCreateRuleFromAttempt }:
               </tr>
             </thead>
             <tbody>
-              {filtered.map((sess) => (
-                <tr
-                  key={sess.id}
-                  className={`selectable ${selectedId === sess.id ? "selected" : ""}`}
-                  onClick={() => setSelectedId(sess.id)}
-                >
-                  <td className="mono">{sess.id}</td>
-                  <td><strong>{sess.agent_name}</strong></td>
-                  <td>{sess.device_name}</td>
-                  <td className="tabular">{sess.total_actions}</td>
-                  <td className="tabular">{sess.blocked_count}</td>
-                  <td className="tabular">{sess.step_up_count}</td>
-                  <td className="tabular">{sess.watch_hits}</td>
-                </tr>
-              ))}
+              {filtered.map((sess) => {
+                const labels = sess.labels ?? [];
+                return (
+                  <tr
+                    key={sess.id}
+                    className={`selectable ${selectedId === sess.id ? "selected" : ""}`}
+                    onClick={() => setSelectedId(sess.id)}
+                  >
+                    <td className="mono">{sess.id}</td>
+                    <td><strong>{sess.agent_name}</strong></td>
+                    <td>{sess.device_name}</td>
+                    <td>
+                      {labels.length === 0 ? (
+                        <span style={{ color: "var(--ink-muted)", fontSize: 12 }}>None</span>
+                      ) : (
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                          {labels.map((lbl) => (
+                            <span key={lbl} className={`badge ${labelTone(lbl)}`}>
+                              {LABEL_NAMES[lbl]}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td className="tabular">{sess.total_actions}</td>
+                    <td className="tabular">{sess.blocked_count}</td>
+                    <td className="tabular">{sess.step_up_count}</td>
+                    <td className="tabular">{sess.watch_hits}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -115,6 +151,16 @@ export function SessionsPage({ sessions, searchQuery, onCreateRuleFromAttempt }:
               <p style={{ margin: "4px 0 0", color: "var(--ink-secondary)" }}>
                 Agent: {detail.session.agent_name} on {detail.session.device_name}
               </p>
+              {(detail.session.labels ?? []).length > 0 && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
+                  <Tag size={13} color="var(--ink-muted)" />
+                  {(detail.session.labels ?? []).map((lbl) => (
+                    <span key={lbl} className={`badge ${labelTone(lbl)}`}>
+                      {LABEL_NAMES[lbl]}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             <span className="badge info tabular">{detail.attempts.length} event(s)</span>
           </div>

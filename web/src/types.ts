@@ -4,6 +4,11 @@ export type InstallProfile = "user" | "protected";
 export type AssuranceLevel = "AL0" | "AL1" | "AL2" | "AL3" | "AL4";
 export type GrantScope = "once" | "session" | "one_hour";
 export type FindingLifecycle = "open" | "acknowledged" | "contained" | "resolved";
+export type SessionLabel =
+  | "credential_accessed"
+  | "untrusted_web_fetched"
+  | "repeated_denials"
+  | "tainted_exfil_risk";
 export type KillScope = "session" | "device" | "organisation";
 export type KillAction = "freeze" | "kill" | "release";
 
@@ -79,6 +84,7 @@ export interface SessionSummary {
   step_up_count: number;
   watch_hits: number;
   assurance_level: AssuranceLevel;
+  labels?: SessionLabel[];
 }
 
 export interface ActionAttempt {
@@ -191,6 +197,23 @@ export interface Finding {
   detected_at: string;
 }
 
+export interface Incident {
+  id: string;
+  session_id: string;
+  device_id: string;
+  device_name: string;
+  agent_name: string;
+  title: string;
+  summary: string;
+  severity: string;
+  lifecycle: FindingLifecycle;
+  finding_ids: string[];
+  finding_count: number;
+  labels: SessionLabel[];
+  first_seen: string;
+  last_seen: string;
+}
+
 export type KillSwitchState =
   | { state: "inactive" }
   | { state: "frozen"; scope: KillScope; target_id: string; reason: string; issued_at: string; expires_at: string }
@@ -245,6 +268,7 @@ export interface OverviewResponse {
   active_sessions: number;
   pending_approvals: number;
   open_findings: number;
+  open_incidents?: number;
   kill_switch: KillSwitchState;
   tiles: InsightTile[];
   setup_steps: SetupStep[];

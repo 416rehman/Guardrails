@@ -20,8 +20,8 @@ use tower_http::services::{ServeDir, ServeFile};
 use grdr_model::{
     ApprovalRequest, AuditEntry, BatchEventsInput, CodedError, CreateRuleInput,
     DecideApprovalInput, DecideInput, DecisionReceipt, Device, DiscoveredAgent, Finding,
-    HealthResponse, KillSwitchInput, KillSwitchState, McpServerEntry, OverviewResponse, PolicyPack,
-    PolicyRule, ReplayRuleInput, ReplaySummary, SessionDetailResponse, SessionSummary,
+    HealthResponse, Incident, KillSwitchInput, KillSwitchState, McpServerEntry, OverviewResponse,
+    PolicyPack, PolicyRule, ReplayRuleInput, ReplaySummary, SessionDetailResponse, SessionSummary,
     UpdateFindingInput, UpdateRuleModeInput,
 };
 
@@ -54,6 +54,7 @@ pub fn build_router(state: AppState, web_dir: Option<PathBuf>) -> Router {
         .route("/api/v1/approvals/{id}/decide", post(decide_approval))
         .route("/api/v1/findings", get(list_findings))
         .route("/api/v1/findings/{id}", patch(update_finding))
+        .route("/api/v1/incidents", get(list_incidents))
         .route(
             "/api/v1/kill-switch",
             get(get_kill_switch).post(post_kill_switch),
@@ -231,6 +232,10 @@ async fn decide_approval(
 async fn list_findings(State(state): State<AppState>) -> Json<Vec<Finding>> {
     let guard = state.inner.read().await;
     Json(guard.findings.clone())
+}
+
+async fn list_incidents(State(state): State<AppState>) -> Json<Vec<Incident>> {
+    Json(state.incidents().await)
 }
 
 async fn update_finding(

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertOctagon, Check, Hand, ShieldOff } from "lucide-react";
+import { AlertOctagon, Check, Hand, Layers, ShieldOff } from "lucide-react";
 import { api } from "../api";
 import { Quoted } from "../components/Quoted";
 import type {
@@ -7,6 +7,7 @@ import type {
   Finding,
   FindingLifecycle,
   GrantScope,
+  Incident,
   KillScope,
   KillSwitchState,
 } from "../types";
@@ -14,6 +15,7 @@ import type {
 interface RespondPageProps {
   approvals: ApprovalRequest[];
   findings: Finding[];
+  incidents: Incident[];
   killSwitch: KillSwitchState;
   defaultSessionId: string;
   onUpdated: () => void;
@@ -22,6 +24,7 @@ interface RespondPageProps {
 export function RespondPage({
   approvals,
   findings,
+  incidents,
   killSwitch,
   defaultSessionId,
   onUpdated,
@@ -193,6 +196,81 @@ export function RespondPage({
                 </div>
               );
             })}
+          </div>
+        )}
+      </section>
+
+      <section className="surface">
+        <div className="page-header">
+          <h2 className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Layers size={16} />
+            <span>Correlated incidents ({incidents.length})</span>
+          </h2>
+          <span style={{ fontSize: 12.5, color: "var(--ink-secondary)" }}>
+            Findings merged by session lineage, device, and enforcing labels
+          </span>
+        </div>
+
+        {incidents.length === 0 ? (
+          <p style={{ margin: 0, color: "var(--ink-secondary)" }}>No correlated incidents recorded.</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Incident</th>
+                  <th>Session & device</th>
+                  <th>Labels</th>
+                  <th>Severity</th>
+                  <th>Lifecycle</th>
+                </tr>
+              </thead>
+              <tbody>
+                {incidents.map((inc) => (
+                  <tr key={inc.id}>
+                    <td>
+                      <strong>{inc.title}</strong>
+                      <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 4 }}>
+                        {inc.summary}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="mono">{inc.session_id}</div>
+                      <div style={{ fontSize: 12.5, color: "var(--ink-secondary)" }}>
+                        {inc.device_name}
+                      </div>
+                    </td>
+                    <td>
+                      {inc.labels.length === 0 ? (
+                        <span style={{ color: "var(--ink-muted)", fontSize: 12 }}>None</span>
+                      ) : (
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                          {inc.labels.map((lbl) => (
+                            <span key={lbl} className="badge info">
+                              {lbl}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      <span
+                        className={`badge ${
+                          inc.severity === "critical" || inc.severity === "high" ? "danger" : "warning"
+                        }`}
+                      >
+                        {inc.severity}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge ${inc.lifecycle === "resolved" ? "success" : "info"}`}>
+                        {inc.lifecycle}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </section>

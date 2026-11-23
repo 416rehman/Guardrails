@@ -13,13 +13,13 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{RwLock, broadcast};
 use uuid::Uuid;
 
-use grdr_core::{detect, policy};
+use grdr_core::{detect, policy, session};
 use grdr_model::error::{CODE_INVALID_INPUT, CODE_NOT_FOUND};
 use grdr_model::eval::add_seconds;
 use grdr_model::{
     ActionAttempt, ApprovalRequest, ApprovalState, AuditEntry, BatchEventsInput,
     BatchEventsResponse, CodedError, DecideInput, DecisionReceipt, Device, DeviceCheckinRequest,
-    DeviceCheckinResponse, Finding, Grant, KillSwitchState, LiveEvent, PolicyPack,
+    DeviceCheckinResponse, Finding, Grant, Incident, KillSwitchState, LiveEvent, PolicyPack,
     SessionDetailResponse, SessionSummary, Verdict, slugify_id, summarize_sessions,
 };
 
@@ -216,13 +216,17 @@ impl AppState {
 
         let receipt = {
             let mut guard = self.inner.write().await;
+            let mut sess_state = session::replay_session_states(&guard.attempts, &guard.receipts)
+                .remove(&attempt.session_id)
+                .unwrap_or_else(|| session::SessionRuleState::new(attempt.session_id.clone()));
             let receipt = {
                 let data = &mut *guard;
-                policy::evaluate_mut(
+                policy::evaluate_with_session(
                     &attempt,
                     &data.packs,
                     &mut data.grants,
                     &data.kill_switch,
+                    &mut sess_state,
                     now,
                 )
             };
@@ -343,7 +347,16 @@ impl AppState {
 
     pub async fn sessions(&self) -> Vec<SessionSummary> {
         let guard = self.inner.read().await;
-        summarize_sessions(&guard.attempts, &guard.receipts)
+        let states = session::replay_session_states(&guard.attempts, &guard.receipts);
+        let mut summaries = summarize_sessions(&guard.attempts, &guard.receipts);
+        session::attach_session_labels(&mut summaries, &states);
+        summaries
+    }
+
+    pub async fn incidents(&self) -> Vec<Incident> {
+        let guard = self.inner.read().await;
+        let states = session::replay_session_states(&guard.attempts, &guard.receipts);
+        detect::correlate_incidents(&guard.findings, &states)
     }
 
     pub async fn list_approvals(&self) -> Vec<ApprovalRequest> {
@@ -362,7 +375,10 @@ impl AppState {
         session_id: &str,
     ) -> Result<SessionDetailResponse, CodedError> {
         let guard = self.inner.read().await;
-        let summary = summarize_sessions(&guard.attempts, &guard.receipts)
+        let states = session::replay_session_states(&guard.attempts, &guard.receipts);
+        let mut summaries = summarize_sessions(&guard.attempts, &guard.receipts);
+        session::attach_session_labels(&mut summaries, &states);
+        let summary = summaries
             .into_iter()
             .find(|s| s.id == session_id)
             .ok_or_else(|| {
