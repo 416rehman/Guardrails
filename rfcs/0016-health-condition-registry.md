@@ -3,11 +3,11 @@ Title: Health condition registry, generated grdr-schema health module, first-run
 Author: chief-architect
 Harness: Antigravity
 Model: Gemini 4 Neon (pro)
-State: Review
+State: Accepted
 Design issue: #668
 Spine: P1, P8, P9, P14, P17, D-15, D-37, D-48, D-52, D-59, D-60, D-61, D-63, D-68, D-69 (no spine text changes)
 Surfaces: schema/health.toml; public crate `grdr-schema` (layer 0) module `health` (`HealthCode`, `HealthEntry`, `HealthSeverity`, `HealthScope`, `HealthSurface`, `ConditionStatus`, `ConditionState`, `Retirement`, `ALL`, `ACTIVE`, `find`, and active `HealthCode` constants); language-token ids `health.<code>.{meaning,cause,fix}` (`interface/strings/src/health.mf2.toml`) and docs anchor `codes/<code>`. As amendments: RFC 0007 sections 2 R10, 4 and 8 (source file layout, `layout` test, `trust-core` lines and base-build `history`). As proposals: docs/design/11 section 11, Interfaces table and Extension points; docs/design/34 reference labels; `#675`/`#1687` health lane boundary (`health.sensor` vs condition registry). No dependency, wire format, Cedar schema or same-layer edge changes
-Decision record: none yet
+Decision record: docs/decisions/ADR-0050-health-condition-registry-adopted-by-rfc-0016.md
 
 ## Summary
 
@@ -564,8 +564,36 @@ None. Open operational policy choices from `#668` (registry path `schema/health.
 
 - **Spine check:** Verified against pinned [`docs/design/00-decisions.md`](../docs/design/00-decisions.md) in [`rfcs/pins.toml`](./pins.toml) (git blob `a80859235e7a2a4444648d6fa8d389d78dde6be9`, sha256 `8f6ea876777c0121ecec068c0bc4cef45932be45c1c2aff4140712db1e06628d`). Zero spine text changes are proposed (`State` vocabulary uses `Mode`, surface states `Protected`, `Degraded`, `Safe mode` + `Stale`, and no `case` object).
 - **Route ([design/30](../docs/design/30-open-source-governance-and-community.md) section 3, [ADR-0043](../docs/decisions/ADR-0043-lean-token-optimised-agent-team.md), `#668` R1):** Persona council seats on `#668`, `eval-architecture` / `eval-review`, and a second evaluator (`eval-security`) on a distinct model/provider (`Provider:` and `Model:` recorded in every verdict), followed by chief architect decision with written reasons and no waiting period (owner instruction 7).
-- **Review record links (populated on acceptance):** Pending review on `#668`.
+- **Review record links (populated on acceptance):**
+  - `eval-review` (`Google`, `Gemini 4 Carbon`, Round 2, `pass`): https://github.com/416rehman/Guardrails/issues/668#issuecomment-7099935189
+  - `eval-security` (`Google`, `Gemini 4 Neon`, Round 2, `pass`): https://github.com/416rehman/Guardrails/issues/668#issuecomment-7099935784
 
 ## Decision
 
-None yet.
+Accepted by the chief architect on 2026-11-23 under `#1828` owner delegation (`D-61`, [ADR-0043](../docs/decisions/ADR-0043-lean-token-optimised-agent-team.md)), on reviewed RFC file blob `90aec1dd91c95a528302ebde29cfd1e77b62e48b` (SHA-256 `76e4364b46856def1fcd7244aaaa9730a815721dd70ac38a9852898bda89e7e0`, PR `#2041` head commit `29b5d444a953160440c9ef12d6f2bb0aa88405d1`, merged to `main` at `1771fa281fb1c55c51b961070e089e58095e5a88`), with the spine pin in force ([`rfcs/pins.toml`](./pins.toml)), blob `a80859235e7a2a4444648d6fa8d389d78dde6be9` (SHA-256 `8f6ea876777c0121ecec068c0bc4cef45932be45c1c2aff4140712db1e06628d`), as its base. [ADR-0050](../docs/decisions/ADR-0050-health-condition-registry-adopted-by-rfc-0016.md) records the decision.
+
+This RFC decides no pinned path of [`rfcs/pins.toml`](./pins.toml), so this section holds no decision line, `rfcs/pins.toml` does not change, and no file is added under `rfcs/evidence/` ([RFC 0001](./0001-adopt-the-spine.md#design); [ADR-0036](../docs/decisions/ADR-0036-the-amended-spine-is-the-baseline-adopted-by-rfc-0001.md)). [RFC 0007](./0007-grdr-model-and-grdr-schema-slice-0-surface.md) is not edited directly; sections 2, 5 and 6 of this RFC state its amendments (RFC 0007 section 2 `R10` ten-file modular `layout`, section 4 `"Content, not surface"`, and section 8 four `health` lines on `security/trust-core.paths` and `schema-health-history.yml`). The accepted file differs from `90aec1dd` only in `State:`, `Decision record:`, the review link lines above and this `Decision` section.
+
+### Reasons
+1. **Single authoritative registry and layer-0 sealed surface (sections 2 to 5).** Placing the registry at `schema/health.toml` (`squad:core` in `.claude/owners.toml`) beside `schema/codes/` and generating `crates/grdr-schema/src/health/generated.rs` behind `generated::Seal(())` guarantees that external crates can construct `HealthCode` values only from active generated constants, read `severity`, `scopes`, `surface`, and `stale` solely from the registry (`#147` R2, R3), and keep `grdr-schema` `#![no_std]`, dependency-free, `Display`-free, panic-free, and `wasm32`-ready (`P8`, `P9`, `P14`, `P17`, `D-69`).
+2. **Acyclic retirement, immutable semantics, and hardened base-build `history` (section 5).** Static generation enforces all 13 refusal classes and acyclic `replaced_by` chains while preserving multi-step `A -> B -> C` history; base-built `history()` reads expected `retired_in` from base `crates/grdr-schema/Cargo.toml` and head `schema/health.toml` as bounded regular-file data under `#1943` R5 (`contents: read`, fail-closed `"could not look"`).
+3. **`"Content, not surface"` and RFC 0010 token sequencing (sections 6 and 8).** Following RFC 0007 section 4 lets future conditions join as `tier:high` content with `drift`, `history`, `grdr-interface-gen` tokens, `/codes/<code>` pages (`F2`), and `docs/runbooks/` coverage (`F7`), while applying [RFC 0010](./0010-code-tokens-before-the-token-check.md) R1 to R5 unblocks `#2056` (`Item 1`) ahead of `#2057` (`Item 2`, `#1613`, `#1853`).
+4. **Eleven slice-0 seed conditions and `#675` telemetry boundary (sections 1 and 7).** Freezing the eleven initial entries verifies all surface-state branches (`safe-mode` alone sets `Safe mode`; `floor-missing` and `sandbox-violation` are `critical` with `surface = "none"`; `stale-bundle` is `warn` with `stale = true`; `#1673`'s three key-custody/publish codes are frozen; `spool-unwritable` stays `#476`'s RFC), while cleanly separating `schema/health.toml` conditions from on-change `health.sensor` (`decision, A`) and periodic `Heartbeat` / `bulk` roll-ups (`#675`, `#1687`).
+
+### Review it rests on
+On PR `#2041` (`29b5d444a953160440c9ef12d6f2bb0aa88405d1`, merged at `1771fa281fb1c55c51b961070e089e58095e5a88`), on reviewed RFC file blob `90aec1dd91c95a528302ebde29cfd1e77b62e48b` (`Proposed text: none`, against spine pin `a80859235e7a2a4444648d6fa8d389d78dde6be9` under [ADR-0043](../docs/decisions/ADR-0043-lean-token-optimised-agent-team.md) and [`.claude/risk-tiers.toml`](../.claude/risk-tiers.toml) `[checklist_addons].rfc`):
+- `eval-review` (`Google`, `Gemini 4 Carbon`, Round 2, `pass`): https://github.com/416rehman/Guardrails/issues/668#issuecomment-7099935189
+- `eval-security` (`Google`, `Gemini 4 Neon`, Round 2, `pass`): https://github.com/416rehman/Guardrails/issues/668#issuecomment-7099935784
+- CI checks on PR `#2041` (`29b5d444a953160440c9ef12d6f2bb0aa88405d1`) and merge commit (`1771fa281fb1c55c51b961070e089e58095e5a88`): `verify`, `docs`, `scan`, `codeql`, and `fuzz` passed (`ClusterFuzzLite` skipped until fuzz targets exist).
+
+Under `#1828` owner delegation (`issuecomment-7074036273`) and [ADR-0043](../docs/decisions/ADR-0043-lean-token-optimised-agent-team.md), the RFC is accepted on the first round in which both required distinct-model evaluators pass with no blocker or major, with no 9-seat persona council fan-out.
+
+### Filed on acceptance
+- `#2056` (`Item 1`, `lead-core`, `tier:high`, `trust-core`, `priority:p0`): `schema/health.toml` (11 slice-0 entries), `grdr_schema::health`, `health_gen`, modular `tests/construction.rs` `layout` & `cases`, refusal fixtures, and `crates/grdr-schema/AGENTS.md` steps (blocked by `#668` and `#278`; not blocked by `#2057` per RFC 0010).
+- `#2057` (`Item 2`, `lead-interfaces`, `tier:medium`, `priority:p1`): `interface/strings/src/health.mf2.toml` (33 slice-0 tokens and all `ALL` entries at merge base) and `grdr-interface-gen` health token check with RFC 0010 R5 merge-base verification (blocked by `#2056`, `#1613`, `#1853`).
+- `#2058` (`Item 3`, `lead-agent-kit`, `tier:high`, `trust-core`, `priority:p0`): four hand-authored `health` lines on `security/trust-core.paths`, `.github/workflows/schema-health-history.yml`, and `#1943` R2 `drift` integration (blocked by `#2056` and `#1943`).
+- `#2059` (`chief-architect`, `kind:design`, `tier:low`, `priority:p2`): text amendments to `docs/design/11-endpoint-engineering.md` and `docs/design/34-documentation-support-and-lifecycle.md` (blocked by `#668`; `#1687` R3 already holds the `#675` `docs/design/04` edit).
+
+### Downstream write-backs and dependency re-pointing
+- Re-pointed `blockedBy` on `#147`, `#476`, `#1636`, and `#1644` from `#668` to `#2056` (`R11`, `AC-4`).
+- Posted explicit RFC 0016 write-back and amendment notes on `#147` (`issuecomment-7099995415`), `#476` (`issuecomment-7099992578`), `#1636` (`issuecomment-7099990167`), `#1644` (`issuecomment-7099998608`), `#149` (`issuecomment-7099989642`), `#421` (`issuecomment-7099996006`), `#427` (`issuecomment-7099996519`), `#1538` (`issuecomment-7099997529`), `#1673` (`issuecomment-7099994630`), `#675` (`issuecomment-7099998096`), `#1687` (`issuecomment-7099992036`), `#278` (`issuecomment-7099991305`), `#1943` (`issuecomment-7099993303`), `#1629` (`issuecomment-7099990645`), and `#1853` (`issuecomment-7099994014`), recorded in [ADR-0050](../docs/decisions/ADR-0050-health-condition-registry-adopted-by-rfc-0016.md).
