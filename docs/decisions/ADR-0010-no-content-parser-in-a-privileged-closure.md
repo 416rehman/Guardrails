@@ -1,6 +1,6 @@
 # ADR-0010: No content parser in the dependency closure of a privileged program
 
-- Status: proposed, partly superseded by ADR-0029
+- Status: proposed, partly superseded by ADR-0029 and ADR-0046
 - Date: 2026-11-11
 - Decided by: chief architect
 - Spine: D-20, D-63
