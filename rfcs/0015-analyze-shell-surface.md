@@ -3,11 +3,11 @@ Title: The grdr-core::analyze public surface for the shell canonicaliser
 Author: chief-architect
 Harness: antigravity
 Model: Gemini 4 Neon
-State: Review
+State: Accepted
 Design issue: #413
 Spine: D-05, D-10, D-15, D-60, D-61, D-63, D-69, P1, P5, P8, P9, P14, P17 (no spine text changes)
 Surfaces: the public crate `grdr-core` (layer 1, stability `experimental`), module `analyze`: `Resolution<T>`, `UnresolvedReason`, `UnresolvedKind`, `MalformedReason`, `LimitKind`, `Span`, and module `analyze::shell` (`ShellDialect`, `ShellInput`, `ShellLimits`, `ShellLimitsError`, `CommandTree`, `ListItem`, `ListConnector`, `Pipeline`, `Command`, `SimpleCommand`, `Assignment`, `Redirect`, `RedirectOp`, `canonicalise`); the error-code area `ANALYZE` with six codes (`GRDR-ANALYZE-0001` to `GRDR-ANALYZE-0006`) under `schema/codes/areas.toml` and `schema/codes/analyze.toml`. As proposals: `pub mod analyze;` in `crates/grdr-core/src/lib.rs`, dependencies `grdr-schema`, `grdr-model` and `brush-parser` (default features off) in `crates/grdr-core/Cargo.toml`, `[bound.analyze.shell.*]` rows in `limits.toml`, `libfuzzer-sys` in `fuzz/Cargo.toml`, and `fuzz/Cargo.toml` plus `fuzz/fuzz_targets/shell_*.rs` in `.claude/owners.toml`. No spine text, wire format, Cedar schema, same-layer edge or `surfaces.toml` stability class changes
-Decision record: none yet
+Decision record: docs/decisions/ADR-0049-analyze-shell-surface-adopted-by-rfc-0015.md
 
 To comment, write on issue #413 of this repository; you need no account on any service other than the code host. A security fix under embargo (D-62) may change a public surface without an RFC; open a retroactive RFC when the fix is disclosed.
 
@@ -445,6 +445,21 @@ How review binds the decision ([RFC 0001](./0001-adopt-the-spine.md), "Review bi
 - This RFC lands on `main` in `State: Review` before the commit that decides it (RFC 0001, "RFC states"). Once both required evaluators pass on `#413`, the decision commit changes only `State:`, `Decision record:`, review link lines below and `## Decision`, and records the decision in `docs/decisions/ADR-NNNN-*.md`.
 
 Verdicts on `#413` are linked below, one per line.
+- `eval-review` (`Google`, `Gemini 4 Carbon`, round 2 pass, 0 blockers / 0 majors, on `c97afd1ad243faf9f9a05755e630aad54a0b3137` at `bd341e454242c8643256dda8c21594d28586edba`, `Proposed text: none`, base `a80859235e7a2a4444648d6fa8d389d78dde6be9`): https://github.com/416rehman/Guardrails/issues/413#issuecomment-7099934036
+- `eval-security` (`Google`, `Gemini 4 Neon`, round 2 pass, 0 findings, on `c97afd1ad243faf9f9a05755e630aad54a0b3137` at `bd341e454242c8643256dda8c21594d28586edba`, `Proposed text: none`, base `a80859235e7a2a4444648d6fa8d389d78dde6be9`): https://github.com/416rehman/Guardrails/issues/413#issuecomment-7099934593
 
 ## Decision
-Pending.
+Accepted by the chief architect under D-61 on pre-acceptance reviewed RFC file blob `c97afd1ad243faf9f9a05755e630aad54a0b3137` (SHA-256 `6bbf15ae532229e5de81dd5aa500783cff87fc60982e0a2a4a4b13a4d7354973`, PR #2039 revision 2 `bd341e454242c8643256dda8c21594d28586edba` merged on `main` at `bd00bb94bd2d1f19a93b91d9b7a9faf003421bc0`), against spine pin `a80859235e7a2a4444648d6fa8d389d78dde6be9` (SHA-256 `8f6ea876777c0121ecec068c0bc4cef45932be45c1c2aff4140712db1e06628d`). [ADR-0049](../docs/decisions/ADR-0049-analyze-shell-surface-adopted-by-rfc-0015.md) records the decision.
+
+This RFC decides no pinned path of [`rfcs/pins.toml`](./pins.toml), so this section holds no decision line, `rfcs/pins.toml` stays unchanged, and no file enters `rfcs/evidence/` ([RFC 0001](./0001-adopt-the-spine.md), "RFC states"; [ADR-0036](../docs/decisions/ADR-0036-the-amended-spine-is-the-baseline-adopted-by-rfc-0001.md)). The accepted file differs from `c97afd1ad243faf9f9a05755e630aad54a0b3137` only in `State:`, `Decision record:`, the two verdict link lines above and this `Decision` section.
+
+### Reasons
+1. **Fixes the `grdr_core::analyze` and `grdr_core::analyze::shell` slice-0 surface (R1).** Exports `pub mod analyze;` on `grdr-core` (keeping `experimental` in `surfaces.toml`, RFC 0005), with `Resolution<T>` (`Resolved`, non-empty `Unresolved(Vec<UnresolvedReason>)`, `Malformed`, no `Default`/`Display`/variant coercion), `Span` (`u32` byte offsets), `ShellDialect` (`Posix`, `PowerShell`, `Cmd` rejecting non-POSIX dialects to `UnsupportedDialect` until `#894`), non-empty `Pipeline`, `Command::Subshell { tree, redirects }`, `ShellLimits::from_schema()` reading `[bound.analyze.shell.*]` from `grdr_schema::limits`, and `canonicalise(&ShellInput, &ShellLimits) -> Resolution<CommandTree>`.
+2. **Preserves layer cohesion and `ARCH-013` (R2).** Keeping `Resolution<T>`, `UnresolvedReason` and `MalformedReason` in `grdr_core::analyze` avoids pulling shell error taxonomies into `grdr-model` or breaking the single-parameter signature before E2.3/E2.4 or an external layer 1 crate needs promotion or a `grdr-analyze` split via future RFC, while keeping `grdr_fastpath::Resolution<T>` (`#![no_std]`) independent.
+3. **Binds `GRDR-ANALYZE-*` codes and `limits.toml` bounds to the slice-0 schema mechanisms (R3).** Registers area `ANALYZE` and `GRDR-ANALYZE-0001`..`0006` in `schema/codes/analyze.toml` (`Coded` exhaustive match, no `"GRDR-"` literal per `ARCH-017`, language tokens routed per RFC 0010 / ADR-0044), and reads the five `[bound.analyze.shell.*]` rows from `limits.toml` via `grdr_schema::limits` (`ARCH-019`, D-69, P14), closing pre-RFC-0007 `#416` drift.
+4. **Encapsulates `brush-parser` and resolves `#22-E1` fail-closed (R4).** Admits `brush-parser` (MIT, `default-features = false`) privately in `grdr-core` and `libfuzzer-sys` in `fuzz/` via `#415` (Option A of `#22-E1`) with zero `brush_parser` types or `From`/`TryFrom` impls on the public surface (`ARCH-007`), preserving zero-API-change replacement if `#415` AC-2 finds a `wasm32` blocker.
+5. **Two-model review passed with all round-1 security findings closed.** On blob `c97afd1ad243faf9f9a05755e630aad54a0b3137` (`bd341e454242c8643256dda8c21594d28586edba`), both required evaluators under [ADR-0043](../docs/decisions/ADR-0043-lean-token-optimised-agent-team.md) and [`.claude/risk-tiers.toml`](../.claude/risk-tiers.toml) passed in round 2 on two distinct models (`eval-review` on `Google` / `Gemini 4 Carbon`, `issuecomment-7099934036`, 0 blockers/0 majors; `eval-security` on `Google` / `Gemini 4 Neon`, `issuecomment-7099934593`, 0 findings, confirming closure of round 1's two blockers and two majors on state-mutating/prefixed POSIX special built-ins, `command`/`builtin` wrappers, Billion-Laughs / `ShellInput.env` bounds, subshell redirects and unquoted `argv[0]`/`Redirect.target` globs), with all 17 active CI checks passing before PR #2039 merged.
+
+### Follow-up items and write-backs
+- **Filed on acceptance:** `#2053` (protected change in `limits.toml` + `grdr_schema::limits` + `.claude/owners.toml`, replacing closed `#416`, blocked by `#413` merge and `#279`) and `#2054` (`docs/design/13` section 8 and `docs/design/03` section 2 updates, blocked by `#413` merge).
+- **Downstream write-backs (to post on merge):** `#22`, `#415`, `#422` to `#426`, `#278`, `#279`, `#284`, `#1853`, `#894`, `#1582` and `#1741` as listed in [ADR-0049](../docs/decisions/ADR-0049-analyze-shell-surface-adopted-by-rfc-0015.md#follow-up-items-and-downstream-write-backs).
