@@ -81,7 +81,7 @@ flowchart LR
 | `grdr-schema/policy/v1alpha1.cedarschema` and the annotation list, parsed with the `cedar-policy` crate | Entities, actions, context, annotations, rule classes with default grade and loss behaviour | 12 |
 | `grdr.config.v1alpha1.Config` | Every key: type, default, stability, `security`, `GRDR_*` name, plist, registry and JSON forms, which layers may set it | 03 |
 | CLI command tree | Pages and man pages per `grdr <noun> <verb>`, exit codes, `--json` schema | 23 |
-| Error register, `health.toml`, metrics, `limits.toml` | One anchored entry per code: meaning, cause, fix command, runbook | 03, 11 |
+| Error register, `schema/health.toml`, metrics, `limits.toml` | One anchored entry per code: meaning, cause, fix command, runbook | 03, 11 |
 | Field registry and capture levels | "What is collected at each capture level"; feeds the disclosure surface and 29's worker notice | 04, 16, 29 |
 | `surfaces.toml`, `support.toml`, conformance results | Stability table (D-60); support matrix (section 11) | 03 |
 | Content-repository packs | A page per public rule id: intent, `@message`, class, default Mode, approver, tier, data classes read; no matcher internals | 12, 13 |
@@ -340,7 +340,7 @@ Words come only from the glossary (`schema/vocabulary.toml`). Sentence case. But
 | `support-matrix.json`, `release-notes.json` | Signed release artefacts | 24, 27, 28, 11, 20 |
 | `release_note` block | TOML in the pull-request body | Pull-request template, the `docs` CI job |
 | `docs-index.json`, `llms.txt`, `llms-full.txt` | Static files per version | The agents, 23 |
-| Doctor JSON, bundle manifest, `health.toml` | Schemas and registry | 11, 20 |
+| Doctor JSON, bundle manifest, `schema/health.toml` | Schemas and registry | 11, 20 |
 | SupportGrant | 21's resource, 23's access request API | 21, 23 |
 
 ## Behaviour by deployment shape
