@@ -168,7 +168,7 @@ The osquery reference point (200 MB, 10% CPU for 12 s, measured against the whol
 | Admin config | `/etc/grdr/config.toml`, `config.d/` | `/Library/Application Support/grdr/config/`; MDM domain in the brand manifest | `C:\ProgramData\grdr\config\`; `HKLM\SOFTWARE\Policies\<brand>` |
 | State (epoch, spool, pack store, journal) | `/var/lib/grdr` | `/Library/Application Support/grdr/state` | `C:\ProgramData\grdr\state` |
 | Engine data | `/var/lib/grdr-engine` | `/var/db/grdr-engine` | `C:\ProgramData\grdr\engine`, granted to the engine's service SID |
-| Runtime endpoints | `/run/grdr` | `/var/run/grdr` | `\\.\pipe\` names from 07 |
+| Runtime endpoints | `/run/grdr` | `/Library/Application Support/grdr/run` (non-symlink root-owned ancestor hierarchy from `/`, avoiding the `/var` symlink to `private/var`; `decide.sock` is 49 bytes, under the 104-byte `sun_path` limit) | `\\.\pipe\` names from 07 |
 | User profile (everything, slots included) | `~/.local/share/grdr/` and the XDG config, state and runtime directories | `~/Library/Application Support/grdr/` | `%LOCALAPPDATA%\grdr\` |
 | Status snapshot for unprivileged readers | `/var/lib/grdr/status.pb` | `.../grdr/state/status.pb` | `C:\ProgramData\grdr\state\status.pb` |
 
