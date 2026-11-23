@@ -1,0 +1,10 @@
+schema = "grdr.lab.job.v1"
+description = "Negative selftest verifying non-zero command exit fails the cell after uploading evidence"
+systems = ["linux-x64"]
+timeout_minutes = 5
+command = """
+set -euo pipefail
+printf 'commit=%s\nsystem=%s\nstatus=expected-failure\n' "$GRDR_LAB_COMMIT" "$GRDR_LAB_SYSTEM" > "$GRDR_LAB_EVIDENCE_DIR/marker.txt"
+echo "wrote $GRDR_LAB_EVIDENCE_DIR/marker.txt; exiting 3"
+exit 3
+"""

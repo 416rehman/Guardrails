@@ -1,0 +1,22 @@
+schema = "grdr.lab.job.v1"
+description = "Verify hosted lab runners, architecture, Defender state, and pinned toolchain versions"
+systems = ["linux-x64", "macos-arm64", "windows-x64"]
+timeout_minutes = 15
+command = """
+set -euo pipefail
+{
+  echo "commit=$(git rev-parse HEAD)"
+  echo "uname=$(uname -a)"
+  echo "git=$(git --version)"
+  echo "rustc=$(rustc --version)"
+  echo "cargo=$(cargo --version)"
+  if command -v python3 > /dev/null 2>&1 && python3 --version > /dev/null 2>&1; then
+    echo "python=$(python3 --version)"
+  elif command -v python > /dev/null 2>&1; then
+    echo "python=$(python --version)"
+  fi
+  if command -v node > /dev/null 2>&1; then
+    echo "node=$(node --version)"
+  fi
+} | tee "$GRDR_LAB_EVIDENCE_DIR/selftest.txt"
+"""

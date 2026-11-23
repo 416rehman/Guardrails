@@ -1,0 +1,262 @@
+name: lab
+
+run-name: lab / ${{ inputs.job }} @ ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      job:
+        description: Lab job name under lab/jobs/<job>.toml
+        required: true
+        type: string
+      systems:
+        description: Systems to run
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - linux-x64
+          - macos-arm64
+          - windows-x64
+
+permissions: {}
+
+concurrency:
+  group: lab-${{ inputs.job }}-${{ inputs.systems }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  MAX_TIMEOUT_MINUTES: "60"
+  ARTIFACT_RETENTION_DAYS: "14"
+  RUNNER_LABELS: '{"linux-x64":"ubuntu-26.04","macos-arm64":"macos-26","windows-x64":"windows-2025"}'
+
+jobs:
+  plan:
+    name: Plan lab cells
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      job: ${{ steps.plan.outputs.job }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      has_cells: ${{ steps.plan.outputs.has_cells }}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+        with:
+          install: "false"
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      - id: plan
+        shell: bash
+        env:
+          JOB_NAME: ${{ inputs.job }}
+          SYSTEMS_FILTER: ${{ inputs.systems }}
+          RUNNER_LABELS: ${{ env.RUNNER_LABELS }}
+          MAX_TIMEOUT_MINUTES: ${{ env.MAX_TIMEOUT_MINUTES }}
+        run: |
+          python3 -I - <<'EOF'
+          import json, os, pathlib, re, sys, tomllib
+
+          job = os.environ["JOB_NAME"]
+          if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", job):
+              print(f"::error::invalid job name {job!r}", file=sys.stderr)
+              sys.exit(1)
+
+          job_path = pathlib.Path("lab/jobs") / f"{job}.toml"
+          if not job_path.is_file():
+              print(f"::error::lab job file not found: {job_path}", file=sys.stderr)
+              sys.exit(1)
+
+          data = tomllib.loads(job_path.read_text(encoding="utf-8"))
+          if data.get("schema") != "grdr.lab.job.v1":
+              print(f"::error::unexpected schema in {job_path}: {data.get('schema')!r}", file=sys.stderr)
+              sys.exit(1)
+
+          for key in ("description", "command"):
+              if not isinstance(data.get(key), str) or not data[key].strip():
+                  print(f"::error::{job_path} key {key!r} must be a non-empty string", file=sys.stderr)
+                  sys.exit(1)
+
+          systems = data.get("systems")
+          if not isinstance(systems, list) or not systems or not all(isinstance(item, str) for item in systems):
+              print(f"::error::{job_path} key 'systems' must be a non-empty list of strings", file=sys.stderr)
+              sys.exit(1)
+
+          runner_labels = json.loads(os.environ["RUNNER_LABELS"])
+          unknown = [item for item in systems if item not in runner_labels]
+          if unknown:
+              print(f"::error::{job_path} contains unknown systems: {unknown}", file=sys.stderr)
+              sys.exit(1)
+          if len(set(systems)) != len(systems):
+              print(f"::error::{job_path} contains duplicate systems: {systems}", file=sys.stderr)
+              sys.exit(1)
+
+          max_timeout = int(os.environ["MAX_TIMEOUT_MINUTES"])
+          timeout_minutes = data.get("timeout_minutes")
+          if isinstance(timeout_minutes, bool) or not isinstance(timeout_minutes, int) or not (1 <= timeout_minutes <= max_timeout):
+              print(f"::error::{job_path} timeout_minutes must be an integer in 1..={max_timeout}", file=sys.stderr)
+              sys.exit(1)
+
+          system_filter = os.environ["SYSTEMS_FILTER"]
+          if system_filter != "all" and system_filter not in runner_labels:
+              print(f"::error::unknown systems filter {system_filter!r}", file=sys.stderr)
+              sys.exit(1)
+          selected = systems if system_filter == "all" else [item for item in systems if item == system_filter]
+          matrix = [
+              {"system": item, "runner": runner_labels[item], "timeout_minutes": timeout_minutes}
+              for item in selected
+          ]
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              handle.write(f"job={job}\n")
+              handle.write(f"matrix={json.dumps(matrix, separators=(',', ':'))}\n")
+              handle.write(f"has_cells={'true' if matrix else 'false'}\n")
+          EOF
+
+  cell:
+    needs: plan
+    if: needs.plan.outputs.has_cells == 'true'
+    name: ${{ needs.plan.outputs.job }} (${{ matrix.cell.system }})
+    strategy:
+      fail-fast: false
+      matrix:
+        cell: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.cell.runner }}
+    timeout-minutes: ${{ matrix.cell.timeout_minutes }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      - name: Prepare evidence directory
+        env:
+          JOB_NAME: ${{ needs.plan.outputs.job }}
+          SYSTEM_NAME: ${{ matrix.cell.system }}
+        run: mkdir -p "target/lab/$JOB_NAME/$SYSTEM_NAME"
+      - name: Verify macOS arm64 architecture
+        if: matrix.cell.system == 'macos-arm64'
+        run: |
+          arch=$(uname -m)
+          if [ "$arch" != "arm64" ]; then
+            echo "::error::expected arm64 architecture on macos-arm64, got $arch"
+            exit 1
+          fi
+      - name: Verify Windows Defender status
+        if: matrix.cell.system == 'windows-x64'
+        shell: pwsh
+        env:
+          JOB_NAME: ${{ needs.plan.outputs.job }}
+          SYSTEM_NAME: ${{ matrix.cell.system }}
+        run: |
+          $status = Get-MpComputerStatus | Select-Object AMServiceEnabled, AntivirusEnabled, RealTimeProtectionEnabled, AMProductVersion
+          $evidenceDir = Join-Path "target/lab/$env:JOB_NAME" $env:SYSTEM_NAME
+          $defenderPath = Join-Path $evidenceDir "defender.json"
+          $status | ConvertTo-Json -Depth 2 | Set-Content -Path $defenderPath -Encoding utf8
+          if (-not ($status.AMServiceEnabled -and $status.AntivirusEnabled -and $status.RealTimeProtectionEnabled)) {
+            Write-Error "Windows Defender flags must all be true"
+            exit 1
+          }
+      - id: run
+        name: Run lab job command
+        env:
+          GRDR_LAB_JOB: ${{ needs.plan.outputs.job }}
+          GRDR_LAB_SYSTEM: ${{ matrix.cell.system }}
+          GRDR_LAB_COMMIT: ${{ github.sha }}
+          GRDR_LAB_EVIDENCE_DIR: target/lab/${{ needs.plan.outputs.job }}/${{ matrix.cell.system }}
+        run: |
+          for py in python3 python; do
+            if "$py" -I -c "import tomllib" > /dev/null 2>&1; then
+              python_bin="$py"
+              break
+            fi
+          done
+          if [ -z "${python_bin:-}" ]; then
+            echo "::error::no Python with tomllib on this runner"
+            exit 1
+          fi
+          command=$("$python_bin" -I -c 'import os, pathlib, sys, tomllib; cmd = tomllib.loads(pathlib.Path("lab/jobs", os.environ["GRDR_LAB_JOB"] + ".toml").read_text(encoding="utf-8"))["command"]; sys.stdout.buffer.write(cmd.replace("\r\n", "\n").encode("utf-8"))')
+          set +e
+          set -o pipefail
+          "$BASH" -c "$command" 2>&1 | tee "$GRDR_LAB_EVIDENCE_DIR/run.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+      - name: Write cell.json
+        env:
+          CELL_JOB: ${{ needs.plan.outputs.job }}
+          CELL_SYSTEM: ${{ matrix.cell.system }}
+          CELL_RUNNER_LABEL: ${{ matrix.cell.runner }}
+          CELL_COMMIT: ${{ github.sha }}
+          CELL_REF: ${{ github.ref }}
+          CELL_EXIT_CODE: ${{ steps.run.outputs.exit_code }}
+          CELL_EVIDENCE_DIR: target/lab/${{ needs.plan.outputs.job }}/${{ matrix.cell.system }}
+        run: |
+          for py in python3 python; do
+            if "$py" -I -c "import json" > /dev/null 2>&1; then
+              python_bin="$py"
+              break
+            fi
+          done
+          if [ -z "${python_bin:-}" ]; then
+            echo "::error::no Python found on this runner"
+            exit 1
+          fi
+          "$python_bin" -I - <<'EOF'
+          import json, os, pathlib
+
+          evidence_dir = pathlib.Path(os.environ["CELL_EVIDENCE_DIR"])
+          payload = {
+              "schema": "grdr.lab.cell.v1",
+              "job": os.environ["CELL_JOB"],
+              "system": os.environ["CELL_SYSTEM"],
+              "runner_label": os.environ["CELL_RUNNER_LABEL"],
+              "image": {
+                  "ImageOS": os.environ.get("ImageOS", ""),
+                  "ImageVersion": os.environ.get("ImageVersion", ""),
+              },
+              "commit": os.environ["CELL_COMMIT"],
+              "ref": os.environ["CELL_REF"],
+              "exit_code": int(os.environ["CELL_EXIT_CODE"]),
+          }
+          if os.environ["CELL_SYSTEM"] == "windows-x64":
+              defender_path = evidence_dir / "defender.json"
+              if defender_path.is_file():
+                  payload["defender"] = json.loads(defender_path.read_text(encoding="utf-8-sig"))
+          (evidence_dir / "cell.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+          EOF
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lab-${{ needs.plan.outputs.job }}-${{ matrix.cell.system }}-${{ github.sha }}
+          path: target/lab/${{ needs.plan.outputs.job }}/${{ matrix.cell.system }}/
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+          if-no-files-found: ignore
+      - name: Exit with cell command exit code
+        env:
+          EXIT_CODE: ${{ steps.run.outputs.exit_code }}
+        run: exit "${EXIT_CODE:-1}"
