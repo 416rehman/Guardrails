@@ -1,6 +1,9 @@
 # Trust-core paths (D-63, ADR-0043): strictly runtime security boundaries and core security/CI policy gates.
 # Routine dependency/tool pins (Cargo.toml, Cargo.lock, rust-toolchain.toml, supply-chain/build-tools.toml),
 # lint/format configs, release manifests, and agent/doc markdown sit outside trust-core so CI verifies them cleanly.
+# Each line is a git :(glob,icase) pathspec from the root, so ASCII case does not matter; `**/`
+# matches zero or more folders, and a folder line `x/**` also matches `x` itself.
+# .github/actions/tree-paths/trust_core_touched.py does the matching.
 
 # eBPF programs
 bpf/**
@@ -50,6 +53,12 @@ security/scorecard.toml
 .github/workflows/**
 supply-chain/licences.toml
 supply-chain/do-not-read.toml
+**/.cargo/**
+**/.gitattributes
+**/.gitmodules
+# Build-time code: every build script, and the folder (`<dir>/**`) of each workspace package whose
+# library target is a proc-macro, listed by the change that adds that target
+**/build.rs
 **/deny.toml
 **/deny.*.toml
 **/.deny.toml

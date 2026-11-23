@@ -3,6 +3,9 @@
 #   fast_track (0 evaluators) : green CI decides for dependency/tool pins, docs, tests, small fixes.
 #   medium     (1 evaluator)  : eval-review on standard tier for normal code/hooks/kits.
 #   high / trust_core (2)     : eval-review + eval-security on 2 distinct models/providers, max 2 rounds.
+# Every `paths` glob is a git :(glob,icase) pathspec from the root, with zero brace `{...}` globs,
+# so ASCII case does not matter; `**/` matches zero or more folders, and a folder line `x/**` also
+# matches `x` itself.
 
 [limits]
 max_rounds = 2
@@ -14,7 +17,9 @@ evaluators = ["eval-review", "eval-security"]
 
 [high]
 paths = [
-  "proto/**", "schema/**", "spec/**", "crates/grdr-{proto,schema,model,ports,wire}/**",
+  "proto/**", "schema/**", "spec/**",
+  "crates/grdr-proto/**", "crates/grdr-schema/**", "crates/grdr-model/**",
+  "crates/grdr-ports/**", "crates/grdr-wire/**",
   "specs/**"
 ]
 triggers = [

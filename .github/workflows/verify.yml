@@ -5,7 +5,9 @@ name: verify
 # nightly run and a manual run cover Linux, macOS and Windows on GitHub's free standard runners
 # (owner instruction 28); a private copy falls back to Linux with no nightly run, because private
 # runner minutes are limited. Until a crate lands under crates/ or programs/ the workspace has no
-# members, Cargo refuses every command, and the Rust steps are skipped. The tools job installs the
+# members, Cargo refuses every command, and the Rust steps are skipped. The plan job runs
+# .github/actions/tree-paths/check_tree.py on the commit, and every job that checks out calls
+# the .github/actions/tree-paths action for the pinned toolchain. The tools job installs the
 # release-asset build tools by digest on the same systems whether or not a crate exists.
 
 on:
@@ -49,6 +51,9 @@ jobs:
         env:
           CHANNEL: ${{ steps.toolchain.outputs.channel }}
         run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      # A refused path fails this job, and every job that needs it is skipped.
+      - name: Check the paths of the commit's tree
+        run: python3 -I -B .github/actions/tree-paths/check_tree.py --rev HEAD
       - id: plan
         env:
           GH_TOKEN: ${{ github.token }}
@@ -92,6 +97,8 @@ jobs:
         env:
           CHANNEL: ${{ steps.toolchain.outputs.channel }}
         run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      - name: Fetch main for the matcher's differential corpus
+        run: git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
       - run: python3 -I -B -m unittest discover -s .github/actions/tree-paths -p "test_*.py" -v
 
   rust:
