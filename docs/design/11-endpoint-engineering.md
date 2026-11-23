@@ -81,9 +81,11 @@ flowchart LR
 
 | Endpoint | Clients | Server-owner check by client | Peer check by daemon | Mutations |
 |---|---|---|---|---|
-| `decide` | shim, `grdr-run`, `grdr-mcp`, SDK, ACS adapter | Protected: socket and directory root-owned or pipe server is the service identity; User: owner equals caller uid | Kernel credentials, held handle, derived process key, session container lookup | None: decisions and reports only |
+| `decide` | shim, `grdr-run`, `grdr-mcp`, SDK, ACS adapter | RFC 0003 client table (`peer_auth::open`): Unix walks every node from `/` down (`lstat`, non-symlink, no other-write, group-write only in `trusted_groups` or caller's primary group, socket mode unchecked) and checks listener uid (`0` in Protected, caller in User); Windows checks pipe owner SID (`GetSecurityInfo`: expected service SID in Protected, caller SID in User) plus two equal SCM service-pid readings matching `GetNamedPipeServerProcessId` when a service is named (never `OpenProcess` on the service) | `peer_auth::accept` and `PendingPeer::first_frame`: kernel credentials, held handle (`ProcessHold`, `Atomic` or `Confirmed`), derived process key, session container lookup | None: decisions and reports only |
 | `local` | CLI, tray, desktop, `grdr console serve` | Same | Same, plus caller lineage: a caller inside any session container is an agent caller | Proposals only (D-31); agent callers may read their own status and nothing else (SR-04) |
 | `provider` | Registered verdict providers | Same | Must match the registration's expected peer identity (07 section 7) | None |
+
+At start, the daemon runs the same endpoint path rule through `grdr_wire::peer_auth::check_path` (recording `NoPath` on Windows, where first-instance pipe creation checks the endpoint, and removing an unheld stale socket only when `check_path` passes and `peer_auth::open` over `grdr-ipc-os` returns `Unreachable(Unavailable)`). On Windows accept, `grdr-ipc-os` stamps connect completion `connected_at` before anything else and `first_frame` verifies identification-level `message_identity` (`OpenAsSelf = TRUE`); consecutive server-side `Transient` refusals past `endpoint.transient-refusal-threshold` raise `peer-unverifiable` until a verification passes.
 
 **IPC framing and schema.** All local traffic uses 07's framing (4-byte little-endian length, 2 MiB cap, protobuf body). `grdr.decide.v1alpha1` belongs to 07. This document owns `grdr.local.v1alpha1`:
 
@@ -168,7 +170,7 @@ The osquery reference point (200 MB, 10% CPU for 12 s, measured against the whol
 | Admin config | `/etc/grdr/config.toml`, `config.d/` | `/Library/Application Support/grdr/config/`; MDM domain in the brand manifest | `C:\ProgramData\grdr\config\`; `HKLM\SOFTWARE\Policies\<brand>` |
 | State (epoch, spool, pack store, journal) | `/var/lib/grdr` | `/Library/Application Support/grdr/state` | `C:\ProgramData\grdr\state` |
 | Engine data | `/var/lib/grdr-engine` | `/var/db/grdr-engine` | `C:\ProgramData\grdr\engine`, granted to the engine's service SID |
-| Runtime endpoints | `/run/grdr` | `/Library/Application Support/grdr/run` (non-symlink root-owned ancestor hierarchy from `/`, avoiding the `/var` symlink to `private/var`; `decide.sock` is 49 bytes, under the 104-byte `sun_path` limit) | `\\.\pipe\` names from 07 |
+| Runtime endpoints | `/run/grdr` | `/Library/Application Support/grdr/run` (`decide.sock` is 49 bytes, under the 104-byte `sun_path` limit; zero symlinks from `/` down inside the root-owned `/Library/Application Support/grdr/` installer hierarchy, avoiding macOS's `/var` symlink to `private/var` and mirroring the User-profile `~/Library/Application Support/grdr/run/`) | `\\.\pipe\` names from 07 |
 | User profile (everything, slots included) | `~/.local/share/grdr/` and the XDG config, state and runtime directories | `~/Library/Application Support/grdr/` | `%LOCALAPPDATA%\grdr\` |
 | Status snapshot for unprivileged readers | `/var/lib/grdr/status.pb` | `.../grdr/state/status.pb` | `C:\ProgramData\grdr\state\status.pb` |
 
@@ -349,6 +351,8 @@ Uninstall, in order: (1) authorisation: in Protected a step-up through `grdr-app
 | OTLP receiver for harness telemetry | `grdr-proxy` in receiver role | Loopback; port chosen at random at install, persisted, written into the agent's managed settings through 07's journalled writer, and re-chosen only when the bind fails | Agents we configured | Expected content type only, any request carrying an `Origin` header refused, per-instance token, kernel peer tagged where available, everything stored as a claim (SR-39) |
 | Model listener, MCP broker over HTTP | `grdr-proxy` | Loopback | Agents configured to use it | Destinations from policy only; token per agent instance; SR-38 to SR-40 (17 owns the details) |
 | ACS adapter | daemon `decide` endpoint | Socket or pipe only | ACS clients | HMAC envelope, nonce cache, 60 s skew (07) |
+
+On Windows, every named-pipe endpoint (`decide`, `local`, `provider`) sets its owner to the service's SID (or the caller's SID in User), keeps `FILE_FLAG_FIRST_PIPE_INSTANCE` on the first instance and `PIPE_REJECT_REMOTE_CLIENTS` on every instance (refusing the local-SMB route by which a client pid can be spoofed), and attaches an explicit DACL granting clients only `FILE_READ_DATA | FILE_WRITE_DATA | FILE_READ_ATTRIBUTES | READ_CONTROL | SYNCHRONIZE`, never `FILE_CREATE_PIPE_INSTANCE` or `FILE_GENERIC_WRITE` (which includes `FILE_APPEND_DATA`, equal to `FILE_CREATE_PIPE_INSTANCE`; RFC 0003).
 
 No listener binds a non-loopback address; the privileged daemon binds no TCP listener at all; CI enumerates listeners from a running install in each topology and compares them with this table.
 
