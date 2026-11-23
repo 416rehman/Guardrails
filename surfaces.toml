@@ -47,3 +47,28 @@ rfc = "0005"
 name = "grdr-core"
 class = "experimental"
 rfc = "0005"
+
+# `grdr-ports` and `grdr-ports-testkit` share these `[[crate]]` rows under RFC 0008
+# (ADR-0040, blob `b338780823870d0f81c92e1a6f9cd2a5ec472eb8`) and RFC 0002 (ADR-0033,
+# blob `9f8430afa9c17178d402d3cf43c37f247a01370c`, amending RFC 0008's runner and adding
+# the storage ports and test kit). `Monotonic` takes the `grdr-model` crate class.
+# Promotion conditions for both `grdr-ports` and `grdr-ports-testkit`:
+# - RFC 0008 constraint 2e (seat 5): neither crate leaves `experimental` until every
+#   method later added to `Clock`, `Entropy` or `Health` is a provided method (or the
+#   trait is sealed with a stated implementor route) and `RetryError` is
+#   `#[non_exhaustive]` with a stated rule for the wildcard arm, stated in a promoting
+#   amendment of RFC 0008.
+# - RFC 0002 section 12: neither crate moves from `experimental` to `beta` until the
+#   server's packages freeze (`design/03` section 7), gated on a promoting RFC (setting
+#   the `beta` notice under ADR-0020) plus deployment-scoped objects Q1, the Keys port
+#   RFC (`design/21` K2), and Q2 module-repository traits.
+
+[[crate]]
+name = "grdr-ports"
+class = "experimental"
+rfc = "0008"
+
+[[crate]]
+name = "grdr-ports-testkit"
+class = "experimental"
+rfc = "0008"
