@@ -51,6 +51,7 @@ deny = [
   { crate = "chdb-rust", reason = "chDB has no Windows build (design/03 section 13)" },
   { crate = "pingora", reason = "Windows support is preliminary (design/03 section 13)" },
   { crate = "surrealdb", reason = "BSL, not open source (design/03 section 13, D-02)" },
+  { crate = "grdr-ports-kitkey", wrappers = ["grdr-ports", "grdr-ports-testkit"], reason = "only grdr-ports, for its kit feature, and grdr-ports-testkit hold the kit key (RFC 0002 Rule 1)" },
 ]
 
 [sources]
