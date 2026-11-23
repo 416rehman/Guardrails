@@ -85,7 +85,7 @@ repository = "grdr-content"
 [squad.fleet]
 alias = ["SQ-12"]
 lead = "lead-fleet"
-paths = []
+paths = ["programs/grdr-uplink/**", "programs/grdr-updater/**", "crates/grdr-update/**"]
 
 [squad.server]
 alias = ["SQ-13"]
