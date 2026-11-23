@@ -136,6 +136,21 @@ class Reader(unittest.TestCase):
                 tool = "gitleaks" if key in ("image", "config") else "semgrep-rules"
                 self.assert_refused(seeded, tool, key, "GRDR-SUPPLY-0002")
 
+
+    def test_two_and_three_part_versions_are_accepted(self):
+        for good in ("0.106", "v1.2", "8.30.1", "v1.75.0"):
+            with self.subTest(version=good):
+                seeded = CLEAN.replace('version = "8.30.1"', f'version = "{good}"')
+                result = run_reader(self.fixture(seeded), "gitleaks", "version")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(runner_outputs(result.stdout), {"version": good})
+
+    def test_invalid_version_forms_are_refused(self):
+        for bad in ("0.106-rc1", "1.2.3.4", "1..2", " 1.2", "1.2+b"):
+            with self.subTest(version=bad):
+                seeded = CLEAN.replace('version = "8.30.1"', f'version = "{bad}"')
+                self.assert_refused(seeded, "gitleaks", "version", "GRDR-SUPPLY-0002")
+
     def test_missing_tool_key_or_form_is_refused(self):
         for tool, keys in (("grype", "version"), ("gitleaks", "commit"), ("gitleaks", "install"), ("gitleaks", "")):
             with self.subTest(tool=tool, keys=keys):

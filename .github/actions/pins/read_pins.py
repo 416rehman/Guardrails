@@ -12,7 +12,7 @@ import sys
 import tomllib
 
 FORMS = {
-    "version": re.compile(r"v?[0-9]+\.[0-9]+\.[0-9]+"),
+    "version": re.compile(r"v?[0-9]+\.[0-9]+(?:\.[0-9]+)?"),
     "image": re.compile(r"[a-z0-9]+(?:[._/-][a-z0-9]+)*@sha256:[0-9a-f]{64}"),
     "config": re.compile(r"[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*"),
     "repository": re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_][A-Za-z0-9._-]*"),
