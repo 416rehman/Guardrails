@@ -425,6 +425,7 @@ dependencies = [
  "axum",
  "clap",
  "grdr-agents",
+ "grdr-core",
  "grdr-model",
  "jiff",
  "reqwest",

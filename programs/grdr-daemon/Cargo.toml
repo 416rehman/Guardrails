@@ -14,6 +14,7 @@ renders = "none"
 axum = { workspace = true }
 clap = { workspace = true }
 grdr-agents = { workspace = true }
+grdr-core = { workspace = true }
 grdr-model = { workspace = true }
 jiff = { workspace = true }
 reqwest = { workspace = true }

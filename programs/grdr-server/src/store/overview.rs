@@ -3,7 +3,7 @@
 
 use jiff::Timestamp;
 
-use grdr_core::discover;
+use grdr_core::{detect, discover, session};
 use grdr_model::{
     ApprovalState, FindingLifecycle, InsightTile, Mode, OverviewResponse, SetupStep,
     summarize_sessions,
@@ -34,6 +34,11 @@ impl AppState {
             .findings
             .iter()
             .filter(|f| f.lifecycle != FindingLifecycle::Resolved)
+            .count();
+        let session_states = session::replay_session_states(&guard.attempts, &guard.receipts);
+        let open_incidents = detect::correlate_incidents(&guard.findings, &session_states)
+            .into_iter()
+            .filter(|inc| inc.lifecycle != FindingLifecycle::Resolved)
             .count();
 
         let watch_hits: u64 = guard
@@ -167,6 +172,7 @@ impl AppState {
             active_sessions,
             pending_approvals,
             open_findings,
+            open_incidents,
             kill_switch: guard.kill_switch.clone(),
             tiles,
             setup_steps,

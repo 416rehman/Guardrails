@@ -24,6 +24,7 @@ import type {
   ApprovalRequest,
   Device,
   Finding,
+  Incident,
   KillSwitchState,
   NavRoute,
   OverviewResponse,
@@ -53,18 +54,20 @@ export function App() {
   const [packs, setPacks] = useState<PolicyPack[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [findings, setFindings] = useState<Finding[]>([]);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
   const [killSwitch, setKillSwitch] = useState<KillSwitchState>({ state: "inactive" });
   const [prefillAttempt, setPrefillAttempt] = useState<ActionAttempt | null>(null);
 
   const loadAll = useCallback(async () => {
     try {
-      const [ov, dev, sess, pk, apr, fnd, ks] = await Promise.all([
+      const [ov, dev, sess, pk, apr, fnd, inc, ks] = await Promise.all([
         api.getOverview(),
         api.getDevices(),
         api.getSessions(),
         api.getPacks(),
         api.getApprovals(),
         api.getFindings(),
+        api.getIncidents(),
         api.getKillSwitch(),
       ]);
       setOverview(ov);
@@ -73,6 +76,7 @@ export function App() {
       setPacks(pk);
       setApprovals(apr);
       setFindings(fnd);
+      setIncidents(inc);
       setKillSwitch(ks);
       setLoadingError(null);
     } catch (err) {
@@ -244,6 +248,7 @@ export function App() {
             <RespondPage
               approvals={approvals}
               findings={findings}
+              incidents={incidents}
               killSwitch={killSwitch}
               defaultSessionId={sessions[0]?.id ?? "sess-demo-refactor"}
               onUpdated={() => void loadAll()}

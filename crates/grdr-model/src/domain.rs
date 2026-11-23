@@ -223,6 +223,23 @@ pub enum FindingLifecycle {
     Resolved,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionLabel {
+    CredentialAccessed,
+    UntrustedWebFetched,
+    RepeatedDenials,
+    TaintedExfilRisk,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CommandParseStatus {
+    Resolved,
+    Unresolved,
+    Malformed,
+}
+
 impl Mode {
     pub fn label(self) -> &'static str {
         match self {
@@ -319,6 +336,26 @@ impl ApprovalGrade {
             Self::G1 => "OS authenticator",
             Self::G2 => "An administrator",
             Self::G3 => "Two approvers",
+        }
+    }
+}
+
+impl SessionLabel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::CredentialAccessed => "credential_accessed",
+            Self::UntrustedWebFetched => "untrusted_web_fetched",
+            Self::RepeatedDenials => "repeated_denials",
+            Self::TaintedExfilRisk => "tainted_exfil_risk",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::CredentialAccessed => "Credential accessed",
+            Self::UntrustedWebFetched => "Untrusted web fetched",
+            Self::RepeatedDenials => "Repeated denials",
+            Self::TaintedExfilRisk => "Tainted exfil risk",
         }
     }
 }
