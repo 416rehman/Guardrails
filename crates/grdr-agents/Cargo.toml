@@ -10,5 +10,12 @@ privilege = "none"
 surface = "internal"
 renders = "none"
 
+[dependencies]
+grdr-model = { workspace = true }
+jiff = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+
 [lints]
 workspace = true

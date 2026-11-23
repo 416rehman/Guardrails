@@ -1,40 +1,71 @@
 # Guardrails ADR
 
-Guardrails ADR is an open-source agent detection and response (ADR) platform, published by
-Loonaro under Apache-2.0. It finds the AI agents running on a company's machines, including ones
-nobody registered, works out which actions were the agent's, applies policy before an action
-completes, protects credentials and data, and detects and stops misbehaviour. It runs on Windows,
-macOS and Linux, from one laptop to ten million endpoints, and inside networks with no route to
-the internet. The code namespace is `grdr`.
+Guardrails ADR is an open-source agent detection and response (ADR) platform (`grdr`). It discovers AI coding agents and MCP servers on endpoints, evaluates tool and action requests locally against Essentials and custom policies, mints cryptographic decision receipts, and provides an operator Web Console for live sessions, graded approvals, findings triage, and scoped kill switches.
 
-Nothing is released yet. The repository holds the plan and the agent team that builds the
-product.
+## Components implemented
 
-## The plan
+- **API Server & Console Host (`programs/grdr-server`):** Axum REST JSON API (`/api/v1/*`), SSE real-time stream (`/api/v1/live`), in-memory or atomic disk storage (`--data-dir`), and static asset hosting for the built Web Console.
+- **Endpoint Agent Daemon (`programs/grdr-daemon`):** Cross-platform local AI harness and MCP server scanner (`grdr-agents`), offline local decision evaluator (`/local/v1/decide`), and background uplink sync (`/api/v1/devices/checkin`, `/api/v1/events/batch`).
+- **Hook Shim (`programs/grdr-hook`) & CLI (`programs/grdr`):** Low-latency Claude Code `PreToolUse` hook shim with offline Essentials fail-safe fallback, plus `grdr scan`, `grdr status`, `grdr check`, and `grdr install-hook`.
+- **Policy Engine & Model (`crates/grdr-model`, `crates/grdr-core`, `crates/grdr-agents`):** Essentials ruleset (`Block` control-file edits and hook bypass flags, `Ask` credential reads / destructive deletes / privilege elevation, `Watch` egress and MCP writes), historical rule replay simulation, grant-scoped approvals, and assurance grading (`AL0` to `AL4`).
+- **Web Console (`web/`):** React 19 + TypeScript + Vite operator interface across six views (`Home`, `Inventory`, `Sessions`, `Protect`, `Respond`, `Live Tester`) with inert quoting for untrusted strings, deliberate approval arming friction, and SSE live updates.
 
-- `docs/PLAN.md` is the entry point: the product on one page and a map of the documents.
-- `docs/design/00-decisions.md` holds the binding decisions; every other file in `docs/design/`
-  expands one part of it.
-- `docs/team/` describes how the agent team works: operating model, roster, skills, audits,
-  quality gates and the repository bootstrap.
+## Prerequisites
 
-## The agent environment
+- Rust toolchain pinned in `rust-toolchain.toml` (`cargo`, `rustfmt`, `clippy`)
+- Node.js 22+ and `pnpm` (`corepack enable` or `pnpm`)
 
-The product is built by a team of Claude Code agents, defined as plain subagents in
-`.claude/agents/` with project skills in `.claude/skills/`. There is no separate harness: open
-Claude Code in this folder and say "work issue #42" or "work the next issue". The session follows
-skill `grdr-work-issue`. It reads the issue, has the squad's lead write a missing spec, spawns the
-implementer in its own worktree, runs the evaluators the issue's risk tier calls for, sends their
-findings back for at most three rounds, then opens the pull request and squash-merges it once CI
-passes. Independent issues can be worked in parallel subagents. "Build the product", or `/loop` with
-skill `grdr-build`, repeats this slice by slice: each slice is an epic issue with an end-to-end scenario
-that must work on Windows, macOS and Linux through every layer before the slice closes.
+## Quickstart
 
-To start, install Rust with rustup (`rustup toolchain install` reads `rust-toolchain.toml`), the
-GitHub CLI logged in with `gh auth login`, and Claude Code logged in to the subscription that runs
-the agents. The gates are plain tools: `cargo fmt --all -- --check`,
-`cargo clippy --workspace --locked --all-targets -- -D warnings`, `cargo test --workspace --locked`
-and `cargo deny check`, which CI runs with the security scans in `.github/workflows/`.
+### 1. Build the Web Console
 
-`AGENTS.md` and `CLAUDE.md` are the map every agent session reads. `CONTRIBUTING.md` explains how
-people contribute alongside the agents, and `SECURITY.md` how to report a vulnerability.
+```powershell
+pnpm --dir web install --frozen-lockfile
+pnpm --dir web run build
+```
+
+### 2. Start the API Server (serves Web Console + REST/SSE API)
+
+```powershell
+cargo run -p grdr-server -- --bind 127.0.0.1:8787 --web-dir web/dist --demo-seed --data-dir ./grdr-data
+```
+
+Open `http://127.0.0.1:8787/` in your browser.
+During frontend development, you can also run `pnpm --dir web dev` (proxies `/api` to `http://127.0.0.1:8787`).
+
+### 3. Run the Endpoint Agent Daemon
+
+```powershell
+cargo run -p grdr-daemon -- --bind 127.0.0.1:8788 --server http://127.0.0.1:8787
+```
+
+This discovers local AI agents and MCP servers, checks in with the API server, caches active rules locally for offline decisions, and exposes the loopback decision API on `127.0.0.1:8788`.
+
+### 4. CLI & Hook Shim
+
+```powershell
+cargo run -p grdr -- scan
+cargo run -p grdr -- status
+cargo run -p grdr -- check --action file.write --target .claude/settings.json
+cargo run -p grdr -- install-hook --agent claude-code
+```
+
+Test the Claude Code hook shim directly:
+
+```powershell
+'{"session_id":"s1","tool_name":"Write","tool_input":{"file_path":".claude/settings.json"}}' | cargo run -p grdr-hook
+```
+
+## Verification
+
+```powershell
+cargo fmt --all -- --check
+cargo clippy --workspace --locked --all-targets -- -D warnings
+cargo test --workspace --locked
+cargo deny check
+pnpm --dir web run typecheck
+pnpm --dir web run test
+pnpm --dir web run build
+```
+
+For architecture notes, see [`docs/design/00-decisions.md`](docs/design/00-decisions.md).

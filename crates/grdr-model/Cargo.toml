@@ -12,9 +12,15 @@ renders = "none"
 
 [dependencies]
 grdr-schema = { version = "0.1.0", path = "../grdr-schema" }
+jiff = { workspace = true }
+serde = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 grdr-proto = { path = "../grdr-proto" }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true
