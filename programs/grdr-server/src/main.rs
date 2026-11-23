@@ -92,10 +92,10 @@ mod tests {
     use tower::ServiceExt as _;
 
     use grdr_model::{
-        ActionClass, ApprovalRequest, ApprovalState, DecideApprovalInput, DecideInput,
-        DecisionReceipt, DeviceCheckinRequest, GrantScope, InstallProfile, KillAction, KillScope,
-        KillSwitchInput, KillSwitchState, Mode, ReplayRuleInput, ReplaySummary,
-        UpdateRuleModeInput, Verdict,
+        ActionClass, ApprovalGrade, ApprovalRequest, ApprovalState, CreateRuleInput,
+        DecideApprovalInput, DecideInput, DecisionReceipt, DeviceCheckinRequest, GrantScope,
+        InstallProfile, KillAction, KillScope, KillSwitchInput, KillSwitchState, Mode, PolicyRule,
+        ReplayRuleInput, ReplaySummary, RuleMatch, UpdateRuleModeInput, Verdict,
     };
 
     #[tokio::test]
@@ -274,5 +274,201 @@ mod tests {
             .unwrap();
         let ks: KillSwitchState = serde_json::from_slice(&bytes).unwrap();
         assert!(matches!(ks, KillSwitchState::Killed { .. }));
+    }
+
+    #[tokio::test]
+    async fn server_enforces_once_grant_device_scope_expiry_and_rule_grade() {
+        let state = AppState::init(None, false).unwrap();
+        let app = routes::build_router(state.clone(), None);
+
+        let custom_rule = CreateRuleInput {
+            pack_id: None,
+            title: "Production DB gate".into(),
+            description: "Require G2 approval for prod db access".into(),
+            mode: Mode::Ask,
+            min_grade: Some(ApprovalGrade::G2),
+            matcher: RuleMatch {
+                action_classes: vec![ActionClass::Exec],
+                target_prefixes: vec![],
+                target_contains: vec!["psql prod".into()],
+                agents: vec![],
+            },
+            reason_template: "Production database access requires admin approval.".into(),
+        };
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/policies/rules")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&custom_rule).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let created_rule: PolicyRule = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(created_rule.min_grade, ApprovalGrade::G2);
+
+        let req_dev_a = DecideInput {
+            session_id: Some("sess-once".into()),
+            device_id: Some("dev-a".into()),
+            device_name: Some("host-a".into()),
+            agent_name: "claude-code".into(),
+            action_class: ActionClass::Exec,
+            control_point: None,
+            target: "psql prod".into(),
+            summary: None,
+        };
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/decide")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&req_dev_a).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let first_receipt: DecisionReceipt = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(first_receipt.verdict, Verdict::StepUp);
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/approvals")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let approvals: Vec<ApprovalRequest> = serde_json::from_slice(&bytes).unwrap();
+        let pending = approvals
+            .into_iter()
+            .find(|a| a.session_id == "sess-once")
+            .unwrap();
+        assert_eq!(pending.required_grade, ApprovalGrade::G2);
+
+        let approve_once = DecideApprovalInput {
+            approve: true,
+            scope: Some(GrantScope::Once),
+            note: Some("One-off prod check".into()),
+            actor: Some("admin".into()),
+        };
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::post(format!("/api/v1/approvals/{}/decide", pending.id))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&approve_once).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let mut req_dev_b = req_dev_a.clone();
+        req_dev_b.device_id = Some("dev-b".into());
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/decide")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&req_dev_b).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let dev_b_receipt: DecisionReceipt = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(dev_b_receipt.verdict, Verdict::StepUp);
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/decide")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&req_dev_a).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let dev_a_retry: DecisionReceipt = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(dev_a_retry.verdict, Verdict::Allow);
+        assert!(dev_a_retry.grant_id.is_some());
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/decide")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&req_dev_a).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let dev_a_second: DecisionReceipt = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(dev_a_second.verdict, Verdict::StepUp);
+
+        let expired_id = {
+            let mut guard = state.inner.write().await;
+            let expired = guard
+                .approvals
+                .iter_mut()
+                .find(|a| matches!(a.state, ApprovalState::Pending { .. }))
+                .unwrap();
+            expired.state = ApprovalState::Pending {
+                expires_at: jiff::Timestamp::from_second(1_000_000_000).unwrap(),
+            };
+            expired.id.clone()
+        };
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::post(format!("/api/v1/approvals/{expired_id}/decide"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&approve_once).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/approvals")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let updated_approvals: Vec<ApprovalRequest> = serde_json::from_slice(&bytes).unwrap();
+        let marked = updated_approvals
+            .into_iter()
+            .find(|a| a.id == expired_id)
+            .unwrap();
+        assert!(matches!(marked.state, ApprovalState::Expired { .. }));
     }
 }

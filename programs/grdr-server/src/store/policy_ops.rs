@@ -208,12 +208,28 @@ impl AppState {
                         CodedError::new(CODE_NOT_FOUND, "Missing approval", "Retry.")
                     })?;
 
-                if !matches!(req.state, ApprovalState::Pending { .. }) {
-                    return Err(CodedError::new(
-                        CODE_CONFLICT,
-                        "This approval request has already been decided.",
-                        "Refresh the queue.",
-                    ));
+                match req.state {
+                    ApprovalState::Pending { expires_at } if expires_at <= now => {
+                        if let Some(slot) = guard.approvals.get_mut(idx) {
+                            slot.state = ApprovalState::Expired { expired_at: now };
+                        }
+                        if let Some(dir) = &self.data_dir {
+                            persist_snapshot(dir, &guard)?;
+                        }
+                        return Err(CodedError::new(
+                            CODE_CONFLICT,
+                            "This approval request has expired.",
+                            "Trigger a new action attempt to request fresh approval.",
+                        ));
+                    }
+                    ApprovalState::Pending { .. } => {}
+                    _ => {
+                        return Err(CodedError::new(
+                            CODE_CONFLICT,
+                            "This approval request has already been decided or expired.",
+                            "Refresh the queue.",
+                        ));
+                    }
                 }
 
                 let new_state = if input.approve {

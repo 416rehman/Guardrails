@@ -87,7 +87,8 @@ pub(crate) fn record_attempt_and_receipt(
     bump_rule_counters(&mut guard.packs, &receipt);
 
     if receipt.verdict == Verdict::StepUp {
-        let rule_title = find_rule_title(&guard.packs, receipt.rule_id.as_deref());
+        let (rule_title, required_grade) =
+            find_rule_metadata(&guard.packs, receipt.rule_id.as_deref());
         guard.approvals.insert(
             0,
             ApprovalRequest {
@@ -104,7 +105,7 @@ pub(crate) fn record_attempt_and_receipt(
                     .clone()
                     .unwrap_or_else(|| "essentials.credential-stores".into()),
                 rule_title,
-                required_grade: ApprovalGrade::G1,
+                required_grade,
                 reason: receipt.reason.clone(),
                 requested_at: now,
                 state: ApprovalState::Pending {
@@ -153,14 +154,30 @@ pub(crate) fn bump_rule_counters(packs: &mut [PolicyPack], receipt: &DecisionRec
     }
 }
 
-pub(crate) fn find_rule_title(packs: &[PolicyPack], rule_id: Option<&str>) -> String {
+pub(crate) fn find_rule_metadata(
+    packs: &[PolicyPack],
+    rule_id: Option<&str>,
+) -> (String, ApprovalGrade) {
     let Some(target) = rule_id else {
-        return "Policy approval required".into();
+        return ("Policy approval required".into(), ApprovalGrade::G1);
     };
     packs
         .iter()
         .flat_map(|p| p.rules.iter())
         .find(|r| r.id == target)
-        .map(|r| r.title.clone())
-        .unwrap_or_else(|| target.into())
+        .map(|r| (r.title.clone(), r.min_grade))
+        .unwrap_or_else(|| (target.into(), ApprovalGrade::G1))
+}
+
+pub(crate) fn expire_pending_approvals(approvals: &mut [ApprovalRequest], now: Timestamp) -> bool {
+    let mut changed = false;
+    for approval in approvals {
+        if let ApprovalState::Pending { expires_at } = approval.state
+            && expires_at <= now
+        {
+            approval.state = ApprovalState::Expired { expired_at: now };
+            changed = true;
+        }
+    }
+    changed
 }
