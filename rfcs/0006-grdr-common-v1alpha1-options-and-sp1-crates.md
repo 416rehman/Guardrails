@@ -3,11 +3,11 @@ Title: `grdr.common.v1alpha1`: the option registry, the data-class enums, how `b
 Author: chief-architect
 Harness: Claude Code
 Model: claude-opus-5-5
-State: Review
+State: Accepted
 Design issue: #1848
 Spine: D-06, D-31, D-51, D-60, D-61, D-63, D-66, P8, P9, P14, P16, P17 (no spine text changes)
 Surfaces: the new protobuf package `grdr.common.v1alpha1` (experimental): `proto/grdr/common/v1alpha1/options.proto` with the enums `DataClass` and `ContentKind` and five descriptor-option extensions; `buf.yaml`; the committed descriptor set `crates/grdr-proto/descriptors/proto.binpb` of the public crate `grdr-proto`; optional dependencies of `grdr-proto` behind the mutually exclusive features `sp1-buffa` and `sp1-prost`; the generated modules `capture` and `registry` of the public crate `grdr-schema`. As proposals: two data files of `grdr-schema` (`capture.toml`, `reclassifications.toml`), design/04 sections 1, 10, 11, 13 and 14, design/26 section 9, design/36 section 2, one `[[proto_package]]` row of `surfaces.toml`, a `depends_on` key on the `grdr-schema-lint` row of `architecture.toml`, and eighteen lines of `security/trust-core.paths` (plus a `<dir>/**` rule for workspace `proc-macro` packages)
-Decision record: none yet
+Decision record: docs/decisions/ADR-0052-grdr-common-v1alpha1-options-and-sp1-crates-adopted-by-rfc-0006.md
 
 To comment, write on issue #1848 of this repository; you need no account on any service other than the code host. A security fix under embargo (D-62) may change a public surface without an RFC; open a retroactive RFC when the fix is disclosed.
 
@@ -557,5 +557,11 @@ This text was written against these blobs, on `main` unless named:
 - ADR-0007: `5b6cdffc1648817f3e48a821ef2b34383b24b8f1`;
 - ADR-0020: `e0a2998b7baed6c2aa21629ce25d61f2fa12ad20`.
 
+Deciding round (Round 8 delta on PR `#1865`, head `94d3300e687cd28c2983a79117f2c6ddfe87be79`, reviewed blob `b14eab1663615bbf8d6cbbebf86b027f6b08536a`, base spine `a80859235e7a2a4444648d6fa8d389d78dde6be9`; `State: Review` PR `#2072`, merge `7f89c77028acf545f61361ccddf4ed84f4e4ebbd`, blob `41fcd8a48ad44e2f56d434d4d8d68d70fa4c86c9`):
+- `eval-review` (`Google`, `Gemini 4 Carbon`, `pass`, `860f5902`): https://github.com/416rehman/Guardrails/issues/1848#issuecomment-7099937256
+- `eval-security` (`Google`, `Gemini 4 Neon`, `pass`, `9d2c02b3`): https://github.com/416rehman/Guardrails/issues/1848#issuecomment-7099937801
+
 ## Decision
-Not decided.
+Accepted by the chief architect on 2026-11-23 under `#1828` owner delegation (`D-61`, ADR-0043), on reviewed RFC file blob `b14eab1663615bbf8d6cbbebf86b027f6b08536a` (SHA-256 `7ebb59e259facedebb9a8905438f507832a5dcff441fa7126a89b276a2be26c0`, PR `#1865` head `94d3300e687cd28c2983a79117f2c6ddfe87be79`, merged on `main` at `06de3cdf278b1afdec63d052399302513966d30c`) and `State: Review` transition blob `41fcd8a48ad44e2f56d434d4d8d68d70fa4c86c9` (SHA-256 `de9e8607d62ac6f0cedf5d24dde0d826c6544ebbab8de96fe440e986d5f7e022`, PR `#2072` merged at `7f89c77028acf545f61361ccddf4ed84f4e4ebbd`), after `#1955` landed on `main` (`#2047`, `8679e51`), against the spine pin in force (`rfcs/pins.toml`, `docs/design/00-decisions.md` blob `a80859235e7a2a4444648d6fa8d389d78dde6be9`, SHA-256 `8f6ea876777c0121ecec068c0bc4cef45932be45c1c2aff4140712db1e06628d`). [ADR-0052](../docs/decisions/ADR-0052-grdr-common-v1alpha1-options-and-sp1-crates-adopted-by-rfc-0006.md) records the decision, the binding constraints (`G-1`, `L-1` to `L-8`, `K-1`, `H-1` to `H-2`, `B-1`, `C-1`, `E-1` to `E-3`, `F-1`, `P-1`, `Q-1`, plus Section 8 lockfile-admissions verification `#2097` and `#1910` clean-tree check required before release-build reliance), the seven follow-up issues filed on acceptance (`#2093` to `#2099`, alongside pre-filed `#1878` to `#1881`), and the post-merge write-backs for downstream items.
+
+This RFC decides no pinned path of `rfcs/pins.toml`, so this section holds no RFC 0001 decision line, `rfcs/pins.toml` does not change, and nothing is added under `rfcs/evidence/` (ADR-0036). The accepted file differs from reviewed blob `b14eab1663615bbf8d6cbbebf86b027f6b08536a` (and `41fcd8a48ad44e2f56d434d4d8d68d70fa4c86c9`) solely in `State:`, `Decision record:`, the deciding-round links appended to `## Review`, and this `## Decision` section.
