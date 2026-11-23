@@ -1,0 +1,15 @@
+# Seeded zizmor fixture: actions/checkout pinned by tag (fails unpinned-uses).
+name: fixture-unpinned-github-action
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  fixture:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false

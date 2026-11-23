@@ -1,0 +1,12 @@
+# Seeded cargo-deny fixture control: Apache-2.0 path dependency (passes licenses check).
+[workspace]
+
+[package]
+name = "gpl-crate-fixture"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+seeded-dep = { path = "seeded-dep" }

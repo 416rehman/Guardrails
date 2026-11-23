@@ -1,0 +1,13 @@
+# Seeded zizmor fixture: third-party action pinned by tag (fails unpinned-uses).
+name: fixture-unpinned-action
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  fixture:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: Swatinem/rust-cache@v2

@@ -1,0 +1,12 @@
+# Seeded cargo-deny fixture: banned crate rsigma (fails bans check).
+[workspace]
+
+[package]
+name = "banned-crate-fixture"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+rsigma = { path = "rsigma" }

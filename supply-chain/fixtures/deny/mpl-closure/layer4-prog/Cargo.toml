@@ -1,0 +1,10 @@
+# Seeded cargo-deny fixture member: layer 4 program depending on MPL-2.0 mpl-dep.
+[package]
+name = "layer4-prog"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+mpl-dep = { path = "../mpl-dep" }

@@ -1,0 +1,4 @@
+# Seeded cargo-deny fixture: virtual workspace with MPL-2.0 and clean closures.
+[workspace]
+resolver = "3"
+members = ["layer1-lib", "layer2-clean", "layer4-prog"]

@@ -1,0 +1,7 @@
+# Seeded cargo-deny fixture dependency: banned crate rsigma.
+[package]
+name = "rsigma"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
