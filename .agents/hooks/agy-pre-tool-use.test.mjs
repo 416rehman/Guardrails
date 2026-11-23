@@ -45,64 +45,49 @@ test("blocks direct git push to main via Antigravity PreToolUse JSON contract", 
 });
 
 test("blocks git push HEAD:refs/heads/main", () => {
-  const out = evaluateHookCommand("git push origin HEAD:refs/heads/main", process.cwd(), { listOpenPrs: () => [] });
+  const out = evaluateHookCommand("git push origin HEAD:refs/heads/main", process.cwd());
   assert.ok(out.some((msg) => msg.includes("direct push to main is refused")), out.join("\n"));
 });
 
-test("blocks git push from a branch without an issue slug", (t) => {
-  const dir = initTempRepo("issue/42");
+test("blocks git push from an unprefixed branch", (t) => {
+  const dir = initTempRepo("misc-wip");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const out = evaluateHookCommand("git push -u origin issue/42", dir, { listOpenPrs: () => [] });
-  assert.ok(out.some((msg) => msg.includes("issue/<n>-<slug>")), out.join("\n"));
+  const out = evaluateHookCommand("git push -u origin misc-wip", dir);
+  assert.ok(out.some((msg) => msg.includes("should follow feat/<slug>")), out.join("\n"));
 });
 
-test("allows git push from a valid issue/<n>-<slug> branch", (t) => {
-  const dir = initTempRepo("issue/42-add-auth-token");
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const out = evaluateHookCommand("git push -u origin issue/42-add-auth-token", dir, { listOpenPrs: () => [] });
-  assert.deepEqual(out, []);
+test("allows git push from feat/, fix/, and issue/<n>-<slug> branches", (t) => {
+  for (const branch of ["feat/platform-mvp", "fix/agent-timeout", "issue/42-add-auth-token"]) {
+    const dir = initTempRepo(branch);
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const out = evaluateHookCommand(`git push -u origin ${branch}`, dir);
+    assert.deepEqual(out, [], branch);
+  }
 });
 
 test("allows git push --delete for branch cleanup", () => {
-  const out = evaluateHookCommand("git push origin --delete issue/42", process.cwd(), { listOpenPrs: () => [] });
+  const out = evaluateHookCommand("git push origin --delete issue/42", process.cwd());
   assert.deepEqual(out, []);
 });
 
-test("blocks gh pr create without target issue link or issue name", (t) => {
-  const dir = initTempRepo("issue/42-add-auth-token");
+test("blocks gh pr create from main", (t) => {
+  const dir = initTempRepo("main");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   writeFileSync(join(dir, "pr.md"), "Summary only.\n", "utf8");
   const out = evaluateHookCommand(
-    'gh pr create --draft --base main --head issue/42-add-auth-token --title "misc cleanup" --body-file pr.md',
+    'gh pr create --base main --head main --title "chore: test" --body-file pr.md',
     dir,
-    { listOpenPrs: () => [] },
   );
-  assert.ok(out.some((msg) => msg.includes("target issue #42")), out.join("\n"));
-  assert.ok(out.some((msg) => msg.includes("include the issue name")), out.join("\n"));
+  assert.ok(out.some((msg) => msg.includes("must target a work branch")), out.join("\n"));
 });
 
-test("blocks gh pr create when an open PR already exists for the issue", (t) => {
-  const dir = initTempRepo("issue/42-add-auth-token");
+test("allows gh pr create from feat/ branch without issue links or release notes", (t) => {
+  const dir = initTempRepo("feat/web-console");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  writeFileSync(join(dir, "pr.md"), "Issue: #42 Add auth token\nRefs #42\n", "utf8");
+  writeFileSync(join(dir, "pr.md"), "Implements initial Web Console.\n", "utf8");
   const out = evaluateHookCommand(
-    'gh pr create --draft --base main --head issue/42-add-auth-token --title "feat(auth): add auth token (#42)" --body-file pr.md',
+    'gh pr create --base main --head feat/web-console --title "feat(web): implement console" --body-file pr.md',
     dir,
-    {
-      listOpenPrs: () => [{ number: 100, headRefName: "issue/42-old", body: "Refs #42" }],
-    },
-  );
-  assert.ok(out.some((msg) => msg.includes("already has open pull request #100")), out.join("\n"));
-});
-
-test("allows valid gh pr create with issue name, target issue, and docs check", (t) => {
-  const dir = initTempRepo("issue/42-add-auth-token");
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  writeFileSync(join(dir, "pr.md"), "Issue: #42 Add auth token\n\nSummary.\n\nRefs #42\n", "utf8");
-  const out = evaluateHookCommand(
-    'gh pr create --draft --base main --head issue/42-add-auth-token --title "feat(auth): add auth token (#42)" --body-file pr.md',
-    dir,
-    { listOpenPrs: () => [] },
   );
   assert.deepEqual(out, []);
 });

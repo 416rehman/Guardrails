@@ -1,6 +1,0 @@
-{
-  "repo": "example/repo",
-  "default_branch": "main",
-  "branches": ["issue/30"],
-  "pulls": []
-}
