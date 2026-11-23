@@ -1,7 +1,7 @@
-# cargo-deny 0.20 policy (gate S01, team/05 section 9). The licence allow-list is the permissive
-# class of supply-chain/licences.toml; MPL-2.0 and the kernel and data classes enter only as
-# per-crate exceptions, because they are allowed in some layers and not others. The bans are the
-# Rust crates on design/03 section 13's do-not-use list.
+# Whole-workspace cargo-deny profile (gate S01, team/05 section 9). The licence allow-list is the
+# permissive and weak-copyleft classes of supply-chain/licences.toml (MPL-2.0 is allowed in
+# layer 3 and 4 programs); layers 0 to 2 and the embedded closure use deny.embedded.toml. The
+# bans are the Rust crates on design/03 section 13's do-not-use list and RFC 0002 Rule 1.
 
 [graph]
 all-features = true
@@ -23,6 +23,7 @@ allow = [
   "Zlib",
   "Unicode-3.0",
   "CC0-1.0",
+  "MPL-2.0",
 ]
 confidence-threshold = 0.93
 unused-allowed-license = "allow"
