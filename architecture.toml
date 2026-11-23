@@ -447,3 +447,27 @@ code = "TABLES_CHANGED"
 crates = ["grdr-fastpath", "grdr-core"]
 kind = "fastpath-independence"
 reason = "no_std fast path (P17); held equal by the B2 differential (#20)"
+
+# ARCH-024 (`strings-closure`, RFC 0017, ADR-0055; #1906): `grdr-strings` is the sole
+# owner of `icu*` and `zoneinfo64`; `pack-text` is permitted only in `grdr-engine`, `grdr-server`
+# and `grdr` (forbidden in `privileged` programs, `grdr-wasm` and `grdr-ffi` under per-manifest
+# feature resolution); `export` (`icu_provider_export`) is permitted only in `grdr-interface-gen`
+# and `grdr-strings` dev/unit tests (forbidden in layer 3, layer 4, `privileged` and `wasm32`);
+# and `grdr-hook` links neither `grdr-strings` nor `grdr-messages`.
+[rules.strings_closure]
+owner = "grdr-strings"
+icu_prefix = "icu"
+owned_crates = ["icu*", "zoneinfo64"]
+feature = "pack-text"
+feature_allowed_in = ["grdr-engine", "grdr-server", "grdr"]
+feature_forbidden_in = ["grdr-wasm", "grdr-ffi"]
+feature_forbidden_privileges = ["privileged"]
+export_feature = "export"
+export_crate = "icu_provider_export"
+export_allowed_in = ["grdr-interface-gen"]
+export_dev_only_in = ["grdr-strings"]
+export_forbidden_layers = [3, 4]
+export_forbidden_privileges = ["privileged"]
+export_forbidden_targets = ["wasm32-unknown-unknown"]
+hook_program = "grdr-hook"
+hook_forbidden = ["grdr-strings", "grdr-messages"]

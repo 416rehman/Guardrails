@@ -72,3 +72,19 @@ rfc = "0008"
 name = "grdr-ports-testkit"
 class = "experimental"
 rfc = "0008"
+
+# `grdr-strings` carries a `[[crate]]` row under RFC 0017 (ADR-0055, blob
+# `cabe7ab126651fbe22e55caf1be00cda4caa0fac`). `grdr-messages` is unpublished
+# (`surface = "unpublished"`, generated) and `grdr-interface-gen` is `layer = "tool"`
+# (`surface = "internal"`), so neither takes a `[[crate]]` row. `grdr-strings` exposes
+# zero `icu*` or `zoneinfo64` types publicly (`ARCH-007`).
+# Promotion conditions for `grdr-strings`:
+# - RFC 0017 / ADR-0055: stays `experimental` until an amending RFC naming RFC 0017
+#   promotes it, and cannot outrank `grdr-schema` or `grdr-model` types exposed in its
+#   public API.
+# - D-60 / ADR-0020: no surface moves to `stable` before one external embed pilot completes.
+
+[[crate]]
+name = "grdr-strings"
+class = "experimental"
+rfc = "0017"
