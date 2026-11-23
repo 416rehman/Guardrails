@@ -48,7 +48,7 @@ Source lives in `proto/grdr/<area>/v1alpha1/*.proto`. `grdr-proto` holds generat
 
 | Package | Contents | Owner of semantics |
 |---|---|---|
-| `grdr.common.v1alpha1` | Field and enum options, id and digest types, shared enums (`ActionClass`, `ControlPoint`, `VerdictCode`, `Mode`, `CaptureLevel`, `DataClass`), `Redaction`, `Sealed`, `MessageRef` (a language-token id, typed arguments each with a `data_class`, and the source hash; D-69), `ErrorDetail` (code, reason, class, message and fix token ids, docs anchor; 03 section 10) | This document |
+| `grdr.common.v1alpha1` | Field and enum options, id and digest types, shared enums (`ActionClass`, `ControlPoint`, `VerdictCode`, `Mode`, `CaptureLevel`, `DataClass`, `ContentKind`), `Redaction`, `Sealed`, `MessageRef` (a language-token id, typed arguments each with a `data_class`, and the source hash; D-69), `ErrorDetail` (code, reason, class, message and fix token ids, docs anchor; 03 section 10) | This document |
 | `grdr.entity.v1alpha1` | The entities in section 3 | This document; 05 for inventory behaviour |
 | `grdr.event.v1alpha1` | `Envelope`, `Event`, one payload message per category | This document |
 | `grdr.decision.v1alpha1` | `DecisionRecord`, `Receipt`, `Expectation` | This document; 07 for expectation semantics; 12 for the `Verdict` and `Grant` messages the record embeds |
@@ -62,24 +62,51 @@ Packages owned by other documents import these, and nothing here imports them: `
 
 Naming rules, enforced by `buf lint` (STANDARD) plus `grdr-schema-lint`:
 
-1. Messages `PascalCase`, fields `snake_case`, enum values `ENUM_NAME_VALUE` with `_UNSPECIFIED = 0`. Open enums (anything a third party can extend: channel, evidence, entity kind) also have `_OTHER = 99` with a sibling `<field>_other` string. Closed enums (`ActionClass`, `VerdictCode`, `Mode`, `ActorKind`, `DataClass`, `Provenance`) have no `_OTHER`.
-2. Every enum value has a `wire_name` option: the string used in JSON, Cedar, rule fields and feeds (`ACTION_CLASS_FILE_READ` is `file.read`). The Cedar schema and the Sigma field taxonomy are generated from these options; a drift test fails the build if they differ. The Sigma log source for our events is `product: grdr`, `category` the event category and `service` the class; field names are registry paths (13 owns the rules that use it).
+1. Every `v1alpha1` file uses `syntax = "proto3"`. Messages are `PascalCase`, fields `snake_case`, and enum values `ENUM_NAME_VALUE` with `_UNSPECIFIED = 0`. Open enums (anything a third party can extend: channel, evidence, entity kind) also have `_OTHER = 99` with a sibling `<field>_other` string. Closed enums (`ActionClass`, `VerdictCode`, `Mode`, `ActorKind`, `DataClass`, `ContentKind`, `Provenance`) have no `_OTHER`.
+2. Every non-zero enum value carries a unique `wire_name` option within its enum, while zero values (`*_UNSPECIFIED = 0`) carry no `wire_name` and are never rendered (RFC 0006 R12): the string used in JSON, Cedar, rule fields and feeds (`ACTION_CLASS_FILE_READ` is `file.read`; for `DataClass` and `ContentKind`, each `wire_name` is its value name without the enum prefix in lower case, e.g. `DATA_CLASS_IDENTIFIER` is `identifier`, RFC 0006 R11). The Cedar schema and the Sigma field taxonomy are generated from these options; a drift test fails the build if they differ. The Sigma log source for our events is `product: grdr`, `category` the event category and `service` the class; field names are registry paths (13 owns the rules that use it).
 3. Identifiers are `string` with a type prefix and are never parsed. Digests are `bytes` (32 bytes for SHA-256, the algorithm fixed by `schema_rev`) on the wire, in the spool and in the archive; `<alg>:<lowercase hex>` is their rendering in JSON, feeds, Cedar and exports. Wall time is `google.protobuf.Timestamp` in UTC.
 4. No `google.protobuf.Any`, no `Struct`, no free-form map except `native` (the untouched harness payload, class content). No floating point in any field marked `policy_readable`.
 5. Field numbers 1 to 15 are kept for envelope and hot payload fields. Field numbers 900 to 999 in every message are reserved for the sealed-field and third-party-proof seams (D-35, D-39) and are used by nothing else.
-6. One file per message family; a file never exceeds one category.
+6. One file per message family; a file never exceeds one category (except `options.proto`, which declares the descriptor-option extensions alongside `DataClass` and `ContentKind` to avoid an import cycle; every other shared family in `grdr.common.v1alpha1` takes its own file and imports `options.proto`; RFC 0006 R1 to R4).
+7. One options file and import-driven options package (RFC 0006 R1 to R6, SL10). Descriptor-option extensions appear solely at the top level of `proto/<namespace>/common/<version>/options.proto` (never inside a message; the package root comes from `[identity] namespace` in `brand/brand.toml`, `grdr` today, D-66), which declares no messages and imports only `google/protobuf/descriptor.proto`. Every other file in the namespace imports `options.proto` directly (neither `public` nor `weak`) and never imports `google/protobuf/descriptor.proto`. Tools and generators resolve `<options package>.<option>` by full name from the imported options file's package in a committed descriptor set, never by a hard-coded version or option number. The extensions describe the schema and carry no `data_class` (RFC 0006 R8).
+8. Foreign imports (RFC 0006 R14a, SL10). Files outside `<namespace>` are admitted solely through `crates/grdr-schema-lint/foreign_files.toml` matched by SHA-256 digest of their `FileDescriptorProto`: `google/protobuf/descriptor.proto` (options file only), `google/protobuf/timestamp.proto` and `google/protobuf/duration.proto`. Imported leaves inherit the holding namespace field's class in the field registry.
 
-Codec: one codec that preserves unknown fields generates `grdr-proto`. First choice `buffa`; fallback `prost` with the rule that ingest and relays never re-encode an event and always forward the original bytes. Spike SP-1 decides.
+Codec: one codec that preserves unknown fields generates `grdr-proto`. First choice `buffa`; fallback `prost` with the rule that ingest and relays never re-encode an event and always forward the original bytes. Spike SP-1 decides, evaluating `buffa` and `prost` behind mutually exclusive optional features (`sp1-buffa` and `sp1-prost`) compiled solely from committed descriptor sets (`crates/grdr-proto/descriptors/proto.binpb`, keeping imports) without invoking `protoc` or `buf`, while `grdr-schema-lint` decodes committed descriptor sets with `buffa-descriptor` (RFC 0006 R21, R24 to R26).
 
 ```proto
-// grdr/common/v1alpha1/options.proto (option numbers move to a registered range, work item 04-4)
-extend google.protobuf.FieldOptions {
-  DataClass   data_class      = 50001; // required on every field
-  ContentKind content_kind    = 50002; // required when data_class = CONTENT
-  bool        policy_readable = 50003; // may appear in Cedar context or a pack's declared reads
-  bool        sealable        = 50004; // has a Sealed twin (D-35)
+// grdr/common/v1alpha1/options.proto
+// Package root comes from brand/brand.toml [identity] namespace (`grdr` today, D-66).
+// Option numbers stay in 50000 to 99999 until 04-4 moves all five together to a registered range (RFC 0006 R5).
+syntax = "proto3";
+
+package grdr.common.v1alpha1;
+
+import "google/protobuf/descriptor.proto";
+
+enum DataClass {
+  DATA_CLASS_UNSPECIFIED = 0;
+  DATA_CLASS_IDENTIFIER = 1 [(wire_name) = "identifier"];
+  DATA_CLASS_STRUCTURAL = 2 [(wire_name) = "structural"];
+  DATA_CLASS_DERIVED = 3 [(wire_name) = "derived"];
+  DATA_CLASS_CONTENT = 4 [(wire_name) = "content"];
 }
-extend google.protobuf.EnumValueOptions { string wire_name = 50011; }
+
+enum ContentKind {
+  CONTENT_KIND_UNSPECIFIED = 0;
+  CONTENT_KIND_ARGUMENT = 1 [(wire_name) = "argument"];
+  CONTENT_KIND_BODY = 2 [(wire_name) = "body"];
+}
+
+extend google.protobuf.FieldOptions {
+  DataClass   data_class      = 50001; // required on every field; never DATA_CLASS_UNSPECIFIED
+  ContentKind content_kind    = 50002; // required on exactly DATA_CLASS_CONTENT fields
+  bool        policy_readable = 50003; // optional; never on float or double
+  bool        sealable        = 50004; // optional; marks a field with a Sealed twin (D-35, 04-19)
+}
+
+extend google.protobuf.EnumValueOptions {
+  string wire_name = 50011; // required on every non-zero enum value; unique within its enum
+}
 
 // grdr/event/v1alpha1/envelope.proto
 message Envelope {
@@ -401,7 +428,7 @@ The grade is the highest row whose condition holds. Uncorroborated sources do no
 
 `Integrity { bytes prev; bytes digest; repeated ClassDigest class_digests; }` with `ClassDigest { class; digest; salt }`.
 
-1. There are five commitment classes: identifier, structural, derived, content-argument and content-body. For each class `c` the event has, `d_c = SHA-256(salt_c || E_c)`. `E_c` is taken from the bytes the sensor first encoded, not from a re-encoding: walk the wire form depth-first and, for each leaf field of class `c`, emit its field-number path (with the index of each repeated element) and its value bytes, each length-prefixed, in wire order. The capture filter and reduction leave an emptied repeated element in place, so indexes never shift and `E_c` of the classes that remain is unchanged. The envelope fields that describe one copy (`integrity`, `capture_level`, `withheld`) are skipped. `salt_c` is 16 random bytes from the injected randomness.
+1. There are five commitment classes, named from the `wire_name` options of `DataClass` and `ContentKind` (`options.proto`): `identifier`, `structural`, `derived`, `content.argument` and `content.body` (matching `envelope.withheld`, the field registry and every export; RFC 0006 R11). For each class `c` the event has, `d_c = SHA-256(salt_c || E_c)`. `E_c` is taken from the bytes the sensor first encoded, not from a re-encoding: walk the wire form depth-first and, for each leaf field of class `c`, emit its field-number path (with the index of each repeated element) and its value bytes, each length-prefixed, in wire order. The capture filter and reduction leave an emptied repeated element in place, so indexes never shift and `E_c` of the classes that remain is unchanged. The envelope fields that describe one copy (`integrity`, `capture_level`, `withheld`) are skipped. `salt_c` is 16 random bytes from the injected randomness.
 2. `digest = SHA-256(d_identifier || d_structural || d_derived || d_argument || d_body)`, with a fixed zero block for a class the event never had.
 3. `chain_n = SHA-256(chain_{n-1} || digest_n)` within one `(device, epoch, lane)`, and `prev` is `chain_{n-1}`. `chain_0` is SHA-256 over a domain tag, the device id, the epoch and the lane. The first batch head of an epoch also carries the final chain value of the previous epoch, so a missing epoch shows.
 4. Each batch head carries the last chain value and is signed by the per-boot key, which the device key certifies (D-39). The `local` lane has no batches; `audit.checkpoint` signs its head.
@@ -421,16 +448,18 @@ The local chain requires only the sensor; the checkpoint export requires the ser
 
 Data classes (D-06): `identifier` (our ids, pseudonyms, digests of public artefacts, destination hosts), `structural` (shape, counts, sizes, enums, timing), `derived` (facts, classes, labels, ratings), `content`. Content has a `content_kind`: `argument` (command lines, paths, URLs, MCP arguments) or `body` (prompts, model output, tool output, file text, diffs).
 
-| Capture level | identifier | structural | derived | content, argument | content, body |
+| Capture level | `structural` | `derived` | `identifier` | `content.argument` | `content.body` |
 |---|---|---|---|---|---|
-| `metadata` (default upload) | Yes, pseudonymous | Yes | Yes | No | No |
+| `metadata` (default upload) | Yes | Yes | Yes, pseudonymous | No | No |
 | `redacted arguments` | Yes | Yes | Yes | Redacted | No |
 | `redacted content` | Yes | Yes | Yes | Redacted | Redacted |
 | `full content` | Yes | Yes | Yes | As captured | As captured |
 
+The authoritative data for this matrix, the sensitivity rank of the five classes and the default level is `crates/grdr-schema/capture.toml` (trust core, read solely through `grdr-schema-lint`'s loader; RFC 0006 R13). Sensitivity ranks lowest to highest as `structural < derived < identifier < content.argument < content.body`: `structural` describes shape only, `derived` describes one event, and `identifier` outranks `derived` because identifiers join records across events and back to a principal, device or artefact (D-51). `default = "metadata"` is fixed by P8 and D-51 and passes and redacts no content class (`SL13`). Levels are ours alone (neither an organisation nor a partner may define one), and `capture.toml` holds only filter states (`passes`, `redacted`, or withheld when omitted) with no `pseudonymous` key; the flight recorder's local capture level, retention defaults (20, D-51) and secret `original` rules (16) stay outside `capture.toml`. `grdr-schema-lint` generates `grdr_schema::capture` (`crates/grdr-schema/src/capture.rs`), `crates/grdr-schema/registry/fields.json` and `grdr_schema::registry` (`crates/grdr-schema/src/registry.rs`) from `capture.toml`, `crates/grdr-schema/reclassifications.toml` and the descriptor set; every Rust consumer (the capture filter, pack validator, rule linter and replay, export mapper, disclosure view, tray and configuration defaults) reads `grdr_schema::capture` and `grdr_schema::registry` rather than parsing raw TOML or JSON (P17, ARCH-004; RFC 0006 R13a). Capture levels govern only what leaves for a sink at that level and do not carry the routes by which `EvidenceSpan` on a finding or a content grant leaves at `metadata` (D-51); until the RFC adding `EvidenceSpan` routes defines them as trust-core data, the filter at `metadata` withholds every content leaf (`EvidenceSpan.text` included), and no generator infers a route from a leaf class (RFC 0006 R13, R14).
+
 Redaction happens once, at capture, before the digests of section 10 are computed. At every level the committed form of an argument or body is the redacted string plus its `redactions` entries. At `full content` each entry also carries `original`, the bytes it replaced; `original` is outside the class digests and is bound to them by the entry's `value_digest`, and a reader reassembles the text as captured.
 
-The filter is one function in `grdr-model`, generated from the field registry, applied on the device before every sink: upload, local feed, export, support bundle, review input. It removes whole classes and `original` values and never rewrites a string, which is why one commitment serves every level. The flight recorder stores at the organisation's capture level, which is `redacted arguments` unless the organisation changes it. The default upload level is `metadata`, and `redacted arguments` leaves the device only as an `EvidenceSpan` on a finding or under a content grant (D-51). Which detectors run, and whether a credential-shaped `original` is kept even at `full content`, is decided in 16.
+The filter is one function in `grdr-model`, consuming `grdr_schema::capture` and `grdr_schema::registry`, applied on the device before every sink: upload, local feed, export, support bundle, review input. It removes whole classes and `original` values, refuses any classless leaf (imported leaves included; RFC 0006 R14a) and never rewrites a string, which is why one commitment serves every level. On deployed devices, an entry in `crates/grdr-schema/reclassifications.toml` takes effect only once that organisation signs a D-31 confirmation for that specific entry (never by RFC; RFC 0006 R17b): over entries the organisation has not confirmed, (1) a class at a level is held at the least open of its head state at that level and the `from` of each unconfirmed `[[level]]` entry for that level and class (reading `absent` as withheld), (2) a field at a level takes the least open of the held states, at that level, of its head class and of the class in the `from` of each unconfirmed `[[field]]` entry for that field (or a removed predecessor whose `successor` names it, so field and level entries never release each other), and (3) within a class, `sealable` is less open than unsealed, so the field keeps `sealable` while its head treatment or any of those unconfirmed `from` treatments has it, and in the endpoint-sealed key mode (D-35) emitters withhold a field held at `sealable` that has no `Sealed` twin in the head. The flight recorder stores at the organisation's capture level, which is `redacted arguments` unless the organisation changes it. The default upload level is `metadata`, and `redacted arguments` leaves the device only as an `EvidenceSpan` on a finding or under a content grant (D-51). Which detectors run, and whether a credential-shaped `original` is kept even at `full content`, is decided in 16.
 
 `PathRef` is the pattern for argument-bearing targets: `path_class` (derived), `prefix_template` (structural: a root token such as `$HOME`, `$WORKSPACE`, `$TMP` plus at most two components, never a user name), `path_digest` (identifier, HMAC, for equality joins and the first-seen rule of D-52) and `path` (content, argument). URLs and command lines follow the same four-part shape. Every digest of a content value that travels at `metadata` (`path_digest`, `argv_digest`, the prompt digest) is an HMAC under the organisation key, never a bare hash, so it joins on equality and cannot be reversed by guessing without the key. `action_digest` is the exception, because 12 verifies grants against a plain SHA-256; Q3 covers it.
 
@@ -446,7 +475,7 @@ Retention defaults (D-51) apply by class and lane: content 30 days, receipts 13 
 
 Sealed fields. `Sealed { recipient_key_id, enc, ciphertext, inner_class }` exists in `grdr.common`, and fields marked `sealable` reserve a twin field number in 900 to 999. The sensor emits them only in the endpoint-sealed key mode of D-35, which serves a customer-managed-key deployment that requires the operator to be unable to read identity mappings or content.
 
-Pack contract (P7): the field registry (`grdr-schema/fields.json`, generated) lists every field path with its class. A pack declares the paths it reads; the validator rejects undeclared reads, grouping by `principal`, and any read of a class above the pack's declared ceiling.
+Pack contract (P7): the field registry (`crates/grdr-schema/registry/fields.json`, generated beside `grdr_schema::registry`) lists every field path with its class. A pack declares the paths it reads; the validator rejects undeclared reads, grouping by `principal`, and any read of a class above the pack's declared ceiling; a rule reading a class the organisation's level withholds reports "could not look" in the rule linter and replay rather than "no match" (P9, RFC 0006 R13).
 
 ### 12. Fidelity and expected volumes
 
@@ -480,14 +509,16 @@ The two design points of D-52 (5,000 and 100,000) bracket this range. Fleet sizi
 8. Integrity hashes are computed from the bytes as first encoded (section 10 derives the per-class inputs by walking them); nothing downstream re-encodes before verifying.
 9. During `v1alpha1` a breaking change needs an RFC, regenerated golden vectors and a `schema_rev` bump. At the freeze before the server's first release the package is renamed `v1` and breaking changes are refused.
 
-Rules 1 to 8 are brief 23's; rule 9 is ours.
+Rules 1 to 8 are brief 23's; rule 9 is ours. `options.proto` changes only by RFC (D-61), `surfaces.toml` is the sole source of a package's stability class (RFC 0006 R15 to R16), and `buf` runs strictly offline against root `buf.yaml` (`version: v2`, top-level `lint: STANDARD` with `disallow_comment_ignores: true`, top-level `breaking: WIRE_JSON` in `v1alpha1` and `FILE` after freeze, one `{ path: proto }` module, and no bypass keys; RFC 0006 R18 to R23). Security-gating schema checks (`schema-gate`) run from the **base** commit's build using the base-pinned toolchain after pre-cargo tree checks (`check_tree.py` on head object id, refusing `refs/replace/` with exit 2 `GRDR-GATE-0007`), reading verified regular-file git blobs by object id with no `git archive`, running `cargo metadata --no-deps --offline` outside the head tree, and failing on any non-zero exit including exit 2 (RFC 0006 section 7).
 
 | Check | Tool | Gate |
 |---|---|---|
-| Lint and naming | `buf lint`, `grdr-schema-lint` | CI (`verify.yml`) |
-| Wire compatibility | `buf breaking` against the last release tag (`WIRE_JSON` in alpha, `FILE` after freeze) | CI (`verify.yml`) |
-| Every field has `data_class`; content has `content_kind`; no float in `policy_readable` | `grdr-schema-lint` | CI (`verify.yml`) |
-| Field registry, Cedar schema, Sigma taxonomy and lake column manifest are regenerated and unchanged | Drift test | CI (`verify.yml`) |
+| Lint, naming and negative controls | `buf lint`, `grdr-schema-lint check`, plus R23 fresh-copy breaking and comment-ignore fixtures | CI (`verify.yml` `proto`, and `schema-gate` base build) |
+| Wire compatibility and reclassifications | `buf breaking` against the last release tag (`WIRE_JSON` in alpha, `FILE` after freeze), plus `grdr-schema-lint compare` (`SL12`) requiring an append-only `crates/grdr-schema/reclassifications.toml` entry (`[[field]]`, `[[level]]` or `[[wire_name]]`) citing the pull request's `Accepted` RFC and council seat review (`persona-privacy-officer` for `[[field]]` and `[[level]]`, `persona-soc-analyst` for `[[wire_name]]`), and mandatory `successor` on `"removed"`, while rejecting outright class-set/order edits, level removal/reordering, `default` changes, dropped/reassigned options, returned retired fields, unlinked new package versions, and unsupported message retypes (RFC 0006 R17, R17a) | CI (`verify.yml` `proto`, and `schema-gate` base build) |
+| Field rules (`SL01` to `SL07`) and options/foreign-import rules (`SL10`) | `grdr-schema-lint check`: every field has `data_class` (never `_UNSPECIFIED`, walking nested messages, oneofs and maps); `content_kind` on `DATA_CLASS_CONTENT` fields only; no float/double in `policy_readable`; zero enum values without `wire_name` and unique `wire_name` on non-zero values (`SL04`); one options file declaring no messages and importing solely `google/protobuf/descriptor.proto`, import-driven options package, and foreign imports matching `crates/grdr-schema-lint/foreign_files.toml` by SHA-256 `FileDescriptorProto` digest (`SL10`, RFC 0006 R14a) | CI (`schema-gate` base build and `proto`) |
+| Stability authority (`SL11`) and capture/enum invariants (`SL13`) | `grdr-schema-lint check` (`SL11`: one `[[proto_package]]` row per namespace package in `surfaces.toml`, no `stable` row with an unstable suffix) and `compare` (`SL13`: `capture.toml` classes match `options.proto` lower-case wire names, openness never rises with rank or falls between levels, `default` passes and redacts no content class) | CI (`schema-gate` base build) |
+| Generated capture/registry outputs and manifest integrity (RFC 0006 R13a) | `grdr-schema-lint capture --check` and `registry --check` (byte-exact regeneration of `crates/grdr-schema/src/capture.rs`, `crates/grdr-schema/registry/fields.json` and `crates/grdr-schema/src/registry.rs`, plus `proto` verifying `buf` JSON equivalence), and `grdr-schema-lint manifests` (pinning `grdr-schema` and `grdr-model` manifests and library roots with no build script, and forbidding `package.build`, `custom-build` outside `<pkg>/build.rs`, out-of-crate targets, external `path` dependencies, and unlisted `proc-macro` packages outside `security/trust-core.paths`) | CI (`schema-gate` base build, and `proto`) |
+| Cedar schema, Sigma taxonomy and lake column manifest are regenerated and unchanged | Drift test | CI (`verify.yml`) |
 | Golden vectors decode and re-encode byte-identically in every binding, with unknown fields injected | `grdr-proto` test | CI (`verify.yml`) |
 | Canary strings (prompt, commit message, secret, personal path) never reach upload, feed, export or review input at the default level. Inside an `EvidenceSpan` the prompt and commit-message canaries may not appear at all and the secret and personal-path canaries must be redacted | Privacy canary test (l07 spike 1) | Release |
 | Every class has exactly one lane per phase and fidelity or classification outcome, and one feed event id | `grdr-schema-lint` over the generated lane table | CI (`verify.yml`) |
@@ -497,7 +528,7 @@ Lake flattening (format owned by 20): column name is the field path joined by `_
 
 ### 14. Mappings
 
-Mapping files live in `grdr-schema/mappings/<dialect>/<version>.yaml`, are interpreted by one mapper in the core (so the sensor, server and an embedding host convert identically) and declare `source_schema_rev`, `target` and `target_version`. OTLP export does not require the server, because the generic sinks and the L1 feed that use it work without one (D-54, D-41). The Claude Code native-event mapping is how that agent's always-shipped `llm.request` metadata is obtained on a device without the proxy (D-52).
+Mapping files live in `grdr-schema/mappings/<dialect>/<version>.yaml`, are interpreted by one mapper in the core (so the sensor, server and an embedding host convert identically) and declare `source_schema_rev`, `target` and `target_version`. A mapping never assigns a data class (RFC 0006 R13): a mapped value inherits the class of the protobuf field it lands in from `grdr_schema::registry`, and a host value with no target field goes to `native` as `content` (section 1 rule 4). When an export encounters a closed enum value with no known `wire_name`, it keeps the record, omits that field and marks the record through the mapping format's omission field rather than `envelope.withheld`, which lists only classes removed by the capture filter (RFC 0006 R12). OTLP export does not require the server, because the generic sinks and the L1 feed that use it work without one (D-54, D-41). The Claude Code native-event mapping is how that agent's always-shipped `llm.request` metadata is obtained on a device without the proxy (D-52).
 
 **OCSF 1.9.0 (export).** Class uids below were checked by the author against the OCSF schema server on 2026-11-10; the briefs confirm 1001, 1007, 2004, 2006, 3003, 4001, 4002, 5001, 5020, 6003 and 7001 to 7004 (brief 23), and the golden test re-validates all of them.
 

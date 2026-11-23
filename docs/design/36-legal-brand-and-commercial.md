@@ -86,16 +86,17 @@ Key choices:
 
 | Class | Examples | Who may change it | When |
 |---|---|---|---|
-| A. Wire and ABI | Protobuf packages `grdr.*`, Cedar namespace `Grdr`, C ABI prefix `grdr_`, error codes `GRDR-`, environment prefix `GRDR_`, option numbers | An RFC (D-61) before the first release; nobody after it | Fixed at the first release |
+| A. Wire and ABI | `brand/brand.toml` `[identity] namespace` (`grdr` today, the wire namespace), protobuf packages `grdr.*`, Cedar namespace `Grdr`, C ABI prefix `grdr_`, error codes `GRDR-`, environment prefix `GRDR_`, option numbers | An RFC (D-61) before the first release; nobody after it | Fixed at the first release |
 | B. OS identity | CLI and binary names, service and launchd labels, bundle ids, Team ID binding, ETW provider name and GUID, unified-log subsystem, install paths, `HKLM\SOFTWARE\Policies\<brand>`, MDM domain, deb and rpm names, BPF pin prefix, WFP provider GUIDs | A rebuilt build (D-41 L6 rebuilt) with its own signing identities | Build time |
 | C. Display | Product name, short name, vendor name, block-message component, logo, DTCG brand tokens, email sender, report template, support and docs links | Rebuilt builds, and the Provider co-brand profile (D-41 L6 co-brand) at runtime | Runtime |
 
 Rules:
 
+- `[identity] namespace` in `brand/brand.toml` (`grdr` today; D-66) is the wire namespace, Class A. Tools read the protobuf package root and other wire names from this key rather than compiling a literal namespace (P14), without making the wire rebrandable: a rebuilt white-label manifest keeps the upstream `[identity] namespace` unchanged, and the brand manifest loader (`LBC-3`) refuses any other value until `04-4` migrates the namespace across all distributions at once (RFC 0006 R3).
 - A Class B GUID is generated once per brand and never reused.
 - The manifest also holds the project domain and the values derived from it: the docs, hosted-service and update hosts, the mail sending domain, and the security and conduct addresses (owner instruction 25). Loonaro's manifest sets the domain to `guardrailshq.com`; until its DNS exists, the docs and update hosts are GitHub-hosted addresses under the repository owner's account (GitHub Pages and GitHub Releases), so nothing waits on DNS. The DNS records, mail forwarding and SPF, DKIM and DMARC need the registrar or DNS host, which no agent reaches; the setup step prints the records to add.
 - Class C links are display-only. Update, intelligence and enrolment endpoints are configuration (22): `dist.toml` writes the defaults from the manifest's hosts into the default configuration that packages install, no program compiles one in, and a co-brand profile cannot change them, so `grdr egress` never changes with a runtime rebrand; `network.mode = "isolated"` drops them all (24 section 3).
-- A self-hosted deployment sets its own domain, hosts and addresses in boot configuration and runtime settings and never contacts or depends on Loonaro's domain; a white-label or partner build swaps the whole manifest (D-41 L6; owner instruction 26). Compiled code holds no domain, host, URL, port, address, product or company name; check S7 blocks one.
+- A self-hosted deployment sets its own domain, hosts and addresses in boot configuration and runtime settings and never contacts or depends on Loonaro's domain; a white-label or partner build replaces the manifest's Class B and Class C entries while keeping the Class A `[identity] namespace` unchanged (D-41 L6; owner instruction 26; RFC 0006 R3). Compiled code holds no domain, host, URL, port, address, product or company name; check S7 blocks one.
 - The disclosure surface (D-51) always shows the real software, version and signing publisher, even under co-brand: "Protected by Acme. Software: Guardrails ADR 1.4, signed by Loonaro."
 - The `embedded` build profile contains no brand manifest (03).
 
