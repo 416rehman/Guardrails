@@ -95,8 +95,8 @@ mod tests {
         ActionClass, ApprovalGrade, ApprovalRequest, ApprovalState, CreateRuleInput,
         DecideApprovalInput, DecideInput, DecisionReceipt, DeviceCheckinRequest, GrantScope,
         Incident, InstallProfile, KillAction, KillScope, KillSwitchInput, KillSwitchState, Mode,
-        PolicyRule, ReplayRuleInput, ReplaySummary, RuleMatch, SessionLabel, SessionSummary,
-        UpdateRuleModeInput, Verdict,
+        PolicyPack, PolicyRule, ReplayRuleInput, ReplaySummary, RuleMatch, SessionDetailResponse,
+        SessionLabel, SessionSummary, TrustedKeyInfo, UpdateRuleModeInput, Verdict,
     };
 
     #[tokio::test]
@@ -121,6 +121,7 @@ mod tests {
             hook_effective: true,
             agents: vec![],
             mcp_servers: vec![],
+            device_public_key: None,
         };
         let resp = app
             .clone()
@@ -592,5 +593,81 @@ mod tests {
             .unwrap();
         assert_eq!(inc.finding_count, 3);
         assert!(inc.labels.contains(&SessionLabel::TaintedExfilRisk));
+    }
+
+    #[tokio::test]
+    async fn server_signs_packs_receipts_and_verifies_via_public_keys() {
+        use grdr_crypto::{verify_pack, verify_receipt};
+        use grdr_model::SignatureStatus;
+
+        let state = AppState::init(None, false).unwrap();
+        let app = routes::build_router(state, None);
+
+        let resp = app
+            .clone()
+            .oneshot(Request::get("/api/v1/keys").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let keys: Vec<TrustedKeyInfo> = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(keys.len(), 1);
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/policies/packs")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let packs: Vec<PolicyPack> = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(verify_pack(&packs[0], &keys), SignatureStatus::Verified);
+
+        let decide_req = DecideInput {
+            session_id: Some("sess-sig".into()),
+            device_id: Some("dev-sig".into()),
+            device_name: Some("sig-host".into()),
+            agent_name: "claude-code".into(),
+            action_class: ActionClass::Exec,
+            control_point: None,
+            target: "git status".into(),
+            summary: None,
+        };
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/decide")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&decide_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let receipt: DecisionReceipt = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(verify_receipt(&receipt, &keys), SignatureStatus::Verified);
+
+        let resp = app
+            .oneshot(
+                Request::get("/api/v1/sessions/sess-sig")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let detail: SessionDetailResponse = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(detail.receipts[0].signature_verified, Some(true));
     }
 }

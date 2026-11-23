@@ -57,6 +57,7 @@ impl AppState {
                 ));
             };
             pack.rules.push(rule.clone());
+            let _ = self.signing_key.sign_pack(pack);
             guard.audit.insert(
                 0,
                 AuditEntry {
@@ -111,6 +112,7 @@ impl AppState {
                     rule.mode = input.mode;
                     rule.enabled = input.mode != Mode::Off;
                     found_rule = Some((rule.clone(), old_mode));
+                    let _ = self.signing_key.sign_pack(pack);
                     break;
                 }
             }
@@ -239,7 +241,7 @@ impl AppState {
                         GrantScope::Session => (Some(add_seconds(now, 14_400)), None),
                         GrantScope::OneHour => (Some(add_seconds(now, 3_600)), None),
                     };
-                    let grant = Grant {
+                    let mut grant = Grant {
                         grant_id: grant_id.clone(),
                         rule_id: req.rule_id.clone(),
                         session_id: req.session_id.clone(),
@@ -252,7 +254,10 @@ impl AppState {
                         expires_at,
                         remaining_uses,
                         note: note.clone(),
+                        key_id: None,
+                        signature: None,
                     };
+                    let _ = self.signing_key.sign_grant(&mut grant);
                     guard.grants.insert(0, grant);
                     ApprovalState::Approved {
                         grant_id,

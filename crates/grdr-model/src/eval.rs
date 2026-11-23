@@ -21,6 +21,8 @@ pub fn essentials_pack() -> PolicyPack {
         version: PACK_ESSENTIALS_VERSION.into(),
         channel: "schema-policy".into(),
         rules: essentials_rules(),
+        key_id: None,
+        signature: None,
     }
 }
 
@@ -295,6 +297,9 @@ pub fn evaluate_attempt(
                 .into(),
             receipt_digest: digest,
             decided_at: now,
+            key_id: None,
+            signature: None,
+            signature_verified: None,
         };
     }
 
@@ -330,6 +335,9 @@ pub fn evaluate_attempt(
             next_step: "No action needed.".into(),
             receipt_digest: digest,
             decided_at: now,
+            key_id: None,
+            signature: None,
+            signature_verified: None,
         };
     };
 
@@ -355,6 +363,9 @@ pub fn evaluate_attempt(
                 .into(),
             receipt_digest: digest,
             decided_at: now,
+            key_id: None,
+            signature: None,
+            signature_verified: None,
         };
     }
 
@@ -383,6 +394,9 @@ pub fn evaluate_attempt(
                 next_step: "Action permitted within grant expiry window.".into(),
                 receipt_digest: digest,
                 decided_at: now,
+                key_id: None,
+                signature: None,
+                signature_verified: None,
             };
         }
         let digest = compute_receipt_digest(attempt, Verdict::StepUp, Some(&rule.id), now);
@@ -405,6 +419,9 @@ pub fn evaluate_attempt(
             next_step: "Approve the pending request in Respond, then retry.".into(),
             receipt_digest: digest,
             decided_at: now,
+            key_id: None,
+            signature: None,
+            signature_verified: None,
         };
     }
 
@@ -428,6 +445,9 @@ pub fn evaluate_attempt(
         next_step: "Run replay on Protect to decide whether to promote this rule to Ask.".into(),
         receipt_digest: digest,
         decided_at: now,
+        key_id: None,
+        signature: None,
+        signature_verified: None,
     }
 }
 
@@ -570,6 +590,8 @@ mod tests {
             expires_at: Some(add_seconds(now, 60)),
             remaining_uses: None,
             note: "Approved test read".into(),
+            key_id: None,
+            signature: None,
         };
         let allowed = evaluate_attempt(
             &sample_attempt(ActionClass::FileRead, "/home/dev/.ssh/id_rsa"),
@@ -608,6 +630,8 @@ mod tests {
             expires_at: Some(add_seconds(now, 300)),
             remaining_uses: Some(1),
             note: "Single use".into(),
+            key_id: None,
+            signature: None,
         }];
 
         let attempt = sample_attempt(ActionClass::FileRead, "/home/dev/.ssh/id_rsa");

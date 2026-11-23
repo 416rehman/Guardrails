@@ -11,7 +11,7 @@ use crate::domain::{
     ActionClass, ApprovalGrade, AssuranceLevel, AssuranceRecord, ControlPoint, FindingLifecycle,
     GrantScope, InstallProfile, KillScope, KillSwitchState, Mode, SessionLabel, Verdict,
 };
-use crate::policy::{ActionAttempt, DecisionReceipt, PolicyPack, RuleMatch};
+use crate::policy::{ActionAttempt, CompiledFloorTable, DecisionReceipt, PolicyPack, RuleMatch};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct McpServerEntry {
@@ -63,6 +63,8 @@ pub struct Device {
     pub agents: Vec<DiscoveredAgent>,
     pub mcp_servers: Vec<McpServerEntry>,
     pub last_seen: Timestamp,
+    #[serde(default)]
+    pub public_key: Option<TrustedKeyInfo>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -144,6 +146,20 @@ pub struct DeviceCheckinRequest {
     pub hook_effective: bool,
     pub agents: Vec<DiscoveredAgent>,
     pub mcp_servers: Vec<McpServerEntry>,
+    #[serde(default)]
+    pub device_public_key: Option<TrustedKeyInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrustedKeyInfo {
+    pub key_id: String,
+    pub public_key_b64: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignedFloorBundle {
+    pub table: CompiledFloorTable,
+    pub signer: TrustedKeyInfo,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -153,6 +169,8 @@ pub struct DeviceCheckinResponse {
     pub grants: Vec<crate::policy::Grant>,
     pub kill_switch: KillSwitchState,
     pub server_time: Timestamp,
+    #[serde(default)]
+    pub trusted_keys: Vec<TrustedKeyInfo>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

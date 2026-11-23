@@ -119,6 +119,9 @@ export interface DecisionReceipt {
   next_step: string;
   receipt_digest: string;
   decided_at: string;
+  key_id?: string | null;
+  signature?: string | null;
+  signature_verified?: boolean | null;
 }
 
 export interface SessionDetailResponse {

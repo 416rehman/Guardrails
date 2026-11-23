@@ -240,6 +240,14 @@ pub enum CommandParseStatus {
     Malformed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SignatureStatus {
+    Unsigned,
+    Verified,
+    Invalid,
+}
+
 impl Mode {
     pub fn label(self) -> &'static str {
         match self {

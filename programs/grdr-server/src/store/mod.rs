@@ -14,13 +14,15 @@ use tokio::sync::{RwLock, broadcast};
 use uuid::Uuid;
 
 use grdr_core::{detect, policy, session};
-use grdr_model::error::{CODE_INVALID_INPUT, CODE_NOT_FOUND};
+use grdr_crypto::{SigningKeypair, load_or_create_keypair, verify_receipt};
+use grdr_model::error::{CODE_INVALID_INPUT, CODE_NOT_FOUND, CODE_STORE_IO};
 use grdr_model::eval::add_seconds;
 use grdr_model::{
     ActionAttempt, ApprovalRequest, ApprovalState, AuditEntry, BatchEventsInput,
     BatchEventsResponse, CodedError, DecideInput, DecisionReceipt, Device, DeviceCheckinRequest,
     DeviceCheckinResponse, Finding, Grant, Incident, KillSwitchState, LiveEvent, PolicyPack,
-    SessionDetailResponse, SessionSummary, Verdict, slugify_id, summarize_sessions,
+    SessionDetailResponse, SessionSummary, SignatureStatus, TrustedKeyInfo, Verdict, slugify_id,
+    summarize_sessions,
 };
 
 use crate::demo;
@@ -50,6 +52,7 @@ pub struct AppState {
     pub live_tx: broadcast::Sender<LiveEvent>,
     pub data_dir: Option<PathBuf>,
     pub storage_mode: String,
+    pub signing_key: SigningKeypair,
 }
 
 impl Default for StoreData {
@@ -76,6 +79,23 @@ impl AppState {
             None => "memory".into(),
         };
 
+        let signing_key = match &data_dir {
+            Some(dir) => load_or_create_keypair(&dir.join("signing.key")).map_err(|e| {
+                CodedError::new(
+                    CODE_STORE_IO,
+                    format!("Failed initializing server signing key: {e}"),
+                    "Verify write permissions in --data-dir.",
+                )
+            })?,
+            None => SigningKeypair::generate().map_err(|e| {
+                CodedError::new(
+                    CODE_STORE_IO,
+                    format!("Failed generating ephemeral signing key: {e}"),
+                    "Check OS entropy availability.",
+                )
+            })?,
+        };
+
         let mut data = match &data_dir {
             Some(dir) => load_from_dir(dir)?,
             None => StoreData::default(),
@@ -91,9 +111,20 @@ impl AppState {
             data.grants = seed.grants;
             data.findings = seed.findings;
             data.audit = seed.audit;
-            if let Some(dir) = &data_dir {
-                persist_snapshot(dir, &data)?;
+        }
+
+        for pack in &mut data.packs {
+            if pack.signature.is_none() {
+                let _ = signing_key.sign_pack(pack);
             }
+        }
+        for receipt in &mut data.receipts {
+            if receipt.signature.is_none() {
+                let _ = signing_key.sign_receipt(receipt);
+            }
+        }
+        if let Some(dir) = &data_dir {
+            persist_snapshot(dir, &data)?;
         }
 
         let (live_tx, _) = broadcast::channel(256);
@@ -102,6 +133,7 @@ impl AppState {
             live_tx,
             data_dir,
             storage_mode,
+            signing_key,
         })
     }
 
@@ -135,6 +167,7 @@ impl AppState {
             agents: req.agents,
             mcp_servers: req.mcp_servers,
             last_seen: now,
+            public_key: req.device_public_key,
         };
 
         let (packs, grants, kill_switch) = {
@@ -190,6 +223,7 @@ impl AppState {
             grants,
             kill_switch,
             server_time: now,
+            trusted_keys: self.trusted_keys(),
         })
     }
 
@@ -219,7 +253,7 @@ impl AppState {
             let mut sess_state = session::replay_session_states(&guard.attempts, &guard.receipts)
                 .remove(&attempt.session_id)
                 .unwrap_or_else(|| session::SessionRuleState::new(attempt.session_id.clone()));
-            let receipt = {
+            let mut receipt = {
                 let data = &mut *guard;
                 policy::evaluate_with_session(
                     &attempt,
@@ -230,6 +264,7 @@ impl AppState {
                     now,
                 )
             };
+            let _ = self.signing_key.sign_receipt(&mut receipt);
             record_attempt_and_receipt(&mut guard, attempt.clone(), receipt.clone(), now);
             if let Some(dir) = &self.data_dir {
                 persist_snapshot(dir, &guard)?;
@@ -395,11 +430,27 @@ impl AppState {
             .filter(|a| a.session_id == session_id)
             .cloned()
             .collect();
+        let mut keys = self.trusted_keys();
+        for device in &guard.devices {
+            if let Some(pk) = &device.public_key
+                && !keys.iter().any(|existing| existing.key_id == pk.key_id)
+            {
+                keys.push(pk.clone());
+            }
+        }
         let receipts = guard
             .receipts
             .iter()
             .filter(|r| r.session_id == session_id)
             .cloned()
+            .map(|mut r| {
+                r.signature_verified = match verify_receipt(&r, &keys) {
+                    SignatureStatus::Verified => Some(true),
+                    SignatureStatus::Invalid => Some(false),
+                    SignatureStatus::Unsigned => None,
+                };
+                r
+            })
             .collect();
 
         Ok(SessionDetailResponse {
@@ -407,6 +458,10 @@ impl AppState {
             attempts,
             receipts,
         })
+    }
+
+    pub fn trusted_keys(&self) -> Vec<TrustedKeyInfo> {
+        vec![self.signing_key.public_info()]
     }
 
     pub(crate) fn emit_live(&self, topic: &str, summary: String, verdict: Option<Verdict>) {
