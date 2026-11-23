@@ -1,4 +1,4 @@
-# gitleaks rules for this repository: the default rule set plus one allowlist. scan.yml passes
+# gitleaks rules for this repository: the default rule set plus two allowlists. scan.yml passes
 # this file through [tool.gitleaks] config in build-tools.toml. A finding in history stays in
 # every whole-history scan, so a false positive is allowed here rather than edited out of a file.
 [extend]
@@ -13,3 +13,14 @@ condition = "AND"
 regexTarget = "secret"
 regexes = ['''^[a-z]{2,8}_01[0-9a-hjkmnp-tv-z]{24}$''']
 paths = ['''^docs/''']
+
+# Buf's minisign_key in build-tools.toml is the release-signing public key Buf publishes, not a
+# credential, but generic-api-key matches it. The entry is scoped to that rule, with AND, because a
+# global entry's paths would skip the whole file in dir mode and an OR entry would allow any value.
+[[allowlists]]
+description = "minisign public keys in the build-tool pins"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^RW[QRST][A-Za-z0-9+/]{53}$''']
+paths = ['''^supply-chain/build-tools\.toml$''']

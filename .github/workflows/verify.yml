@@ -5,7 +5,8 @@ name: verify
 # nightly run and a manual run cover Linux, macOS and Windows on GitHub's free standard runners
 # (owner instruction 28); a private copy falls back to Linux with no nightly run, because private
 # runner minutes are limited. Until a crate lands under crates/ or programs/ the workspace has no
-# members, Cargo refuses every command, and the Rust steps are skipped.
+# members, Cargo refuses every command, and the Rust steps are skipped. The tools job installs the
+# release-asset build tools by digest on the same systems whether or not a crate exists.
 
 on:
   pull_request:
@@ -158,3 +159,67 @@ jobs:
           RUSTUP_TOOLCHAIN: ${{ env.RUSTUP_TOOLCHAIN }}
         with:
           command: check
+
+  tools:
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
+    name: tools (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(needs.plan.outputs.systems) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+        with:
+          install: "false"
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      - name: Compare the pins with GitHub's asset digests
+        if: matrix.os == 'ubuntu-26.04'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -I .github/actions/install-tool/install_tool.py buf --check-release
+          python3 -I .github/actions/install-tool/install_tool.py protoc-gen-connect-openapi --check-release
+      - name: Installer, signature, proxy-name and no-build-fetch tests
+        run: |
+          for python in python3 python; do
+            if "$python" -I -c "import tomllib" > /dev/null 2>&1; then
+              "$python" -I -B .github/actions/install-tool/test_install_tool.py -v
+              exit 0
+            fi
+          done
+          echo "::error::GRDR-GATE-0006 no Python with tomllib on this runner"
+          exit 1
+      - id: buf
+        uses: $/.github/actions/install-tool
+        with:
+          tool: buf
+      - id: openapi
+        uses: $/.github/actions/install-tool
+        with:
+          tool: protoc-gen-connect-openapi
+      - name: Run both tools from the folder the action output
+        env:
+          BUF_FOLDER: ${{ steps.buf.outputs.path }}
+          OPENAPI_FOLDER: ${{ steps.openapi.outputs.path }}
+        run: |
+          "$BUF_FOLDER/buf" --version
+          "$OPENAPI_FOLDER/protoc-gen-connect-openapi" --version

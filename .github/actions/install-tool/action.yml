@@ -1,0 +1,35 @@
+name: Install a build tool
+description: >-
+  Installs one release-asset tool from its row in the build-tools file, checked by size, digest
+  and, where the release signs its checksum file, by signature (install_tool.py). It outputs the
+  folder it wrote the binary to and leaves the job's search path unchanged, so a later step runs
+  the tool by that folder.
+
+inputs:
+  tool:
+    description: The table name under [tool], such as buf.
+    required: true
+
+outputs:
+  path:
+    description: The folder that holds the installed binary.
+    value: ${{ steps.install.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - id: install
+      shell: bash
+      env:
+        TOOL: ${{ inputs.tool }}
+      run: |
+        dest="$RUNNER_TEMP/build-tools/bin"
+        for python in python3 python; do
+          if "$python" -I -c "import tomllib" > /dev/null 2>&1; then
+            "$python" -I "$GITHUB_ACTION_PATH/install_tool.py" "$TOOL" --dest "$dest"
+            echo "path=$dest" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+        done
+        echo "::error::GRDR-GATE-0006 no Python with tomllib on this runner"
+        exit 1

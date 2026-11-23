@@ -62,6 +62,7 @@ COMPOSITE_KEYS = {"using", "steps"}
 CHECKS_OUT = "checks out the repository"
 RUNS_CARGO_IN_A_CONTAINER = "runs cargo in its own container, which takes the pin as step env"
 ACTIONS = {
+    "$/.github/actions/install-tool": None,
     "$/.github/actions/pins": None,
     "EmbarkStudios/cargo-deny-action": RUNS_CARGO_IN_A_CONTAINER,
     "Swatinem/rust-cache": None,
