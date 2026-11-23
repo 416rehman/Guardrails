@@ -1,0 +1,27 @@
+# Public surface stability classes (ADR-0020, D-60). Protected trust-core path: every public
+# surface carries a class (experimental, beta or stable), and nothing becomes stable before
+# one external embed pilot completes.
+#
+# [[c_header]] rows register C ABI headers for grdr-cabi-testkit and c-headers (RFC 0004,
+# ADR-0034). Each entry sits on its own `key = "value"` line with one double-quoted string;
+# profiles, features and targets are space-separated lists.
+
+[[c_header]]
+file = "grdr_fastpath.h"
+crate = "grdr-fastpath-ffi"
+contract = "spec/host-contract/c-abi.md"
+section = "grdr_fastpath.h"
+class = "experimental"
+profiles = "release"
+features = ""
+targets = "x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-msvc aarch64-pc-windows-msvc"
+
+[[c_header]]
+file = "grdr.h"
+crate = "grdr-ffi"
+contract = "spec/host-contract/c-abi.md"
+section = "grdr.h"
+class = "experimental"
+profiles = "release"
+features = ""
+targets = "x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-msvc aarch64-pc-windows-msvc"
