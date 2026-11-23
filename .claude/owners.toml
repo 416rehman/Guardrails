@@ -122,7 +122,8 @@ paths = ["deploy/**", "brand/**", "dist.toml", "release/**",
          "**/.config/deny.toml", "**/.config/deny.exceptions.toml",
          "**/.cargo/deny.toml", "**/.cargo/deny.exceptions.toml",
          ".github/workflows/release-please.yml", "release-please-config.json",
-         ".release-please-manifest.json"]
+         ".release-please-manifest.json",
+         "docs/product/**", "docs/runbooks/**", "docs/training/**", "docs/i18n/**"]
 
 [squad.lab]
 alias = ["SQ-16"]
