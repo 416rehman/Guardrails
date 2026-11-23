@@ -25,3 +25,25 @@ class = "experimental"
 profiles = "release"
 features = ""
 targets = "x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-msvc aarch64-pc-windows-msvc"
+
+# [[crate]] rows register public crate stability classes for cargo public-api and
+# cargo semver-checks (RFC 0005, ADR-0020, ADR-0037). Each entry sits on its own
+# `key = "value"` line with one double-quoted string (`name`, `class`, `rfc`). A class is
+# per crate, never per module, and a crate's class is at most the class of every crate whose
+# public types its public API exposes (`grdr-core` exposes `grdr_fastpath::layout::Nanos`,
+# so it cannot move above `grdr-fastpath`).
+
+[[crate]]
+name = "grdr-fastpath"
+class = "experimental"
+rfc = "0005"
+
+[[crate]]
+name = "grdr-fastpath-ffi"
+class = "experimental"
+rfc = "0005"
+
+[[crate]]
+name = "grdr-core"
+class = "experimental"
+rfc = "0005"
