@@ -8,3 +8,9 @@
 path = "tables.md"
 design_section = "26 section 2, Tables"
 status = "written"
+
+[[document]]
+path = "c-abi.md"
+design_section = "26 sections 2 and 3, C interfaces and error model"
+status = "written"
+data = ["status-codes.toml"]
