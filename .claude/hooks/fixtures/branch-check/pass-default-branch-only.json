@@ -1,9 +1,0 @@
-{
-  "repo": "example/repo",
-  "default_branch": "main",
-  "branches": [
-    "main"
-  ],
-  "pulls": [],
-  "expect": []
-}

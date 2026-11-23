@@ -3,12 +3,27 @@ resolver = "3"
 members = ["crates/*", "programs/*"]
 exclude = ["bpf/grdr-sensor-linux-bpf"]
 
-# Every member inherits this table with `[lints] workspace = true` (owner instruction 15); test
-# code may unwrap, expect, panic and index through clippy.toml. Cargo refuses crate entries next
-# to `workspace = true`, so layer 0 to 2 and privileged crates add
-# `#![deny(clippy::arithmetic_side_effects)]` at their crate root, and grdr-ffi and the OS adapter
-# crates, the only ones allowed unsafe code, carry a copy of this table with `unsafe_code = "deny"`
-# and a reasoned `#[allow(unsafe_code)]` on each unsafe item.
+[workspace.dependencies]
+axum = { version = "0.8", features = ["json", "macros"] }
+clap = { version = "4.5", features = ["derive", "env"] }
+futures-util = "0.3"
+grdr-agents = { version = "0.1.0", path = "crates/grdr-agents" }
+grdr-core = { version = "0.1.0", path = "crates/grdr-core" }
+grdr-model = { version = "0.1.0", path = "crates/grdr-model" }
+jiff = { version = "0.2", features = ["serde"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "charset"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+thiserror = "2.0"
+tokio = { version = "1.43", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "fs"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1.11", features = ["v7", "serde"] }
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 

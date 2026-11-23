@@ -2,9 +2,9 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 #![deny(clippy::arithmetic_side_effects)]
 
-mod analyze;
-mod compile;
-mod detect;
-mod discover;
-mod policy;
-mod session;
+pub mod analyze;
+pub mod compile;
+pub mod detect;
+pub mod discover;
+pub mod policy;
+pub mod session;

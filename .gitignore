@@ -1,3 +1,9 @@
 .agent/
-target/
 .claude/settings.local.json
+.claude/worktrees/
+**/__pycache__/
+target/
+web/node_modules/
+web/dist/
+web/.vite/
+grdr-data/
