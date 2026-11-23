@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { checkState, closingPageArgs, findings, forkLinks, liveState, loadRules, openPullsArgs, printable, truncatedForks, unseenOwn } from "./branch-findings.mjs";
+import { checkState, closingPageArgs, findings, forkLinks, liveState, loadRules, openPullsArgs, printable, slugifyIssueTitle, truncatedForks, unseenOwn } from "./branch-findings.mjs";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SCRIPT = join(HERE, "branch-check.mjs");
@@ -23,8 +23,8 @@ const STATE_FIXTURES = FIXTURE_NAMES.filter((name) => /^(pass|fail)-.+\.json$/.t
 const UNREADABLE_FIXTURES = FIXTURE_NAMES.filter((name) => name.startsWith("unreadable"));
 const SUMMARY = /^branch-check: example\/repo: \d+ branches, \d+ open pull requests, fork links: (\d+), findings: (\d+)\.$/;
 const LINK_REFUSED = new Set(["EPERM", "EACCES", "ENOTSUP", "ENOSYS"]);
-const PULL = { number: 1, head: "issue/1", head_repo: "example/repo", author: { login: "example-dev", type: "User" }, body: null, closing_issues: [], closing_total: 0 };
-const STATE = { repo: "example/repo", default_branch: "main", branches: ["main", "issue/1"], pulls: [PULL] };
+const PULL = { number: 1, head: "issue/1-sample-issue", title: "Sample issue (#1)", head_repo: "example/repo", author: { login: "example-dev", type: "User" }, body: "Issue: #1 Sample issue\nRefs #1", closing_issues: [], closing_total: 0 };
+const STATE = { repo: "example/repo", default_branch: "main", branches: ["main", "issue/1-sample-issue"], pulls: [PULL] };
 
 function run(script, ...args) {
   return spawnSync(process.execPath, [script, ...args], { encoding: "utf8" });
@@ -139,14 +139,14 @@ function fakeGh({ ownTotal, forkTotal = 0, pageSize, alwaysMore = false }) {
   const asked = [];
   const issuesFrom = (start, count) => Array.from({ length: count }, (_, k) => ({ number: start + k, repo: "example/repo" }));
   const first = (number, head_repo, total) => ({
-    number, head: number === 1 ? "issue/1" : "patch-1", head_repo, author: PULL.author, body: null,
+    number, head: number === 1 ? "issue/1-sample-issue" : "patch-1", title: "Sample issue (#1)", head_repo, author: PULL.author, body: number === 1 ? "Issue: #1 Sample issue\nRefs #1" : null,
     closing_issues: issuesFrom(number * 1000, Math.min(total, pageSize)), closing_total: total,
     closing_cursor: total > pageSize ? `c${number}-1` : null, closing_more: total > pageSize,
   });
   const gh = (args) => {
     const query = args.find((arg) => arg.startsWith("query=")) ?? "";
     if (args[1] === "repos/{owner}/{repo}") return JSON.stringify({ full_name: "example/repo", default_branch: "main" });
-    if (args[1] === "repos/{owner}/{repo}/branches") return "main\nissue/1\n";
+    if (args[1] === "repos/{owner}/{repo}/branches") return "main\nissue/1-sample-issue\n";
     if (query.includes("pullRequests(")) {
       return [first(1, "example/repo", ownTotal), first(2, "contributor/repo", forkTotal)].map((p) => JSON.stringify(p)).join("\n");
     }
@@ -315,8 +315,8 @@ test("a short closing list is information: references the token cannot see on ou
 
 test("messages name the work branch from the work_branch_form data", () => {
   const rules = loadRules(rulesWith((raw) => Object.assign(raw, { work_branch: "^work-([1-9][0-9]*)$", work_branch_form: "work-<n>" })));
-  const second = { ...PULL, number: 2, head: "wip", closing_issues: [{ number: 1, repo: "example/repo" }], closing_total: 1 };
-  const state = { ...STATE, branches: ["main", "work-1", "wip"], pulls: [{ ...PULL, head: "work-1" }, second] };
+  const second = { ...PULL, number: 2, head: "wip", body: "Refs #1", closing_issues: [{ number: 1, repo: "example/repo" }], closing_total: 1 };
+  const state = { ...STATE, branches: ["main", "work-1", "wip"], pulls: [{ ...PULL, head: "work-1", body: "Refs #1" }, second] };
   const messages = findings(state, rules).map((finding) => finding.message);
   assert.ok(messages.some((message) => message.startsWith('"wip": not named work-<n>,') && message.includes("Move its commits to work-<n>")), messages.join("\n"));
   assert.ok(messages.some((message) => message.includes("Keep the one on work-1 ")), messages.join("\n"));
@@ -324,15 +324,20 @@ test("messages name the work branch from the work_branch_form data", () => {
 });
 
 test("a branch list without the default branch is incomplete", () => {
-  assert.throws(() => checkState({ ...STATE, branches: ["issue/1"] }), /lacks the default branch/);
+  assert.throws(() => checkState({ ...STATE, branches: ["issue/1-sample-issue"] }), /lacks the default branch/);
 });
 
 test("a closing reference to another repository is not a link", () => {
-  const other = { ...PULL, number: 2, head: "issue/2", closing_issues: [{ number: 1, repo: "other/repo" }] };
-  const state = { ...STATE, branches: ["main", "issue/1", "issue/2"], pulls: [PULL, other] };
+  const other = { ...PULL, number: 2, head: "issue/2-sample-issue", title: "Sample issue (#2)", body: "Issue: #2 Sample issue\nRefs #2", closing_issues: [{ number: 1, repo: "other/repo" }] };
+  const state = { ...STATE, branches: ["main", "issue/1-sample-issue", "issue/2-sample-issue"], pulls: [PULL, other] };
   assert.deepEqual(findings(state, loadRules(RULES_TEXT)), []);
   const same = { ...other, closing_issues: [{ number: 1, repo: "example/repo" }] };
   assert.deepEqual(kindsAndSubjects(findings({ ...state, pulls: [PULL, same] }, loadRules(RULES_TEXT))), ["second-pull-request #1"]);
+});
+
+test("slugifyIssueTitle produces lowercase ASCII kebab-case within max length", () => {
+  assert.equal(slugifyIssueTitle("Multi-provider agent kit (Claude, Gemini, Codex)!"), "multi-provider-agent-kit-claude-gemini-codex");
+  assert.ok(slugifyIssueTitle("a ".repeat(40), 20).length <= 20);
 });
 
 test("rules missing a value, or with the wrong capture groups, are refused", () => {
@@ -345,5 +350,5 @@ test("rules missing a value, or with the wrong capture groups, are refused", () 
   assert.throws(() => loadRules(rulesWith((raw) => (raw.reference_line = "^refs #[0-9]+$"))), /exactly one capture group/);
   assert.throws(() => loadRules(rulesWith((raw) => delete raw.work_branch_form)), /work_branch_form/);
   assert.throws(() => loadRules(rulesWith((raw) => (raw.work_branch_form = "issue/n"))), /work_branch_form/);
-  assert.throws(() => loadRules(rulesWith((raw) => (raw.work_branch_form = "work/<n>"))), /work_branch_form/);
+  assert.throws(() => loadRules(rulesWith((raw) => (raw.work_branch_form = "work/<n>-<slug>"))), /work_branch_form/);
 });

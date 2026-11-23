@@ -1,73 +1,55 @@
-# Trust-core paths: the D-63 list as design/02 (Interfaces) states it, one glob per line.
-# A change under any of them is high tier and takes the full lane, except a lockfile change
-# inside the supply-chain policy (D-63). The full lane is eval-security and eval-adversarial in
-# clean contexts, cross-model review by the model that did not write it, and two independent
-# passing evaluators on different models (owner instruction 7). Read through
-# .claude/risk-tiers.toml by the grdr-work-issue skill and eval-tier.
-# Each line is a git :(glob) pathspec from the root; `**/` matches zero or more folders.
-# Module globs fix where that code lives inside its crate; moving the code means a change here.
+# Trust-core paths (D-63, ADR-0043): strictly runtime security boundaries and core security/CI policy gates.
+# Routine dependency/tool pins (Cargo.toml, Cargo.lock, rust-toolchain.toml, supply-chain/build-tools.toml),
+# lint/format configs, release manifests, and agent/doc markdown sit outside trust-core so CI verifies them cleanly.
 
 # eBPF programs
 bpf/**
 
-# Windows driver; design/03 section 11 puts it, with the service definitions, under platform/windows
+# Windows driver and platform shells
 crates/grdr-driver-windows/**
 platform/windows/**
 
 # macOS Swift shell and system extensions
 platform/macos/**
 
-# Privileged core: the daemon and the engine sandbox launcher only it calls (design/03, design/11)
+# Privileged core and approval helper
 programs/grdr-daemon/**
 crates/grdr-sandbox-engine/**
+programs/grdr-approve/**
 
-# IPC peer authentication in grdr-wire, with its OS adapters under the same module
+# IPC peer authentication
 crates/grdr-wire/src/peer_auth.rs
 crates/grdr-wire/src/peer_auth/**
 
-# Pack verifier and updater
+# Pack verifier, updater, and cryptography
 crates/grdr-update/**
 programs/grdr-updater/**
-
-# Cryptography
 crates/grdr-crypto/**
 
-# Policy evaluator semantics: both evaluators of design/12 section 1 item 6. The policy module of
-# grdr-core until it splits out, and the fast path that answers when the engine is gone with the
-# compile module that writes its rows
+# Policy evaluator and fast path
 crates/grdr-core/src/policy.rs
 crates/grdr-core/src/policy/**
 crates/grdr-fastpath/**
 crates/grdr-core/src/compile/fastpath.rs
 crates/grdr-core/src/compile/fastpath/**
 
-# Tenant context (TenantCtx, taken by every port method) and row-level security
+# Tenant context and row-level security
 crates/grdr-ports/src/tenant.rs
 crates/grdr-ports/src/tenant/**
 crates/grdr-rel-postgres/migrations/**
 
-# unsafe in the FFI
+# FFI unsafe boundaries
 crates/grdr-ffi/**
 crates/grdr-fastpath-ffi/**
 
-# Approval helper
-programs/grdr-approve/**
-
-# Gate, CI and release configuration, this file included
+# Core security bounds, CI workflow definitions, and dependency licence/ban policies
+limits.toml
 security/trust-core.paths
 security/breakers.toml
 security/scorecard.toml
-.github/**
-.claude/**
-AGENTS.md
-CLAUDE.md
-audits/**
-governance/**
-MAINTAINERS.md
-Cargo.toml
-Cargo.lock
-rust-toolchain.toml
-.cargo/**
+.github/workflows/**
+supply-chain/licences.toml
+supply-chain/do-not-read.toml
 **/deny.toml
 **/deny.*.toml
 **/.deny.toml
@@ -76,16 +58,3 @@ rust-toolchain.toml
 **/.config/deny.exceptions.toml
 **/.cargo/deny.toml
 **/.cargo/deny.exceptions.toml
-**/clippy.toml
-rustfmt.toml
-architecture.toml
-surfaces.toml
-support.toml
-limits.toml
-dist.toml
-supply-chain/**
-release-please-config.json
-.release-please-manifest.json
-# RFC 0001: the pin registry and the committed review evidence the RFC checks read
-rfcs/pins.toml
-rfcs/evidence/**

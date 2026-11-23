@@ -1,0 +1,42 @@
+# Model routing for multi-provider agent sessions (P14, D-47, D-63, ADR-0042, ADR-0043).
+# Sessions read this file instead of hard-coding one provider's model names.
+#
+# Cost-aware default tiers (ADR-0043):
+#   fast      - low-tier reviews, quick file/test lookups
+#   standard  - normal implementation, leads, and medium/high eval-review
+#   high      - eval-security on high/trust-core, and complex trust-core implementation
+#   architect - chief-architect (spine, RFC decisions, escalations)
+
+[providers.anthropic]
+harness = "claude-code"
+architect = "claude-fable-5-2"
+high = "claude-opus-5-5"
+standard = "claude-sonnet-5-5"
+fast = "claude-haiku-4-5"
+
+[providers.google]
+harness = "antigravity"
+architect = "Gemini 4 Neon"
+high = "Gemini 4 Neon"
+standard = "Gemini 4 Carbon"
+fast = "flash"
+
+[providers.google.subagent_tiers]
+architect = "pro"
+high = "pro"
+standard = "inherit"
+fast = "flash"
+
+[providers.openai]
+harness = "codex"
+architect = "gpt-5.4"
+high = "gpt-5.4"
+standard = "gpt-5.4-mini"
+fast = "gpt-5.4-mini"
+codex_cli = true
+
+[cross_model]
+# Trust-core and high-tier changes run 2 lean evaluators (`eval-review` + `eval-security`) on
+# distinct models/providers (D-63, ADR-0043). Every evaluator verdict names Provider and Model.
+distinct_models = 2
+require_distinct_from_implementer = true

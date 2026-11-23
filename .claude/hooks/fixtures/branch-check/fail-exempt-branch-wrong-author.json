@@ -1,16 +1,75 @@
 {
   "repo": "example/repo",
   "default_branch": "main",
-  "branches": ["main", "dependabot/evil", "dependabot/cargo/serde-1.0.300", "release-please--branches--main", "dependabot/user-named-like-the-bot"],
+  "branches": [
+    "main",
+    "dependabot/evil",
+    "dependabot/cargo/serde-1.0.300",
+    "release-please--branches--main",
+    "dependabot/user-named-like-the-bot"
+  ],
   "pulls": [
-    {"number": 901, "head": "dependabot/evil", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Bumps nothing.", "closing_issues": [], "closing_total": 0},
-    {"number": 902, "head": "dependabot/cargo/serde-1.0.300", "head_repo": "example/repo", "author": {"login": "dependabot", "type": "Bot"}, "body": "Bumps serde.", "closing_issues": [], "closing_total": 0},
-    {"number": 903, "head": "release-please--branches--main", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Release pull request.", "closing_issues": [], "closing_total": 0},
-    {"number": 904, "head": "dependabot/user-named-like-the-bot", "head_repo": "example/repo", "author": {"login": "dependabot", "type": "User"}, "body": "A user account with the bot's login.", "closing_issues": [], "closing_total": 0}
+    {
+      "number": 901,
+      "head": "dependabot/evil",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Refs #901",
+      "closing_issues": [],
+      "closing_total": 0
+    },
+    {
+      "number": 902,
+      "head": "dependabot/cargo/serde-1.0.300",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "dependabot",
+        "type": "Bot"
+      },
+      "body": "Bumps serde.",
+      "closing_issues": [],
+      "closing_total": 0
+    },
+    {
+      "number": 903,
+      "head": "release-please--branches--main",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Refs #903",
+      "closing_issues": [],
+      "closing_total": 0
+    },
+    {
+      "number": 904,
+      "head": "dependabot/user-named-like-the-bot",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "dependabot",
+        "type": "User"
+      },
+      "body": "Refs #904",
+      "closing_issues": [],
+      "closing_total": 0
+    }
   ],
   "expect": [
-    {"kind": "bad-name", "subject": "dependabot/evil"},
-    {"kind": "bad-name", "subject": "release-please--branches--main"},
-    {"kind": "bad-name", "subject": "dependabot/user-named-like-the-bot"}
+    {
+      "kind": "bad-name",
+      "subject": "dependabot/evil"
+    },
+    {
+      "kind": "bad-name",
+      "subject": "release-please--branches--main"
+    },
+    {
+      "kind": "bad-name",
+      "subject": "dependabot/user-named-like-the-bot"
+    }
   ]
 }

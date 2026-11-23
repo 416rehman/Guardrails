@@ -34,13 +34,13 @@ Leads, direction agents and evaluators skip the code checks.
 
 ## 3. Commit
 
-On your branch `issue/<n>` only. The message is one line and nothing else (owner instruction 27): a Conventional Commit subject, `<type>(<scope>): <what changed>`, of at most 72 characters, for example `fix(core): return unresolved for here-doc bodies`. Types: `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `build`, `ci`, `chore`, `revert`, lower case; add `!` after the scope for a breaking change. release-please builds versions and changelogs from these subjects, so the type must be true: a `fix` that adds behaviour is a `feat`. The scope is the crate or area without the `grdr-` prefix.
+On your issue branch `issue/<n>-<slug>` only. The message is one line and nothing else (owner instruction 27): a Conventional Commit subject, `<type>(<scope>): <what changed>`, of at most 72 characters, for example `fix(core): return unresolved for here-doc bodies`. Types: `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `build`, `ci`, `chore`, `revert`, lower case; add `!` after the scope for a breaking change. release-please builds versions and changelogs from these subjects, so the type must be true: a `fix` that adds behaviour is a `feat`. The scope is the crate or area without the `grdr-` prefix.
 
 No body, no trailer of any kind and no credit line. `git commit -m '<subject>'` with one `-m`. Sessions with no write rights (leads, council seats) commit nothing.
 
 ## 4. Push and report
 
-`git push -u origin issue/<n>`. Never push to `main`, open or merge the pull request, close the issue or change its labels: the orchestrating session does that once the evaluators pass. Then return the report of `references/format.md` as your final message.
+`git push -u origin issue/<n>-<slug>`. Never push to `main`, open or merge the pull request, close the issue or change its labels: the orchestrating session does that once the evaluators pass. Then return the report of `references/format.md` as your final message.
 
 ## 5. Escalate when the rule says so
 

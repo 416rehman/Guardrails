@@ -1,10 +1,43 @@
 {
   "repo": "example/repo",
   "default_branch": "main",
-  "branches": ["main", "issue/3", "issue/4"],
+  "branches": [
+    "main",
+    "issue/3-sample-issue",
+    "issue/4-sample-issue"
+  ],
   "pulls": [
-    {"number": 603, "head": "issue/3", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #3\n\nDecisions:\n- The earlier attempt in #4 is kept; see #4 and Refs #4 in the log.\n- Closes other/repo#4 upstream.\n- The prefixes #4 table is unchanged.\n- Refs: the design section names #4.\n- Closes https://github.example/other/repo/issues/4 upstream.\n- Fixes https://github.example/example/repo/pull/4, a pull request, not an issue.\n- Closes example/repository#4 in a repository with a longer name.", "closing_issues": [{"number": 4, "repo": "other/repo"}], "closing_total": 1},
-    {"number": 604, "head": "issue/4", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #4", "closing_issues": [], "closing_total": 0}
+    {
+      "number": 603,
+      "head": "issue/3-sample-issue",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Refs #3\n\nDecisions:\n- The earlier attempt in #4 is kept; see #4 and Refs #4 in the log.\n- Closes other/repo#4 upstream.\n- The prefixes #4 table is unchanged.\n- Refs: the design section names #4.\n- Closes https://github.example/other/repo/issues/4 upstream.\n- Fixes https://github.example/example/repo/pull/4, a pull request, not an issue.\n- Closes example/repository#4 in a repository with a longer name.",
+      "closing_issues": [
+        {
+          "number": 4,
+          "repo": "other/repo"
+        }
+      ],
+      "closing_total": 1,
+      "title": "Sample issue (#3)"
+    },
+    {
+      "number": 604,
+      "head": "issue/4-sample-issue",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Refs #4",
+      "closing_issues": [],
+      "closing_total": 0,
+      "title": "Sample issue (#4)"
+    }
   ],
   "expect": []
 }

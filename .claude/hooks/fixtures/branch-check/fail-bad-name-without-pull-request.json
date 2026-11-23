@@ -1,10 +1,19 @@
 {
   "repo": "example/repo",
   "default_branch": "main",
-  "branches": ["main", "wip"],
+  "branches": [
+    "main",
+    "wip"
+  ],
   "pulls": [],
   "expect": [
-    {"kind": "no-pull-request", "subject": "wip"},
-    {"kind": "bad-name", "subject": "wip"}
+    {
+      "kind": "no-pull-request",
+      "subject": "wip"
+    },
+    {
+      "kind": "bad-name",
+      "subject": "wip"
+    }
   ]
 }

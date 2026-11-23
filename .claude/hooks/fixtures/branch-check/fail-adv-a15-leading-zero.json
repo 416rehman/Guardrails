@@ -1,11 +1,28 @@
 {
   "repo": "example/repo",
   "default_branch": "main",
-  "branches": ["main", "issue/030"],
+  "branches": [
+    "main",
+    "issue/030-sample-issue"
+  ],
   "pulls": [
-    {"number": 1, "head": "issue/030", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #30", "closing_issues": [], "closing_total": 0}
+    {
+      "number": 1,
+      "head": "issue/030-sample-issue",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Refs #30",
+      "closing_issues": [],
+      "closing_total": 0
+    }
   ],
   "expect": [
-    {"kind": "bad-name", "subject": "issue/030"}
+    {
+      "kind": "bad-name",
+      "subject": "issue/030-sample-issue"
+    }
   ]
 }

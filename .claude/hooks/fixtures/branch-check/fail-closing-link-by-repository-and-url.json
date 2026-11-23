@@ -1,16 +1,104 @@
 {
   "repo": "example/repo",
   "default_branch": "main",
-  "branches": ["main", "issue/40", "issue/41", "issue/42", "issue/43", "issue/44"],
+  "branches": [
+    "main",
+    "issue/40-sample-issue",
+    "issue/41-sample-issue",
+    "issue/42-sample-issue",
+    "issue/43-sample-issue",
+    "issue/44-sample-issue"
+  ],
   "pulls": [
-    {"number": 940, "head": "issue/40", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #40", "closing_issues": [], "closing_total": 0},
-    {"number": 941, "head": "issue/41", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Closes example/repo#40", "closing_issues": [{"number": 40, "repo": "example/repo"}], "closing_total": 1},
-    {"number": 942, "head": "issue/42", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #42\n\nFixes https://github.example/example/repo/issues/43", "closing_issues": [{"number": 43, "repo": "example/repo"}], "closing_total": 1},
-    {"number": 943, "head": "issue/43", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #43", "closing_issues": [], "closing_total": 0},
-    {"number": 944, "head": "issue/44", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #44\nresolves EXAMPLE/Repo#40", "closing_issues": [{"number": 40, "repo": "example/repo"}], "closing_total": 1}
+    {
+      "number": 940,
+      "head": "issue/40-sample-issue",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Refs #40",
+      "closing_issues": [],
+      "closing_total": 0,
+      "title": "Sample issue (#40)"
+    },
+    {
+      "number": 941,
+      "head": "issue/41-sample-issue",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Refs #41\nCloses example/repo#40",
+      "closing_issues": [
+        {
+          "number": 40,
+          "repo": "example/repo"
+        }
+      ],
+      "closing_total": 1,
+      "title": "Sample issue (#41)"
+    },
+    {
+      "number": 942,
+      "head": "issue/42-sample-issue",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Refs #42\n\nFixes https://github.example/example/repo/issues/43",
+      "closing_issues": [
+        {
+          "number": 43,
+          "repo": "example/repo"
+        }
+      ],
+      "closing_total": 1,
+      "title": "Sample issue (#42)"
+    },
+    {
+      "number": 943,
+      "head": "issue/43-sample-issue",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Refs #43",
+      "closing_issues": [],
+      "closing_total": 0,
+      "title": "Sample issue (#43)"
+    },
+    {
+      "number": 944,
+      "head": "issue/44-sample-issue",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Refs #44\nresolves EXAMPLE/Repo#40",
+      "closing_issues": [
+        {
+          "number": 40,
+          "repo": "example/repo"
+        }
+      ],
+      "closing_total": 1,
+      "title": "Sample issue (#44)"
+    }
   ],
   "expect": [
-    {"kind": "second-pull-request", "subject": "#40"},
-    {"kind": "second-pull-request", "subject": "#43"}
+    {
+      "kind": "second-pull-request",
+      "subject": "#40"
+    },
+    {
+      "kind": "second-pull-request",
+      "subject": "#43"
+    }
   ]
 }

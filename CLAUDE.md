@@ -17,10 +17,11 @@
   settings, and subagents run in the session's mode. The repository ships no
   `PermissionRequest` hook; the owner's sessions answer requests from their gitignored local
   settings, and a clone keeps the mode its user chose.
-- Implementers and evaluators run with `isolation: "worktree"`. Pass `model: "opus"` to the
-  implementer of a `tier:high` or `trust-core` issue, and run `eval-diff` a second time on
-  the other model for such a change. Sessions default to `claude-sonnet-5-5`; only
-  `chief-architect` runs on Fable.
+- Implementers and evaluators run with `isolation: "worktree"` on `issue/<n>-<slug>`. Read
+  `.agents/models.toml` (`[providers.anthropic]`) and `.claude/risk-tiers.toml` (ADR-0043): spawn 0
+  evaluators for green docs/test-only PRs, `eval-review` alone (`standard`/`fast`) for medium changes,
+  and `eval-review` + `eval-security` on 2 distinct models/providers for `tier:high` or `trust-core`
+  (CI-first verification, max 2 rounds). Only `chief-architect` uses the `architect` tier.
 - Commit with `git commit -m '<subject>'`: one `-m`, one line. The project settings leave
   `attribution.commit` and `attribution.pr` empty, so Claude Code adds no co-author line.
   Run `cleanup` on the staged diff before each commit.

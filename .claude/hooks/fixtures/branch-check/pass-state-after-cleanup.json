@@ -1,19 +1,167 @@
 {
   "repo": "example/repo",
   "default_branch": "main",
-  "branches": ["dependabot/github_actions/actions-16a5e0f147", "issue/10", "issue/245", "issue/246", "issue/405", "issue/1688", "issue/1710", "issue/1757", "issue/1760", "issue/1776", "issue/1848", "main"],
+  "branches": [
+    "dependabot/github_actions/actions-16a5e0f147",
+    "issue/10",
+    "issue/245",
+    "issue/246",
+    "issue/1580",
+    "issue/1688",
+    "issue/1697",
+    "issue/1757",
+    "issue/1760",
+    "issue/1776",
+    "issue/1848",
+    "issue/2005-multi-provider-agent-kit",
+    "main"
+  ],
   "pulls": [
-    {"number": 1876, "head": "issue/10", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #10", "closing_issues": [], "closing_total": 0},
-    {"number": 1873, "head": "issue/1776", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #1776", "closing_issues": [], "closing_total": 0},
-    {"number": 1872, "head": "issue/1760", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #1760", "closing_issues": [], "closing_total": 0},
-    {"number": 1871, "head": "issue/246", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #246", "closing_issues": [], "closing_total": 0},
-    {"number": 1870, "head": "issue/245", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #245", "closing_issues": [], "closing_total": 0},
-    {"number": 1869, "head": "issue/1757", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #1757", "closing_issues": [], "closing_total": 0},
-    {"number": 1868, "head": "issue/1688", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #1688", "closing_issues": [], "closing_total": 0},
-    {"number": 1867, "head": "issue/1710", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #1710", "closing_issues": [], "closing_total": 0},
-    {"number": 1866, "head": "issue/405", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #405", "closing_issues": [], "closing_total": 0},
-    {"number": 1865, "head": "issue/1848", "head_repo": "example/repo", "author": {"login": "example-dev", "type": "User"}, "body": "Refs #1848", "closing_issues": [], "closing_total": 0},
-    {"number": 1529, "head": "dependabot/github_actions/actions-16a5e0f147", "head_repo": "example/repo", "author": {"login": "dependabot", "type": "Bot"}, "body": "Bumps the actions group with 2 updates.", "closing_issues": [], "closing_total": 0}
+    {
+      "number": 1876,
+      "head": "issue/10",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Refs #10",
+      "closing_issues": [],
+      "closing_total": 0
+    },
+    {
+      "number": 1873,
+      "head": "issue/1776",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Refs #1776",
+      "closing_issues": [],
+      "closing_total": 0
+    },
+    {
+      "number": 1872,
+      "head": "issue/1760",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Refs #1760",
+      "closing_issues": [],
+      "closing_total": 0
+    },
+    {
+      "number": 1871,
+      "head": "issue/246",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Refs #246",
+      "closing_issues": [],
+      "closing_total": 0
+    },
+    {
+      "number": 1870,
+      "head": "issue/245",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Refs #245",
+      "closing_issues": [],
+      "closing_total": 0
+    },
+    {
+      "number": 1869,
+      "head": "issue/1757",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Refs #1757",
+      "closing_issues": [],
+      "closing_total": 0
+    },
+    {
+      "number": 1868,
+      "head": "issue/1688",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Refs #1688",
+      "closing_issues": [],
+      "closing_total": 0
+    },
+    {
+      "number": 1983,
+      "head": "issue/1697",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Refs #1697",
+      "closing_issues": [],
+      "closing_total": 0
+    },
+    {
+      "number": 1912,
+      "head": "issue/1580",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Refs #1580",
+      "closing_issues": [],
+      "closing_total": 0
+    },
+    {
+      "number": 1865,
+      "head": "issue/1848",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Refs #1848",
+      "closing_issues": [],
+      "closing_total": 0
+    },
+    {
+      "number": 2006,
+      "head": "issue/2005-multi-provider-agent-kit",
+      "title": "chore(agents): multi-provider agent kit (#2005)",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "example-dev",
+        "type": "User"
+      },
+      "body": "Issue: #2005 Multi-provider agent kit\nRefs #2005",
+      "closing_issues": [],
+      "closing_total": 0
+    },
+    {
+      "number": 1529,
+      "head": "dependabot/github_actions/actions-16a5e0f147",
+      "head_repo": "example/repo",
+      "author": {
+        "login": "dependabot",
+        "type": "Bot"
+      },
+      "body": "Bumps the actions group with 2 updates.",
+      "closing_issues": [],
+      "closing_total": 0
+    }
   ],
   "expect": []
 }

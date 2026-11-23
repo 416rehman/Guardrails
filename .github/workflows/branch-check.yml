@@ -1,11 +1,13 @@
 name: branch-check
 
-# The owner rule of #1875, one issue, one branch issue/<n>, one pull request, checked against the
-# live repository whether or not a session runs it: hourly and on demand. A branch pushed with no
-# pull request starts no other workflow, so only a schedule sees it. Exit 1 (findings) and exit 2
-# (could not look) both fail the run; .claude/hooks/branch-check.mjs holds the rules.
+# The owner rule of #1875 and #2005: one issue, one branch issue/<n>-<slug>, one pull request,
+# issue name in branch and PR, and every non-exempt PR targets an issue. Runs hourly, on demand,
+# and on every pull request event. Exit 1 (findings) and exit 2 (could not look) both fail the run;
+# .claude/hooks/branch-check.mjs holds the rules.
 
 on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
   schedule:
     - cron: "41 * * * *"
   workflow_dispatch:

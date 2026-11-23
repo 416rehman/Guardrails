@@ -4,11 +4,12 @@ Guardrails ADR is an open-source agent detection and response (ADR) platform, pu
 Loonaro. Code namespace `grdr`. This file is a map. Follow the links; the answers are there.
 
 ## How work happens
-Work items are GitHub issues of the repository `GH_REPO` names. A Claude Code session asked to
-work an issue follows skill `grdr-work-issue`: it spawns the agents in `.claude/agents` (a lead
-for a missing spec, the implementer, then the evaluators the tier calls for), passes their
-results between them and squash-merges the pull request. Each agent ends by returning its
-report (skill `grdr-handoff`) to that session.
+Work items are GitHub issues of the repository `GH_REPO` names. A session (Claude Code via `CLAUDE.md`,
+Gemini/Antigravity via `GEMINI.md` and `.agents/`, or Codex/ChatGPT via `CODEX.md`) asked to work an
+issue follows skill `grdr-work-issue` (ADR-0043): it uses at most 0, 1, or 2 lean evaluators
+(`eval-review`, plus `eval-security` for `tier:high` or `trust-core`), relies on green CI on the head
+commit instead of re-running checks, caps review at 2 rounds, and squash-merges the pull request. Each
+agent returns the compact report of skill `grdr-handoff`.
 
 ## Start of every agent run
 1. `git status`, `git log --oneline -5`. Your issue `#<n>` is in your prompt:
@@ -44,16 +45,16 @@ report (skill `grdr-handoff`) to that session.
   programs, installers): load `ui-architect`, `frontend-design` for new screens, then
   `grdr-interface` (checks UX1 to UX8). Prose under `docs/`:
   `write-like-a-normal-staff-senior-developer`.
-- Gate configuration (`.claude/settings.json`, `.github/`, lint and deny configuration,
+- Gate configuration (`.claude/settings.json`, `.agents/`, `.github/`, lint and deny configuration,
   `security/`, `supply-chain/`) changes only in an issue whose write set names it, worked by
   `lead-agent-kit` or the chief architect.
-- Trust-core paths (`security/trust-core.paths`) need `eval-security`, `eval-adversarial`
-  and two passing evaluators on different models (high tier; D-63, owner instruction 7).
+- Trust-core paths (`security/trust-core.paths`) and high-tier changes need `eval-review` and
+  `eval-security` on two distinct models or providers (high tier; D-63, ADR-0042, ADR-0043).
 
 ## Docs (design/34)
 Docs are kept up to date in the same pull request as the change. `.claude/hooks/docs-check.mjs`
-and the `docs` CI job check the rules marked (checked); `eval-docs` judges every pull request
-against all of them.
+and the `docs` CI job check the rules marked (checked); `eval-review` checks docs against `design/34`
+when invoked.
 - Every change that alters behaviour, an interface, a configuration key, a CLI command or a
   design decision updates its docs: the design section it implements (`docs/design/NN`) when
   the built behaviour differs from or refines it, and the docs site for anything a user or
@@ -126,6 +127,7 @@ against all of them.
 |---|---|
 | GitHub issues of `GH_REPO` | Work items: labels, spec, acceptance criteria |
 | `.claude/agents/`, `.claude/skills/` | The agent team and its skills; `grdr-work-issue` runs an issue |
+| `.agents/` | Multi-provider model routing (`models.toml`), Antigravity `skills.json` and `hooks.json` |
 | `.claude/risk-tiers.toml`, `.claude/owners.toml` | Which evaluators judge a change; which squad owns a path |
 | `docs/design/` | The plan; `00-decisions.md` is the spine and wins every conflict |
 | `docs/decisions/`, `rfcs/` | Decision records `ADR-NNNN`, append-only; RFCs (D-61) |
@@ -138,12 +140,13 @@ against all of them.
 | `audits/` | The power-prompt library (skill `grdr-audit`) |
 
 ## Finishing (end of every agent run)
-Commit on `issue/<n>`, push it, and return the report of skill `grdr-handoff`: changes, the
-gate commands and their exit codes, decisions where the spec was silent (least confident
-first), what was not verified, how to revert, next step. The orchestrating session opens the
-pull request with `Closes #<n>` and squash-merges it. Commit messages are one line: a
-Conventional Commit subject (`fix(grdr-core): ...`) of at most 72 characters, no body, no
-trailers, no credit line.
+Commit on `issue/<n>-<slug>` (lowercase ASCII kebab-case slug from the issue title, 3 to 60 characters),
+push it, and return the report of skill `grdr-handoff`: changes, the gate commands and their exit codes,
+decisions where the spec was silent (least confident first), what was not verified, how to revert, next
+step. The orchestrating session opens one pull request per issue with the issue name in branch and PR
+(`Issue: #<n> <title>` and `Refs #<n>` while draft, `Closes #<n>` on landing) and squash-merges it.
+Commit messages are one line: a Conventional Commit subject (`fix(grdr-core): ...`) of at most 72
+characters, no body, no trailers, no credit line.
 
 ## Report `blocked` when
 - the work needs a new dependency, licence, public-surface or wire change, or an RFC;

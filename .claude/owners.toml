@@ -132,8 +132,8 @@ paths = ["lab/**"]
 [squad.agent-kit]
 alias = ["SQ-17"]
 lead = "lead-agent-kit"
-paths = ["AGENTS.md", "CLAUDE.md", "docs/AUTOPILOT.md", ".gitignore",
-         ".gitattributes", ".claude/**", ".github/**", "audits/**", "docs/team/**"]
+paths = ["AGENTS.md", "CLAUDE.md", "GEMINI.md", "CODEX.md", "docs/AUTOPILOT.md", ".gitignore",
+         ".gitattributes", ".agents/**", ".claude/**", ".github/**", "audits/**", "docs/team/**"]
 
 # Plan documents are owned by direction agents, not a squad (team/06 section 2.1).
 [direction.chief-architect]

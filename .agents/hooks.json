@@ -1,0 +1,16 @@
+{
+  "grdr-pre-tool-gate": {
+    "PreToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ./hooks/agy-pre-tool-use.mjs",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
