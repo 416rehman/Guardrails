@@ -3,11 +3,11 @@ Title: The slice-0 public surface of grdr-ports and grdr-ports-testkit
 Author: chief-architect
 Harness: Claude Code
 Model: claude-opus-5-5
-State: Review
+State: Accepted
 Design issue: #1688
 Spine: D-05, D-11, D-33, D-34, D-35, D-51, D-57, D-61, D-63, D-69, P1, P4, P5, P6, P8, P9, P10, P14, P15, P17 (no spine text changes)
 Surfaces: public crates `grdr-ports` and `grdr-ports-testkit`, the crate `grdr-ports-kitkey` (`surface = "internal"`), and the storage format of lake and blob objects (key layout and `grdr-aad-v1`)
-Decision record: none yet
+Decision record: docs/decisions/ADR-0033-grdr-ports-slice-0-surface-by-rfc-0002.md
 
 To comment, write on issue #1688 of this repository; you need no account on any service other than the code host. A security fix under embargo (D-62) may change a public surface without an RFC; open a retroactive RFC when the fix is disclosed.
 
@@ -1235,5 +1235,166 @@ How review binds the decision (RFC 0001, "Review binds the decision"; ADR-0036):
 
 Verdicts and seat comments on earlier revisions, and the dispositions of each, are comments on #1688. Verdicts and seat comments on revision 17 are linked below, one per line.
 
+Round 1, on blob `d27824da875b4b9fba77c4abcf4bacfe5e71c65c` (commit `eb9770d73eb3da8c181e6d2ef930798f3241aebc`):
+- draft note: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7049419896
+- seat 1 (solo developer), accept with changes: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7049606175
+- seat 2 (IT admin), accept with changes: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7049569186
+- seat 3 (SOC analyst), accept with changes: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7049587836
+- seat 4 (MSP operator), accept with changes: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7049551342
+- seat 5 (OEM partner), accept with changes: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7049529023
+- seat 6 (privacy), accept with changes: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7049492463
+- seat 7 (contributor), accept with changes: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7049511922
+- seat 8 (simplicity), accept with changes: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7049473301
+- seat 9 (international), accept with changes: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7049626710
+- eval-architecture (Opus), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7049670935
+
+Round 2, on blob `ffdea8f4875b4693573d1a1c6379c1bcf749abfd5` (commit `6aae3b736b4d3edccb7bade46f26e1cc649b2dc4`):
+- round 2 dispositions: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7050072771
+- eval-architecture (Sonnet), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7050348217
+
+Round 3, on blob `c4bd3fdd926ab71913824bda33f2b2dc880ec7c1` (commit `04604f3c4928fcc482f507e5cdc76bd9d6511da9`):
+- round 3 dispositions: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7050695087
+- eval-architecture (Opus), fail (N1, N2): https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7051180587
+- session ruling after round 3: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7051192972
+- lint number collision report: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7055908748
+- chief architect lint register (ARCH-029): https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7056005677
+- session round-4 decision: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7067522763
+- acceptance criteria AC-1 to AC-7: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7071798118
+
+Round 4, on blob `9d1e20f6d9bd0c0114ccb9ca27fb94ca1c664c8a` (commit `c4170915d8821dc4338e8a5f02405556912de13f`):
+- round 4 dispositions: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7072536957
+- eval-architecture (Opus), fail (N2 closed; N3): https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7072656886
+- session ruling after round 4: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7072664373
+
+Round 5, on blob `e0da2f5cb742151c8c9a32f137bafe73268d9790` (commit `8d2f926c77e9f339f950a65549e8f12d4b7215d3`):
+- revision 5 note: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7072811430
+- eval-architecture (Sonnet, delta), pass (N3 closed; four minors): https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7072861568
+- eval-security (Opus), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7073141769
+- session ruling after round 5: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7073176158
+
+Round 6, on blob `7d2010b1e4abff72dcaf2fc3938a3ea53a97bfdc` (commit `45c5637920544e64edc6fe01acb70b07c61624eb`):
+- revision 6 note: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7073535796
+- session tier ruling (`tier:high`): https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7073544873
+- eval-architecture (Opus, delta), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7073655401
+- eval-adversarial (Sonnet), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7073854618
+- eval-security (Opus), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7073867251
+- eval-security (Sonnet), pass (eleven minors): https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7074002385
+- session ruling after round 6: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7074012752
+
+Round 7, on blob `c55a567321e925183c6b2cf71cc6e546a167fbba` (commit `239f3c00bea270d7c10af9a13f11df7bfd03fac4`):
+- revision 7 note: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7074648279
+- session note on #1859 and #1860: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7074659708
+- eval-adversarial (Opus), fail (AD7-1, AD7-2): https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7074847215
+- lead-security constraint (AD7-1, #1911): https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7074910625
+- eval-security (Sonnet), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7074920067
+- eval-security (Opus), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7074947642
+- session ruling after round 7: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7074957561
+
+Round 8, on blob `5227384311da574174149f1a23958502ff213877` (commit `d6537e03d443d66d23dc230f2dce85867de75e72`):
+- revision 8 note: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7075326156
+- eval-architecture (Sonnet), pass (five minors): https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7075394001
+- session A01 audit record: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7075397709
+- seat 8 (simplicity), support with changes (C1 to C8): https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7075408097
+- eval-adversarial (Opus), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7075494566
+- session split decision (sections 3 and 4 to RFC 0008, #1924): https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7075503753
+- eval-security (Opus), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7075571231
+- eval-security (Sonnet), pass (three minors): https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7075575934
+- session ruling after round 8: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7075583550
+
+Round 9, on blob `7cd7629e529a6219f542d80a80a1a481732fa331` (commit `ab47f2033168f32667aa30d50cce155665ca6442`):
+- revision 9 note: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7075990479
+- eval-adversarial (Opus), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7076174736
+- eval-security (Opus), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7076237310
+- session ruling after round 9: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7076250517
+
+Round 10, on blob `908b99f3151c35ea53b267743bdf72db1c5961a9` (commit `b8a972339ee840d223e17e6377feef96d747e355`):
+- constraint from RFC 0007 (#1710): https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7076555647
+- revision 10 note: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7076613125
+- eval-architecture (Sonnet), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7076738926
+- eval-adversarial (Opus), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7076815178
+- eval-security (Opus), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7076946848
+- session ruling after round 10: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7076963298
+
+Round 11, on blob `eb88e7d1415b3ed57a2e9ff73a4e5439255cc73b` (commit `7e9cacbef47470ede5742e166f7b4d030573fdd1`):
+- revision 11 note: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7077679676
+- eval-architecture (Sonnet), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7077847846
+- eval-adversarial (Opus), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7077927975
+- eval-security (Opus), pass (seven minors): https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7078010535
+- session ruling after round 11: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7078021752
+
+Round 12, on blob `e350634f53bb32d0dd4f5908f91bda2df0606663` (commit `ef892d818b6f811e824ac60b2e56055560848c24`):
+- revision 12 note: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7078781482
+- eval-architecture (Sonnet), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7079051246
+- eval-adversarial (Opus), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7079062649
+- eval-security (Opus), pass (eight minors): https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7079193571
+- session ruling after round 12: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7079205168
+
+Round 13, on blob `a3a1710b6a8d7e76d9dc0402e367f147dd4cd042` (commit `2c7bdd37fade7406af9f5c24a8d92002b0a63264`):
+- revision 13 note: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7080478216
+- eval-architecture (Sonnet), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7080846059
+- eval-adversarial (Opus), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7080871503
+- eval-security (Opus), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7080953796
+- session ruling after round 13: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7080975054
+
+Round 14, on blob `32212c6c8978a7bd09b19aace5b6ffd6134e9a63` (commit `286ec152e297dad976c39601dff093d482069375`):
+- revision 14 note: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7081842654
+- constraint from RFC 0008 (#1964): https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7082237161
+- eval-architecture (Sonnet), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7082276129
+- eval-adversarial (Opus), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7082307671
+- eval-security (Opus), pass (four minors): https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7082322078
+- session ruling after round 14: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7082335093
+- session note on #283 and seat 8 cut 1: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7082401099
+
+Round 15, on blob `c744a3dac5e6e7a2f95402e143cde0a5f724192f` (commit `d1c357c772385a12cd269ba166d6d2ad42953d05`):
+- revision 15 note: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7083450422
+- eval-security (Opus), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7084222220
+- eval-architecture (Sonnet), pass (ten minors): https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7084225776
+- eval-adversarial (Opus), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7084254195
+- lead-security round 15 triage: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7084465526
+
+Round 16, on blob `3545594f1a1aa9f511da3fd6a43b3def9eefd716` (commit `7ab377a31e4ac15b6fa5ea2e2ee56e4535f18b6e`):
+- constraint from RFC 0009 (#1982): https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7086187361
+- revision 16 note: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7086617383
+- eval-architecture (Sonnet), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7087213109
+- eval-adversarial (Opus), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7087224344
+- eval-security (Opus), fail: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7087266593
+- chief architect scope ruling after round 16: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7087459883
+
+Round 17, on blob `9f8430afa9c17178d402d3cf43c37f247a01370c` (commit `e2ffd3c1d79645fb1dce3c153d4f4c95b7b2f0ad`, merged on `main` at `78401aca706b79c7cbb0152db7addcfa9f82591c`):
+- revision 17 note: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7095769782
+- eval-review (Google, Gemini 4 Carbon), pass, no findings: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7097649086
+- eval-security (Google, Gemini 4 Neon), pass, no findings: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7097649756
+
 ## Decision
-Pending.
+Accepted on 2026-11-23 by the chief architect on revision 17 (`e2ffd3c1d79645fb1dce3c153d4f4c95b7b2f0ad`, merged to `main` at `78401aca706b79c7cbb0152db7addcfa9f82591c`, RFC file blob `9f8430afa9c17178d402d3cf43c37f247a01370c`) and recorded in [ADR-0033](../docs/decisions/ADR-0033-grdr-ports-slice-0-surface-by-rfc-0002.md).
+
+### Reasons
+1. **The public port surface, sealed traits and minting boundary hold without per-back-end coupling.** After seventeen revisions, the slice-0 surface of `grdr-ports` (`ident`, `tenant`, `adapter`, `storage`, `StoreFault`, `Refusal`, `Admitted`, `AdmittedTx`, `AdmittedStream`, `PortsCall`) and `grdr-ports-testkit` (`Fixture`, `StorageFixture`, `RelationalFixture`, `kit()`, `MemTenancy`, `MemRelational`, `MemEvents`, `PROBE`, `REFUSALS`) states every signature, error enum, `GRDR-<AREA>-<NNNN>` code, conformance suite and `experimental` stability rule in full. Port traits are sealed so only `tenant::admit` implements them, `Setup::admit` checks adapter admission once, `MintAuthority` stays inside `tenant`, purpose-bound handles mint only within trust-core modules guarded by `ARCH-029`, and `grdr-ports-kitkey` keeps test-kit minting out of production closures (Rule 1, Rule 12, `ARCH-029` to `ARCH-032`).
+2. **The round-16 scope ruling cleanly separates layer 2 port properties from layer 3 PostgreSQL internals.** Under the chief architect's scope ruling after round 16 (`issuecomment-7087459883`), `grdr-rel-postgres`'s in-database implementation (roles, grants, definer functions, two-step SQL binding, build/reply rule internals, watchdog, schema-check SQL queries, resource settings, change-sequence numbering, and the five PostgreSQL-only `limits.toml` rows) moved to `#2002` as CI-tested requirements against PostgreSQL 18 on the trust-core lane. RFC 0002 keeps the port-level enums (`StoreProperty`, `RuleName`, `RefusedReason` without `NonSpillingHash`, `Fault::Unsafe`) and states Properties 1 to 15 as adapter-independent guarantees tested on `MemRelational` and in each adapter item's store tests. `#2003` puts that scope rule into the evaluator agents.
+3. **Prior RFC dependencies and split items are satisfied.** RFC 0008 (`#1924`, `#1964`, [ADR-0040](../docs/decisions/ADR-0040-clock-entropy-and-the-retry-executor-adopted-by-rfc-0008.md)) took `Clock`, `Entropy`, `Monotonic`, `retry::run`, `#281`, and `#283` after round 8 (`issuecomment-7075503753`, `issuecomment-7082401099`); RFC 0002 was reviewed against RFC 0008 at reviewed blob `b338780823870d0f81c92e1a6f9cd2a5ec472eb8` and accepted blob `b4af2b007041e3abdf6f7439824662ea6f08c52d`. RFC 0009 (`#1850`, `#1982` / `#2004`, PR `#1991`, [ADR-0041](../docs/decisions/ADR-0041-the-grdr-model-slice-0-surface-adopted-by-rfc-0009.md)) was reviewed at blob `e1f4f50307ec78e6610008cbe53343e7951ce837` and accepted at blob `4f36df6f0b2ce122d3b09d8109e83fb4720b1c68`; revision 17 applied all RFC 0009 constraints (`UploadedLane`, capability `Holder`, fallible `Setup::holder` / `KitAuthority::holder`, `PeerAccess` + opened-handle FS classification, `LogValue::Id`, Rule 8 log fields, and `#383` text citations). RFC 0007 (`#1710`, [ADR-0038](../docs/decisions/ADR-0038-the-grdr-model-and-grdr-schema-slice-0-surface-adopted-by-rfc-0007.md)) is accepted at blob `0dac0a359f4c60d270866b71d824ceb8e849c3f9`.
+4. **Spine reading and pin status.** Section 14 reads D-35 ("no tenant data reaches module code without a tenant witness") alongside `PortsCall<Self>` and sealed traits without altering `docs/design/00-decisions.md`, whose pin remains `a80859235e7a2a4444648d6fa8d389d78dde6be9` (`sha256` `8f6ea876777c0121ecec068c0bc4cef45932be45c1c2aff4140712db1e06628d`). No pinned path changes, so there is no decision line and no file added under `rfcs/evidence/`.
+
+### Review it rests on
+On blob `9f8430afa9c17178d402d3cf43c37f247a01370c` (commit `e2ffd3c1d79645fb1dce3c153d4f4c95b7b2f0ad`, merged at `78401aca706b79c7cbb0152db7addcfa9f82591c`) against spine base `a80859235e7a2a4444648d6fa8d389d78dde6be9`:
+- `eval-review` (Google, Gemini 4 Carbon), pass, no findings: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7097649086
+- `eval-security` (Google, Gemini 4 Neon), pass, no findings: https://github.com/416rehman/Guardrails/issues/1688#issuecomment-7097649756
+
+Review lane note under ADR-0043: `.claude/risk-tiers.toml` on `main` (updated by `#2005`, [ADR-0043](../docs/decisions/ADR-0043-lean-token-optimised-agent-team.md)) defines `[kinds] rfc` as reviewed by `eval-review` and `eval-security` only, with no persona council fan-out and at most two rounds. The two round-17 passes run on two distinct models (`Gemini 4 Carbon` and `Gemini 4 Neon`) satisfying D-63 and `[kinds] rfc` on `main`. Every persona council seat (seats 1 to 9 in round 1, plus seat 8 in round 8) previously reviewed earlier revisions, `N2` was closed in round 4 (`7072656886`), `N1` / `N3` in round 5 (`7072861568`), and `EA16-1`, `EA16-2`, `EA16-6`, `S65`, `AD16-2` and all RFC 0009 constraints in round 17 (`7097649086`, `7097649756`), with CI green on `e2ffd3c`.
+
+### Rulings and constraints relied on
+1. Chief architect lint register (`7056005677`) and revision-13 register entries: `ARCH-029` (`context-mint`), `ARCH-030` (`transaction-type`), `ARCH-031` (`testkit-scan`), `ARCH-032` (`forbid-unsafe`). Every mention of `context-mint` in revision 17 uses `ARCH-029` (AC-2).
+2. Round 8 session split of sections 3 and 4 (`Clock`, `Entropy`, `Monotonic`, `retry::run`, `#281`, `#283`) to RFC 0008 (`7075503753`, `7082401099`), and `RelationalFixture::snapshot` move to `#2020`.
+3. RFC 0008 constraints on storage adapters (`Connect` retry-only rule, composition root caller restriction, same-machine setup bounds and `PeerAccess`; `7082237161`) and RFC 0009 constraints (`UploadedLane`, `Holder`, `LogValue::Id`, `PeerAccess`, Rule 8 fields, `#383` ids; `7086187361`).
+4. Chief architect round-16 scope ruling (`7087459883`): Properties 1 to 15 remain on RFC 0002 while PostgreSQL mechanics move to `#2002` and port-RFC evaluator scope goes to `#2003`.
+5. `surfaces.toml` row alignment (AC-5): `#1969` already tracks `[[crate]]` `experimental` rows for `grdr-ports` and `grdr-ports-testkit` (`surfaces.toml`); no duplicate `surfaces.toml` issue is filed, and `#1969` records RFC 0002 beside RFC 0008 along with section 12's promotion prerequisites.
+6. Section 15 constraints and downstream bindings remain in force across `#297` to `#300`, `#1535`, `#312`, `#313`, `#311`, `#383`, `#1475`, `#1580`, `#1593`, `#1636`, `#1690`, `#1859`, `#1967`, `#2002`, `#2003`, `#301`, `#1546`, `#1547`, `#1554`, `#1555`, `#305`, `#1579`, `#1534`, and `#2020` to `#2027`.
+
+### Filed on acceptance
+- `#2020`: `grdr-ports-testkit` section 5 amendment (`CaseKind`, `Fixture`, `StorageFixture`, `RelationalFixture` including `snapshot`, stop points, `kit()`, `MemTenancy`, `MemRelational`, `REFUSALS`, `PROBE`, `optional-faults.toml`, how-to page; blocked by `#1688` and `#281`).
+- `#2021`: slice-0 lint item split from `#1582` (`ARCH-015` restated, `ARCH-029` to `ARCH-032` checks and fixtures in `grdr-archlint`).
+- `#2022`: protected change for `architecture.toml` (allow-lists, `grdr-ports-kitkey` edges + drift rule, deployment-scoped list, `ARCH-029` to `ARCH-031` data, Rule 1 manifest/release envs, `MemberCursor` Rule 4 exemption, `ARCH-017` testkit exemptions; coordinates with `#1967` and supersedes `#1698`) and workspace `Cargo.toml` (`default-members`).
+- `#2023`: protected change for `deny.toml` (`grdr-ports-kitkey` ban with `wrappers = ["grdr-ports", "grdr-ports-testkit"]`).
+- `#2024`: protected change for `security/trust-core.paths` (`schema/tenancy/lifecycle.toml`, `crates/grdr-ports-kitkey/**`, `programs/grdr-server/src/compose.rs`, `compose/**`, handle modules and adapter store-property rules; coordinates with `#1892`).
+- `#2025`: protected change for `schema/tenancy/lifecycle.toml` and its fail-closed `grdr-schema` constant generation.
+- `#2026`: protected change for `limits.toml` (`relational.transaction-life`, `relational.set-transaction-life`, `tenancy.copy-life`, `tenancy.confirm-interval`).
+- `#2027`: `chief-architect` design document amendments for `docs/design/03`, `20` and `21` per section 14 (beside `#1859` on `design/02` and `#1860` on `design/20` section 8).
