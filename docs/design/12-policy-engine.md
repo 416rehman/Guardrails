@@ -58,7 +58,7 @@ The shim holds a third, smaller copy of the fail-closed rules (the fail-safe tab
 
 ### 2. Cedar schema
 
-Namespace `Grdr`, Cedar 4.14.x (language 4.6) pinned; an upgrade is a trust-core change. The schema is frozen together with the wire format. The schema file is `grdr-schema/policy/v1alpha1.cedarschema` and changes by RFC (D-61). Cedar has no regex, path type or set quantifier (brief 20), so the schema carries classes, not raw strings.
+Namespace `Grdr`, Cedar 4.14.x (language 4.6) pinned; an upgrade is a trust-core change. The schema is frozen together with the wire format. The schema file is `schema/cedar/v1alpha1.cedarschema`, embedded by layer-0 `grdr_schema::cedar`, and changes by RFC (D-61; RFC 0013, ADR-0053). Cedar has no regex, path type or set quantifier (brief 20), so the schema carries classes, not raw strings.
 
 **Principals.** `Session` when `actor_kind` is agent, which requires the catalogue entry's `min_attribution_grade` (2 in shared hosts); otherwise `Process` (a human, system or undetermined actor). Below that grade the actor is `undetermined` and each rule class states its handling (R-07). Agent versus human is the principal type. A `Session` is in its `AgentInstance`, which is in its `Agent`, `Device` and `Group`, so `principal in Grdr::Agent::"claude-code"` or `principal in Grdr::Group::"platform"` scopes a rule to an agent type or a group.
 
@@ -71,13 +71,13 @@ Namespace `Grdr`, Cedar 4.14.x (language 4.6) pinned; an upgrade is a trust-core
 | `Session` | parent `Session`, `AgentInstance` | `depth: Long`, `contained: Bool`, `containment`, `classes` |
 | `Process` | `Device` | `actor_kind` (`human`, `undetermined`, `system`), `agent_capable_host: Bool`, `classes` |
 
-No entity carries a human pseudonym, so a rule cannot target a person (P8, D-51).
+The six principal-side-only entities (`Organisation`, `Group`, `Device`, `AgentInstance`, `Session`, `Process`) and `Agent` (shared between `AgentInstance`'s parent chain and `agent.spawn`'s resource) make 18 entity types together with the eleven other resource types below. No entity carries a human pseudonym, so a rule cannot target a person (P8, D-51).
 
-**Actions and resources.** Action ids are the spine's action classes verbatim, for example `Grdr::Action::"file.write"`, with groups `"file"`, `"net"`, `"mcp"`, `"any"`. Every resource type has `classes: Set<String>`.
+**Actions and resources.** Action ids are the spine's action classes verbatim, for example `Grdr::Action::"file.write"`, with groups `"file"`, `"net"`, `"mcp"`, `"any"` (groups omit `appliesTo`, so no request can invoke a group directly). Every one of the twelve resource types (`Agent`, `Executable`, `Path`, `Endpoint`, `ModelEndpoint`, `McpServer`, `McpTool`, `Credential`, `ConfigTarget`, `ElevationRoute`, `UiTarget`, `Sink`) has `classes: Set<String>`. The thirteen operational actions (`exec`, `file.read`, `file.write`, `file.delete`, `net.connect`, `net.request`, `llm.request`, `mcp.connect`, `mcp.call`, `cred.use`, `config.change`, `elevate`, `ui.act`) admit `[Session, Process]` as `principal`, whereas `agent.spawn` and `data.flow` admit `[Session]` only (RFC 0013).
 
 | Action | Resource | Extra attributes and context |
 |---|---|---|
-| `exec` | `Executable` | `context.command: { classes }`. An unresolved command sets the fact `exec.opaque` and marks `context.command.classes` absent (D-10) |
+| `exec` | `Executable` | `context.command: { classes }`. An unresolved command sets the fact `exec.opaque`, populates `context.command.classes` with neutral `[]`, and records `ContextField::CommandClasses` (`"context.command.classes"`) in engine-side `CedarRequest::absent` (D-10; RFC 0013) |
 | `file.read`, `file.write`, `file.delete` | `Path` (`in_workspace: Bool`) | `context.recursive: Bool` |
 | `net.connect` | `Endpoint` (`port`) | none |
 | `net.request` | `Endpoint` | `context.http: { classes }`, `context.cloud: { provider, account_classes, tenant_classes, verified: Bool }` |
@@ -93,21 +93,22 @@ No entity carries a human pseudonym, so a rule cannot target a person (P8, D-51)
 
 The engine derives a `data.flow` request whenever the analysers place a concrete action in a default sink class (D-28): `egress-outside-profile`, `push-outside-org`, `pkg.publish`, `message.send`, `mcp-unpinned-write`, `llm-non-tenant`. It is evaluated in the same decision as the concrete action, both must pass, and the receipt names both. A caller can neither raise nor suppress it.
 
-Context records are always present. A field the control point cannot supply takes its neutral value (empty set, `false`) and is listed in the request's `absent` set, or in `pending` if the core expects it within a bound; section 4 uses both. `verified: false` marks a cloud account or model tenant that could not be established, for example without plaintext (D-16).
+All Cedar context records and fields are required in `v1alpha1.cedarschema`. A field the control point or analyser cannot supply takes its typed neutral value (`[]` for `Set<String>`, `false` for `Bool`, `0` for `Long`, `""` for `String`, `{}` for `ScheduleContext`) in Cedar `Context` and is recorded by its `ContextField` in engine-side `CedarRequest::absent`, or in `CedarRequest::pending` if the core expects it within a bound; `absent` and `pending` are engine-side `BTreeSet<ContextField>` sets on `CedarRequest`, never Cedar context attributes, so policy rules cannot branch on them directly and section 4 uses both (RFC 0013). `verified: false` marks a cloud account or model tenant that could not be established, for example without plaintext (D-16), and when `attribution` is absent, `grade` takes neutral `0` and `actor_kind` takes `""`.
 
 **Common context** on every action:
 
 | Field | Meaning |
 |---|---|
-| `session.labels: Set<String>` | Enforcing labels only; advisory labels are absent (D-09). Empty for a `Process` principal. The monitor maintains the roll-ups `untrusted` and `sensitive` so rules need no prefix match |
+| `session.labels: Set<String>` | Enforcing labels only; advisory labels are excluded from Cedar values without entering `CedarRequest::absent` (D-09). Empty for a `Process` principal. The monitor maintains the roll-ups `untrusted` and `sensitive` so rules need no prefix match |
 | `session.label_epoch: Long` | Incremented on each label escalation |
 | `grants: Set<String>` | Rule ids lifted by a valid grant matching this action (section 6) |
 | `attribution: { grade: Long, actor_kind, evidence: Set<String> }` | Grade 0 to 4 and its evidence set, with 04 section 9's values (D-25) |
 | `assurance: { visibility, control, tamper: Long, fail_closed: Bool }` | The assurance record for this device, instance and action class, as ranks: control is none 0, request 1, scoped-boundary 2, mandatory-boundary 3; visibility 0 to 3; tamper 0 to 2; `fail_closed` is `on_failure: closed`. Policy never reads the AL label |
 | `facts: Set<String>` | Deterministic analyser facts not tied to the resource, such as `exec.opaque`, `flag.bypass-permissions`. Heuristic and model results never enter the request (P2) |
 | `control_point: String` | Which control point asked |
+| `schedule: ScheduleContext` | Reserved empty required record (`ScheduleContext = {}`) populated as `{}` in `v1alpha1` |
 
-There is no clock in context. Time lives in grant expiry and label decay, which keeps evaluation cacheable and replay exact. A reserved `schedule` field is the seam for time-of-day rules.
+There is no clock in context. Time lives in grant expiry and label decay, which keeps evaluation cacheable and replay exact. The required `schedule: ScheduleContext` field (`ScheduleContext = {}`, always `{}` in `v1alpha1`) is the reserved seam for time-of-day rules; adding schedule attributes later requires a schema version bump (`v1alpha2`).
 
 **Analysers.** `grdr-analyze` has five engines: path classifier, host classifier, command classifier over canonical argv, MCP argument extractor keyed by tool-manifest hash, and cloud-request classifier (AWS account from the request signature, Entra tenant from a verified token, GCP project header; brief 02). Their vocabularies are pack lists. A list has a type, a class name such as `cred-store` or `org.mcp-approved`, and a polarity, `protect` or `allow`. A reference is protective when it is positive in `when` or negated in `unless`, and permissive when it is positive in `unless` or negated in `when`. Lint rejects a reference that contradicts the list's polarity, which is what makes growing a `protect` list and shrinking an `allow` list always narrowing. Lint allows `like` only on identifier fields of at most 64 characters. Intelligence adds the list types `package-key`, `artefact-key` and `host`, `protect` polarity only, marked `managed_by: feed`; their entries come from the signed intel pack and their semantics are 14's (sections 1 and 5).
 
@@ -497,7 +498,7 @@ The decision point is offered on the local socket and, where a server is present
 
 ### 16. Reference model and differential fuzzing
 
-Cedar's evaluator has a Lean model upstream; we do not re-model it. We pin the crate and run Cedar's published integration corpus on every upgrade. We model our own semantics in `grdr-policy-ref`, an unpublished test-only crate: a slow, table-free implementation of settings resolution, the mode transform, verdict derivation, degradation, grant matching and the session-rule interpreter, written by a different worker with no shared code (D-47, D-63).
+Cedar's evaluator has a Lean model upstream; we do not re-model it. We pin the crate and run Cedar's published integration corpus on every upgrade. We model our own semantics in `grdr-policy-ref`, an unpublished test-only crate (`layer = "tool"`): a slow, table-free implementation of settings resolution, the mode transform, verdict derivation, degradation, grant matching and the session-rule interpreter, written by a different worker with no shared evaluator code (D-47, D-63). For `derive` and `degrade`, `grdr-policy-ref` links layer-1 `grdr-model` for the shared pure contract types (`PolicyRuleId`, `ControlPointCaps`, `DeriveInput`, `Derived`, `Executed` and the closed `wire_enum!` enums) re-exported by `grdr_core::policy`, with zero dependency on `grdr-core` or `cedar-policy` (RFC 0013, ADR-0053).
 
 | Property | Oracle | Method |
 |---|---|---|
