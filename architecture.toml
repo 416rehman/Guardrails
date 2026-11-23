@@ -280,7 +280,9 @@ to = "grdr-proto"
 [[same_layer_edge]]
 from = "grdr-core"
 to = "grdr-fastpath"
-scope = "table layout only"
+scope = "table layout and the cost function only"
+importers = ["compile::fastpath"]
+paths = ["grdr_fastpath::layout"]
 
 [[same_layer_edge]]
 from = "grdr-fastpath-ffi"
@@ -335,3 +337,113 @@ crate = "grdr-update"
 decodes = "TUF metadata"
 only_in = ["grdr-updater"]
 admits = ["serde_json"]
+
+# ARCH-017 (RFC 0005, ADR-0037): per-leaf-variant bindings for `no_std` error types with no
+# `grdr-schema` dependency. Wrapper variants (`Error::Arg`, `Error::Bundle`) take no entry.
+# `status` is the single source of the leaf-to-status mapping (P17); `code` is the reason
+# registered in area `FASTPATH`. Each row uses `key = "value"` lines for the row reader.
+
+[[arch017.entry]]
+type = "grdr_fastpath::ArgFault"
+variant = "Arena"
+registry = "spec/host-contract/status-codes.toml"
+status = "GRDR_E_ARG"
+bound_in = "grdr-fastpath-ffi"
+coded_by = "grdr-daemon"
+code = "ARENA_TOO_SHORT"
+
+[[arch017.entry]]
+type = "grdr_fastpath::ArgFault"
+variant = "ActionClass"
+registry = "spec/host-contract/status-codes.toml"
+status = "GRDR_E_ARG"
+bound_in = "grdr-fastpath-ffi"
+coded_by = "grdr-daemon"
+code = "ACTION_CLASS_INVALID"
+
+[[arch017.entry]]
+type = "grdr_fastpath::ArgFault"
+variant = "PrincipalKind"
+registry = "spec/host-contract/status-codes.toml"
+status = "GRDR_E_ARG"
+bound_in = "grdr-fastpath-ffi"
+coded_by = "grdr-daemon"
+code = "PRINCIPAL_KIND_INVALID"
+
+[[arch017.entry]]
+type = "grdr_fastpath::ArgFault"
+variant = "Path"
+registry = "spec/host-contract/status-codes.toml"
+status = "GRDR_E_ARG"
+bound_in = "grdr-fastpath-ffi"
+coded_by = "grdr-daemon"
+code = "PATH_INVALID"
+
+[[arch017.entry]]
+type = "grdr_fastpath::ArgFault"
+variant = "Destination"
+registry = "spec/host-contract/status-codes.toml"
+status = "GRDR_E_ARG"
+bound_in = "grdr-fastpath-ffi"
+coded_by = "grdr-daemon"
+code = "DESTINATION_INVALID"
+
+[[arch017.entry]]
+type = "grdr_fastpath::ArgFault"
+variant = "Reason"
+registry = "spec/host-contract/status-codes.toml"
+status = "GRDR_E_ARG"
+bound_in = "grdr-fastpath-ffi"
+coded_by = "grdr-daemon"
+code = "REASON_INDEX_INVALID"
+
+[[arch017.entry]]
+type = "grdr_fastpath::Error"
+variant = "Abi"
+registry = "spec/host-contract/status-codes.toml"
+status = "GRDR_E_ABI"
+bound_in = "grdr-fastpath-ffi"
+coded_by = "grdr-daemon"
+code = "ABI_MISMATCH"
+
+[[arch017.entry]]
+type = "grdr_fastpath::BundleFault"
+variant = "Rule"
+registry = "spec/host-contract/status-codes.toml"
+status = "GRDR_E_BUNDLE"
+bound_in = "grdr-fastpath-ffi"
+coded_by = "grdr-daemon"
+code = "BUNDLE_RULE_FAILED"
+
+[[arch017.entry]]
+type = "grdr_fastpath::BundleFault"
+variant = "EvalCap"
+registry = "spec/host-contract/status-codes.toml"
+status = "GRDR_E_BUNDLE"
+bound_in = "grdr-fastpath-ffi"
+coded_by = "grdr-daemon"
+code = "EVAL_CAP_EXCEEDED"
+
+[[arch017.entry]]
+type = "grdr_fastpath::Error"
+variant = "State"
+registry = "spec/host-contract/status-codes.toml"
+status = "GRDR_E_STATE"
+bound_in = "grdr-fastpath-ffi"
+coded_by = "grdr-daemon"
+code = "LABEL_TAG_MISMATCH"
+
+[[arch017.entry]]
+type = "grdr_fastpath::Error"
+variant = "Changed"
+registry = "spec/host-contract/status-codes.toml"
+status = "GRDR_E_CHANGED"
+bound_in = "grdr-fastpath-ffi"
+coded_by = "grdr-daemon"
+code = "TABLES_CHANGED"
+
+# Deliberately independent crate pairs (P17, gate V27), excluded from duplicate-code findings.
+[[independent_pair]]
+crates = ["grdr-fastpath", "grdr-core"]
+kind = "fastpath-independence"
+reason = "no_std fast path (P17); held equal by the B2 differential (#20)"
