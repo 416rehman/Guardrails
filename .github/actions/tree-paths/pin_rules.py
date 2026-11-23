@@ -102,6 +102,7 @@ REFUSED_VARIABLES = {
 ENV_WRITES = {}
 STATUS_CONDITIONS = {
     ("dast.yml", "baseline", "actions/upload-artifact"): "uploads the scan reports and the server log after a failed scan; runs no cargo",
+    ("lab.yml", "cell", "actions/upload-artifact"): "uploads lab evidence after a failed cell; runs no cargo",
 }
 
 RUSTUP = re.compile(r"rustup", re.I)

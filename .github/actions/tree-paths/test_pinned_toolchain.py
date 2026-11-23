@@ -468,6 +468,10 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(workflow_problems(listed, "dast.yml"), [])
         self.assertNotEqual(workflow_problems(listed, "verify.yml"), [])
         self.assertNotEqual(workflow_problems(listed + "        run: cargo test\n", "dast.yml"), [])
+        lab_cell = fixture(PINNED + CARGO + LISTED_STATUS_STEP, key_line="  cell:")
+        self.assertEqual(workflow_problems(lab_cell, "lab.yml"), [])
+        self.assertNotEqual(workflow_problems(fixture(PINNED + CARGO + LISTED_STATUS_STEP, key_line="  plan:"), "lab.yml"), [])
+        self.assertNotEqual(workflow_problems(lab_cell + "        run: cargo test\n", "lab.yml"), [])
 
     def test_a_local_action_that_works_past_the_pin_is_refused(self):
         for name, steps in ACTION_DEFEATS.items():
