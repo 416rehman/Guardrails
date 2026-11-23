@@ -1,0 +1,12 @@
+# Seeded cargo-vet fixture control: path crate base-x instead of crates.io (passes vetting).
+[workspace]
+
+[package]
+name = "unvetted-crate-fixture"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+base-x = { path = "base-x" }

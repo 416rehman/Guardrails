@@ -1,0 +1,12 @@
+# Seeded cargo-vet fixture: base-x 0.3.0 (MIT, zero deps, no advisory, unaudited in mozilla/google/bytecode-alliance).
+[workspace]
+
+[package]
+name = "unvetted-crate-fixture"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+base-x = "=0.3.0"
