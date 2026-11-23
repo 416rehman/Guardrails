@@ -197,6 +197,24 @@ class Workflows(unittest.TestCase):
         action = (HERE / "action.yml").read_text(encoding="utf-8")
         self.assertEqual(set(ACTION_OUTPUT.findall(action)), form_names())
 
+    def test_cargo_vet_pin_is_readable_and_consistent(self):
+        vet = tomllib.loads(PINS.read_text(encoding="utf-8"))["tool"]["cargo-vet"]
+        for key in ("version", "licence", "source", "install"):
+            self.assertIn(key, vet)
+        result = run_reader(PINS, "cargo-vet", "version")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(runner_outputs(result.stdout), {"version": vet["version"]})
+        for key in ("licence", "source", "install"):
+            refused = run_reader(PINS, "cargo-vet", key)
+            self.assertEqual(refused.returncode, 1)
+            self.assertIn("::error::GRDR-SUPPLY-0003 ", refused.stderr)
+        pinned = f"cargo-vet@{vet['version']}"
+        expected = (
+            ["cargo", "install", "--locked", pinned],
+            ["env", "LIBZ_SYS_STATIC=1", "cargo", "install", "--locked", pinned],
+        )
+        self.assertIn(vet["install"].split(), expected)
+
 
 if __name__ == "__main__":
     unittest.main()

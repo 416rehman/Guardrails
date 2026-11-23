@@ -31,6 +31,29 @@ licence = "MIT OR Apache-2.0"
 source = "https://github.com/EmbarkStudios/cargo-deny"
 install = "cargo install --locked cargo-deny@0.22.0"
 
+# `0.10.3` is the newest non-yanked release on crates.io (0.10.4 is GitHub-only and its prebuilt
+# `cargo-vet` binaries are blocked by `[install] refused_binary_prefixes`). Per the #1820
+# amendment (#2046-E1 Option A), direct advisory GHSA-67mm-98mf-xfhf (2026-11-19, medium,
+# CWE-532) is waived as unreachable until #2055 retires it on >= 0.10.4: it triggers only when
+# `--use-git-credentials` is combined with `--verbose debug`/`trace` or `--log-file`
+# (src/credentials.rs), whereas CI invokes `cargo vet --locked` with none of those flags and zero
+# private git imports. `LIBZ_SYS_STATIC=1` skips libz-sys's pkg-config probe so build-time env
+# capture RUSTSEC-2026-0418 (libz-sys 1.1.15) never runs. Remaining 11 OSV/RustSec IDs in
+# 0.10.3's Cargo.lock (276 registry crates, 0 yanked) are unreachable or unmaintained only:
+# GHSA-3pv8-6f4r-ffg2 (tar 0.4.45: `unpack_package` runs only on online tarball fetches, never in
+# `cargo vet --locked`), RUSTSEC-2026-0592 (url 2.5.4: `Url::origin()` on nested `blob:` URLs;
+# cargo-vet calls only `Url::parse` and runs offline), GHSA-c827-hfw6-qwvm (rustix 0.37.20:
+# `rustix::fs::Dir` `linux_raw` iterator unused), RUSTSEC-2026-0486 (rustix 1.0.7: `xattr`
+# calls unused), RUSTSEC-2026-0386 (tokio 1.45.1: `AsyncFd` unused), RUSTSEC-2022-0078 /
+# GHSA-f85w-wvc7-crwc (bumpalo 3.10.0: `Vec::into_iter` via wasm-bindgen-macro-support, native
+# CLI only), and unmaintained RUSTSEC-2024-0320 (yaml-rust 0.4.5), RUSTSEC-2025-0056 (adler
+# 1.0.2), RUSTSEC-2025-0119 (number_prefix 0.4.0), RUSTSEC-2026-0543 (chrono 0.4.23).
+[tool.cargo-vet]
+version = "0.10.3"
+licence = "Apache-2.0 OR MIT"
+source = "https://github.com/mozilla/cargo-vet"
+install = "env LIBZ_SYS_STATIC=1 cargo install --locked cargo-vet@0.10.3"
+
 [tool.gitleaks]
 version = "8.30.1"
 licence = "MIT"
