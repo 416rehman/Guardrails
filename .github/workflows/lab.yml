@@ -29,6 +29,7 @@ concurrency:
 env:
   MAX_TIMEOUT_MINUTES: "60"
   ARTIFACT_RETENTION_DAYS: "14"
+  DEFENDER_ENABLE_TIMEOUT_SECONDS: "30"
   RUNNER_LABELS: '{"linux-x64":"ubuntu-26.04","macos-arm64":"macos-26","windows-x64":"windows-2025"}'
 
 jobs:
@@ -173,7 +174,27 @@ jobs:
           JOB_NAME: ${{ needs.plan.outputs.job }}
           SYSTEM_NAME: ${{ matrix.cell.system }}
         run: |
-          $status = Get-MpComputerStatus | Select-Object AMServiceEnabled, AntivirusEnabled, RealTimeProtectionEnabled, AMProductVersion
+          $timeoutSeconds = 0
+          if (-not [int]::TryParse($env:DEFENDER_ENABLE_TIMEOUT_SECONDS, [ref]$timeoutSeconds) -or $timeoutSeconds -lt 1) {
+            Write-Error "DEFENDER_ENABLE_TIMEOUT_SECONDS must be a positive integer"
+            exit 1
+          }
+          try {
+            Set-MpPreference -DisableRealtimeMonitoring $false -ErrorAction Stop
+          } catch {
+            Write-Warning "Set-MpPreference failed: $($_.Exception.Message)"
+          }
+          $deadline = [DateTime]::UtcNow.AddSeconds($timeoutSeconds)
+          while ($true) {
+            $status = Get-MpComputerStatus | Select-Object AMServiceEnabled, AntivirusEnabled, RealTimeProtectionEnabled, AMProductVersion
+            if ($status.AMServiceEnabled -and $status.AntivirusEnabled -and $status.RealTimeProtectionEnabled) {
+              break
+            }
+            if ([DateTime]::UtcNow -ge $deadline) {
+              break
+            }
+            Start-Sleep -Seconds 1
+          }
           $evidenceDir = Join-Path "target/lab/$env:JOB_NAME" $env:SYSTEM_NAME
           $defenderPath = Join-Path $evidenceDir "defender.json"
           $status | ConvertTo-Json -Depth 2 | Set-Content -Path $defenderPath -Encoding utf8
