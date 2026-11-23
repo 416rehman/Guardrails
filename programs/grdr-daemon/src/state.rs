@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 use grdr_agents::discover_local_agents;
-use grdr_model::eval::{essentials_pack, evaluate_attempt};
+use grdr_model::eval::{essentials_pack, evaluate_attempt_mut};
 use grdr_model::{
     ActionAttempt, DecideInput, DecisionReceipt, DiscoveryReport, Grant, InstallProfile,
     KillSwitchState, PolicyPack, SessionSummary, slugify_id, summarize_sessions,
@@ -141,13 +141,16 @@ impl DaemonState {
             now,
         );
 
-        let receipt = evaluate_attempt(
-            &attempt,
-            &guard.packs,
-            &guard.grants,
-            &guard.kill_switch,
-            now,
-        );
+        let receipt = {
+            let data = &mut *guard;
+            evaluate_attempt_mut(
+                &attempt,
+                &data.packs,
+                &mut data.grants,
+                &data.kill_switch,
+                now,
+            )
+        };
 
         guard.attempts.push(attempt.clone());
         guard.receipts.push(receipt.clone());

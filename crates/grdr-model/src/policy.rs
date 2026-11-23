@@ -166,25 +166,152 @@ pub struct AuditEntry {
 }
 
 impl Grant {
-    pub fn matches(&self, attempt: &ActionAttempt, now: Timestamp) -> bool {
-        if let Some(exp) = self.expires_at
-            && exp <= now
-        {
+    pub fn is_active(&self, now: Timestamp) -> bool {
+        if self.expires_at.is_some_and(|exp| exp <= now) {
             return false;
         }
-        if let Some(uses) = self.remaining_uses
-            && uses == 0
-        {
+        if self.remaining_uses.is_some_and(|uses| uses == 0) {
+            return false;
+        }
+        true
+    }
+
+    pub fn consume_use(&mut self) {
+        if let Some(uses) = self.remaining_uses.as_mut() {
+            *uses = uses.saturating_sub(1);
+        }
+    }
+
+    pub fn matches(&self, attempt: &ActionAttempt, now: Timestamp) -> bool {
+        if !self.is_active(now) {
             return false;
         }
         if self.action_class != attempt.action_class {
             return false;
         }
-        if self.scope == GrantScope::Session && self.session_id != attempt.session_id {
+        if self.device_id != "*" && self.device_id != attempt.device_id {
             return false;
         }
-        self.target_pattern == "*"
-            || self.target_pattern == attempt.target
-            || attempt.target.starts_with(&self.target_pattern)
+        if matches!(self.scope, GrantScope::Once | GrantScope::Session)
+            && self.session_id != attempt.session_id
+        {
+            return false;
+        }
+        target_pattern_matches(&self.target_pattern, &attempt.target)
+    }
+}
+
+fn target_pattern_matches(pattern: &str, target: &str) -> bool {
+    if pattern == "*" {
+        return true;
+    }
+    let norm_pattern = pattern.replace('\\', "/");
+    let norm_target = target.replace('\\', "/");
+    if norm_target == norm_pattern {
+        return true;
+    }
+    let trimmed = norm_pattern.trim_end_matches('/');
+    if trimmed.is_empty() {
+        return false;
+    }
+    norm_target
+        .strip_prefix(trimmed)
+        .is_some_and(|rest| rest.starts_with('/'))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::ControlPoint;
+
+    fn sample_attempt(session_id: &str, device_id: &str, target: &str) -> ActionAttempt {
+        ActionAttempt {
+            id: "att-1".into(),
+            session_id: session_id.into(),
+            device_id: device_id.into(),
+            device_name: "workstation".into(),
+            agent_name: "claude-code".into(),
+            action_class: ActionClass::FileRead,
+            control_point: ControlPoint::Hook,
+            target: target.into(),
+            summary: target.into(),
+            timestamp: Timestamp::from_second(1_700_000_000).unwrap(),
+        }
+    }
+
+    fn sample_grant(
+        scope: GrantScope,
+        target_pattern: &str,
+        remaining_uses: Option<u32>,
+        expires_at: Option<Timestamp>,
+    ) -> Grant {
+        Grant {
+            grant_id: "grn_test".into(),
+            rule_id: "essentials.credential-stores".into(),
+            session_id: "sess-1".into(),
+            device_id: "dev-1".into(),
+            action_class: ActionClass::FileRead,
+            target_pattern: target_pattern.into(),
+            scope,
+            grade: ApprovalGrade::G1,
+            granted_at: Timestamp::from_second(1_700_000_000).unwrap(),
+            expires_at,
+            remaining_uses,
+            note: "test".into(),
+        }
+    }
+
+    #[test]
+    fn once_grant_binds_device_and_session_and_consumes_use() {
+        let now = Timestamp::from_second(1_700_000_000).unwrap();
+        let mut grant = sample_grant(GrantScope::Once, "/home/dev/.ssh/id_rsa", Some(1), None);
+
+        let same = sample_attempt("sess-1", "dev-1", "/home/dev/.ssh/id_rsa");
+        let wrong_session = sample_attempt("sess-2", "dev-1", "/home/dev/.ssh/id_rsa");
+        let wrong_device = sample_attempt("sess-1", "dev-2", "/home/dev/.ssh/id_rsa");
+
+        assert!(grant.matches(&same, now));
+        assert!(!grant.matches(&wrong_session, now));
+        assert!(!grant.matches(&wrong_device, now));
+
+        grant.consume_use();
+        assert!(!grant.is_active(now));
+        assert!(!grant.matches(&same, now));
+    }
+
+    #[test]
+    fn one_hour_grant_crosses_sessions_on_same_device_until_expiry() {
+        let now = Timestamp::from_second(1_700_000_000).unwrap();
+        let exp = Timestamp::from_second(1_700_003_600).unwrap();
+        let grant = sample_grant(
+            GrantScope::OneHour,
+            "/home/dev/.ssh/id_rsa",
+            None,
+            Some(exp),
+        );
+
+        let other_sess = sample_attempt("sess-2", "dev-1", "/home/dev/.ssh/id_rsa");
+        let other_dev = sample_attempt("sess-2", "dev-2", "/home/dev/.ssh/id_rsa");
+
+        assert!(grant.matches(&other_sess, now));
+        assert!(!grant.matches(&other_dev, now));
+        assert!(!grant.matches(&other_sess, exp));
+    }
+
+    #[test]
+    fn target_pattern_enforces_path_boundaries() {
+        assert!(target_pattern_matches("*", "/anything"));
+        assert!(target_pattern_matches(
+            "/home/dev/.ssh",
+            "/home/dev/.ssh/id_rsa"
+        ));
+        assert!(target_pattern_matches(
+            "/home/dev/.ssh",
+            r"\home\dev\.ssh\id_rsa"
+        ));
+        assert!(!target_pattern_matches(
+            "/home/dev/.ssh",
+            "/home/dev/.ssh-other/id_rsa"
+        ));
     }
 }

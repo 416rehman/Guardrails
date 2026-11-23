@@ -69,7 +69,7 @@ impl AppState {
                 id: "tile-approvals".into(),
                 headline: format!(
                     "{pending_approvals} step-up approvals waiting; {} grants active.",
-                    guard.grants.len()
+                    guard.grants.iter().filter(|g| g.is_active(now)).count()
                 ),
                 metric: pending_approvals.to_string(),
                 comparison: "G1/G2 scoped grants expire automatically".into(),

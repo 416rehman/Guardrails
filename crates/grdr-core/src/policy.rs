@@ -2,7 +2,9 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
 use grdr_model::eval::rule_matches;
-pub use grdr_model::eval::{essentials_pack, evaluate_attempt as evaluate};
+pub use grdr_model::eval::{
+    essentials_pack, evaluate_attempt as evaluate, evaluate_attempt_mut as evaluate_mut,
+};
 use grdr_model::{ActionAttempt, Mode, PolicyRule, ReplaySample, ReplaySummary, Verdict};
 
 const MAX_REPLAY_SAMPLES: usize = 25;

@@ -111,7 +111,10 @@ mod tests {
     use super::*;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
-    use grdr_model::{ActionClass, DecideInput, DecisionReceipt, Verdict};
+    use grdr_model::eval::add_seconds;
+    use grdr_model::{
+        ActionClass, ApprovalGrade, DecideInput, DecisionReceipt, Grant, GrantScope, Verdict,
+    };
     use tower::ServiceExt as _;
 
     #[tokio::test]
@@ -146,5 +149,76 @@ mod tests {
         let receipt: DecisionReceipt = serde_json::from_slice(&body).unwrap();
         assert_eq!(receipt.verdict, Verdict::Deny);
         assert_eq!(state.status().await.pending_events, 1);
+    }
+
+    #[tokio::test]
+    async fn daemon_consumes_once_grant_on_first_matching_decision() {
+        let state = DaemonState::init(InstallProfile::User, Some("test-host".into()), None);
+        let now = jiff::Timestamp::now();
+        {
+            let mut guard = state.inner.write().await;
+            let device_id = guard.device_id.clone();
+            guard.grants.push(Grant {
+                grant_id: "grn_daemon_once".into(),
+                rule_id: "essentials.credential-stores".into(),
+                session_id: "sess-local".into(),
+                device_id,
+                action_class: ActionClass::FileRead,
+                target_pattern: "/home/dev/.ssh/id_rsa".into(),
+                scope: GrantScope::Once,
+                grade: ApprovalGrade::G1,
+                granted_at: now,
+                expires_at: Some(add_seconds(now, 300)),
+                remaining_uses: Some(1),
+                note: "Daemon once grant".into(),
+            });
+        }
+        let app = routes::build_router(state);
+
+        let req = DecideInput {
+            session_id: Some("sess-local".into()),
+            device_id: None,
+            device_name: None,
+            agent_name: "claude-code".into(),
+            action_class: ActionClass::FileRead,
+            control_point: None,
+            target: "/home/dev/.ssh/id_rsa".into(),
+            summary: None,
+        };
+
+        let first_resp = app
+            .clone()
+            .oneshot(
+                Request::post("/local/v1/decide")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(first_resp.status(), StatusCode::OK);
+        let first_body = axum::body::to_bytes(first_resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let first_receipt: DecisionReceipt = serde_json::from_slice(&first_body).unwrap();
+        assert_eq!(first_receipt.verdict, Verdict::Allow);
+        assert_eq!(first_receipt.grant_id.as_deref(), Some("grn_daemon_once"));
+
+        let second_resp = app
+            .oneshot(
+                Request::post("/local/v1/decide")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(second_resp.status(), StatusCode::OK);
+        let second_body = axum::body::to_bytes(second_resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let second_receipt: DecisionReceipt = serde_json::from_slice(&second_body).unwrap();
+        assert_eq!(second_receipt.verdict, Verdict::StepUp);
+        assert!(second_receipt.grant_id.is_none());
     }
 }

@@ -213,8 +213,7 @@ async fn replay_rule(
 }
 
 async fn list_approvals(State(state): State<AppState>) -> Json<Vec<ApprovalRequest>> {
-    let guard = state.inner.read().await;
-    Json(guard.approvals.clone())
+    Json(state.list_approvals().await)
 }
 
 async fn decide_approval(

@@ -17,7 +17,7 @@ use grdr_core::{detect, policy};
 use grdr_model::error::{CODE_INVALID_INPUT, CODE_NOT_FOUND};
 use grdr_model::eval::add_seconds;
 use grdr_model::{
-    ActionAttempt, ApprovalGrade, ApprovalRequest, ApprovalState, AuditEntry, BatchEventsInput,
+    ActionAttempt, ApprovalRequest, ApprovalState, AuditEntry, BatchEventsInput,
     BatchEventsResponse, CodedError, DecideInput, DecisionReceipt, Device, DeviceCheckinRequest,
     DeviceCheckinResponse, Finding, Grant, KillSwitchState, LiveEvent, PolicyPack,
     SessionDetailResponse, SessionSummary, Verdict, slugify_id, summarize_sessions,
@@ -25,8 +25,8 @@ use grdr_model::{
 
 use crate::demo;
 use persistence::{
-    bump_rule_counters, find_rule_title, load_from_dir, persist_snapshot,
-    record_attempt_and_receipt, trim_retained,
+    bump_rule_counters, expire_pending_approvals, find_rule_metadata, load_from_dir,
+    persist_snapshot, record_attempt_and_receipt, trim_retained,
 };
 
 pub(crate) const MAX_RETAINED_EVENTS: usize = 500;
@@ -164,7 +164,12 @@ impl AppState {
             }
             (
                 guard.packs.clone(),
-                guard.grants.clone(),
+                guard
+                    .grants
+                    .iter()
+                    .filter(|g| g.is_active(now))
+                    .cloned()
+                    .collect(),
                 guard.kill_switch.clone(),
             )
         };
@@ -211,13 +216,16 @@ impl AppState {
 
         let receipt = {
             let mut guard = self.inner.write().await;
-            let receipt = policy::evaluate(
-                &attempt,
-                &guard.packs,
-                &guard.grants,
-                &guard.kill_switch,
-                now,
-            );
+            let receipt = {
+                let data = &mut *guard;
+                policy::evaluate_mut(
+                    &attempt,
+                    &data.packs,
+                    &mut data.grants,
+                    &data.kill_switch,
+                    now,
+                )
+            };
             record_attempt_and_receipt(&mut guard, attempt.clone(), receipt.clone(), now);
             if let Some(dir) = &self.data_dir {
                 persist_snapshot(dir, &guard)?;
@@ -274,8 +282,14 @@ impl AppState {
                     continue;
                 }
                 bump_rule_counters(&mut guard.packs, &receipt);
+                if let Some(grant_id) = receipt.grant_id.as_deref()
+                    && let Some(grant) = guard.grants.iter_mut().find(|g| g.grant_id == grant_id)
+                {
+                    grant.consume_use();
+                }
                 if receipt.verdict == Verdict::StepUp {
-                    let rule_title = find_rule_title(&guard.packs, receipt.rule_id.as_deref());
+                    let (rule_title, required_grade) =
+                        find_rule_metadata(&guard.packs, receipt.rule_id.as_deref());
                     guard.approvals.insert(
                         0,
                         ApprovalRequest {
@@ -292,7 +306,7 @@ impl AppState {
                                 .clone()
                                 .unwrap_or_else(|| "policy.step_up".into()),
                             rule_title,
-                            required_grade: ApprovalGrade::G1,
+                            required_grade,
                             reason: receipt.reason.clone(),
                             requested_at: receipt.decided_at,
                             state: ApprovalState::Pending {
@@ -330,6 +344,17 @@ impl AppState {
     pub async fn sessions(&self) -> Vec<SessionSummary> {
         let guard = self.inner.read().await;
         summarize_sessions(&guard.attempts, &guard.receipts)
+    }
+
+    pub async fn list_approvals(&self) -> Vec<ApprovalRequest> {
+        let now = Timestamp::now();
+        let mut guard = self.inner.write().await;
+        if expire_pending_approvals(&mut guard.approvals, now)
+            && let Some(dir) = &self.data_dir
+        {
+            let _ = persist_snapshot(dir, &guard);
+        }
+        guard.approvals.clone()
     }
 
     pub async fn session_detail(

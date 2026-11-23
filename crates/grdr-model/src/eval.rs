@@ -431,6 +431,22 @@ pub fn evaluate_attempt(
     }
 }
 
+pub fn evaluate_attempt_mut(
+    attempt: &ActionAttempt,
+    packs: &[PolicyPack],
+    grants: &mut [Grant],
+    kill_switch: &KillSwitchState,
+    now: Timestamp,
+) -> DecisionReceipt {
+    let receipt = evaluate_attempt(attempt, packs, grants, kill_switch, now);
+    if let Some(grant_id) = receipt.grant_id.as_deref()
+        && let Some(grant) = grants.iter_mut().find(|g| g.grant_id == grant_id)
+    {
+        grant.consume_use();
+    }
+    receipt
+}
+
 pub fn add_seconds(ts: Timestamp, seconds: i64) -> Timestamp {
     Timestamp::from_second(ts.as_second().saturating_add(seconds)).unwrap_or(ts)
 }
@@ -573,6 +589,48 @@ mod tests {
             add_seconds(now, 120),
         );
         assert_eq!(expired.verdict, Verdict::StepUp);
+    }
+
+    #[test]
+    fn once_grant_allows_single_use_then_steps_up() {
+        let now = Timestamp::from_second(1_700_000_000).unwrap();
+        let packs = vec![essentials_pack()];
+        let mut grants = vec![Grant {
+            grant_id: "grn_once".into(),
+            rule_id: "essentials.credential-stores".into(),
+            session_id: "sess-1".into(),
+            device_id: "dev-1".into(),
+            action_class: ActionClass::FileRead,
+            target_pattern: "/home/dev/.ssh/id_rsa".into(),
+            scope: GrantScope::Once,
+            grade: ApprovalGrade::G1,
+            granted_at: now,
+            expires_at: Some(add_seconds(now, 300)),
+            remaining_uses: Some(1),
+            note: "Single use".into(),
+        }];
+
+        let attempt = sample_attempt(ActionClass::FileRead, "/home/dev/.ssh/id_rsa");
+        let first = evaluate_attempt_mut(
+            &attempt,
+            &packs,
+            &mut grants,
+            &KillSwitchState::Inactive,
+            now,
+        );
+        assert_eq!(first.verdict, Verdict::Allow);
+        assert_eq!(first.grant_id.as_deref(), Some("grn_once"));
+        assert_eq!(grants.first().and_then(|g| g.remaining_uses), Some(0));
+
+        let second = evaluate_attempt_mut(
+            &attempt,
+            &packs,
+            &mut grants,
+            &KillSwitchState::Inactive,
+            add_seconds(now, 5),
+        );
+        assert_eq!(second.verdict, Verdict::StepUp);
+        assert!(second.grant_id.is_none());
     }
 
     #[test]
