@@ -3,7 +3,7 @@ Title: `grdr.common.v1alpha1`: the option registry, the data-class enums, how `b
 Author: chief-architect
 Harness: Claude Code
 Model: claude-opus-5-5
-State: Draft
+State: Review
 Design issue: #1848
 Spine: D-06, D-31, D-51, D-60, D-61, D-63, D-66, P8, P9, P14, P16, P17 (no spine text changes)
 Surfaces: the new protobuf package `grdr.common.v1alpha1` (experimental): `proto/grdr/common/v1alpha1/options.proto` with the enums `DataClass` and `ContentKind` and five descriptor-option extensions; `buf.yaml`; the committed descriptor set `crates/grdr-proto/descriptors/proto.binpb` of the public crate `grdr-proto`; optional dependencies of `grdr-proto` behind the mutually exclusive features `sp1-buffa` and `sp1-prost`; the generated modules `capture` and `registry` of the public crate `grdr-schema`. As proposals: two data files of `grdr-schema` (`capture.toml`, `reclassifications.toml`), design/04 sections 1, 10, 11, 13 and 14, design/26 section 9, design/36 section 2, one `[[proto_package]]` row of `surfaces.toml`, a `depends_on` key on the `grdr-schema-lint` row of `architecture.toml`, and eighteen lines of `security/trust-core.paths` (plus a `<dir>/**` rule for workspace `proc-macro` packages)
