@@ -10,5 +10,11 @@ privilege = "none"
 surface = "public"
 renders = "none"
 
+[dependencies]
+grdr-schema = { version = "0.1.0", path = "../grdr-schema" }
+
+[dev-dependencies]
+grdr-proto = { path = "../grdr-proto" }
+
 [lints]
 workspace = true

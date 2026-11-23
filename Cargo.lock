@@ -49,6 +49,10 @@ version = "0.1.0"
 [[package]]
 name = "grdr-model"
 version = "0.1.0"
+dependencies = [
+ "grdr-proto",
+ "grdr-schema",
+]
 
 [[package]]
 name = "grdr-ports"
