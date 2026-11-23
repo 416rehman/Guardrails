@@ -1,0 +1,245 @@
+# Snapshot roots and `ours` paths for install-smoke (D-48).
+# Every monitored root, product/state root (`ours`), runner mapping, Claude Code settings
+# target, and unit-lint rule lives here so smoke.py and snapshot.py hold no hard-coded paths.
+
+schema = "grdr.install-smoke.roots.v1"
+
+[limits]
+step_timeout_seconds = 600
+status_timeout_seconds = 30
+read_chunk_bytes = 65536
+self_test_cell_count = 3
+accepted_hook_states = ["configured", "effective"]
+claude_seed_fixture = ".github/install-smoke/fixtures/claude-settings.json"
+claude_user_settings = "~/.claude/settings.json"
+
+[runners]
+"ubuntu-26.04" = "linux"
+"macos-26" = "macos"
+"windows-2025" = "windows"
+
+[unit_lint.linux]
+required_tools = ["systemd-analyze", "systemd-sysusers"]
+unit_globs = ["deploy/**/*.service", "deploy/**/*.socket"]
+sysusers_globs = ["deploy/**/sysusers.d/*.conf"]
+
+[unit_lint.macos]
+required_tools = ["plutil"]
+plist_globs = ["deploy/**/*.plist"]
+
+[os.linux]
+claude_dropin_dir = "/etc/claude-code/managed-settings.d"
+grdr_search_paths = [
+  "/usr/bin/grdr",
+  "/usr/libexec/grdr/grdr",
+  "/opt/grdr/bin/grdr",
+  "~/.local/bin/grdr",
+  "~/.local/share/grdr/bin/grdr",
+]
+# Azure VM runner agent and NTP clock files tick asynchronously on hosted Linux runners.
+ignore_paths = [
+  "/var/lib/waagent",
+  "/var/lib/systemd/timesync",
+]
+
+[os.linux.user]
+scan_roots = [
+  "~/.claude",
+  "~/.config",
+  "~/.local/share",
+  "~/.local/state",
+  "~/.local/bin",
+  "~/.codex",
+  "~/.cursor",
+  "~/.copilot",
+  "~/.gemini",
+  "/etc",
+  "/usr",
+  "/var/lib",
+  "/opt/grdr",
+  "/run/grdr",
+]
+ours = [
+  "~/.local/share/grdr",
+  "~/.local/state/grdr",
+  "~/.config/grdr",
+  "~/.local/bin/grdr",
+  "~/.config/systemd/user/grdr-*",
+  "~/.config/systemd/user/*.wants/grdr-*",
+]
+
+[os.linux.protected]
+scan_roots = [
+  "~/.claude",
+  "~/.config",
+  "~/.local/share",
+  "~/.local/state",
+  "~/.local/bin",
+  "~/.codex",
+  "~/.cursor",
+  "~/.copilot",
+  "~/.gemini",
+  "/etc",
+  "/usr",
+  "/var/lib",
+  "/opt/grdr",
+  "/run/grdr",
+]
+ours = [
+  "/usr/bin/grdr",
+  "/usr/libexec/grdr",
+  "/opt/grdr",
+  "/etc/grdr",
+  "/var/lib/grdr",
+  "/var/lib/grdr-engine",
+  "/run/grdr",
+  "/usr/lib/systemd/system/grdr-*",
+  "/lib/systemd/system/grdr-*",
+  "/etc/systemd/system/grdr-*",
+  "/etc/systemd/system/*.wants/grdr-*",
+  "/usr/lib/sysusers.d/grdr.conf",
+]
+
+[os.macos]
+claude_dropin_dir = "/Library/Application Support/ClaudeCode/managed-settings.d"
+grdr_search_paths = [
+  "/Library/Application Support/grdr/bin/grdr",
+  "/usr/local/bin/grdr",
+  "~/.local/bin/grdr",
+  "~/Library/Application Support/grdr/bin/grdr",
+]
+ignore_paths = [
+  "/Library/Caches",
+]
+
+[os.macos.user]
+scan_roots = [
+  "~/.claude",
+  "~/.config",
+  "~/.local/share",
+  "~/.local/state",
+  "~/.local/bin",
+  "~/.codex",
+  "~/.cursor",
+  "~/.copilot",
+  "~/.gemini",
+  "~/Library/Application Support",
+  "~/Library/LaunchAgents",
+  "~/Library/Preferences",
+  "/Library",
+  "/Applications",
+  "/etc",
+  "/usr/local",
+  "/var/db/grdr-engine",
+  "/var/db/receipts",
+  "/var/run/grdr",
+]
+ours = [
+  "~/Library/Application Support/grdr",
+  "~/.local/share/grdr",
+  "~/.local/state/grdr",
+  "~/.config/grdr",
+  "~/.local/bin/grdr",
+  "~/Library/LaunchAgents/com.guardrailshq.*.plist",
+]
+
+[os.macos.protected]
+scan_roots = [
+  "~/.claude",
+  "~/.config",
+  "~/.local/share",
+  "~/.local/state",
+  "~/.local/bin",
+  "~/.codex",
+  "~/.cursor",
+  "~/.copilot",
+  "~/.gemini",
+  "~/Library/Application Support",
+  "~/Library/LaunchAgents",
+  "~/Library/Preferences",
+  "/Library",
+  "/Applications",
+  "/etc",
+  "/usr/local",
+  "/var/db/grdr-engine",
+  "/var/db/receipts",
+  "/var/run/grdr",
+]
+ours = [
+  "/Applications/Guardrails.app",
+  "/Applications/Guardrails ADR.app",
+  "/Library/Application Support/grdr",
+  "/var/db/grdr-engine",
+  "/var/run/grdr",
+  "/Library/LaunchDaemons/com.guardrailshq.*.plist",
+  "/var/db/receipts/com.guardrailshq.*",
+]
+
+[os.windows]
+claude_dropin_dir = "%ProgramFiles%\\ClaudeCode\\managed-settings.d"
+grdr_search_paths = [
+  "%ProgramFiles%\\Guardrails ADR\\grdr.exe",
+  "%ProgramFiles%\\Guardrails\\grdr.exe",
+  "%ProgramFiles%\\grdr\\grdr.exe",
+  "%LOCALAPPDATA%\\grdr\\bin\\grdr.exe",
+  "%LOCALAPPDATA%\\grdr\\grdr.exe",
+]
+# %TEMP% sits under %LOCALAPPDATA%\Temp and holds transient process scratch files.
+ignore_paths = [
+  "%LOCALAPPDATA%\\Temp",
+]
+windows_registry = [
+  "HKCU\\Software",
+  "HKLM\\SOFTWARE",
+]
+windows_tasks = true
+windows_services = true
+
+[os.windows.user]
+scan_roots = [
+  "~/.claude",
+  "~/.config",
+  "~/.codex",
+  "~/.cursor",
+  "~/.copilot",
+  "~/.gemini",
+  "%LOCALAPPDATA%",
+  "%APPDATA%",
+  "%ProgramFiles%",
+  "%ProgramData%",
+]
+ours = [
+  "%LOCALAPPDATA%\\grdr",
+  "task://\\grdr*",
+  "task://\\Guardrails*",
+  "reg://HKCU/Software/grdr",
+  "reg://HKCU/Software/Guardrails",
+  "reg://HKCU/Software/Loonaro",
+]
+
+[os.windows.protected]
+scan_roots = [
+  "~/.claude",
+  "~/.config",
+  "~/.codex",
+  "~/.cursor",
+  "~/.copilot",
+  "~/.gemini",
+  "%LOCALAPPDATA%",
+  "%APPDATA%",
+  "%ProgramFiles%",
+  "%ProgramData%",
+]
+ours = [
+  "%ProgramFiles%\\Guardrails ADR",
+  "%ProgramFiles%\\Guardrails",
+  "%ProgramFiles%\\grdr",
+  "%ProgramData%\\grdr",
+  "service://grdr*",
+  "service://Guardrails*",
+  "task://\\grdr*",
+  "task://\\Guardrails*",
+  "reg://HKLM/SOFTWARE/grdr",
+  "reg://HKLM/SOFTWARE/Guardrails",
+  "reg://HKLM/SOFTWARE/Loonaro",
+]

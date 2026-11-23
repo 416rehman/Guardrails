@@ -1,0 +1,32 @@
+# Seeded fixture cells for oracle-self-test (R5 of #1650).
+# Each cell injects one violation and must fail at its expected_fail_step.
+
+[[cell]]
+id = "writes-outside-ours"
+runner = "ubuntu-26.04"
+profile = "user"
+expected_fail_step = "install"
+build = "python3 -I -B .github/install-smoke/fixtures/fixture_cell.py writes-outside-ours build"
+install = "python3 -I -B .github/install-smoke/fixtures/fixture_cell.py writes-outside-ours install"
+choose = "python3 -I -B .github/install-smoke/fixtures/fixture_cell.py writes-outside-ours choose"
+uninstall = "python3 -I -B .github/install-smoke/fixtures/fixture_cell.py writes-outside-ours uninstall"
+
+[[cell]]
+id = "leaves-file-behind"
+runner = "ubuntu-26.04"
+profile = "user"
+expected_fail_step = "uninstall"
+build = "python3 -I -B .github/install-smoke/fixtures/fixture_cell.py leaves-file-behind build"
+install = "python3 -I -B .github/install-smoke/fixtures/fixture_cell.py leaves-file-behind install"
+choose = "python3 -I -B .github/install-smoke/fixtures/fixture_cell.py leaves-file-behind choose"
+uninstall = "python3 -I -B .github/install-smoke/fixtures/fixture_cell.py leaves-file-behind uninstall"
+
+[[cell]]
+id = "mutates-vendor-hook"
+runner = "ubuntu-26.04"
+profile = "user"
+expected_fail_step = "choose"
+build = "python3 -I -B .github/install-smoke/fixtures/fixture_cell.py mutates-vendor-hook build"
+install = "python3 -I -B .github/install-smoke/fixtures/fixture_cell.py mutates-vendor-hook install"
+choose = "python3 -I -B .github/install-smoke/fixtures/fixture_cell.py mutates-vendor-hook choose"
+uninstall = "python3 -I -B .github/install-smoke/fixtures/fixture_cell.py mutates-vendor-hook uninstall"

@@ -1,0 +1,215 @@
+name: install-smoke
+
+# Snapshot oracle smoke gate on fresh hosted runners (design/24 section 3, D-48): verifies
+# first run, idempotent re-run, Claude Code hook choice, elevated user refusal, uninstall
+# byte-for-byte restoration, oracle self-tests, and systemd/launchd unit linting.
+
+on:
+  pull_request:
+    paths:
+      - deploy/**
+      - .github/workflows/install-smoke.yml
+      - .github/install-smoke/**
+  workflow_call:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: install-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  plan:
+    name: Plan install smoke
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      cells: ${{ steps.plan.outputs.cells }}
+      has_cells: ${{ steps.plan.outputs.has_cells }}
+      count: ${{ steps.plan.outputs.count }}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+        with:
+          install: "false"
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      - id: plan
+        run: python3 -I -B .github/install-smoke/smoke.py plan --smoke-file deploy/smoke.toml --github-output "$GITHUB_OUTPUT"
+
+  install-smoke:
+    needs: plan
+    if: needs.plan.outputs.has_cells == 'true'
+    name: install-smoke (${{ matrix.cell.id }})
+    strategy:
+      fail-fast: false
+      matrix:
+        cell: ${{ fromJSON(needs.plan.outputs.cells) }}
+    runs-on: ${{ matrix.cell.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      - name: Run smoke cell
+        env:
+          CELL_ID: ${{ matrix.cell.id }}
+        run: |
+          for python in python3 python; do
+            if "$python" -I -c "import tomllib" > /dev/null 2>&1; then
+              "$python" -I -B .github/install-smoke/smoke.py run-cell --smoke-file deploy/smoke.toml --cell-id "$CELL_ID"
+              exit "$?"
+            fi
+          done
+          echo "::error::GRDR-GATE-0006 no Python with tomllib on this runner"
+          exit 1
+
+  summary:
+    needs: [plan, install-smoke]
+    if: always() && !cancelled() && needs.plan.result == 'success' && (needs.install-smoke.result == 'success' || needs.install-smoke.result == 'skipped')
+    name: summary
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - name: Report planned cell count
+        env:
+          CELL_COUNT: ${{ needs.plan.outputs.count }}
+        run: echo "$CELL_COUNT cells"
+
+  oracle-self-test:
+    name: oracle-self-test
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+        with:
+          install: "false"
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      - name: Run oracle unit tests and seeded fixture cells
+        run: |
+          python3 -I -B .github/install-smoke/test_snapshot.py -v
+          python3 -I -B .github/install-smoke/smoke.py self-test
+
+  unit-lint-linux:
+    name: unit-lint (linux)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      files: ${{ steps.lint.outputs.files }}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+        with:
+          install: "false"
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      - id: lint
+        run: python3 -I -B .github/install-smoke/smoke.py unit-lint --os linux --github-output "$GITHUB_OUTPUT"
+
+  unit-lint-macos:
+    name: unit-lint (macos)
+    runs-on: macos-26
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      files: ${{ steps.lint.outputs.files }}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+        with:
+          install: "false"
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      - id: lint
+        run: |
+          for python in python3 python; do
+            if "$python" -I -c "import tomllib" > /dev/null 2>&1; then
+              "$python" -I -B .github/install-smoke/smoke.py unit-lint --os macos --github-output "$GITHUB_OUTPUT"
+              exit "$?"
+            fi
+          done
+          echo "::error::GRDR-GATE-0006 no Python with tomllib on this runner"
+          exit 1
+
+  unit-lint:
+    needs: [unit-lint-linux, unit-lint-macos]
+    name: unit-lint
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - name: Report total unit and plist files checked
+        env:
+          LINUX_FILES: ${{ needs.unit-lint-linux.outputs.files }}
+          MACOS_FILES: ${{ needs.unit-lint-macos.outputs.files }}
+        run: echo "$((LINUX_FILES + MACOS_FILES)) files"

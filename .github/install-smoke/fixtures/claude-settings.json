@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/other-vendor/bin/check-tool --mode safe",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "model": "example-model"
+}
