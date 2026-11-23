@@ -39,7 +39,30 @@ crates/grdr-core/src/compile/fastpath/**
 # Tenant context and row-level security
 crates/grdr-ports/src/tenant.rs
 crates/grdr-ports/src/tenant/**
+crates/grdr-ports-kitkey/**
+crates/grdr-ports-testkit/**
 crates/grdr-rel-postgres/migrations/**
+crates/grdr-rel-postgres/src/tenant.rs
+crates/grdr-rel-postgres/src/tenant/**
+crates/grdr-rel-sqlite/src/tenant.rs
+crates/grdr-rel-sqlite/src/tenant/**
+crates/grdr-rel-sqlite/src/jobs.rs
+crates/grdr-rel-sqlite/src/jobs/**
+schema/tenancy/lifecycle.toml
+programs/grdr-server/src/compose.rs
+programs/grdr-server/src/compose/**
+programs/grdr-server/src/api/authn.rs
+programs/grdr-server/src/api/authn/**
+programs/grdr-server/src/api/provider.rs
+programs/grdr-server/src/api/provider/**
+programs/grdr-server/src/ingest/verify.rs
+programs/grdr-server/src/ingest/verify/**
+programs/grdr-server/src/enrol.rs
+programs/grdr-server/src/enrol/**
+programs/grdr-server/src/store/consume.rs
+programs/grdr-server/src/store/consume/**
+programs/grdr-server/src/detect.rs
+programs/grdr-server/src/detect/**
 
 # FFI unsafe boundaries
 crates/grdr-ffi/**
