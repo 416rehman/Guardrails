@@ -1,0 +1,8 @@
+.semgrep-rules/
+third_party/
+target/
+web/node_modules/
+web/dist/
+docs/
+*.md
+*.mdx

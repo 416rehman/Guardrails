@@ -21,9 +21,28 @@ function run(command, args, cwd) {
   return execFileSync(command, args, { encoding: "utf8", cwd, stdio: ["ignore", "pipe", "ignore"] });
 }
 
+function stripQuotes(token) {
+  if (
+    (token.startsWith('"') && token.endsWith('"')) ||
+    (token.startsWith("'") && token.endsWith("'"))
+  ) {
+    return token.slice(1, -1);
+  }
+  return token;
+}
+
 export function optionValue(command, name) {
-  const match = command.match(new RegExp(`(?:^|\\s)${name}(?:[ =])(?:"([^"]*)"|'([^']*)'|(\\S+))`));
-  return match ? (match[1] ?? match[2] ?? match[3]) : undefined;
+  const tokens = command.match(/"[^"]*"|'[^']*'|[^\s]+/g) ?? [];
+  for (let i = 0; i < tokens.length; i += 1) {
+    const tok = tokens[i];
+    if (tok === name && i + 1 < tokens.length) {
+      return stripQuotes(tokens[i + 1]);
+    }
+    if (tok.startsWith(`${name}=`)) {
+      return stripQuotes(tok.slice(name.length + 1));
+    }
+  }
+  return undefined;
 }
 
 function diffFiles(range, cwd) {

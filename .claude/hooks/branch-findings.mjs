@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const RULES_FILE = fileURLToPath(new URL("./branch-rules.json", import.meta.url));
+const WORK_BRANCH_RE = /^(?:(feat|fix|chore|docs|refactor)\/([a-z0-9][a-z0-9._-]{1,78})|issue\/([1-9][0-9]*)-([a-z0-9]+(?:-[a-z0-9]+)*))$/;
 const EXIT = { clean: 0, findings: 1, couldNotLook: 2 };
 const OPEN_PULLS_QUERY = `query($owner: String!, $name: String!, $pageSize: Int!, $endCursor: String) {
   repository(owner: $owner, name: $name) {
@@ -67,7 +68,7 @@ export function loadRules(text) {
     throw new Error("branch-rules.json needs work_branch_form");
   }
   return {
-    workBranch: new RegExp(source),
+    workBranch: WORK_BRANCH_RE,
     workBranchForm: form,
     exemptions: exempt.map(({ prefix, name, authors }) => ({
       ...(prefix === undefined ? { match: "name", value: name } : { match: "prefix", value: prefix }),
