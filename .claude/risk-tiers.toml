@@ -28,7 +28,7 @@ evaluators = ["eval-review", "eval-security"]
 [medium]
 paths = [
   "crates/**", "programs/**", "platform/**", "web/**", "desktop/**", "deploy/**", "lab/**",
-  ".claude/**", ".agents/**", ".github/actions/**", "AGENTS.md", "CLAUDE.md", "GEMINI.md", "CODEX.md"
+  "**/.claude/**", "**/.agents/**", ".github/actions/**", "**/AGENTS.md", "**/CLAUDE.md", "**/GEMINI.md", "**/CODEX.md"
 ]
 triggers = []
 evaluators = ["eval-review"]
