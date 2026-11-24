@@ -22,6 +22,7 @@ import {
   UiSdkSegmentedControl,
   VStack,
 } from "@grdr/ui";
+import type { ConsoleSearchParams } from "../searchSchema";
 import { BrowserPoliciesSection } from "./BrowserPoliciesSection";
 import { ReplayImpactCard, RuleEditorCard } from "./ProtectRuleViews";
 
@@ -46,6 +47,8 @@ export function ProtectPage({
   devices,
   section = "rules",
   onSectionChange,
+  urlSearch,
+  onUpdateSearch,
   prefillAttempt,
   focusedEntity,
   onClearPrefill,
@@ -56,16 +59,24 @@ export function ProtectPage({
   devices: Device[];
   section?: ProtectSectionId;
   onSectionChange?: (next: ProtectSectionId) => void;
+  urlSearch?: ConsoleSearchParams;
+  onUpdateSearch?: (patch: Partial<ConsoleSearchParams>) => void;
   prefillAttempt: ActionAttempt | null;
   focusedEntity?: EntityTarget | null;
   onClearPrefill: () => void;
   onOpenEntity?: (target: EntityTarget) => void;
   onUpdated: () => void;
 }) {
-  const focusedRuleId = focusedEntity?.kind === "rule" ? focusedEntity.id : null;
+  const focusedRuleId =
+    urlSearch?.ruleId ?? (focusedEntity?.kind === "rule" ? focusedEntity.id : null);
   const [replay, setReplay] = useState<ReplayState>({ kind: "idle" });
   const [feedback, setFeedback] = useState<ProtectFeedback>({ kind: "none" });
-  const [editorMode, setEditorMode] = useState<EditorViewMode>("simple");
+  const [fallbackEditorMode, setFallbackEditorMode] = useState<EditorViewMode>("simple");
+  const editorMode = urlSearch?.editor ?? fallbackEditorMode;
+  const setEditorMode = (next: EditorViewMode) => {
+    setFallbackEditorMode(next);
+    onUpdateSearch?.({ editor: next === "simple" ? undefined : next });
+  };
   const [dialog, setDialog] = useState<RuleDialogState>(() =>
     prefillAttempt ? { kind: "creating" } : { kind: "idle" },
   );

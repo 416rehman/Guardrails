@@ -35,15 +35,26 @@ if (typeof HTMLDialogElement !== "undefined") {
   }
 }
 
-if (typeof globalThis.CSS === "undefined" || typeof globalThis.CSS.escape !== "function") {
+if (typeof globalThis.CSS === "undefined" || typeof globalThis.CSS.escape !== "function" || typeof globalThis.CSS.supports !== "function") {
   globalThis.CSS = {
     ...(globalThis.CSS ?? {}),
-    escape: (value: string) => String(value).replace(/([^\w-])/g, "\\$1"),
+    escape:
+      typeof globalThis.CSS?.escape === "function"
+        ? globalThis.CSS.escape
+        : (value: string) => String(value).replace(/([^\w-])/g, "\\$1"),
+    supports:
+      typeof globalThis.CSS?.supports === "function"
+        ? globalThis.CSS.supports
+        : () => false,
   } as typeof CSS;
 }
 
 if (typeof Element !== "undefined" && !Element.prototype.getAnimations) {
   Element.prototype.getAnimations = () => [];
+}
+
+if (typeof window !== "undefined") {
+  window.scrollTo = () => {};
 }
 
 afterEach(() => {

@@ -20,12 +20,15 @@ import {
 } from "@grdr/ui";
 import { CursorPagerBar, formatRangeLabel } from "../components/PagerBar";
 import { aipQuote, useServerPage } from "../components/useServerPage";
+import type { ConsoleSearchParams } from "../searchSchema";
 
 type InventoryView = "hexmap" | "table";
 
 export function InventoryEndpointsSection({
   devices,
   searchQuery,
+  urlSearch,
+  onUpdateSearch,
   agentFilter,
   selectedDeviceId,
   onAgentFilterChange,
@@ -34,15 +37,43 @@ export function InventoryEndpointsSection({
 }: {
   devices: Device[];
   searchQuery: string;
+  urlSearch?: ConsoleSearchParams;
+  onUpdateSearch?: (patch: Partial<ConsoleSearchParams>) => void;
   agentFilter: string;
   selectedDeviceId: string | null;
   onAgentFilterChange: (next: string) => void;
   onSelectDevice: (deviceId: string | null) => void;
   onNavigateSection: (section: InventorySectionId) => void;
 }) {
-  const [viewMode, setViewMode] = useState<InventoryView>("hexmap");
-  const [osFilter, setOsFilter] = useState<string>("all");
-  const [outliersOnly, setOutliersOnly] = useState(false);
+  const [fallbackView, setFallbackView] = useState<InventoryView>("hexmap");
+  const [fallbackOs, setFallbackOs] = useState<string>("all");
+  const [fallbackOutliers, setFallbackOutliers] = useState(false);
+
+  const viewMode = urlSearch?.view ?? fallbackView;
+  const osFilter = urlSearch?.os ?? fallbackOs;
+  const outliersOnly = urlSearch?.outliers ?? fallbackOutliers;
+
+  const setViewMode = (next: InventoryView) => {
+    setFallbackView(next);
+    onUpdateSearch?.({ view: next === "hexmap" ? undefined : next });
+  };
+  const setOsFilter = (next: string) => {
+    setFallbackOs(next);
+    onUpdateSearch?.({
+      os: next === "all" ? undefined : next,
+      pageToken: undefined,
+      page: undefined,
+    });
+  };
+  const toggleOutliers = () => {
+    const next = !outliersOnly;
+    setFallbackOutliers(next);
+    onUpdateSearch?.({
+      outliers: next ? true : undefined,
+      pageToken: undefined,
+      page: undefined,
+    });
+  };
 
   const query = searchQuery.trim().toLowerCase();
   const aipFilter = useMemo(() => {
@@ -53,7 +84,32 @@ export function InventoryEndpointsSection({
     return clauses.join(" AND ");
   }, [osFilter, outliersOnly, query]);
 
-  const devicePage = useServerPage(api.listDevicesPage, aipFilter, "hostname asc", 25);
+  const devicePage = useServerPage(
+    api.listDevicesPage,
+    aipFilter,
+    "hostname asc",
+    25,
+    0,
+    onUpdateSearch
+      ? {
+          resource: "devicesPage",
+          pageToken: urlSearch?.pageToken ?? "",
+          pageIndex: urlSearch?.page ?? 0,
+          pageSize: urlSearch?.pageSize ?? 25,
+          onPageChange: ({ pageToken, pageIndex }) =>
+            onUpdateSearch({
+              pageToken: pageToken || undefined,
+              page: pageIndex > 0 ? pageIndex : undefined,
+            }),
+          onPageSizeChange: (nextSize) =>
+            onUpdateSearch({
+              pageSize: nextSize === 25 ? undefined : nextSize,
+              pageToken: undefined,
+              page: undefined,
+            }),
+        }
+      : { resource: "devicesPage" },
+  );
 
   const filteredDevices = useMemo(
     () =>
@@ -241,7 +297,7 @@ export function InventoryEndpointsSection({
             variant={outliersOnly ? "primary" : "secondary"}
             icon={<GrdrIcon name="alert-triangle" size={13} />}
             label="Outliers only"
-            onClick={() => setOutliersOnly((prev) => !prev)}
+            onClick={toggleOutliers}
           />
         </HStack>
 

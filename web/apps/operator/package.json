@@ -15,6 +15,8 @@
     "@grdr/kit": "workspace:*",
     "@grdr/tokens": "workspace:*",
     "@grdr/ui": "workspace:*",
+    "@tanstack/react-query": "^5.108.4",
+    "@tanstack/react-router": "^1.170.46",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   }

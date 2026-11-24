@@ -88,6 +88,11 @@ lucide = "home"
 mirror = false
 
 [[icon]]
+key = "nav.users"
+lucide = "users"
+mirror = false
+
+[[icon]]
 key = "nav.inventory"
 lucide = "cpu"
 mirror = false

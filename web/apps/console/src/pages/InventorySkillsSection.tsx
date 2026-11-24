@@ -21,22 +21,65 @@ import {
 } from "@grdr/ui";
 import { CursorPagerBar, formatRangeLabel } from "../components/PagerBar";
 import { aipQuote, useServerPage } from "../components/useServerPage";
+import type { ConsoleSearchParams } from "../searchSchema";
 
 export function SkillsAndRulesView({
   devices,
   globalQuery,
+  urlSearch,
+  onUpdateSearch,
   onSelectDevice,
   onOpenEntity,
 }: {
   devices: Device[];
   globalQuery: string;
+  urlSearch?: ConsoleSearchParams;
+  onUpdateSearch?: (patch: Partial<ConsoleSearchParams>) => void;
   onSelectDevice: (deviceId: string) => void;
   onOpenEntity?: (target: EntityTarget) => void;
 }) {
-  const [localQuery, setLocalQuery] = useState("");
-  const [kindFilter, setKindFilter] = useState("all");
-  const [scopeFilter, setScopeFilter] = useState("all");
-  const [signalFilter, setSignalFilter] = useState("all");
+  const [fallbackQuery, setFallbackQuery] = useState("");
+  const [fallbackKind, setFallbackKind] = useState("all");
+  const [fallbackScope, setFallbackScope] = useState("all");
+  const [fallbackSignal, setFallbackSignal] = useState("all");
+
+  const localQuery = urlSearch?.q ?? fallbackQuery;
+  const kindFilter = urlSearch?.kind ?? fallbackKind;
+  const scopeFilter = urlSearch?.scope ?? fallbackScope;
+  const signalFilter = urlSearch?.signal ?? fallbackSignal;
+
+  const setLocalQuery = (q: string) => {
+    setFallbackQuery(q);
+    onUpdateSearch?.({
+      q: q.trim() ? q : undefined,
+      pageToken: undefined,
+      page: undefined,
+    });
+  };
+  const setKindFilter = (kind: string) => {
+    setFallbackKind(kind);
+    onUpdateSearch?.({
+      kind: kind === "all" ? undefined : kind,
+      pageToken: undefined,
+      page: undefined,
+    });
+  };
+  const setScopeFilter = (scope: string) => {
+    setFallbackScope(scope);
+    onUpdateSearch?.({
+      scope: scope === "all" ? undefined : scope,
+      pageToken: undefined,
+      page: undefined,
+    });
+  };
+  const setSignalFilter = (signal: string) => {
+    setFallbackSignal(signal);
+    onUpdateSearch?.({
+      signal: signal === "all" ? undefined : signal,
+      pageToken: undefined,
+      page: undefined,
+    });
+  };
 
   const allArtifacts = useMemo(
     () =>
@@ -65,7 +108,32 @@ export function SkillsAndRulesView({
     return clauses.join(" AND ");
   }, [combinedQuery, kindFilter, scopeFilter]);
 
-  const artifactPage = useServerPage(api.listArtifactsPage, aipFilter, "detected_at desc", 25);
+  const artifactPage = useServerPage(
+    api.listArtifactsPage,
+    aipFilter,
+    "detected_at desc",
+    25,
+    0,
+    onUpdateSearch
+      ? {
+          resource: "artifactsPage",
+          pageToken: urlSearch?.pageToken ?? "",
+          pageIndex: urlSearch?.page ?? 0,
+          pageSize: urlSearch?.pageSize ?? 25,
+          onPageChange: ({ pageToken, pageIndex }) =>
+            onUpdateSearch({
+              pageToken: pageToken || undefined,
+              page: pageIndex > 0 ? pageIndex : undefined,
+            }),
+          onPageSizeChange: (nextSize) =>
+            onUpdateSearch({
+              pageSize: nextSize === 25 ? undefined : nextSize,
+              pageToken: undefined,
+              page: undefined,
+            }),
+        }
+      : { resource: "artifactsPage" },
+  );
   const startIdx = artifactPage.pageIndex * artifactPage.pageSize;
   const pagedArtifacts = artifactPage.items
     .filter((artifact) => {
@@ -175,10 +243,18 @@ export function SkillsAndRulesView({
               variant="ghost"
               label="Reset filters"
               onClick={() => {
-                setLocalQuery("");
-                setKindFilter("all");
-                setScopeFilter("all");
-                setSignalFilter("all");
+                setFallbackQuery("");
+                setFallbackKind("all");
+                setFallbackScope("all");
+                setFallbackSignal("all");
+                onUpdateSearch?.({
+                  q: undefined,
+                  kind: undefined,
+                  scope: undefined,
+                  signal: undefined,
+                  pageToken: undefined,
+                  page: undefined,
+                });
               }}
             />
           )}

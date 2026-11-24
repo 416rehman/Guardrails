@@ -1,0 +1,61 @@
+# Guardrails ADR canonical terminology registry (D-69, spine section 3).
+
+[brand]
+name = "Guardrails ADR"
+short_name = "Guardrails"
+
+[[term]]
+key = "mode"
+term = "Mode"
+translate = true
+desc = "Rule enforcement mode: Off, Watch, Ask, or Block"
+
+[[term]]
+key = "verdict"
+term = "Verdict"
+translate = true
+desc = "Decision outcome emitted for an action attempt"
+
+[[term]]
+key = "assurance_level"
+term = "Assurance level"
+translate = true
+desc = "Strength of agent observation and containment on an endpoint"
+
+[[term]]
+key = "grant"
+term = "Grant"
+translate = true
+desc = "Time- or scope-bounded human approval exception"
+
+[[term]]
+key = "receipt"
+term = "Receipt"
+translate = true
+desc = "Signed decision record bound to an action attempt"
+
+[[term]]
+key = "finding"
+term = "Finding"
+translate = true
+desc = "Detected security or policy anomaly"
+
+[[term]]
+key = "incident"
+term = "Incident"
+translate = true
+desc = "Correlated set of findings in a session or across devices"
+
+[[term]]
+key = "sponsor"
+term = "Sponsor"
+translate = true
+desc = "Accountable owner or team lead for a discovered agent"
+
+[[forbidden]]
+word = "posture"
+replacement = "Mode or Assurance level"
+
+[[forbidden]]
+word = "case"
+replacement = "Incident or Finding"

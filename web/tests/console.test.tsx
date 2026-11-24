@@ -615,15 +615,44 @@ const connectFixture: ConnectConfigResponse = {
   ],
 };
 
+type SseListenerMap = Map<string, Set<() => void>>;
+const activeEventSources: MockEventSource[] = [];
+
 class MockEventSource {
   onopen: (() => void) | null = null;
   onerror: (() => void) | null = null;
-  addEventListener() {}
+  listeners: SseListenerMap = new Map();
+
+  constructor() {
+    activeEventSources.push(this);
+  }
+
+  addEventListener(event: string, cb: () => void) {
+    let set = this.listeners.get(event);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(event, set);
+    }
+    set.add(cb);
+  }
+
+  removeEventListener(event: string, cb: () => void) {
+    this.listeners.get(event)?.delete(cb);
+  }
+
+  emit(event: string) {
+    for (const cb of this.listeners.get(event) ?? []) {
+      cb();
+    }
+  }
+
   close() {}
 }
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  activeEventSources.length = 0;
+  window.history.replaceState(null, "", "/");
   vi.stubGlobal("EventSource", MockEventSource);
 });
 
@@ -991,6 +1020,229 @@ describe("Console and Operator Plane workflows", () => {
     expect(connectErr.reason).toBe("INVALID_FILTER");
     expect(connectErr.grdrCode).toBe("GRDR-API-4002");
     expect(connectErr.requestId).toBe("req-test-42");
+  });
+
+  it("supports URL deep-link reload for drawer, session turn, AIP-158 cursor, and Operator routes", async () => {
+    const manyDevices: Device[] = Array.from({ length: 60 }, (_, idx) => ({
+      ...devicesFixture[0],
+      id: `dev-${idx + 1}`,
+      hostname: `host-${idx + 1}.acme.local`,
+      agents: [
+        {
+          ...devicesFixture[0].agents[0],
+          id: `agent-${idx + 1}`,
+          name: idx % 2 === 0 ? "claude-code" : "cursor",
+        },
+      ],
+    }));
+
+    window.history.replaceState(null, "", "/inventory/endpoints?device=dev-1");
+    installFetchMock();
+    const { unmount } = render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Device assurance matrix")).toBeTruthy();
+      const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+      expect(within(crumbs).getByText("devbox.local")).toBeTruthy();
+    });
+    unmount();
+
+    window.history.replaceState(null, "", "/sessions/trace?sessionId=sess-1&turn=2");
+    installFetchMock();
+    const traceRender = render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText(/Decomposed shell actions/)).toBeTruthy();
+      const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+      expect(within(crumbs).getByText("Trace waterfall")).toBeTruthy();
+      expect(within(crumbs).getByText("sess-1")).toBeTruthy();
+    });
+    traceRender.unmount();
+
+    window.history.replaceState(null, "", "/inventory/agents?pageToken=25&page=1");
+    installFetchMock({ devices: manyDevices });
+    const agentsPageRender = render(<App />);
+    await waitFor(() => {
+      expect(screen.getAllByText("Showing 26-50 of 60").length).toBeGreaterThan(0);
+    });
+    agentsPageRender.unmount();
+
+    window.history.replaceState(null, "", "/audit");
+    installFetchMock();
+    render(<OperatorApp />);
+    await waitFor(() => {
+      expect(screen.getByText("Initialized baseline rules")).toBeTruthy();
+      const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+      expect(within(crumbs).getByRole("button", { name: "Overview" })).toBeTruthy();
+      expect(within(crumbs).getByText("Audit log")).toBeTruthy();
+    });
+  });
+
+  it("preserves view and focused entity across browser Back/Forward history and interactive breadcrumbs", async () => {
+    installFetchMock();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("1 action waiting for your decision")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Inventory" })[0]);
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/inventory/endpoints");
+      expect(screen.getByText("Enrolled devices (1)")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getAllByText("devbox.local")[0]);
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/inventory/endpoints");
+      expect(window.location.search).toContain("device=dev-1");
+      expect(screen.getByText("Device assurance matrix")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Protect" }));
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/protect/rules");
+      expect(screen.getByText("Protect SSH keys")).toBeTruthy();
+    });
+
+    window.history.back();
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/inventory/endpoints");
+      expect(window.location.search).toContain("device=dev-1");
+      expect(screen.getByText("Device assurance matrix")).toBeTruthy();
+    });
+
+    window.history.back();
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/inventory/endpoints");
+      expect(screen.queryByText("Device assurance matrix")).toBeNull();
+    });
+
+    window.history.forward();
+    await waitFor(() => {
+      expect(window.location.search).toContain("device=dev-1");
+      expect(screen.getByText("Device assurance matrix")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Close Device assurance matrix" }));
+    await waitFor(() => {
+      expect(window.location.search).not.toContain("device=");
+    });
+
+    const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+    fireEvent.click(within(crumbs).getByRole("button", { name: "Home" }));
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/");
+    });
+  });
+
+  it("navigates interactive user and rule breadcrumbs and invalidates TanStack Query caches on SSE events", async () => {
+    let pendingCount = 1;
+    let approvalsList: ApprovalRequest[] = approvalsFixture;
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const rawUrl = typeof input === "string" ? input : input.toString();
+      const path = rawUrl.split("?")[0];
+      if (path === CONNECT_PATHS.getOverview) {
+        return mockJsonResponse({ ...overviewFixture, pending_approvals: pendingCount });
+      }
+      if (path === CONNECT_PATHS.listUsers) {
+        const { slice, pageInfo } = paginateItems(usersFixture, init);
+        return mockJsonResponse({ users: slice, pageInfo });
+      }
+      if (path === CONNECT_PATHS.getUser) return mockJsonResponse(userDetailFixture);
+      if (path === CONNECT_PATHS.getPrivacyConfig) {
+        return mockJsonResponse({ config: privacyConfigFixture });
+      }
+      if (path === CONNECT_PATHS.listDevices) {
+        const { slice, pageInfo } = paginateItems(devicesFixture, init);
+        return mockJsonResponse({ devices: slice, pageInfo });
+      }
+      if (path === CONNECT_PATHS.listSessions) {
+        const { slice, pageInfo } = paginateItems(sessionsFixture, init);
+        return mockJsonResponse({ sessions: slice, pageInfo });
+      }
+      if (path === CONNECT_PATHS.listPacks) return mockJsonResponse({ packs: packsFixture });
+      if (path === CONNECT_PATHS.listApprovals) {
+        const { slice, pageInfo } = paginateItems(approvalsList, init);
+        return mockJsonResponse({ approvals: slice, pageInfo });
+      }
+      if (path === CONNECT_PATHS.listFindings) {
+        const { slice, pageInfo } = paginateItems(findingsFixture, init);
+        return mockJsonResponse({ findings: slice, pageInfo });
+      }
+      if (path === CONNECT_PATHS.listIncidents) {
+        const { slice, pageInfo } = paginateItems(incidentsFixture, init);
+        return mockJsonResponse({ incidents: slice, pageInfo });
+      }
+      if (path === CONNECT_PATHS.getKillSwitch) {
+        return mockJsonResponse({ killSwitch: { state: "inactive" } });
+      }
+      return mockJsonResponse({ code: "not_found", message: `Unmocked RPC ${path}` }, 404);
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("1 action waiting for your decision")).toBeTruthy();
+      expect(activeEventSources.length).toBeGreaterThan(0);
+    });
+
+    approvalsList = [
+      ...approvalsFixture,
+      {
+        ...approvalsFixture[0],
+        id: "apr-2",
+        target: "~/.aws/credentials",
+      },
+    ];
+    pendingCount = 2;
+
+    activeEventSources[0].emit("approval.decided");
+
+    await waitFor(() => {
+      expect(screen.getByText("~/.aws/credentials")).toBeTruthy();
+      expect(screen.getByText(/2 action/)).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "rule-1" }));
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/protect/rules");
+      expect(window.location.search).toContain("ruleId=rule-1");
+      const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+      expect(within(crumbs).getByRole("button", { name: "Policy rules" })).toBeTruthy();
+      expect(within(crumbs).getByText("rule-1")).toBeTruthy();
+    });
+
+    fireEvent.click(
+      within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("button", {
+        name: "Policy rules",
+      }),
+    );
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/protect/rules");
+      expect(window.location.search).not.toContain("ruleId=");
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Users" })[0]);
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/users");
+      expect(screen.getAllByRole("button", { name: "Maya Chen" }).length).toBeGreaterThan(0);
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Maya Chen" })[0]);
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/users");
+      expect(window.location.search).toContain("userId=usr-1");
+      const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+      expect(within(crumbs).getByRole("button", { name: "Users" })).toBeTruthy();
+      expect(within(crumbs).getByText("Maya Chen")).toBeTruthy();
+    });
+
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("button", { name: "Users" }));
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/users");
+      expect(window.location.search).not.toContain("userId=");
+    });
   });
 });
 

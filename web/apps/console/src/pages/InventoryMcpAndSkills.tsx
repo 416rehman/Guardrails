@@ -15,18 +15,23 @@ import {
 } from "@grdr/ui";
 import { CursorPagerBar, formatRangeLabel } from "../components/PagerBar";
 import { aipQuote, useServerPage } from "../components/useServerPage";
+import type { ConsoleSearchParams } from "../searchSchema";
 import { SkillsAndRulesView } from "./InventorySkillsSection";
 
 export function InventoryMcpAndSkills({
   mode,
   devices,
   globalQuery,
+  urlSearch,
+  onUpdateSearch,
   onSelectDevice,
   onOpenEntity,
 }: {
   mode: "mcps" | "skills";
   devices: Device[];
   globalQuery: string;
+  urlSearch?: ConsoleSearchParams;
+  onUpdateSearch?: (patch: Partial<ConsoleSearchParams>) => void;
   onSelectDevice: (deviceId: string) => void;
   onOpenEntity?: (target: EntityTarget) => void;
 }) {
@@ -35,6 +40,8 @@ export function InventoryMcpAndSkills({
       <SkillsAndRulesView
         devices={devices}
         globalQuery={globalQuery}
+        urlSearch={urlSearch}
+        onUpdateSearch={onUpdateSearch}
         onSelectDevice={onSelectDevice}
         onOpenEntity={onOpenEntity}
       />
@@ -44,6 +51,8 @@ export function InventoryMcpAndSkills({
     <McpServersView
       devices={devices}
       globalQuery={globalQuery}
+      urlSearch={urlSearch}
+      onUpdateSearch={onUpdateSearch}
       onSelectDevice={onSelectDevice}
       onOpenEntity={onOpenEntity}
     />
@@ -53,17 +62,50 @@ export function InventoryMcpAndSkills({
 function McpServersView({
   devices,
   globalQuery,
+  urlSearch,
+  onUpdateSearch,
   onSelectDevice,
   onOpenEntity,
 }: {
   devices: Device[];
   globalQuery: string;
+  urlSearch?: ConsoleSearchParams;
+  onUpdateSearch?: (patch: Partial<ConsoleSearchParams>) => void;
   onSelectDevice: (deviceId: string) => void;
   onOpenEntity?: (target: EntityTarget) => void;
 }) {
-  const [localQuery, setLocalQuery] = useState("");
-  const [transportFilter, setTransportFilter] = useState("all");
-  const [pinFilter, setPinFilter] = useState("all");
+  const [fallbackQuery, setFallbackQuery] = useState("");
+  const [fallbackTransport, setFallbackTransport] = useState("all");
+  const [fallbackPin, setFallbackPin] = useState("all");
+
+  const localQuery = urlSearch?.q ?? fallbackQuery;
+  const transportFilter = urlSearch?.transport ?? fallbackTransport;
+  const pinFilter = urlSearch?.pin ?? fallbackPin;
+
+  const setLocalQuery = (q: string) => {
+    setFallbackQuery(q);
+    onUpdateSearch?.({
+      q: q.trim() ? q : undefined,
+      pageToken: undefined,
+      page: undefined,
+    });
+  };
+  const setTransportFilter = (transport: string) => {
+    setFallbackTransport(transport);
+    onUpdateSearch?.({
+      transport: transport === "all" ? undefined : transport,
+      pageToken: undefined,
+      page: undefined,
+    });
+  };
+  const setPinFilter = (pin: string) => {
+    setFallbackPin(pin);
+    onUpdateSearch?.({
+      pin: pin === "all" ? undefined : pin,
+      pageToken: undefined,
+      page: undefined,
+    });
+  };
 
   const allMcps = useMemo(
     () =>
@@ -93,7 +135,32 @@ function McpServersView({
     return clauses.join(" AND ");
   }, [combinedQuery, transportFilter, pinFilter]);
 
-  const mcpPage = useServerPage(api.listMcpServersPage, aipFilter, "name asc", 25);
+  const mcpPage = useServerPage(
+    api.listMcpServersPage,
+    aipFilter,
+    "name asc",
+    25,
+    0,
+    onUpdateSearch
+      ? {
+          resource: "mcpServersPage",
+          pageToken: urlSearch?.pageToken ?? "",
+          pageIndex: urlSearch?.page ?? 0,
+          pageSize: urlSearch?.pageSize ?? 25,
+          onPageChange: ({ pageToken, pageIndex }) =>
+            onUpdateSearch({
+              pageToken: pageToken || undefined,
+              page: pageIndex > 0 ? pageIndex : undefined,
+            }),
+          onPageSizeChange: (nextSize) =>
+            onUpdateSearch({
+              pageSize: nextSize === 25 ? undefined : nextSize,
+              pageToken: undefined,
+              page: undefined,
+            }),
+        }
+      : { resource: "mcpServersPage" },
+  );
   const startIdx = mcpPage.pageIndex * mcpPage.pageSize;
   const pagedMcps = mcpPage.items.map((item) => ({
     deviceId: item.device_id,
@@ -173,9 +240,16 @@ function McpServersView({
               variant="ghost"
               label="Reset filters"
               onClick={() => {
-                setLocalQuery("");
-                setTransportFilter("all");
-                setPinFilter("all");
+                setFallbackQuery("");
+                setFallbackTransport("all");
+                setFallbackPin("all");
+                onUpdateSearch?.({
+                  q: undefined,
+                  transport: undefined,
+                  pin: undefined,
+                  pageToken: undefined,
+                  page: undefined,
+                });
               }}
             />
           )}

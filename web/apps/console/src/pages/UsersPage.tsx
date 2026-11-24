@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   api,
   type IdentityMode,
@@ -23,18 +24,14 @@ import {
 } from "@grdr/ui";
 import { CursorPagerBar } from "../components/PagerBar";
 import { aipQuote, useServerPage } from "../components/useServerPage";
+import { consoleQueryKeys } from "../queries";
+import type { ConsoleSearchParams } from "../searchSchema";
 import {
   capitalizeTier,
   riskBadgeVariant,
   riskTone,
   UserDetailSection,
 } from "./UserDetailSection";
-
-type UserSelectionState =
-  | { kind: "none" }
-  | { kind: "loading"; userId: string }
-  | { kind: "ready"; userId: string; detail: UserDetailResponse }
-  | { kind: "error"; userId: string; message: string };
 
 type PrivacySaveState =
   | { kind: "idle" }
@@ -45,6 +42,8 @@ export function UsersPage({
   users,
   privacyConfig,
   searchQuery,
+  urlSearch,
+  onUpdateSearch,
   focusedEntity,
   onClearFocus,
   onOpenEntity,
@@ -54,21 +53,50 @@ export function UsersPage({
   users: UserProfile[];
   privacyConfig: OrgPrivacyConfig;
   searchQuery: string;
+  urlSearch?: ConsoleSearchParams;
+  onUpdateSearch?: (patch: Partial<ConsoleSearchParams>) => void;
   focusedEntity?: EntityTarget | null;
   onClearFocus?: () => void;
   onOpenEntity?: (target: EntityTarget) => void;
   onOpenSessionTurn: (sessionId: string, turnIndex: number) => void;
   onPrivacyUpdated: () => void;
 }) {
-  const [selection, setSelection] = useState<UserSelectionState>(() =>
-    users[0] ? { kind: "loading", userId: users[0].id } : { kind: "none" },
+  const [fallbackUserId, setFallbackUserId] = useState<string | null>(
+    () => users[0]?.id ?? null,
   );
-  const [departmentFilter, setDepartmentFilter] = useState<string>("all");
-  const [tierFilter, setTierFilter] = useState<string>("all");
-  const [localFilter, setLocalFilter] = useState("");
+  const [fallbackDept, setFallbackDept] = useState("all");
+  const [fallbackTier, setFallbackTier] = useState("all");
+  const [fallbackQuery, setFallbackQuery] = useState("");
   const [privacySave, setPrivacySave] = useState<PrivacySaveState>({ kind: "idle" });
 
-  const selectedUserId = selection.kind === "none" ? null : selection.userId;
+  const departmentFilter = urlSearch?.dept ?? fallbackDept;
+  const tierFilter = urlSearch?.tier ?? fallbackTier;
+  const localFilter = urlSearch?.q ?? fallbackQuery;
+
+  const setDepartmentFilter = (dept: string) => {
+    setFallbackDept(dept);
+    onUpdateSearch?.({
+      dept: dept === "all" ? undefined : dept,
+      pageToken: undefined,
+      page: undefined,
+    });
+  };
+  const setTierFilter = (tier: string) => {
+    setFallbackTier(tier);
+    onUpdateSearch?.({
+      tier: tier === "all" ? undefined : tier,
+      pageToken: undefined,
+      page: undefined,
+    });
+  };
+  const setLocalFilter = (q: string) => {
+    setFallbackQuery(q);
+    onUpdateSearch?.({
+      q: q.trim() ? q : undefined,
+      pageToken: undefined,
+      page: undefined,
+    });
+  };
 
   useEffect(() => {
     if (focusedEntity?.kind === "user") {
@@ -79,11 +107,12 @@ export function UsersPage({
           u.pseudonym_id === focusedEntity.id,
       );
       if (match) {
-        setSelection({ kind: "loading", userId: match.id });
+        setFallbackUserId(match.id);
+        onUpdateSearch?.({ userId: match.id });
       }
       onClearFocus?.();
     }
-  }, [focusedEntity, users, onClearFocus]);
+  }, [focusedEntity, users, onClearFocus, onUpdateSearch]);
 
   const departments = useMemo(() => {
     const unique = Array.from(new Set(users.map((u) => u.department))).sort();
@@ -110,37 +139,45 @@ export function UsersPage({
     "risk_score desc",
     25,
     isPseudonymous ? 1 : 0,
+    onUpdateSearch
+      ? {
+          resource: "usersPage",
+          pageToken: urlSearch?.pageToken ?? "",
+          pageIndex: urlSearch?.page ?? 0,
+          pageSize: urlSearch?.pageSize ?? 25,
+          onPageChange: ({ pageToken, pageIndex }) =>
+            onUpdateSearch({
+              pageToken: pageToken || undefined,
+              page: pageIndex > 0 ? pageIndex : undefined,
+            }),
+          onPageSizeChange: (nextSize) =>
+            onUpdateSearch({
+              pageSize: nextSize === 25 ? undefined : nextSize,
+              pageToken: undefined,
+              page: undefined,
+            }),
+        }
+      : { resource: "usersPage" },
   );
+
   const displayedUsers = usersPage.items;
   const totalUsersCount = usersPage.pageInfo.total_size_estimate || displayedUsers.length;
-  const firstFilteredId = displayedUsers[0]?.id ?? null;
-  useEffect(() => {
-    if (!selectedUserId && firstFilteredId) {
-      setSelection({ kind: "loading", userId: firstFilteredId });
-    }
-  }, [selectedUserId, firstFilteredId]);
+  const selectedUserId =
+    urlSearch?.userId ?? fallbackUserId ?? displayedUsers[0]?.id ?? users[0]?.id ?? null;
 
-  useEffect(() => {
-    if (!selectedUserId) {
-      return;
-    }
-    let cancelled = false;
-    api
-      .getUserDetail(selectedUserId)
-      .then((res) => {
-        if (!cancelled) {
-          setSelection({ kind: "ready", userId: selectedUserId, detail: res });
-        }
-      })
-      .catch((err: Error) => {
-        if (!cancelled) {
-          setSelection({ kind: "error", userId: selectedUserId, message: err.message });
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedUserId, users, privacyConfig.identity_mode]);
+  function selectUser(userId: string) {
+    setFallbackUserId(userId);
+    onUpdateSearch?.({ userId });
+  }
+
+  const detailQuery = useQuery<UserDetailResponse>({
+    queryKey: consoleQueryKeys.userDetail(
+      selectedUserId ?? "",
+      privacyConfig.identity_mode,
+    ),
+    queryFn: () => api.getUserDetail(selectedUserId ?? ""),
+    enabled: Boolean(selectedUserId),
+  });
 
   async function handleIdentityModeChange(nextMode: IdentityMode) {
     setPrivacySave({ kind: "saving" });
@@ -161,14 +198,12 @@ export function UsersPage({
   }
 
   const highRiskCount = users.filter((u) => u.risk_tier === "critical" || u.risk_tier === "high").length;
+  const detailErr =
+    detailQuery.error instanceof Error ? detailQuery.error.message : undefined;
   const errorMessage =
     privacySave.kind === "failed"
       ? privacySave.message
-      : usersPage.error
-        ? usersPage.error
-        : selection.kind === "error"
-          ? selection.message
-          : undefined;
+      : usersPage.error ?? detailErr;
 
   return (
     <VStack gap={4}>
@@ -298,7 +333,7 @@ export function UsersPage({
                     key={u.id}
                     className={`ledger-row selectable ${isSelected ? "selected" : ""} ${highAttention ? "attention-row" : ""}`}
                     style={{ paddingInline: 12, cursor: "pointer" }}
-                    onClick={() => setSelection({ kind: "loading", userId: u.id })}
+                    onClick={() => selectUser(u.id)}
                   >
                     <div className="ledger-row-main">
                       <VStack gap={1}>
@@ -310,7 +345,7 @@ export function UsersPage({
                             kind="user"
                             id={u.id}
                             label={u.display_name}
-                            onSelect={() => setSelection({ kind: "loading", userId: u.id })}
+                            onSelect={() => selectUser(u.id)}
                           />
                         </HStack>
                         <Text size="sm" color="secondary">
@@ -358,7 +393,7 @@ export function UsersPage({
         </div>
 
         <UserDetailSection
-          detail={selection.kind === "ready" ? selection.detail : null}
+          detail={detailQuery.data ?? null}
           isPseudonymous={isPseudonymous}
           onOpenEntity={onOpenEntity}
           onOpenSessionTurn={onOpenSessionTurn}

@@ -1,0 +1,31 @@
+# Operator plane UI language tokens (D-69, D-70).
+
+["operator.nav.overview"]
+desc = "Operator navigation item: Overview"
+max = 24
+risk = "normal"
+msg = "Overview"
+
+["operator.nav.health"]
+desc = "Operator navigation item: Health"
+max = 24
+risk = "normal"
+msg = "Health"
+
+["operator.nav.settings"]
+desc = "Operator navigation item: Settings"
+max = 24
+risk = "normal"
+msg = "Settings"
+
+["operator.nav.audit"]
+desc = "Operator navigation item: Audit log"
+max = 24
+risk = "normal"
+msg = "Audit log"
+
+["operator.context.banner"]
+desc = "Locked operator realm context isolation banner"
+max = 140
+risk = "safety"
+msg = "Operator context: Deployment administration realm only. No route to tenant prompts or agent content."

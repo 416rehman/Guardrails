@@ -1,0 +1,152 @@
+# Shared language tokens across Rust and Web surfaces (D-69).
+
+["grdr.brand.name"]
+rust_variant = "BrandName"
+desc = "Canonical product display name"
+max = 40
+risk = "safety"
+msg = "Guardrails ADR"
+
+["grdr.brand.subtitle"]
+desc = "Console sidebar brand subtitle"
+max = 40
+risk = "normal"
+msg = "Agent protection"
+
+["grdr.brand.operator_subtitle"]
+desc = "Operator plane sidebar subtitle"
+max = 40
+risk = "normal"
+msg = "Operator plane"
+
+["mode.off.label"]
+desc = "Mode label: rule disabled"
+max = 20
+risk = "safety"
+msg = "Off"
+
+["mode.off.desc"]
+desc = "Mode description: rule disabled"
+max = 120
+risk = "normal"
+msg = "Rule does not evaluate actions"
+
+["mode.watch.label"]
+desc = "Mode label: record without interrupting"
+max = 20
+risk = "safety"
+msg = "Watch"
+
+["mode.watch.desc"]
+desc = "Mode description: record without interrupting"
+max = 120
+risk = "normal"
+msg = "Records matches without prompting or blocking"
+
+["mode.ask.label"]
+desc = "Mode label: pause for approval"
+max = 20
+risk = "safety"
+msg = "Ask"
+
+["mode.ask.desc"]
+desc = "Mode description: pause for approval"
+max = 120
+risk = "normal"
+msg = "Pauses the action until an approver decides"
+
+["mode.block.label"]
+desc = "Mode label: refuse matching actions"
+max = 20
+risk = "safety"
+msg = "Block"
+
+["mode.block.desc"]
+desc = "Mode description: refuse matching actions"
+max = 120
+risk = "normal"
+msg = "Refuses the action and returns a reason"
+
+["verdict.allow"]
+desc = "Verdict label: allowed"
+max = 20
+risk = "safety"
+msg = "Allow"
+
+["verdict.modify"]
+desc = "Verdict label: modified before execution"
+max = 20
+risk = "safety"
+msg = "Modified"
+
+["verdict.step_up"]
+desc = "Verdict label: human approval requested"
+max = 20
+risk = "safety"
+msg = "Ask"
+
+["verdict.defer"]
+desc = "Verdict label: deferred"
+max = 20
+risk = "safety"
+msg = "Deferred"
+
+["verdict.deny"]
+desc = "Verdict label: denied"
+max = 20
+risk = "safety"
+msg = "Deny"
+
+["assurance.al0"]
+desc = "Assurance level 0 label"
+max = 32
+risk = "normal"
+msg = "Observed"
+
+["assurance.al1"]
+desc = "Assurance level 1 label"
+max = 32
+risk = "normal"
+msg = "App hook"
+
+["assurance.al2"]
+desc = "Assurance level 2 label"
+max = 32
+risk = "normal"
+msg = "Tool proxy"
+
+["assurance.al3"]
+desc = "Assurance level 3 label"
+max = 32
+risk = "normal"
+msg = "Sandboxed"
+
+["assurance.al4"]
+desc = "Assurance level 4 label"
+max = 32
+risk = "normal"
+msg = "Enforced"
+
+["session_label.credential_accessed"]
+desc = "Session label when credential material was accessed"
+max = 40
+risk = "normal"
+msg = "Credential accessed"
+
+["session_label.untrusted_web_fetched"]
+desc = "Session label when untrusted web content was fetched"
+max = 40
+risk = "normal"
+msg = "Untrusted web fetched"
+
+["session_label.repeated_denials"]
+desc = "Session label when repeated denials occurred"
+max = 40
+risk = "normal"
+msg = "Repeated denials"
+
+["session_label.tainted_exfil_risk"]
+desc = "Session label when tainted exfiltration risk was detected"
+max = 40
+risk = "normal"
+msg = "Tainted exfil risk"
