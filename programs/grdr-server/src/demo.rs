@@ -92,6 +92,7 @@ pub fn build_demo_seed(now: Timestamp) -> SeedSnapshot {
             },
         ],
         last_seen: add_seconds(now, -12),
+        public_key: None,
     }];
 
     let raw_attempts = vec![

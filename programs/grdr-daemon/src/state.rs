@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use jiff::Timestamp;
@@ -8,12 +10,15 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 use grdr_agents::discover_local_agents;
+use grdr_core::compile::compile_floor_table;
 use grdr_core::policy::evaluate_with_session;
 use grdr_core::session::{SessionRuleState, replay_session_states};
+use grdr_crypto::SigningKeypair;
 use grdr_model::eval::essentials_pack;
 use grdr_model::{
     ActionAttempt, DecideInput, DecisionReceipt, DiscoveryReport, Grant, InstallProfile,
-    KillSwitchState, PolicyPack, SessionSummary, slugify_id, summarize_sessions,
+    KillSwitchState, PolicyPack, SessionSummary, SignedFloorBundle, TrustedKeyInfo, slugify_id,
+    summarize_sessions,
 };
 
 const MAX_LOCAL_HISTORY: usize = 300;
@@ -35,7 +40,7 @@ pub struct DaemonStatus {
     pub kill_switch: KillSwitchState,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DaemonData {
     pub device_id: String,
     pub hostname: String,
@@ -47,6 +52,9 @@ pub struct DaemonData {
     pub discovery: DiscoveryReport,
     pub packs: Vec<PolicyPack>,
     pub grants: Vec<Grant>,
+    pub trusted_keys: Vec<TrustedKeyInfo>,
+    pub signing_key: SigningKeypair,
+    pub floor_table_path: Option<PathBuf>,
     pub kill_switch: KillSwitchState,
     pub attempts: Vec<ActionAttempt>,
     pub receipts: Vec<DecisionReceipt>,
@@ -64,7 +72,8 @@ impl DaemonState {
         profile: InstallProfile,
         device_name: Option<String>,
         server_url: Option<String>,
-    ) -> Self {
+        floor_table_path: Option<PathBuf>,
+    ) -> Result<Self, String> {
         let mut discovery = discover_local_agents(profile);
         if let Some(custom) = device_name
             && !custom.trim().is_empty()
@@ -73,26 +82,33 @@ impl DaemonState {
         }
         let device_id = format!("dev-{}", slugify_id(&discovery.device_name, 40, "local"));
         let hostname = discovery.device_name.clone();
+        let signing_key = SigningKeypair::generate()
+            .map_err(|e| format!("failed generating daemon signing key: {e}"))?;
+        let data = DaemonData {
+            device_id,
+            hostname,
+            install_profile: profile,
+            server_url,
+            server_connected: false,
+            last_sync: None,
+            last_sync_error: None,
+            discovery,
+            packs: vec![essentials_pack()],
+            grants: Vec::new(),
+            trusted_keys: Vec::new(),
+            signing_key,
+            floor_table_path,
+            kill_switch: KillSwitchState::Inactive,
+            attempts: Vec::new(),
+            receipts: Vec::new(),
+            pending_attempts: Vec::new(),
+            pending_receipts: Vec::new(),
+        };
+        let _ = write_signed_floor_bundle(&data, Timestamp::now());
 
-        Self {
-            inner: Arc::new(RwLock::new(DaemonData {
-                device_id,
-                hostname,
-                install_profile: profile,
-                server_url,
-                server_connected: false,
-                last_sync: None,
-                last_sync_error: None,
-                discovery,
-                packs: vec![essentials_pack()],
-                grants: Vec::new(),
-                kill_switch: KillSwitchState::Inactive,
-                attempts: Vec::new(),
-                receipts: Vec::new(),
-                pending_attempts: Vec::new(),
-                pending_receipts: Vec::new(),
-            })),
-        }
+        Ok(Self {
+            inner: Arc::new(RwLock::new(data)),
+        })
     }
 
     pub async fn status(&self) -> DaemonStatus {
@@ -143,7 +159,7 @@ impl DaemonState {
             now,
         );
 
-        let receipt = {
+        let mut receipt = {
             let mut sess_state = replay_session_states(&guard.attempts, &guard.receipts)
                 .remove(&attempt.session_id)
                 .unwrap_or_else(|| SessionRuleState::new(attempt.session_id.clone()));
@@ -157,6 +173,7 @@ impl DaemonState {
                 now,
             )
         };
+        let _ = guard.signing_key.sign_receipt(&mut receipt);
 
         guard.attempts.push(attempt.clone());
         guard.receipts.push(receipt.clone());
@@ -179,4 +196,35 @@ impl DaemonState {
         let guard = self.inner.read().await;
         summarize_sessions(&guard.attempts, &guard.receipts)
     }
+}
+
+pub fn default_floor_table_path() -> PathBuf {
+    std::env::temp_dir().join("grdr-failsafe-floor.json")
+}
+
+pub(crate) fn write_signed_floor_bundle(data: &DaemonData, now: Timestamp) -> Result<(), String> {
+    let Some(path) = &data.floor_table_path else {
+        return Ok(());
+    };
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create floor dir: {e}"))?;
+    }
+    let mut table = compile_floor_table(&data.packs, now);
+    data.signing_key
+        .sign_floor_table(&mut table)
+        .map_err(|e| format!("sign floor table: {e}"))?;
+    let signer = data.signing_key.public_info();
+    let key_json =
+        serde_json::to_string_pretty(&signer).map_err(|e| format!("serialize floor key: {e}"))?;
+    let key_path = path.with_extension("pub");
+    let key_tmp = path.with_extension("pub.tmp");
+    fs::write(&key_tmp, key_json).map_err(|e| format!("write temp floor key: {e}"))?;
+    fs::rename(&key_tmp, &key_path).map_err(|e| format!("commit floor key: {e}"))?;
+
+    let bundle = SignedFloorBundle { table, signer };
+    let json = serde_json::to_string_pretty(&bundle).map_err(|e| format!("serialize: {e}"))?;
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, json).map_err(|e| format!("write temp floor table: {e}"))?;
+    fs::rename(&tmp, path).map_err(|e| format!("commit floor table: {e}"))?;
+    Ok(())
 }

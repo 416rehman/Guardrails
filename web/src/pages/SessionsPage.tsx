@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { PlusCircle, Shield, Tag } from "lucide-react";
+import { PlusCircle, Shield, ShieldAlert, ShieldCheck, Tag } from "lucide-react";
 import { api } from "../api";
 import { Quoted } from "../components/Quoted";
 import { VerdictBadge } from "../components/VerdictBadge";
@@ -205,7 +205,31 @@ export function SessionsPage({ sessions, searchQuery, onCreateRuleFromAttempt }:
                         </div>
                       </td>
                       <td className="mono" title={receipt?.receipt_digest}>
-                        {receipt ? receipt.receipt_digest.slice(0, 12) : "-"}
+                        {receipt ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            <span>{receipt.receipt_digest.slice(0, 12)}</span>
+                            {receipt.signature_verified === true && (
+                              <span
+                                className="badge success"
+                                style={{ display: "inline-flex", alignItems: "center", gap: 4, width: "fit-content" }}
+                              >
+                                <ShieldCheck size={11} />
+                                <span>Signed ({receipt.key_id ?? "verified"})</span>
+                              </span>
+                            )}
+                            {receipt.signature_verified === false && (
+                              <span
+                                className="badge danger"
+                                style={{ display: "inline-flex", alignItems: "center", gap: 4, width: "fit-content" }}
+                              >
+                                <ShieldAlert size={11} />
+                                <span>Invalid signature</span>
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          "-"
+                        )}
                       </td>
                       <td>
                         <button

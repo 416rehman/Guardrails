@@ -192,6 +192,9 @@ fn evaluate_synthetic_step_up(
             next_step: "Action permitted within grant expiry window.".into(),
             receipt_digest: digest,
             decided_at: now,
+            key_id: None,
+            signature: None,
+            signature_verified: None,
         };
     }
 
@@ -234,6 +237,9 @@ fn build_synthetic_receipt(
         next_step: next_step.into(),
         receipt_digest: synthetic_digest(attempt, verdict, rule_id, now),
         decided_at: now,
+        key_id: None,
+        signature: None,
+        signature_verified: None,
     }
 }
 

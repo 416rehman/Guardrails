@@ -6,6 +6,7 @@ mod routes;
 mod state;
 mod uplink;
 
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, ValueEnum};
@@ -43,6 +44,9 @@ struct Args {
 
     #[arg(long, default_value_t = false)]
     scan_once: bool,
+
+    #[arg(long, env = "GRDR_FLOOR_TABLE")]
+    floor_table: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -59,7 +63,17 @@ async fn main() -> ExitCode {
         ProfileArg::Protected => InstallProfile::Protected,
     };
 
-    let state = DaemonState::init(profile, args.device_name, args.server.clone());
+    let floor_path = args
+        .floor_table
+        .or_else(|| Some(state::default_floor_table_path()));
+    let state = match DaemonState::init(profile, args.device_name, args.server.clone(), floor_path)
+    {
+        Ok(state) => state,
+        Err(err) => {
+            error!(error = %err, "Failed to initialize endpoint agent daemon");
+            return ExitCode::FAILURE;
+        }
+    };
     let status = state.status().await;
     info!(
         device_id = %status.device_id,
@@ -119,7 +133,8 @@ mod tests {
 
     #[tokio::test]
     async fn daemon_evaluates_offline_decisions_with_essentials_pack() {
-        let state = DaemonState::init(InstallProfile::User, Some("test-host".into()), None);
+        let state =
+            DaemonState::init(InstallProfile::User, Some("test-host".into()), None, None).unwrap();
         let app = routes::build_router(state.clone());
 
         let block_req = DecideInput {
@@ -153,7 +168,8 @@ mod tests {
 
     #[tokio::test]
     async fn daemon_consumes_once_grant_on_first_matching_decision() {
-        let state = DaemonState::init(InstallProfile::User, Some("test-host".into()), None);
+        let state =
+            DaemonState::init(InstallProfile::User, Some("test-host".into()), None, None).unwrap();
         let now = jiff::Timestamp::now();
         {
             let mut guard = state.inner.write().await;
@@ -171,6 +187,8 @@ mod tests {
                 expires_at: Some(add_seconds(now, 300)),
                 remaining_uses: Some(1),
                 note: "Daemon once grant".into(),
+                key_id: None,
+                signature: None,
             });
         }
         let app = routes::build_router(state);
@@ -220,5 +238,68 @@ mod tests {
         let second_receipt: DecisionReceipt = serde_json::from_slice(&second_body).unwrap();
         assert_eq!(second_receipt.verdict, Verdict::StepUp);
         assert!(second_receipt.grant_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn daemon_rejects_tampered_server_packs_and_writes_signed_floor_bundle() {
+        use grdr_crypto::{SigningKeypair, verify_floor_table};
+        use grdr_model::{Device, DeviceCheckinResponse, Mode, SignatureStatus, SignedFloorBundle};
+
+        let floor_dir =
+            std::env::temp_dir().join(format!("grdr-daemon-floor-{}", std::process::id()));
+        let floor_path = floor_dir.join("floor.json");
+        let _ = std::fs::remove_dir_all(&floor_dir);
+
+        let daemon = DaemonState::init(
+            InstallProfile::User,
+            Some("test-host".into()),
+            None,
+            Some(floor_path.clone()),
+        )
+        .unwrap();
+
+        let bundle_raw = std::fs::read_to_string(&floor_path).unwrap();
+        let key_raw = std::fs::read_to_string(floor_path.with_extension("pub")).unwrap();
+        let bundle: SignedFloorBundle = serde_json::from_str(&bundle_raw).unwrap();
+        let pinned_key: grdr_model::TrustedKeyInfo = serde_json::from_str(&key_raw).unwrap();
+        assert_eq!(
+            verify_floor_table(&bundle.table, &[pinned_key]),
+            SignatureStatus::Verified
+        );
+
+        let server_kp = SigningKeypair::generate().unwrap();
+        let mut tampered_pack = grdr_model::eval::essentials_pack();
+        server_kp.sign_pack(&mut tampered_pack).unwrap();
+        tampered_pack.rules[0].mode = Mode::Off;
+
+        let mut guard = daemon.inner.write().await;
+        let original_pack_version = guard.packs[0].version.clone();
+        tampered_pack.version = "9.9.9-tampered".into();
+        let resp = DeviceCheckinResponse {
+            device: Device {
+                id: guard.device_id.clone(),
+                hostname: guard.hostname.clone(),
+                os: "linux".into(),
+                arch: "x86_64".into(),
+                install_profile: InstallProfile::User,
+                daemon_version: "0.1.0".into(),
+                online: true,
+                hook_effective: false,
+                agents: vec![],
+                mcp_servers: vec![],
+                last_seen: jiff::Timestamp::now(),
+                public_key: None,
+            },
+            packs: vec![tampered_pack],
+            grants: vec![],
+            kill_switch: grdr_model::KillSwitchState::Inactive,
+            server_time: jiff::Timestamp::now(),
+            trusted_keys: vec![server_kp.public_info()],
+        };
+        uplink::apply_verified_checkin(&mut guard, resp);
+        assert_eq!(guard.packs[0].version, original_pack_version);
+
+        drop(guard);
+        let _ = std::fs::remove_dir_all(&floor_dir);
     }
 }

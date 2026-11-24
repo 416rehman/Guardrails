@@ -6,9 +6,10 @@ use std::time::Duration;
 use jiff::Timestamp;
 use tracing::{info, warn};
 
-use grdr_model::{BatchEventsInput, DeviceCheckinRequest, DeviceCheckinResponse};
+use grdr_crypto::{verify_grant, verify_pack};
+use grdr_model::{BatchEventsInput, DeviceCheckinRequest, DeviceCheckinResponse, SignatureStatus};
 
-use crate::state::DaemonState;
+use crate::state::{DaemonData, DaemonState, write_signed_floor_bundle};
 
 pub async fn sync_once(
     state: &DaemonState,
@@ -28,6 +29,7 @@ pub async fn sync_once(
             hook_effective: guard.discovery.agents.iter().any(|a| a.hook_installed),
             agents: guard.discovery.agents.clone(),
             mcp_servers: guard.discovery.mcp_servers.clone(),
+            device_public_key: Some(guard.signing_key.public_info()),
         };
         let batch = if guard.pending_receipts.is_empty() {
             None
@@ -81,9 +83,7 @@ pub async fn sync_once(
 
     {
         let mut guard = state.inner.write().await;
-        guard.packs = parsed.packs;
-        guard.grants = parsed.grants;
-        guard.kill_switch = parsed.kill_switch;
+        apply_verified_checkin(&mut guard, parsed.clone());
         guard.server_connected = true;
         guard.last_sync = Some(Timestamp::now());
         guard.last_sync_error = None;
@@ -93,6 +93,9 @@ pub async fn sync_once(
             guard.pending_attempts.drain(..drain_attempts);
             guard.pending_receipts.drain(..drain_receipts);
         }
+        if let Err(err) = write_signed_floor_bundle(&guard, Timestamp::now()) {
+            warn!(error = %err, "Failed writing signed fail-safe floor table");
+        }
     }
 
     info!(
@@ -101,6 +104,39 @@ pub async fn sync_once(
         "Synced endpoint state with API server"
     );
     Ok(())
+}
+
+pub(crate) fn apply_verified_checkin(data: &mut DaemonData, resp: DeviceCheckinResponse) {
+    if resp.trusted_keys.is_empty() {
+        data.packs = resp.packs;
+        data.grants = resp.grants;
+        data.kill_switch = resp.kill_switch;
+        return;
+    }
+
+    let all_packs_valid = !resp.packs.is_empty()
+        && resp
+            .packs
+            .iter()
+            .all(|pack| verify_pack(pack, &resp.trusted_keys) == SignatureStatus::Verified);
+
+    if all_packs_valid {
+        data.packs = resp.packs;
+    } else {
+        warn!("Rejected unsigned or tampered policy packs from server; keeping cached packs");
+    }
+
+    let mut verified_grants = Vec::new();
+    for grant in resp.grants {
+        if verify_grant(&grant, &resp.trusted_keys) == SignatureStatus::Verified {
+            verified_grants.push(grant);
+        } else {
+            warn!(grant_id = %grant.grant_id, "Rejected unsigned or tampered grant from server");
+        }
+    }
+    data.grants = verified_grants;
+    data.trusted_keys = resp.trusted_keys;
+    data.kill_switch = resp.kill_switch;
 }
 
 pub async fn run_sync_loop(state: DaemonState, server_url: String, interval_secs: u64) {

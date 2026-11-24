@@ -41,6 +41,10 @@ pub struct PolicyPack {
     pub version: String,
     pub channel: String,
     pub rules: Vec<PolicyRule>,
+    #[serde(default)]
+    pub key_id: Option<String>,
+    #[serde(default)]
+    pub signature: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,6 +81,12 @@ pub struct DecisionReceipt {
     pub next_step: String,
     pub receipt_digest: String,
     pub decided_at: Timestamp,
+    #[serde(default)]
+    pub key_id: Option<String>,
+    #[serde(default)]
+    pub signature: Option<String>,
+    #[serde(default)]
+    pub signature_verified: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,6 +103,10 @@ pub struct Grant {
     pub expires_at: Option<Timestamp>,
     pub remaining_uses: Option<u32>,
     pub note: String,
+    #[serde(default)]
+    pub key_id: Option<String>,
+    #[serde(default)]
+    pub signature: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -181,6 +195,28 @@ pub struct AuditEntry {
     pub actor: String,
     pub summary: String,
     pub target: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompiledFloorRule {
+    pub rule_id: String,
+    pub action_classes: Vec<ActionClass>,
+    pub target_prefixes: Vec<String>,
+    pub target_contains: Vec<String>,
+    pub agents: Vec<String>,
+    pub verdict: Verdict,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompiledFloorTable {
+    pub version: u32,
+    pub compiled_at: Timestamp,
+    pub rules: Vec<CompiledFloorRule>,
+    #[serde(default)]
+    pub key_id: Option<String>,
+    #[serde(default)]
+    pub signature: Option<String>,
 }
 
 impl Grant {
@@ -276,6 +312,8 @@ mod tests {
             expires_at,
             remaining_uses,
             note: "test".into(),
+            key_id: None,
+            signature: None,
         }
     }
 

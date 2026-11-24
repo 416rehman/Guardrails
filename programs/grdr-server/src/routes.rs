@@ -22,7 +22,7 @@ use grdr_model::{
     DecideApprovalInput, DecideInput, DecisionReceipt, Device, DiscoveredAgent, Finding,
     HealthResponse, Incident, KillSwitchInput, KillSwitchState, McpServerEntry, OverviewResponse,
     PolicyPack, PolicyRule, ReplayRuleInput, ReplaySummary, SessionDetailResponse, SessionSummary,
-    UpdateFindingInput, UpdateRuleModeInput,
+    TrustedKeyInfo, UpdateFindingInput, UpdateRuleModeInput,
 };
 
 use crate::store::AppState;
@@ -60,6 +60,7 @@ pub fn build_router(state: AppState, web_dir: Option<PathBuf>) -> Router {
             get(get_kill_switch).post(post_kill_switch),
         )
         .route("/api/v1/audit", get(list_audit))
+        .route("/api/v1/keys", get(list_keys))
         .route("/api/v1/live", get(live_stream))
         .with_state(state)
         .layer(cors);
@@ -269,6 +270,10 @@ async fn post_kill_switch(
 async fn list_audit(State(state): State<AppState>) -> Json<Vec<AuditEntry>> {
     let guard = state.inner.read().await;
     Json(guard.audit.clone())
+}
+
+async fn list_keys(State(state): State<AppState>) -> Json<Vec<TrustedKeyInfo>> {
+    Json(state.trusted_keys())
 }
 
 async fn live_stream(
