@@ -271,7 +271,7 @@ fn dual_root_separates_binaries_from_deployment_policy() {
     assert!(matches!(
         trust.verify_target_artifact(
             TufRootKind::Project,
-            &proj_bins.signed,
+            &proj_bins,
             "binaries/linux/x86_64/grdr-daemon/1.0.0",
             binary_payload,
             Some(&partial_dsse),
@@ -288,7 +288,7 @@ fn dual_root_separates_binaries_from_deployment_policy() {
     let desc = trust
         .verify_target_artifact(
             TufRootKind::Project,
-            &proj_bins.signed,
+            &proj_bins,
             "binaries/linux/x86_64/grdr-daemon/1.0.0",
             binary_payload,
             Some(&dsse),
@@ -299,7 +299,7 @@ fn dual_root_separates_binaries_from_deployment_policy() {
     let err = trust
         .verify_target_artifact(
             TufRootKind::Deployment,
-            &proj_bins.signed,
+            &proj_bins,
             "binaries/linux/x86_64/grdr-daemon/1.0.0",
             binary_payload,
             None,
@@ -341,7 +341,7 @@ fn dual_root_separates_binaries_from_deployment_policy() {
         trust
             .verify_target_artifact(
                 TufRootKind::Deployment,
-                &dep_targets.signed,
+                &dep_targets,
                 "policy/org/layer-1",
                 policy_bytes,
                 Some(&dep_dsse),
@@ -605,5 +605,237 @@ fn root_rotation_requires_old_and_new_threshold_and_ab_slots_verify() {
     assert!(matches!(
         verify_airgap_bundle(&trust, &envelope, &artifacts, &accepted, &halt, now),
         Err(UpdateError::HaltedRelease(_))
+    ));
+}
+
+#[test]
+fn rejects_role_confusion_dsse_mismatch_snapshot_len_airgap_traversal_and_staging_rollback() {
+    let now = ts(1_760_000_000);
+    let expires = ts(now.as_second().saturating_add(86_400));
+    let release_signer = SigningKeypair::generate().expect("release");
+    let rebuilder = SigningKeypair::generate().expect("rebuilder");
+    let proj_root = build_project_root(
+        &release_signer,
+        &rebuilder,
+        1,
+        ts(now.as_second().saturating_add(86_400 * 365)),
+    );
+    let (mut proj_ts, mut proj_snap, proj_targets, proj_bins) =
+        build_project_chain_with_keys(&release_signer, &rebuilder, expires, 1, b"bin-v1");
+    let (_fleet, dep_root) = build_deployment_root(ts(now.as_second().saturating_add(86_400 * 30)));
+
+    let trust = UpdateTrust::new(proj_root, now)
+        .expect("proj trust")
+        .with_deployment_root(dep_root.clone(), now)
+        .expect("dep trust");
+
+    // Refuse re-pinning an already trusted deployment root without rotation.
+    assert!(matches!(
+        trust.clone().with_deployment_root(dep_root, now),
+        Err(UpdateError::UnauthorizedRoot(_))
+    ));
+
+    // Reject Targets->Binaries role confusion even when signed by authorized keys.
+    let mut forged_bins_targets = BTreeMap::new();
+    forged_bins_targets.insert(
+        "binaries/linux/x86_64/grdr-daemon/9.9.9".into(),
+        TargetDescriptor {
+            role: TufRole::Binaries,
+            pack_kind: PackKind::Binary,
+            signer_class: SignerClass::ProjectBinaries,
+            version: "9.9.9".into(),
+            generation: 99,
+            sha256: canonical_sha256(b"evil-bin"),
+            length: 8,
+        },
+    );
+    let targets_role_as_bins = sign_metadata(
+        TargetsMetadata {
+            role: TufRole::Targets,
+            version: 1,
+            expires,
+            targets: forged_bins_targets,
+        },
+        &[&release_signer, &rebuilder],
+    )
+    .expect("forged binaries with Targets role");
+    let mut trust_role = trust.clone();
+    assert!(matches!(
+        trust_role.verify_project_chain(
+            &proj_ts,
+            &proj_snap,
+            &proj_targets,
+            Some(&targets_role_as_bins),
+            None,
+            now,
+        ),
+        Err(UpdateError::UnauthorizedRoot(_))
+    ));
+
+    // Reject snapshot length tampering even if sha256 matches or vice versa.
+    if let Some(targets_ref) = proj_snap.signed.meta.get_mut(&TufRole::Targets) {
+        targets_ref.length = targets_ref.length.saturating_add(1);
+    }
+    let tampered_snap = sign_metadata(proj_snap.signed.clone(), &[&release_signer]).expect("snap");
+    let snap_bytes = serde_json::to_vec(&tampered_snap.signed).expect("snap json");
+    proj_ts.signed.snapshot.sha256 = canonical_sha256(&snap_bytes);
+    proj_ts.signed.snapshot.length = u64::try_from(snap_bytes.len()).expect("len");
+    let tampered_ts = sign_metadata(proj_ts.signed.clone(), &[&release_signer]).expect("ts");
+    let mut trust_len = trust.clone();
+    assert!(matches!(
+        trust_len.verify_project_chain(
+            &tampered_ts,
+            &tampered_snap,
+            &proj_targets,
+            None,
+            None,
+            now
+        ),
+        Err(UpdateError::MixAndMatchDetected(_))
+    ));
+
+    // Reject unrelated DSSE envelope signed by the same valid threshold signers.
+    let unrelated_dsse = sign_dsse_envelope(
+        "application/vnd.grdr.pack-manifest+json",
+        b"completely-different-artifact",
+        &[&release_signer, &rebuilder],
+    )
+    .expect("unrelated dsse");
+    assert!(matches!(
+        trust.verify_target_artifact(
+            TufRootKind::Project,
+            &proj_bins,
+            "binaries/linux/x86_64/grdr-daemon/1.0.0",
+            b"bin-v1",
+            Some(&unrelated_dsse),
+        ),
+        Err(UpdateError::MixAndMatchDetected(_))
+    ));
+
+    // Reject project root attempting to sign deployment LayerDocument targets.
+    let mut layer_targets = BTreeMap::new();
+    layer_targets.insert(
+        "policy/org/evil".into(),
+        TargetDescriptor {
+            role: TufRole::Targets,
+            pack_kind: PackKind::LayerDocument,
+            signer_class: SignerClass::ProjectContent,
+            version: "1.0.0".into(),
+            generation: 1,
+            sha256: canonical_sha256(b"{}"),
+            length: 2,
+        },
+    );
+    let proj_layer_meta = sign_metadata(
+        TargetsMetadata {
+            role: TufRole::Targets,
+            version: 1,
+            expires,
+            targets: layer_targets,
+        },
+        &[&release_signer],
+    )
+    .expect("proj layer meta");
+    assert!(matches!(
+        trust.verify_target_artifact(
+            TufRootKind::Project,
+            &proj_layer_meta,
+            "policy/org/evil",
+            b"{}",
+            None,
+        ),
+        Err(UpdateError::UnauthorizedRoot(_))
+    ));
+
+    // Reject content packs attempting to use TufRole::Timestamp for DSSE verification.
+    let mut ts_role_content = BTreeMap::new();
+    ts_role_content.insert(
+        "content/detection/spoof".into(),
+        TargetDescriptor {
+            role: TufRole::Timestamp,
+            pack_kind: PackKind::Detection,
+            signer_class: SignerClass::ProjectContent,
+            version: "1.0.0".into(),
+            generation: 1,
+            sha256: canonical_sha256(b"rule"),
+            length: 4,
+        },
+    );
+    let ts_role_meta = sign_metadata(
+        TargetsMetadata {
+            role: TufRole::Targets,
+            version: 1,
+            expires,
+            targets: ts_role_content,
+        },
+        &[&release_signer],
+    )
+    .expect("ts role meta");
+    assert!(matches!(
+        trust.verify_target_artifact(
+            TufRootKind::Project,
+            &ts_role_meta,
+            "content/detection/spoof",
+            b"rule",
+            None,
+        ),
+        Err(UpdateError::UnauthorizedRoot(_))
+    ));
+
+    // Air-gap path traversal and unmanifested artifacts must fail closed.
+    let pack_bytes = b"bad-pack";
+    let traversal_manifest = AirgapBundleManifest {
+        bundle_id: "bndl-bad".into(),
+        bundle_version: "1.0.0".into(),
+        created_at: now,
+        entries: vec![AirgapBundleEntry {
+            path: "../etc/passwd".into(),
+            pack_id: "pack-bad".into(),
+            version: "1.0.0".into(),
+            sha256: canonical_sha256(pack_bytes),
+            length: u64::try_from(pack_bytes.len()).expect("len"),
+        }],
+        halted_releases: Vec::new(),
+    };
+    let traversal_env = sign_dsse_envelope(
+        "application/vnd.grdr.airgap-manifest+json",
+        &serde_json::to_vec(&traversal_manifest).expect("json"),
+        &[&release_signer],
+    )
+    .expect("env");
+    let accepted = BundleApprovalState::TermsAccepted {
+        operator_id: "op_1".into(),
+        accepted_at: now,
+    };
+    assert!(matches!(
+        verify_airgap_bundle(
+            &trust,
+            &traversal_env,
+            &[AirgapArtifact {
+                path: "../etc/passwd".into(),
+                bytes: pack_bytes.to_vec(),
+            }],
+            &accepted,
+            &[],
+            now,
+        ),
+        Err(UpdateError::MalformedMetadata(_))
+    ));
+
+    // Rollback from Staging keeps the stored active slot metadata rather than forging new ones.
+    let staged = SlotState::initial("1.0.0", 10, "sha-v1", 5)
+        .stage_candidate("1.1.0", 11, "sha-v2")
+        .expect("staged");
+    let rolled = staged
+        .rollback_to_previous("9.9.9", 99, "forged", "verify-failed")
+        .expect("rollback");
+    assert!(matches!(
+        rolled,
+        SlotState::RolledBack {
+            active: UpdateSlot::SlotA,
+            active_generation: 10,
+            failed_slot: UpdateSlot::SlotB,
+            ..
+        }
     ));
 }

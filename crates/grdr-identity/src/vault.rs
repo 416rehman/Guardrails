@@ -2,101 +2,24 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
 use std::collections::BTreeMap;
+use std::fmt;
 
 use grdr_crypto::{AeadKey, open_token, seal_token};
 use jiff::Timestamp;
-use serde::{Deserialize, Serialize};
 
 use crate::IdentityError;
 use crate::pseudonym::{
     QuarterKey, QuarterlyDisclosureEntry, derive_device_pseudonym, re_pseudonymize_for_org,
 };
+use crate::vault_types::{
+    ApproverRecord, ApproverRole, ReidentQuorumState, SubjectDisclosureState, VaultPolicy,
+    VaultSubjectRecord, roles_satisfy_quorum,
+};
 
 const VAULT_DOMAIN: &str = "grdr.identity.vault.v1";
 const SECONDS_PER_DAY: i64 = 86_400;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ApproverRole {
-    PrivacyOfficer,
-    OrgOwner,
-    WorksCouncilDelegate,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct VaultPolicy {
-    pub quorum_ttl_secs: i64,
-    pub max_legal_hold_deferral_days: i64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ApproverRecord {
-    pub account_id: String,
-    pub role: ApproverRole,
-    pub approved_at: Timestamp,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct VaultSubjectRecord {
-    pub raw_subject: String,
-    pub display_hint: String,
-    pub device_pseudonym: String,
-    pub org_pseudonym: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "state", rename_all = "snake_case")]
-pub enum ReidentQuorumState {
-    Pending {
-        request_id: String,
-        org_id: String,
-        requester_id: String,
-        target_org_pseudonym: String,
-        purpose: String,
-        incident_ref: String,
-        requested_at: Timestamp,
-        expires_at: Timestamp,
-        legal_hold_deferral_until: Option<Timestamp>,
-    },
-    PartialApproval {
-        request_id: String,
-        org_id: String,
-        requester_id: String,
-        target_org_pseudonym: String,
-        purpose: String,
-        incident_ref: String,
-        first_approver: ApproverRecord,
-        requested_at: Timestamp,
-        expires_at: Timestamp,
-        legal_hold_deferral_until: Option<Timestamp>,
-    },
-    Approved {
-        request_id: String,
-        org_id: String,
-        requester_id: String,
-        target_org_pseudonym: String,
-        purpose: String,
-        incident_ref: String,
-        approvers: [ApproverRecord; 2],
-        approved_at: Timestamp,
-        disclosed_to_subject_at: Option<Timestamp>,
-        legal_hold_deferral_until: Option<Timestamp>,
-    },
-    Rejected {
-        request_id: String,
-        org_id: String,
-        rejected_by: String,
-        reason: String,
-        rejected_at: Timestamp,
-    },
-    Expired {
-        request_id: String,
-        org_id: String,
-        expired_at: Timestamp,
-    },
-}
-
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct IdentityVault {
     org_id: String,
     org_pseudonym_key: [u8; 32],
@@ -108,12 +31,17 @@ pub struct IdentityVault {
     disclosure_ledger: BTreeMap<QuarterKey, QuarterlyDisclosureEntry>,
 }
 
-impl Default for VaultPolicy {
-    fn default() -> Self {
-        Self {
-            quorum_ttl_secs: 86_400,
-            max_legal_hold_deferral_days: 90,
-        }
+impl fmt::Debug for IdentityVault {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("IdentityVault")
+            .field("org_id", &self.org_id)
+            .field("org_pseudonym_key", &"[REDACTED]")
+            .field("vault_aead_key", &self.vault_aead_key)
+            .field("pseudonym_epoch", &self.pseudonym_epoch)
+            .field("policy", &self.policy)
+            .field("subject_count", &self.sealed_subjects.len())
+            .field("quorum_count", &self.quorums.len())
+            .finish()
     }
 }
 
@@ -200,7 +128,6 @@ impl IdentityVault {
             incident_ref: incident_ref.into(),
             requested_at: now,
             expires_at,
-            legal_hold_deferral_until: None,
         };
         self.quorums.insert(request_id.clone(), state);
         let ledger = self.quarter_entry_mut(QuarterKey::from_timestamp(now));
@@ -263,6 +190,57 @@ impl IdentityVault {
         }
     }
 
+    pub fn record_subject_disclosure(
+        &mut self,
+        request_id: &str,
+        now: Timestamp,
+    ) -> Result<(), IdentityError> {
+        let current =
+            self.quorums.get(request_id).cloned().ok_or_else(|| {
+                IdentityError::VaultState(format!("unknown request {request_id}"))
+            })?;
+        let ReidentQuorumState::Approved {
+            request_id: id,
+            org_id,
+            requester_id,
+            target_org_pseudonym,
+            purpose,
+            incident_ref,
+            approvers,
+            approved_at,
+            disclosure,
+        } = current
+        else {
+            return Err(IdentityError::VaultState(
+                "subject disclosure requires Approved quorum".into(),
+            ));
+        };
+
+        if matches!(disclosure, SubjectDisclosureState::Disclosed { .. }) {
+            return Err(IdentityError::VaultState(
+                "subject disclosure already recorded".into(),
+            ));
+        }
+
+        self.quorums.insert(
+            request_id.to_owned(),
+            ReidentQuorumState::Approved {
+                request_id: id,
+                org_id,
+                requester_id,
+                target_org_pseudonym,
+                purpose,
+                incident_ref,
+                approvers,
+                approved_at,
+                disclosure: SubjectDisclosureState::Disclosed { disclosed_at: now },
+            },
+        );
+        let ledger = self.quarter_entry_mut(QuarterKey::from_timestamp(now));
+        ledger.subject_disclosed_count = ledger.subject_disclosed_count.saturating_add(1);
+        Ok(())
+    }
+
     pub fn defer_subject_notification(
         &mut self,
         request_id: &str,
@@ -287,13 +265,25 @@ impl IdentityVault {
             incident_ref,
             approvers,
             approved_at,
-            ..
+            disclosure,
         } = current
         else {
             return Err(IdentityError::VaultState(
                 "legal-hold deferral requires Approved quorum".into(),
             ));
         };
+
+        if disclosure != SubjectDisclosureState::PendingDisclosure {
+            return Err(IdentityError::VaultState(
+                "legal-hold deferral is only allowed once while PendingDisclosure".into(),
+            ));
+        }
+        if defer_until <= approved_at || defer_until <= now {
+            return Err(IdentityError::VaultState(
+                "defer_until must be strictly in the future relative to approval and current time"
+                    .into(),
+            ));
+        }
 
         let max_until = Timestamp::from_second(approved_at.as_second().saturating_add(max_secs))
             .map_err(|e| IdentityError::VaultState(format!("invalid deferral cap: {e}")))?;
@@ -311,8 +301,9 @@ impl IdentityVault {
             incident_ref,
             approvers,
             approved_at,
-            disclosed_to_subject_at: None,
-            legal_hold_deferral_until: Some(defer_until),
+            disclosure: SubjectDisclosureState::LegalHoldDeferred {
+                deferred_until: defer_until,
+            },
         };
         self.quorums.insert(request_id.to_owned(), updated);
         let ledger = self.quarter_entry_mut(QuarterKey::from_timestamp(now));
@@ -378,7 +369,6 @@ impl IdentityVault {
                 incident_ref,
                 requested_at,
                 expires_at,
-                legal_hold_deferral_until,
             } => {
                 if expires_at <= now {
                     self.mark_expired(request_id, id, org_id, now);
@@ -403,7 +393,6 @@ impl IdentityVault {
                     },
                     requested_at,
                     expires_at,
-                    legal_hold_deferral_until,
                 })
             }
             ReidentQuorumState::PartialApproval {
@@ -415,7 +404,6 @@ impl IdentityVault {
                 incident_ref,
                 first_approver,
                 expires_at,
-                legal_hold_deferral_until,
                 ..
             } => {
                 if expires_at <= now {
@@ -430,18 +418,20 @@ impl IdentityVault {
                 if approver_id == first_approver.account_id {
                     return Err(IdentityError::DuplicateApprover(approver_id));
                 }
+                if !roles_satisfy_quorum(
+                    first_approver.role,
+                    role,
+                    self.policy.require_works_council_coapproval,
+                ) {
+                    return Err(IdentityError::InsufficientApproverRole);
+                }
                 let second = ApproverRecord {
                     account_id: approver_id,
                     role,
                     approved_at: now,
                 };
-                let disclosed_to_subject_at = legal_hold_deferral_until.is_none().then_some(now);
                 let ledger = self.quarter_entry_mut(QuarterKey::from_timestamp(now));
                 ledger.approved_count = ledger.approved_count.saturating_add(1);
-                if disclosed_to_subject_at.is_some() {
-                    ledger.subject_disclosed_count =
-                        ledger.subject_disclosed_count.saturating_add(1);
-                }
                 Ok(ReidentQuorumState::Approved {
                     request_id: id,
                     org_id,
@@ -451,8 +441,7 @@ impl IdentityVault {
                     incident_ref,
                     approvers: [first_approver, second],
                     approved_at: now,
-                    disclosed_to_subject_at,
-                    legal_hold_deferral_until,
+                    disclosure: SubjectDisclosureState::PendingDisclosure,
                 })
             }
             other => Err(IdentityError::VaultState(format!(

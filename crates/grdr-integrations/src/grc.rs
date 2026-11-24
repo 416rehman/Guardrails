@@ -9,7 +9,12 @@ use serde::{Deserialize, Serialize};
 use crate::IntegrationError;
 use crate::saas::sanitize_inert_text;
 
-const MAX_GRC_SUMMARY_CHARS: usize = 512;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GrcLimits {
+    pub max_artifact_refs: usize,
+    pub max_id_chars: usize,
+    pub max_summary_chars: usize,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -86,21 +91,49 @@ pub struct GrcPushEnvelope {
     pub payload: GrcPushPayload,
 }
 
+impl Default for GrcLimits {
+    fn default() -> Self {
+        Self {
+            max_artifact_refs: 64,
+            max_id_chars: 128,
+            max_summary_chars: 512,
+        }
+    }
+}
+
 pub fn build_grc_evidence_push(
     target: GrcTarget,
     input: &GrcEvidenceInput,
 ) -> Result<GrcPushEnvelope, IntegrationError> {
-    if input.organization_id.trim().is_empty()
-        || input.control_id.trim().is_empty()
-        || input.evidence_digest.trim().is_empty()
-    {
-        return Err(IntegrationError::InvalidGrcInput(
-            "organization_id, control_id, and evidence_digest are required".into(),
-        ));
+    build_grc_evidence_push_with_limits(target, input, GrcLimits::default())
+}
+
+pub fn build_grc_evidence_push_with_limits(
+    target: GrcTarget,
+    input: &GrcEvidenceInput,
+    limits: GrcLimits,
+) -> Result<GrcPushEnvelope, IntegrationError> {
+    validate_grc_identifier(
+        "organization_id",
+        &input.organization_id,
+        limits.max_id_chars,
+    )?;
+    validate_grc_identifier("control_id", &input.control_id, limits.max_id_chars)?;
+    validate_grc_identifier(
+        "evidence_digest",
+        &input.evidence_digest,
+        limits.max_id_chars,
+    )?;
+    if input.artifact_refs.len() > limits.max_artifact_refs {
+        return Err(IntegrationError::InvalidGrcInput(format!(
+            "artifact_refs count {} exceeds limit {}",
+            input.artifact_refs.len(),
+            limits.max_artifact_refs
+        )));
     }
 
-    let safe_title = sanitize_inert_text(&input.control_title, MAX_GRC_SUMMARY_CHARS);
-    let safe_summary = sanitize_inert_text(&input.summary, MAX_GRC_SUMMARY_CHARS);
+    let safe_title = sanitize_inert_text(&input.control_title, limits.max_summary_chars);
+    let safe_summary = sanitize_inert_text(&input.summary, limits.max_summary_chars);
     let safe_framework = sanitize_inert_text(&input.framework, 64);
     let safe_refs: Vec<String> = input
         .artifact_refs
@@ -160,4 +193,22 @@ pub fn build_grc_evidence_push(
         collected_at: input.collected_at,
         payload,
     })
+}
+
+fn validate_grc_identifier(
+    field: &str,
+    value: &str,
+    max_chars: usize,
+) -> Result<(), IntegrationError> {
+    if value.is_empty()
+        || value.chars().count() > max_chars
+        || !value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    {
+        return Err(IntegrationError::InvalidGrcInput(format!(
+            "{field} must be non-empty, <= {max_chars} chars, and contain only ASCII [A-Za-z0-9._-]"
+        )));
+    }
+    Ok(())
 }

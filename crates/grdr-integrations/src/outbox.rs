@@ -9,6 +9,12 @@ use serde_json::Value;
 
 use crate::IntegrationError;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OutboxLimits {
+    pub max_items: usize,
+    pub max_cursors: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExportStream {
@@ -119,9 +125,20 @@ pub struct OutboxQueue {
     destination_id: String,
     retry_policy: RetryPolicy,
     circuit_config: CircuitBreakerConfig,
+    limits: OutboxLimits,
     circuit: CircuitState,
     items: BTreeMap<String, OutboxItem>,
     cursors: BTreeMap<ExportStream, ExportCursor>,
+    record_cursors: BTreeMap<(ExportStream, String), ExportCursor>,
+}
+
+impl Default for OutboxLimits {
+    fn default() -> Self {
+        Self {
+            max_items: 10_000,
+            max_cursors: 10_000,
+        }
+    }
 }
 
 impl Default for CircuitBreakerConfig {
@@ -169,12 +186,20 @@ impl OutboxQueue {
             destination_id: destination_id.into(),
             retry_policy,
             circuit_config,
+            limits: OutboxLimits::default(),
             circuit: CircuitState::Closed {
                 consecutive_failures: 0,
             },
             items: BTreeMap::new(),
             cursors: BTreeMap::new(),
+            record_cursors: BTreeMap::new(),
         }
+    }
+
+    #[must_use]
+    pub fn with_limits(mut self, limits: OutboxLimits) -> Self {
+        self.limits = limits;
+        self
     }
 
     #[must_use]
@@ -193,12 +218,35 @@ impl OutboxQueue {
     }
 
     #[must_use]
+    pub fn record_cursor(&self, stream: ExportStream, record_id: &str) -> Option<&ExportCursor> {
+        self.record_cursors.get(&(stream, record_id.to_owned()))
+    }
+
+    #[must_use]
     pub fn item(&self, item_id: &str) -> Option<&OutboxItem> {
         self.items.get(item_id)
     }
 
-    pub fn enqueue(&mut self, envelope: ExportEnvelope, now: Timestamp) -> String {
+    pub fn enqueue(
+        &mut self,
+        envelope: ExportEnvelope,
+        now: Timestamp,
+    ) -> Result<String, IntegrationError> {
+        if envelope.dedup_key.trim().is_empty() || envelope.record_id.trim().is_empty() {
+            return Err(IntegrationError::OutboxState(
+                "dedup_key and record_id must be non-empty".into(),
+            ));
+        }
         let item_id = envelope.dedup_key.clone();
+        if self.items.contains_key(&item_id) {
+            return Ok(item_id);
+        }
+        if self.items.len() >= self.limits.max_items {
+            return Err(IntegrationError::OutboxState(format!(
+                "outbox item capacity {} reached",
+                self.limits.max_items
+            )));
+        }
         let item = OutboxItem {
             item_id: item_id.clone(),
             destination_id: self.destination_id.clone(),
@@ -209,29 +257,45 @@ impl OutboxQueue {
             },
         };
         self.items.insert(item_id.clone(), item);
-        item_id
+        Ok(item_id)
     }
 
     pub fn poll_dispatchable(&mut self, now: Timestamp) -> Result<Vec<String>, IntegrationError> {
         match &self.circuit {
-            CircuitState::Closed { .. } => {}
+            CircuitState::Closed { .. } => Ok(self.ready_item_ids(now)),
             CircuitState::Open { retry_after_at, .. } => {
                 if now < *retry_after_at {
                     return Err(IntegrationError::CircuitOpen {
                         retry_after_at: retry_after_at.to_string(),
                     });
                 }
+                let ready: Vec<String> = self.ready_item_ids(now).into_iter().take(1).collect();
+                if ready.is_empty() {
+                    return Ok(ready);
+                }
                 self.circuit = CircuitState::HalfOpen {
                     probes_in_flight: 1,
                     probes_succeeded: 0,
                 };
-                return Ok(self.ready_item_ids(now).into_iter().take(1).collect());
+                Ok(ready)
             }
-            CircuitState::HalfOpen { .. } => {
-                return Ok(self.ready_item_ids(now).into_iter().take(1).collect());
+            CircuitState::HalfOpen {
+                probes_in_flight,
+                probes_succeeded,
+            } => {
+                if *probes_in_flight > 0 {
+                    return Ok(Vec::new());
+                }
+                let ready: Vec<String> = self.ready_item_ids(now).into_iter().take(1).collect();
+                if !ready.is_empty() {
+                    self.circuit = CircuitState::HalfOpen {
+                        probes_in_flight: 1,
+                        probes_succeeded: *probes_succeeded,
+                    };
+                }
+                Ok(ready)
             }
         }
-        Ok(self.ready_item_ids(now))
     }
 
     pub fn record_delivery(
@@ -299,6 +363,7 @@ impl OutboxQueue {
                 status_code,
                 reason,
             } => {
+                self.release_half_open_probe();
                 self.items.insert(
                     item_id.to_owned(),
                     OutboxItem {
@@ -327,21 +392,30 @@ impl OutboxQueue {
     }
 
     fn advance_cursor(&mut self, env: &ExportEnvelope, now: Timestamp) {
-        let should_update = self
+        let cursor = ExportCursor {
+            destination_id: self.destination_id.clone(),
+            stream: env.stream,
+            last_acked_revision: env.revision,
+            last_dedup_key: env.dedup_key.clone(),
+            updated_at: now,
+        };
+        if self
             .cursors
             .get(&env.stream)
+            .is_none_or(|c| env.revision >= c.last_acked_revision)
+        {
+            self.cursors.insert(env.stream, cursor.clone());
+        }
+        let rec_key = (env.stream, env.record_id.clone());
+        let should_update_record = self
+            .record_cursors
+            .get(&rec_key)
             .is_none_or(|c| env.revision >= c.last_acked_revision);
-        if should_update {
-            self.cursors.insert(
-                env.stream,
-                ExportCursor {
-                    destination_id: self.destination_id.clone(),
-                    stream: env.stream,
-                    last_acked_revision: env.revision,
-                    last_dedup_key: env.dedup_key.clone(),
-                    updated_at: now,
-                },
-            );
+        if should_update_record
+            && (self.record_cursors.contains_key(&rec_key)
+                || self.record_cursors.len() < self.limits.max_cursors)
+        {
+            self.record_cursors.insert(rec_key, cursor);
         }
     }
 
@@ -369,6 +443,19 @@ impl OutboxQueue {
                 consecutive_failures: 0,
             },
         };
+    }
+
+    fn release_half_open_probe(&mut self) {
+        if let CircuitState::HalfOpen {
+            probes_in_flight,
+            probes_succeeded,
+        } = self.circuit
+        {
+            self.circuit = CircuitState::HalfOpen {
+                probes_in_flight: probes_in_flight.saturating_sub(1),
+                probes_succeeded,
+            };
+        }
     }
 
     fn trip_circuit_on_failure(&mut self, now: Timestamp) {

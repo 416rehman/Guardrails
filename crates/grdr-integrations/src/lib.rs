@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::arithmetic_side_effects)]
 
+pub mod egress;
 pub mod grc;
 pub mod manifest;
 pub mod outbox;
@@ -11,24 +12,26 @@ pub mod saas;
 #[cfg(test)]
 mod tests;
 
+pub use egress::{is_valid_dns_suffix, validate_egress_url};
 pub use grc::{
-    CisoAssistantEvidencePayload, GrcControlStatus, GrcEvidenceInput, GrcPushEnvelope,
+    CisoAssistantEvidencePayload, GrcControlStatus, GrcEvidenceInput, GrcLimits, GrcPushEnvelope,
     GrcPushPayload, GrcTarget, ProboEvidencePayload, build_grc_evidence_push,
+    build_grc_evidence_push_with_limits,
 };
 pub use manifest::{
     AuthScheme, CaptureCeiling, CodecKind, ConfigFieldSpec, ConfigFieldType, ConnectorDirection,
     ConnectorHealth, ConnectorKind, ConnectorManifest, IntegrationHost, IntegrationInstance,
-    SecretRef, StabilityClass, SupportTier, VendorApiCompat, validate_egress_url,
-    validate_manifest,
+    SecretRef, StabilityClass, SupportTier, VendorApiCompat, validate_manifest,
 };
 pub use outbox::{
     CircuitBreakerConfig, CircuitState, DeliveryOutcome, ExportCursor, ExportEnvelope,
-    ExportStream, OutboxItem, OutboxItemState, OutboxQueue, RetryPolicy,
+    ExportStream, OutboxItem, OutboxItemState, OutboxLimits, OutboxQueue, RetryPolicy,
 };
 pub use saas::{
     AnthropicActivityEvent, AnthropicActivityPage, AnthropicActor, OpenAiComplianceEvent,
-    OpenAiCompliancePage, RateBudgetTracker, connector_assurance, parse_anthropic_compliance_page,
-    parse_openai_compliance_page, sanitize_inert_text,
+    OpenAiCompliancePage, RateBudgetTracker, SaasParseLimits, connector_assurance,
+    parse_anthropic_compliance_page, parse_anthropic_compliance_page_with_limits,
+    parse_openai_compliance_page, parse_openai_compliance_page_with_limits, sanitize_inert_text,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

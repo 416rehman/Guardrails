@@ -7,7 +7,7 @@ use grdr_model::TrustedKeyInfo;
 use jiff::Timestamp;
 
 use crate::UpdateError;
-use crate::dsse::{DsseEnvelope, verify_dsse_envelope};
+use crate::dsse::{DsseEnvelope, DsseTargetStatement, verify_dsse_envelope};
 use crate::tuf_types::{
     FreshnessEvaluation, FreshnessStatement, RootMetadata, SignedMetadata, SnapshotMetadata,
     TargetDescriptor, TargetsMetadata, TimestampMetadata, TrustVerificationResult, TufRole,
@@ -50,6 +50,11 @@ impl UpdateTrust {
         deployment_root: SignedMetadata<RootMetadata>,
         now: Timestamp,
     ) -> Result<Self, UpdateError> {
+        if self.deployment_root.is_some() {
+            return Err(UpdateError::UnauthorizedRoot(
+                "deployment root already pinned; use rotate_root".into(),
+            ));
+        }
         if deployment_root.signed.root_kind != TufRootKind::Deployment {
             return Err(UpdateError::UnauthorizedRoot(
                 "deployment root must be TufRootKind::Deployment".into(),
@@ -121,6 +126,11 @@ impl UpdateTrust {
         self.verify_chain_core(TufRootKind::Project, timestamp, snapshot, targets, now)?;
 
         if let Some(bin_meta) = binaries {
+            if bin_meta.signed.role != TufRole::Binaries {
+                return Err(UpdateError::UnauthorizedRoot(
+                    "binaries metadata role must be TufRole::Binaries".into(),
+                ));
+            }
             verify_role_signatures(&self.project_root, TufRole::Binaries, bin_meta)?;
             let trusted_bin = self
                 .trusted_targets
@@ -242,28 +252,39 @@ impl UpdateTrust {
 
         if let Some(stmt) = freshness
             && let Some(dep_root) = &self.deployment_root
-            && verify_role_signatures(dep_root, TufRole::Fleet, stmt).is_ok()
         {
-            let snapshot_bytes = canonical_json(snapshot)?;
-            let snapshot_sha = canonical_sha256(&snapshot_bytes);
-            let stmt_matches = stmt.signed.expires > now
-                && stmt.signed.project_root_version == self.project_root.version
-                && stmt.signed.project_snapshot_version == snapshot.version
-                && stmt.signed.project_snapshot_sha256 == snapshot_sha;
-            if stmt_matches {
+            if dep_root.expires <= now {
                 return Ok(FreshnessEvaluation {
-                    freshness: UpdateFreshness::Current,
+                    freshness: UpdateFreshness::Expired,
                     enforcement_active: true,
-                    install_permitted: true,
-                    reason: None,
+                    install_permitted: false,
+                    reason: Some(
+                        "deployment root expired; cannot vouch for snapshot freshness".into(),
+                    ),
                 });
             }
-            return Ok(FreshnessEvaluation {
-                freshness: UpdateFreshness::Expired,
-                enforcement_active: true,
-                install_permitted: false,
-                reason: Some("freshness statement expired or snapshot mismatch".into()),
-            });
+            if verify_role_signatures(dep_root, TufRole::Fleet, stmt).is_ok() {
+                let snapshot_bytes = canonical_json(snapshot)?;
+                let snapshot_sha = canonical_sha256(&snapshot_bytes);
+                let stmt_matches = stmt.signed.expires > now
+                    && stmt.signed.project_root_version == self.project_root.version
+                    && stmt.signed.project_snapshot_version == snapshot.version
+                    && stmt.signed.project_snapshot_sha256 == snapshot_sha;
+                if stmt_matches {
+                    return Ok(FreshnessEvaluation {
+                        freshness: UpdateFreshness::Current,
+                        enforcement_active: true,
+                        install_permitted: true,
+                        reason: None,
+                    });
+                }
+                return Ok(FreshnessEvaluation {
+                    freshness: UpdateFreshness::Expired,
+                    enforcement_active: true,
+                    install_permitted: false,
+                    reason: Some("freshness statement expired or snapshot mismatch".into()),
+                });
+            }
         }
 
         Ok(FreshnessEvaluation {
@@ -280,15 +301,26 @@ impl UpdateTrust {
     pub fn verify_target_artifact(
         &self,
         root_kind: TufRootKind,
-        targets: &TargetsMetadata,
+        targets_meta: &SignedMetadata<TargetsMetadata>,
         target_path: &str,
         artifact_bytes: &[u8],
         dsse: Option<&DsseEnvelope>,
     ) -> Result<TargetDescriptor, UpdateError> {
-        let Some(descriptor) = targets.targets.get(target_path) else {
+        let root = self.root_for_kind(root_kind)?;
+        let signing_role = match targets_meta.signed.role {
+            TufRole::Binaries | TufRole::Targets => targets_meta.signed.role,
+            other => {
+                return Err(UpdateError::UnauthorizedRoot(format!(
+                    "targets metadata role {other:?} cannot carry target descriptors"
+                )));
+            }
+        };
+        verify_role_signatures(root, signing_role, targets_meta)?;
+
+        let Some(descriptor) = targets_meta.signed.targets.get(target_path) else {
             return Err(UpdateError::TargetNotFound(target_path.to_owned()));
         };
-        enforce_root_separation(root_kind, targets.role, descriptor)?;
+        enforce_root_separation(root_kind, targets_meta.signed.role, descriptor)?;
 
         let actual_len = u64::try_from(artifact_bytes.len()).unwrap_or(u64::MAX);
         if actual_len != descriptor.length {
@@ -306,9 +338,9 @@ impl UpdateTrust {
         }
 
         if let Some(env) = dsse {
-            let root = self.root_for_kind(root_kind)?;
             let (keys, threshold) = collect_role_keys(root, descriptor.role)?;
-            let _ = verify_dsse_envelope(env, &keys, threshold)?;
+            let payload_bytes = verify_dsse_envelope(env, &keys, threshold)?;
+            verify_dsse_binding(&payload_bytes, target_path, descriptor, artifact_bytes)?;
         }
         Ok(descriptor.clone())
     }
@@ -337,6 +369,11 @@ impl UpdateTrust {
                 role: format!("{kind:?}::root"),
                 expired_at: root.expires.to_string(),
             });
+        }
+        if targets.signed.role != TufRole::Targets {
+            return Err(UpdateError::UnauthorizedRoot(
+                "top-level targets metadata must carry TufRole::Targets".into(),
+            ));
         }
 
         verify_role_signatures(root, TufRole::Timestamp, timestamp)?;
@@ -368,8 +405,10 @@ impl UpdateTrust {
         )?;
 
         let snapshot_bytes = canonical_json(&snapshot.signed)?;
+        let snapshot_len = u64::try_from(snapshot_bytes.len()).unwrap_or(u64::MAX);
         let snapshot_sha = canonical_sha256(&snapshot_bytes);
         if timestamp.signed.snapshot.version != snapshot.signed.version
+            || timestamp.signed.snapshot.length != snapshot_len
             || timestamp.signed.snapshot.sha256 != snapshot_sha
         {
             return Err(UpdateError::MixAndMatchDetected(
@@ -390,4 +429,29 @@ impl UpdateTrust {
         self.trusted_targets
             .insert((kind, TufRole::Targets), targets_ver);
     }
+}
+
+fn verify_dsse_binding(
+    payload_bytes: &[u8],
+    target_path: &str,
+    descriptor: &TargetDescriptor,
+    artifact_bytes: &[u8],
+) -> Result<(), UpdateError> {
+    if let Ok(stmt) = serde_json::from_slice::<DsseTargetStatement>(payload_bytes) {
+        if stmt.target_path != target_path
+            || stmt.sha256 != descriptor.sha256
+            || stmt.length != descriptor.length
+        {
+            return Err(UpdateError::MixAndMatchDetected(
+                "DSSE target statement does not match target descriptor".into(),
+            ));
+        }
+        return Ok(());
+    }
+    if payload_bytes != artifact_bytes {
+        return Err(UpdateError::MixAndMatchDetected(
+            "DSSE payload bytes do not match target artifact".into(),
+        ));
+    }
+    Ok(())
 }

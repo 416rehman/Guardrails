@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use grdr_crypto::AeadKey;
+use grdr_crypto::{AeadKey, fill_random};
 use grdr_model::{InstallProfile, SessionLabel};
 use jiff::Timestamp;
 
@@ -210,9 +210,11 @@ fn broker_enforces_containment_gating_ceiling_intersection_and_leases() {
 #[test]
 fn vault_two_layer_pseudonyms_quorum_and_90_day_deferral_cap() {
     let now = ts(1_760_000_000);
-    let device_key = [0x11u8; 32];
-    let org_key = [0x22u8; 32];
-    let aead_key = AeadKey::from_bytes([0x33u8; 32]);
+    let mut device_key = [0u8; 32];
+    let mut org_key = [0u8; 32];
+    fill_random(&mut device_key).expect("device key entropy");
+    fill_random(&mut org_key).expect("org key entropy");
+    let aead_key = AeadKey::generate().expect("vault aead key");
 
     let mut vault = IdentityVault::new("org_01", org_key, aead_key, 1, VaultPolicy::default());
     let (dev_prn, org_prn) = vault
@@ -290,4 +292,180 @@ fn vault_two_layer_pseudonyms_quorum_and_90_day_deferral_cap() {
     assert_eq!(report.requested_count, 1);
     assert_eq!(report.approved_count, 1);
     assert_eq!(report.legal_hold_deferred_count, 1);
+}
+
+#[test]
+fn rejects_empty_ceiling_prefix_bypass_role_violation_and_debug_leakage() {
+    let now = ts(1_760_000_000);
+    // Disjoint Ceiling::intersect must never produce an empty wildcard account set.
+    let mut c1 = sample_ceiling();
+    c1.allowed_resource_prefixes = vec!["arn:aws:iam::123:role/readonly".into()];
+    let mut c2 = sample_ceiling();
+    c2.allowed_accounts.clear();
+    c2.allowed_accounts.insert("acct-other".into());
+    c2.allowed_resource_prefixes = vec!["arn:aws:iam::123:role/readonly-extra".into()];
+    let disjoint = c1.intersect(&c2);
+    assert!(!disjoint.permits(
+        CredentialClass::Cloud,
+        "acct-dev",
+        "sts:AssumeRole",
+        "arn:aws:iam::123:role/readonly",
+        1,
+    ));
+    assert!(!disjoint.permits(
+        CredentialClass::Cloud,
+        "acct-other",
+        "sts:AssumeRole",
+        "arn:aws:iam::123:role/readonly-extra",
+        1,
+    ));
+
+    // Resource prefix segment boundary must block `role/dev-admin` under `role/dev`.
+    let mut seg_ceiling = sample_ceiling();
+    seg_ceiling.allowed_resource_prefixes = vec!["https://forge.test/org/app".into()];
+    assert!(seg_ceiling.permits(
+        CredentialClass::Forge,
+        "acct-dev",
+        "git:push",
+        "https://forge.test/org/app/pulls",
+        1,
+    ));
+    assert!(!seg_ceiling.permits(
+        CredentialClass::Forge,
+        "acct-dev",
+        "git:push",
+        "https://forge.test/org/app-evil",
+        1,
+    ));
+
+    // SPIFFE segments reject path separators and control characters.
+    assert!(SpiffeId::agent_instance("org1/evil", "agi_1").is_err());
+    assert!(SpiffeId::agent_instance("org1", "agi_1\n").is_err());
+
+    // Unrevocable upstream with min TTL > effective TTL must fail closed.
+    let mut broker = CredentialBroker::new(BrokerPolicy::default());
+    let spiffe = SpiffeId::agent_instance("org1", "agi_1").expect("spiffe");
+    let unrevocable = CredentialBinding {
+        credential_id: "crd_unrev".into(),
+        class: CredentialClass::Cloud,
+        account_id: "acct-dev".into(),
+        allowed_programs: vec!["grdr-cred".into()],
+        allowed_hosts: vec!["sts.amazonaws.com".into()],
+        upstream_revocable: false,
+        upstream_min_ttl_secs: 600,
+        phantom_prefix: "TOK_".into(),
+    };
+    let req_short_ttl = BrokerRequest {
+        session_id: "ses_ttl".into(),
+        instance_spiffe_id: spiffe,
+        device_id: "dev_1".into(),
+        caller_program: "grdr-cred".into(),
+        requested_class: CredentialClass::Cloud,
+        requested_action: "sts:AssumeRole".into(),
+        requested_resource: "arn:aws:iam::123:role/dev".into(),
+        requested_mode: CredentialMode::Release,
+        requested_ttl_secs: 300,
+        session_remaining_secs: 300,
+        attribution_grade: 3,
+        has_session_container: true,
+        containment: ContainmentStatus::Contained,
+        lifecycle: AgentLifecycle::Active,
+        ceiling: Some(sample_ceiling()),
+        act_chain_depth: 1,
+        dpop_jkt: None,
+    };
+    assert!(matches!(
+        broker.request_credential(&unrevocable, &req_short_ttl, now),
+        Err(IdentityError::ReleaseUnsupportedByUpstream)
+    ));
+
+    // Random release tokens must not repeat across identical requests.
+    let revocable = CredentialBinding {
+        upstream_revocable: true,
+        ..unrevocable
+    };
+    let tok1 = broker
+        .request_credential(&revocable, &req_short_ttl, now)
+        .expect("tok1");
+    let tok2 = broker
+        .request_credential(&revocable, &req_short_ttl, now)
+        .expect("tok2");
+    assert_ne!(tok1.token_value, tok2.token_value);
+
+    // Enforces hard max_retained_leases cap and preserves rate window counts after revocation.
+    let mut capped_broker = CredentialBroker::new(BrokerPolicy {
+        max_retained_leases: 2,
+        max_leases_per_window: 2,
+        ..BrokerPolicy::default()
+    });
+    let mut r_cap = req_short_ttl.clone();
+    r_cap.session_id = "cap_1".into();
+    let l1 = capped_broker
+        .request_credential(&revocable, &r_cap, now)
+        .expect("l1");
+    assert_eq!(capped_broker.revoke_by_session("cap_1"), 1);
+    let _ = capped_broker
+        .request_credential(&revocable, &r_cap, now)
+        .expect("l2");
+    assert!(matches!(
+        capped_broker.request_credential(&revocable, &r_cap, now),
+        Err(IdentityError::RateLimitExceeded(_))
+    ));
+    let mut r_cap2 = req_short_ttl;
+    r_cap2.session_id = "cap_2".into();
+    let _ = capped_broker
+        .request_credential(&revocable, &r_cap2, now)
+        .expect("l3");
+    // Wait until cap_1 lease stays active? Actually cap_1 revoked, so cap_2 replaced it.
+    // Fill remaining active slot so 2 active leases prevent 3rd session insertion.
+    r_cap2.session_id = "cap_3".into();
+    assert!(
+        capped_broker
+            .request_credential(&revocable, &r_cap2, now)
+            .is_err()
+    );
+    let _ = l1;
+
+    // Vault enforces PrivacyOfficer quorum role and redacts sensitive fields in Debug.
+    let mut device_key = [0u8; 32];
+    let mut org_key = [0u8; 32];
+    fill_random(&mut device_key).expect("device key");
+    fill_random(&mut org_key).expect("org key");
+    let mut vault = IdentityVault::new(
+        "org_01",
+        org_key,
+        AeadKey::generate().expect("aead"),
+        1,
+        VaultPolicy {
+            require_works_council_coapproval: true,
+            ..VaultPolicy::default()
+        },
+    );
+    let (_dev, org_prn) = vault
+        .register_subject(&device_key, "sensitive-bob@example.test", "SecretBob")
+        .expect("register");
+    let vault_debug = format!("{vault:?}");
+    assert!(!vault_debug.contains("sensitive-bob@example.test"));
+    assert!(!vault_debug.contains("SecretBob"));
+
+    vault
+        .request_reidentification("req_wc", "acc_req", &org_prn, "audit", "inc_9", now)
+        .expect("req");
+    vault
+        .approve_reidentification("req_wc", "acc_po", ApproverRole::PrivacyOfficer, now)
+        .expect("po ok");
+    assert!(matches!(
+        vault.approve_reidentification("req_wc", "acc_owner", ApproverRole::OrgOwner, now),
+        Err(IdentityError::InsufficientApproverRole)
+    ));
+    vault
+        .approve_reidentification("req_wc", "acc_wc", ApproverRole::WorksCouncilDelegate, now)
+        .expect("wc ok");
+    vault
+        .record_subject_disclosure("req_wc", now)
+        .expect("disclose ok");
+    assert!(matches!(
+        vault.defer_subject_notification("req_wc", ts(now.as_second() + 86_400), now),
+        Err(IdentityError::VaultState(_))
+    ));
 }

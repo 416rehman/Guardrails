@@ -12,6 +12,12 @@ use crate::IntegrationError;
 
 const MAX_INERT_TEXT_CHARS: usize = 512;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SaasParseLimits {
+    pub max_payload_bytes: usize,
+    pub max_events_per_page: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnthropicActor {
     #[serde(rename = "type")]
@@ -91,6 +97,15 @@ pub struct RateBudgetTracker {
     consumed: u32,
 }
 
+impl Default for SaasParseLimits {
+    fn default() -> Self {
+        Self {
+            max_payload_bytes: 4 * 1024 * 1024,
+            max_events_per_page: 1_000,
+        }
+    }
+}
+
 impl RateBudgetTracker {
     #[must_use]
     pub fn new(limit_per_window: u32, window_secs: i64, now: Timestamp) -> Self {
@@ -103,6 +118,11 @@ impl RateBudgetTracker {
     }
 
     pub fn try_acquire(&mut self, units: u32, now: Timestamp) -> Result<u32, IntegrationError> {
+        if self.window_secs <= 0 {
+            return Err(IntegrationError::MalformedPayload(
+                "rate budget window_secs must be positive".into(),
+            ));
+        }
         let elapsed = now
             .as_second()
             .saturating_sub(self.window_started_at.as_second());
@@ -110,7 +130,10 @@ impl RateBudgetTracker {
             self.window_started_at = now;
             self.consumed = 0;
         }
-        let next = self.consumed.saturating_add(units);
+        let next = self
+            .consumed
+            .checked_add(units)
+            .ok_or(IntegrationError::RateBudgetExceeded)?;
         if next > self.limit_per_window {
             return Err(IntegrationError::RateBudgetExceeded);
         }
@@ -144,9 +167,37 @@ pub fn parse_anthropic_compliance_page(
     default_device_id: &str,
     default_device_name: &str,
 ) -> Result<Vec<ActionAttempt>, IntegrationError> {
+    parse_anthropic_compliance_page_with_limits(
+        json_bytes,
+        default_device_id,
+        default_device_name,
+        SaasParseLimits::default(),
+    )
+}
+
+pub fn parse_anthropic_compliance_page_with_limits(
+    json_bytes: &[u8],
+    default_device_id: &str,
+    default_device_name: &str,
+    limits: SaasParseLimits,
+) -> Result<Vec<ActionAttempt>, IntegrationError> {
+    if json_bytes.len() > limits.max_payload_bytes {
+        return Err(IntegrationError::MalformedPayload(format!(
+            "Anthropic payload length {} exceeds limit {}",
+            json_bytes.len(),
+            limits.max_payload_bytes
+        )));
+    }
     let page: AnthropicActivityPage = serde_json::from_slice(json_bytes).map_err(|e| {
         IntegrationError::MalformedPayload(format!("Anthropic compliance JSON error: {e}"))
     })?;
+    if page.data.len() > limits.max_events_per_page {
+        return Err(IntegrationError::MalformedPayload(format!(
+            "Anthropic page event count {} exceeds limit {}",
+            page.data.len(),
+            limits.max_events_per_page
+        )));
+    }
 
     let mut attempts = Vec::with_capacity(page.data.len());
     for event in page.data {
@@ -183,9 +234,37 @@ pub fn parse_openai_compliance_page(
     default_device_id: &str,
     default_device_name: &str,
 ) -> Result<Vec<ActionAttempt>, IntegrationError> {
+    parse_openai_compliance_page_with_limits(
+        json_bytes,
+        default_device_id,
+        default_device_name,
+        SaasParseLimits::default(),
+    )
+}
+
+pub fn parse_openai_compliance_page_with_limits(
+    json_bytes: &[u8],
+    default_device_id: &str,
+    default_device_name: &str,
+    limits: SaasParseLimits,
+) -> Result<Vec<ActionAttempt>, IntegrationError> {
+    if json_bytes.len() > limits.max_payload_bytes {
+        return Err(IntegrationError::MalformedPayload(format!(
+            "OpenAI payload length {} exceeds limit {}",
+            json_bytes.len(),
+            limits.max_payload_bytes
+        )));
+    }
     let page: OpenAiCompliancePage = serde_json::from_slice(json_bytes).map_err(|e| {
         IntegrationError::MalformedPayload(format!("OpenAI compliance JSON error: {e}"))
     })?;
+    if page.data.len() > limits.max_events_per_page {
+        return Err(IntegrationError::MalformedPayload(format!(
+            "OpenAI page event count {} exceeds limit {}",
+            page.data.len(),
+            limits.max_events_per_page
+        )));
+    }
 
     let mut attempts = Vec::with_capacity(page.data.len());
     for event in page.data {
@@ -281,9 +360,17 @@ fn is_bidi_or_control(c: char) -> bool {
     c.is_control()
         || matches!(
             c,
-            '\u{200E}'
-                | '\u{200F}'
-                | '\u{202A}'..='\u{202E}'
-                | '\u{2066}'..='\u{2069}'
+            '\u{00AD}'
+                | '\u{034F}'
+                | '\u{061C}'
+                | '\u{115F}'..='\u{1160}'
+                | '\u{17B4}'..='\u{17B5}'
+                | '\u{180E}'
+                | '\u{200B}'..='\u{200F}'
+                | '\u{2028}'..='\u{202F}'
+                | '\u{2060}'..='\u{206F}'
+                | '\u{FEFF}'
+                | '\u{FFF9}'..='\u{FFFB}'
+                | '\u{E0000}'..='\u{E007F}'
         )
 }

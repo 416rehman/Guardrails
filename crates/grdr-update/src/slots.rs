@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use grdr_model::TrustedKeyInfo;
 use jiff::Timestamp;
@@ -271,45 +271,79 @@ impl SlotState {
         previous_sha256: impl Into<String>,
         reason: impl Into<String>,
     ) -> Result<Self, UpdateError> {
-        let (failed_slot, security_floor) = match self {
+        let previous_version = previous_version.into();
+        let previous_sha256 = previous_sha256.into();
+        match self {
             Self::Active {
                 slot,
+                generation: active_generation,
                 security_floor,
                 ..
-            } => (slot, security_floor),
+            } => {
+                if previous_version.trim().is_empty() || previous_sha256.trim().is_empty() {
+                    return Err(UpdateError::InvalidSlotTransition(
+                        "rollback target version and sha256 must be non-empty".into(),
+                    ));
+                }
+                if previous_generation < security_floor {
+                    return Err(UpdateError::SecurityFloorViolation {
+                        found: previous_generation,
+                        floor: security_floor,
+                    });
+                }
+                if previous_generation > active_generation {
+                    return Err(UpdateError::InvalidSlotTransition(
+                        "rollback generation cannot exceed active generation".into(),
+                    ));
+                }
+                Ok(Self::RolledBack {
+                    active: slot.other(),
+                    failed_slot: slot,
+                    active_version: previous_version,
+                    active_generation: previous_generation,
+                    active_sha256: previous_sha256,
+                    security_floor,
+                    reason: reason.into(),
+                })
+            }
             Self::Staging {
+                active,
+                active_version,
+                active_generation,
+                active_sha256,
                 staging,
                 security_floor,
                 ..
-            } => (staging, security_floor),
-            Self::PendingActivation {
-                staged,
+            }
+            | Self::PendingActivation {
+                active,
+                active_version,
+                active_generation,
+                active_sha256,
+                staged: staging,
                 security_floor,
                 ..
-            } => (staged, security_floor),
-            Self::RolledBack { .. } => {
-                return Err(UpdateError::InvalidSlotTransition(
-                    "slot is already in RolledBack state".into(),
-                ));
+            } => {
+                if active_generation < security_floor {
+                    return Err(UpdateError::SecurityFloorViolation {
+                        found: active_generation,
+                        floor: security_floor,
+                    });
+                }
+                Ok(Self::RolledBack {
+                    active,
+                    failed_slot: staging,
+                    active_version,
+                    active_generation,
+                    active_sha256,
+                    security_floor,
+                    reason: reason.into(),
+                })
             }
-        };
-
-        if previous_generation < security_floor {
-            return Err(UpdateError::SecurityFloorViolation {
-                found: previous_generation,
-                floor: security_floor,
-            });
+            Self::RolledBack { .. } => Err(UpdateError::InvalidSlotTransition(
+                "slot is already in RolledBack state".into(),
+            )),
         }
-
-        Ok(Self::RolledBack {
-            active: failed_slot.other(),
-            failed_slot,
-            active_version: previous_version.into(),
-            active_generation: previous_generation,
-            active_sha256: previous_sha256.into(),
-            security_floor,
-            reason: reason.into(),
-        })
     }
 }
 
@@ -348,10 +382,28 @@ pub fn verify_airgap_bundle(
 
     let mut artifact_map: BTreeMap<&str, &[u8]> = BTreeMap::new();
     for item in artifacts {
-        artifact_map.insert(item.path.as_str(), item.bytes.as_slice());
+        validate_relative_bundle_path(&item.path)?;
+        if artifact_map
+            .insert(item.path.as_str(), item.bytes.as_slice())
+            .is_some()
+        {
+            return Err(UpdateError::MalformedMetadata(format!(
+                "duplicate artifact path `{}` in air-gap bundle",
+                item.path
+            )));
+        }
     }
 
+    let mut seen_manifest_paths = BTreeSet::new();
     for entry in &manifest.entries {
+        validate_relative_bundle_path(&entry.path)?;
+        if !seen_manifest_paths.insert(entry.path.as_str()) {
+            return Err(UpdateError::MalformedMetadata(format!(
+                "duplicate manifest entry path `{}`",
+                entry.path
+            )));
+        }
+
         if let Some(halt) = manifest
             .halted_releases
             .iter()
@@ -388,10 +440,38 @@ pub fn verify_airgap_bundle(
         }
     }
 
+    if artifact_map.len() != seen_manifest_paths.len() {
+        return Err(UpdateError::ArtifactIntegrity {
+            target: manifest.bundle_id,
+            detail: "air-gap bundle contains unmanifested artifacts".into(),
+        });
+    }
+
     Ok(AirgapVerificationOutcome {
         bundle_id: manifest.bundle_id,
         bundle_version: manifest.bundle_version,
         verified_entries: manifest.entries.len(),
         operator_id: operator_id.clone(),
     })
+}
+
+fn validate_relative_bundle_path(path: &str) -> Result<(), UpdateError> {
+    if path.is_empty()
+        || path.starts_with('/')
+        || path.contains('\\')
+        || path.contains(':')
+        || path.chars().any(char::is_control)
+    {
+        return Err(UpdateError::MalformedMetadata(format!(
+            "invalid air-gap bundle path `{path}`"
+        )));
+    }
+    for segment in path.split('/') {
+        if segment.is_empty() || segment == "." || segment == ".." {
+            return Err(UpdateError::MalformedMetadata(format!(
+                "path traversal or empty segment in air-gap bundle path `{path}`"
+            )));
+        }
+    }
+    Ok(())
 }

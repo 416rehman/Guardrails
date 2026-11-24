@@ -114,10 +114,10 @@ impl SpiffeId {
             && path
                 .split('/')
                 .skip(1)
-                .any(|seg| seg.is_empty() || seg == "." || seg == "..")
+                .any(|seg| !is_valid_spiffe_segment(seg))
         {
             return Err(IdentityError::InvalidSpiffeId(
-                "path segments must not be empty, `.`, or `..`".into(),
+                "path segments must use [A-Za-z0-9._-] and cannot be empty, `.`, or `..`".into(),
             ));
         }
 
@@ -129,12 +129,17 @@ impl SpiffeId {
     }
 
     pub fn agent_instance(org_id: &str, agi_id: &str) -> Result<Self, IdentityError> {
+        validate_single_segment(org_id, "org_id")?;
+        validate_single_segment(agi_id, "agi_id")?;
         let domain = format!("org-{}", org_id.to_ascii_lowercase());
         let raw = format!("{SPIFFE_SCHEME}{domain}/agi/{agi_id}");
         Self::parse(&raw)
     }
 
     pub fn session(org_id: &str, agi_id: &str, ses_id: &str) -> Result<Self, IdentityError> {
+        validate_single_segment(org_id, "org_id")?;
+        validate_single_segment(agi_id, "agi_id")?;
+        validate_single_segment(ses_id, "ses_id")?;
         let domain = format!("org-{}", org_id.to_ascii_lowercase());
         let raw = format!("{SPIFFE_SCHEME}{domain}/agi/{agi_id}/ses/{ses_id}");
         Self::parse(&raw)
@@ -162,21 +167,42 @@ pub fn evaluate_attestation_proof(
     expected_program_identity: &str,
     device_key_enrolled: bool,
 ) -> IdentityProof {
-    if attestation.profile != InstallProfile::Protected {
+    if attestation.profile != InstallProfile::Protected || !device_key_enrolled {
         return IdentityProof::Observed;
     }
-    if !device_key_enrolled {
-        return IdentityProof::Observed;
-    }
-    if attestation.program_identity != expected_program_identity {
+    if expected_program_identity.trim().is_empty()
+        || attestation.program_identity != expected_program_identity
+    {
         return IdentityProof::Observed;
     }
     let has_container = attestation
         .evidence
         .contains(&AttestationEvidence::SessionContainer);
-    if has_container && attestation.container_ref.is_some() {
+    let valid_container_ref = attestation
+        .container_ref
+        .as_deref()
+        .is_some_and(|c| !c.trim().is_empty());
+    if has_container && valid_container_ref {
         IdentityProof::Attested
     } else {
         IdentityProof::Observed
     }
+}
+
+fn is_valid_spiffe_segment(seg: &str) -> bool {
+    !seg.is_empty()
+        && seg != "."
+        && seg != ".."
+        && seg
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
+fn validate_single_segment(value: &str, label: &str) -> Result<(), IdentityError> {
+    if value.contains('/') || !is_valid_spiffe_segment(value) {
+        return Err(IdentityError::InvalidSpiffeId(format!(
+            "invalid {label} segment `{value}`"
+        )));
+    }
+    Ok(())
 }

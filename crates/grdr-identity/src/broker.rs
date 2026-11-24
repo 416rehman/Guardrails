@@ -8,145 +8,21 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64_URL;
 use grdr_crypto::{fill_random, sha256_hex};
 use grdr_model::SessionLabel;
 use jiff::Timestamp;
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::IdentityError;
-use crate::spiffe::{AgentLifecycle, SpiffeId};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CredentialClass {
-    Model,
-    Cloud,
-    Forge,
-    Ssh,
-    Publish,
-    Production,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CredentialMode {
-    Inject,
-    Release,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ContainmentStatus {
-    Contained,
-    Uncontained,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum LeaseState {
-    Active,
-    Revoked,
-    Expired,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BrokerPolicy {
-    pub max_release_ttl_secs: i64,
-    pub max_leases_per_window: u32,
-    pub rate_window_secs: i64,
-    pub min_attribution_grade: u8,
-    pub enforce_containment_for_release: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Ceiling {
-    pub allowed_classes: BTreeSet<CredentialClass>,
-    pub allowed_accounts: BTreeSet<String>,
-    pub allowed_actions: BTreeSet<String>,
-    pub allowed_resource_prefixes: Vec<String>,
-    pub max_ttl_secs: i64,
-    pub max_depth: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CredentialBinding {
-    pub credential_id: String,
-    pub class: CredentialClass,
-    pub account_id: String,
-    pub allowed_programs: Vec<String>,
-    pub allowed_hosts: Vec<String>,
-    pub upstream_revocable: bool,
-    pub upstream_min_ttl_secs: i64,
-    pub phantom_prefix: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BrokerRequest {
-    pub session_id: String,
-    pub instance_spiffe_id: SpiffeId,
-    pub device_id: String,
-    pub caller_program: String,
-    pub requested_class: CredentialClass,
-    pub requested_action: String,
-    pub requested_resource: String,
-    pub requested_mode: CredentialMode,
-    pub requested_ttl_secs: i64,
-    pub session_remaining_secs: i64,
-    pub attribution_grade: u8,
-    pub has_session_container: bool,
-    pub containment: ContainmentStatus,
-    pub lifecycle: AgentLifecycle,
-    pub ceiling: Option<Ceiling>,
-    pub act_chain_depth: u32,
-    pub dpop_jkt: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LeaseRecord {
-    pub lease_id: String,
-    pub credential_id: String,
-    pub session_id: String,
-    pub instance_spiffe_id: String,
-    pub device_id: String,
-    pub mode: CredentialMode,
-    pub scope_digest: String,
-    pub issued_at: Timestamp,
-    pub expires_at: Timestamp,
-    pub state: LeaseState,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BrokeredToken {
-    pub jti: String,
-    pub lease_id: String,
-    pub mode: CredentialMode,
-    pub token_value: String,
-    pub non_transferable: bool,
-    pub bound_session_id: String,
-    pub bound_instance_spiffe_id: String,
-    pub bound_device_id: String,
-    pub dpop_jkt: Option<String>,
-    pub scope_digest: String,
-    pub issued_at: Timestamp,
-    pub expires_at: Timestamp,
-    pub session_label: Option<SessionLabel>,
-}
+use crate::broker_types::{
+    BrokerPolicy, BrokerRequest, BrokeredToken, Ceiling, ContainmentStatus, CredentialBinding,
+    CredentialClass, CredentialMode, LeaseRecord, LeaseState,
+};
+use crate::spiffe::AgentLifecycle;
 
 #[derive(Debug, Clone)]
 pub struct CredentialBroker {
     policy: BrokerPolicy,
     leases: BTreeMap<String, LeaseRecord>,
+    recent_issuances: BTreeMap<String, Vec<Timestamp>>,
     sequence: u64,
-}
-
-impl Default for BrokerPolicy {
-    fn default() -> Self {
-        Self {
-            max_release_ttl_secs: 900,
-            max_leases_per_window: 30,
-            rate_window_secs: 300,
-            min_attribution_grade: 3,
-            enforce_containment_for_release: true,
-        }
-    }
 }
 
 impl Ceiling {
@@ -196,7 +72,7 @@ impl Ceiling {
         if !self.allowed_classes.contains(&class) {
             return false;
         }
-        if !self.allowed_accounts.is_empty() && !self.allowed_accounts.contains(account_id) {
+        if !self.allowed_accounts.contains(account_id) {
             return false;
         }
         if !self.allowed_actions.contains(action) {
@@ -204,7 +80,7 @@ impl Ceiling {
         }
         self.allowed_resource_prefixes
             .iter()
-            .any(|prefix| resource == prefix || resource.starts_with(prefix))
+            .any(|prefix| resource_matches_prefix(resource, prefix))
     }
 }
 
@@ -214,6 +90,7 @@ impl CredentialBroker {
         Self {
             policy,
             leases: BTreeMap::new(),
+            recent_issuances: BTreeMap::new(),
             sequence: 0,
         }
     }
@@ -261,20 +138,22 @@ impl CredentialBroker {
             )));
         }
 
-        self.enforce_containment(binding, req)?;
-
-        if req.lifecycle != AgentLifecycle::Active {
-            return Err(IdentityError::InstanceNotActive(req.lifecycle));
-        }
-
-        self.enforce_rate_limit(&req.session_id, now)?;
-
         let effective_ttl = compute_effective_ttl(
             req.requested_ttl_secs,
             ceiling.max_ttl_secs,
             self.policy.max_release_ttl_secs,
             req.session_remaining_secs,
         )?;
+        self.enforce_containment(binding, req, effective_ttl)?;
+
+        if req.lifecycle != AgentLifecycle::Active {
+            return Err(IdentityError::InstanceNotActive(req.lifecycle));
+        }
+        self.enforce_rate_limit(&req.session_id, now)?;
+        self.prune_inactive_leases(now);
+        if self.leases.len() >= self.policy.max_retained_leases {
+            return Err(IdentityError::RateLimitExceeded(req.session_id.clone()));
+        }
 
         self.sequence = self.sequence.saturating_add(1);
         let jti = format!("jti_{}", Uuid::now_v7());
@@ -296,20 +175,14 @@ impl CredentialBroker {
             })?;
 
         let (token_value, session_label) = match req.requested_mode {
-            CredentialMode::Inject => {
-                let phantom = mint_phantom_token(&binding.phantom_prefix)?;
-                (phantom, None)
-            }
-            CredentialMode::Release => {
-                let release_tok = mint_release_token(
-                    &lease_id,
-                    &jti,
-                    &req.session_id,
-                    req.instance_spiffe_id.as_str(),
-                    &scope_digest,
-                );
-                (release_tok, Some(SessionLabel::CredentialAccessed))
-            }
+            CredentialMode::Inject => (
+                mint_token_with_entropy::<20>(&binding.phantom_prefix)?,
+                None,
+            ),
+            CredentialMode::Release => (
+                mint_token_with_entropy::<32>("grdr_rel_")?,
+                Some(SessionLabel::CredentialAccessed),
+            ),
         };
 
         let lease = LeaseRecord {
@@ -325,6 +198,10 @@ impl CredentialBroker {
             state: LeaseState::Active,
         };
         self.leases.insert(lease_id.clone(), lease);
+        self.recent_issuances
+            .entry(req.session_id.clone())
+            .or_default()
+            .push(now);
 
         Ok(BrokeredToken {
             jti,
@@ -382,6 +259,7 @@ impl CredentialBroker {
         &self,
         binding: &CredentialBinding,
         req: &BrokerRequest,
+        effective_ttl: i64,
     ) -> Result<(), IdentityError> {
         if req.requested_class == CredentialClass::Production
             && req.containment == ContainmentStatus::Uncontained
@@ -395,42 +273,82 @@ impl CredentialBroker {
             {
                 return Err(IdentityError::UncontainedReleaseRefused);
             }
-            if !binding.upstream_revocable
-                && binding.upstream_min_ttl_secs > self.policy.max_release_ttl_secs
-            {
+            if !binding.upstream_revocable && binding.upstream_min_ttl_secs > effective_ttl {
                 return Err(IdentityError::ReleaseUnsupportedByUpstream);
             }
         }
         Ok(())
     }
 
-    fn enforce_rate_limit(&self, session_id: &str, now: Timestamp) -> Result<(), IdentityError> {
+    fn enforce_rate_limit(
+        &mut self,
+        session_id: &str,
+        now: Timestamp,
+    ) -> Result<(), IdentityError> {
         let cutoff = now.as_second().saturating_sub(self.policy.rate_window_secs);
-        let count = self
-            .leases
-            .values()
-            .filter(|l| l.session_id == session_id && l.issued_at.as_second() >= cutoff)
-            .count();
-        let count_u32 = u32::try_from(count).unwrap_or(u32::MAX);
+        if self.recent_issuances.len() >= self.policy.max_retained_leases {
+            self.recent_issuances.retain(|_, times| {
+                times.retain(|ts| ts.as_second() >= cutoff);
+                !times.is_empty()
+            });
+            if !self.recent_issuances.contains_key(session_id)
+                && self.recent_issuances.len() >= self.policy.max_retained_leases
+            {
+                return Err(IdentityError::RateLimitExceeded(session_id.to_owned()));
+            }
+        }
+        let entries = self
+            .recent_issuances
+            .entry(session_id.to_owned())
+            .or_default();
+        entries.retain(|ts| ts.as_second() >= cutoff);
+        let count_u32 = u32::try_from(entries.len()).unwrap_or(u32::MAX);
         if count_u32 >= self.policy.max_leases_per_window {
             return Err(IdentityError::RateLimitExceeded(session_id.to_owned()));
         }
         Ok(())
     }
+
+    fn prune_inactive_leases(&mut self, now: Timestamp) {
+        if self.leases.len() < self.policy.max_retained_leases {
+            return;
+        }
+        self.leases
+            .retain(|_, lease| lease.state == LeaseState::Active && lease.expires_at > now);
+    }
+}
+
+fn resource_matches_prefix(resource: &str, prefix: &str) -> bool {
+    if prefix.is_empty() || resource.is_empty() {
+        return false;
+    }
+    if resource == prefix {
+        return true;
+    }
+    let Some(rest) = resource.strip_prefix(prefix) else {
+        return false;
+    };
+    prefix.ends_with(['/', ':', '-']) || rest.starts_with(['/', ':', '?'])
 }
 
 fn intersect_prefixes(a: &[String], b: &[String]) -> Vec<String> {
-    let mut out = Vec::new();
+    let mut unique = BTreeSet::new();
     for pa in a {
+        if pa.is_empty() {
+            continue;
+        }
         for pb in b {
-            if pb.starts_with(pa) {
-                out.push(pb.clone());
-            } else if pa.starts_with(pb) {
-                out.push(pa.clone());
+            if pb.is_empty() {
+                continue;
+            }
+            if resource_matches_prefix(pb, pa) {
+                unique.insert(pb.clone());
+            } else if resource_matches_prefix(pa, pb) {
+                unique.insert(pa.clone());
             }
         }
     }
-    out
+    unique.into_iter().collect()
 }
 
 fn compute_effective_ttl(
@@ -451,21 +369,8 @@ fn compute_effective_ttl(
     Ok(capped)
 }
 
-fn mint_phantom_token(prefix: &str) -> Result<String, IdentityError> {
-    let mut entropy = [0u8; 20];
+fn mint_token_with_entropy<const N: usize>(prefix: &str) -> Result<String, IdentityError> {
+    let mut entropy = [0u8; N];
     fill_random(&mut entropy).map_err(|e| IdentityError::VaultState(e.to_string()))?;
     Ok(format!("{prefix}{}", B64_URL.encode(entropy)))
-}
-
-fn mint_release_token(
-    lease_id: &str,
-    jti: &str,
-    session_id: &str,
-    instance_spiffe_id: &str,
-    scope_digest: &str,
-) -> String {
-    let digest = sha256_hex(
-        format!("{lease_id}|{jti}|{session_id}|{instance_spiffe_id}|{scope_digest}").as_bytes(),
-    );
-    format!("grdr_rel_{digest}")
 }

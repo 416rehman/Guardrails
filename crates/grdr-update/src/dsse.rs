@@ -12,6 +12,12 @@ use serde::{Deserialize, Serialize};
 use crate::UpdateError;
 
 const DSSE_SIG_DOMAIN: &str = "dsse.v1";
+const DEFAULT_MAX_DSSE_PAYLOAD_BYTES: usize = 64 * 1024 * 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DsseLimits {
+    pub max_payload_bytes: usize,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DsseSignature {
@@ -27,11 +33,48 @@ pub struct DsseEnvelope {
     pub signatures: Vec<DsseSignature>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DsseTargetStatement {
+    pub target_path: String,
+    pub sha256: String,
+    pub length: u64,
+}
+
+impl Default for DsseLimits {
+    fn default() -> Self {
+        Self {
+            max_payload_bytes: DEFAULT_MAX_DSSE_PAYLOAD_BYTES,
+        }
+    }
+}
+
 impl DsseEnvelope {
     pub fn decode_payload(&self) -> Result<Vec<u8>, UpdateError> {
-        B64.decode(self.payload.trim()).map_err(|e| {
+        self.decode_payload_with_limits(&DsseLimits::default())
+    }
+
+    pub fn decode_payload_with_limits(&self, limits: &DsseLimits) -> Result<Vec<u8>, UpdateError> {
+        let trimmed = self.payload.trim();
+        // Base64 expands 3 bytes into 4 chars; enforce pre-decode bound before allocating.
+        let max_encoded = limits.max_payload_bytes.div_ceil(3).saturating_mul(4);
+        if trimmed.len() > max_encoded {
+            return Err(UpdateError::MalformedMetadata(format!(
+                "DSSE encoded payload length {} exceeds limit {}",
+                trimmed.len(),
+                max_encoded
+            )));
+        }
+        let decoded = B64.decode(trimmed).map_err(|e| {
             UpdateError::MalformedMetadata(format!("invalid base64 DSSE payload: {e}"))
-        })
+        })?;
+        if decoded.len() > limits.max_payload_bytes {
+            return Err(UpdateError::MalformedMetadata(format!(
+                "DSSE payload length {} exceeds limit {}",
+                decoded.len(),
+                limits.max_payload_bytes
+            )));
+        }
+        Ok(decoded)
     }
 }
 
@@ -85,6 +128,15 @@ pub fn verify_dsse_envelope(
     trusted_keys: &[TrustedKeyInfo],
     threshold: u32,
 ) -> Result<Vec<u8>, UpdateError> {
+    verify_dsse_envelope_with_limits(envelope, trusted_keys, threshold, &DsseLimits::default())
+}
+
+pub fn verify_dsse_envelope_with_limits(
+    envelope: &DsseEnvelope,
+    trusted_keys: &[TrustedKeyInfo],
+    threshold: u32,
+    limits: &DsseLimits,
+) -> Result<Vec<u8>, UpdateError> {
     if threshold == 0 {
         return Err(UpdateError::InvalidSignature(
             "DSSE threshold must be at least 1".into(),
@@ -95,7 +147,7 @@ pub fn verify_dsse_envelope(
             "DSSE payloadType cannot be empty".into(),
         ));
     }
-    let payload_bytes = envelope.decode_payload()?;
+    let payload_bytes = envelope.decode_payload_with_limits(limits)?;
     let pae = dsse_pae(&envelope.payload_type, &payload_bytes);
 
     let mut verified_key_ids = BTreeSet::new();
@@ -134,7 +186,7 @@ mod tests {
     }
 
     #[test]
-    fn dsse_enforces_threshold_and_rejects_duplicate_and_tampered_payload() {
+    fn dsse_enforces_threshold_limits_and_rejects_tampered_payload() {
         let k1 = SigningKeypair::generate().expect("k1");
         let k2 = SigningKeypair::generate().expect("k2");
         let trusted = vec![k1.public_info(), k2.public_info()];
@@ -149,7 +201,14 @@ mod tests {
         let verified = verify_dsse_envelope(&env, &trusted, 2).expect("verify 2-of-2");
         assert_eq!(verified, br#"{"id":"pack-1"}"#);
 
-        // Duplicate signature from same key cannot satisfy threshold 2.
+        let tiny_limits = DsseLimits {
+            max_payload_bytes: 4,
+        };
+        assert!(matches!(
+            verify_dsse_envelope_with_limits(&env, &trusted, 2, &tiny_limits),
+            Err(UpdateError::MalformedMetadata(_))
+        ));
+
         let dup_env = DsseEnvelope {
             payload_type: env.payload_type.clone(),
             payload: env.payload.clone(),
@@ -160,7 +219,6 @@ mod tests {
             Err(UpdateError::InvalidSignature(_))
         ));
 
-        // Tampering payload breaks verification.
         let mut tampered = env.clone();
         tampered.payload = B64.encode(br#"{"id":"evil"}"#);
         assert!(matches!(

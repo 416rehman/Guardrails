@@ -2,11 +2,11 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
 use std::collections::BTreeMap;
-use std::net::IpAddr;
 
 use serde::{Deserialize, Serialize};
 
 use crate::IntegrationError;
+use crate::egress::{is_valid_dns_suffix, validate_egress_url};
 
 const DEFAULT_DENY_SCOPES: &[&str] = &[
     "script_execution",
@@ -110,12 +110,14 @@ pub enum ConfigFieldType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SecretRef {
     pub key: String,
     pub store: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ConfigFieldSpec {
     pub key: String,
     pub field_type: ConfigFieldType,
@@ -124,6 +126,7 @@ pub struct ConfigFieldSpec {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct VendorApiCompat {
     pub name: String,
     pub tested: String,
@@ -132,6 +135,7 @@ pub struct VendorApiCompat {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ConnectorManifest {
     pub integration: String,
     pub publisher: String,
@@ -156,6 +160,7 @@ pub struct ConnectorManifest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct IntegrationInstance {
     pub instance_id: String,
     pub org_id: String,
@@ -210,6 +215,18 @@ impl IntegrationHost {
         &mut self,
         instance: IntegrationInstance,
     ) -> Result<(), IntegrationError> {
+        if instance.instance_id.trim().is_empty() || instance.org_id.trim().is_empty() {
+            return Err(IntegrationError::InvalidManifest(
+                "instance_id and org_id must be non-empty".into(),
+            ));
+        }
+        if self.instances.contains_key(&instance.instance_id) {
+            return Err(IntegrationError::InvalidManifest(format!(
+                "duplicate instance_id `{}`",
+                instance.instance_id
+            )));
+        }
+
         let Some(manifest) = self.manifests.get(&instance.manifest_key) else {
             return Err(IntegrationError::UnknownConnector(
                 instance.manifest_key.clone(),
@@ -228,6 +245,13 @@ impl IntegrationHost {
             instance.allow_private_ranges,
         )?;
 
+        for secret in instance.secret_refs.values() {
+            if secret.key.trim().is_empty() || secret.store.trim().is_empty() {
+                return Err(IntegrationError::InvalidManifest(
+                    "secret_ref key and store must be non-empty".into(),
+                ));
+            }
+        }
         for spec in &manifest.config {
             if spec.required
                 && spec.field_type == ConfigFieldType::SecretRef
@@ -260,9 +284,12 @@ pub fn validate_manifest(
     manifest: &ConnectorManifest,
     deny_scopes: &[String],
 ) -> Result<(), IntegrationError> {
-    if manifest.integration.trim().is_empty() || manifest.publisher.trim().is_empty() {
+    if manifest.integration.trim().is_empty()
+        || manifest.publisher.trim().is_empty()
+        || manifest.version.trim().is_empty()
+    {
         return Err(IntegrationError::InvalidManifest(
-            "integration and publisher must be non-empty".into(),
+            "integration, publisher, and version must be non-empty".into(),
         ));
     }
     if !manifest.prohibited_commands.is_empty() || !manifest.prohibited_env_sets.is_empty() {
@@ -270,20 +297,12 @@ pub fn validate_manifest(
             "declarative manifest must not execute commands or set environment variables".into(),
         ));
     }
-    if !manifest.request_path.starts_with('/') || manifest.request_path.contains("://") {
-        return Err(IntegrationError::InvalidManifest(
-            "request_path must be relative without scheme or host".into(),
-        ));
-    }
+    validate_request_path(&manifest.request_path)?;
     for field in &manifest.config {
         for constraint in &field.host_constraints {
-            if constraint.contains("://")
-                || constraint.contains('/')
-                || constraint.contains(':')
-                || constraint.trim().is_empty()
-            {
+            if !is_valid_dns_suffix(constraint) {
                 return Err(IntegrationError::InvalidManifest(format!(
-                    "host_constraint `{constraint}` must be a DNS suffix only"
+                    "host_constraint `{constraint}` must be a valid DNS suffix only"
                 )));
             }
         }
@@ -300,13 +319,15 @@ pub fn validate_manifest(
             "Tier 1 and Tier 2 manifests require vendor_api.verified = true".into(),
         ));
     }
-    if manifest.kind == ConnectorKind::Action {
+    if manifest.kind == ConnectorKind::Action || manifest.direction == ConnectorDirection::Act {
+        let normalized_denies: Vec<String> = deny_scopes
+            .iter()
+            .map(|d| normalize_scope_token(d))
+            .filter(|d| !d.is_empty())
+            .collect();
         for scope in &manifest.required_scopes {
-            let lower = scope.to_ascii_lowercase();
-            if deny_scopes
-                .iter()
-                .any(|d| lower.contains(&d.to_ascii_lowercase()))
-            {
+            let norm = normalize_scope_token(scope);
+            if normalized_denies.iter().any(|d| norm.contains(d.as_str())) {
                 return Err(IntegrationError::ForbiddenScope(scope.clone()));
             }
         }
@@ -314,89 +335,48 @@ pub fn validate_manifest(
     Ok(())
 }
 
-pub fn validate_egress_url(
-    base_url: &str,
-    host_constraints: &[String],
-    allow_private_ranges: bool,
-) -> Result<(), IntegrationError> {
-    let rest = if let Some(https) = base_url.strip_prefix("https://") {
-        https
-    } else if allow_private_ranges {
-        base_url
-            .strip_prefix("http://")
-            .ok_or_else(|| IntegrationError::EgressDenied("URL must use https://".into()))?
-    } else {
-        return Err(IntegrationError::EgressDenied(
-            "egress URL must use https://".into(),
-        ));
-    };
-
-    let authority = rest.split('/').next().unwrap_or("");
-    if authority.is_empty() || authority.contains('@') {
-        return Err(IntegrationError::EgressDenied(
-            "egress URL has invalid authority".into(),
+fn validate_request_path(path: &str) -> Result<(), IntegrationError> {
+    if !path.starts_with('/') || path.starts_with("//") || path.contains("://") {
+        return Err(IntegrationError::InvalidManifest(
+            "request_path must be relative without scheme, host, or protocol-relative prefix"
+                .into(),
         ));
     }
-    let host = strip_port(authority);
-    if host.is_empty() {
-        return Err(IntegrationError::EgressDenied(
-            "egress URL missing host".into(),
-        ));
-    }
-
-    if !allow_private_ranges && is_disallowed_host(host) {
-        return Err(IntegrationError::EgressDenied(format!(
-            "private, loopback, or metadata address `{host}` is forbidden"
-        )));
-    }
-
-    if !host_constraints.is_empty()
-        && !host_constraints
-            .iter()
-            .any(|suffix| matches_dns_suffix(host, suffix))
+    if path
+        .chars()
+        .any(|c| c.is_ascii_control() || c.is_ascii_whitespace() || matches!(c, '\\' | '?' | '#'))
     {
-        return Err(IntegrationError::EgressDenied(format!(
-            "host `{host}` does not satisfy manifest host_constraints"
-        )));
+        return Err(IntegrationError::InvalidManifest(
+            "request_path contains forbidden control, whitespace, query, fragment, or backslash characters".into(),
+        ));
+    }
+    let lower = path.to_ascii_lowercase();
+    if path.split('/').any(|seg| seg == "." || seg == "..")
+        || lower.contains("%2e")
+        || lower.contains("%2f")
+        || lower.contains("%5c")
+        || lower.contains("%00")
+    {
+        return Err(IntegrationError::InvalidManifest(
+            "request_path must not contain dot segments or percent-encoded path delimiters".into(),
+        ));
     }
     Ok(())
 }
 
+fn normalize_scope_token(scope: &str) -> String {
+    scope
+        .chars()
+        .map(|c| {
+            if matches!(c, '-' | '.' | ' ' | '\t') {
+                '_'
+            } else {
+                c.to_ascii_lowercase()
+            }
+        })
+        .collect()
+}
+
 fn manifest_key(publisher: &str, integration: &str, version: &str) -> String {
     format!("{publisher}/{integration}@{version}")
-}
-
-fn strip_port(authority: &str) -> &str {
-    if authority.starts_with('[') {
-        authority
-            .split(']')
-            .next()
-            .map(|v| v.trim_start_matches('['))
-            .unwrap_or("")
-    } else {
-        authority.split(':').next().unwrap_or("")
-    }
-}
-
-fn is_disallowed_host(host: &str) -> bool {
-    let lower = host.to_ascii_lowercase();
-    if lower == "localhost" || lower.ends_with(".local") || lower.ends_with(".internal") {
-        return true;
-    }
-    if let Ok(ip) = host.parse::<IpAddr>() {
-        return match ip {
-            IpAddr::V4(v4) => {
-                v4.is_loopback() || v4.is_private() || v4.is_link_local() || v4.is_unspecified()
-            }
-            IpAddr::V6(v6) => v6.is_loopback() || v6.is_unspecified() || v6.is_unique_local(),
-        };
-    }
-    false
-}
-
-fn matches_dns_suffix(host: &str, suffix: &str) -> bool {
-    let h = host.to_ascii_lowercase();
-    let s = suffix.to_ascii_lowercase();
-    let trimmed = s.trim_start_matches('.');
-    h == trimmed || h.ends_with(&format!(".{trimmed}"))
 }

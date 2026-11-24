@@ -11,7 +11,10 @@ pub mod tuf_types;
 #[cfg(test)]
 mod tests;
 
-pub use dsse::{DsseEnvelope, DsseSignature, dsse_pae, sign_dsse_envelope, verify_dsse_envelope};
+pub use dsse::{
+    DsseEnvelope, DsseLimits, DsseSignature, DsseTargetStatement, dsse_pae, sign_dsse_envelope,
+    verify_dsse_envelope, verify_dsse_envelope_with_limits,
+};
 pub use slots::{
     AirgapArtifact, AirgapBundleEntry, AirgapBundleManifest, AirgapVerificationOutcome,
     BundleApprovalState, RolloutHaltEntry, SlotState, UpdateSlot, verify_airgap_bundle,

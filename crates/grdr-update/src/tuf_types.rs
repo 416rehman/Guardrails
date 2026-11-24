@@ -285,8 +285,12 @@ pub(crate) fn verify_snapshot_link<T: Serialize>(
         )));
     };
     let bytes = canonical_json(role_payload)?;
+    let actual_len = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
     let actual_sha = canonical_sha256(&bytes);
-    if expected.version != role_version || expected.sha256 != actual_sha {
+    if expected.version != role_version
+        || expected.length != actual_len
+        || expected.sha256 != actual_sha
+    {
         return Err(UpdateError::MixAndMatchDetected(format!(
             "snapshot reference for {role:?} mismatches payload"
         )));
@@ -319,14 +323,31 @@ pub(crate) fn enforce_root_separation(
 
     match root_kind {
         TufRootKind::Project => {
-            if descriptor.signer_class == SignerClass::Deployment {
+            let is_project_content_kind = matches!(
+                descriptor.pack_kind,
+                PackKind::SchemaPolicy
+                    | PackKind::Detection
+                    | PackKind::Intel
+                    | PackKind::Integration
+                    | PackKind::Rollout
+            );
+            let is_project_content_role = matches!(
+                descriptor.role,
+                TufRole::Content | TufRole::Rollout | TufRole::Targets
+            );
+            if descriptor.signer_class != SignerClass::ProjectContent
+                || !is_project_content_kind
+                || !is_project_content_role
+            {
                 return Err(UpdateError::UnauthorizedRoot(
-                    "deployment signer class cannot ride project root targets".into(),
+                    "project root requires ProjectContent content roles and pack kinds".into(),
                 ));
             }
         }
         TufRootKind::Deployment => {
+            let is_deployment_role = matches!(descriptor.role, TufRole::Targets | TufRole::Fleet);
             if descriptor.signer_class != SignerClass::Deployment
+                || !is_deployment_role
                 || !matches!(
                     descriptor.pack_kind,
                     PackKind::LayerDocument
@@ -336,7 +357,8 @@ pub(crate) fn enforce_root_separation(
                 )
             {
                 return Err(UpdateError::UnauthorizedRoot(
-                    "deployment root can only authorize deployment policy/config packs".into(),
+                    "deployment root requires Deployment Targets/Fleet role and policy/config packs"
+                        .into(),
                 ));
             }
         }
