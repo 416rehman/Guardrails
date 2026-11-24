@@ -1,0 +1,14 @@
+schema = "grdr.lab.job.v1"
+description = "Slice 0 end-to-end verification: build real binaries, install hook, block risky actions, uplink to embedded server, and restore settings byte-for-byte"
+systems = ["linux-x64", "macos-arm64", "windows-x64"]
+timeout_minutes = 30
+command = """
+set -euo pipefail
+for py in python3 python; do
+  if "$py" -I -c "import tomllib" > /dev/null 2>&1; then
+    exec "$py" -I -B deploy/qa/run_slice0_lab.py
+  fi
+done
+echo "no Python with tomllib on this runner" >&2
+exit 1
+"""

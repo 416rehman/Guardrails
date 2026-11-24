@@ -78,9 +78,15 @@ jobs:
         env:
           CHANNEL: ${{ steps.toolchain.outputs.channel }}
         run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Build smoke target binaries
+        run: cargo build --locked --bin grdr --bin grdr-hook --bin grdr-daemon
       - name: Run smoke cell
         env:
           CELL_ID: ${{ matrix.cell.id }}
+          GRDR_SMOKE_PREBUILT: "1"
         run: |
           for python in python3 python; do
             if "$python" -I -c "import tomllib" > /dev/null 2>&1; then

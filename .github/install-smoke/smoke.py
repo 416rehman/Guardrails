@@ -42,6 +42,8 @@ from snapshot import (
     unexpected_diffs_outside_ours,
 )
 
+_DEFAULT_CAPTURE_SNAPSHOT = capture_snapshot
+
 ERR_UNIT_LINT = "GRDR-GATE-0014"
 ERR_SELF_TEST = "GRDR-GATE-0015"
 REQUIRED_CELL_KEYS = ("id", "runner", "profile", "build", "install", "choose", "uninstall")
@@ -296,8 +298,21 @@ def run_r4_cell(
     def run_cmd(cmd: str, *, elevated: bool = False) -> CommandResult:
         return run_step_command(cmd, os_name, cell.profile, run_env, repo_root, timeout, elevated=elevated)
 
+    stat_cache: dict[str, tuple[tuple[Any, ...], SnapshotEntry]] = {}
+
     def snap() -> dict[str, SnapshotEntry]:
-        return capture_snapshot(roots_cfg, os_name, cell.profile, run_env, override_roots=override_roots)
+        if override_roots is not None:
+            return capture_snapshot(roots_cfg, os_name, cell.profile, run_env, override_roots=override_roots)
+        if capture_snapshot is _DEFAULT_CAPTURE_SNAPSHOT:
+            return capture_snapshot(
+                roots_cfg,
+                os_name,
+                cell.profile,
+                run_env,
+                stat_cache=stat_cache,
+                system_stat_only=True,
+            )
+        return capture_snapshot(roots_cfg, os_name, cell.profile, run_env)
 
     seed_src = repo_root / roots_cfg["limits"]["claude_seed_fixture"]
     try:
@@ -365,6 +380,11 @@ def run_r4_cell(
 
 def isolated_env(home_dir: pathlib.Path, base_env: Mapping[str, str]) -> dict[str, str]:
     env = dict(base_env)
+    orig_home_raw = (base_env.get("USERPROFILE") or base_env.get("HOME")) if os.name == "nt" else base_env.get("HOME")
+    if orig_home_raw:
+        orig_home = pathlib.Path(orig_home_raw)
+        env["CARGO_HOME"] = base_env.get("CARGO_HOME") or str(orig_home / ".cargo")
+        env["RUSTUP_HOME"] = base_env.get("RUSTUP_HOME") or str(orig_home / ".rustup")
     env["HOME"] = str(home_dir)
     env["XDG_CONFIG_HOME"] = str(home_dir / ".config")
     env["XDG_DATA_HOME"] = str(home_dir / ".local" / "share")

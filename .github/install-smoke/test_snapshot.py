@@ -121,6 +121,52 @@ class RootsConfigTest(unittest.TestCase):
         self.assertTrue(snapshot.is_under_ours("task://\\grdr-daemon", win_ours, snapshot.OsName.WINDOWS))
         self.assertFalse(snapshot.is_under_ours("task://\\other\\grdr-daemon", win_ours, snapshot.OsName.WINDOWS))
 
+    def test_windows_non_symlink_reparse_point_records_unreadable(self) -> None:
+        fake_stat = unittest.mock.Mock(
+            st_mode=0o100666,
+            st_file_attributes=snapshot.WINDOWS_REPARSE_ATTR,
+        )
+        with (
+            unittest.mock.patch.object(snapshot.os, "readlink", side_effect=ValueError("not a symbolic link")),
+            unittest.mock.patch.object(snapshot, "_windows_owner_sid", return_value="S-1-5-18"),
+        ):
+            entry = snapshot._entry_metadata(
+                "C:\\Users\\alice\\AppData\\Local\\Microsoft\\WindowsApps\\python3.exe",
+                fake_stat,
+                snapshot.OsName.WINDOWS,
+                65536,
+            )
+        self.assertEqual(entry.kind, snapshot.EntryKind.SYMLINK)
+        self.assertEqual(entry.sha256, "symlink:<unreadable>")
+
+    def test_stat_cache_reuses_unchanged_entries_and_invalidates_on_change(self) -> None:
+        host_os = snapshot.detect_host_os()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp) / "scan_root"
+            root.mkdir()
+            target = root / "sample.bin"
+            target.write_bytes(b"alpha")
+            cfg = {
+                **self.cfg,
+                "os": {
+                    **self.cfg["os"],
+                    host_os.value: {**self.cfg["os"][host_os.value], "ignore_paths": []},
+                },
+            }
+            cache: dict[str, tuple[tuple[object, ...], snapshot.SnapshotEntry]] = {}
+            orig_sha = snapshot._sha256_file
+            with unittest.mock.patch.object(snapshot, "_sha256_file", wraps=orig_sha) as sha_mock:
+                first = snapshot.capture_snapshot(cfg, host_os, snapshot.Profile.USER, override_roots=[str(root)], stat_cache=cache)
+                self.assertEqual(sha_mock.call_count, 1)
+                second = snapshot.capture_snapshot(cfg, host_os, snapshot.Profile.USER, override_roots=[str(root)], stat_cache=cache)
+                self.assertEqual(sha_mock.call_count, 1)
+                self.assertEqual(first[str(target)], second[str(target)])
+
+                target.write_bytes(b"beta-longer")
+                third = snapshot.capture_snapshot(cfg, host_os, snapshot.Profile.USER, override_roots=[str(root)], stat_cache=cache)
+                self.assertEqual(sha_mock.call_count, 2)
+                self.assertNotEqual(first[str(target)].sha256, third[str(target)].sha256)
+
 
 class PlannerTest(unittest.TestCase):
     def setUp(self) -> None:

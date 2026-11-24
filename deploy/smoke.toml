@@ -1,0 +1,26 @@
+[[cell]]
+id = "linux-x64-user"
+runner = "ubuntu-26.04"
+profile = "user"
+build = "python3 -I -B deploy/qa/smoke_cell.py build"
+install = "python3 -I -B deploy/qa/smoke_cell.py install"
+choose = "python3 -I -B deploy/qa/smoke_cell.py choose"
+uninstall = "python3 -I -B deploy/qa/smoke_cell.py uninstall"
+
+[[cell]]
+id = "macos-arm64-user"
+runner = "macos-26"
+profile = "user"
+build = "python3 -I -B deploy/qa/smoke_cell.py build"
+install = "python3 -I -B deploy/qa/smoke_cell.py install"
+choose = "python3 -I -B deploy/qa/smoke_cell.py choose"
+uninstall = "python3 -I -B deploy/qa/smoke_cell.py uninstall"
+
+[[cell]]
+id = "windows-x64-user"
+runner = "windows-2025"
+profile = "user"
+build = "python3 -I -B deploy/qa/smoke_cell.py build"
+install = "python3 -I -B deploy/qa/smoke_cell.py install"
+choose = "python3 -I -B deploy/qa/smoke_cell.py choose"
+uninstall = "python3 -I -B deploy/qa/smoke_cell.py uninstall"

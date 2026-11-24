@@ -1,0 +1,16 @@
+start = ["python3", "-I", "-B", "deploy/qa/dast_start.py"]
+ready_url = "http://127.0.0.1:8787/api/v1/health"
+ready_timeout_seconds = 900
+ready_poll_seconds = 5
+
+[[target]]
+name = "console"
+url = "http://127.0.0.1:8787/"
+
+[[target]]
+name = "api-health"
+url = "http://127.0.0.1:8787/api/v1/health"
+
+[[target]]
+name = "api-overview"
+url = "http://127.0.0.1:8787/api/v1/overview"
