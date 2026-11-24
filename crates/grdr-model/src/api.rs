@@ -217,6 +217,17 @@ pub struct UpdateRuleModeInput {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UpdateRuleInput {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub mode: Option<Mode>,
+    pub min_grade: Option<ApprovalGrade>,
+    pub matcher: Option<RuleMatch>,
+    pub reason_template: Option<String>,
+    pub actor: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReplayRuleInput {
     pub candidate_mode: Mode,
 }

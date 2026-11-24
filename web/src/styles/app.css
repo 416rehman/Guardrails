@@ -603,3 +603,53 @@ tr.selected td {
   pointer-events: none;
   transition: width 1s linear;
 }
+
+/* Assurance Matrix Drawer & Topbar Token Bar */
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background-color: rgba(8, 11, 16, 0.62);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.drawer-panel {
+  width: min(640px, 100vw);
+  height: 100%;
+  overflow-y: auto;
+  background-color: var(--bg-surface);
+  border-inline-start: 1px solid var(--border-strong);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.drawer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-block-end: var(--space-3);
+  border-block-end: 1px solid var(--border-subtle);
+}
+
+.token-popover {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background-color: var(--bg-elevated);
+  border-block-end: 1px solid var(--border-subtle);
+}
+
+.token-popover input {
+  flex: 1;
+  max-width: 360px;
+  padding-inline: var(--space-2);
+  padding-block: 5px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background-color: var(--bg-canvas);
+}

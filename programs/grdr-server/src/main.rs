@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+mod auth;
 mod demo;
+mod exports;
 mod routes;
 mod store;
 
@@ -13,6 +15,7 @@ use tokio::net::TcpListener;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
+use crate::auth::{DEFAULT_MAX_BODY_BYTES, ServerSecurityConfig};
 use crate::store::AppState;
 
 #[derive(Debug, Parser)]
@@ -35,6 +38,18 @@ struct Args {
 
     #[arg(long, default_value_t = false)]
     demo_seed: bool,
+
+    #[arg(long, env = "GRDR_API_TOKEN")]
+    api_token: Option<String>,
+
+    #[arg(long, env = "GRDR_ENROLL_TOKEN")]
+    enroll_token: Option<String>,
+
+    #[arg(long, env = "GRDR_CORS_ORIGIN", value_delimiter = ',')]
+    cors_origin: Vec<String>,
+
+    #[arg(long, env = "GRDR_MAX_BODY_BYTES", default_value_t = DEFAULT_MAX_BODY_BYTES)]
+    max_body_bytes: usize,
 }
 
 #[tokio::main]
@@ -60,7 +75,14 @@ async fn main() -> ExitCode {
         }
     };
 
-    let router = routes::build_router(state, web_dir.clone());
+    let security = ServerSecurityConfig {
+        api_token: args.api_token.filter(|s| !s.trim().is_empty()),
+        enroll_token: args.enroll_token.filter(|s| !s.trim().is_empty()),
+        cors_origins: args.cors_origin,
+        max_body_bytes: args.max_body_bytes,
+    };
+
+    let router = routes::build_router_with_security(state, web_dir.clone(), security.clone());
     let listener = match TcpListener::bind(&args.bind).await {
         Ok(listener) => listener,
         Err(err) => {
@@ -73,6 +95,8 @@ async fn main() -> ExitCode {
         bind = %args.bind,
         web_dir = ?web_dir,
         demo_seed = args.demo_seed,
+        api_auth_enabled = security.api_token.is_some(),
+        enroll_auth_enabled = security.enroll_token.is_some(),
         "Guardrails ADR API server listening"
     );
 
@@ -669,5 +693,207 @@ mod tests {
             .unwrap();
         let detail: SessionDetailResponse = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(detail.receipts[0].signature_verified, Some(true));
+    }
+
+    #[tokio::test]
+    async fn server_auth_enforces_operator_and_enroll_tokens_and_exports_work() {
+        let state = AppState::init(None, true).unwrap();
+        let security = ServerSecurityConfig {
+            api_token: Some("op-secret-123".into()),
+            enroll_token: Some("enroll-secret-456".into()),
+            cors_origins: vec!["https://console.guardrails.local".into()],
+            max_body_bytes: 16 * 1024,
+        };
+        let app = routes::build_router_with_security(state, None, security);
+
+        // Public health remains reachable without credentials.
+        let health = app
+            .clone()
+            .oneshot(Request::get("/api/v1/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(health.status(), StatusCode::OK);
+
+        // Operator route rejects unauthenticated access with GRDR-API-0401.
+        let unauth = app
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/overview")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(unauth.status(), StatusCode::UNAUTHORIZED);
+
+        // Device enrollment rejects missing/invalid token and accepts valid header.
+        let checkin_body = DeviceCheckinRequest {
+            device_id: Some("dev-auth-1".into()),
+            hostname: "auth-host".into(),
+            os: "linux".into(),
+            arch: "x86_64".into(),
+            install_profile: InstallProfile::Protected,
+            daemon_version: "0.1.0".into(),
+            hook_effective: true,
+            agents: vec![],
+            mcp_servers: vec![],
+            device_public_key: None,
+        };
+        let checkin_unauth = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/devices/checkin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&checkin_body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(checkin_unauth.status(), StatusCode::UNAUTHORIZED);
+
+        let checkin_ok = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/devices/checkin")
+                    .header("content-type", "application/json")
+                    .header("x-guardrails-enroll-token", "enroll-secret-456")
+                    .body(Body::from(serde_json::to_vec(&checkin_body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(checkin_ok.status(), StatusCode::OK);
+
+        // Valid operator bearer token accesses overview and OCSF/JSONL exports.
+        let ocsf_resp = app
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/exports/ocsf")
+                    .header("authorization", "Bearer op-secret-123")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(ocsf_resp.status(), StatusCode::OK);
+        let ocsf_bytes = axum::body::to_bytes(ocsf_resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let ocsf_json: Vec<serde_json::Value> = serde_json::from_slice(&ocsf_bytes).unwrap();
+        assert!(!ocsf_json.is_empty());
+        assert_eq!(ocsf_json[0]["metadata"]["version"], "1.9.0");
+
+        let jsonl_resp = app
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/exports/audit.jsonl")
+                    .header("authorization", "Bearer op-secret-123")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(jsonl_resp.status(), StatusCode::OK);
+        let jsonl_bytes = axum::body::to_bytes(jsonl_resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let lines: Vec<&str> = std::str::from_utf8(&jsonl_bytes)
+            .unwrap()
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .collect();
+        assert!(!lines.is_empty());
+        let first_line: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+        assert!(first_line.get("record_type").is_some());
+
+        // Rule edit/delete rejects locked baseline rule with 409 Conflict.
+        let locked_delete = app
+            .clone()
+            .oneshot(
+                Request::delete("/api/v1/policies/rules/essentials.agent-control-files")
+                    .header("authorization", "Bearer op-secret-123")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(locked_delete.status(), StatusCode::CONFLICT);
+
+        // Custom rule create -> update -> delete round-trip.
+        let create_body = CreateRuleInput {
+            pack_id: None,
+            title: "Audit temp secret writes".into(),
+            description: "Warn on /tmp/secret writes".into(),
+            mode: Mode::Watch,
+            min_grade: None,
+            matcher: RuleMatch {
+                action_classes: vec![ActionClass::FileWrite],
+                target_prefixes: vec![],
+                target_contains: vec!["/tmp/secret".into()],
+                agents: vec![],
+            },
+            reason_template: "Monitor /tmp/secret".into(),
+        };
+        let created_resp = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/policies/rules")
+                    .header("authorization", "Bearer op-secret-123")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&create_body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(created_resp.status(), StatusCode::OK);
+        let created_rule: PolicyRule = serde_json::from_slice(
+            &axum::body::to_bytes(created_resp.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+
+        let patch_resp = app
+            .clone()
+            .oneshot(
+                Request::patch(format!("/api/v1/policies/rules/{}", created_rule.id))
+                    .header("authorization", "Bearer op-secret-123")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&grdr_model::UpdateRuleInput {
+                            title: Some("Ask on temp secret writes".into()),
+                            description: None,
+                            mode: Some(Mode::Ask),
+                            min_grade: Some(ApprovalGrade::G2),
+                            matcher: None,
+                            reason_template: None,
+                            actor: None,
+                        })
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(patch_resp.status(), StatusCode::OK);
+        let patched_rule: PolicyRule = serde_json::from_slice(
+            &axum::body::to_bytes(patch_resp.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(patched_rule.mode, Mode::Ask);
+        assert_eq!(patched_rule.title, "Ask on temp secret writes");
+
+        let del_resp = app
+            .oneshot(
+                Request::delete(format!("/api/v1/policies/rules/{}", created_rule.id))
+                    .header("authorization", "Bearer op-secret-123")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(del_resp.status(), StatusCode::OK);
     }
 }

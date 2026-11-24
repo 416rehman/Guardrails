@@ -21,11 +21,40 @@ import type {
   SessionSummary,
 } from "./types";
 
+const TOKEN_STORAGE_KEY = "grdr_api_token";
+
+export function getApiToken(): string {
+  try {
+    return window.sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function setApiToken(token: string): void {
+  try {
+    const trimmed = token.trim();
+    if (trimmed) {
+      window.sessionStorage.setItem(TOKEN_STORAGE_KEY, trimmed);
+    } else {
+      window.sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    }
+  } catch {
+    // ignore storage errors in non-browser tests
+  }
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getApiToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(url, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...authHeaders(),
       ...(init?.headers ?? {}),
     },
   });
@@ -42,6 +71,22 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
     throw new Error(detail);
   }
   return (await resp.json()) as T;
+}
+
+async function downloadExport(url: string, filename: string): Promise<void> {
+  const resp = await fetch(url, { headers: authHeaders() });
+  if (!resp.ok) {
+    throw new Error(`Export failed (${resp.status})`);
+  }
+  const blob = await resp.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(objectUrl);
 }
 
 export const api = {
@@ -68,6 +113,29 @@ export const api = {
     requestJson<PolicyRule>("/api/v1/policies/rules", {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+  updateRule: (
+    id: string,
+    body: {
+      title?: string;
+      description?: string;
+      mode?: Mode;
+      matcher?: {
+        action_classes: ActionClass[];
+        target_prefixes: string[];
+        target_contains: string[];
+        agents: string[];
+      };
+      reason_template?: string;
+    },
+  ) =>
+    requestJson<PolicyRule>(`/api/v1/policies/rules/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteRule: (id: string) =>
+    requestJson<PolicyRule>(`/api/v1/policies/rules/${encodeURIComponent(id)}`, {
+      method: "DELETE",
     }),
   updateRuleMode: (id: string, mode: Mode, replayConfirmed = false) =>
     requestJson<PolicyRule>(`/api/v1/policies/rules/${encodeURIComponent(id)}/mode`, {
@@ -117,4 +185,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  exportOcsf: () => downloadExport("/api/v1/exports/ocsf", "guardrails-ocsf-1.9.json"),
+  exportAuditJsonl: () =>
+    downloadExport("/api/v1/exports/audit.jsonl", "guardrails-audit.jsonl"),
 };
