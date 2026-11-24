@@ -81,10 +81,14 @@ test("blocks gh pr create from main", (t) => {
   assert.ok(out.some((msg) => msg.includes("must target a work branch")), out.join("\n"));
 });
 
-test("allows gh pr create from feat/ branch with an accompanying issue link", (t) => {
+test("allows gh pr create from feat/ branch with an accompanying issue link and design ref", (t) => {
   const dir = initTempRepo("feat/web-console");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  writeFileSync(join(dir, "pr.md"), "Closes #42\n\nImplements initial Web Console.\n", "utf8");
+  writeFileSync(
+    join(dir, "pr.md"),
+    "Closes #42\n\nGoverning design: D-42 (`docs/design/27-web-console-ux.md`). Implements initial Web Console.\n",
+    "utf8",
+  );
   const out = evaluateHookCommand(
     'gh pr create --base main --head feat/web-console --title "feat(web): implement console" --body-file pr.md',
     dir,
@@ -95,12 +99,84 @@ test("allows gh pr create from feat/ branch with an accompanying issue link", (t
 test("blocks gh pr create without an accompanying issue link", (t) => {
   const dir = initTempRepo("feat/web-console");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  writeFileSync(join(dir, "pr.md"), "Implements initial Web Console.\n", "utf8");
+  writeFileSync(join(dir, "pr.md"), "Implements initial Web Console per D-42.\n", "utf8");
   const out = evaluateHookCommand(
     'gh pr create --base main --head feat/web-console --title "feat(web): implement console" --body-file pr.md',
     dir,
   );
   assert.ok(out.some((msg) => msg.includes("accompanying GitHub issue")), out.join("\n"));
+});
+
+test("blocks gh pr create missing a governing docs/design/ or decision/principle ID", (t) => {
+  const dir = initTempRepo("feat/web-console");
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, "pr.md"), "Closes #50\n\nImplements initial Web Console.\n", "utf8");
+  const out = evaluateHookCommand(
+    'gh pr create --base main --head feat/web-console --title "feat(web): implement console" --body-file pr.md',
+    dir,
+  );
+  assert.ok(out.some((msg) => msg.includes("governing docs/design/")), out.join("\n"));
+});
+
+test("allows gh pr create citing Closes #50 and D-42 via inline --body", (t) => {
+  const dir = initTempRepo("chore/issue-50-guard");
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const out = evaluateHookCommand(
+    'gh pr create --base main --head chore/issue-50-guard --title "chore(hooks): design alignment" --body "Closes #50 per D-42"',
+    dir,
+  );
+  assert.deepEqual(out, []);
+});
+
+test("rejects banned web/server frameworks in web/**/package.json and allows Vite + React 19 stack", () => {
+  for (const pkg of ["next", "express"]) {
+    const denied = handleHookPayload(
+      JSON.stringify({
+        toolCall: {
+          name: "write_file",
+          args: {
+            Path: "D:/repo/web/apps/console/package.json",
+            Content: JSON.stringify({
+              name: "@grdr/console",
+              dependencies: {
+                react: "^19.1.0",
+                [pkg]: "^4.0.0",
+              },
+            }),
+          },
+        },
+        cwd: "D:/repo",
+      }),
+    );
+    assert.equal(denied.decision, "deny", pkg);
+    assert.match(denied.reason, /stack alignment.*D-33\/D-42/);
+  }
+
+  const allowed = handleHookPayload(
+    JSON.stringify({
+      toolCall: {
+        name: "write_file",
+        args: {
+          Path: "D:/repo/web/apps/console/package.json",
+          Content: JSON.stringify({
+            name: "@grdr/console",
+            dependencies: {
+              "@grdr/ui": "workspace:*",
+              "@tanstack/react-router": "^1.120.0",
+              react: "^19.1.0",
+              "react-dom": "^19.1.0",
+            },
+            devDependencies: {
+              vite: "^6.3.0",
+              vitest: "^4.1.12",
+            },
+          }),
+        },
+      },
+      cwd: "D:/repo",
+    }),
+  );
+  assert.equal(allowed.decision, "allow", allowed.reason);
 });
 
 test("stdin/stdout CLI contract outputs valid JSON allow for non-git commands", () => {
