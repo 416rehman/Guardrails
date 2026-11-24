@@ -30,6 +30,46 @@ const THIRD_PARTY =
   /googletagmanager|google-analytics|gtag\(|fonts\.googleapis|fonts\.gstatic|use\.typekit|plausible\.io|segment\.(io|com)|hotjar|cdn\.jsdelivr|unpkg\.com|cdnjs\.cloudflare/;
 const PIPE_TO_SHELL = /curl[^\n|]*\|\s*(sudo\s+)?(ba|z)?sh\b/;
 const BRANCH_RULES_PATH = fileURLToPath(new URL("./branch-rules.json", import.meta.url));
+const DESIGN_REF_RE = /(?:\bD-\d+\b|\bP\d+\b|docs\/design\/)/;
+const GH_PR_CREATE_RE = /(?:^|[\s&;])\$?gh\s+pr\s+create\b/;
+const GH_PR_MERGE_RE = /(?:^|[\s&;])\$?gh\s+pr\s+merge\b/;
+const WEB_PACKAGE_JSON_RE = /^web\/(?:.+\/)?package\.json$/;
+const DEP_SECTIONS = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
+const BANNED_WEB_PACKAGES = new Set([
+  "next",
+  "nuxt",
+  "astro",
+  "gatsby",
+  "remix",
+  "svelte",
+  "vue",
+  "solid-js",
+  "express",
+  "fastify",
+  "koa",
+  "hono",
+  "polka",
+  "restify",
+  "hapi",
+  "mongodb",
+  "mongoose",
+  "prisma",
+  "drizzle-orm",
+  "typeorm",
+  "sequelize",
+]);
+const BANNED_WEB_PACKAGE_PREFIXES = [
+  "@nestjs/",
+  "@next/",
+  "@nuxt/",
+  "@prisma/",
+  "@remix-run/",
+  "@sveltejs/",
+  "@angular/",
+  "@solidjs/",
+  "@hapi/",
+  "@builder.io/qwik",
+];
 
 function run(command, args, cwd) {
   return execFileSync(command, args, { encoding: "utf8", cwd, stdio: ["ignore", "pipe", "ignore"] });
@@ -127,6 +167,19 @@ function extractPrBodyText(command, cwd) {
   }
 }
 
+export function checkPrBodyAlignment(body) {
+  const found = [];
+  if (typeof body !== "string" || !/(?:Closes|Fixes|Resolves|Refs?)\s+#\d+/i.test(body)) {
+    found.push("pr rule: every PR must have an accompanying GitHub issue linked in the PR body (for example, Closes #42).");
+  }
+  if (typeof body !== "string" || !DESIGN_REF_RE.test(body)) {
+    found.push(
+      "pr rule: every PR must cite a governing docs/design/ path or decision/principle ID (for example, D-42, P14, or docs/design/00-decisions.md).",
+    );
+  }
+  return found;
+}
+
 function checkPrCreateRules(command, cwd, rules) {
   const found = [];
   const headOpt = optionValue(command, "--head");
@@ -138,10 +191,7 @@ function checkPrCreateRules(command, cwd, rules) {
   if (!isValidWorkBranch(branch, rules) && !isExemptBranch(branch, rules)) {
     found.push(`branch rule: branch "${branch}" should follow ${rules.workBranchForm}.`);
   }
-  const body = extractPrBodyText(command, cwd);
-  if (!/(?:Closes|Fixes|Resolves|Refs?)\s+#\d+/i.test(body)) {
-    found.push("pr rule: every PR must have an accompanying GitHub issue linked in the PR body (for example, Closes #42).");
-  }
+  found.push(...checkPrBodyAlignment(extractPrBodyText(command, cwd)));
   return found;
 }
 
@@ -191,6 +241,58 @@ export function isProductSourcePath(relPath) {
   return PRODUCT_SOURCE_RE.test(relPath) && !SOURCE_TEST_RE.test(relPath);
 }
 
+export function isWebPackageJsonPath(relPath) {
+  return WEB_PACKAGE_JSON_RE.test(relPath) && !/(?:^|\/)node_modules\//.test(relPath);
+}
+
+function isBannedWebPackage(pkgName) {
+  return (
+    BANNED_WEB_PACKAGES.has(pkgName) ||
+    BANNED_WEB_PACKAGE_PREFIXES.some((prefix) => pkgName.startsWith(prefix))
+  );
+}
+
+function extractPackageNamesFromManifest(content) {
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const names = [];
+      for (const section of DEP_SECTIONS) {
+        const deps = parsed[section];
+        if (deps && typeof deps === "object" && !Array.isArray(deps)) {
+          names.push(...Object.keys(deps));
+        }
+      }
+      return names;
+    }
+  } catch {
+    // edit_file payloads pass partial JSON fragments rather than a full manifest.
+  }
+  const names = [];
+  const propRe = /"([^"\s]+)"\s*:\s*"[^"]*"/g;
+  let match;
+  while ((match = propRe.exec(content)) !== null) {
+    names.push(match[1]);
+  }
+  return names;
+}
+
+export function checkWebStack(relPath, content) {
+  if (!isWebPackageJsonPath(relPath) || typeof content !== "string") {
+    return [];
+  }
+  const found = [];
+  const seen = new Set();
+  for (const pkg of extractPackageNamesFromManifest(content)) {
+    if (seen.has(pkg) || !isBannedWebPackage(pkg)) continue;
+    seen.add(pkg);
+    found.push(
+      `stack alignment (${relPath}, D-33/D-42): unapproved package "${pkg}" is forbidden; web/ is a static Vite + React 19 bundle on pnpm served by Rust programs/grdr-server.`,
+    );
+  }
+  return found;
+}
+
 function normalizeRepoPath(filePath, cwd = process.cwd()) {
   if (!filePath || typeof filePath !== "string") return "";
   const normalized = filePath.replace(/\\/g, "/");
@@ -233,6 +335,13 @@ function stagedProductFiles(cwd) {
     .filter(Boolean);
 }
 
+function checkFileContent(relPath, content, options) {
+  return [
+    ...checkEngineeringContent(relPath, content, options),
+    ...checkWebStack(relPath, content),
+  ];
+}
+
 export function evaluateEngineeringPayload(payload, cwd = process.cwd(), options = {}) {
   if (!payload || typeof payload !== "object") return [];
 
@@ -241,7 +350,7 @@ export function evaluateEngineeringPayload(payload, cwd = process.cwd(), options
     const args = payload?.toolCall?.args ?? {};
     const relPath = normalizeRepoPath(args.Path ?? "", cwd);
     const snippet = args.Content ?? args.Replacement ?? "";
-    return checkEngineeringContent(relPath, snippet, options);
+    return checkFileContent(relPath, snippet, options);
   }
 
   const claudeTool = payload?.tool_name ?? "";
@@ -249,22 +358,22 @@ export function evaluateEngineeringPayload(payload, cwd = process.cwd(), options
   if (claudeTool === "Write" || claudeTool === "Edit") {
     const relPath = normalizeRepoPath(claudeInput.file_path ?? "", cwd);
     const snippet = claudeInput.content ?? claudeInput.new_string ?? "";
-    return checkEngineeringContent(relPath, snippet, options);
+    return checkFileContent(relPath, snippet, options);
   }
   if (claudeTool === "MultiEdit" && Array.isArray(claudeInput.edits)) {
     const relPath = normalizeRepoPath(claudeInput.file_path ?? "", cwd);
     const combined = claudeInput.edits.map((e) => e?.new_string ?? "").join("\n");
-    return checkEngineeringContent(relPath, combined, options);
+    return checkFileContent(relPath, combined, options);
   }
 
   const command = payload?.tool_input?.command ?? payload?.toolCall?.args?.CommandLine ?? "";
   if (typeof command === "string" && /\bgit(?:\s+-C\s+\S+)?\s+commit\b/.test(command)) {
     const found = [];
     for (const relPath of stagedProductFiles(cwd)) {
-      if (!isProductSourcePath(relPath)) continue;
+      if (!isProductSourcePath(relPath) && !isWebPackageJsonPath(relPath)) continue;
       const full = resolve(cwd, relPath);
       if (!existsSync(full)) continue;
-      found.push(...checkEngineeringContent(relPath, readFileSync(full, "utf8"), options));
+      found.push(...checkFileContent(relPath, readFileSync(full, "utf8"), options));
     }
     return found;
   }
@@ -290,6 +399,11 @@ export function findings({ files, ref }, cwd = process.cwd()) {
     if (text === undefined) continue;
     found.push(...checkEngineeringContent(path, text));
   }
+  for (const path of files.filter((f) => isWebPackageJsonPath(f))) {
+    const text = fileAt(ref, path, cwd);
+    if (text === undefined) continue;
+    found.push(...checkWebStack(path, text));
+  }
   return found;
 }
 
@@ -299,11 +413,11 @@ export function evaluateHookCommand(command, cwd = process.cwd()) {
   if (/\bgit(?:\s+-C\s+\S+)?\s+push\b/.test(command)) {
     found.push(...checkGitPush(command, cwd, rules));
   }
-  if (/\bgh\s+pr\s+create\b/.test(command)) {
+  if (GH_PR_CREATE_RE.test(command)) {
     const ctx = fromHookCommand(command, cwd);
     found.push(...checkPrCreateRules(command, cwd, rules));
     found.push(...findings(ctx, cwd));
-  } else if (/\bgh\s+pr\s+merge\b/.test(command)) {
+  } else if (GH_PR_MERGE_RE.test(command)) {
     const ctx = fromHookCommand(command, cwd);
     found.push(...findings(ctx, cwd));
   }
