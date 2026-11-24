@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, type ActionClass, type DecisionReceipt } from "@grdr/api";
-import { Quoted, VerdictBadge } from "@grdr/kit";
+import { EntityLink, type EntityTarget, Quoted, VerdictBadge } from "@grdr/kit";
 import {
   Banner,
   Button,
@@ -47,7 +47,13 @@ const PRESETS: Array<{ label: string; actionClass: ActionClass; target: string; 
   },
 ];
 
-export function TesterPage({ onEvaluated }: { onEvaluated: () => void }) {
+export function TesterPage({
+  onEvaluated,
+  onOpenEntity,
+}: {
+  onEvaluated: () => void;
+  onOpenEntity?: (target: EntityTarget) => void;
+}) {
   const [agentName, setAgentName] = useState("claude-code");
   const [sessionId, setSessionId] = useState("sess-live-eval");
   const [actionClass, setActionClass] = useState<ActionClass>("file.write");
@@ -172,10 +178,22 @@ export function TesterPage({ onEvaluated }: { onEvaluated: () => void }) {
               <strong>Target: </strong>
               <Quoted text={receipt.target} />
             </div>
-            <div>
-              <strong>Rule: </strong>
-              <span className="mono">{receipt.rule_id ?? "none"}</span>
-            </div>
+            <HStack gap={2} align="center">
+              <strong>Rule:</strong>
+              {receipt.rule_id ? (
+                <EntityLink
+                  kind="rule"
+                  id={receipt.rule_id}
+                  label={receipt.rule_id}
+                  compact
+                  onSelect={onOpenEntity}
+                />
+              ) : (
+                <Text size="sm" color="secondary">
+                  baseline
+                </Text>
+              )}
+            </HStack>
             <div>
               <strong>Reason: </strong>
               <span>{receipt.reason}</span>

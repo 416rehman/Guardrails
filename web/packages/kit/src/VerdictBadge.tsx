@@ -74,5 +74,19 @@ export function SessionLabelBadge({
   const pres = presentSessionLabel(label);
   const variant: BadgeVariant =
     pres.tone === "danger" ? "error" : pres.tone === "warning" ? "warning" : "info";
-  return <Badge variant={variant} label={pres.text} />;
+  const iconName =
+    label === "credential_accessed"
+      ? "key-round"
+      : label === "untrusted_web_fetched"
+        ? "globe"
+        : label === "repeated_denials"
+          ? "ban"
+          : "alert-triangle";
+  return (
+    <Badge
+      variant={variant}
+      icon={<GrdrIcon name={iconName} size={11} />}
+      label={pres.text}
+    />
+  );
 }

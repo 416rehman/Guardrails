@@ -121,6 +121,31 @@ export function formatActionLabel(actionClass: string): string {
   }
 }
 
+export function presentFindingTitle(rawTitle: string, agentName?: string): string {
+  let clean = rawTitle.replace(
+    /\b(?:exec|file\.read|file\.write|file\.delete|net\.connect|net\.request|mcp\.call|cred\.use|elevate|config\.change|data\.flow)\b/g,
+    (token) => formatActionLabel(token),
+  );
+  if (agentName) {
+    const target = agentName.trim().toLowerCase();
+    const trimmed = clean.trim();
+    const lower = trimmed.toLowerCase();
+    const onSuffix = ` on ${target}`;
+    const parenSuffix = `(${target})`;
+    if (target && lower.endsWith(onSuffix)) {
+      clean = trimmed.slice(0, trimmed.length - onSuffix.length);
+    } else if (target && lower.endsWith(parenSuffix)) {
+      clean = trimmed.slice(0, trimmed.length - parenSuffix.length);
+    }
+  }
+  return clean.trim();
+}
+
+export function capitalizeLabel(value: string): string {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 export function presentMode(mode: "off" | "watch" | "ask" | "block"): {
   label: string;
   iconKey: string;

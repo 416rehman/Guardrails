@@ -8,8 +8,8 @@ import type {
   OverviewResponse,
   PolicyPack,
 } from "@grdr/api";
-import { formatActionLabel, pluralize } from "@grdr/i18n";
-import { AssuranceBadge, Quoted, VerdictBadge } from "@grdr/kit";
+import { pluralize, presentFindingTitle } from "@grdr/i18n";
+import { AssuranceBadge, EntityLink, type EntityTarget, OsLabel, Quoted, VerdictBadge } from "@grdr/kit";
 import {
   Badge,
   Banner,
@@ -19,6 +19,7 @@ import {
   GrdrVelocityChart,
   HStack,
   ProgressBar,
+  StatusInline,
   Text,
   VStack,
 } from "@grdr/ui";
@@ -40,6 +41,7 @@ export function HomePage({
   approvals,
   findings,
   onNavigate,
+  onOpenEntity,
   onDecideApproval,
 }: {
   overview: OverviewResponse | null;
@@ -48,6 +50,7 @@ export function HomePage({
   approvals: ApprovalRequest[];
   findings: Finding[];
   onNavigate: (route: NavRoute) => void;
+  onOpenEntity: (target: EntityTarget) => void;
   onDecideApproval: (id: string, approve: boolean, scope: GrantScope) => Promise<void>;
 }) {
   const [expandedApprovalId, setExpandedApprovalId] = useState<string | null>(null);
@@ -71,8 +74,6 @@ export function HomePage({
       : openFindings.length > 0
         ? `${openFindings.length} finding to inspect`
         : `${boundaryAgents} of ${allAgents.length} agents guarded at boundary`;
-
-  const hostNames = devices.map((d) => d.hostname).join(", ") || "your enrolled endpoints";
 
   async function decide(id: string, approve: boolean, scope: GrantScope) {
     setBusyId(id);
@@ -106,9 +107,26 @@ export function HomePage({
       <section className="hero-stage" aria-label="Protection overview">
         <div>
           <h1 className="hero-headline">{headline}</h1>
-          <p className="hero-summary">
-            {`Watching ${pluralize(allAgents.length, "agent")} across ${hostNames} with ${pluralize(packs.length, "active policy pack")}.`}
-          </p>
+          <div className="hero-summary" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+            <span>{`Watching ${pluralize(allAgents.length, "agent")} across`}</span>
+            {devices.length === 0 ? (
+              <span>your enrolled endpoints</span>
+            ) : (
+              devices.map((dev, idx) => (
+                <span key={dev.id} style={{ display: "inline-flex", alignItems: "center" }}>
+                  {idx > 0 && <span style={{ color: "var(--ink-muted)", marginInlineEnd: 4 }}>,</span>}
+                  <EntityLink
+                    kind="device"
+                    id={dev.id}
+                    label={dev.hostname}
+                    os={dev.os}
+                    onSelect={onOpenEntity}
+                  />
+                </span>
+              ))
+            )}
+            <span>{`with ${pluralize(packs.length, "active policy pack")}.`}</span>
+          </div>
 
           <HStack gap={2} style={{ marginTop: 20 }}>
             <Button
@@ -132,7 +150,10 @@ export function HomePage({
             </div>
             <div className="metric-cell">
               <div className="metric-value tabular">{pending.length}</div>
-              <div className="metric-label">Waiting approvals</div>
+              <div className="metric-label" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span>Waiting approvals</span>
+                {pending.length > 0 && <span className="attention-dot" aria-hidden="true" />}
+              </div>
               <div className="metric-note">One-time or session</div>
             </div>
             <div className="metric-cell">
@@ -174,10 +195,10 @@ export function HomePage({
               Evaluated agent calls this week (169)
             </Text>
           </HStack>
-          <HStack gap={2} align="center">
-            <Badge variant="neutral" label="Allowed (156)" />
-            <Badge variant="warning" icon={<GrdrIcon name="hand" size={11} />} label="Ask (8)" />
-            <Badge variant="error" icon={<GrdrIcon name="ban" size={11} />} label="Blocked (5)" />
+          <HStack gap={3} align="center">
+            <StatusInline tone="neutral" dot dotColor="var(--viz-allow-end)" label="Allowed 156" />
+            <StatusInline tone="neutral" dot dotColor="var(--viz-ask-start)" label="Ask 8" />
+            <StatusInline tone="neutral" dot dotColor="var(--viz-block-start)" label="Blocked 5" />
           </HStack>
         </HStack>
         <GrdrVelocityChart data={VELOCITY_DAYS} />
@@ -211,15 +232,30 @@ export function HomePage({
             {pending.map((item) => {
               const isOpen = expandedApprovalId === item.id;
               return (
-                <div key={item.id} className="ledger-row">
+                <div key={item.id} className="ledger-row attention-row">
                   <div className="ledger-row-main">
                     <VStack gap={1}>
-                      <HStack gap={2} align="center">
+                      <HStack gap={2} align="center" style={{ flexWrap: "wrap", columnGap: 6, rowGap: 2 }}>
                         <VerdictBadge verdict="step_up" />
                         <strong>{item.rule_title}</strong>
+                        <span style={{ color: "var(--ink-muted)" }} aria-hidden="true">·</span>
+                        <EntityLink
+                          kind="agent"
+                          label={item.agent_name}
+                          compact
+                          onSelect={onOpenEntity}
+                        />
                         <Text size="sm" color="secondary">
-                          {`${item.agent_name} on ${item.device_name}`}
+                          on
                         </Text>
+                        <EntityLink
+                          kind="device"
+                          id={item.device_id}
+                          label={item.device_name}
+                          os={devices.find((d) => d.id === item.device_id || d.hostname === item.device_name)?.os}
+                          compact
+                          onSelect={onOpenEntity}
+                        />
                       </HStack>
                       <Quoted text={item.target} />
                     </VStack>
@@ -267,20 +303,50 @@ export function HomePage({
             })}
 
             {openFindings.slice(0, 2).map((finding) => {
-              const displayTitle = finding.title
-                .replace(/\b(?:file\.write|file\.read|file\.delete|exec|mcp\.call|net\.request|cred\.use)\b/g, (m) =>
-                  formatActionLabel(m),
-                );
+              const displayTitle = presentFindingTitle(finding.title, finding.agent_name);
+              const isWatchFinding =
+                finding.severity === "low" || finding.title.toLowerCase().startsWith("watch");
               return (
                 <div key={finding.id} className="ledger-row">
                   <div className="ledger-row-main">
                     <VStack gap={1}>
-                      <HStack gap={2} align="center">
-                        <GrdrIcon name="alert-circle" size={14} color="var(--tone-block)" />
+                      <HStack gap={2} align="center" style={{ flexWrap: "wrap", columnGap: 6, rowGap: 2 }}>
+                        <GrdrIcon
+                          name={isWatchFinding ? "eye" : "ban"}
+                          size={14}
+                          color={isWatchFinding ? "var(--tone-watch)" : "var(--tone-block)"}
+                        />
                         <strong>{displayTitle}</strong>
+                        <span style={{ color: "var(--ink-muted)" }} aria-hidden="true">·</span>
+                        <EntityLink
+                          kind="agent"
+                          label={finding.agent_name}
+                          compact
+                          onSelect={onOpenEntity}
+                        />
                         <Text size="sm" color="secondary">
-                          {`${finding.agent_name} on ${finding.device_name}`}
+                          on
                         </Text>
+                        <EntityLink
+                          kind="device"
+                          id={finding.device_id}
+                          label={finding.device_name}
+                          os={devices.find((d) => d.id === finding.device_id || d.hostname === finding.device_name)?.os}
+                          compact
+                          onSelect={onOpenEntity}
+                        />
+                        {finding.rule_id && (
+                          <>
+                            <span style={{ color: "var(--ink-secondary)", fontWeight: 600, marginInline: 2 }} aria-hidden="true">·</span>
+                            <EntityLink
+                              kind="rule"
+                              id={finding.rule_id}
+                              label={finding.rule_id}
+                              compact
+                              onSelect={onOpenEntity}
+                            />
+                          </>
+                        )}
                       </HStack>
                       <Quoted text={finding.target} />
                     </VStack>
@@ -354,42 +420,34 @@ export function HomePage({
           <div className="checklist">
             {devices.map((device) => (
               <div key={device.id} className="check-row" style={{ alignItems: "flex-start" }}>
-                <HStack gap={2} align="start">
-                  <div
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 6,
-                      background: "var(--bg-recessed)",
-                      border: "1px solid var(--border-subtle)",
-                      display: "grid",
-                      placeItems: "center",
-                      flexShrink: 0,
-                      marginTop: 2,
-                    }}
-                  >
-                    <GrdrIcon name="cpu" size={14} color="var(--ink-primary)" />
+                <VStack gap={1}>
+                  <div>
+                    <EntityLink
+                      kind="device"
+                      id={device.id}
+                      label={device.hostname}
+                      os={device.os}
+                      onSelect={onOpenEntity}
+                    />
                   </div>
-                  <VStack gap={1}>
-                    <div style={{ fontWeight: 600 }}>{device.hostname}</div>
-                    <Text size="sm" color="secondary">
-                      {`${device.os} / ${device.arch} · ${pluralize(device.agents.length, "agent")} · ${pluralize(device.mcp_servers.length, "MCP server")}`}
-                    </Text>
-                    <HStack gap={1} style={{ flexWrap: "wrap" }}>
-                      {device.agents.map((ag) => (
-                        <AssuranceBadge
-                          key={ag.id}
-                          level={ag.assurance_level}
-                          control={`${ag.name}: ${ag.assurance.control}`}
-                        />
-                      ))}
-                    </HStack>
-                  </VStack>
-                </HStack>
+                  <HStack gap={2} align="center" style={{ flexWrap: "wrap", color: "var(--ink-secondary)", fontSize: 13 }}>
+                    <OsLabel os={device.os} arch={device.arch} size={13} />
+                    <span>{`· ${pluralize(device.agents.length, "agent")} · ${pluralize(device.mcp_servers.length, "MCP server")}`}</span>
+                  </HStack>
+                  <HStack gap={1} style={{ flexWrap: "wrap" }}>
+                    {device.agents.map((ag) => (
+                      <AssuranceBadge
+                        key={ag.id}
+                        level={ag.assurance_level}
+                        control={`${ag.name}: ${ag.assurance.control}`}
+                      />
+                    ))}
+                  </HStack>
+                </VStack>
                 <Badge
                   variant={device.hook_effective ? "success" : "warning"}
                   icon={<GrdrIcon name={device.hook_effective ? "shield-check" : "shield-alert"} size={12} />}
-                  label={device.hook_effective ? "Hooks active" : "Request mode"}
+                  label={device.hook_effective ? "Hook active" : "User mode"}
                 />
               </div>
             ))}

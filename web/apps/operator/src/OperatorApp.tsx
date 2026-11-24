@@ -118,13 +118,15 @@ export function OperatorApp() {
                 </div>
               )}
             </div>
-            <IconButton
-              label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
-              icon={<GrdrIcon name={sidebarCollapsed ? "panel-left-open" : "panel-left-close"} size={15} />}
-              variant="ghost"
-              size="sm"
-              onClick={() => setSidebarCollapsed((c) => !c)}
-            />
+            <span className="rail-collapse-btn">
+              <IconButton
+                label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
+                icon={<GrdrIcon name={sidebarCollapsed ? "panel-left-open" : "panel-left-close"} size={15} />}
+                variant="ghost"
+                size="sm"
+                onClick={() => setSidebarCollapsed((c) => !c)}
+              />
+            </span>
           </div>
 
           <nav className="rail-nav">
@@ -154,8 +156,10 @@ export function OperatorApp() {
 
         <div className="workspace">
           <header className="topbar operator-context">
-            <HStack gap={2} align="center">
-              <Badge variant="warning" label="Operator realm" icon={<GrdrIcon name="lock" size={12} />} />
+            <HStack gap={2} align="center" style={{ flexWrap: "wrap", rowGap: 6 }}>
+              <span style={{ flexShrink: 0, display: "inline-flex" }}>
+                <Badge variant="warning" label="Operator realm" icon={<GrdrIcon name="lock" size={12} />} />
+              </span>
               <span style={{ fontSize: 13 }}>{t("operator.context.banner")}</span>
             </HStack>
             <HStack gap={2} align="center">
@@ -259,7 +263,7 @@ export function OperatorApp() {
                                 <GrdrIcon name="shield-check" size={16} color="var(--tone-allow)" />
                                 <h2 className="ledger-title">Deployment boundary</h2>
                               </HStack>
-                              <Badge variant="success" icon={<GrdrIcon name="lock" size={11} />} label="P8 isolated" />
+                              <Badge variant="success" icon={<GrdrIcon name="lock" size={11} />} label="Tenant isolated" />
                             </div>
                             <GrdrFlowGraph
                               direction="LR"
@@ -307,12 +311,16 @@ export function OperatorApp() {
                             </div>
                             <div className="kv-row">
                               <Text color="secondary">Pending operator approvals</Text>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                label={`${snapshot.overview.pending_approvals} · Inspect audit`}
-                                onClick={() => setRoute("op-audit")}
-                              />
+                              <HStack gap={2} align="center">
+                                <Badge variant="neutral" label={snapshot.overview.pending_approvals} />
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  label="Inspect audit"
+                                  endContent={<GrdrIcon name="arrow-right" size={12} />}
+                                  onClick={() => setRoute("op-audit")}
+                                />
+                              </HStack>
                             </div>
                           </section>
 

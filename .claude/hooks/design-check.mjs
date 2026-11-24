@@ -37,6 +37,30 @@ const JSX_INLINE_TEXT_RE = />([^<>{}]*)</g;
 const SEMICOLON_PROSE_RE = /[A-Za-z0-9];\s+[A-Za-z]/;
 const SEMICOLON_DATA_ALLOW_RE =
   /data:|image\/|charset|font-|color:|padding:|margin:|display:|http|text\/|application\/|&[a-z]+;|use strict/i;
+const ENTITY_JSX_PATH_RE = /^(?:web\/apps\/console\/|web\/packages\/kit\/).+\.[jt]sx$/;
+const ENTITY_EXPR_RE = /\b(?:device_name|deviceHostname|agent_name|session_id|rule_id|[A-Za-z_]\w*\.hostname)\b/;
+const JSX_CHILD_ENTITY_INLINE_RE = />[^{<\n]*\{[^}\n]*\b(?:device_name|deviceHostname|agent_name|session_id|rule_id|[A-Za-z_]\w*\.hostname)\b[^}\n]*\}[^{<\n]*</;
+
+function hasPlaintextEntityJsx(relPath, content) {
+  if (!ENTITY_JSX_PATH_RE.test(relPath) || relPath.endsWith("/EntityLink.tsx")) {
+    return false;
+  }
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("*")) continue;
+    if (JSX_CHILD_ENTITY_INLINE_RE.test(line)) {
+      return true;
+    }
+    if (
+      /^\{[^}\n]*\}$/.test(trimmed) &&
+      ENTITY_EXPR_RE.test(trimmed) &&
+      !/^\{[`"']?[^}]+:\s/.test(trimmed)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
 
 function hasSemicolonProse(relPath, content) {
   for (const line of content.split(/\r?\n/)) {
@@ -167,6 +191,11 @@ export function checkDesignContent(relPath, content) {
   if (FORBIDDEN_VOCAB_RE.test(content)) {
     findings.push(
       `design-check (${relPath}): replace legacy "posture" terminology with Guardrails terms (Mode, Assurance level, Verdict).`,
+    );
+  }
+  if (hasPlaintextEntityJsx(relPath, content)) {
+    findings.push(
+      ["design-check (", relPath, "): render device, agent, session, and rule references via clickable EntityLink instead of plaintext JSX."].join(""),
     );
   }
   return findings;

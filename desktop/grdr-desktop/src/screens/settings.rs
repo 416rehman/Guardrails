@@ -20,7 +20,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         ThemeChoice::Dark => Some(1),
     };
 
-    let profile_ctrl = SegmentedControl::new(&["Protected", "App hooks"], profile_idx)
+    let profile_ctrl = SegmentedControl::new(&["Protected", "User mode"], profile_idx)
         .label("Protection profile")
         .fit()
         .on_pick(|s: &mut DesktopApp, idx: usize, _: &mut Tx| {

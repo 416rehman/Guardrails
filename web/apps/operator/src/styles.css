@@ -1,5 +1,10 @@
 @import "../../console/src/styles.css";
 
+.topbar.operator-context {
+  background-color: var(--tone-ask-bg);
+  border-block-end: 1px solid var(--tone-ask-border);
+}
+
 .kv-row {
   display: flex;
   justify-content: space-between;

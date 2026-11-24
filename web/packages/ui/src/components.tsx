@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Badge, type BadgeVariant } from "@astryxdesign/core/Badge";
+import { type BadgeVariant } from "@astryxdesign/core/Badge";
 import { Banner, type BannerStatus } from "@astryxdesign/core/Banner";
 import { Button, type ButtonSize, type ButtonVariant } from "@astryxdesign/core/Button";
 import { Card, type CardVariant } from "@astryxdesign/core/Card";
@@ -19,26 +19,34 @@ import { TextInput } from "@astryxdesign/core/TextInput";
 import { Tooltip } from "@astryxdesign/core/Tooltip";
 import {
   SiAnthropic,
+  SiApple,
   SiClaude,
   SiClaudecode,
   SiCloudflare,
   SiCursor,
+  SiDebian,
+  SiFedora,
   SiGithubcopilot,
   SiGoogle,
   SiGooglegemini,
   SiKong,
+  SiLinux,
   SiMetaai,
   SiMistralai,
   SiModelcontextprotocol,
   SiOpencode,
+  SiUbuntu,
   SiWindsurf,
 } from "@icons-pack/react-simple-icons";
 import guardrailsMarkPng from "./assets/guardrails-mark.png";
+import heroWaveLightPng from "./assets/hero-wave-light.png";
+import heroWaveDarkPng from "./assets/hero-wave-dark.png";
 import {
   Activity,
   AlertCircle,
   AlertOctagon,
   AlertTriangle,
+  ArrowLeft,
   ArrowRight,
   Ban,
   Binoculars,
@@ -55,12 +63,14 @@ import {
   FileJson,
   FileText,
   GitBranch,
+  Globe,
   Hand,
   HardDrive,
   HeartPulse,
   Home,
   KeyRound,
   Layers,
+  LayoutGrid,
   List,
   Lock,
   Moon,
@@ -93,8 +103,62 @@ import {
   Maximize2,
 } from "lucide-react";
 
+export function Badge({
+  variant = "neutral",
+  label,
+  icon,
+  children,
+  className,
+  title,
+}: {
+  variant?: BadgeVariant;
+  label?: ReactNode;
+  icon?: ReactNode;
+  children?: ReactNode;
+  className?: string;
+  title?: string;
+}) {
+  return (
+    <span
+      className={className ? `grdr-badge ${className}` : "grdr-badge"}
+      data-variant={variant}
+      title={title}
+    >
+      {icon ? <span className="grdr-badge-icon" aria-hidden="true">{icon}</span> : null}
+      <span>{label ?? children}</span>
+    </span>
+  );
+}
+
+export function StatusInline({
+  tone = "neutral",
+  icon,
+  dot = false,
+  dotColor,
+  label,
+}: {
+  tone?: "allow" | "watch" | "ask" | "block" | "neutral";
+  icon?: ReactNode;
+  dot?: boolean;
+  dotColor?: string;
+  label: ReactNode;
+}) {
+  return (
+    <span className="grdr-status-inline" data-tone={tone}>
+      {dot ? (
+        <span
+          className="grdr-status-dot"
+          style={dotColor ? { backgroundColor: dotColor } : undefined}
+          aria-hidden="true"
+        />
+      ) : null}
+      {icon ? <span className="grdr-status-icon" aria-hidden="true">{icon}</span> : null}
+      <span>{label}</span>
+    </span>
+  );
+}
+
 export {
-  Badge,
   Banner,
   Button,
   Card,
@@ -122,6 +186,7 @@ export type GrdrIconName =
   | "alert-circle"
   | "alert-octagon"
   | "alert-triangle"
+  | "arrow-left"
   | "arrow-right"
   | "ban"
   | "binoculars"
@@ -138,12 +203,14 @@ export type GrdrIconName =
   | "file-json"
   | "file-text"
   | "git-branch"
+  | "globe"
   | "hand"
   | "hard-drive"
   | "heart-pulse"
   | "home"
   | "key-round"
   | "layers"
+  | "layout-grid"
   | "list"
   | "lock"
   | "moon"
@@ -201,6 +268,8 @@ export function GrdrIcon({
       return <AlertOctagon {...props} />;
     case "alert-triangle":
       return <AlertTriangle {...props} />;
+    case "arrow-left":
+      return <ArrowLeft {...props} />;
     case "arrow-right":
       return <ArrowRight {...props} />;
     case "ban":
@@ -233,6 +302,8 @@ export function GrdrIcon({
       return <FileText {...props} />;
     case "git-branch":
       return <GitBranch {...props} />;
+    case "globe":
+      return <Globe {...props} />;
     case "hand":
       return <Hand {...props} />;
     case "hard-drive":
@@ -245,6 +316,8 @@ export function GrdrIcon({
       return <KeyRound {...props} />;
     case "layers":
       return <Layers {...props} />;
+    case "layout-grid":
+      return <LayoutGrid {...props} />;
     case "list":
       return <List {...props} />;
     case "lock":
@@ -388,6 +461,18 @@ export function GuardrailsMark({
   );
 }
 
+export function HeroWaveBackdrop({ theme }: { theme: "light" | "dark" }) {
+  return (
+    <div className="grdr-hero-wave" aria-hidden="true">
+      <img
+        src={theme === "dark" ? heroWaveDarkPng : heroWaveLightPng}
+        alt=""
+        className="grdr-hero-wave-img"
+      />
+    </div>
+  );
+}
+
 export function HarnessIcon({
   name,
   size = 15,
@@ -459,6 +544,76 @@ export function HarnessIcon({
   }
 
   return <GrdrIcon name="cpu" size={size} />;
+}
+
+export function SelectableTile({
+  label,
+  checked,
+  onChange,
+  icon,
+  className,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  icon?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      className={className ? `grdr-select-tile ${className}` : "grdr-select-tile"}
+      data-checked={checked ? "true" : "false"}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="grdr-select-tile-left">
+        {icon ? (
+          <span className="grdr-select-tile-icon" aria-hidden="true">
+            {icon}
+          </span>
+        ) : null}
+        <span className="grdr-select-tile-label">{label}</span>
+      </span>
+      {checked ? (
+        <span className="grdr-select-tile-check" aria-hidden="true">
+          <Check size={15} strokeWidth={2.4} />
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+export function OsIcon({
+  os,
+  size = 14,
+}: {
+  os: string;
+  size?: number;
+}) {
+  const norm = os.trim().toLowerCase();
+
+  if (norm.includes("darwin") || norm.includes("macos") || norm === "mac") {
+    return <SiApple size={size} color="var(--ink-primary)" aria-hidden="true" />;
+  }
+  if (norm.includes("ubuntu")) {
+    return <SiUbuntu size={size} color="var(--tone-ask)" aria-hidden="true" />;
+  }
+  if (norm.includes("debian")) {
+    return <SiDebian size={size} color="var(--tone-block)" aria-hidden="true" />;
+  }
+  if (norm.includes("fedora")) {
+    return <SiFedora size={size} color="var(--accent-primary)" aria-hidden="true" />;
+  }
+  if (norm.includes("linux")) {
+    return <SiLinux size={size} color="var(--ink-primary)" aria-hidden="true" />;
+  }
+  if (norm.includes("win")) {
+    return <LayoutGrid size={size} color="var(--accent-primary)" aria-hidden="true" />;
+  }
+
+  return <GrdrIcon name="hard-drive" size={size} color="var(--ink-secondary)" />;
 }
 
 export function GrdrSelect({

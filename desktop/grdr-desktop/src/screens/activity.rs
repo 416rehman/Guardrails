@@ -1,9 +1,13 @@
-use grdr_ui_model::Intent;
+use grdr_ui_model::{Intent, Screen};
 use rune::{El, col, el, icon, row, spacer, text};
 
 use crate::icons;
-use crate::kit::{DesktopApp, ledger_header, primary_button, quoted_chip, status_pill_with_icon};
+use crate::kit::{
+    ChipSurface, DesktopApp, agent_glyph, entity_link, ledger_header, primary_button, quoted_chip,
+    status_pill_with_icon,
+};
 use crate::theme::StudioTheme;
+use crate::viz::{attention_card, elevated_card};
 
 #[must_use]
 pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
@@ -24,11 +28,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         } else {
             t.c.canvas
         };
-        let agent_glyph = if sess.agent_name.contains("Claude") {
-            &icons::TERMINAL
-        } else {
-            &icons::CPU
-        };
+        let glyph = agent_glyph(&sess.agent_name);
         let verdict_pill = if sess.blocked_count > 0 {
             status_pill_with_icon(
                 &format!("{} blocked", sess.blocked_count),
@@ -64,7 +64,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                         .radius(6.0)
                         .fill(t.c.recessed)
                         .center()
-                        .child(icon(agent_glyph, 14.0).color(t.c.ink_primary)),
+                        .child(icon(glyph, 14.0).color(t.c.ink_primary)),
                 )
                 .child(
                     col()
@@ -96,12 +96,9 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
     let mut card_section = col().w_full().gap(10.0);
     if let Some(sess) = selected_session {
         if let Some(card) = &sess.block_card {
-            let card_el = col()
+            let card_body = col()
                 .w_full()
                 .padding(16.0)
-                .radius(10.0)
-                .fill(t.c.recessed)
-                .border(1.0, t.c.border_subtle)
                 .gap(10.0)
                 .child(
                     row()
@@ -124,11 +121,34 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                         )),
                 )
                 .child(
-                    text(format!("{} · Rule {}", sess.agent_name, card.rule_id))
-                        .font(t.caption)
-                        .color(t.c.ink_secondary),
+                    row()
+                        .gap(5.0)
+                        .center_y()
+                        .child(entity_link(
+                            "act-card-agent",
+                            agent_glyph(&sess.agent_name),
+                            &sess.agent_name,
+                            t,
+                            |s| s.dispatch(Intent::Navigate(Screen::Home)),
+                        ))
+                        .child(text("on").font(t.caption).color(t.c.ink_muted))
+                        .child(entity_link(
+                            "act-card-device",
+                            &icons::HARD_DRIVE,
+                            &sess.device_name,
+                            t,
+                            |s| s.dispatch(Intent::Navigate(Screen::Settings)),
+                        ))
+                        .child(text("·").font(t.caption).color(t.c.ink_muted))
+                        .child(entity_link(
+                            "act-card-rule",
+                            &icons::SHIELD_CHECK,
+                            &card.rule_id,
+                            t,
+                            |s| s.dispatch(Intent::Navigate(Screen::Rules)),
+                        )),
                 )
-                .child(quoted_chip(&card.target_quoted, t))
+                .child(quoted_chip(&card.target_quoted, ChipSurface::OnRecessed, t))
                 .child(
                     text("Blocked by baseline protection to keep agent hooks and local configuration tamper-resistant.")
                         .font(t.caption)
@@ -147,16 +167,15 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                     },
                 )));
 
+            let card_el = attention_card("act-block-card", 12.0, t, card_body).w_full();
+
             card_section = card_section
                 .child(ledger_header("Latest blocked action", &sess.agent_name, t))
                 .child(card_el);
         } else {
-            let card_el = col()
+            let detail_body = col()
                 .w_full()
                 .padding(16.0)
-                .radius(10.0)
-                .fill(t.c.recessed)
-                .border(1.0, t.c.border_subtle)
                 .gap(10.0)
                 .child(
                     row()
@@ -171,12 +190,30 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                         ),
                 )
                 .child(
-                    text(format!(
-                        "{} on {} · Zero blocked calls recorded.",
-                        sess.verdict_summary, sess.device_name
-                    ))
-                    .font(t.caption)
-                    .color(t.c.ink_secondary),
+                    row()
+                        .gap(5.0)
+                        .center_y()
+                        .child(entity_link(
+                            "act-detail-agent",
+                            agent_glyph(&sess.agent_name),
+                            &sess.agent_name,
+                            t,
+                            |s| s.dispatch(Intent::Navigate(Screen::Home)),
+                        ))
+                        .child(text("on").font(t.caption).color(t.c.ink_muted))
+                        .child(entity_link(
+                            "act-detail-device",
+                            &icons::HARD_DRIVE,
+                            &sess.device_name,
+                            t,
+                            |s| s.dispatch(Intent::Navigate(Screen::Settings)),
+                        ))
+                        .child(text("·").font(t.caption).color(t.c.ink_muted))
+                        .child(
+                            text(format!("{} (0 blocked)", sess.verdict_summary))
+                                .font(t.caption)
+                                .color(t.c.ink_secondary),
+                        ),
                 )
                 .child(row().child(primary_button(
                     "session-detail-action",
@@ -191,7 +228,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
 
             card_section = card_section
                 .child(ledger_header("Session details", &sess.agent_name, t))
-                .child(card_el);
+                .child(elevated_card("act-detail-card", 12.0, t, detail_body).w_full());
         }
     }
 

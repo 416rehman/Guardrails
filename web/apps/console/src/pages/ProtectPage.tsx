@@ -10,7 +10,7 @@ import {
   type ReplaySummary,
 } from "@grdr/api";
 import { pluralize } from "@grdr/i18n";
-import { ModeBadge, ModeControl, Quoted, VerdictBadge } from "@grdr/kit";
+import { EntityLink, type EntityTarget, ModeBadge, ModeControl, Quoted, VerdictBadge } from "@grdr/kit";
 import {
   Badge,
   Banner,
@@ -46,15 +46,20 @@ export function ProtectPage({
   packs,
   devices,
   prefillAttempt,
+  focusedEntity,
   onClearPrefill,
+  onOpenEntity,
   onUpdated,
 }: {
   packs: PolicyPack[];
   devices: Device[];
   prefillAttempt: ActionAttempt | null;
+  focusedEntity?: EntityTarget | null;
   onClearPrefill: () => void;
+  onOpenEntity?: (target: EntityTarget) => void;
   onUpdated: () => void;
 }) {
+  const focusedRuleId = focusedEntity?.kind === "rule" ? focusedEntity.id : null;
   const [replay, setReplay] = useState<{ ruleId: string; summary: ReplaySummary } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editorMode, setEditorMode] = useState<EditorViewMode>("simple");
@@ -385,8 +390,23 @@ export function ProtectPage({
                   <tbody>
                     {replay.summary.samples.map((sample) => (
                       <tr key={sample.attempt_id}>
-                        <td className="mono">{sample.session_id}</td>
-                        <td>{sample.agent_name}</td>
+                        <td>
+                          <EntityLink
+                            kind="session"
+                            id={sample.session_id}
+                            label={sample.session_id}
+                            compact
+                            onSelect={onOpenEntity}
+                          />
+                        </td>
+                        <td>
+                          <EntityLink
+                            kind="agent"
+                            label={sample.agent_name}
+                            compact
+                            onSelect={onOpenEntity}
+                          />
+                        </td>
                         <td>
                           <Quoted text={sample.target} />
                         </td>
@@ -430,7 +450,10 @@ export function ProtectPage({
 
           <div className="ledger-list">
             {pack.rules.map((rule) => (
-              <div key={rule.id} className="ledger-row">
+              <div
+                key={rule.id}
+                className={`ledger-row ${focusedRuleId === rule.id ? "selected" : ""} ${rule.locked ? "floor-locked" : ""}`.trim()}
+              >
                 <div className="ledger-row-main">
                   <VStack gap={1} style={{ flex: 1, minWidth: 260 }}>
                     <HStack gap={2} align="center" style={{ flexWrap: "wrap" }}>

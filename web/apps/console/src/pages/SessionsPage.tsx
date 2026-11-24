@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type ActionAttempt, type AssuranceLevel, type SessionDetailResponse, type SessionSummary } from "@grdr/api";
+import { api, type ActionAttempt, type AssuranceLevel, type Device, type SessionDetailResponse, type SessionSummary } from "@grdr/api";
 import { formatActionLabel, pluralize, presentAssurance } from "@grdr/i18n";
-import { Quoted, SessionLabelBadge, VerdictBadge } from "@grdr/kit";
+import { EntityLink, type EntityTarget, Quoted, SessionLabelBadge, VerdictBadge } from "@grdr/kit";
 import {
   Badge,
   Banner,
@@ -10,7 +10,6 @@ import {
   type GrdrFlowNode,
   GrdrFlowGraph,
   GrdrIcon,
-  HarnessIcon,
   Heading,
   HStack,
   Text,
@@ -22,11 +21,19 @@ type SessionViewMode = "graph" | "timeline" | "stream";
 
 export function SessionsPage({
   sessions,
+  devices = [],
   searchQuery,
+  focusedEntity,
+  onClearFocus,
+  onOpenEntity,
   onCreateRuleFromAttempt,
 }: {
   sessions: SessionSummary[];
+  devices?: Device[];
   searchQuery: string;
+  focusedEntity?: EntityTarget | null;
+  onClearFocus?: () => void;
+  onOpenEntity?: (target: EntityTarget) => void;
   onCreateRuleFromAttempt: (attempt: ActionAttempt) => void;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(sessions[0]?.id ?? null);
@@ -34,6 +41,13 @@ export function SessionsPage({
   const [viewMode, setViewMode] = useState<SessionViewMode>("graph");
   const [detail, setDetail] = useState<SessionDetailResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (focusedEntity?.kind === "session") {
+      setSelectedId(focusedEntity.id);
+      onClearFocus?.();
+    }
+  }, [focusedEntity, onClearFocus]);
 
   const query = searchQuery.trim().toLowerCase();
   const filtered = sessions.filter(
@@ -207,21 +221,54 @@ export function SessionsPage({
                   onClick={() => setSelectedId(sess.id)}
                 >
                   <div className="ledger-row-main">
-                    <HStack gap={2} align="center">
-                      <HarnessIcon name={sess.agent_name} size={15} />
-                      <div>
-                        <strong>{sess.agent_name}</strong>
-                        <div className="mono" style={{ color: "var(--ink-muted)" }}>
-                          {`${sess.device_name} · ${pluralize(sess.total_actions, "call")}`}
-                        </div>
-                      </div>
-                    </HStack>
+                    <VStack gap={1}>
+                      <HStack gap={1} align="center" style={{ flexWrap: "wrap", columnGap: 6, rowGap: 2 }}>
+                        <EntityLink
+                          kind="agent"
+                          label={sess.agent_name}
+                          compact
+                          onSelect={onOpenEntity}
+                        />
+                        <Text size="sm" color="secondary">
+                          on
+                        </Text>
+                        <EntityLink
+                          kind="device"
+                          id={sess.device_id}
+                          label={sess.device_name}
+                          os={devices.find((d) => d.id === sess.device_id || d.hostname === sess.device_name)?.os}
+                          compact
+                          onSelect={onOpenEntity}
+                        />
+                      </HStack>
+                      <HStack gap={2} align="center" style={{ columnGap: 6, rowGap: 2 }}>
+                        <EntityLink
+                          kind="session"
+                          id={sess.id}
+                          label={sess.id}
+                          compact
+                          onSelect={() => setSelectedId(sess.id)}
+                        />
+                        <span style={{ color: "var(--ink-muted)" }} aria-hidden="true">·</span>
+                        <Text size="sm" color="secondary" className="tabular">
+                          {pluralize(sess.total_actions, "call")}
+                        </Text>
+                      </HStack>
+                    </VStack>
                     <HStack gap={1}>
                       {sess.blocked_count > 0 && (
-                        <Badge variant="error" label={`${sess.blocked_count} denied`} />
+                        <Badge
+                          variant="error"
+                          icon={<GrdrIcon name="ban" size={11} />}
+                          label={`${sess.blocked_count} denied`}
+                        />
                       )}
                       {sess.step_up_count > 0 && (
-                        <Badge variant="warning" label={`${sess.step_up_count} ask`} />
+                        <Badge
+                          variant="warning"
+                          icon={<GrdrIcon name="hand" size={11} />}
+                          label={`${sess.step_up_count} ask`}
+                        />
                       )}
                     </HStack>
                   </div>
@@ -243,12 +290,32 @@ export function SessionsPage({
           {detail ? (
             <>
               <div className="ledger-header" style={{ flexWrap: "wrap", gap: 10 }}>
-                <div>
-                  <h2 className="ledger-title">{`${detail.session.agent_name} on ${detail.session.device_name}`}</h2>
-                  <Text size="sm" color="secondary" className="mono">
-                    {detail.session.id}
-                  </Text>
-                </div>
+                <VStack gap={1}>
+                  <HStack gap={1} align="center" style={{ flexWrap: "wrap" }}>
+                    <EntityLink
+                      kind="agent"
+                      label={detail.session.agent_name}
+                      onSelect={onOpenEntity}
+                    />
+                    <Text size="sm" color="secondary">
+                      on
+                    </Text>
+                    <EntityLink
+                      kind="device"
+                      id={detail.session.device_id}
+                      label={detail.session.device_name}
+                      os={devices.find((d) => d.id === detail.session.device_id || d.hostname === detail.session.device_name)?.os}
+                      onSelect={onOpenEntity}
+                    />
+                  </HStack>
+                  <EntityLink
+                    kind="session"
+                    id={detail.session.id}
+                    label={detail.session.id}
+                    compact
+                    onSelect={() => setSelectedId(detail.session.id)}
+                  />
+                </VStack>
                 <HStack gap={2} align="center">
                   <UiSdkSegmentedControl<SessionViewMode>
                     ariaLabel="Session inspection mode"
@@ -284,7 +351,19 @@ export function SessionsPage({
                   height={336}
                   ariaLabel="Agent session execution path graph"
                   onNodeSelect={(nodeId) => {
-                    if (detail.attempts.some((a) => a.id === nodeId)) {
+                    if (nodeId === "host") {
+                      onOpenEntity?.({
+                        kind: "device",
+                        id: detail.session.device_id,
+                        label: detail.session.device_name,
+                      });
+                    } else if (nodeId === "agent") {
+                      onOpenEntity?.({
+                        kind: "agent",
+                        id: detail.session.agent_name,
+                        label: detail.session.agent_name,
+                      });
+                    } else if (detail.attempts.some((a) => a.id === nodeId)) {
                       setSelectedAttemptId(nodeId);
                     }
                   }}
@@ -325,9 +404,19 @@ export function SessionsPage({
                               receipt && <VerdictBadge verdict={receipt.verdict} />
                             )}
                           </HStack>
-                          <Text size="sm" color="secondary" className="mono">
-                            {receipt?.rule_id ?? "baseline"}
-                          </Text>
+                          {receipt?.rule_id ? (
+                            <EntityLink
+                              kind="rule"
+                              id={receipt.rule_id}
+                              label={receipt.rule_id}
+                              compact
+                              onSelect={onOpenEntity}
+                            />
+                          ) : (
+                            <Text size="sm" color="secondary" className="mono">
+                              baseline
+                            </Text>
+                          )}
                         </HStack>
                         <div style={{ marginTop: 6 }}>
                           <Quoted text={attempt.target} />
@@ -361,13 +450,29 @@ export function SessionsPage({
                             onClick={() => setSelectedAttemptId(attempt.id)}
                           >
                             <td>{receipt ? <VerdictBadge verdict={receipt.verdict} /> : "Allow"}</td>
-                            <td className="mono">{receipt?.rule_id ?? "baseline"}</td>
+                            <td>
+                              {receipt?.rule_id ? (
+                                <EntityLink
+                                  kind="rule"
+                                  id={receipt.rule_id}
+                                  label={receipt.rule_id}
+                                  compact
+                                  onSelect={onOpenEntity}
+                                />
+                              ) : (
+                                <span className="mono" style={{ color: "var(--ink-muted)" }}>
+                                  baseline
+                                </span>
+                              )}
+                            </td>
                             <td>{formatActionLabel(attempt.action_class)}</td>
                             <td>
-                              <HStack gap={1} align="center">
-                                <HarnessIcon name={attempt.agent_name} size={13} />
-                                <span>{attempt.agent_name}</span>
-                              </HStack>
+                              <EntityLink
+                                kind="agent"
+                                label={attempt.agent_name}
+                                compact
+                                onSelect={onOpenEntity}
+                              />
                             </td>
                             <td>
                               <Quoted text={attempt.target} />
@@ -383,10 +488,19 @@ export function SessionsPage({
               {focusedAttempt && (
                 <div className="ledger-row-drawer">
                   <HStack justify="between" align="center" style={{ flexWrap: "wrap", gap: 8 }}>
-                    <HStack gap={2} align="center">
+                    <HStack gap={2} align="center" style={{ columnGap: 6, rowGap: 2, flexWrap: "wrap" }}>
                       <strong>{formatActionLabel(focusedAttempt.action_class)}</strong>
                       {focusedReceipt?.rule_id && (
-                        <Badge variant="neutral" label={focusedReceipt.rule_id} />
+                        <>
+                          <span style={{ color: "var(--ink-muted)" }} aria-hidden="true">·</span>
+                          <EntityLink
+                            kind="rule"
+                            id={focusedReceipt.rule_id}
+                            label={focusedReceipt.rule_id}
+                            compact
+                            onSelect={onOpenEntity}
+                          />
+                        </>
                       )}
                     </HStack>
                     {focusedReceipt?.signature_verified === true && (

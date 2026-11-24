@@ -1,5 +1,6 @@
 export * from "./VerdictBadge";
 export * from "./Quoted";
+export * from "./EntityLink";
 export * from "./ModeControl";
 export * from "./InsightTile";
 export * from "./DeviceAssuranceDrawer";

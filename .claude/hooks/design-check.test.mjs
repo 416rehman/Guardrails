@@ -186,3 +186,25 @@ test("rejects em dashes, en dashes, semicolon prose, and AI writing tells while 
     [],
   );
 });
+
+test("rejects plaintext device/agent/session/rule JSX text while allowing EntityLink", () => {
+  const inlinePlain = checkDesignContent(
+    "web/apps/console/src/pages/HomePage.tsx",
+    "export function Host() { return <strong>{device.hostname}</strong>; }",
+  );
+  assert.ok(inlinePlain.some((f) => f.includes("EntityLink")));
+
+  const blockPlain = checkDesignContent(
+    "web/apps/console/src/pages/RespondPage.tsx",
+    "export function Cell({ inc }: any) {\n  return (\n    <td>\n      {inc.session_id}\n    </td>\n  );\n}",
+  );
+  assert.ok(blockPlain.some((f) => f.includes("EntityLink")));
+
+  assert.deepEqual(
+    checkDesignContent(
+      "web/apps/console/src/pages/HomePage.tsx",
+      'export function HostLink({ device, onOpen }: any) {\n  return <EntityLink kind="device" id={device.id} label={device.hostname} onSelect={onOpen} />;\n}',
+    ),
+    [],
+  );
+});

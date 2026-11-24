@@ -18,6 +18,7 @@ import {
   type SessionSummary,
 } from "@grdr/api";
 import { CONSOLE_ROUTES, pluralize, t } from "@grdr/i18n";
+import { type EntityTarget } from "@grdr/kit";
 import {
   Badge,
   Banner,
@@ -26,6 +27,7 @@ import {
   GrdrIcon,
   GrdrThemeProvider,
   GuardrailsMark,
+  HeroWaveBackdrop,
   HStack,
   IconButton,
   Kbd,
@@ -66,6 +68,34 @@ export function App() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [killSwitch, setKillSwitch] = useState<KillSwitchState>({ state: "inactive" });
   const [prefillAttempt, setPrefillAttempt] = useState<ActionAttempt | null>(null);
+  const [focusedEntity, setFocusedEntity] = useState<EntityTarget | null>(null);
+  const [returnRoute, setReturnRoute] = useState<{ route: NavRoute; label: string } | null>(null);
+
+  function handleOpenEntity(target: EntityTarget) {
+    let dest: NavRoute = route;
+    switch (target.kind) {
+      case "device":
+      case "agent":
+      case "mcp":
+        dest = "inventory";
+        break;
+      case "session":
+        dest = "sessions";
+        break;
+      case "rule":
+        dest = "protect";
+        break;
+    }
+    if (dest !== route) {
+      const originMeta = CONSOLE_ROUTES.find((r) => r.id === route);
+      setReturnRoute({
+        route,
+        label: originMeta ? t(originMeta.labelKey) : route,
+      });
+    }
+    setFocusedEntity(target);
+    setRoute(dest);
+  }
 
   const loadAll = useCallback(async () => {
     try {
@@ -200,13 +230,15 @@ export function App() {
                 </div>
               )}
             </div>
-            <IconButton
-              label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
-              icon={<GrdrIcon name={sidebarCollapsed ? "panel-left-open" : "panel-left-close"} size={15} />}
-              variant="ghost"
-              size="sm"
-              onClick={() => setSidebarCollapsed((c) => !c)}
-            />
+            <span className="rail-collapse-btn">
+              <IconButton
+                label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
+                icon={<GrdrIcon name={sidebarCollapsed ? "panel-left-open" : "panel-left-close"} size={15} />}
+                variant="ghost"
+                size="sm"
+                onClick={() => setSidebarCollapsed((c) => !c)}
+              />
+            </span>
           </div>
 
           <nav className="rail-nav">
@@ -217,14 +249,19 @@ export function App() {
                 title={t(item.labelKey)}
                 aria-label={t(item.labelKey)}
                 className={`nav-item ${route === item.id ? "active" : ""}`}
-                onClick={() => setRoute(item.id)}
+                onClick={() => {
+                  setReturnRoute(null);
+                  setRoute(item.id);
+                }}
               >
                 <span className="nav-item-label">
                   <GrdrIcon name={iconKeyToName(item.iconKey)} size={16} />
                   {!sidebarCollapsed && <span>{t(item.labelKey)}</span>}
                 </span>
                 {!sidebarCollapsed && item.id === "respond" && pendingApprovals > 0 && (
-                  <Badge variant="warning" label={pendingApprovals} />
+                  <span className="nav-attention-count tabular" aria-label={`${pendingApprovals} pending`}>
+                    {pendingApprovals}
+                  </span>
                 )}
               </button>
             ))}
@@ -242,7 +279,8 @@ export function App() {
           )}
         </aside>
 
-        <div className="workspace">
+        <div className={route === "home" ? "workspace workspace-home" : "workspace"}>
+          {route === "home" && <HeroWaveBackdrop theme={theme} />}
           <header className="topbar">
             <button
               type="button"
@@ -254,7 +292,9 @@ export function App() {
                 <GrdrIcon name="search" size={14} color="var(--ink-muted)" />
                 <span>{searchQuery || "Jump to device, rule, or route..."}</span>
               </span>
-              <Kbd keys="mod+k" />
+              <span className="search-kbd">
+                <Kbd keys="mod+k" />
+              </span>
             </button>
 
             <div className="topbar-actions">
@@ -313,6 +353,22 @@ export function App() {
           )}
 
           <main className="main-scroll">
+            {returnRoute && (
+              <div style={{ marginBottom: 12 }}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon={<GrdrIcon name="arrow-left" size={13} />}
+                  label={`Back to ${returnRoute.label}`}
+                  onClick={() => {
+                    const prev = returnRoute.route;
+                    setReturnRoute(null);
+                    setFocusedEntity(null);
+                    setRoute(prev);
+                  }}
+                />
+              </div>
+            )}
             {loadingError && (
               <Banner
                 status="error"
@@ -331,6 +387,7 @@ export function App() {
                 approvals={approvals}
                 findings={findings}
                 onNavigate={setRoute}
+                onOpenEntity={handleOpenEntity}
                 onDecideApproval={handleDecideApproval}
               />
             )}
@@ -338,13 +395,20 @@ export function App() {
               <InventoryPage
                 devices={devices}
                 searchQuery={searchQuery}
+                focusedEntity={focusedEntity}
+                onClearFocus={() => setFocusedEntity(null)}
+                onOpenEntity={handleOpenEntity}
                 onRefresh={() => void loadAll()}
               />
             )}
             {route === "sessions" && (
               <SessionsPage
                 sessions={sessions}
+                devices={devices}
                 searchQuery={searchQuery}
+                focusedEntity={focusedEntity}
+                onClearFocus={() => setFocusedEntity(null)}
+                onOpenEntity={handleOpenEntity}
                 onCreateRuleFromAttempt={(attempt) => {
                   setPrefillAttempt(attempt);
                   setRoute("protect");
@@ -356,7 +420,9 @@ export function App() {
                 packs={packs}
                 devices={devices}
                 prefillAttempt={prefillAttempt}
+                focusedEntity={focusedEntity}
                 onClearPrefill={() => setPrefillAttempt(null)}
+                onOpenEntity={handleOpenEntity}
                 onUpdated={() => void loadAll()}
               />
             )}
@@ -365,13 +431,22 @@ export function App() {
                 approvals={approvals}
                 findings={findings}
                 incidents={incidents}
+                devices={devices}
                 killSwitch={killSwitch}
                 defaultSessionId={sessions[0]?.id ?? "sess-demo-refactor"}
+                onOpenEntity={handleOpenEntity}
                 onUpdated={() => void loadAll()}
               />
             )}
-            {route === "coverage" && <CoveragePage devices={devices} />}
-            {route === "tester" && <TesterPage onEvaluated={() => void loadAll()} />}
+            {route === "coverage" && (
+              <CoveragePage devices={devices} onOpenEntity={handleOpenEntity} />
+            )}
+            {route === "tester" && (
+              <TesterPage
+                onEvaluated={() => void loadAll()}
+                onOpenEntity={handleOpenEntity}
+              />
+            )}
           </main>
         </div>
       </div>

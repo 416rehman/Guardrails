@@ -11,7 +11,7 @@ Guardrails ADR is an open-source agent detection and response (ADR) platform (`g
 - **Rust safety & quality:** No `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `unreachable!`, indexing that can panic, or `process::exit` in non-test code. Use checked or saturating arithmetic where `clippy::arithmetic_side_effects` is denied. Keep `unsafe` out of product code unless explicitly isolated with a `// SAFETY:` comment.
 - **Structure (`grdr-structure`):** Keep source files focused (<500 lines outside tests), declare types before `impl`s, represent lifecycles as explicit enums rather than boolean flags, and include `GRDR-<AREA>-<NNNN>` error codes.
 - **Privacy (P8) & Vocabulary:** Respect data classes and never leak local secrets or untrusted prompt/agent text into logs or raw HTML. Use Guardrails terminology (`Mode`: `Off`/`Watch`/`Ask`/`Block`, `Verdict`, `Assurance level`, `Grant`, `Receipt`, `Finding`, `Incident`; never "posture" or "case").
-- **Web (`web/`):** Use `pnpm` only (never `npm`, `npx`, `yarn`, or `bun`). Follow `ui-architect` principles: exponential spacing tokens, Lucide icons (never emojis), smart defaults (never empty forms), ethical friction on high-stakes approvals, inert rendering for untrusted text, zero third-party CDN trackers or fonts.
+- **Web & Desktop UI (`web/`, `desktop/grdr-desktop/`):** Use `pnpm` only (never `npm`, `npx`, `yarn`, or `bun`). Enforce the 6 Platform Personality Pillars and Porcelain Light / Carbon Obsidian palette in `.claude/skills/signs-of-ai-design/SKILL.md` and `.claude/skills/grdr-visual-audit/SKILL.md` across both Web and Desktop (`360°` minimal rings, slender matching-legend bars, quiet inline statuses, un-underlined resting `EntityLink`, zero wallpaper/stripe/pill clutter). Follow `ui-architect` principles: exponential spacing tokens, Lucide icons (never emojis), smart defaults (never empty forms), ethical friction on high-stakes approvals, inert rendering for untrusted text, zero third-party CDN trackers or fonts. All Web UI MUST be responsive across mobile (`390px+`), tablet (`768px+`), and desktop (`1280px+`) viewports with zero page-level horizontal overflow, touch-friendly controls, and adaptive navigation and grids.
 - **No direct edits to `.git` internals or unpinned external CI actions.**
 
 ## Engineering principles
@@ -23,6 +23,7 @@ Guardrails ADR is an open-source agent detection and response (ADR) platform (`g
 6. Inspect existing project dependencies first before adding a new package or writing custom code.
 7. Make architectural decisions for the long term. No "make it work for now and deal with it later" stopgaps.
 8. Research how mature products in our space solve the problem and adopt proven patterns rather than inventing from scratch.
+9. Push back on harmful changes: if a requested task or change would hurt the end product more than it helps (for example, hard-coding compile-time types in a way that breaks data-driven extensibility or destroys modularity), push back directly, explain the concrete harm, and propose a better alternative before implementing it.
 
 ## Verification gates
 Run these before opening or merging a PR:

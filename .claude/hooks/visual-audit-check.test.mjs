@@ -33,14 +33,23 @@ test("allows non-UI commits without requiring a visual audit record", (t) => {
   assert.deepEqual(evaluateVisualAuditFiles(["crates/grdr-core/src/lib.rs"], dir), []);
 });
 
-test("denies UI commit when visual audit record is missing, allows after matching stamp, and rejects stale PNG edits", (t) => {
+test("denies UI commit when visual audit record or mobile screenshot is missing, allows after matching stamp, and rejects stale PNG edits", (t) => {
   const dir = makeTempUiRepo(t);
   writeFileSync(join(dir, "web/screenshots/home.png"), "png-v1", "utf8");
 
   const missing = evaluateVisualAuditFiles(["web/apps/console/src/App.tsx"], dir);
   assert.ok(missing.some((m) => m.includes("visual-audit")));
 
-  recordVisualAudit({ cwd: dir, verdict: "pass", summary: "Clean", unresolvedIssues: 0 });
+  recordVisualAudit({ cwd: dir, verdict: "pass", summary: "Desktop only", unresolvedIssues: 0, unresolvedPolish: 0 });
+  const missingMobile = evaluateVisualAuditFiles(["web/apps/console/src/App.tsx"], dir);
+  assert.ok(missingMobile.some((m) => m.includes("*-mobile.png")));
+
+  writeFileSync(join(dir, "web/screenshots/home-mobile.png"), "png-mobile-v1", "utf8");
+  recordVisualAudit({ cwd: dir, verdict: "pass", summary: "Has polish", unresolvedIssues: 0, unresolvedPolish: 1 });
+  const polishPending = evaluateVisualAuditFiles(["web/apps/console/src/App.tsx"], dir);
+  assert.ok(polishPending.some((m) => m.includes("polish")));
+
+  recordVisualAudit({ cwd: dir, verdict: "pass", summary: "Clean", unresolvedIssues: 0, unresolvedPolish: 0 });
   assert.deepEqual(evaluateVisualAuditFiles(["web/apps/console/src/App.tsx"], dir), []);
 
   writeFileSync(join(dir, "web/screenshots/home.png"), "png-v2-modified", "utf8");
