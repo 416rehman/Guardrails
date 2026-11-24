@@ -24,16 +24,37 @@ use grdr_store_local::{LocalStore, PersistedDaemonSnapshot, SNAPSHOT_SCHEMA_VERS
 
 const MAX_LOCAL_HISTORY: usize = 300;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DaemonLifecycle {
+    Running,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum UplinkState {
+    Standalone,
+    Connecting {
+        server_url: String,
+    },
+    Connected {
+        server_url: String,
+        last_sync: Timestamp,
+    },
+    Degraded {
+        server_url: String,
+        last_sync: Option<Timestamp>,
+        error: String,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DaemonStatus {
-    pub status: String,
+    pub status: DaemonLifecycle,
     pub device_id: String,
     pub hostname: String,
     pub install_profile: InstallProfile,
-    pub server_url: Option<String>,
-    pub server_connected: bool,
-    pub last_sync: Option<Timestamp>,
-    pub last_sync_error: Option<String>,
+    pub uplink: UplinkState,
     pub agent_count: usize,
     pub mcp_count: usize,
     pub cached_rules: usize,
@@ -46,10 +67,7 @@ pub struct DaemonData {
     pub device_id: String,
     pub hostname: String,
     pub install_profile: InstallProfile,
-    pub server_url: Option<String>,
-    pub server_connected: bool,
-    pub last_sync: Option<Timestamp>,
-    pub last_sync_error: Option<String>,
+    pub uplink: UplinkState,
     pub discovery: DiscoveryReport,
     pub packs: Vec<PolicyPack>,
     pub grants: Vec<Grant>,
@@ -104,14 +122,16 @@ impl DaemonState {
             None => None,
         };
 
+        let uplink = match server_url {
+            Some(url) => UplinkState::Connecting { server_url: url },
+            None => UplinkState::Standalone,
+        };
+
         let mut data = DaemonData {
             device_id,
             hostname,
             install_profile: profile,
-            server_url,
-            server_connected: false,
-            last_sync: None,
-            last_sync_error: None,
+            uplink,
             discovery,
             packs: vec![essentials_pack()],
             grants: Vec::new(),
@@ -158,14 +178,11 @@ impl DaemonState {
             .map(|p| p.rules.len())
             .fold(0usize, usize::saturating_add);
         DaemonStatus {
-            status: "running".into(),
+            status: DaemonLifecycle::Running,
             device_id: guard.device_id.clone(),
             hostname: guard.hostname.clone(),
             install_profile: guard.install_profile,
-            server_url: guard.server_url.clone(),
-            server_connected: guard.server_connected,
-            last_sync: guard.last_sync,
-            last_sync_error: guard.last_sync_error.clone(),
+            uplink: guard.uplink.clone(),
             agent_count: guard.discovery.agents.len(),
             mcp_count: guard.discovery.mcp_servers.len(),
             cached_rules,

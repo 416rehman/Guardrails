@@ -19,7 +19,7 @@ use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 use crate::auth::{DEFAULT_MAX_BODY_BYTES, ServerSecurityConfig};
-use crate::store::AppState;
+use crate::store::{AppState, StorageBackend};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -67,7 +67,7 @@ async fn main() -> ExitCode {
         .init();
 
     let args = Args::parse();
-    let data_dir = if args.memory { None } else { args.data_dir };
+    let backend = StorageBackend::from_flags(args.memory, args.data_dir);
     let web_dir = args.web_dir.or_else(|| {
         let candidate = PathBuf::from("web/dist");
         candidate.join("index.html").is_file().then_some(candidate)
@@ -81,7 +81,7 @@ async fn main() -> ExitCode {
         }
     };
 
-    let state = match AppState::init_with_profile(profile, data_dir, args.demo_seed) {
+    let state = match AppState::init_with_profile(profile, backend, args.demo_seed) {
         Ok(state) => state,
         Err(err) => {
             error!(error = %err, "Failed to initialize server store");
@@ -139,7 +139,7 @@ mod tests {
 
     #[tokio::test]
     async fn server_lifecycle_decide_approve_replay_and_kill_switch() {
-        let state = AppState::init(None, true).unwrap();
+        let state = AppState::init(StorageBackend::Memory, true).unwrap();
         let app = routes::build_router(state.clone(), None);
 
         let resp = app
@@ -321,7 +321,7 @@ mod tests {
 
     #[tokio::test]
     async fn server_enforces_once_grant_device_scope_expiry_and_rule_grade() {
-        let state = AppState::init(None, false).unwrap();
+        let state = AppState::init(StorageBackend::Memory, false).unwrap();
         let app = routes::build_router(state.clone(), None);
 
         let custom_rule = CreateRuleInput {
@@ -518,7 +518,7 @@ mod tests {
 
     #[tokio::test]
     async fn server_enforces_normalizers_session_labels_and_incidents() {
-        let state = AppState::init(None, false).unwrap();
+        let state = AppState::init(StorageBackend::Memory, false).unwrap();
         let app = routes::build_router(state, None);
 
         let traversal = DecideInput {
@@ -642,7 +642,7 @@ mod tests {
         use grdr_crypto::{verify_pack, verify_receipt};
         use grdr_model::SignatureStatus;
 
-        let state = AppState::init(None, false).unwrap();
+        let state = AppState::init(StorageBackend::Memory, false).unwrap();
         let app = routes::build_router(state, None);
 
         let resp = app
@@ -715,7 +715,7 @@ mod tests {
 
     #[tokio::test]
     async fn server_auth_enforces_operator_and_enroll_tokens_and_exports_work() {
-        let state = AppState::init(None, true).unwrap();
+        let state = AppState::init(StorageBackend::Memory, true).unwrap();
         let security = ServerSecurityConfig {
             api_token: Some("op-secret-123".into()),
             enroll_token: Some("enroll-secret-456".into()),
@@ -1082,7 +1082,7 @@ mod tests {
 
     #[tokio::test]
     async fn connect_endpoints_manage_wave_keys_mdm_and_readiness() {
-        let state = AppState::init(None, true).unwrap();
+        let state = AppState::init(StorageBackend::Memory, true).unwrap();
         let app = routes::build_router(state, None);
 
         let cfg_resp = app
@@ -1201,7 +1201,7 @@ mod tests {
 
     #[tokio::test]
     async fn progressive_query_routes_enforce_schema_hidden_and_privacy_modes() {
-        let state = AppState::init(None, true).unwrap();
+        let state = AppState::init(StorageBackend::Memory, true).unwrap();
         let app = routes::build_router(state, None);
 
         let schema_resp = app
@@ -1374,7 +1374,7 @@ mod tests {
 
     #[tokio::test]
     async fn browser_policy_routes_update_and_evaluate_dlp() {
-        let state = AppState::init(None, true).unwrap();
+        let state = AppState::init(StorageBackend::Memory, true).unwrap();
         let app = routes::build_router(state, None);
 
         let list_resp = app
@@ -1461,8 +1461,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
 
         {
-            let state = AppState::init(Some(dir.clone()), false).unwrap();
-            assert!(state.storage_mode.starts_with("embedded:sqlite:"));
+            let state = AppState::init(StorageBackend::Disk(dir.clone()), false).unwrap();
+            assert!(matches!(
+                state.backend.storage_mode(),
+                grdr_model::StorageMode::Sqlite { .. }
+            ));
             let app = routes::build_router(state, None);
 
             let checkin = DeviceCheckinRequest {
@@ -1520,16 +1523,23 @@ mod tests {
         assert!(dir.join("jobs.sqlite3").is_file());
         assert!(dir.join("blobs").is_dir());
 
-        let reopened = AppState::init(Some(dir.clone()), false).unwrap();
+        let reopened = AppState::init(StorageBackend::Disk(dir.clone()), false).unwrap();
         let overview = reopened.overview().await;
         assert_eq!(overview.total_devices, 1);
         assert_eq!(overview.active_sessions, 1);
         assert!(overview.pending_approvals >= 1);
 
-        assert!(AppState::init_with_profile(ProfileKind::Ha, Some(dir.clone()), false).is_err());
         assert!(
-            AppState::init_with_profile(ProfileKind::Distributed, Some(dir.clone()), false)
+            AppState::init_with_profile(ProfileKind::Ha, StorageBackend::Disk(dir.clone()), false)
                 .is_err()
+        );
+        assert!(
+            AppState::init_with_profile(
+                ProfileKind::Distributed,
+                StorageBackend::Disk(dir.clone()),
+                false
+            )
+            .is_err()
         );
 
         let _ = std::fs::remove_dir_all(&dir);

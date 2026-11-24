@@ -9,7 +9,9 @@ use tracing::{info, warn};
 use grdr_crypto::{verify_grant, verify_pack};
 use grdr_model::{BatchEventsInput, DeviceCheckinRequest, DeviceCheckinResponse, SignatureStatus};
 
-use crate::state::{DaemonData, DaemonState, persist_daemon_snapshot, write_signed_floor_bundle};
+use crate::state::{
+    DaemonData, DaemonState, UplinkState, persist_daemon_snapshot, write_signed_floor_bundle,
+};
 
 pub async fn sync_once(
     state: &DaemonState,
@@ -89,9 +91,10 @@ pub async fn sync_once(
     {
         let mut guard = state.inner.write().await;
         apply_verified_checkin(&mut guard, parsed.clone());
-        guard.server_connected = true;
-        guard.last_sync = Some(Timestamp::now());
-        guard.last_sync_error = None;
+        guard.uplink = UplinkState::Connected {
+            server_url: base.to_owned(),
+            last_sync: Timestamp::now(),
+        };
         if flushed_count > 0 {
             let drain_attempts = guard.pending_attempts.len().min(flushed_count);
             let drain_receipts = guard.pending_receipts.len().min(flushed_count);
@@ -154,8 +157,16 @@ pub async fn run_sync_loop(state: DaemonState, server_url: String, interval_secs
     loop {
         if let Err(err) = sync_once(&state, &client, &server_url).await {
             let mut guard = state.inner.write().await;
-            guard.server_connected = false;
-            guard.last_sync_error = Some(err.clone());
+            let last_sync = match &guard.uplink {
+                UplinkState::Connected { last_sync, .. } => Some(*last_sync),
+                UplinkState::Degraded { last_sync, .. } => *last_sync,
+                UplinkState::Standalone | UplinkState::Connecting { .. } => None,
+            };
+            guard.uplink = UplinkState::Degraded {
+                server_url: server_url.clone(),
+                last_sync,
+                error: err.clone(),
+            };
             warn!(error = %err, "Server sync failed; continuing with offline policy cache");
         }
         tokio::time::sleep(period).await;

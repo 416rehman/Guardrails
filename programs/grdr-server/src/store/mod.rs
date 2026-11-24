@@ -26,7 +26,7 @@ use grdr_model::error::CODE_STORE_IO;
 use grdr_model::{
     ActionAttempt, ApprovalRequest, AuditEntry, BrowserAppPolicy, CodedError, DecisionReceipt,
     DeploymentKey, Device, Finding, Grant, IntegrationEntry, KillSwitchState, LiveEvent,
-    OrgPrivacyConfig, OtlpFanoutConfig, PolicyPack, Verdict,
+    OrgPrivacyConfig, OtlpFanoutConfig, PolicyPack, StorageMode, Verdict,
 };
 use grdr_ports::ProfileKind;
 
@@ -34,6 +34,12 @@ use crate::demo;
 use persistence::EmbeddedStorage;
 
 pub(crate) const MAX_RETAINED_EVENTS: usize = 500;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StorageBackend {
+    Memory,
+    Disk(PathBuf),
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoreData {
@@ -65,8 +71,30 @@ pub struct AppState {
     pub inner: Arc<RwLock<StoreData>>,
     pub live_tx: broadcast::Sender<LiveEvent>,
     pub(crate) storage: Option<Arc<EmbeddedStorage>>,
-    pub storage_mode: String,
+    pub backend: StorageBackend,
     pub signing_key: SigningKeypair,
+}
+
+impl StorageBackend {
+    pub fn from_flags(memory: bool, data_dir: Option<PathBuf>) -> Self {
+        if memory {
+            Self::Memory
+        } else {
+            match data_dir {
+                Some(dir) => Self::Disk(dir),
+                None => Self::Memory,
+            }
+        }
+    }
+
+    pub fn storage_mode(&self) -> StorageMode {
+        match self {
+            Self::Memory => StorageMode::Memory,
+            Self::Disk(dir) => StorageMode::Sqlite {
+                path: dir.display().to_string(),
+            },
+        }
+    }
 }
 
 impl Default for StoreData {
@@ -93,13 +121,13 @@ impl Default for StoreData {
 
 impl AppState {
     #[cfg(test)]
-    pub fn init(data_dir: Option<PathBuf>, demo_seed: bool) -> Result<Self, CodedError> {
-        Self::init_with_profile(ProfileKind::Embedded, data_dir, demo_seed)
+    pub fn init(backend: StorageBackend, demo_seed: bool) -> Result<Self, CodedError> {
+        Self::init_with_profile(ProfileKind::Embedded, backend, demo_seed)
     }
 
     pub fn init_with_profile(
         profile: ProfileKind,
-        data_dir: Option<PathBuf>,
+        backend: StorageBackend,
         demo_seed: bool,
     ) -> Result<Self, CodedError> {
         if profile != ProfileKind::Embedded {
@@ -114,20 +142,17 @@ impl AppState {
         }
 
         let now = Timestamp::now();
-        let storage_mode = match &data_dir {
-            Some(dir) => format!("embedded:sqlite:{}", dir.display()),
-            None => "embedded:memory".into(),
-        };
-
-        let signing_key = match &data_dir {
-            Some(dir) => load_or_create_keypair(&dir.join("signing.key")).map_err(|e| {
-                CodedError::new(
-                    CODE_STORE_IO,
-                    format!("Failed initializing server signing key: {e}"),
-                    "Verify write permissions in --data-dir.",
-                )
-            })?,
-            None => SigningKeypair::generate().map_err(|e| {
+        let signing_key = match &backend {
+            StorageBackend::Disk(dir) => {
+                load_or_create_keypair(&dir.join("signing.key")).map_err(|e| {
+                    CodedError::new(
+                        CODE_STORE_IO,
+                        format!("Failed initializing server signing key: {e}"),
+                        "Verify write permissions in --data-dir.",
+                    )
+                })?
+            }
+            StorageBackend::Memory => SigningKeypair::generate().map_err(|e| {
                 CodedError::new(
                     CODE_STORE_IO,
                     format!("Failed generating ephemeral signing key: {e}"),
@@ -136,9 +161,9 @@ impl AppState {
             })?,
         };
 
-        let storage = match &data_dir {
-            Some(dir) => Some(Arc::new(EmbeddedStorage::open(dir)?)),
-            None => None,
+        let storage = match &backend {
+            StorageBackend::Disk(dir) => Some(Arc::new(EmbeddedStorage::open(dir)?)),
+            StorageBackend::Memory => None,
         };
 
         let mut data = match &storage {
@@ -187,7 +212,7 @@ impl AppState {
             inner: Arc::new(RwLock::new(data)),
             live_tx,
             storage,
-            storage_mode,
+            backend,
             signing_key,
         })
     }

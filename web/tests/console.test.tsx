@@ -338,7 +338,7 @@ const incidentsFixture: Incident[] = [
 const healthFixture: HealthResponse = {
   status: "ok",
   version: "0.2.0",
-  storage_mode: "memory",
+  storage_mode: { kind: "memory" },
   timestamp: "2026-11-23T12:00:00Z",
 };
 

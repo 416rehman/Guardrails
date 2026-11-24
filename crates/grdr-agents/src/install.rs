@@ -14,21 +14,40 @@ pub enum HookTargetKind {
     Gemini,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallOutcome {
+    Applied,
+    AlreadyInstalled,
+    DryRunPreview,
+    Unchanged,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HookInstallReport {
     pub agent: String,
     pub config_path: PathBuf,
     pub journal_path: PathBuf,
-    pub changed: bool,
-    pub already_installed: bool,
-    pub dry_run: bool,
+    pub outcome: InstallOutcome,
     pub preview_json: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "content", rename_all = "snake_case")]
+enum PriorFile {
+    Absent,
+    Present(String),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 struct HookBackupJournal {
-    existed: bool,
-    original_content: Option<String>,
+    prior: PriorFile,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MergeOutcome {
+    Added,
+    AlreadyPresent,
 }
 
 impl HookTargetKind {
@@ -77,46 +96,45 @@ pub fn install_hook(
 ) -> Result<HookInstallReport, String> {
     let config_path = target.config_path(home_dir);
     let journal_path = target.journal_path(home_dir);
-    let existed = config_path.is_file();
-    let original_content = if existed {
-        Some(
+    let prior = if config_path.is_file() {
+        PriorFile::Present(
             fs::read_to_string(&config_path)
                 .map_err(|e| format!("failed reading {}: {e}", config_path.display()))?,
         )
     } else {
-        None
+        PriorFile::Absent
     };
 
-    let mut root: Value = match &original_content {
-        Some(raw) if !raw.trim().is_empty() => serde_json::from_str(raw)
+    let mut root: Value = match &prior {
+        PriorFile::Present(raw) if !raw.trim().is_empty() => serde_json::from_str(raw)
             .map_err(|e| format!("invalid JSON in {}: {e}", config_path.display()))?,
         _ => Value::Object(Map::new()),
     };
 
-    let (changed, already_installed) = merge_hook_entry(&mut root, target, hook_command)?;
+    let merge = merge_hook_entry(&mut root, target, hook_command)?;
     let preview_json = serde_json::to_string_pretty(&root)
         .map_err(|e| format!("failed serializing merged hook config: {e}"))?;
 
-    if !dry_run && changed {
-        if !journal_path.is_file() {
-            let journal = HookBackupJournal {
-                existed,
-                original_content,
-            };
-            let journal_bytes = serde_json::to_vec_pretty(&journal)
-                .map_err(|e| format!("failed serializing backup journal: {e}"))?;
-            atomic_write(&journal_path, &journal_bytes)?;
+    let outcome = match (merge, dry_run) {
+        (MergeOutcome::AlreadyPresent, _) => InstallOutcome::AlreadyInstalled,
+        (MergeOutcome::Added, true) => InstallOutcome::DryRunPreview,
+        (MergeOutcome::Added, false) => {
+            if !journal_path.is_file() {
+                let journal = HookBackupJournal { prior };
+                let journal_bytes = serde_json::to_vec_pretty(&journal)
+                    .map_err(|e| format!("failed serializing backup journal: {e}"))?;
+                atomic_write(&journal_path, &journal_bytes)?;
+            }
+            atomic_write(&config_path, preview_json.as_bytes())?;
+            InstallOutcome::Applied
         }
-        atomic_write(&config_path, preview_json.as_bytes())?;
-    }
+    };
 
     Ok(HookInstallReport {
         agent: target.as_str().into(),
         config_path,
         journal_path,
-        changed,
-        already_installed,
-        dry_run,
+        outcome,
         preview_json,
     })
 }
@@ -134,33 +152,25 @@ pub fn uninstall_hook(
         let journal: HookBackupJournal = serde_json::from_str(&raw_journal)
             .map_err(|e| format!("corrupt backup journal {}: {e}", journal_path.display()))?;
 
-        if journal.existed {
-            let original = journal.original_content.unwrap_or_default();
-            atomic_write(&config_path, original.as_bytes())?;
-            let _ = fs::remove_file(&journal_path);
-            return Ok(HookInstallReport {
-                agent: target.as_str().into(),
-                config_path,
-                journal_path,
-                changed: true,
-                already_installed: false,
-                dry_run: false,
-                preview_json: original,
-            });
-        }
-
-        if config_path.is_file() {
-            let _ = fs::remove_file(&config_path);
-        }
+        let preview_json = match journal.prior {
+            PriorFile::Present(original) => {
+                atomic_write(&config_path, original.as_bytes())?;
+                original
+            }
+            PriorFile::Absent => {
+                if config_path.is_file() {
+                    let _ = fs::remove_file(&config_path);
+                }
+                String::new()
+            }
+        };
         let _ = fs::remove_file(&journal_path);
         return Ok(HookInstallReport {
             agent: target.as_str().into(),
             config_path,
             journal_path,
-            changed: true,
-            already_installed: false,
-            dry_run: false,
-            preview_json: String::new(),
+            outcome: InstallOutcome::Applied,
+            preview_json,
         });
     }
 
@@ -169,9 +179,7 @@ pub fn uninstall_hook(
             agent: target.as_str().into(),
             config_path,
             journal_path,
-            changed: false,
-            already_installed: false,
-            dry_run: false,
+            outcome: InstallOutcome::Unchanged,
             preview_json: String::new(),
         });
     }
@@ -191,9 +199,11 @@ pub fn uninstall_hook(
         agent: target.as_str().into(),
         config_path,
         journal_path,
-        changed,
-        already_installed: false,
-        dry_run: false,
+        outcome: if changed {
+            InstallOutcome::Applied
+        } else {
+            InstallOutcome::Unchanged
+        },
         preview_json,
     })
 }
@@ -202,7 +212,7 @@ fn merge_hook_entry(
     root: &mut Value,
     target: HookTargetKind,
     hook_command: &str,
-) -> Result<(bool, bool), String> {
+) -> Result<MergeOutcome, String> {
     let root_obj = root
         .as_object_mut()
         .ok_or_else(|| "root hook config must be a JSON object".to_string())?;
@@ -223,14 +233,18 @@ fn merge_hook_entry(
             ensure_array_contains(hooks_obj, "BeforeTool", gemini_hook_entry(hook_command))
         }
         HookTargetKind::Cursor => {
-            let (c1, a1) = ensure_array_contains(
+            let first = ensure_array_contains(
                 hooks_obj,
                 "beforeShellExecution",
                 cursor_hook_entry(hook_command),
             )?;
-            let (c2, a2) =
+            let second =
                 ensure_array_contains(hooks_obj, "preToolUse", cursor_hook_entry(hook_command))?;
-            Ok((c1 || c2, a1 && a2))
+            if first == MergeOutcome::Added || second == MergeOutcome::Added {
+                Ok(MergeOutcome::Added)
+            } else {
+                Ok(MergeOutcome::AlreadyPresent)
+            }
         }
     }
 }
@@ -239,7 +253,7 @@ fn ensure_array_contains(
     hooks_obj: &mut Map<String, Value>,
     event_key: &str,
     entry: Value,
-) -> Result<(bool, bool), String> {
+) -> Result<MergeOutcome, String> {
     if !hooks_obj.contains_key(event_key) {
         hooks_obj.insert(event_key.into(), Value::Array(Vec::new()));
     }
@@ -254,10 +268,10 @@ fn ensure_array_contains(
             .contains("grdr-hook")
     });
     if already {
-        return Ok((false, true));
+        return Ok(MergeOutcome::AlreadyPresent);
     }
     arr.push(entry);
-    Ok((true, false))
+    Ok(MergeOutcome::Added)
 }
 
 fn remove_grdr_entries(root: &mut Value, target: HookTargetKind) -> bool {
@@ -345,12 +359,11 @@ mod tests {
         fs::write(&settings_path, original_raw).unwrap();
 
         let dry = install_hook(HookTargetKind::ClaudeCode, &home, "grdr-hook", true).unwrap();
-        assert!(dry.changed);
+        assert_eq!(dry.outcome, InstallOutcome::DryRunPreview);
         assert_eq!(fs::read_to_string(&settings_path).unwrap(), original_raw);
 
         let applied = install_hook(HookTargetKind::ClaudeCode, &home, "grdr-hook", false).unwrap();
-        assert!(applied.changed);
-        assert!(!applied.already_installed);
+        assert_eq!(applied.outcome, InstallOutcome::Applied);
 
         let merged_text = fs::read_to_string(&settings_path).unwrap();
         assert!(merged_text.contains("my-user-hook"));
@@ -358,11 +371,10 @@ mod tests {
         assert!(merged_text.contains("\"theme\": \"dark\""));
 
         let second = install_hook(HookTargetKind::ClaudeCode, &home, "grdr-hook", false).unwrap();
-        assert!(!second.changed);
-        assert!(second.already_installed);
+        assert_eq!(second.outcome, InstallOutcome::AlreadyInstalled);
 
         let removed = uninstall_hook(HookTargetKind::ClaudeCode, &home).unwrap();
-        assert!(removed.changed);
+        assert_eq!(removed.outcome, InstallOutcome::Applied);
         assert_eq!(fs::read_to_string(&settings_path).unwrap(), original_raw);
         assert!(!applied.journal_path.exists());
 
@@ -373,11 +385,11 @@ mod tests {
     fn cursor_install_creates_new_file_and_uninstall_cleans_up() {
         let home = std::env::temp_dir().join(format!("grdr-inst-cur-{}", uuid::Uuid::now_v7()));
         let installed = install_hook(HookTargetKind::Cursor, &home, "grdr-hook", false).unwrap();
-        assert!(installed.changed);
+        assert_eq!(installed.outcome, InstallOutcome::Applied);
         assert!(installed.config_path.is_file());
 
         let removed = uninstall_hook(HookTargetKind::Cursor, &home).unwrap();
-        assert!(removed.changed);
+        assert_eq!(removed.outcome, InstallOutcome::Applied);
         assert!(!installed.config_path.exists());
         assert!(!installed.journal_path.exists());
 

@@ -4,6 +4,7 @@ use grdr_ui_model::{AppVm, RenderTier, Screen, TrayVm};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+// grdr:allow-s4 clap CLI flags for tray snapshot output
 #[derive(Debug, Parser)]
 #[command(name = "grdr-tray", about = "Guardrails per-user session tray helper")]
 struct Cli {
@@ -129,7 +130,8 @@ fn main() {
         return;
     }
 
-    let vm: TrayVm = AppVm::demo().tray_vm();
+    let app = AppVm::demo();
+    let vm: TrayVm = app.tray_vm();
     if cli.status && cli.json {
         if let Ok(json) = serde_json::to_string_pretty(&vm) {
             println!("{json}");
@@ -137,7 +139,9 @@ fn main() {
     } else {
         println!(
             "Guardrails tray: {} ({} pending, {:?} tier)",
-            vm.status_label, vm.pending_count, vm.render_tier
+            vm.surface_state.label(app.preferences.locale),
+            vm.pending_count,
+            vm.render_tier
         );
     }
 }

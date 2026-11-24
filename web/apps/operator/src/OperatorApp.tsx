@@ -3,6 +3,7 @@ import "@grdr/tokens/tokens.css";
 import "./styles.css";
 import {
   api,
+  formatStorageMode,
   type AuditEntry,
   type HealthResponse,
   type OverviewResponse,
@@ -48,29 +49,48 @@ interface OperatorSnapshot {
   audit: AuditEntry[];
 }
 
+type SidebarDisplay = "expanded" | "collapsed";
+
+type LoadState<T> =
+  | { kind: "loading" }
+  | { kind: "ready"; data: T }
+  | { kind: "error"; message: string; staleData?: T };
+
+type StreamState =
+  | { kind: "connected" }
+  | { kind: "reconnecting" };
+
+type ExportState =
+  | { kind: "idle" }
+  | { kind: "exported"; message: string }
+  | { kind: "failed"; message: string };
+
 export function OperatorApp() {
   const [route, setRoute] = useState<OperatorRouteId>("op-overview");
   const [themeMode, setThemeMode] = useState<GrdrThemeMode>("light");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [snapshot, setSnapshot] = useState<OperatorSnapshot | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [exportNote, setExportNote] = useState<string | null>(null);
+  const [sidebarDisplay, setSidebarDisplay] = useState<SidebarDisplay>("expanded");
+  const [loadState, setLoadState] = useState<LoadState<OperatorSnapshot>>({ kind: "loading" });
+  const [streamState, setStreamState] = useState<StreamState>({ kind: "connected" });
+  const [exportState, setExportState] = useState<ExportState>({ kind: "idle" });
 
   const load = useCallback(async () => {
     try {
-      setError(null);
       const [health, overview, keys, audit] = await Promise.all([
         api.getHealth(),
         api.getOverview(),
         api.getKeys(),
         api.getAudit(),
       ]);
-      setSnapshot({ health, overview, keys, audit });
+      setLoadState({ kind: "ready", data: { health, overview, keys, audit } });
+      setStreamState({ kind: "connected" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load operator state");
-    } finally {
-      setLoading(false);
+      const message = err instanceof Error ? err.message : "Failed to load operator state";
+      setLoadState((prev) => ({
+        kind: "error",
+        message,
+        staleData: prev.kind === "ready" ? prev.data : prev.kind === "error" ? prev.staleData : undefined,
+      }));
+      setStreamState({ kind: "reconnecting" });
     }
   }, []);
 
@@ -82,25 +102,33 @@ export function OperatorApp() {
 
   const handleExportOcsf = async () => {
     try {
-      setExportNote(null);
+      setExportState({ kind: "idle" });
       await api.exportOcsf();
-      setExportNote("Exported OCSF 1.9 event bundle");
+      setExportState({ kind: "exported", message: "Exported OCSF 1.9 event bundle" });
     } catch (err) {
-      setExportNote(err instanceof Error ? err.message : "OCSF export failed");
+      setExportState({
+        kind: "failed",
+        message: err instanceof Error ? err.message : "OCSF export failed",
+      });
     }
   };
 
   const handleExportAuditJsonl = async () => {
     try {
-      setExportNote(null);
+      setExportState({ kind: "idle" });
       await api.exportAuditJsonl();
-      setExportNote("Exported tamper-evident audit JSONL stream");
+      setExportState({ kind: "exported", message: "Exported tamper-evident audit JSONL stream" });
     } catch (err) {
-      setExportNote(err instanceof Error ? err.message : "Audit JSONL export failed");
+      setExportState({
+        kind: "failed",
+        message: err instanceof Error ? err.message : "Audit JSONL export failed",
+      });
     }
   };
 
-  const viewState = error ? "error" : loading || !snapshot ? "empty" : "ready";
+  const snapshot = loadState.kind === "ready" ? loadState.data : loadState.kind === "error" ? (loadState.staleData ?? null) : null;
+  const viewState = loadState.kind === "error" ? "error" : loadState.kind === "loading" ? "empty" : "ready";
+  const sidebarCollapsed = sidebarDisplay === "collapsed";
 
   return (
     <GrdrThemeProvider mode={themeMode}>
@@ -124,7 +152,9 @@ export function OperatorApp() {
                 icon={<GrdrIcon name={sidebarCollapsed ? "panel-left-open" : "panel-left-close"} size={15} />}
                 variant="ghost"
                 size="sm"
-                onClick={() => setSidebarCollapsed((c) => !c)}
+                onClick={() =>
+                  setSidebarDisplay((prev) => (prev === "collapsed" ? "expanded" : "collapsed"))
+                }
               />
             </span>
           </div>
@@ -147,9 +177,9 @@ export function OperatorApp() {
             ))}
           </nav>
 
-          {!sidebarCollapsed && (
+              {!sidebarCollapsed && (
             <div className="rail-footer">
-              <span>Local audit plane</span>
+              <span>{streamState.kind === "reconnecting" ? "Reconnecting..." : "Local audit plane"}</span>
             </div>
           )}
         </aside>
@@ -210,14 +240,20 @@ export function OperatorApp() {
                 </HStack>
               </div>
 
-              {exportNote ? (
-                <Banner status="info" title={exportNote} collapsible={false} />
+              {exportState.kind === "exported" ? (
+                <Banner status="info" title={exportState.message} collapsible={false} />
+              ) : exportState.kind === "failed" ? (
+                <Banner status="error" title={exportState.message} collapsible={false} />
               ) : null}
 
               <ViewStateFrame
                 state={viewState}
-                title={error ? "Operator endpoint unavailable" : "Loading operator plane"}
-                description={error ?? "Connecting to Guardrails control-plane health and audit APIs."}
+                title={loadState.kind === "error" ? "Operator endpoint unavailable" : "Loading operator plane"}
+                description={
+                  loadState.kind === "error"
+                    ? loadState.message
+                    : "Connecting to Guardrails control-plane health and audit APIs."
+                }
                 actions={
                   <Button
                     label="Retry"
@@ -234,10 +270,12 @@ export function OperatorApp() {
                         <div className="metric-strip" style={{ borderBlockEnd: "1px solid var(--border-subtle)", paddingBlockEnd: 24, marginBlockStart: 0 }}>
                           <div className="metric-cell">
                             <div className="metric-value tabular">
-                              {snapshot.health.status === "ok" ? "Healthy" : snapshot.health.status}
+                              {snapshot.health.status === "ok" || snapshot.health.status === "healthy"
+                                ? "Healthy"
+                                : snapshot.health.status}
                             </div>
                             <div className="metric-label">Service health</div>
-                            <div className="metric-note">{`Version ${snapshot.health.version} (${snapshot.health.storage_mode})`}</div>
+                            <div className="metric-note">{`Version ${snapshot.health.version} (${formatStorageMode(snapshot.health.storage_mode)})`}</div>
                           </div>
                           <div className="metric-cell">
                             <div className="metric-value tabular">{snapshot.overview.online_devices}</div>
@@ -300,7 +338,7 @@ export function OperatorApp() {
                             />
                             <div className="kv-row">
                               <Text color="secondary">Storage engine</Text>
-                              <Text className="mono">{snapshot.health.storage_mode}</Text>
+                              <Text className="mono">{formatStorageMode(snapshot.health.storage_mode)}</Text>
                             </div>
                             <div className="kv-row">
                               <Text color="secondary">Kill switch state</Text>
@@ -381,7 +419,7 @@ export function OperatorApp() {
                         </div>
                         <div className="kv-row">
                           <Text color="secondary">Storage mode</Text>
-                          <Text className="mono">{snapshot.health.storage_mode}</Text>
+                          <Text className="mono">{formatStorageMode(snapshot.health.storage_mode)}</Text>
                         </div>
                         <div className="kv-row">
                           <Text color="secondary">Active kill switch</Text>

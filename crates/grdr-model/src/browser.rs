@@ -16,6 +16,7 @@ pub enum BrowserDlpClass {
     CustomerPii,
 }
 
+// grdr:allow-s4 orthogonal browser policy configuration toggles
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BrowserAppPolicy {
     pub id: String,

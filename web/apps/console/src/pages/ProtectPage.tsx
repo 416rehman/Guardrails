@@ -27,6 +27,20 @@ import { ReplayImpactCard, RuleEditorCard } from "./ProtectRuleViews";
 
 type EditorViewMode = "simple" | "advanced" | "code";
 
+type RuleDialogState =
+  | { kind: "idle" }
+  | { kind: "creating" }
+  | { kind: "editing"; ruleId: string }
+  | { kind: "confirmingDelete"; ruleId: string };
+
+type ReplayState =
+  | { kind: "idle" }
+  | { kind: "preview"; ruleId: string; summary: ReplaySummary };
+
+type ProtectFeedback =
+  | { kind: "none" }
+  | { kind: "error"; message: string };
+
 export function ProtectPage({
   packs,
   devices,
@@ -49,12 +63,12 @@ export function ProtectPage({
   onUpdated: () => void;
 }) {
   const focusedRuleId = focusedEntity?.kind === "rule" ? focusedEntity.id : null;
-  const [replay, setReplay] = useState<{ ruleId: string; summary: ReplaySummary } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [replay, setReplay] = useState<ReplayState>({ kind: "idle" });
+  const [feedback, setFeedback] = useState<ProtectFeedback>({ kind: "none" });
   const [editorMode, setEditorMode] = useState<EditorViewMode>("simple");
-  const [showNewForm, setShowNewForm] = useState<boolean>(prefillAttempt !== null);
-  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<RuleDialogState>(() =>
+    prefillAttempt ? { kind: "creating" } : { kind: "idle" },
+  );
 
   const [title, setTitle] = useState("Require approval for .env secret edits");
   const [actionClass, setActionClass] = useState<ActionClass>("file.write");
@@ -64,10 +78,14 @@ export function ProtectPage({
     "Modifying environment secret files requires operator approval.",
   );
 
+  const isFormOpen = dialog.kind === "creating" || dialog.kind === "editing";
+  const editingRuleId = dialog.kind === "editing" ? dialog.ruleId : null;
+  const confirmDeleteId = dialog.kind === "confirmingDelete" ? dialog.ruleId : null;
+
   useEffect(() => {
     if (prefillAttempt) {
       onSectionChange?.("rules");
-      setShowNewForm(true);
+      setDialog({ kind: "creating" });
       setTitle(`Govern ${prefillAttempt.action_class} on ${prefillAttempt.agent_name}`);
       setActionClass(prefillAttempt.action_class);
       setContainsPattern(prefillAttempt.target);
@@ -83,13 +101,13 @@ export function ProtectPage({
   const isBrowserSection = section === "browser";
 
   async function handleModeChange(ruleId: string, currentMode: Mode, nextMode: Mode) {
-    setError(null);
+    setFeedback({ kind: "none" });
     if (currentMode === "watch" && (nextMode === "ask" || nextMode === "block")) {
       try {
         const summary = await api.replayRule(ruleId, nextMode);
-        setReplay({ ruleId, summary });
+        setReplay({ kind: "preview", ruleId, summary });
       } catch (err) {
-        setError((err as Error).message);
+        setFeedback({ kind: "error", message: (err as Error).message });
       }
       return;
     }
@@ -98,24 +116,24 @@ export function ProtectPage({
       await api.updateRuleMode(ruleId, nextMode, false);
       onUpdated();
     } catch (err) {
-      setError((err as Error).message);
+      setFeedback({ kind: "error", message: (err as Error).message });
     }
   }
 
   async function confirmReplayPromotion() {
-    if (!replay) return;
+    if (replay.kind !== "preview") return;
     try {
       await api.updateRuleMode(replay.ruleId, replay.summary.candidate_mode, true);
-      setReplay(null);
+      setReplay({ kind: "idle" });
       onUpdated();
     } catch (err) {
-      setError((err as Error).message);
+      setFeedback({ kind: "error", message: (err as Error).message });
     }
   }
 
   async function handleSaveRule(e: FormEvent) {
     e.preventDefault();
-    setError(null);
+    setFeedback({ kind: "none" });
     const matcher = {
       action_classes: [actionClass],
       target_prefixes: [],
@@ -123,8 +141,8 @@ export function ProtectPage({
       agents: [],
     };
     try {
-      if (editingRuleId) {
-        await api.updateRule(editingRuleId, {
+      if (dialog.kind === "editing") {
+        await api.updateRule(dialog.ruleId, {
           title,
           description: reason,
           mode,
@@ -140,39 +158,32 @@ export function ProtectPage({
           reason_template: reason,
         });
       }
-      setEditingRuleId(null);
-      setShowNewForm(false);
+      setDialog({ kind: "idle" });
       onClearPrefill();
       onUpdated();
     } catch (err) {
-      setError((err as Error).message);
+      setFeedback({ kind: "error", message: (err as Error).message });
     }
   }
 
   function startEditRule(rule: PolicyRule) {
-    setError(null);
-    setConfirmDeleteId(null);
-    setEditingRuleId(rule.id);
+    setFeedback({ kind: "none" });
     setTitle(rule.title);
     setActionClass(rule.matcher.action_classes[0] ?? "file.write");
     setContainsPattern(rule.matcher.target_contains[0] ?? "");
     setMode(rule.mode);
     setReason(rule.reason_template);
-    setShowNewForm(true);
+    setDialog({ kind: "editing", ruleId: rule.id });
   }
 
   async function handleDeleteRule(ruleId: string) {
-    setError(null);
+    setFeedback({ kind: "none" });
     try {
       await api.deleteRule(ruleId);
-      setConfirmDeleteId(null);
-      if (editingRuleId === ruleId) {
-        setEditingRuleId(null);
-        setShowNewForm(false);
-      }
+      setDialog({ kind: "idle" });
       onUpdated();
     } catch (err) {
-      setError((err as Error).message);
+      setFeedback({ kind: "error", message: (err as Error).message });
     }
   }
 
@@ -213,18 +224,23 @@ export function ProtectPage({
             />
             <Button
               variant="primary"
-              label={showNewForm ? "Close rule builder" : "New rule"}
+              label={isFormOpen ? "Close rule builder" : "New rule"}
               icon={<GrdrIcon name="plus" size={14} />}
               onClick={() => {
-                setEditingRuleId(null);
-                setShowNewForm((prev) => !prev);
+                setDialog((prev) =>
+                  prev.kind === "creating" || prev.kind === "editing"
+                    ? { kind: "idle" }
+                    : { kind: "creating" },
+                );
               }}
             />
           </HStack>
         )}
       </div>
 
-      {error && <Banner status="error" title={error} collapsible={false} />}
+      {feedback.kind === "error" && (
+        <Banner status="error" title={feedback.message} collapsible={false} />
+      )}
 
       {isBrowserSection ? (
         <BrowserPoliciesSection />
@@ -254,7 +270,7 @@ export function ProtectPage({
                   variant="secondary"
                   label="Customize & save rule"
                   icon={<GrdrIcon name="pencil" size={13} />}
-                  onClick={() => setShowNewForm(true)}
+                  onClick={() => setDialog({ kind: "creating" })}
                 />
               </HStack>
             </section>
@@ -289,7 +305,7 @@ export function ProtectPage({
             </section>
           )}
 
-          {showNewForm && (
+          {isFormOpen && (
             <RuleEditorCard
               editingRuleId={editingRuleId}
               title={title}
@@ -304,18 +320,17 @@ export function ProtectPage({
               onReasonChange={setReason}
               onSubmit={handleSaveRule}
               onCancel={() => {
-                setEditingRuleId(null);
-                setShowNewForm(false);
+                setDialog({ kind: "idle" });
                 onClearPrefill();
               }}
             />
           )}
 
-          {replay && (
+          {replay.kind === "preview" && (
             <ReplayImpactCard
-              replay={replay}
+              replay={{ ruleId: replay.ruleId, summary: replay.summary }}
               onOpenEntity={onOpenEntity}
-              onDismiss={() => setReplay(null)}
+              onDismiss={() => setReplay({ kind: "idle" })}
               onConfirm={() => void confirmReplayPromotion()}
             />
           )}
@@ -400,7 +415,7 @@ export function ProtectPage({
                               <Button
                                 size="sm"
                                 label="Cancel"
-                                onClick={() => setConfirmDeleteId(null)}
+                                onClick={() => setDialog({ kind: "idle" })}
                               />
                             </HStack>
                           </div>
@@ -419,7 +434,7 @@ export function ProtectPage({
                                 label="Delete"
                                 aria-label={`Delete rule ${rule.title}`}
                                 icon={<GrdrIcon name="trash" size={13} />}
-                                onClick={() => setConfirmDeleteId(rule.id)}
+                                onClick={() => setDialog({ kind: "confirmingDelete", ruleId: rule.id })}
                               />
                             </HStack>
                           </div>

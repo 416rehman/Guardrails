@@ -5,7 +5,7 @@ use jiff::Timestamp;
 
 use grdr_core::{detect, discover, session};
 use grdr_model::{
-    ApprovalState, FindingLifecycle, InsightTile, Mode, OverviewResponse, SetupStep,
+    ApprovalState, FindingLifecycle, InsightTile, Mode, OverviewResponse, ServerHealth, SetupStep,
     summarize_sessions,
 };
 
@@ -124,7 +124,7 @@ impl AppState {
                 id: "step-server".into(),
                 label: "API server started".into(),
                 done: true,
-                detail: format!("Storage backend: {}", self.storage_mode),
+                detail: format!("Storage backend: {}", self.backend.storage_mode().label()),
             },
             SetupStep {
                 id: "step-essentials".into(),
@@ -164,7 +164,7 @@ impl AppState {
         ];
 
         OverviewResponse {
-            server_status: "healthy".into(),
+            server_status: ServerHealth::Healthy,
             total_devices: guard.devices.len(),
             online_devices,
             total_agents: coverage.total_agents,

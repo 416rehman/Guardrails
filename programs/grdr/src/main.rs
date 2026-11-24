@@ -14,7 +14,8 @@ use jiff::Timestamp;
 use uuid::Uuid;
 
 use grdr_agents::{
-    HookTargetKind, detect_home_dir, discover_local_agents, install_hook, uninstall_hook,
+    HookTargetKind, InstallOutcome, detect_home_dir, discover_local_agents, install_hook,
+    uninstall_hook,
 };
 use grdr_model::{ActionAttempt, ActionClass, ControlPoint, InstallProfile, Verdict};
 
@@ -309,24 +310,28 @@ fn run_install_hook(agent: &str, command: &str, apply: bool) -> ExitCode {
 
     match install_hook(target, &home, command, !apply) {
         Ok(report) => {
-            if report.dry_run {
-                println!(
-                    "Dry run for `{}` ({}). Pass --apply to write atomically:\n{}",
-                    report.agent,
-                    report.config_path.display(),
-                    report.preview_json
-                );
-            } else if report.already_installed {
-                println!(
-                    "Guardrails ADR hook already installed in {}.",
-                    report.config_path.display()
-                );
-            } else {
-                println!(
-                    "Installed Guardrails ADR hook in {} (backup journal: {}).",
-                    report.config_path.display(),
-                    report.journal_path.display()
-                );
+            match report.outcome {
+                InstallOutcome::DryRunPreview => {
+                    println!(
+                        "Dry run for `{}` ({}). Pass --apply to write atomically:\n{}",
+                        report.agent,
+                        report.config_path.display(),
+                        report.preview_json
+                    );
+                }
+                InstallOutcome::AlreadyInstalled => {
+                    println!(
+                        "Guardrails ADR hook already installed in {}.",
+                        report.config_path.display()
+                    );
+                }
+                InstallOutcome::Applied | InstallOutcome::Unchanged => {
+                    println!(
+                        "Installed Guardrails ADR hook in {} (backup journal: {}).",
+                        report.config_path.display(),
+                        report.journal_path.display()
+                    );
+                }
             }
             ExitCode::SUCCESS
         }
@@ -352,16 +357,21 @@ fn run_uninstall_hook(agent: &str) -> ExitCode {
 
     match uninstall_hook(target, &home) {
         Ok(report) => {
-            if report.changed {
-                println!(
-                    "Restored {} from backup journal and removed Guardrails ADR hook.",
-                    report.config_path.display()
-                );
-            } else {
-                println!(
-                    "No Guardrails ADR hook found in {}.",
-                    report.config_path.display()
-                );
+            match report.outcome {
+                InstallOutcome::Applied => {
+                    println!(
+                        "Restored {} from backup journal and removed Guardrails ADR hook.",
+                        report.config_path.display()
+                    );
+                }
+                InstallOutcome::Unchanged
+                | InstallOutcome::AlreadyInstalled
+                | InstallOutcome::DryRunPreview => {
+                    println!(
+                        "No Guardrails ADR hook found in {}.",
+                        report.config_path.display()
+                    );
+                }
             }
             ExitCode::SUCCESS
         }
