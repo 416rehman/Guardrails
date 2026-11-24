@@ -50,8 +50,8 @@ interface CustomNodeData extends Record<string, unknown> {
 
 type StudioNode = Node<CustomNodeData, "studio">;
 
-const NODE_WIDTH = 228;
-const NODE_HEIGHT = 64;
+const NODE_WIDTH = 172;
+const NODE_HEIGHT = 104;
 
 function iconToneColor(tone: GrdrFlowTone): string {
   switch (tone) {
@@ -86,35 +86,37 @@ function edgeStroke(tone?: "neutral" | "block" | "allow" | "watch"): string {
 function StudioFlowNodeView({ data }: NodeProps<StudioNode>) {
   const sourcePos = data.direction === "TB" ? Position.Bottom : Position.Right;
   const targetPos = data.direction === "TB" ? Position.Top : Position.Left;
+  const handleStyle =
+    data.direction === "LR" ? { opacity: 0, top: 22 } : { opacity: 0 };
 
   return (
     <div
       className="grdr-flow-node"
+      data-direction={data.direction}
       data-tone={data.tone}
       data-selected={data.selected ? "true" : "false"}
     >
-      <Handle type="target" position={targetPos} isConnectable={false} style={{ opacity: 0 }} />
-      <div className="grdr-flow-node-top">
-        <div className="grdr-flow-node-title">
-          {data.harnessName ? (
-            <HarnessIcon name={data.harnessName} size={14} />
-          ) : (
-            <GrdrIcon
-              name={data.icon ?? "shield"}
-              size={14}
-              color={iconToneColor(data.tone)}
-            />
-          )}
-          <span>{data.label}</span>
-        </div>
-        {data.badge ? (
-          <span className="grdr-flow-badge" data-tone={data.tone}>
-            {data.badge}
-          </span>
-        ) : null}
+      <Handle type="target" position={targetPos} isConnectable={false} style={handleStyle} />
+      <div className="grdr-flow-circle">
+        {data.harnessName ? (
+          <HarnessIcon name={data.harnessName} size={18} />
+        ) : (
+          <GrdrIcon
+            name={data.icon ?? "shield"}
+            size={18}
+            color={iconToneColor(data.tone)}
+          />
+        )}
       </div>
-      {data.subtitle ? <div className="grdr-flow-node-sub">{data.subtitle}</div> : null}
-      <Handle type="source" position={sourcePos} isConnectable={false} style={{ opacity: 0 }} />
+      <div className="grdr-flow-node-title" title={data.label}>
+        {data.label}
+      </div>
+      {data.subtitle ? (
+        <div className="grdr-flow-node-sub" title={data.subtitle}>
+          {data.subtitle}
+        </div>
+      ) : null}
+      <Handle type="source" position={sourcePos} isConnectable={false} style={handleStyle} />
     </div>
   );
 }
@@ -132,10 +134,10 @@ function computeLayout(
   graph.setDefaultEdgeLabel(() => ({}));
   graph.setGraph({
     rankdir: direction,
-    nodesep: direction === "LR" ? 24 : 36,
-    ranksep: direction === "LR" ? 116 : 56,
+    nodesep: direction === "LR" ? 28 : 42,
+    ranksep: direction === "LR" ? 92 : 64,
     marginx: 24,
-    marginy: 24,
+    marginy: 28,
   });
 
   for (const n of inputNodes) {
@@ -230,7 +232,7 @@ export function GrdrFlowGraph({
 }) {
   const compactViewport = useIsCompactViewport();
   const effectiveDirection: "LR" | "TB" = compactViewport ? "TB" : direction;
-  const effectiveHeight = compactViewport && direction === "LR" ? Math.max(height, 260) : height;
+  const effectiveHeight = effectiveDirection === "TB" ? Math.max(height, 290) : height;
   const layouted = useMemo(
     () => computeLayout(nodes, edges, effectiveDirection),
     [nodes, edges, effectiveDirection],
@@ -245,7 +247,7 @@ export function GrdrFlowGraph({
         className="grdr-flow-wrap"
         role="region"
         aria-label={ariaLabel}
-        style={{ height: effectiveHeight, padding: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}
+        style={{ height: effectiveHeight, padding: 12, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}
       >
         {nodes.map((node) => (
           <button
@@ -256,14 +258,12 @@ export function GrdrFlowGraph({
             data-selected={node.selected ? "true" : "false"}
             onClick={() => onNodeSelect?.(node.id)}
           >
-            <div className="grdr-flow-node-top">
-              <span className="grdr-flow-node-title">{node.label}</span>
-              {node.badge ? (
-                <span className="grdr-flow-badge" data-tone={node.tone ?? "neutral"}>
-                  {node.badge}
-                </span>
-              ) : null}
+            <div className="grdr-flow-circle">
+              <span className="grdr-flow-badge" data-tone={node.tone ?? "neutral"}>
+                {node.badge ?? node.label.slice(0, 2)}
+              </span>
             </div>
+            <span className="grdr-flow-node-title">{node.label}</span>
             {node.subtitle ? <div className="grdr-flow-node-sub">{node.subtitle}</div> : null}
           </button>
         ))}
@@ -279,13 +279,13 @@ export function GrdrFlowGraph({
       style={{ height: effectiveHeight }}
     >
       <ReactFlow
-        key={effectiveDirection}
+        key={`${effectiveDirection}-${nodes.length}-${NODE_WIDTH}`}
         nodes={layouted.nodes}
         edges={layouted.edges}
         nodeTypes={NODE_TYPES}
         minZoom={0.35}
         fitView
-        fitViewOptions={{ padding: 0.24, maxZoom: 1.05 }}
+        fitViewOptions={{ padding: 0.24, maxZoom: 1.0 }}
         nodesDraggable={false}
         nodesConnectable={false}
         proOptions={{ hideAttribution: true }}

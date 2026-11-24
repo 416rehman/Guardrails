@@ -1,5 +1,5 @@
 use grdr_ui_model::{Intent, RulePreset};
-use rune::{El, Shadow, Tx, col, icon, row, spacer, text};
+use rune::{El, Tx, col, icon, row, spacer, text};
 use rune_kit::SegmentedControl;
 
 use crate::icons;
@@ -8,7 +8,6 @@ use crate::kit::{
     status_pill_with_icon,
 };
 use crate::theme::StudioTheme;
-use crate::viz::top_stripe_ribbon;
 
 #[must_use]
 pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
@@ -112,18 +111,8 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                     .w_full()
                     .continuous_corners()
                     .radius(10.0)
-                    .clip_rounded(10.0)
                     .fill(t.c.recessed)
-                    .border_gradient(1.0, t.c.rim_top, t.c.border_subtle)
-                    .box_shadow(Shadow {
-                        x: 0.0,
-                        y: 1.0,
-                        blur: 0.0,
-                        spread: 0.0,
-                        color: t.c.specular_rim,
-                        inset: true,
-                    })
-                    .child(top_stripe_ribbon(&app.textures.stripe_floor, 3.0))
+                    .border(1.0, t.c.border_subtle)
                     .child(rule_row.px(12.0)),
             );
         } else {

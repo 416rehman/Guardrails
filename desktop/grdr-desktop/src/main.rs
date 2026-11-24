@@ -8,7 +8,7 @@ mod viz;
 
 use grdr_ui_model::{AppVm, Screen, ThemeChoice};
 use kit::DesktopApp;
-use rune::{AppSpec, Cx, El, col, row, text};
+use rune::{AppSpec, Cx, El, col, el, row, text};
 
 type SceneSpec = (&'static str, fn(&mut DesktopApp));
 
@@ -58,11 +58,11 @@ fn view(app: &DesktopApp, _cx: &mut Cx<DesktopApp>) -> El {
         Screen::Settings => screens::settings::render(app, &t),
     };
 
+    let is_home = app.vm.screen == Screen::Home;
     let mut content = col()
         .key("content-area")
-        .grow(1.0)
+        .w_full()
         .h_full()
-        .fill(t.c.canvas)
         .pt(32.0)
         .pb(32.0)
         .pl(44.0)
@@ -86,6 +86,46 @@ fn view(app: &DesktopApp, _cx: &mut Cx<DesktopApp>) -> El {
 
     content = content.child(page);
 
+    let mut stage = el().key("stage-area").grow(1.0).h_full().fill(t.c.canvas);
+    if is_home {
+        let wave_img = if matches!(app.vm.preferences.theme, ThemeChoice::Dark) {
+            &app.hero_wave_dark
+        } else {
+            &app.hero_wave_light
+        };
+        let wave_backdrop = el()
+            .key("home-hero-wave")
+            .pin(Some(0.0), Some(0.0), Some(0.0), None)
+            .h(320.0)
+            .child(
+                el().w_full()
+                    .h_full()
+                    .pixels_fit(wave_img.pixels(), rune::SurfaceFit::Fill),
+            )
+            .child(
+                el().pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+                    .linear_gradient(
+                        std::f32::consts::PI,
+                        [
+                            (0.0, rune::Color::TRANSPARENT),
+                            (0.28, rune::Color::TRANSPARENT),
+                            (0.84, t.c.canvas),
+                            (1.0, t.c.canvas),
+                        ],
+                    ),
+            )
+            .child(
+                el().pin(Some(0.0), Some(0.0), None, Some(0.0))
+                    .w(280.0)
+                    .linear_gradient(
+                        std::f32::consts::FRAC_PI_2,
+                        [(0.0, t.c.canvas), (1.0, rune::Color::TRANSPARENT)],
+                    ),
+            );
+        stage = stage.child(wave_backdrop);
+    }
+    stage = stage.child(content);
+
     rune_kit::root(
         row()
             .key("desktop-shell")
@@ -93,7 +133,7 @@ fn view(app: &DesktopApp, _cx: &mut Cx<DesktopApp>) -> El {
             .h_full()
             .fill(t.c.canvas)
             .child(kit::sidebar_rail(app, &t))
-            .child(content),
+            .child(stage),
         std::iter::empty(),
     )
 }

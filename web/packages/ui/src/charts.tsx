@@ -99,7 +99,10 @@ export function GrdrChart({
   }, []);
 
   useEffect(() => {
-    chartRef.current?.setOption(option, { notMerge: true });
+    const chart = chartRef.current;
+    if (!chart) return;
+    chart.setOption(option);
+    chart.resize();
   }, [option]);
 
   return (
@@ -129,30 +132,16 @@ export function GrdrCoverageRing({
   const clamped = Math.max(0, Math.min(100, Math.round(valuePct)));
 
   const option = useMemo<echarts.EChartsOption>(() => {
-    const fgStart =
+    const fgColor =
       tone === "allow"
-        ? readToken("--viz-allow-start", "rgb(20, 184, 166)")
-        : readToken("--viz-watch-start", "rgb(37, 99, 235)");
-    const fgEnd =
-      tone === "allow"
-        ? readToken("--viz-allow-end", "rgb(15, 118, 110)")
-        : readToken("--viz-watch-end", "rgb(15, 82, 186)");
-    const fgGlow =
-      tone === "allow"
-        ? readToken("--viz-allow-glow", "rgba(15, 118, 110, 0.22)")
-        : readToken("--viz-watch-glow", "rgba(15, 82, 186, 0.22)");
-    const dialTrack = readToken("--viz-dial-track", "rgb(223, 223, 215)");
-    const dialTick = readToken("--viz-dial-tick", "rgba(17, 17, 17, 0.22)");
-    const gridLine = readToken("--viz-grid-line", "rgba(17, 17, 17, 0.08)");
-    const track = readToken("--border-strong", "rgb(207, 207, 200)");
-    const ink = readToken("--ink-primary", "rgb(17, 17, 17)");
-    const muted = readToken("--ink-muted", "rgb(99, 99, 93)");
+        ? readToken("--tone-allow", "rgb(21, 128, 61)")
+        : readToken("--accent-primary", "rgb(37, 99, 235)");
+    const dialTrack = readToken("--viz-dial-track", "rgb(229, 231, 235)");
+    const track = readToken("--border-strong", "rgb(209, 213, 219)");
+    const ink = readToken("--ink-primary", "rgb(15, 23, 42)");
+    const muted = readToken("--ink-muted", "rgb(100, 116, 139)");
     const bgCanvas = readToken("--bg-canvas", "rgb(255, 255, 255)");
     const sansFont = readToken("--font-sans", "DM Sans, sans-serif");
-    const gradient = new echarts.graphic.LinearGradient(0, 0, 1, 1, [
-      { offset: 0, color: fgStart },
-      { offset: 1, color: fgEnd },
-    ]);
 
     if (compact) {
       return {
@@ -170,10 +159,9 @@ export function GrdrCoverageRing({
               show: true,
               roundCap: true,
               width: 5,
-              itemStyle: { color: gradient },
+              itemStyle: { color: fgColor },
             },
-            splitNumber: 4,
-            splitLine: { show: true, length: 3, distance: 1, lineStyle: { color: dialTick, width: 1 } },
+            splitLine: { show: false },
             axisTick: { show: false },
             axisLabel: { show: false },
             detail: {
@@ -204,37 +192,24 @@ export function GrdrCoverageRing({
       series: [
         {
           type: "gauge",
-          startAngle: 220,
-          endAngle: -40,
+          startAngle: 90,
+          endAngle: -270,
           radius: "92%",
-          splitNumber: 10,
+          splitNumber: 4,
           axisLine: {
             roundCap: true,
-            lineStyle: { width: 10, color: [[1, dialTrack]] },
+            lineStyle: { width: 6, color: [[1, dialTrack]] },
           },
           progress: {
             show: true,
             roundCap: true,
-            width: 10,
+            width: 6,
             itemStyle: {
-              color: gradient,
-              shadowBlur: 12,
-              shadowColor: fgGlow,
+              color: fgColor,
             },
           },
-          axisTick: {
-            show: true,
-            splitNumber: 3,
-            length: 4,
-            distance: 3,
-            lineStyle: { color: dialTick, width: 1 },
-          },
-          splitLine: {
-            show: true,
-            length: 8,
-            distance: 2,
-            lineStyle: { color: muted, width: 1.5 },
-          },
+          axisTick: { show: false },
+          splitLine: { show: false },
           pointer: { show: false },
           axisLabel: { show: false },
           detail: {
@@ -247,26 +222,13 @@ export function GrdrCoverageRing({
             formatter: "{value}%",
           },
           title: {
-            offsetCenter: [0, "34%"],
+            offsetCenter: [0, "30%"],
             fontSize: 11.5,
             fontWeight: 500,
             fontFamily: sansFont,
             color: muted,
           },
           data: [{ value: clamped, name: label ?? "Boundary" }],
-        },
-        {
-          type: "gauge",
-          startAngle: 220,
-          endAngle: -40,
-          radius: "66%",
-          silent: true,
-          axisLine: { lineStyle: { width: 1, color: [[1, gridLine]] } },
-          splitLine: { show: false },
-          axisTick: { show: false },
-          axisLabel: { show: false },
-          pointer: { show: false },
-          detail: { show: false },
         },
       ],
     };
@@ -293,19 +255,13 @@ export function GrdrVelocityChart({
 
   const option = useMemo<echarts.EChartsOption>(() => {
     const borderStrong = readToken("--border-strong", "rgb(207, 207, 200)");
-    const allowStart = readToken("--viz-allow-start", "rgb(20, 184, 166)");
-    const allowEnd = readToken("--viz-allow-end", "rgb(15, 118, 110)");
-    const allowGlow = readToken("--viz-allow-glow", "rgba(15, 118, 110, 0.22)");
-    const askStart = readToken("--viz-ask-start", "rgb(245, 158, 11)");
-    const askEnd = readToken("--viz-ask-end", "rgb(180, 83, 9)");
-    const blockStart = readToken("--viz-block-start", "rgb(239, 68, 68)");
-    const blockEnd = readToken("--viz-block-end", "rgb(185, 28, 28)");
-    const decalInk = readToken("--viz-decal-ink", "rgba(255, 255, 255, 0.38)");
-    const gridLine = readToken("--viz-grid-line", "rgba(17, 17, 17, 0.08)");
-    const railTrack = readToken("--viz-rail-track", "rgba(17, 17, 17, 0.045)");
-    const inkMuted = readToken("--ink-muted", "rgb(99, 99, 93)");
-    const ink = readToken("--ink-primary", "rgb(17, 17, 17)");
-    const bgRecessed = readToken("--bg-recessed", "rgb(243, 243, 240)");
+    const allowSolid = readToken("--viz-allow-end", "rgb(59, 130, 246)");
+    const askSolid = readToken("--viz-ask-start", "rgb(234, 179, 8)");
+    const blockSolid = readToken("--viz-block-start", "rgb(239, 68, 68)");
+    const gridLine = readToken("--viz-grid-line", "rgba(15, 23, 42, 0.06)");
+    const railTrack = readToken("--viz-rail-track", "rgba(15, 23, 42, 0.03)");
+    const inkMuted = readToken("--ink-muted", "rgb(100, 116, 139)");
+    const ink = readToken("--ink-primary", "rgb(15, 23, 42)");
     const bgCanvas = readToken("--bg-canvas", "rgb(255, 255, 255)");
     const sansFont = readToken("--font-sans", "DM Sans, sans-serif");
     const monoFont = readToken("--font-mono", "IBM Plex Mono, monospace");
@@ -345,25 +301,18 @@ export function GrdrVelocityChart({
           name: "Allowed",
           type: "bar",
           stack: "total",
-          barMaxWidth: 36,
-          barCategoryGap: "36%",
-          showBackground: true,
-          backgroundStyle: { color: railTrack, borderRadius: [5, 5, 4, 4] },
+          barMaxWidth: 20,
+          barCategoryGap: "42%",
           data: data.map((d) => ({
             value: d.allowed,
             itemStyle: {
-              borderRadius: d.ask === 0 && d.block === 0 ? [5, 5, 4, 4] : [2, 2, 4, 4],
+              borderRadius: d.ask === 0 && d.block === 0 ? [3, 3, 2, 2] : [0, 0, 2, 2],
             },
           })),
           itemStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: allowStart },
-              { offset: 1, color: allowEnd },
-            ]),
-            borderColor: bgRecessed,
-            borderWidth: 1,
+            color: allowSolid,
+            borderWidth: 0,
           },
-          emphasis: { itemStyle: { shadowBlur: 10, shadowColor: allowGlow } },
           markLine: {
             silent: true,
             symbol: "none",
@@ -383,47 +332,32 @@ export function GrdrVelocityChart({
           name: "Ask",
           type: "bar",
           stack: "total",
-          barMaxWidth: 36,
+          barMaxWidth: 20,
           data: data.map((d) =>
-            d.ask === 0 ? { value: 0, itemStyle: { borderWidth: 0 } } : d.ask,
+            d.ask === 0
+              ? { value: 0, itemStyle: { borderWidth: 0 } }
+              : {
+                  value: d.ask,
+                  itemStyle: { borderRadius: d.block === 0 ? [3, 3, 0, 0] : [0, 0, 0, 0] },
+                },
           ),
           itemStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: askStart },
-              { offset: 1, color: askEnd },
-            ]),
+            color: askSolid,
             borderWidth: 0,
-            decal: {
-              symbol: "rect",
-              dashArrayX: [1, 0],
-              dashArrayY: [3, 3],
-              rotation: -Math.PI / 4,
-              color: decalInk,
-            },
           },
         },
         {
           name: "Blocked",
           type: "bar",
           stack: "total",
-          barMaxWidth: 36,
+          barMaxWidth: 20,
           data: data.map((d) =>
             d.block === 0 ? { value: 0, itemStyle: { borderWidth: 0 } } : d.block,
           ),
           itemStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: blockStart },
-              { offset: 1, color: blockEnd },
-            ]),
+            color: blockSolid,
             borderWidth: 0,
-            borderRadius: [4, 4, 0, 0],
-            decal: {
-              symbol: "rect",
-              dashArrayX: [1, 0],
-              dashArrayY: [2, 2],
-              rotation: Math.PI / 4,
-              color: decalInk,
-            },
+            borderRadius: [3, 3, 0, 0],
           },
         },
       ],
@@ -515,72 +449,27 @@ export function GrdrFleetHexMap({
 }) {
   const themeTick = useThemeTick();
 
-  const displayCells = useMemo<FleetHexCell[]>(() => {
-    if (cells.length >= 16) return [...cells];
-    const occupied = new Map<string, FleetHexCell>();
-    for (const c of cells) {
-      occupied.set(`${c.col}:${c.row}`, c);
-    }
-    const cols = 8;
-    const rows = 2;
-    const lattice: FleetHexCell[] = [];
-    for (let r = 0; r < rows; r += 1) {
-      for (let c = 0; c < cols; c += 1) {
-        const existing = occupied.get(`${c}:${r}`);
-        lattice.push(
-          existing ?? {
-            key: `ghost-${c}-${r}`,
-            col: c,
-            row: r,
-            deviceId: null,
-            status: "empty",
-            label: "",
-          },
-        );
-      }
-    }
-    for (const c of cells) {
-      if (c.col >= cols || c.row >= rows) lattice.push(c);
-    }
-    return lattice;
-  }, [cells]);
-
-  const maxCol = Math.max(1, ...displayCells.map((c) => c.col));
-  const maxRow = Math.max(1, ...displayCells.map((c) => c.row));
+  const displayCells = useMemo<FleetHexCell[]>(() => [...cells], [cells]);
+  const maxCol = Math.max(0, ...displayCells.map((c) => c.col));
+  const maxRow = Math.max(0, ...displayCells.map((c) => c.row));
 
   const option = useMemo<echarts.EChartsOption>(() => {
-    const allowStart = readToken("--viz-allow-start", "rgb(20, 184, 166)");
-    const allowEnd = readToken("--viz-allow-end", "rgb(15, 118, 110)");
-    const allowEdge = readToken("--viz-allow-edge", "rgb(13, 148, 136)");
-    const allowGlow = readToken("--viz-allow-glow", "rgba(15, 118, 110, 0.22)");
+    const allowEdge = readToken("--tone-allow", "rgb(21, 128, 61)");
+    const allowFill = readToken("--tone-allow-bg", "rgba(21, 128, 61, 0.12)");
+    const askEdge = readToken("--tone-ask", "rgb(161, 98, 7)");
+    const askFill = readToken("--tone-ask-bg", "rgba(250, 204, 21, 0.16)");
+    const blockEdge = readToken("--tone-block", "rgb(185, 28, 28)");
+    const blockFill = readToken("--tone-block-bg", "rgba(185, 28, 28, 0.12)");
 
-    const askStart = readToken("--viz-ask-start", "rgb(245, 158, 11)");
-    const askEnd = readToken("--viz-ask-end", "rgb(180, 83, 9)");
-    const askEdge = readToken("--viz-ask-edge", "rgb(217, 119, 6)");
-    const askGlow = readToken("--viz-ask-glow", "rgba(180, 83, 9, 0.22)");
-
-    const blockStart = readToken("--viz-block-start", "rgb(239, 68, 68)");
-    const blockEnd = readToken("--viz-block-end", "rgb(185, 28, 28)");
-    const blockEdge = readToken("--viz-block-edge", "rgb(220, 38, 38)");
-    const blockGlow = readToken("--viz-block-glow", "rgba(185, 28, 28, 0.22)");
-
-    const hexEmpty = readToken("--viz-hex-empty", "rgba(17, 17, 17, 0.03)");
-    const hexEmptyStroke = readToken("--viz-hex-empty-stroke", "rgba(17, 17, 17, 0.12)");
-    const specular = readToken("--surface-specular", "rgba(255, 255, 255, 0.65)");
-    const decalInk = readToken("--viz-decal-ink", "rgba(255, 255, 255, 0.38)");
-    const borderStrong = readToken("--border-strong", "rgb(207, 207, 200)");
-    const inkPrimary = readToken("--ink-primary", "rgb(17, 17, 17)");
+    const borderStrong = readToken("--border-strong", "rgb(209, 213, 219)");
+    const inkPrimary = readToken("--ink-primary", "rgb(15, 23, 42)");
     const bgCanvas = readToken("--bg-canvas", "rgb(255, 255, 255)");
     const sansFont = readToken("--font-sans", "DM Sans, sans-serif");
 
     const hexColors = (status: FleetHexCell["status"]) => {
-      if (status === "boundary") {
-        return { start: allowStart, end: allowEnd, edge: allowEdge, glow: allowGlow };
-      }
-      if (status === "partial") {
-        return { start: askStart, end: askEnd, edge: askEdge, glow: askGlow };
-      }
-      return { start: blockStart, end: blockEnd, edge: blockEdge, glow: blockGlow };
+      if (status === "boundary") return { fill: allowFill, edge: allowEdge };
+      if (status === "partial") return { fill: askFill, edge: askEdge };
+      return { fill: blockFill, edge: blockEdge };
     };
 
     const hexPolygon = (cx: number, cy: number, r: number): number[][] => {
@@ -605,44 +494,32 @@ export function GrdrFleetHexMap({
           return cell && cell.label ? cell.label : "";
         },
       },
-      grid: { left: 16, right: 16, top: 10, bottom: 10 },
-      xAxis: { type: "value", min: -0.2, max: Math.max(4, maxCol + 1.4), show: false },
-      yAxis: { type: "value", min: -0.2, max: Math.max(2, maxRow + 1.2), inverse: true, show: false },
+      grid: { left: 20, right: 20, top: 8, bottom: 8 },
+      xAxis: {
+        type: "value",
+        min: maxCol === 0 ? -1 : -0.6,
+        max: maxCol === 0 ? 1 : maxCol + 0.6,
+        show: false,
+      },
+      yAxis: {
+        type: "value",
+        min: maxRow === 0 ? -0.6 : -0.5,
+        max: maxRow === 0 ? 0.8 : maxRow + 0.8,
+        inverse: true,
+        show: false,
+      },
       series: [
         {
           type: "custom",
           renderItem: (params, api) => {
             const cell = displayCells[params.dataIndex];
-            if (!cell) return null;
-            const xUnit = cell.col + (cell.row % 2 === 1 ? 0.5 : 0) + 0.55;
-            const yUnit = cell.row + 0.55;
-            const center = api.coord([xUnit, yUnit]);
-            const nextCol = api.coord([xUnit + 1, yUnit]);
-            const spacingPx = Math.max(24, nextCol[0] - center[0]);
-            const radius = Math.min(30, spacingPx * 0.43);
-
-            const outerPts = hexPolygon(center[0], center[1], radius);
-            if (cell.status === "empty") {
-              return {
-                type: "polygon",
-                silent: true,
-                shape: { points: outerPts },
-                style: {
-                  fill: hexEmpty,
-                  stroke: hexEmptyStroke,
-                  lineWidth: 1,
-                  lineDash: [3, 3],
-                },
-              };
-            }
-
-            const innerPts = hexPolygon(center[0], center[1], radius * 0.72);
+            if (!cell || cell.status === "empty") return null;
+            const center = api.coord([cell.col, cell.row]);
+            const radius = 26;
+            const outerPts = hexPolygon(center[0], center[1] - 6, radius);
             const palette = hexColors(cell.status);
             const isSelected = Boolean(cell.deviceId && cell.deviceId === selectedDeviceId);
-            const fillGrad = new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: palette.start },
-              { offset: 1, color: palette.end },
-            ]);
+            const shortLabel = cell.label.split("·")[0]?.trim() ?? cell.label;
 
             type CustomChild = NonNullable<echarts.CustomSeriesRenderItemReturn>;
             const children: CustomChild[] = [
@@ -650,48 +527,32 @@ export function GrdrFleetHexMap({
                 type: "polygon",
                 shape: { points: outerPts },
                 style: {
-                  fill: fillGrad,
-                  opacity: 0.9,
+                  fill: palette.fill,
                   stroke: isSelected ? inkPrimary : palette.edge,
-                  lineWidth: isSelected ? 2.4 : 1.5,
-                  shadowBlur: isSelected ? 14 : 8,
-                  shadowColor: palette.glow,
-                },
-              },
-              {
-                type: "polygon",
-                silent: true,
-                shape: { points: innerPts },
-                style: {
-                  fill: "transparent",
-                  stroke: specular,
-                  lineWidth: 1,
+                  lineWidth: isSelected ? 2 : 1.5,
                 },
               },
               {
                 type: "circle",
                 silent: true,
-                shape: { cx: center[0], cy: center[1], r: 2.5 },
-                style: { fill: bgCanvas },
+                shape: { cx: center[0], cy: center[1] - 6, r: 4 },
+                style: { fill: palette.edge },
+              },
+              {
+                type: "text",
+                silent: true,
+                style: {
+                  text: shortLabel,
+                  x: center[0],
+                  y: center[1] + radius + 6,
+                  align: "center",
+                  fill: inkPrimary,
+                  fontSize: 12,
+                  fontWeight: isSelected ? 600 : 500,
+                  fontFamily: sansFont,
+                },
               },
             ];
-
-            if (cell.status === "partial" || cell.status === "blind") {
-              const hr = radius * 0.46;
-              for (const offset of [-hr * 0.5, 0, hr * 0.5]) {
-                children.push({
-                  type: "line",
-                  silent: true,
-                  shape: {
-                    x1: center[0] + offset - hr * 0.45,
-                    y1: center[1] + hr * 0.45,
-                    x2: center[0] + offset + hr * 0.45,
-                    y2: center[1] - hr * 0.45,
-                  },
-                  style: { stroke: decalInk, lineWidth: 1.4 },
-                });
-              }
-            }
 
             return {
               type: "group",

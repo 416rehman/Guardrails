@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Badge, Button, Card, HStack, Text, VStack } from "@grdr/ui";
+import { Badge, Button, HStack, Text, VStack } from "@grdr/ui";
 import { EntityLink, type EntityTarget } from "./EntityLink";
 import { Quoted } from "./Quoted";
 import { VerdictBadge } from "./VerdictBadge";
@@ -60,7 +60,7 @@ export function ApprovalCard({
   }
 
   return (
-    <Card padding={3}>
+    <div className="grdr-attention-card">
       <VStack gap={2}>
         <HStack justify="between" align="center">
           <HStack gap={2} align="center">
@@ -133,6 +133,6 @@ export function ApprovalCard({
           })}
         </HStack>
       </VStack>
-    </Card>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
 use grdr_ui_model::{Intent, Screen};
-use rune::{Color, El, Shadow, col, el, icon, row, spacer, text};
+use rune::{El, col, el, icon, row, spacer, text};
 
 use crate::icons;
 use crate::kit::{
@@ -7,6 +7,7 @@ use crate::kit::{
     status_pill_with_icon,
 };
 use crate::theme::StudioTheme;
+use crate::viz::{attention_card, elevated_card};
 
 #[must_use]
 pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
@@ -166,49 +167,15 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                     },
                 )));
 
-            let card_el = col()
-                .w_full()
-                .continuous_corners()
-                .radius(12.0)
-                .clip_rounded(12.0)
-                .gradient(t.c.panel_top, t.c.panel_bottom)
-                .radial_gradient(
-                    [0.08, 0.25],
-                    160.0,
-                    [(0.0, t.c.block.alpha(0.10)), (1.0, Color::TRANSPARENT)],
-                )
-                .border_gradient(1.0, t.c.block.alpha(0.32), t.c.border_subtle)
-                .box_shadow(Shadow {
-                    x: 0.0,
-                    y: 1.0,
-                    blur: 0.0,
-                    spread: 0.0,
-                    color: t.c.specular_rim,
-                    inset: true,
-                })
-                .shadow(5.0, 14.0, t.c.drop_shadow)
-                .child(card_body);
+            let card_el = attention_card("act-block-card", 12.0, t, card_body).w_full();
 
             card_section = card_section
                 .child(ledger_header("Latest blocked action", &sess.agent_name, t))
                 .child(card_el);
         } else {
-            let card_el = col()
+            let detail_body = col()
                 .w_full()
                 .padding(16.0)
-                .continuous_corners()
-                .radius(12.0)
-                .gradient(t.c.panel_top, t.c.panel_bottom)
-                .border_gradient(1.0, t.c.rim_top, t.c.border_subtle)
-                .box_shadow(Shadow {
-                    x: 0.0,
-                    y: 1.0,
-                    blur: 0.0,
-                    spread: 0.0,
-                    color: t.c.specular_rim,
-                    inset: true,
-                })
-                .shadow(4.0, 12.0, t.c.drop_shadow)
                 .gap(10.0)
                 .child(
                     row()
@@ -261,7 +228,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
 
             card_section = card_section
                 .child(ledger_header("Session details", &sess.agent_name, t))
-                .child(card_el);
+                .child(elevated_card("act-detail-card", 12.0, t, detail_body).w_full());
         }
     }
 

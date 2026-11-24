@@ -1,7 +1,7 @@
 import type { Device } from "@grdr/api";
 import { formatOsName, t } from "@grdr/i18n";
 import { AssuranceBadge, EntityLink, type EntityTarget, Quoted, ViewStateFrame } from "@grdr/kit";
-import { Badge, Card, GrdrIcon, Heading, HStack, OsIcon, Text, VStack } from "@grdr/ui";
+import { Badge, Card, GrdrIcon, Heading, HStack, OsIcon, StatusInline, Text, VStack } from "@grdr/ui";
 
 const MATRIX_AGENTS = ["Claude Code", "Cursor", "Codex", "Gemini CLI"] as const;
 const MATRIX_OS = ["macos", "linux", "windows"] as const;
@@ -159,9 +159,9 @@ export function CoveragePage({
                           />
                         </td>
                         <td>
-                          <Badge
-                            variant={device.hook_effective && agent.hook_installed ? "success" : "warning"}
-                            icon={<GrdrIcon name={device.hook_effective && agent.hook_installed ? "check-circle" : "alert-triangle"} size={12} />}
+                          <StatusInline
+                            tone={device.hook_effective && agent.hook_installed ? "allow" : "ask"}
+                            icon={<GrdrIcon name={device.hook_effective && agent.hook_installed ? "check-circle" : "alert-triangle"} size={13} />}
                             label={
                               device.hook_effective && agent.hook_installed
                                 ? "Hook active"

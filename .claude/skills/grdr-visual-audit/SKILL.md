@@ -17,6 +17,12 @@ Whenever any UI file (`web/packages/`, `web/apps/`, `desktop/grdr-desktop/src/`,
 2. **Invoke an independent UI/UX Visual Design Judge subagent (`research`):**
    - Instruct the judge to open and visually inspect **every** screenshot (Desktop, Web desktop, and Web mobile) directly using `read_file`.
    - Ask the judge to evaluate with Principal Product Designer rigor (no checkbox rubber-stamping):
+     0. **Holistic Aesthetics & Platform Personality Gate (Mandatory First Pass):** Inspect ALL Web and Desktop screenshots together as one unified product and judge bluntly: does any screen look ugly, cluttered, amateur, or off-brand? Automatically **FAIL** any violation of the 6 Personality Pillars in `.claude/skills/signs-of-ai-design/SKILL.md`:
+        - Rogue off-palette colors (unapproved teal, neon cyan, purple, rainbow gradients)
+        - Legend-to-visual color mismatch (legend badge/dot color differing from bar/ring/edge color, or unlabelled chart lines)
+        - Amateur or noisy chart chrome (car-odometer half-arcs or tick spokes, grey battery-slot bar tubes, striped bar caps, dot-matrix/hatch wallpaper, empty ghost hex lattices)
+        - Pill vomit or heavy chrome (solid saturated table badges where `icon/dot + text` belongs, permanent underlines on resting `EntityLink`s, striped ribbons on cards/modals)
+        - Visual drift between Web Console, Operator, and Native Desktop
      1. **Visual anomalies & layout:** Truncation, text wrapping collisions, clip/overflow bugs, uneven baseline alignment, spacing imbalance, contrast issues in Light/Dark modes, broken or blank charts/graphs.
      2. **Component consistency:** Confirm every dropdown, checkbox, toggle, dialog, pagination bar, and button uses the single canonical component style across pages.
      3. **Customer-facing clarity & restraint:** Flag raw technical jargon (`AL0` to `AL4`, `G1/G2`, internal binary names), em dashes, semicolon-joined sentences, AI writing clichés, verbose paragraphs, or redundant chrome.

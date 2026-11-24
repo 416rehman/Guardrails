@@ -27,6 +27,7 @@ import {
   GrdrIcon,
   GrdrThemeProvider,
   GuardrailsMark,
+  HeroWaveBackdrop,
   HStack,
   IconButton,
   Kbd,
@@ -258,7 +259,9 @@ export function App() {
                   {!sidebarCollapsed && <span>{t(item.labelKey)}</span>}
                 </span>
                 {!sidebarCollapsed && item.id === "respond" && pendingApprovals > 0 && (
-                  <Badge variant="warning" label={pendingApprovals} />
+                  <span className="nav-attention-count tabular" aria-label={`${pendingApprovals} pending`}>
+                    {pendingApprovals}
+                  </span>
                 )}
               </button>
             ))}
@@ -276,7 +279,8 @@ export function App() {
           )}
         </aside>
 
-        <div className="workspace">
+        <div className={route === "home" ? "workspace workspace-home" : "workspace"}>
+          {route === "home" && <HeroWaveBackdrop theme={theme} />}
           <header className="topbar">
             <button
               type="button"

@@ -10,20 +10,21 @@ import {
   type KillScope,
   type KillSwitchState,
 } from "@grdr/api";
-import { capitalizeLabel, presentFindingTitle } from "@grdr/i18n";
+import { capitalizeLabel, pluralize, presentFindingTitle } from "@grdr/i18n";
 import { ApprovalCard, EntityLink, type EntityTarget, Quoted, SessionLabelBadge } from "@grdr/kit";
 import {
   Badge,
   Banner,
   Button,
   Card,
-  CheckboxInput,
   Dialog,
   GrdrIcon,
   GrdrSelect,
   HarnessIcon,
   Heading,
   HStack,
+  IconButton,
+  SelectableTile,
   Text,
   TextInput,
   VStack,
@@ -160,7 +161,7 @@ export function RespondPage({
             <div
               style={{
                 width: "100%",
-                background: killSwitch.state === "inactive" ? "var(--viz-allow-start)" : "var(--viz-block-start)",
+                background: killSwitch.state === "inactive" ? "var(--tone-allow)" : "var(--viz-block-start)",
               }}
             />
           </div>
@@ -487,7 +488,6 @@ export function RespondPage({
               label={capitalizeLabel(killSwitch.state)}
             />
           </HStack>
-          <div className="hazard-ribbon" aria-hidden="true" />
 
             <div className="form-grid">
               <GrdrSelect
@@ -516,10 +516,11 @@ export function RespondPage({
                 />
               </div>
               <div className="field full">
-                <CheckboxInput
+                <SelectableTile
                   label="Stop all matching agent actions immediately"
-                  value={confirmKill}
-                  onChange={(checked) => setConfirmKill(checked)}
+                  checked={confirmKill}
+                  onChange={setConfirmKill}
+                  icon={<GrdrIcon name="shield-alert" size={15} color="var(--tone-block)" />}
                 />
               </div>
               <div className="field full" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
@@ -557,92 +558,135 @@ export function RespondPage({
         isOpen={killModalOpen}
         onOpenChange={setKillModalOpen}
         purpose="form"
-        width={880}
+        width={900}
         padding={4}
         aria-label="Scoped Kill Switch Matrix"
       >
         <VStack gap={3}>
-          <HStack justify="between" align="center">
-            <HStack gap={2} align="center">
-              <GrdrIcon name="shield-off" size={18} color="var(--tone-block)" />
-              <Heading level={2}>Scoped Kill Switch</Heading>
+          <HStack justify="between" align="start">
+            <HStack gap={2} align="start">
+              <div style={{ paddingTop: 2 }}>
+                <GrdrIcon name="shield-off" size={20} color="var(--tone-block)" />
+              </div>
+              <VStack gap={0}>
+                <Heading level={2}>Scoped Kill Switch</Heading>
+                <Text size="sm" color="secondary">
+                  Select which agents, model providers, or gateways to contain.
+                </Text>
+              </VStack>
             </HStack>
-            <Button size="sm" label="Close" icon={<GrdrIcon name="x" size={14} />} onClick={() => setKillModalOpen(false)} />
+            <IconButton
+              label="Close"
+              icon={<GrdrIcon name="x" size={15} />}
+              variant="secondary"
+              size="sm"
+              onClick={() => setKillModalOpen(false)}
+            />
           </HStack>
-          <div className="hazard-ribbon" aria-hidden="true" />
 
           <Banner
             status="error"
             title={
               blockedAgents.length + blockedModels.length + blockedGateways.length === 0
                 ? "Select target agent types, model providers, or gateways to contain."
-                : `Preview: will isolate ${blockedAgents.length} agent types, ${blockedModels.length} providers, and ${blockedGateways.length} gateways.`
+                : `Preview: will isolate ${pluralize(blockedAgents.length, "agent type")}, ${pluralize(blockedModels.length, "provider")}, and ${pluralize(blockedGateways.length, "gateway")}.`
             }
             collapsible={false}
           />
 
-          <TextInput
-            label="Filter agent types, model providers, or gateways"
-            placeholder="Filter by name..."
-            value={matrixQuery}
-            onChange={setMatrixQuery}
-            width="100%"
-          />
+          <div className="killswitch-search-bar">
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <TextInput
+                label="Search agents, providers, or gateways"
+                isLabelHidden
+                placeholder="Search agents, providers, or gateways..."
+                startIcon={<GrdrIcon name="search" size={14} color="var(--ink-muted)" />}
+                value={matrixQuery}
+                onChange={setMatrixQuery}
+                width="100%"
+              />
+            </div>
+            <HStack gap={2} align="center">
+              <Text size="sm" color="secondary" className="tabular">
+                {`${blockedAgents.length + blockedModels.length + blockedGateways.length} selected`}
+              </Text>
+              {blockedAgents.length + blockedModels.length + blockedGateways.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  label="Clear"
+                  onClick={() => {
+                    setBlockedAgents([]);
+                    setBlockedModels([]);
+                    setBlockedGateways([]);
+                  }}
+                />
+              )}
+            </HStack>
+          </div>
 
           <div className="killswitch-cols">
-            <div className="killswitch-col">
-              <strong>{`Agent types (${blockedAgents.length}/${MATRIX_ENDPOINTS.length})`}</strong>
-              {MATRIX_ENDPOINTS.filter((a) => a.toLowerCase().includes(matrixQuery.toLowerCase())).map((ag) => (
-                <div key={ag} className="killswitch-check">
-                  <CheckboxInput
-                    label={ag}
-                    value={blockedAgents.includes(ag)}
-                    onChange={(checked) =>
-                      setBlockedAgents((prev) =>
-                        checked ? [...prev, ag] : prev.filter((x) => x !== ag),
-                      )
-                    }
-                  />
-                  <HarnessIcon name={ag} size={14} />
+            {(
+              [
+                {
+                  key: "agents",
+                  title: "Agent types",
+                  icon: "layers" as const,
+                  items: MATRIX_ENDPOINTS,
+                  selected: blockedAgents,
+                  setSelected: setBlockedAgents,
+                },
+                {
+                  key: "models",
+                  title: "Model providers",
+                  icon: "cpu" as const,
+                  items: MATRIX_MODELS,
+                  selected: blockedModels,
+                  setSelected: setBlockedModels,
+                },
+                {
+                  key: "gateways",
+                  title: "Gateways",
+                  icon: "plug" as const,
+                  items: MATRIX_GATEWAYS,
+                  selected: blockedGateways,
+                  setSelected: setBlockedGateways,
+                },
+              ] as const
+            ).map((col) => {
+              const queryLower = matrixQuery.toLowerCase();
+              return (
+                <div key={col.key} className="killswitch-col">
+                  <div className="killswitch-col-head">
+                    <HStack gap={2} align="center">
+                      <GrdrIcon name={col.icon} size={14} color="var(--ink-secondary)" />
+                      <span>{col.title}</span>
+                    </HStack>
+                    <span className="killswitch-col-count tabular">
+                      {`${col.selected.length}/${col.items.length}`}
+                    </span>
+                  </div>
+                  {col.items
+                    .filter((entry) => entry.toLowerCase().includes(queryLower))
+                    .map((entry) => {
+                      const isSelected = col.selected.includes(entry);
+                      return (
+                        <SelectableTile
+                          key={entry}
+                          label={entry}
+                          checked={isSelected}
+                          icon={<HarnessIcon name={entry} size={15} />}
+                          onChange={(checked) =>
+                            col.setSelected((prev) =>
+                              checked ? [...prev, entry] : prev.filter((x) => x !== entry),
+                            )
+                          }
+                        />
+                      );
+                    })}
                 </div>
-              ))}
-            </div>
-
-            <div className="killswitch-col">
-              <strong>{`Model providers (${blockedModels.length}/${MATRIX_MODELS.length})`}</strong>
-              {MATRIX_MODELS.filter((m) => m.toLowerCase().includes(matrixQuery.toLowerCase())).map((m) => (
-                <div key={m} className="killswitch-check">
-                  <CheckboxInput
-                    label={m}
-                    value={blockedModels.includes(m)}
-                    onChange={(checked) =>
-                      setBlockedModels((prev) =>
-                        checked ? [...prev, m] : prev.filter((x) => x !== m),
-                      )
-                    }
-                  />
-                  <HarnessIcon name={m} size={14} />
-                </div>
-              ))}
-            </div>
-
-            <div className="killswitch-col">
-              <strong>{`Gateways (${blockedGateways.length}/${MATRIX_GATEWAYS.length})`}</strong>
-              {MATRIX_GATEWAYS.filter((g) => g.toLowerCase().includes(matrixQuery.toLowerCase())).map((g) => (
-                <div key={g} className="killswitch-check">
-                  <CheckboxInput
-                    label={g}
-                    value={blockedGateways.includes(g)}
-                    onChange={(checked) =>
-                      setBlockedGateways((prev) =>
-                        checked ? [...prev, g] : prev.filter((x) => x !== g),
-                      )
-                    }
-                  />
-                  <HarnessIcon name={g} size={14} />
-                </div>
-              ))}
-            </div>
+              );
+            })}
           </div>
 
           <HStack justify="between" align="end" style={{ gap: 20, marginTop: 8, flexWrap: "wrap" }}>

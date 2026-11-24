@@ -1,5 +1,5 @@
 use grdr_ui_model::{Intent, Screen};
-use rune::{Color, El, Shadow, col, el, icon, row, spacer, text};
+use rune::{El, col, el, icon, row, spacer, text};
 
 use crate::icons;
 use crate::kit::{
@@ -7,7 +7,7 @@ use crate::kit::{
     primary_button, quoted_chip, status_pill, status_pill_with_icon,
 };
 use crate::theme::StudioTheme;
-use crate::viz::{coverage_visual, is_dark_theme, texture_overlay, velocity_sparkline};
+use crate::viz::{attention_card, coverage_visual, velocity_sparkline};
 
 #[must_use]
 pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
@@ -74,7 +74,6 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                     vm.boundary_pct,
                     boundary_count,
                     total_agents,
-                    app,
                     t,
                 )),
         )
@@ -97,7 +96,6 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                 ("Sat", 14, 0, 0),
                 ("Sun", 19, 1, 1),
             ],
-            app,
             t,
         ));
 
@@ -175,35 +173,11 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                     });
                 }));
 
-            approvals_col = approvals_col.child(
-                col()
-                    .key(apr.id.as_str())
-                    .w_full()
-                    .continuous_corners()
-                    .radius(12.0)
-                    .clip_rounded(12.0)
-                    .gradient(t.c.panel_top, t.c.panel_bottom)
-                    .radial_gradient(
-                        [0.08, 0.25],
-                        160.0,
-                        [(0.0, t.c.ask.alpha(0.11)), (1.0, Color::TRANSPARENT)],
-                    )
-                    .border_gradient(1.0, t.c.ask.alpha(0.32), t.c.border_subtle)
-                    .box_shadow(Shadow {
-                        x: 0.0,
-                        y: 1.0,
-                        blur: 0.0,
-                        spread: 0.0,
-                        color: t.c.specular_rim,
-                        inset: true,
-                    })
-                    .shadow(4.0, 12.0, t.c.drop_shadow)
-                    .child(card_row),
-            );
+            approvals_col =
+                approvals_col.child(attention_card(apr.id.as_str(), 12.0, t, card_row).w_full());
         }
     }
 
-    let dark = is_dark_theme(t);
     let mut agents_col = col().grow(1.0).gap(6.0).child(ledger_header(
         "Agents on this device",
         &format!("{} detected", vm.agents.len()),
@@ -248,17 +222,13 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
             &icons::ACTIVITY
         };
         let tile_color = if idx == 0 { t.c.ask } else { t.c.accent };
-        let mut icon_well = el()
+        let icon_well = el()
             .size(28.0, 28.0)
             .radius(6.0)
-            .clip_rounded(6.0)
             .fill(t.c.recessed)
             .border(1.0, t.c.border_subtle)
-            .center();
-        if idx == 0 {
-            icon_well = icon_well.child(texture_overlay(app.textures.hatch(dark)));
-        }
-        icon_well = icon_well.child(icon(tile_glyph, 14.0).color(tile_color));
+            .center()
+            .child(icon(tile_glyph, 14.0).color(tile_color));
         signals_col = signals_col.child(
             row()
                 .w_full()

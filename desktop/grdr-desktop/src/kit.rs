@@ -1,6 +1,6 @@
 use grdr_strings::sanitize_untrusted_text;
 use grdr_ui_model::{AppVm, Intent, ModeLevel, Screen, ThemeChoice, reduce};
-use rune::{Color, Cursor, El, Shadow, Span, TextStyle, Tx, col, el, icon, row, spacer, text};
+use rune::{Color, Cursor, El, Shadow, TextStyle, Tx, col, el, icon, row, spacer, text};
 use rune_kit::{
     Button, ButtonVariant, ControlSize, Divider, IconButton, IconButtonVariant, Progress,
     SegmentedControl, State,
@@ -8,15 +8,17 @@ use rune_kit::{
 
 use crate::icons;
 use crate::theme::StudioTheme;
-use crate::viz::DesktopTextures;
 
 const BRAND_MARK_PNG: &[u8] = include_bytes!("../assets/guardrails-mark.png");
+const HERO_WAVE_LIGHT_PNG: &[u8] = include_bytes!("../assets/hero-wave-light.png");
+const HERO_WAVE_DARK_PNG: &[u8] = include_bytes!("../assets/hero-wave-dark.png");
 
 pub struct DesktopApp {
     pub vm: AppVm,
     pub last_notice: Option<String>,
     pub brand_mark: rune::Image,
-    pub textures: DesktopTextures,
+    pub hero_wave_light: rune::Image,
+    pub hero_wave_dark: rune::Image,
     pub sidebar_collapsed: bool,
 }
 
@@ -25,13 +27,17 @@ impl DesktopApp {
     pub fn new(vm: AppVm) -> Self {
         let cache = rune::ImageCache::new(std::sync::Arc::new(|| {}));
         let brand_mark = cache.load(BRAND_MARK_PNG);
+        let hero_wave_light = cache.load(HERO_WAVE_LIGHT_PNG);
+        let hero_wave_dark = cache.load(HERO_WAVE_DARK_PNG);
         let _ = brand_mark.wait();
-        let textures = DesktopTextures::new(&cache);
+        let _ = hero_wave_light.wait();
+        let _ = hero_wave_dark.wait();
         Self {
             vm,
             last_notice: None,
             brand_mark,
-            textures,
+            hero_wave_light,
+            hero_wave_dark,
             sidebar_collapsed: false,
         }
     }
@@ -150,7 +156,7 @@ pub fn sidebar_rail(app: &DesktopApp, t: &StudioTheme) -> El {
     for &(screen, key, label, glyph) in nav_items {
         let active = app.vm.screen == screen;
         let ink = if active {
-            t.c.ink_primary
+            t.c.accent
         } else {
             t.c.ink_secondary
         };
@@ -175,18 +181,7 @@ pub fn sidebar_rail(app: &DesktopApp, t: &StudioTheme) -> El {
             });
 
         if active {
-            item = item
-                .gradient(t.c.panel_top, t.c.canvas)
-                .border_gradient(1.0, t.c.rim_top, t.c.border_subtle)
-                .box_shadow(Shadow {
-                    x: 0.0,
-                    y: 1.0,
-                    blur: 0.0,
-                    spread: 0.0,
-                    color: t.c.specular_rim,
-                    inset: true,
-                })
-                .shadow(2.0, 6.0, t.c.drop_shadow);
+            item = item.fill(t.c.accent_soft).border(1.0, Color::TRANSPARENT);
         } else {
             item = item
                 .fill(Color::TRANSPARENT)
@@ -216,16 +211,9 @@ pub fn sidebar_rail(app: &DesktopApp, t: &StudioTheme) -> El {
                         .group_color(t.c.ink_primary),
                 );
             if screen == Screen::Home && !app.vm.home.pending_approvals.is_empty() {
-                item = item.child(spacer()).child(status_pill(
-                    &app.vm.home.pending_approvals.len().to_string(),
-                    t.c.ask_bg,
-                    t.c.ask,
-                    t,
-                ));
-            } else if active {
                 item = item
                     .child(spacer())
-                    .child(el().size(5.0, 5.0).radius(3.0).fill(t.c.accent));
+                    .child(attention_count_pill(app.vm.home.pending_approvals.len(), t));
             }
         }
         nav = nav.child(item);
@@ -336,6 +324,29 @@ pub fn primary_button(
 }
 
 #[must_use]
+pub fn attention_count_pill(count: usize, t: &StudioTheme) -> El {
+    let font = TextStyle {
+        size: 11.5,
+        weight: 700.0,
+        line_height: 14.0,
+        ..t.kit.ty.small_medium
+    };
+    let pill = row()
+        .role("status")
+        .label(format!("{count} pending"))
+        .h(20.0)
+        .radius(10.0)
+        .fill(t.c.attention_bg)
+        .center()
+        .child(text(count.to_string()).font(font).color(t.c.attention_ink));
+    if count < 10 {
+        pill.w(20.0)
+    } else {
+        pill.px(6.0)
+    }
+}
+
+#[must_use]
 pub fn status_pill(label: &str, bg: Color, fg: Color, t: &StudioTheme) -> El {
     status_pill_with_icon(label, None, bg, fg, t)
 }
@@ -350,7 +361,7 @@ pub fn status_pill_with_icon(
 ) -> El {
     let font = TextStyle {
         size: 11.5,
-        weight: 600.0,
+        weight: 500.0,
         line_height: 14.0,
         ..t.kit.ty.small_medium
     };
@@ -359,14 +370,50 @@ pub fn status_pill_with_icon(
         .label(label)
         .h(22.0)
         .px(8.0)
-        .radius(4.0)
+        .radius(6.0)
         .fill(bg)
+        .border(1.0, fg.alpha(0.22))
         .center()
         .gap(5.0);
     if let Some(g) = glyph {
         r = r.child(icon(g, 11.5).color(fg));
     }
     r.child(text(label).font(font).color(fg))
+}
+
+#[must_use]
+pub fn status_inline(
+    label: &str,
+    glyph: Option<&'static rune::Icon>,
+    fg: Color,
+    t: &StudioTheme,
+) -> El {
+    let font = TextStyle {
+        size: 12.0,
+        weight: 500.0,
+        line_height: 16.0,
+        ..t.caption
+    };
+    let mut r = row().role("status").label(label).center_y().gap(5.0);
+    if let Some(g) = glyph {
+        r = r.child(icon(g, 13.0).color(fg));
+    }
+    r.child(text(label).font(font).color(fg))
+}
+
+#[must_use]
+pub fn legend_dot(label: &str, dot_color: Color, t: &StudioTheme) -> El {
+    let font = TextStyle {
+        size: 12.0,
+        weight: 500.0,
+        line_height: 16.0,
+        ..t.caption
+    };
+    row()
+        .center_y()
+        .gap(6.0)
+        .child(el().size(6.0, 6.0).radius(3.0).fill(dot_color))
+        .child(text(label).font(font).color(t.c.ink_secondary))
 }
 
 #[must_use]
@@ -428,7 +475,6 @@ pub fn entity_link(
         line_height: 17.0,
         ..t.body
     };
-    let spans = vec![Span::new(0, label.len()).underline(t.c.border_strong)];
     row()
         .key(key)
         .role("link")
@@ -441,12 +487,12 @@ pub fn entity_link(
         .radius(4.0)
         .fill(Color::TRANSPARENT)
         .hover_group()
-        .hover(t.c.accent_soft)
+        .hover(t.c.hover)
         .press(t.c.accent_soft)
         .press_scale(0.98)
         .focus_ring(2.0, 2.0, t.c.accent)
         .center_y()
-        .gap(4.0)
+        .gap(5.0)
         .child(
             icon(glyph, 11.5)
                 .color(t.c.ink_muted)
@@ -456,8 +502,7 @@ pub fn entity_link(
             text(label)
                 .font(link_style)
                 .color(t.c.ink_primary)
-                .group_color(t.c.accent)
-                .spans(spans),
+                .group_color(t.c.accent),
         )
         .on_press(on_press)
 }

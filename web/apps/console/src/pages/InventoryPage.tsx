@@ -15,6 +15,7 @@ import {
   Heading,
   HStack,
   Pagination,
+  StatusInline,
   Text,
   UiSdkSegmentedControl,
   VStack,
@@ -201,7 +202,7 @@ export function InventoryPage({
         <div className="fleet-card">
           <HStack justify="between" align="center">
             <Text size="sm" color="secondary">
-              Agent types ({agentTypeBuckets.length})
+              Agent types
             </Text>
             {agentFilter !== "all" && (
               <Button
@@ -212,9 +213,11 @@ export function InventoryPage({
               />
             )}
           </HStack>
-          <VStack gap={1}>
+          <strong style={{ fontSize: 22 }} className="tabular">
+            {agentTypeBuckets.length}
+          </strong>
+          <HStack gap={2} align="center" style={{ flexWrap: "wrap" }}>
             {agentTypeBuckets.slice(0, 3).map(([name, count]) => {
-              const pct = Math.max(18, Math.round((count / maxAgentCount) * 100));
               const isSelected = agentFilter === name.toLowerCase();
               return (
                 <button
@@ -231,63 +234,20 @@ export function InventoryPage({
                     background: "transparent",
                     padding: 0,
                     cursor: "pointer",
-                    display: "grid",
-                    gridTemplateColumns: "18px minmax(0, 1fr) 20px",
+                    display: "inline-flex",
                     alignItems: "center",
-                    gap: 6,
-                    width: "100%",
-                    textAlign: "left",
+                    gap: 4,
+                    fontSize: 12,
+                    fontWeight: isSelected ? 600 : 500,
+                    color: isSelected ? "var(--accent-primary)" : "var(--ink-secondary)",
                   }}
                 >
-                  <HarnessIcon name={name} size={13} />
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 2,
-                      minWidth: 0,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontWeight: isSelected ? 700 : 500,
-                        color: "var(--ink-primary)",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {name}
-                    </span>
-                    <div
-                      style={{
-                        width: "100%",
-                        height: 5,
-                        borderRadius: 99,
-                        background: "var(--border-subtle)",
-                        overflow: "hidden",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: `${pct}%`,
-                          height: "100%",
-                          borderRadius: 99,
-                          background: isSelected
-                            ? "linear-gradient(90deg, var(--viz-allow-end), var(--viz-allow-start))"
-                            : "linear-gradient(90deg, var(--viz-watch-end), var(--viz-watch-start))",
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <span className="tabular" style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-secondary)", textAlign: "right" }}>
-                    {count}
-                  </span>
+                  <HarnessIcon name={name} size={12} />
+                  <span>{`${name} (${count})`}</span>
                 </button>
               );
             })}
-          </VStack>
+          </HStack>
         </div>
 
         <div className="fleet-card">
@@ -297,26 +257,24 @@ export function InventoryPage({
           <strong style={{ fontSize: 18 }} className="tabular">
             {`${assuranceCounts.al34} Sandboxed · ${assuranceCounts.al01 + assuranceCounts.al2} Hook only`}
           </strong>
-          <div className="kpi-bar" style={{ height: 8, marginTop: 2 }}>
+          <div className="kpi-bar" style={{ height: 4, marginTop: 2 }}>
             <div
               style={{
                 width: `${(assuranceCounts.al34 / assuranceCounts.total) * 100}%`,
-                background: "var(--viz-allow-start)",
+                background: "var(--tone-allow)",
               }}
             />
             <div
               style={{
-                width: `${(assuranceCounts.al2 / assuranceCounts.total) * 100}%`,
-                background: "var(--viz-watch-start)",
-              }}
-            />
-            <div
-              style={{
-                width: `${(assuranceCounts.al01 / assuranceCounts.total) * 100}%`,
-                background: "var(--viz-ask-start)",
+                width: `${((assuranceCounts.al01 + assuranceCounts.al2) / assuranceCounts.total) * 100}%`,
+                background: "var(--tone-ask)",
               }}
             />
           </div>
+          <HStack gap={3} align="center" style={{ marginTop: 2 }}>
+            <StatusInline tone="allow" dot label="Sandboxed" />
+            <StatusInline tone="ask" dot label="Hook only" />
+          </HStack>
         </div>
 
         <div className="fleet-card">
@@ -408,10 +366,10 @@ export function InventoryPage({
                   : "Click an endpoint hexagon to inspect its asset topology graph, agent assurance levels, and MCP pins."}
               </Text>
             </VStack>
-            <HStack gap={2} align="center">
-              <Badge variant="success" label="Sandboxed / Enforced" />
-              <Badge variant="warning" label="Hook only" />
-              <Badge variant="error" label="Attention needed" />
+            <HStack gap={3} align="center">
+              <StatusInline tone="allow" dot label="Sandboxed" />
+              <StatusInline tone="ask" dot label="Hook only" />
+              <StatusInline tone="block" dot label="Attention needed" />
             </HStack>
           </HStack>
 
@@ -468,16 +426,16 @@ export function InventoryPage({
                       <OsLabel os={device.os} arch={device.arch} size={14} />
                     </td>
                     <td>
-                      <Badge
-                        variant="info"
-                        icon={<GrdrIcon name={device.install_profile === "protected" ? "shield-check" : "shield-half"} size={12} />}
+                      <StatusInline
+                        tone={device.install_profile === "protected" ? "watch" : "neutral"}
+                        icon={<GrdrIcon name={device.install_profile === "protected" ? "shield-check" : "shield-half"} size={13} />}
                         label={device.install_profile === "protected" ? "Protected" : "User mode"}
                       />
                     </td>
                     <td>
-                      <Badge
-                        variant={device.hook_effective ? "success" : "warning"}
-                        icon={<GrdrIcon name={device.hook_effective ? "check-circle" : "alert-triangle"} size={12} />}
+                      <StatusInline
+                        tone={device.hook_effective ? "allow" : "ask"}
+                        icon={<GrdrIcon name={device.hook_effective ? "check-circle" : "alert-triangle"} size={13} />}
                         label={device.hook_effective ? "Hook active" : "Discovery only"}
                       />
                     </td>
@@ -485,9 +443,9 @@ export function InventoryPage({
                       {device.agents.length} / {device.mcp_servers.length}
                     </td>
                     <td>
-                      <Badge
-                        variant={device.online ? "success" : "neutral"}
-                        icon={<GrdrIcon name={device.online ? "check-circle" : "circle-off"} size={12} />}
+                      <StatusInline
+                        tone={device.online ? "allow" : "neutral"}
+                        dot
                         label={device.online ? "Online" : "Offline"}
                       />
                     </td>
@@ -582,9 +540,9 @@ export function InventoryPage({
                         />
                       </td>
                       <td>
-                        <Badge
-                          variant={agent.hook_installed ? "success" : "warning"}
-                          icon={<GrdrIcon name={agent.hook_installed ? "check-circle" : "alert-triangle"} size={12} />}
+                        <StatusInline
+                          tone={agent.hook_installed ? "allow" : "ask"}
+                          icon={<GrdrIcon name={agent.hook_installed ? "check-circle" : "alert-triangle"} size={13} />}
                           label={agent.hook_installed ? "Installed" : "Not configured"}
                         />
                       </td>

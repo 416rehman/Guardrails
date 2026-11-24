@@ -19,6 +19,7 @@ import {
   GrdrVelocityChart,
   HStack,
   ProgressBar,
+  StatusInline,
   Text,
   VStack,
 } from "@grdr/ui";
@@ -149,7 +150,10 @@ export function HomePage({
             </div>
             <div className="metric-cell">
               <div className="metric-value tabular">{pending.length}</div>
-              <div className="metric-label">Waiting approvals</div>
+              <div className="metric-label" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span>Waiting approvals</span>
+                {pending.length > 0 && <span className="attention-dot" aria-hidden="true" />}
+              </div>
               <div className="metric-note">One-time or session</div>
             </div>
             <div className="metric-cell">
@@ -191,10 +195,10 @@ export function HomePage({
               Evaluated agent calls this week (169)
             </Text>
           </HStack>
-          <HStack gap={2} align="center">
-            <Badge variant="neutral" icon={<GrdrIcon name="check" size={11} />} label="Allowed (156)" />
-            <Badge variant="warning" icon={<GrdrIcon name="hand" size={11} />} label="Ask (8)" />
-            <Badge variant="error" icon={<GrdrIcon name="ban" size={11} />} label="Blocked (5)" />
+          <HStack gap={3} align="center">
+            <StatusInline tone="neutral" dot dotColor="var(--viz-allow-end)" label="Allowed 156" />
+            <StatusInline tone="neutral" dot dotColor="var(--viz-ask-start)" label="Ask 8" />
+            <StatusInline tone="neutral" dot dotColor="var(--viz-block-start)" label="Blocked 5" />
           </HStack>
         </HStack>
         <GrdrVelocityChart data={VELOCITY_DAYS} />
@@ -228,7 +232,7 @@ export function HomePage({
             {pending.map((item) => {
               const isOpen = expandedApprovalId === item.id;
               return (
-                <div key={item.id} className="ledger-row">
+                <div key={item.id} className="ledger-row attention-row">
                   <div className="ledger-row-main">
                     <VStack gap={1}>
                       <HStack gap={2} align="center" style={{ flexWrap: "wrap", columnGap: 6, rowGap: 2 }}>

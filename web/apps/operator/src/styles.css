@@ -2,7 +2,7 @@
 
 .topbar.operator-context {
   background-color: var(--tone-ask-bg);
-  border-block-end: 1px solid var(--tone-ask);
+  border-block-end: 1px solid var(--tone-ask-border);
 }
 
 .kv-row {
