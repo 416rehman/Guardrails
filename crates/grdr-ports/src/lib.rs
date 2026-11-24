@@ -4,6 +4,8 @@
 
 pub mod blob;
 pub mod bus;
+pub mod clock;
+pub mod events;
 pub mod jobs;
 pub mod relational;
 pub mod tenant;
@@ -17,6 +19,15 @@ pub use blob::{
 pub use bus::{
     BusAppendMessage, BusLag, BusMessage, BusOffsetRange, BusPort, BusSubscription,
     CODE_BUS_BEYOND_LOG, CODE_BUS_INVALID_INPUT, CODE_BUS_IO, CODE_BUS_STALE_FENCE,
+};
+pub use clock::Clock;
+pub use events::{
+    CODE_LAKE_HOLD_ACTIVE, CODE_LAKE_INVALID_QUERY, CODE_LAKE_IO, CODE_LAKE_KEY_DESTROYED,
+    CODE_LAKE_NOT_FOUND, CODE_LAKE_STALE_FENCE, ContentKeyState, ErasureReceipt, EventsPort,
+    LakeAggOp, LakeAggSpec, LakeBatch, LakeCompactionResult, LakeCoverage, LakeFlushResult,
+    LakeManifest, LakeManifestEntry, LakeObservable, LakePredicate, LakeQueryIr, LakeQueryResult,
+    LakeQueryRow, LakeRecord, LegalHold, LegalHoldRequest, LegalHoldScope, LegalHoldState,
+    RetentionClass, SessionContentKey,
 };
 pub use jobs::{
     CODE_JOBS_INVALID_STATE, CODE_JOBS_IO, CODE_JOBS_NOT_FOUND, CODE_JOBS_STALE_FENCE,

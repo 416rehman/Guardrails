@@ -40,6 +40,15 @@ struct Args {
     #[arg(long, env = "GRDR_SERVER_PROFILE", default_value = "embedded")]
     profile: String,
 
+    #[arg(long, env = "GRDR_POSTGRES_DSN")]
+    postgres_dsn: Option<String>,
+
+    #[arg(long, env = "GRDR_NATS_URL")]
+    nats_url: Option<String>,
+
+    #[arg(long, env = "GRDR_OBJECT_STORE_DIR")]
+    object_store_dir: Option<PathBuf>,
+
     #[arg(long, default_value_t = false)]
     memory: bool,
 
@@ -79,7 +88,20 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let backend = StorageBackend::from_flags(args.memory, args.data_dir);
+    let backend = match StorageBackend::from_profile_flags(
+        profile,
+        args.memory,
+        args.data_dir,
+        args.postgres_dsn,
+        args.nats_url,
+        args.object_store_dir,
+    ) {
+        Ok(b) => b,
+        Err(err) => {
+            error!(code = %err.code, message = %err.message, "Invalid profile storage configuration");
+            return ExitCode::FAILURE;
+        }
+    };
     let state = match AppState::init_with_profile(profile, backend, args.demo_seed) {
         Ok(s) => s,
         Err(err) => {

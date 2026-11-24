@@ -13,7 +13,9 @@ use uuid::Uuid;
 use grdr_blob::FilesystemBlobStore;
 use grdr_bus_log::SqliteLogBus;
 use grdr_core::detect;
+use grdr_crypto::load_or_create_keypair;
 use grdr_jobs::SqliteJobJournal;
+use grdr_lake::LakeStore;
 use grdr_model::error::{CODE_STORE_CORRUPT, CODE_STORE_IO};
 use grdr_model::eval::add_seconds;
 use grdr_model::{
@@ -25,8 +27,14 @@ use grdr_ports::{
     KvSnapshotRepo, LeaseAcquireOutcome, LeaseState, OrgId, PolicyRepo, SessionSummaryRepo,
     SingleCtx, TenantCtx, TenantPath, TenantUserRecord, UserRepo,
 };
+#[cfg(test)]
+use grdr_ports::{
+    ErasureReceipt, EventsPort, LakeCompactionResult, LakeFlushResult, LakeManifest, LakeQueryIr,
+    LakeQueryResult,
+};
 use grdr_rel_sqlite::SqliteRelationalStore;
 
+use super::lake_ops::append_event_to_lake;
 use super::users::DirectoryUserRecord;
 use super::{MAX_RETAINED_EVENTS, StoreData};
 
@@ -44,6 +52,7 @@ pub(crate) struct EmbeddedStorage {
     bus: SqliteLogBus,
     blobs: FilesystemBlobStore,
     jobs: SqliteJobJournal,
+    lake: LakeStore<FilesystemBlobStore>,
     bus_fence: Mutex<FencingToken>,
 }
 
@@ -56,6 +65,17 @@ impl EmbeddedStorage {
         let bus = SqliteLogBus::open(&dir.join("bus.sqlite3"))?;
         let blobs = FilesystemBlobStore::open(&dir.join("blobs"))?;
         let jobs = SqliteJobJournal::open(&dir.join("jobs.sqlite3"))?;
+        let lake_kek = load_or_create_keypair(&dir.join("lake.kek"))
+            .map_err(|e| {
+                CodedError::new(
+                    CODE_STORE_IO,
+                    format!("Failed initializing lake KEK: {e}"),
+                    "Verify write permissions in --data-dir.",
+                )
+            })?
+            .derive_aead_key("lake.kek.v1");
+        let lake_blobs = FilesystemBlobStore::open(&dir.join("blobs"))?;
+        let lake = LakeStore::open(&dir.join("lake-catalogue.sqlite3"), lake_blobs, lake_kek)?;
 
         let now_ms = Timestamp::now().as_millisecond();
         let fence =
@@ -81,6 +101,7 @@ impl EmbeddedStorage {
             bus,
             blobs,
             jobs,
+            lake,
             bus_fence: Mutex::new(sub.fence),
         })
     }
@@ -281,7 +302,63 @@ impl EmbeddedStorage {
             &format!("ingest/events/offset-{}.json", range.last_offset),
         )?;
         self.blobs.put(&self.org_ctx, &blob_path, payload_bytes)?;
+        let _ = append_event_to_lake(
+            &self.lake,
+            &self.org_ctx,
+            *fence,
+            range.last_offset,
+            device_id,
+            payload_bytes,
+            now_ms,
+        )?;
         Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn flush_lake(&self, now_ms: i64) -> Result<LakeFlushResult, CodedError> {
+        let fence = *self.bus_fence.lock().map_err(|_| {
+            CodedError::new(
+                CODE_STORE_IO,
+                "Embedded bus fence mutex poisoned.",
+                "Restart server.",
+            )
+        })?;
+        self.lake.flush(&self.org_ctx, fence, now_ms, now_ms)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn compact_lake(&self, now_ms: i64) -> Result<LakeCompactionResult, CodedError> {
+        let fence = *self.bus_fence.lock().map_err(|_| {
+            CodedError::new(
+                CODE_STORE_IO,
+                "Embedded bus fence mutex poisoned.",
+                "Restart server.",
+            )
+        })?;
+        self.lake.compact_and_retain(&self.org_ctx, fence, now_ms)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn query_lake(&self, query: &LakeQueryIr) -> Result<LakeQueryResult, CodedError> {
+        let read_ctx = TenantCtx::Single(self.org_ctx.clone());
+        self.lake.execute_query_ir(&read_ctx, query)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn erase_lake_session(
+        &self,
+        root_session_id: &str,
+        reason: &str,
+        now_ms: i64,
+    ) -> Result<ErasureReceipt, CodedError> {
+        self.lake
+            .erase_session(&self.org_ctx, root_session_id, reason, now_ms)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn lake_manifest(&self) -> Result<Option<LakeManifest>, CodedError> {
+        let read_ctx = TenantCtx::Single(self.org_ctx.clone());
+        self.lake.manifest(&read_ctx)
     }
 }
 
