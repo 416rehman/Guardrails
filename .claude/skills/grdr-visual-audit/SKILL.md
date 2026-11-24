@@ -11,7 +11,7 @@ Code linters catch syntax. Only visual inspection of real screenshots catches tr
 
 Whenever any UI file (`web/packages/`, `web/apps/`, `desktop/grdr-desktop/src/`, `crates/grdr-ui-model/`) or screenshot changes:
 
-1. **Capture fresh screenshots:**
+1. **Capture fresh local screenshots (gitignored, never committed to git; attach to GitHub issues or PRs only):**
    - Desktop GPU (`--scene <name> --size 1280x820 --snap desktop/screenshots/desktop-<name>.png`)
    - Web Console & Operator at **both** Desktop (`1440x900@2x`) AND Mobile (`390x844@2x` `*-mobile.png`) into `web/screenshots/*.png`
 2. **Invoke an independent UI/UX Visual Design Judge subagent (`research`):**
@@ -41,4 +41,4 @@ Whenever any UI file (`web/packages/`, `web/apps/`, `desktop/grdr-desktop/src/`,
    ```powershell
    node .claude/hooks/visual-audit-check.mjs --record --verdict pass --unresolved 0 --unresolved-polish 0 --summary "<concise summary>"
    ```
-   `.claude/hooks/visual-audit-check.mjs` hashes all current screenshots into `.git/grdr-visual-audit.json` and blocks `git commit` or `gh pr create` for any UI change whose screenshots lack a fresh matching audit stamp with zero unresolved blocking or polish findings.
+   `.claude/hooks/visual-audit-check.mjs` hashes all local screenshots into `.git/grdr-visual-audit.json` (while rejecting any staged/committed screenshots under `web/screenshots/`, `desktop/screenshots/`, or `**/__screenshots__/`) and blocks `git commit` or `gh pr create` for any UI change without a fresh audit stamp showing zero unresolved blocking or polish findings.

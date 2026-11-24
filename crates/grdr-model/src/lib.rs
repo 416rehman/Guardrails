@@ -4,6 +4,7 @@
 
 pub mod api;
 pub mod artifacts;
+pub mod connect;
 pub mod domain;
 pub mod error;
 pub mod eval;
@@ -12,6 +13,7 @@ pub mod policy;
 
 pub use api::*;
 pub use artifacts::*;
+pub use connect::*;
 pub use domain::*;
 pub use error::*;
 pub use identity::*;

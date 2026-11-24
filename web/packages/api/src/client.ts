@@ -213,4 +213,36 @@ export const api = {
   exportOcsf: () => downloadExport("/api/v1/exports/ocsf", "guardrails-ocsf-1.9.json"),
   exportAuditJsonl: () =>
     downloadExport("/api/v1/exports/audit.jsonl", "guardrails-audit.jsonl"),
+  getConnectConfig: () => requestJson<import("./types").ConnectConfigResponse>("/api/v1/connect/config"),
+  createDeploymentKey: (body: {
+    label: string;
+    wave: string;
+    install_profile: string;
+    max_uses: number;
+    ttl_days: number;
+  }) =>
+    requestJson<import("./types").CreateDeploymentKeyResponse>("/api/v1/connect/deployment-keys", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  revokeDeploymentKey: (id: string) =>
+    requestJson<import("./types").DeploymentKey>(
+      `/api/v1/connect/deployment-keys/${encodeURIComponent(id)}/revoke`,
+      { method: "POST" },
+    ),
+  renderMdmConfig: (body: {
+    format: import("./types").MdmFormat;
+    deployment_key_id?: string | null;
+    include_browser_extension: boolean;
+    update_authority: string;
+  }) =>
+    requestJson<import("./types").MdmRenderResponse>("/api/v1/connect/mdm-render", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  checkIntegrationReadiness: (id: string) =>
+    requestJson<import("./types").IntegrationEntry>(
+      `/api/v1/integrations/${encodeURIComponent(id)}/check-readiness`,
+      { method: "POST" },
+    ),
 };

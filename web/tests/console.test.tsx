@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ApprovalRequest,
   AuditEntry,
+  ConnectConfigResponse,
   Device,
   Finding,
   HealthResponse,
@@ -389,12 +390,109 @@ function installFetchMock() {
     }
     if (url.endsWith("/api/v1/keys")) return mockJsonResponse(keysFixture);
     if (url.endsWith("/api/v1/audit")) return mockJsonResponse(auditFixture);
+    if (url.endsWith("/api/v1/connect/config")) return mockJsonResponse(connectFixture);
+    if (url.endsWith("/api/v1/connect/deployment-keys")) {
+      const issued = {
+        key: {
+          id: "key-finance-pilot",
+          label: "Finance Pilot",
+          token_preview: "grdr_wk_fin12345",
+          install_profile: "standard",
+          wave: "wave-3",
+          max_uses: 50,
+          used_count: 0,
+          status: "active" as const,
+          created_at: "2026-11-24T10:00:00Z",
+          expires_at: "2026-12-24T10:00:00Z",
+          created_by: "console-operator",
+        },
+        plaintext_token: "grdr_wk_fin123456789abcdef",
+      };
+      return mockJsonResponse(issued);
+    }
+    if (url.endsWith("/revoke")) {
+      return mockJsonResponse({
+        ...connectFixture.deployment_keys[0],
+        status: "revoked",
+      });
+    }
+    if (url.endsWith("/api/v1/connect/mdm-render")) {
+      return mockJsonResponse({
+        format: "intune_win32",
+        filename: "guardrails-intune-install.ps1",
+        content_type: "text/plain",
+        payload: "origin = \"https://guardrails.internal:8443\"\ninstall_profile = \"standard\"",
+        deployment_notes: ["Package as .intunewin with MSI product-code detection rule."],
+      });
+    }
+    if (url.includes("/check-readiness")) {
+      return mockJsonResponse(connectFixture.integrations[0]);
+    }
     if (url.endsWith("/api/v1/exports/ocsf") || url.endsWith("/api/v1/exports/audit.jsonl")) {
       return new Response("{}", { status: 200 });
     }
     return mockJsonResponse({ code: "NOT_FOUND", message: `Unmocked URL ${url}` }, 404);
   });
 }
+
+const connectFixture: ConnectConfigResponse = {
+  server_origin: "https://guardrails.internal:8443",
+  installers: [
+    {
+      platform: "macos",
+      label: "macOS pkg installer",
+      version: "0.4.2",
+      command: "curl -fsSL https://guardrails.internal:8443/dl/guardrails-0.4.2.pkg -o /tmp/grdr.pkg",
+      sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      doctor_command: "grdr doctor net",
+      notes: "Signed universal installer.",
+    },
+  ],
+  deployment_keys: [
+    {
+      id: "key-pilot-1",
+      label: "Pilot Wave 1",
+      token_preview: "grdr_wk_pilot9f1a",
+      install_profile: "standard",
+      wave: "wave-1",
+      max_uses: 50,
+      used_count: 14,
+      status: "active",
+      created_at: "2026-11-01T00:00:00Z",
+      expires_at: "2026-12-01T00:00:00Z",
+      created_by: "maya.chen@acme.dev",
+    },
+  ],
+  otlp: {
+    enabled: true,
+    grpc_port: 4317,
+    http_port: 4318,
+    bind_address: "127.0.0.1",
+    downstream_targets: ["https://collector.soc.internal:4317"],
+    loopback_only: true,
+    accepted_spans_24h: 18420,
+  },
+  integrations: [
+    {
+      id: "idp-entra",
+      name: "Microsoft Entra ID",
+      provider: "Entra",
+      category: "directory_sync",
+      state: "at_risk",
+      synced_users: 28,
+      last_sync_at: "2026-11-24T09:00:00Z",
+      credential_expires_in_days: 9,
+      detail: "App registration secret expires within 14 days.",
+      readiness_checks: [
+        {
+          name: "Credential validity",
+          passed: true,
+          detail: "Secret expires in 9 days",
+        },
+      ],
+    },
+  ],
+};
 
 class MockEventSource {
   onopen: (() => void) | null = null;
@@ -547,6 +645,37 @@ describe("Console and Operator Plane workflows", () => {
     fireEvent.click(screen.getByRole("button", { name: "Audit log" }));
     await waitFor(() => {
       expect(screen.getByText("Initialized baseline rules")).toBeTruthy();
+    });
+  });
+
+  it("renders Inventory Connect & Integrations, issues wave key, renders MDM payload, and checks readiness", async () => {
+    installFetchMock();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: "Inventory" }).length).toBeGreaterThan(0);
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "Inventory" })[0]);
+
+    await waitFor(() => {
+      expect(screen.getByRole("radio", { name: "Connect & Integrations" })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("radio", { name: "Connect & Integrations" }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Pilot Wave 1").length).toBeGreaterThan(0);
+      expect(screen.getByText(/At risk: 9d expiry/)).toBeTruthy();
+      expect(screen.getByText(/Package as .intunewin/)).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Issue wave key" }));
+    await waitFor(() => {
+      expect(screen.getByText(/One-time wave key issued for Finance Pilot/)).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Check readiness" }));
+    await waitFor(() => {
+      expect(screen.getByText("Secret expires in 9 days")).toBeTruthy();
     });
   });
 });

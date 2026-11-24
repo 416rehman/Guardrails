@@ -1024,4 +1024,123 @@ mod tests {
                 .all(|u| u.display_name.starts_with("prn_") && u.risk_score == 0)
         );
     }
+
+    #[tokio::test]
+    async fn connect_endpoints_manage_wave_keys_mdm_and_readiness() {
+        let state = AppState::init(None, true).unwrap();
+        let app = routes::build_router(state, None);
+
+        let cfg_resp = app
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/connect/config")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(cfg_resp.status(), StatusCode::OK);
+        let cfg: grdr_model::ConnectConfigResponse = serde_json::from_slice(
+            &axum::body::to_bytes(cfg_resp.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(cfg.installers.len(), 3);
+        assert!(cfg.otlp.loopback_only);
+        assert_eq!(cfg.otlp.grpc_port, 4317);
+
+        let create_resp = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/connect/deployment-keys")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&grdr_model::CreateDeploymentKeyRequest {
+                            label: "Finance Pilot".into(),
+                            wave: "wave-3".into(),
+                            install_profile: "enforced".into(),
+                            max_uses: 25,
+                            ttl_days: 30,
+                        })
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(create_resp.status(), StatusCode::OK);
+        let created: grdr_model::CreateDeploymentKeyResponse = serde_json::from_slice(
+            &axum::body::to_bytes(create_resp.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(created.plaintext_token.starts_with("grdr_wk_"));
+
+        let render_resp = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/connect/mdm-render")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&grdr_model::MdmRenderRequest {
+                            format: grdr_model::MdmFormat::JamfMobileconfig,
+                            deployment_key_id: Some(created.key.id.clone()),
+                            include_browser_extension: true,
+                            update_authority: "managed".into(),
+                        })
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(render_resp.status(), StatusCode::OK);
+        let mdm: grdr_model::MdmRenderResponse = serde_json::from_slice(
+            &axum::body::to_bytes(render_resp.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(mdm.payload.contains(&created.key.token_preview));
+
+        let revoke_resp = app
+            .clone()
+            .oneshot(
+                Request::post(format!(
+                    "/api/v1/connect/deployment-keys/{}/revoke",
+                    created.key.id
+                ))
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(revoke_resp.status(), StatusCode::OK);
+        let revoked: grdr_model::DeploymentKey = serde_json::from_slice(
+            &axum::body::to_bytes(revoke_resp.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(revoked.status, grdr_model::DeploymentKeyStatus::Revoked);
+
+        let readiness_resp = app
+            .oneshot(
+                Request::post("/api/v1/integrations/idp-entra/check-readiness")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(readiness_resp.status(), StatusCode::OK);
+        let entra: grdr_model::IntegrationEntry = serde_json::from_slice(
+            &axum::body::to_bytes(readiness_resp.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(entra.state, grdr_model::IntegrationHealthState::AtRisk);
+    }
 }

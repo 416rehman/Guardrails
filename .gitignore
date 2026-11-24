@@ -9,3 +9,6 @@ web/dist/
 web/dist-operator/
 web/.vite/
 grdr-data/
+web/screenshots/
+desktop/screenshots/
+**/__screenshots__/
