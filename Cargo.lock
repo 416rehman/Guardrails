@@ -1052,6 +1052,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "grdr-identity"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "grdr-crypto",
+ "grdr-model",
+ "jiff 1.0.2",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
+name = "grdr-integrations"
+version = "0.1.0"
+dependencies = [
+ "grdr-crypto",
+ "grdr-model",
+ "jiff 1.0.2",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
 name = "grdr-interface-gen"
 version = "0.1.0"
 dependencies = [
@@ -1284,6 +1312,20 @@ dependencies = [
  "grdr-model",
  "grdr-strings",
  "serde",
+]
+
+[[package]]
+name = "grdr-update"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "grdr-crypto",
+ "grdr-model",
+ "jiff 1.0.2",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
 ]
 
 [[package]]
