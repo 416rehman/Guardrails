@@ -11,6 +11,7 @@ import {
 } from "@grdr/api";
 import { pluralize } from "@grdr/i18n";
 import { EntityLink, type EntityTarget, ModeBadge, ModeControl, Quoted, VerdictBadge } from "@grdr/kit";
+import { BrowserPoliciesSection } from "./BrowserPoliciesSection";
 import {
   Badge,
   Banner,
@@ -26,7 +27,7 @@ import {
   VStack,
 } from "@grdr/ui";
 
-type EditorViewMode = "simple" | "advanced" | "code";
+type EditorViewMode = "simple" | "advanced" | "code" | "browser";
 
 const ACTION_CLASSES: ActionClass[] = [
   "exec",
@@ -189,7 +190,9 @@ export function ProtectPage({
         <div>
           <Heading level={1}>Protect</Heading>
           <Text color="secondary">
-            {`Control what agents can run locally in Watch, Ask, or Block mode (${pluralize(boundaryDevices, "sandboxed endpoint")}, ${pluralize(appHookAgents, "app-hook agent")}).`}
+            {editorMode === "browser"
+              ? "Govern file uploads, pasted secrets, and extension locks across hosted browser AI apps."
+              : `Control what agents can run locally in Watch, Ask, or Block mode (${pluralize(boundaryDevices, "sandboxed endpoint")}, ${pluralize(appHookAgents, "app-hook agent")}).`}
           </Text>
         </div>
         <HStack gap={2} align="center" style={{ flexWrap: "wrap" }}>
@@ -212,22 +215,34 @@ export function ProtectPage({
                 label: "Code",
                 icon: <GrdrIcon name="code" size={13} />,
               },
+              {
+                value: "browser",
+                label: "Browser AI",
+                icon: <GrdrIcon name="globe" size={13} />,
+              },
             ]}
             onChange={setEditorMode}
           />
-          <Button
-            variant="primary"
-            label={showNewForm ? "Close rule builder" : "New rule"}
-            icon={<GrdrIcon name="plus" size={14} />}
-            onClick={() => {
-              setEditingRuleId(null);
-              setShowNewForm((prev) => !prev);
-            }}
-          />
+          {editorMode !== "browser" && (
+            <Button
+              variant="primary"
+              label={showNewForm ? "Close rule builder" : "New rule"}
+              icon={<GrdrIcon name="plus" size={14} />}
+              onClick={() => {
+                setEditingRuleId(null);
+                setShowNewForm((prev) => !prev);
+              }}
+            />
+          )}
         </HStack>
       </div>
 
       {error && <Banner status="error" title={error} collapsible={false} />}
+
+      {editorMode === "browser" ? (
+        <BrowserPoliciesSection />
+      ) : (
+        <>
 
       {editorMode === "advanced" && (
         <section className="visual-panel" aria-label="Structured policy sentence builder">
@@ -546,6 +561,8 @@ export function ProtectPage({
           </div>
         </section>
       ))}
+        </>
+      )}
     </VStack>
   );
 }

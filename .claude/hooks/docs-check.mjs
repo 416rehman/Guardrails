@@ -115,6 +115,18 @@ function checkGitPush(command, cwd, rules) {
   return found;
 }
 
+function extractPrBodyText(command, cwd) {
+  const inline = optionValue(command, "--body") ?? optionValue(command, "-b");
+  if (inline) return inline;
+  const bodyFile = optionValue(command, "--body-file") ?? optionValue(command, "-F");
+  if (!bodyFile) return "";
+  try {
+    return readFileSync(resolve(cwd, bodyFile), "utf8");
+  } catch {
+    return "";
+  }
+}
+
 function checkPrCreateRules(command, cwd, rules) {
   const found = [];
   const headOpt = optionValue(command, "--head");
@@ -125,6 +137,10 @@ function checkPrCreateRules(command, cwd, rules) {
   }
   if (!isValidWorkBranch(branch, rules) && !isExemptBranch(branch, rules)) {
     found.push(`branch rule: branch "${branch}" should follow ${rules.workBranchForm}.`);
+  }
+  const body = extractPrBodyText(command, cwd);
+  if (!/(?:Closes|Fixes|Resolves|Refs?)\s+#\d+/i.test(body)) {
+    found.push("pr rule: every PR must have an accompanying GitHub issue linked in the PR body (for example, Closes #42).");
   }
   return found;
 }

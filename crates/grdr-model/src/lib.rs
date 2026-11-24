@@ -4,6 +4,7 @@
 
 pub mod api;
 pub mod artifacts;
+pub mod browser;
 pub mod connect;
 pub mod domain;
 pub mod error;
@@ -15,6 +16,7 @@ pub mod query_ir;
 
 pub use api::*;
 pub use artifacts::*;
+pub use browser::*;
 pub use connect::*;
 pub use domain::*;
 pub use error::*;

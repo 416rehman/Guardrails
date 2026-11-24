@@ -3,6 +3,8 @@
 .grdr-ui-segmented {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
+  max-width: 100%;
   gap: var(--space-0-5);
   padding: 3px;
   border-radius: var(--radius-md);
@@ -24,7 +26,15 @@
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
+  white-space: nowrap;
   transition: background-color var(--motion-quick) ease, color var(--motion-quick) ease;
+}
+
+@media (max-width: 820px) {
+  .grdr-ui-seg-item {
+    padding-inline: 8px;
+    font-size: 12px;
+  }
 }
 
 .grdr-ui-seg-item:hover:not([aria-disabled="true"]):not(:disabled) {
