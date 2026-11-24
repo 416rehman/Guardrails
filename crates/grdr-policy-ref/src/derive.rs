@@ -159,11 +159,11 @@ pub fn derive_verdict(input: &DeriveInput) -> Verdict {
             return Verdict::Modify;
         }
 
-        let any_block_or_unliftable = input.determining_forbids.iter().any(|f| {
-            f.mode == Mode::Block
+        let any_non_ask_or_unliftable = input.determining_forbids.iter().any(|f| {
+            f.mode != Mode::Ask
                 || !grade_satisfiable(f.min_grade, input.device_max_grade, input.timelock)
         });
-        if any_block_or_unliftable {
+        if any_non_ask_or_unliftable {
             return Verdict::Deny;
         }
         return Verdict::StepUp;
@@ -178,17 +178,13 @@ pub fn derive_verdict(input: &DeriveInput) -> Verdict {
         .iter()
         .filter(|r| r.grant_lifted == ObligationSupport::Unsupported)
         .collect();
-    if !unlifted_ne.is_empty() {
-        if input.observer == BoundaryObserver::ScopedBoundary {
-            return Verdict::Allow;
-        }
-        if unlifted_ne
+    if !unlifted_ne.is_empty()
+        && input.observer != BoundaryObserver::ScopedBoundary
+        && unlifted_ne
             .iter()
             .any(|r| r.on_loss == LossBehaviour::FailClosed)
-        {
-            return Verdict::StepUp;
-        }
-        return Verdict::Allow;
+    {
+        return Verdict::StepUp;
     }
 
     if input.base_permit == ObligationSupport::Supported {
@@ -347,6 +343,19 @@ mod tests {
         ask.timelock = TimelockAllowance::DisclosedTimeLock;
         assert_eq!(derive_verdict(&ask), Verdict::StepUp);
 
+        let mut invalid_watch_forbid = base.clone();
+        invalid_watch_forbid
+            .determining_forbids
+            .push(DeterminingForbid {
+                rule_id: "bad.watch".into(),
+                mode: Mode::Watch,
+                min_grade: ApprovalGrade::G1,
+                mutability: RuleMutability::Liftable,
+                remedy: RemedyCapability::Plain,
+                on_loss: LossBehaviour::AllowOnLoss,
+            });
+        assert_eq!(derive_verdict(&invalid_watch_forbid), Verdict::Deny);
+
         let mut defer = base.clone();
         defer.pending_rules.push(PendingRuleRef {
             rule_id: "mcp.pin".into(),
@@ -362,6 +371,11 @@ mod tests {
         assert_eq!(derive_verdict(&ne_closed), Verdict::StepUp);
         ne_closed.observer = BoundaryObserver::ScopedBoundary;
         assert_eq!(derive_verdict(&ne_closed), Verdict::Allow);
+
+        let mut ne_unmet_snapshot = ne_closed;
+        ne_unmet_snapshot.snapshot_required = ObligationSupport::Supported;
+        ne_unmet_snapshot.control_snapshot = ObligationSupport::Unsupported;
+        assert_eq!(derive_verdict(&ne_unmet_snapshot), Verdict::Deny);
 
         let mut unmet_snapshot = base.clone();
         unmet_snapshot.snapshot_required = ObligationSupport::Supported;

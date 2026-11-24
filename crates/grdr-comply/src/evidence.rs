@@ -8,22 +8,21 @@ use grdr_crypto::{SigningKeypair, verify_bytes};
 use grdr_model::{SignatureStatus, TrustedKeyInfo};
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
-use crate::ComplyError;
 use crate::registry::CapabilityRegistry;
+use crate::{ComplyError, deterministic_prefixed_id};
 
 const MAX_SAMPLE_IDS: usize = 20;
 const DOMAIN_EVIDENCE_ITEM: &str = "compliance_evidence_item";
-const PRINCIPAL_GROUP_BY_FIELDS: &[&str] = &[
-    "user_id",
-    "user_display",
-    "principal",
-    "pseudonym",
-    "pseudonym_id",
-    "actor",
-    "subject",
-    "subject_ref",
+const ALLOWED_GROUP_BY_DIMENSIONS: &[&str] = &[
+    "capability",
+    "action_class",
+    "rule_id",
+    "rule_class",
+    "control_point",
+    "verdict",
+    "period",
+    "organisation",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -138,10 +137,12 @@ pub fn validate_evidence_query(query: &EvidenceQuery) -> Result<(), ComplyError>
 
     for grp in &query.group_by {
         let norm = grp.trim().to_ascii_lowercase();
-        if PRINCIPAL_GROUP_BY_FIELDS.iter().any(|p| norm == *p) {
+        if !ALLOWED_GROUP_BY_DIMENSIONS.contains(&norm.as_str()) {
             return Err(ComplyError::InvalidEvidenceQuery {
                 query_id: query.id.clone(),
-                detail: format!("evidence query forbids principal `group_by` field `{grp}`"),
+                detail: format!(
+                    "evidence query rejects disallowed or principal `group_by` dimension `{grp}`"
+                ),
             });
         }
     }
@@ -157,6 +158,37 @@ pub fn evaluate_evidence_item(
 ) -> Result<EvidenceItem, ComplyError> {
     validate_evidence_query(query)?;
     let _cap = registry.capability(&query.capability)?;
+
+    if input.organisation.trim().is_empty() {
+        return Err(ComplyError::InvalidEvidenceInput {
+            detail: "organisation must not be empty".into(),
+        });
+    }
+    if input.period_end < input.period_start {
+        return Err(ComplyError::InvalidEvidenceInput {
+            detail: "period_end must be greater than or equal to period_start".into(),
+        });
+    }
+    if input.covered_observations > input.total_observations {
+        return Err(ComplyError::InvalidEvidenceInput {
+            detail: "covered_observations cannot exceed total_observations".into(),
+        });
+    }
+
+    let total_i64 =
+        i64::try_from(input.total_observations).map_err(|_| ComplyError::InvalidEvidenceInput {
+            detail: "total_observations exceeds signed 64-bit range".into(),
+        })?;
+    let covered_i64 = i64::try_from(input.covered_observations).map_err(|_| {
+        ComplyError::InvalidEvidenceInput {
+            detail: "covered_observations exceeds signed 64-bit range".into(),
+        }
+    })?;
+    let lag_i64 = i64::try_from(input.pipeline_lag_seconds).map_err(|_| {
+        ComplyError::InvalidEvidenceInput {
+            detail: "pipeline_lag_seconds exceeds signed 64-bit range".into(),
+        }
+    })?;
 
     let control_refs: Vec<String> = registry
         .controls_for_capability(&query.capability)
@@ -175,18 +207,9 @@ pub fn evaluate_evidence_item(
     };
 
     let mut metrics = BTreeMap::new();
-    metrics.insert(
-        "total_observations".into(),
-        i64::try_from(input.total_observations).unwrap_or(i64::MAX),
-    );
-    metrics.insert(
-        "covered_observations".into(),
-        i64::try_from(input.covered_observations).unwrap_or(i64::MAX),
-    );
-    metrics.insert(
-        "pipeline_lag_seconds".into(),
-        i64::try_from(input.pipeline_lag_seconds).unwrap_or(i64::MAX),
-    );
+    metrics.insert("total_observations".into(), total_i64);
+    metrics.insert("covered_observations".into(), covered_i64);
+    metrics.insert("pipeline_lag_seconds".into(), lag_i64);
 
     let sample_ids: Vec<String> = input
         .sample_ids
@@ -195,8 +218,19 @@ pub fn evaluate_evidence_item(
         .cloned()
         .collect();
 
+    let seed = format!(
+        "{}:{}:{}:{}:{}:{}:{}",
+        input.organisation,
+        query.id,
+        query.capability,
+        input.period_start,
+        input.period_end,
+        input.query_digest,
+        input.pack_digest
+    );
+
     let mut item = EvidenceItem {
-        id: format!("evi_{}", Uuid::now_v7().simple()),
+        id: deterministic_prefixed_id("evi", &seed),
         organisation: input.organisation.clone(),
         capability: query.capability.clone(),
         control_refs,

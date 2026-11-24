@@ -2,9 +2,10 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 #![forbid(unsafe_code)]
 #![deny(clippy::arithmetic_side_effects)]
-//! Executable CSA AARM R1-R9, broker fail-safe bounds, containment, and compile-down suite.
+//! Executable conformance runner covering CSA AARM R1-R9, broker bounds, and D-12/D-21 invariants.
 
 pub mod aarm;
+mod aarm_tail;
 pub mod broker_bounds;
 pub mod containment;
 
@@ -12,23 +13,26 @@ use serde::{Deserialize, Serialize};
 
 pub use aarm::run_aarm_r1_to_r9;
 pub use broker_bounds::{
-    HOOK_ACK_BUDGET_MS, SHIM_MAX_EXIT_MS, merge_provider_verdicts, run_broker_and_bounds_checks,
+    FailSafeEvalResult, HOOK_ACK_BUDGET_MS, HandoverAck, ProviderResponse, SHIM_MAX_EXIT_MS,
+    merge_provider_verdicts, run_broker_and_bounds_checks, sign_handover_ack,
     simulate_shim_fail_safe_eval,
 };
 pub use containment::{
-    CompiledNativeRule, NativeTargetKind, compile_down_sound_rules,
+    CompiledNativeRule, NativeTargetKind, compile_down_sound_rules, is_compile_down_eligible,
     run_containment_and_compile_down_checks,
 };
+
+pub const AARM_SPEC_VERSION: &str = "AARM-1.0";
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ConformanceError {
     #[error("GRDR-CONF-0001: conformance scenario `{scenario_id}` failed: {detail}")]
     ScenarioFailed { scenario_id: String, detail: String },
-    #[error("GRDR-CONF-0002: multiple MODIFY providers configured for single action class")]
+    #[error("GRDR-CONF-0002: multiple hook providers requested payload MODIFY")]
     MultipleModifyProviders,
-    #[error("GRDR-CONF-0003: handover deadline {requested_ms}ms exceeds 2000ms ceiling")]
+    #[error("GRDR-CONF-0003: handover deadline {requested_ms}ms exceeds 2000ms hard ceiling")]
     HandoverCeilingExceeded { requested_ms: u64 },
-    #[error("GRDR-CONF-0004: compile-down soundness check failed for `{rule_id}`: {detail}")]
+    #[error("GRDR-CONF-0004: unsound native compile-down for rule `{rule_id}`: {detail}")]
     UnsoundCompileDown { rule_id: String, detail: String },
 }
 
@@ -86,7 +90,7 @@ pub fn run_full_conformance_suite() -> Result<ConformanceReport, ConformanceErro
     let failed = total.saturating_sub(passed);
 
     Ok(ConformanceReport {
-        spec_version: "AARM-1.0".into(),
+        spec_version: AARM_SPEC_VERSION.to_owned(),
         total,
         passed,
         failed,

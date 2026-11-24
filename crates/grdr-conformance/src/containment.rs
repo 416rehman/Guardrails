@@ -2,19 +2,34 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 //! Sandbox containment invariants (D-21) and compile-down soundness checks (D-12).
 
+use std::path::PathBuf;
+
 use grdr_agents::{
     HookTargetKind, InstallOutcome, install_hook_in_state_dir, uninstall_hook_in_state_dir,
 };
 use grdr_core::policy::{essentials_pack, evaluate};
+use grdr_crypto::{fill_random, sha256_hex};
 use grdr_model::{
-    ActionAttempt, ActionClass, AssuranceLevel, ControlPoint, KillSwitchState, Mode, PolicyPack,
-    PolicyRule, Verdict,
+    ActionAttempt, ActionClass, ApprovalGrade, AssuranceLevel, ControlPoint, KillSwitchState, Mode,
+    PolicyPack, PolicyRule, RuleMatch, Verdict,
 };
 use grdr_sandbox_engine::{ContainmentMode, SandboxSpec, prepare_contained_command};
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 use crate::{ConformanceError, ScenarioCategory, ScenarioOutcome, ScenarioResult};
+
+const UNSUPPORTED_CEDAR_TOKENS: &[&str] = &[
+    "unless",
+    "context.",
+    "||",
+    " has ",
+    "principal.",
+    "Grdr::User",
+    "!=",
+    "resource.in_workspace",
+    "!",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -56,26 +71,30 @@ pub fn compile_down_sound_rules(
 }
 
 pub fn is_compile_down_eligible(rule: &PolicyRule) -> bool {
-    if !rule.enabled || rule.mode != Mode::Block || !rule.locked {
+    if !rule.enabled || rule.mode != Mode::Block || !rule.locked || !rule.matcher.agents.is_empty()
+    {
         return false;
     }
-    let has_path_or_mcp_action = rule.matcher.action_classes.iter().any(|c| {
-        matches!(
-            c,
-            ActionClass::FileRead
-                | ActionClass::FileWrite
-                | ActionClass::FileDelete
-                | ActionClass::ConfigChange
-                | ActionClass::NetConnect
-                | ActionClass::NetRequest
-                | ActionClass::McpConnect
-        )
-    });
-    if !has_path_or_mcp_action {
+    let all_path_or_mcp_actions = !rule.matcher.action_classes.is_empty()
+        && rule.matcher.action_classes.iter().all(|c| {
+            matches!(
+                c,
+                ActionClass::FileRead
+                    | ActionClass::FileWrite
+                    | ActionClass::FileDelete
+                    | ActionClass::ConfigChange
+                    | ActionClass::NetConnect
+                    | ActionClass::NetRequest
+                    | ActionClass::McpConnect
+            )
+        });
+    if !all_path_or_mcp_actions {
         return false;
     }
     if let Some(cedar) = rule.cedar.as_deref()
-        && (cedar.contains("unless") || cedar.contains("context.session.labels"))
+        && UNSUPPORTED_CEDAR_TOKENS
+            .iter()
+            .any(|tok| cedar.contains(tok))
     {
         return false;
     }
@@ -148,7 +167,7 @@ fn verify_sandbox_containment_d21() -> Result<(), ConformanceError> {
         extra_allow_env: vec![],
         strip_secret_env: true,
     };
-    let (_cmd, cont_report) =
+    let (cmd, cont_report) =
         prepare_contained_command("git", &["status".into()], &contained_spec, &env).map_err(
             |e| ConformanceError::ScenarioFailed {
                 scenario_id: "D21-CONTAINMENT".into(),
@@ -159,6 +178,17 @@ fn verify_sandbox_containment_d21() -> Result<(), ConformanceError> {
         return Err(ConformanceError::ScenarioFailed {
             scenario_id: "D21-CONTAINMENT".into(),
             detail: "user-mode sandbox without kernel namespace must stay AL2".into(),
+        });
+    }
+    let exposed_secret = cmd.get_envs().any(|(k, _)| {
+        let name = k.to_string_lossy();
+        name == "GITHUB_TOKEN" || name == "CUSTOM_API_KEY"
+    });
+    let preserved_path = cmd.get_envs().any(|(k, _)| k.to_string_lossy() == "PATH");
+    if exposed_secret || !preserved_path {
+        return Err(ConformanceError::ScenarioFailed {
+            scenario_id: "D21-CONTAINMENT".into(),
+            detail: "Command environment leaked secret or dropped PATH".into(),
         });
     }
     let serialized = serde_json::to_string(&cont_report).unwrap_or_default();
@@ -172,6 +202,81 @@ fn verify_sandbox_containment_d21() -> Result<(), ConformanceError> {
 }
 
 fn verify_compile_down_soundness_d12(now: Timestamp) -> Result<(), ConformanceError> {
+    let base_rule = PolicyRule {
+        id: "neg.base".into(),
+        title: "Neg".into(),
+        description: "Neg".into(),
+        mode: Mode::Block,
+        min_grade: ApprovalGrade::G2,
+        enabled: true,
+        locked: true,
+        matcher: RuleMatch {
+            action_classes: vec![ActionClass::FileWrite],
+            target_prefixes: vec![".secret/".into()],
+            target_contains: vec![],
+            agents: vec![],
+        },
+        hits: 0,
+        would_ask_hits: 0,
+        would_block_hits: 0,
+        reason_template: "neg".into(),
+        cedar: None,
+    };
+    let negative_rules = [
+        PolicyRule {
+            id: "neg.unlocked".into(),
+            locked: false,
+            ..base_rule.clone()
+        },
+        PolicyRule {
+            id: "neg.ask".into(),
+            mode: Mode::Ask,
+            ..base_rule.clone()
+        },
+        PolicyRule {
+            id: "neg.agent-scoped".into(),
+            matcher: RuleMatch {
+                agents: vec!["cursor".into()],
+                ..base_rule.matcher.clone()
+            },
+            ..base_rule.clone()
+        },
+        PolicyRule {
+            id: "neg.unless".into(),
+            cedar: Some("forbid (principal, action, resource) unless { false };".into()),
+            ..base_rule.clone()
+        },
+        PolicyRule {
+            id: "neg.context".into(),
+            cedar: Some(
+                "forbid (principal, action, resource) when { context.taint_labels.contains(\"x\") };"
+                    .into(),
+            ),
+            ..base_rule.clone()
+        },
+        PolicyRule {
+            id: "neg.in-workspace".into(),
+            cedar: Some("forbid (principal, action, resource) when { !resource.in_workspace };".into()),
+            ..base_rule.clone()
+        },
+        PolicyRule {
+            id: "neg.exec-mixed".into(),
+            matcher: RuleMatch {
+                action_classes: vec![ActionClass::FileWrite, ActionClass::Exec],
+                ..base_rule.matcher
+            },
+            ..base_rule
+        },
+    ];
+    for neg in &negative_rules {
+        if is_compile_down_eligible(neg) {
+            return Err(ConformanceError::UnsoundCompileDown {
+                rule_id: neg.id.clone(),
+                detail: "ineligible rule unexpectedly passed compile-down eligibility".into(),
+            });
+        }
+    }
+
     let packs = vec![essentials_pack()];
     let compiled = compile_down_sound_rules(&packs, NativeTargetKind::ClaudeCodeManagedSettings);
     if compiled.is_empty() {
@@ -230,8 +335,24 @@ fn verify_compile_down_soundness_d12(now: Timestamp) -> Result<(), ConformanceEr
     Ok(())
 }
 
+fn exclusive_temp_dir() -> Result<PathBuf, ConformanceError> {
+    let mut entropy = [0u8; 16];
+    fill_random(&mut entropy).map_err(|e| ConformanceError::ScenarioFailed {
+        scenario_id: "D49-HOOK-COEXIST".into(),
+        detail: e.to_string(),
+    })?;
+    let hex = sha256_hex(&entropy);
+    let prefix = hex.get(0..16).unwrap_or("rand");
+    let temp = std::env::temp_dir().join(format!("grdr-conf-d49-{}-{prefix}", std::process::id()));
+    std::fs::create_dir(&temp).map_err(|e| ConformanceError::ScenarioFailed {
+        scenario_id: "D49-HOOK-COEXIST".into(),
+        detail: e.to_string(),
+    })?;
+    Ok(temp)
+}
+
 fn verify_hook_install_preservation_d49() -> Result<(), ConformanceError> {
-    let temp = std::env::temp_dir().join(format!("grdr-conf-d49-{}", std::process::id()));
+    let temp = exclusive_temp_dir()?;
     let state_dir = temp.join("state");
     let claude_dir = temp.join(".claude");
     std::fs::create_dir_all(&claude_dir).map_err(|e| ConformanceError::ScenarioFailed {

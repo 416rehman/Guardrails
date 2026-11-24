@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
-//! Retention presets, privacy ceilings, conflict resolution, and legal holds (`D-57`).
+//! Retention presets, privacy ceilings, and conflict resolution (`D-57`).
 
 use std::collections::BTreeMap;
 
-use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::ComplyError;
 
@@ -17,8 +15,6 @@ const WORKS_COUNCIL_MAX_ACTIVITY_DAYS: u32 = 90;
 const WORKS_COUNCIL_MAX_CONTENT_DAYS: u32 = 30;
 const WORKS_COUNCIL_MAX_DECISION_DAYS: u32 = 396;
 const WORKS_COUNCIL_MAX_AUDIT_DAYS: u32 = 396;
-const MAX_HOLD_REVIEW_SECONDS: i64 = 365 * 86_400;
-const MAX_DEFERRED_NOTICE_SECONDS: i64 = 90 * 86_400;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -57,6 +53,8 @@ pub struct RetentionProposal {
     pub presets: Vec<RetentionPreset>,
     pub ceiling_profile: PrivacyCeilingProfile,
     pub legal_basis: BTreeMap<RetentionPreset, String>,
+    #[serde(default)]
+    pub override_legal_basis: Option<String>,
     pub content_days: Option<u32>,
     pub activity_days: Option<u32>,
     pub decision_days: Option<u32>,
@@ -76,89 +74,6 @@ pub struct RetentionPolicy {
     pub presets: Vec<RetentionPreset>,
     pub legal_basis: Vec<String>,
     pub ceilings_from: PrivacyCeilingProfile,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum HoldLifecycle {
-    Active,
-    ReviewOverdue,
-    Released,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum HoldNotice {
-    Immediate,
-    Deferred { until: Timestamp, renewals: u32 },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct HoldScope {
-    pub pseudonyms: Vec<String>,
-    pub session_ids: Vec<String>,
-    pub incident_id: Option<String>,
-    pub classes: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Hold {
-    pub hold_id: String,
-    pub organisation: String,
-    pub scope: HoldScope,
-    pub matter_ref: String,
-    pub reason: String,
-    pub created_by: String,
-    pub approvers: Vec<String>,
-    pub created_at: Timestamp,
-    pub review_by: Timestamp,
-    pub notice: HoldNotice,
-    pub lifecycle: HoldLifecycle,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum HoldCheckResult {
-    Clear,
-    Held { hold_ids: Vec<String> },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct HoldReviewFinding {
-    pub hold_id: String,
-    pub matter_ref: String,
-    pub review_by: Timestamp,
-    pub detail: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "outcome", rename_all = "snake_case")]
-pub enum ErasureOutcome {
-    Executed {
-        subject_ref: String,
-    },
-    PendingHeld {
-        subject_ref: String,
-        hold_ids: Vec<String>,
-        disclose_hold: bool,
-    },
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct HoldsLedger {
-    pub holds: Vec<Hold>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PlaceHoldInput {
-    pub organisation: String,
-    pub scope: HoldScope,
-    pub matter_ref: String,
-    pub reason: String,
-    pub created_by: String,
-    pub approvers: Vec<String>,
-    pub created_at: Timestamp,
-    pub review_by: Timestamp,
-    pub notice: HoldNotice,
 }
 
 pub fn preset_spec(preset: RetentionPreset) -> PresetSpec {
@@ -339,7 +254,32 @@ pub fn resolve_retention_policy(
         ceil_audit,
         ceil_clause,
     )?;
-    let hot_days = proposal.hot_days.unwrap_or(floor_hot.0).max(floor_hot.0);
+    let hot_days = apply_override(
+        "hot_days",
+        proposal.hot_days,
+        &floor_hot,
+        activity_days,
+        "activity_days ceiling (hot_days cannot exceed activity_days)",
+    )?;
+
+    let widens_beyond_floor = content_days > floor_content.0
+        || activity_days > floor_activity.0
+        || decision_days > floor_decision.0
+        || audit_days > floor_audit.0
+        || hot_days > floor_hot.0;
+    if widens_beyond_floor {
+        let basis = proposal
+            .override_legal_basis
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        let Some(basis_text) = basis else {
+            return Err(ComplyError::MissingLegalBasis(
+                "explicit retention override above baseline floor".into(),
+            ));
+        };
+        basis_list.push(format!("explicit-override: {basis_text}"));
+    }
 
     Ok(RetentionPolicy {
         organisation: proposal.organisation.clone(),
@@ -408,134 +348,4 @@ fn apply_override(
         });
     }
     Ok(val)
-}
-
-impl HoldsLedger {
-    pub fn place_hold(&mut self, input: PlaceHoldInput) -> Result<Hold, ComplyError> {
-        let hold_id = format!("hld_{}", Uuid::now_v7().simple());
-        if input.approvers.len() < 2 {
-            return Err(ComplyError::InvalidHold {
-                hold_id,
-                detail:
-                    "legal hold requires at least two approvers (privacy officer and org owner)"
-                        .into(),
-            });
-        }
-        let review_delta = input
-            .review_by
-            .as_second()
-            .saturating_sub(input.created_at.as_second());
-        if review_delta <= 0 || review_delta > MAX_HOLD_REVIEW_SECONDS {
-            return Err(ComplyError::InvalidHold {
-                hold_id,
-                detail: "hold review_by must be within 12 months of creation".into(),
-            });
-        }
-        if let HoldNotice::Deferred { until, .. } = input.notice {
-            let defer_delta = until
-                .as_second()
-                .saturating_sub(input.created_at.as_second());
-            if defer_delta <= 0 || defer_delta > MAX_DEFERRED_NOTICE_SECONDS {
-                return Err(ComplyError::InvalidHold {
-                    hold_id,
-                    detail: "deferred subject notice cannot exceed 90 days".into(),
-                });
-            }
-        }
-
-        let hold = Hold {
-            hold_id,
-            organisation: input.organisation,
-            scope: input.scope,
-            matter_ref: input.matter_ref,
-            reason: input.reason,
-            created_by: input.created_by,
-            approvers: input.approvers,
-            created_at: input.created_at,
-            review_by: input.review_by,
-            notice: input.notice,
-            lifecycle: HoldLifecycle::Active,
-        };
-        self.holds.push(hold.clone());
-        Ok(hold)
-    }
-
-    pub fn check(
-        &self,
-        pseudonym: &str,
-        session_id: Option<&str>,
-        data_class: Option<&str>,
-    ) -> HoldCheckResult {
-        let matching: Vec<String> = self
-            .holds
-            .iter()
-            .filter(|h| h.lifecycle != HoldLifecycle::Released)
-            .filter(|h| {
-                let ps_hit = h.scope.pseudonyms.iter().any(|p| p == pseudonym);
-                let sess_hit =
-                    session_id.is_some_and(|sid| h.scope.session_ids.iter().any(|s| s == sid));
-                let class_hit = h.scope.classes.is_empty()
-                    || data_class.is_some_and(|c| h.scope.classes.iter().any(|hc| hc == c));
-                (ps_hit || sess_hit) && class_hit
-            })
-            .map(|h| h.hold_id.clone())
-            .collect();
-
-        if matching.is_empty() {
-            HoldCheckResult::Clear
-        } else {
-            HoldCheckResult::Held { hold_ids: matching }
-        }
-    }
-
-    pub fn flag_expired_reviews(&mut self, now: Timestamp) -> Vec<HoldReviewFinding> {
-        let mut findings = Vec::new();
-        for hold in &mut self.holds {
-            if hold.lifecycle == HoldLifecycle::Active && now >= hold.review_by {
-                hold.lifecycle = HoldLifecycle::ReviewOverdue;
-                findings.push(HoldReviewFinding {
-                    hold_id: hold.hold_id.clone(),
-                    matter_ref: hold.matter_ref.clone(),
-                    review_by: hold.review_by,
-                    detail:
-                        "Legal hold review_by expired; hold stays pinned until renewed or released."
-                            .into(),
-                });
-            }
-        }
-        findings
-    }
-
-    pub fn release_hold(&mut self, hold_id: &str) -> Result<(), ComplyError> {
-        let hold = self
-            .holds
-            .iter_mut()
-            .find(|h| h.hold_id == hold_id)
-            .ok_or_else(|| ComplyError::UnknownHold(hold_id.to_owned()))?;
-        hold.lifecycle = HoldLifecycle::Released;
-        Ok(())
-    }
-
-    pub fn process_erasure(&self, subject_pseudonym: &str, now: Timestamp) -> ErasureOutcome {
-        match self.check(subject_pseudonym, None, None) {
-            HoldCheckResult::Clear => ErasureOutcome::Executed {
-                subject_ref: subject_pseudonym.to_owned(),
-            },
-            HoldCheckResult::Held { hold_ids } => {
-                let disclose_hold = self
-                    .holds
-                    .iter()
-                    .filter(|h| hold_ids.contains(&h.hold_id))
-                    .all(|h| match h.notice {
-                        HoldNotice::Immediate => true,
-                        HoldNotice::Deferred { until, .. } => now >= until,
-                    });
-                ErasureOutcome::PendingHeld {
-                    subject_ref: subject_pseudonym.to_owned(),
-                    hold_ids,
-                    disclose_hold,
-                }
-            }
-        }
-    }
 }

@@ -7,7 +7,10 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{LintDomain, LintError, LintFinding, LintSeverity};
+use crate::{
+    LintDomain, LintError, LintFinding, LintSeverity, MAX_LINT_FILE_BYTES,
+    read_bounded_regular_file,
+};
 
 const REQUIRED_TERM_KEYS: &[&str] = &[
     "mode",
@@ -66,21 +69,25 @@ struct VocabParserState {
 
 impl VocabParserState {
     fn flush(&mut self, section: TomlSection) {
+        let key = std::mem::take(&mut self.cur_key);
+        let term = std::mem::take(&mut self.cur_term);
+        let translate = std::mem::take(&mut self.cur_translate);
+        let desc = std::mem::take(&mut self.cur_desc);
+        let word = std::mem::take(&mut self.cur_word);
+        let replacement = std::mem::take(&mut self.cur_replacement);
+
         match section {
-            TomlSection::Term if !self.cur_key.is_empty() => {
+            TomlSection::Term if !key.is_empty() => {
                 self.terms.push(VocabularyEntry {
-                    key: std::mem::take(&mut self.cur_key),
-                    term: std::mem::take(&mut self.cur_term),
-                    translate: self.cur_translate,
-                    desc: std::mem::take(&mut self.cur_desc),
+                    key,
+                    term,
+                    translate,
+                    desc,
                 });
-                self.cur_translate = false;
             }
-            TomlSection::Forbidden if !self.cur_word.is_empty() => {
-                self.forbidden.push(VocabularyForbidden {
-                    word: std::mem::take(&mut self.cur_word),
-                    replacement: std::mem::take(&mut self.cur_replacement),
-                });
+            TomlSection::Forbidden if !word.is_empty() => {
+                self.forbidden
+                    .push(VocabularyForbidden { word, replacement });
             }
             _ => {}
         }
@@ -91,10 +98,12 @@ pub fn lint_vocabulary_toml(
     path: &Path,
     findings: &mut Vec<LintFinding>,
 ) -> Result<usize, LintError> {
-    let raw = fs::read_to_string(path).map_err(|e| LintError::Io {
+    let parent = path.parent().unwrap_or(path);
+    let canon_root = fs::canonicalize(parent).map_err(|e| LintError::Io {
         path: path.display().to_string(),
         detail: e.to_string(),
     })?;
+    let raw = read_bounded_regular_file(&canon_root, path, MAX_LINT_FILE_BYTES)?;
     let registry = parse_vocabulary_toml(&raw)?;
 
     for req_key in REQUIRED_TERM_KEYS {

@@ -8,6 +8,7 @@
 
 pub mod derive;
 pub mod eval;
+mod normalize;
 
 use std::collections::BTreeSet;
 
@@ -21,7 +22,9 @@ pub use derive::{
     ObligationSupport, PendingRuleRef, RemedyCapability, RuleMutability, TimelockAllowance,
     VerdictDiscriminant, degrade_verdict, derive_verdict,
 };
-pub use eval::{ReferenceDecision, evaluate_ref, evaluate_ref_mut};
+pub use eval::{
+    RefSessionState, ReferenceDecision, evaluate_ref, evaluate_ref_mut, evaluate_ref_with_session,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum RefError {

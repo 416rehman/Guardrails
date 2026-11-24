@@ -10,7 +10,10 @@ use cedar_policy::{Effect, PolicySet, Schema, ValidationMode, Validator};
 use grdr_model::IdentityMode;
 use grdr_schema::cedar::{CANONICAL_ACTIONS, CedarPlane, parse_schema};
 
-use crate::{LintDomain, LintError, LintFinding, LintSeverity};
+use crate::{
+    LintDomain, LintError, LintFinding, LintSeverity, MAX_LINT_FILE_BYTES,
+    read_bounded_regular_file,
+};
 
 const REQUIRED_RUNTIME_ENTITIES: &[&str] = &[
     "Organisation",
@@ -35,15 +38,23 @@ const REQUIRED_RUNTIME_ENTITIES: &[&str] = &[
 ];
 
 pub fn lint_cedar_dir(dir: &Path, findings: &mut Vec<LintFinding>) -> Result<usize, LintError> {
-    if !dir.is_dir() {
+    let dir_meta = fs::symlink_metadata(dir).map_err(|e| LintError::Io {
+        path: dir.display().to_string(),
+        detail: e.to_string(),
+    })?;
+    if dir_meta.file_type().is_symlink() || !dir_meta.is_dir() {
         return Err(LintError::Io {
             path: dir.display().to_string(),
-            detail: "schema/cedar directory not found".into(),
+            detail: "schema/cedar root must be a real non-symlink directory".into(),
         });
     }
+    let canon_root = fs::canonicalize(dir).map_err(|e| LintError::Io {
+        path: dir.display().to_string(),
+        detail: e.to_string(),
+    })?;
 
     let mut count: usize = 0;
-    let entries = fs::read_dir(dir).map_err(|e| LintError::Io {
+    let entries = fs::read_dir(&canon_root).map_err(|e| LintError::Io {
         path: dir.display().to_string(),
         detail: e.to_string(),
     })?;
@@ -53,8 +64,18 @@ pub fn lint_cedar_dir(dir: &Path, findings: &mut Vec<LintFinding>) -> Result<usi
             path: dir.display().to_string(),
             detail: e.to_string(),
         })?;
+        let ft = entry.file_type().map_err(|e| LintError::Io {
+            path: entry.path().display().to_string(),
+            detail: e.to_string(),
+        })?;
         let p = entry.path();
-        if p.extension().and_then(|s| s.to_str()) == Some("cedarschema") {
+        if ft.is_symlink() {
+            return Err(LintError::Io {
+                path: p.display().to_string(),
+                detail: "symlinks are forbidden inside schema/cedar directory".into(),
+            });
+        }
+        if ft.is_file() && p.extension().and_then(|s| s.to_str()) == Some("cedarschema") {
             paths.push(p);
         }
     }
@@ -66,10 +87,7 @@ pub fn lint_cedar_dir(dir: &Path, findings: &mut Vec<LintFinding>) -> Result<usi
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown.cedarschema");
-        let content = fs::read_to_string(path).map_err(|e| LintError::Io {
-            path: path.display().to_string(),
-            detail: e.to_string(),
-        })?;
+        let content = read_bounded_regular_file(&canon_root, path, MAX_LINT_FILE_BYTES)?;
         lint_cedar_schema_file(file_name, &content, findings);
     }
     Ok(count)
@@ -167,7 +185,9 @@ pub fn lint_cedar_policy_in_mode(
         });
     }
 
-    if identity_mode == IdentityMode::Pseudonymous && cedar_source.contains("Grdr::User") {
+    if identity_mode == IdentityMode::Pseudonymous
+        && policy_set.policies().any(policy_references_user_entity)
+    {
         return Err(LintError::CedarViolation {
             file: pack_id.into(),
             detail: "policies targeting `Grdr::User` are rejected under `works-council` pseudonymous mode".into(),
@@ -188,4 +208,10 @@ pub fn lint_cedar_policy_in_mode(
         });
     }
     Ok(())
+}
+
+fn policy_references_user_entity(policy: &cedar_policy::Policy) -> bool {
+    let canonical = policy.to_string();
+    let stripped: String = canonical.chars().filter(|c| !c.is_whitespace()).collect();
+    stripped.contains("Grdr::User")
 }

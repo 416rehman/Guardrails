@@ -6,6 +6,8 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::markdown_safe;
+
 const PARITY_ITEMS: &[(&str, &str, bool, &[&str], &str)] = &[
     (
         "T1",
@@ -213,7 +215,7 @@ pub fn generate_rfp_response(readiness: &PlatformReadiness) -> RfpParityReport {
             .acceptance_tests_green
             .get(*id)
             .copied()
-            .unwrap_or(true);
+            .unwrap_or(false);
 
         let (status, gap_note) = evaluate_item_status(id, default_note, readiness);
 
@@ -244,8 +246,8 @@ pub fn generate_rfp_response(readiness: &PlatformReadiness) -> RfpParityReport {
 pub fn render_rfp_markdown(report: &RfpParityReport) -> String {
     let mut out = format!(
         "# Guardrails ADR Buyer RFP Parity Report ({})\n\nAssurance reachability: {}\nRelease gate: {}\n\n| Item | Status | Mandatory | Test | Notes |\n|---|---|---|---|---|\n",
-        report.release_version,
-        report.os_assurance_summary,
+        markdown_safe(&report.release_version),
+        markdown_safe(&report.os_assurance_summary),
         if report.release_gate_passed {
             "PASS"
         } else {
@@ -261,12 +263,12 @@ pub fn render_rfp_markdown(report: &RfpParityReport) -> String {
         let note = item.gap_note.as_deref().unwrap_or("Full parity");
         out.push_str(&format!(
             "| {} ({}) | {} | {} | {} | {} |\n",
-            item.id,
-            item.title,
+            markdown_safe(&item.id),
+            markdown_safe(&item.title),
             status,
             item.mandatory,
             if item.test_green { "green" } else { "red" },
-            note
+            markdown_safe(note)
         ));
     }
     out

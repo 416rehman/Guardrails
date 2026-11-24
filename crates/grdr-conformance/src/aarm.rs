@@ -1,58 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
-//! CSA AARM 1.0 conformance scenarios R1 through R9 (`docs/design/29` s.7).
+//! CSA AARM 1.0 conformance scenarios R1 through R5 (`docs/design/29` s.7).
 
 use std::collections::BTreeSet;
 
-use grdr_broker::{BrokerOutcome, McpBroker};
-use grdr_core::policy::{
-    ReceiptDigestInput, compute_receipt_digest, essentials_pack, evaluate, evaluate_mut,
-};
+use grdr_core::policy::{essentials_pack, evaluate, evaluate_mut};
 use grdr_crypto::{SigningKeypair, verify_receipt};
-use grdr_mcp_proto::{McpAttemptContext, ToolDescriptor, parse_mcp_request};
 use grdr_model::eval::add_seconds;
 use grdr_model::{
-    ActionAttempt, ActionClass, ApprovalGrade, CodedError, ControlPoint, DecisionReceipt, Grant,
-    GrantScope, KillSwitchState, PolicyPack, SignatureStatus, Verdict,
+    ActionAttempt, ActionClass, ApprovalGrade, ControlPoint, Grant, GrantScope, KillSwitchState,
+    PolicyPack, PolicyRule, RuleMatch, SignatureStatus, Verdict,
 };
 use grdr_policy_ref::{
     BoundaryObserver, DeriveInput, DeterminingForbid, InputValidity, LossBehaviour,
     ObligationSupport, PendingRuleRef, RemedyCapability, RuleMutability, TimelockAllowance,
     derive_verdict,
 };
-use grdr_ports::DecisionEnginePort;
-use grdr_sandbox_engine::{ContainmentMode, SandboxSpec, prepare_contained_command};
 use jiff::Timestamp;
-use serde_json::json;
 
+use crate::aarm_tail::{
+    check_r6_attribution_and_principal, check_r7_supplychain_mcp_pin_drift,
+    check_r8_export_digest_integrity, check_r9_containment_secret_isolation,
+};
 use crate::{ConformanceError, ScenarioCategory, ScenarioOutcome, ScenarioResult};
-
-struct CorePort {
-    packs: Vec<PolicyPack>,
-    grants: Vec<Grant>,
-}
-
-impl DecisionEnginePort for CorePort {
-    fn load_packs(&mut self, packs: Vec<PolicyPack>) -> Result<(), CodedError> {
-        self.packs = packs;
-        Ok(())
-    }
-
-    fn add_grant(&mut self, grant: Grant) -> Result<(), CodedError> {
-        self.grants.push(grant);
-        Ok(())
-    }
-
-    fn evaluate(&mut self, attempt: &ActionAttempt) -> Result<DecisionReceipt, CodedError> {
-        Ok(evaluate_mut(
-            attempt,
-            &self.packs,
-            &mut self.grants,
-            &KillSwitchState::Inactive,
-            attempt.timestamp,
-        ))
-    }
-}
 
 pub fn run_aarm_r1_to_r9() -> Result<Vec<ScenarioResult>, ConformanceError> {
     let now = Timestamp::from_second(1_700_000_000).unwrap_or(Timestamp::UNIX_EPOCH);
@@ -71,7 +41,7 @@ pub fn run_aarm_r1_to_r9() -> Result<Vec<ScenarioResult>, ConformanceError> {
     Ok(vec![r1, r2, r3, r4, r5, r6, r7, r8, r9])
 }
 
-fn attempt(id: &str, class: ActionClass, target: &str, now: Timestamp) -> ActionAttempt {
+pub(crate) fn attempt(id: &str, class: ActionClass, target: &str, now: Timestamp) -> ActionAttempt {
     ActionAttempt {
         id: id.into(),
         session_id: "ses_aarm_1".into(),
@@ -85,6 +55,16 @@ fn attempt(id: &str, class: ActionClass, target: &str, now: Timestamp) -> Action
         timestamp: now,
         user_id: Some("prn_aarm_user".into()),
         ..Default::default()
+    }
+}
+
+pub(crate) fn pass(id: &str, title: &str) -> ScenarioResult {
+    ScenarioResult {
+        id: id.into(),
+        category: ScenarioCategory::Aarm,
+        title: title.into(),
+        outcome: ScenarioOutcome::Pass,
+        detail: "verified".into(),
     }
 }
 
@@ -228,8 +208,7 @@ fn check_r4_approval_and_unavailable_fails(
         now,
     );
 
-    let no_grant = evaluate(&ssh_read, packs, &[], &KillSwitchState::Inactive, now);
-    if no_grant.verdict != Verdict::StepUp {
+    if evaluate(&ssh_read, packs, &[], &KillSwitchState::Inactive, now).verdict != Verdict::StepUp {
         return Err(ConformanceError::ScenarioFailed {
             scenario_id: "AARM-R4".into(),
             detail: "expected StepUp before approval grant".into(),
@@ -264,7 +243,7 @@ fn check_r4_approval_and_unavailable_fails(
         });
     }
 
-    let mut grants = vec![Grant {
+    let valid_grant = Grant {
         grant_id: "grn_aarm_r4".into(),
         rule_id: "essentials.credential-stores".into(),
         session_id: "ses_aarm_1".into(),
@@ -279,24 +258,118 @@ fn check_r4_approval_and_unavailable_fails(
         note: "AARM R4 approval".into(),
         key_id: None,
         signature: None,
-    }];
-    let granted = evaluate_mut(
+    };
+
+    let bad_grants = [
+        Grant {
+            expires_at: Some(add_seconds(now, -5)),
+            ..valid_grant.clone()
+        },
+        Grant {
+            session_id: "ses_other".into(),
+            ..valid_grant.clone()
+        },
+        Grant {
+            device_id: "dev_other".into(),
+            ..valid_grant.clone()
+        },
+    ];
+    for bad_grant in bad_grants {
+        if evaluate(
+            &ssh_read,
+            packs,
+            &[bad_grant],
+            &KillSwitchState::Inactive,
+            now,
+        )
+        .verdict
+            != Verdict::StepUp
+        {
+            return Err(ConformanceError::ScenarioFailed {
+                scenario_id: "AARM-R4".into(),
+                detail: "expired or mismatched-scope grant unexpectedly allowed".into(),
+            });
+        }
+    }
+
+    let g2_pack = PolicyPack {
+        id: "r4-g2".into(),
+        name: "R4 G2".into(),
+        description: "Requires G2 approval".into(),
+        version: "1.0.0".into(),
+        channel: "test".into(),
+        rules: vec![PolicyRule {
+            id: "r4.g2-delete".into(),
+            title: "G2 delete".into(),
+            description: "G2 delete".into(),
+            mode: grdr_model::Mode::Ask,
+            min_grade: ApprovalGrade::G2,
+            enabled: true,
+            locked: false,
+            matcher: RuleMatch {
+                action_classes: vec![ActionClass::FileDelete],
+                target_prefixes: vec!["prod/".into()],
+                target_contains: vec![],
+                agents: vec![],
+            },
+            hits: 0,
+            would_ask_hits: 0,
+            would_block_hits: 0,
+            reason_template: "Needs G2".into(),
+            cedar: None,
+        }],
+        key_id: None,
+        signature: None,
+    };
+    let g1_insufficient = Grant {
+        rule_id: "r4.g2-delete".into(),
+        action_class: ActionClass::FileDelete,
+        target_pattern: "prod/app.db".into(),
+        grade: ApprovalGrade::G1,
+        ..valid_grant.clone()
+    };
+    let del_att = attempt("aarm-r4-g2", ActionClass::FileDelete, "prod/app.db", now);
+    if evaluate(
+        &del_att,
+        &[g2_pack],
+        &[g1_insufficient],
+        &KillSwitchState::Inactive,
+        now,
+    )
+    .verdict
+        != Verdict::StepUp
+    {
+        return Err(ConformanceError::ScenarioFailed {
+            scenario_id: "AARM-R4".into(),
+            detail: "insufficient G1 grant allowed a G2 rule".into(),
+        });
+    }
+
+    let mut grants = vec![valid_grant];
+    let first = evaluate_mut(
         &ssh_read,
         packs,
         &mut grants,
         &KillSwitchState::Inactive,
         now,
     );
-    if granted.verdict != Verdict::Allow {
+    let replay = evaluate_mut(
+        &ssh_read,
+        packs,
+        &mut grants,
+        &KillSwitchState::Inactive,
+        add_seconds(now, 1),
+    );
+    if first.verdict != Verdict::Allow || replay.verdict != Verdict::StepUp {
         return Err(ConformanceError::ScenarioFailed {
             scenario_id: "AARM-R4".into(),
-            detail: "valid grant failed to allow approved retry".into(),
+            detail: "single-use grant must allow once and block replay".into(),
         });
     }
 
     Ok(pass(
         "AARM-R4",
-        "Approval checkpoint and unavailable-approver fail-closed",
+        "Approval checkpoint, scope/grade rejection, replay denial, and fail-closed",
     ))
 }
 
@@ -342,153 +415,4 @@ fn check_r5_offline_signed_receipt_verify(
         "AARM-R5",
         "Offline signed decision receipt verification",
     ))
-}
-
-fn check_r6_attribution_and_principal(
-    packs: &[PolicyPack],
-    now: Timestamp,
-) -> Result<ScenarioResult, ConformanceError> {
-    let att = attempt("aarm-r6", ActionClass::Exec, "git status", now);
-    let receipt = evaluate(&att, packs, &[], &KillSwitchState::Inactive, now);
-    if receipt.agent_name != "claude-code" || receipt.session_id != "ses_aarm_1" {
-        return Err(ConformanceError::ScenarioFailed {
-            scenario_id: "AARM-R6".into(),
-            detail: "missing agent or session attribution on receipt".into(),
-        });
-    }
-    Ok(pass("AARM-R6", "Per-agent and session attribution binding"))
-}
-
-fn check_r7_supplychain_mcp_pin_drift(
-    packs: &[PolicyPack],
-    now: Timestamp,
-) -> Result<ScenarioResult, ConformanceError> {
-    let engine = CorePort {
-        packs: packs.to_vec(),
-        grants: vec![],
-    };
-    let mut broker = McpBroker::new(engine);
-    let clean = ToolDescriptor {
-        name: "read_file".into(),
-        description: "Read repository file".into(),
-        input_schema: json!({"type": "object"}),
-    };
-    let _ = broker
-        .register_or_verify_tools("fs", std::slice::from_ref(&clean))
-        .map_err(|e| ConformanceError::ScenarioFailed {
-            scenario_id: "AARM-R7".into(),
-            detail: e.to_string(),
-        })?;
-
-    let mut drifted = clean;
-    drifted.description = "Silent schema mutation".into();
-    let req = parse_mcp_request(
-        r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"Cargo.toml"}}}"#,
-    )
-    .map_err(|e| ConformanceError::ScenarioFailed {
-        scenario_id: "AARM-R7".into(),
-        detail: e.to_string(),
-    })?;
-    let ctx = McpAttemptContext {
-        attempt_id: "aarm-r7".into(),
-        session_id: "ses_aarm_1".into(),
-        device_id: "dev_aarm_1".into(),
-        device_name: "conformance-host".into(),
-        agent_name: "claude-code".into(),
-        server_name: "fs".into(),
-        timestamp: now,
-    };
-    let outcome = broker
-        .mediate_call(&req, Some(&drifted), &ctx)
-        .map_err(|e| ConformanceError::ScenarioFailed {
-            scenario_id: "AARM-R7".into(),
-            detail: e.to_string(),
-        })?;
-    if !matches!(outcome, BrokerOutcome::Block { .. }) {
-        return Err(ConformanceError::ScenarioFailed {
-            scenario_id: "AARM-R7".into(),
-            detail: "MCP manifest pin drift was not blocked".into(),
-        });
-    }
-    Ok(pass(
-        "AARM-R7",
-        "Supply-chain MCP manifest pin drift detection",
-    ))
-}
-
-fn check_r8_export_digest_integrity(
-    packs: &[PolicyPack],
-    now: Timestamp,
-) -> Result<ScenarioResult, ConformanceError> {
-    let att = attempt(
-        "aarm-r8",
-        ActionClass::FileWrite,
-        ".claude/settings.json",
-        now,
-    );
-    let receipt = evaluate(&att, packs, &[], &KillSwitchState::Inactive, now);
-    let recomputed = compute_receipt_digest(&ReceiptDigestInput {
-        attempt_id: &receipt.attempt_id,
-        session_id: &receipt.session_id,
-        agent_name: &receipt.agent_name,
-        action_class: receipt.action_class,
-        target: &receipt.target,
-        verdict: receipt.verdict,
-        rule_id: receipt.rule_id.as_deref(),
-        decided_at: receipt.decided_at,
-    });
-    if recomputed != receipt.receipt_digest {
-        return Err(ConformanceError::ScenarioFailed {
-            scenario_id: "AARM-R8".into(),
-            detail: "receipt digest did not match canonical computation".into(),
-        });
-    }
-    Ok(pass(
-        "AARM-R8",
-        "Structured telemetry export digest integrity",
-    ))
-}
-
-fn check_r9_containment_secret_isolation() -> Result<ScenarioResult, ConformanceError> {
-    let spec = SandboxSpec {
-        session_id: "ses_aarm_9".into(),
-        agent_name: "claude-code".into(),
-        mode: ContainmentMode::WorkspaceContained,
-        workdir: None,
-        extra_allow_env: vec![],
-        strip_secret_env: true,
-    };
-    let env = vec![
-        ("PATH".into(), "/usr/bin".into()),
-        ("AWS_SECRET_ACCESS_KEY".into(), "secret_xyz".into()),
-    ];
-    let (_cmd, report) = prepare_contained_command("git", &["status".into()], &spec, &env)
-        .map_err(|e| ConformanceError::ScenarioFailed {
-            scenario_id: "AARM-R9".into(),
-            detail: e.to_string(),
-        })?;
-    if !report
-        .stripped_env_vars
-        .iter()
-        .any(|k| k == "AWS_SECRET_ACCESS_KEY")
-    {
-        return Err(ConformanceError::ScenarioFailed {
-            scenario_id: "AARM-R9".into(),
-            detail: "sensitive env credential was not stripped in contained sandbox".into(),
-        });
-    }
-    Ok(pass(
-        "AARM-R9",
-        "Scoped credential isolation and sandbox containment",
-    ))
-}
-
-fn pass(id: &str, title: &str) -> ScenarioResult {
-    ScenarioResult {
-        id: id.into(),
-        category: ScenarioCategory::Aarm,
-        title: title.into(),
-        outcome: ScenarioOutcome::Pass,
-        detail: "verified".into(),
-    }
 }

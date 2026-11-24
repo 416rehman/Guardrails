@@ -9,6 +9,8 @@ pub mod pack_lint;
 pub mod proto_lint;
 pub mod vocab_lint;
 
+use std::fs;
+use std::io::Read;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -22,6 +24,9 @@ pub use vocab_lint::{
     VocabularyEntry, VocabularyForbidden, VocabularyRegistry, lint_text_against_vocabulary,
     lint_vocabulary_toml, parse_vocabulary_toml,
 };
+
+pub(crate) const MAX_LINT_FILE_BYTES: u64 = 2 * 1024 * 1024;
+pub(crate) const MAX_LINT_DIR_DEPTH: usize = 16;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum LintError {
@@ -97,4 +102,54 @@ pub fn lint_repo_root(root: &Path) -> Result<LintReport, LintError> {
         vocab_terms_checked,
         findings,
     })
+}
+
+pub(crate) fn read_bounded_regular_file(
+    canon_root: &Path,
+    path: &Path,
+    max_bytes: u64,
+) -> Result<String, LintError> {
+    let meta = fs::symlink_metadata(path).map_err(|e| LintError::Io {
+        path: path.display().to_string(),
+        detail: e.to_string(),
+    })?;
+    if meta.file_type().is_symlink() || !meta.is_file() {
+        return Err(LintError::Io {
+            path: path.display().to_string(),
+            detail: "refusing to read symlink or non-regular file".into(),
+        });
+    }
+    if meta.len() > max_bytes {
+        return Err(LintError::Io {
+            path: path.display().to_string(),
+            detail: format!("file size {} exceeds cap {max_bytes}", meta.len()),
+        });
+    }
+    let canon_path = fs::canonicalize(path).map_err(|e| LintError::Io {
+        path: path.display().to_string(),
+        detail: e.to_string(),
+    })?;
+    if !canon_path.starts_with(canon_root) {
+        return Err(LintError::Io {
+            path: path.display().to_string(),
+            detail: "resolved path escapes allowed schema root".into(),
+        });
+    }
+    let file = fs::File::open(&canon_path).map_err(|e| LintError::Io {
+        path: path.display().to_string(),
+        detail: e.to_string(),
+    })?;
+    let mut out = String::new();
+    let mut reader = file.take(max_bytes.saturating_add(1));
+    reader.read_to_string(&mut out).map_err(|e| LintError::Io {
+        path: path.display().to_string(),
+        detail: e.to_string(),
+    })?;
+    if (out.len() as u64) > max_bytes {
+        return Err(LintError::Io {
+            path: path.display().to_string(),
+            detail: format!("file content exceeds cap {max_bytes}"),
+        });
+    }
+    Ok(out)
 }

@@ -2,17 +2,18 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 //! OSCAL 1.2.3 Component Definition, Assessment Results, CSV/Markdown, and offline bundle.
 
+use std::collections::BTreeSet;
+
 use grdr_crypto::{SigningKeypair, sha256_hex, verify_bytes};
 use grdr_model::{SignatureStatus, TrustedKeyInfo};
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
-use crate::ComplyError;
 use crate::evidence::{
     EvidenceItem, EvidenceResult, canonical_evidence_bytes, verify_evidence_item,
 };
 use crate::registry::CapabilityRegistry;
+use crate::{ComplyError, deterministic_uuid_string, markdown_safe};
 
 pub const OSCAL_VERSION: &str = "1.2.3";
 const OFFLINE_BUNDLE_VERSION: u32 = 1;
@@ -115,6 +116,7 @@ pub struct OfflineEvidenceBundle {
     pub deployment_fingerprint: String,
     pub organisation: String,
     pub exported_at: Timestamp,
+    pub root_key: TrustedKeyInfo,
     pub assessment_results: OscalAssessmentResultsDoc,
     pub items: Vec<EvidenceItem>,
     pub trusted_keys: Vec<TrustedKeyInfo>,
@@ -139,7 +141,19 @@ struct CanonicalBundlePayload<'a> {
     organisation: &'a str,
     exported_at: Timestamp,
     checkpoint_root: &'a str,
+    root_key: &'a TrustedKeyInfo,
+    trusted_keys_sha256: &'a str,
+    assessment_results_sha256: &'a str,
+    inclusion_proofs_sha256: &'a str,
     item_ids: Vec<&'a str>,
+}
+
+pub fn deployment_fingerprint(root_key: &TrustedKeyInfo) -> String {
+    let material = format!(
+        "grdr.deployment.root.v1:{}:{}",
+        root_key.key_id, root_key.public_key_b64
+    );
+    format!("fp_{}", sha256_hex(material.as_bytes()))
 }
 
 pub fn export_component_definition(
@@ -157,7 +171,7 @@ pub fn export_component_definition(
             .filter(|c| c.framework_id == *fw_id)
         {
             reqs.push(OscalImplementedRequirement {
-                uuid: deterministic_uuid(&format!(
+                uuid: deterministic_uuid_string(&format!(
                     "req:{fw_id}:{}:{}",
                     cw.control_id, cw.capability
                 )),
@@ -166,7 +180,7 @@ pub fn export_component_definition(
             });
         }
         implementations.push(OscalControlImplementation {
-            uuid: deterministic_uuid(&format!("impl:{fw_id}")),
+            uuid: deterministic_uuid_string(&format!("impl:{fw_id}")),
             source: format!("urn:grdr:framework:{fw_id}@{}", fw.version),
             description: fw.title.clone(),
             implemented_requirements: reqs,
@@ -175,7 +189,7 @@ pub fn export_component_definition(
 
     OscalComponentDefinitionDoc {
         component_definition: OscalComponentDefinitionBody {
-            uuid: deterministic_uuid(&format!("compdef:{title}:{version}")),
+            uuid: deterministic_uuid_string(&format!("compdef:{title}:{version}")),
             metadata: OscalMetadata {
                 title: title.to_owned(),
                 last_modified: now,
@@ -183,7 +197,7 @@ pub fn export_component_definition(
                 oscal_version: OSCAL_VERSION.to_owned(),
             },
             components: vec![OscalComponent {
-                uuid: deterministic_uuid("component:guardrails-adr"),
+                uuid: deterministic_uuid_string("component:guardrails-adr"),
                 component_type: "software".to_owned(),
                 title: "Guardrails ADR".to_owned(),
                 description: "Open-source agent detection and response platform".to_owned(),
@@ -210,7 +224,7 @@ pub fn export_assessment_results(
             end = item.period_end;
         }
         observations.push(OscalObservation {
-            uuid: deterministic_uuid(&format!("obs:{}", item.id)),
+            uuid: deterministic_uuid_string(&format!("obs:{}", item.id)),
             description: format!(
                 "Capability `{}` evaluated as {:?} for controls [{}]",
                 item.capability,
@@ -224,7 +238,7 @@ pub fn export_assessment_results(
 
     Ok(OscalAssessmentResultsDoc {
         assessment_results: OscalAssessmentResultsBody {
-            uuid: deterministic_uuid(&format!("ar:{organisation}:{now}")),
+            uuid: deterministic_uuid_string(&format!("ar:{organisation}:{now}")),
             metadata: OscalMetadata {
                 title: format!("Guardrails ADR Assessment Results ({organisation})"),
                 last_modified: now,
@@ -232,7 +246,7 @@ pub fn export_assessment_results(
                 oscal_version: OSCAL_VERSION.to_owned(),
             },
             results: vec![OscalAssessmentResultEntry {
-                uuid: deterministic_uuid(&format!("res:{organisation}:{start}:{end}")),
+                uuid: deterministic_uuid_string(&format!("res:{organisation}:{start}:{end}")),
                 title: "Computed Compliance Evidence Period".to_owned(),
                 description: "Metadata and sample identifier observations only".to_owned(),
                 start,
@@ -255,11 +269,11 @@ pub fn export_evidence_csv(items: &[EvidenceItem]) -> String {
             EvidenceResult::NotEvaluable => "not-evaluable",
         };
         let line = format!(
-            "{},{},{},{},{},{},{},\"{}\"\n",
+            "\"{}\",\"{}\",\"{}\",\"{}\",\"{}\",\"{}\",{},\"{}\"\n",
             csv_safe(&item.id),
             csv_safe(&item.organisation),
             csv_safe(&item.capability),
-            result_label,
+            csv_safe(result_label),
             item.period_start,
             item.period_end,
             item.sample_ids.len(),
@@ -272,16 +286,17 @@ pub fn export_evidence_csv(items: &[EvidenceItem]) -> String {
 
 pub fn export_evidence_markdown(organisation: &str, items: &[EvidenceItem]) -> String {
     let mut out = format!(
-        "# Compliance Evidence Report ({organisation})\n\n| Item | Capability | Result | Samples | Controls |\n|---|---|---|---|---|\n"
+        "# Compliance Evidence Report ({})\n\n| Item | Capability | Result | Samples | Controls |\n|---|---|---|---|---|\n",
+        markdown_safe(organisation)
     );
     for item in items {
         out.push_str(&format!(
             "| `{}` | `{}` | `{:?}` | {} | {} |\n",
-            item.id,
-            item.capability,
+            markdown_safe(&item.id),
+            markdown_safe(&item.capability),
             item.result,
             item.sample_ids.len(),
-            item.control_refs.join(", ")
+            markdown_safe(&item.control_refs.join(", "))
         ));
     }
     out
@@ -290,34 +305,37 @@ pub fn export_evidence_markdown(organisation: &str, items: &[EvidenceItem]) -> S
 pub fn export_offline_bundle(
     keypair: &SigningKeypair,
     organisation: &str,
-    deployment_fingerprint: &str,
     items: &[EvidenceItem],
     now: Timestamp,
 ) -> Result<OfflineEvidenceBundle, ComplyError> {
+    let root_key = keypair.public_info();
+    let fingerprint = deployment_fingerprint(&root_key);
+    let trusted_keys = vec![root_key.clone()];
     let assessment_results = export_assessment_results(organisation, items, now)?;
     let (checkpoint_root, inclusion_proofs) = build_inclusion_chain(items)?;
-    let item_ids: Vec<&str> = items.iter().map(|i| i.id.as_str()).collect();
-    let payload = serde_json::to_vec(&CanonicalBundlePayload {
-        bundle_version: OFFLINE_BUNDLE_VERSION,
-        deployment_fingerprint,
+    let payload = serialize_bundle_payload(
+        OFFLINE_BUNDLE_VERSION,
+        &fingerprint,
         organisation,
-        exported_at: now,
-        checkpoint_root: &checkpoint_root,
-        item_ids,
-    })
-    .map_err(|e| ComplyError::Serialization {
-        detail: e.to_string(),
-    })?;
+        now,
+        &checkpoint_root,
+        &root_key,
+        &trusted_keys,
+        &assessment_results,
+        &inclusion_proofs,
+        items,
+    )?;
     let bundle_signature = keypair.sign_bytes(DOMAIN_OFFLINE_BUNDLE, &payload);
 
     Ok(OfflineEvidenceBundle {
         bundle_version: OFFLINE_BUNDLE_VERSION,
-        deployment_fingerprint: deployment_fingerprint.to_owned(),
+        deployment_fingerprint: fingerprint,
         organisation: organisation.to_owned(),
         exported_at: now,
+        root_key,
         assessment_results,
         items: items.to_vec(),
-        trusted_keys: vec![keypair.public_info()],
+        trusted_keys,
         checkpoint_root,
         inclusion_proofs,
         bundle_key_id: keypair.key_id().to_owned(),
@@ -329,12 +347,30 @@ pub fn verify_evidence_bundle(
     bundle: &OfflineEvidenceBundle,
     expected_fingerprint: &str,
 ) -> Result<BundleVerificationReport, ComplyError> {
-    if bundle.deployment_fingerprint != expected_fingerprint {
+    if bundle.bundle_version != OFFLINE_BUNDLE_VERSION {
         return Err(ComplyError::VerificationFailed {
             detail: format!(
-                "deployment fingerprint mismatch: expected `{expected_fingerprint}`, got `{}`",
+                "unsupported offline bundle version {}",
+                bundle.bundle_version
+            ),
+        });
+    }
+    let derived_root_fp = deployment_fingerprint(&bundle.root_key);
+    if derived_root_fp != expected_fingerprint
+        || bundle.deployment_fingerprint != expected_fingerprint
+    {
+        return Err(ComplyError::VerificationFailed {
+            detail: format!(
+                "deployment fingerprint mismatch: expected `{expected_fingerprint}`, got `{}` (root key `{derived_root_fp}`)",
                 bundle.deployment_fingerprint
             ),
+        });
+    }
+    if bundle.bundle_key_id != bundle.root_key.key_id
+        || !bundle.trusted_keys.contains(&bundle.root_key)
+    {
+        return Err(ComplyError::VerificationFailed {
+            detail: "bundle signing key must match attested deployment root key".into(),
         });
     }
     if bundle
@@ -349,29 +385,21 @@ pub fn verify_evidence_bundle(
         });
     }
 
-    let key = bundle
-        .trusted_keys
-        .iter()
-        .find(|k| k.key_id == bundle.bundle_key_id)
-        .ok_or_else(|| ComplyError::VerificationFailed {
-            detail: "bundle signing key missing from trusted_keys".into(),
-        })?;
-
-    let item_ids: Vec<&str> = bundle.items.iter().map(|i| i.id.as_str()).collect();
-    let payload = serde_json::to_vec(&CanonicalBundlePayload {
-        bundle_version: bundle.bundle_version,
-        deployment_fingerprint: &bundle.deployment_fingerprint,
-        organisation: &bundle.organisation,
-        exported_at: bundle.exported_at,
-        checkpoint_root: &bundle.checkpoint_root,
-        item_ids,
-    })
-    .map_err(|e| ComplyError::Serialization {
-        detail: e.to_string(),
-    })?;
+    let payload = serialize_bundle_payload(
+        bundle.bundle_version,
+        &bundle.deployment_fingerprint,
+        &bundle.organisation,
+        bundle.exported_at,
+        &bundle.checkpoint_root,
+        &bundle.root_key,
+        &bundle.trusted_keys,
+        &bundle.assessment_results,
+        &bundle.inclusion_proofs,
+        &bundle.items,
+    )?;
 
     verify_bytes(
-        &key.public_key_b64,
+        &bundle.root_key.public_key_b64,
         DOMAIN_OFFLINE_BUNDLE,
         &payload,
         &bundle.bundle_signature,
@@ -386,6 +414,14 @@ pub fn verify_evidence_bundle(
         });
     }
 
+    let expected_ar =
+        export_assessment_results(&bundle.organisation, &bundle.items, bundle.exported_at)?;
+    if bundle.assessment_results != expected_ar {
+        return Err(ComplyError::VerificationFailed {
+            detail: "OSCAL assessment results do not match signed evidence items".into(),
+        });
+    }
+
     let (recomputed_root, expected_proofs) = build_inclusion_chain(&bundle.items)?;
     if recomputed_root != bundle.checkpoint_root {
         return Err(ComplyError::VerificationFailed {
@@ -393,15 +429,27 @@ pub fn verify_evidence_bundle(
         });
     }
 
+    let mut seen_ids = BTreeSet::new();
     for (idx, item) in bundle.items.iter().enumerate() {
+        if !seen_ids.insert(item.id.as_str()) {
+            return Err(ComplyError::VerificationFailed {
+                detail: format!("duplicate evidence item id `{}`", item.id),
+            });
+        }
+        if item.organisation != bundle.organisation {
+            return Err(ComplyError::VerificationFailed {
+                detail: format!(
+                    "evidence item `{}` organisation `{}` mismatches bundle `{}`",
+                    item.id, item.organisation, bundle.organisation
+                ),
+            });
+        }
         if verify_evidence_item(item, &bundle.trusted_keys) != SignatureStatus::Verified {
             return Err(ComplyError::VerificationFailed {
                 detail: format!("evidence item `{}` failed Ed25519 verification", item.id),
             });
         }
-        let given = bundle.inclusion_proofs.get(idx);
-        let expected = expected_proofs.get(idx);
-        if given != expected {
+        if bundle.inclusion_proofs.get(idx) != expected_proofs.get(idx) {
             return Err(ComplyError::VerificationFailed {
                 detail: format!("inclusion proof mismatch for `{}`", item.id),
             });
@@ -414,6 +462,47 @@ pub fn verify_evidence_bundle(
         checkpoint_root: bundle.checkpoint_root.clone(),
         oscal_version: OSCAL_VERSION.to_owned(),
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn serialize_bundle_payload(
+    bundle_version: u32,
+    deployment_fingerprint: &str,
+    organisation: &str,
+    exported_at: Timestamp,
+    checkpoint_root: &str,
+    root_key: &TrustedKeyInfo,
+    trusted_keys: &[TrustedKeyInfo],
+    assessment_results: &OscalAssessmentResultsDoc,
+    inclusion_proofs: &[ItemInclusionProof],
+    items: &[EvidenceItem],
+) -> Result<Vec<u8>, ComplyError> {
+    let trusted_keys_sha256 = sha256_json(trusted_keys)?;
+    let assessment_results_sha256 = sha256_json(assessment_results)?;
+    let inclusion_proofs_sha256 = sha256_json(inclusion_proofs)?;
+    let item_ids: Vec<&str> = items.iter().map(|i| i.id.as_str()).collect();
+    serde_json::to_vec(&CanonicalBundlePayload {
+        bundle_version,
+        deployment_fingerprint,
+        organisation,
+        exported_at,
+        checkpoint_root,
+        root_key,
+        trusted_keys_sha256: &trusted_keys_sha256,
+        assessment_results_sha256: &assessment_results_sha256,
+        inclusion_proofs_sha256: &inclusion_proofs_sha256,
+        item_ids,
+    })
+    .map_err(|e| ComplyError::Serialization {
+        detail: e.to_string(),
+    })
+}
+
+fn sha256_json<T: Serialize + ?Sized>(val: &T) -> Result<String, ComplyError> {
+    let bytes = serde_json::to_vec(val).map_err(|e| ComplyError::Serialization {
+        detail: e.to_string(),
+    })?;
+    Ok(sha256_hex(&bytes))
 }
 
 fn build_inclusion_chain(
@@ -437,13 +526,15 @@ fn build_inclusion_chain(
     Ok((prev, proofs))
 }
 
-fn deterministic_uuid(seed: &str) -> String {
-    let hex = sha256_hex(seed.as_bytes());
-    let slice = hex.get(0..32).unwrap_or("00000000000000000000000000000000");
-    let raw = u128::from_str_radix(slice, 16).unwrap_or(0);
-    Uuid::from_u128(raw).hyphenated().to_string()
-}
-
 fn csv_safe(raw: &str) -> String {
-    raw.replace('"', "\"\"").replace(['\n', '\r'], " ")
+    let single_line = raw.replace(['\n', '\r'], " ");
+    let trimmed = single_line.trim_start();
+    let formula_prefix =
+        single_line.starts_with('\t') || trimmed.starts_with(['=', '+', '-', '@', '\t']);
+    let neutralized = if formula_prefix {
+        format!("'{single_line}")
+    } else {
+        single_line
+    };
+    neutralized.replace('"', "\"\"")
 }

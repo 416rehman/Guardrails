@@ -7,15 +7,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::{LintDomain, LintError, LintFinding, LintSeverity};
 
-const PRINCIPAL_FIELDS: &[&str] = &[
-    "user_id",
-    "user_display",
-    "principal",
-    "pseudonym",
-    "pseudonym_id",
-    "actor",
-    "subject",
-    "subject_ref",
+const ALLOWED_GROUP_BY_DIMENSIONS: &[&str] = &[
+    "capability",
+    "action_class",
+    "rule_id",
+    "rule_class",
+    "control_point",
+    "verdict",
+    "period",
+    "organisation",
 ];
 
 const FORBIDDEN_EXECUTION_PATTERNS: &[&str] = &[
@@ -25,17 +25,22 @@ const FORBIDDEN_EXECUTION_PATTERNS: &[&str] = &[
     "https://",
     "bash -c",
     "sh -c",
-    "powershell -enc",
+    "powershell ",
+    "pwsh ",
     "invoke-webrequest",
+    "iwr ",
+    "cmd /c",
+    "eval(",
+    "exec(",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PackDataClass {
     Public,
+    Identifier,
     Structural,
     Derived,
-    Identifier,
     Content,
     Secret,
 }
@@ -126,9 +131,9 @@ pub fn lint_pack_manifest(
     }
 
     for snippet in &manifest.rule_snippets {
-        let lower = snippet.to_ascii_lowercase();
+        let collapsed = normalize_snippet_ws(snippet);
         for pat in FORBIDDEN_EXECUTION_PATTERNS {
-            if lower.contains(pat) {
+            if collapsed.contains(pat) {
                 findings.push(p7_finding(
                     &label,
                     &format!("P7 violation: embedded snippet contains `{}`", pat.trim()),
@@ -149,36 +154,54 @@ pub fn lint_pack_manifest(
                 ));
             }
         }
+    } else if !manifest.evidence_queries.is_empty() {
+        findings.push(p7_finding(
+            &label,
+            "P7 violation: evidence_queries are permitted only on compliance packs",
+        ));
+    }
 
-        for query in &manifest.evidence_queries {
-            if query.max_class > PackDataClass::Derived {
+    for query in &manifest.evidence_queries {
+        if query.max_class > PackDataClass::Derived {
+            findings.push(p7_finding(
+                &label,
+                &format!("evidence query `{}` max_class exceeds `derived`", query.id),
+            ));
+        }
+        for read in &query.reads {
+            if read.data_class > query.max_class {
                 findings.push(p7_finding(
                     &label,
-                    &format!("evidence query `{}` max_class exceeds `derived`", query.id),
+                    &format!(
+                        "evidence query `{}` read `{}` exceeds declared max_class",
+                        query.id, read.path
+                    ),
                 ));
             }
-            for read in &query.reads {
-                if read.data_class > query.max_class {
-                    findings.push(p7_finding(
-                        &label,
-                        &format!(
-                            "evidence query `{}` read `{}` exceeds declared max_class",
-                            query.id, read.path
-                        ),
-                    ));
-                }
+            let declared_in_manifest = manifest
+                .reads
+                .iter()
+                .any(|mr| mr.path == read.path && mr.data_class >= read.data_class);
+            if !declared_in_manifest {
+                findings.push(p7_finding(
+                    &label,
+                    &format!(
+                        "evidence query `{}` read `{}` is not declared in manifest reads[]",
+                        query.id, read.path
+                    ),
+                ));
             }
-            for grp in &query.group_by {
-                let norm = grp.trim().to_ascii_lowercase();
-                if PRINCIPAL_FIELDS.iter().any(|p| norm == *p) {
-                    findings.push(p7_finding(
-                        &label,
-                        &format!(
-                            "evidence query `{}` forbids principal group_by `{grp}`",
-                            query.id
-                        ),
-                    ));
-                }
+        }
+        for grp in &query.group_by {
+            let norm = grp.trim().to_ascii_lowercase();
+            if !ALLOWED_GROUP_BY_DIMENSIONS.contains(&norm.as_str()) {
+                findings.push(p7_finding(
+                    &label,
+                    &format!(
+                        "evidence query `{}` rejects disallowed or principal group_by `{grp}`",
+                        query.id
+                    ),
+                ));
             }
         }
     }
@@ -203,6 +226,23 @@ pub fn lint_pack_manifest(
     }
 
     Ok(findings)
+}
+
+fn normalize_snippet_ws(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut prev_ws = false;
+    for ch in raw.chars() {
+        if ch.is_ascii_whitespace() {
+            if !prev_ws {
+                out.push(' ');
+                prev_ws = true;
+            }
+        } else {
+            out.push(ch.to_ascii_lowercase());
+            prev_ws = false;
+        }
+    }
+    out
 }
 
 fn p7_finding(target: &str, message: &str) -> LintFinding {

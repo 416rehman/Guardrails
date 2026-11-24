@@ -8,7 +8,10 @@ use grdr_model::AssuranceLevel;
 use serde::{Deserialize, Serialize};
 
 use crate::ComplyError;
-use crate::catalog_data::{CAPABILITY_DEFS, CROSSWALK_DEFS, FRAMEWORK_SPECS};
+use crate::catalog_capabilities::CAPABILITY_DEFS;
+use crate::catalog_crosswalks_a::CROSSWALK_DEFS_CORE;
+use crate::catalog_crosswalks_b::CROSSWALK_DEFS_GOVERNANCE;
+use crate::catalog_frameworks::FRAMEWORK_SPECS;
 
 pub type CapabilityId = String;
 
@@ -129,8 +132,9 @@ pub fn default_registry() -> CapabilityRegistry {
         );
     }
 
-    let crosswalks = CROSSWALK_DEFS
+    let crosswalks = CROSSWALK_DEFS_CORE
         .iter()
+        .chain(CROSSWALK_DEFS_GOVERNANCE.iter())
         .map(|(cap, fw, ctrl, rel, note)| CrosswalkEntry {
             capability: (*cap).to_owned(),
             framework_id: (*fw).to_owned(),
