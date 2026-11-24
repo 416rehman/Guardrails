@@ -67,6 +67,13 @@ pub fn plan_session_wfp_filters(
             "proxy_port cannot be 0 in session WFP plan".into(),
         ));
     }
+    if let Some(c_port) = console_port
+        && (c_port == 0 || c_port == proxy_port)
+    {
+        return Err(WindowsSensorError::Wfp(
+            "console_port must be non-zero and distinct from proxy_port".into(),
+        ));
+    }
 
     let mut rules = Vec::new();
     for layer in [WfpLayer::AleAuthConnectV4, WfpLayer::AleAuthConnectV6] {
@@ -102,6 +109,19 @@ pub fn plan_session_wfp_filters(
                 loopback_only: true,
             });
         }
+    }
+
+    for recv_layer in [WfpLayer::AleAuthRecvAcceptV4, WfpLayer::AleAuthRecvAcceptV6] {
+        rules.push(WfpFilterRule {
+            rule_name: format!("session-loopback-recv-block-{recv_layer:?}"),
+            layer: recv_layer,
+            principal: principal.clone(),
+            action: WfpFilterAction::HardBlock,
+            weight: WEIGHT_BLOCK_CONSOLE_LOOPBACK,
+            persistent: false,
+            remote_port: None,
+            loopback_only: true,
+        });
     }
 
     Ok(WfpSublayerPlan {
@@ -142,18 +162,19 @@ pub fn plan_service_wfp_filters(
     })
 }
 
+pub fn validate_sid_syntax(raw_sid: &str) -> Result<(), WindowsSensorError> {
+    grdr_os_service::validate_windows_sid(raw_sid)
+        .map(|_| ())
+        .map_err(|e| WindowsSensorError::Wfp(e.to_string()))
+}
+
 fn validate_principal(principal: &WfpPrincipalKey) -> Result<(), WindowsSensorError> {
     let sid = match principal {
         WfpPrincipalKey::SandboxSid { sid } => sid,
         WfpPrincipalKey::AppContainerPackageSid { package_sid } => package_sid,
         WfpPrincipalKey::ServiceSid { service_sid } => service_sid,
     };
-    if sid.trim().is_empty() || !sid.starts_with("S-1-") {
-        return Err(WindowsSensorError::Wfp(format!(
-            "WFP filter requires a valid Windows SID, got `{sid}`"
-        )));
-    }
-    Ok(())
+    validate_sid_syntax(sid)
 }
 
 #[cfg(test)]
@@ -161,7 +182,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn session_wfp_plan_keys_on_sid_blocks_console_and_permits_only_proxy() {
+    fn session_wfp_plan_keys_on_sid_blocks_console_and_recv_and_permits_only_proxy() {
         let plan = plan_session_wfp_filters(
             WfpPrincipalKey::AppContainerPackageSid {
                 package_sid: "S-1-15-2-1001".into(),
@@ -181,6 +202,13 @@ mod tests {
         assert!(
             plan.rules
                 .iter()
+                .any(|r| r.layer == WfpLayer::AleAuthRecvAcceptV4
+                    && r.action == WfpFilterAction::HardBlock
+                    && r.loopback_only)
+        );
+        assert!(
+            plan.rules
+                .iter()
                 .any(|r| r.action == WfpFilterAction::HardBlock
                     && r.remote_port == Some(43199)
                     && r.weight > WEIGHT_ALLOW_PROXY)
@@ -188,8 +216,20 @@ mod tests {
     }
 
     #[test]
-    fn service_wfp_plan_uses_persistent_filters_and_rejects_invalid_sid() {
+    fn service_wfp_plan_rejects_malformed_sids_and_colliding_console_port() {
         assert!(plan_service_wfp_filters(&["".into()]).is_err());
+        assert!(plan_service_wfp_filters(&["S-1-".into()]).is_err());
+        assert!(plan_service_wfp_filters(&["S-1-5".into()]).is_err());
+        assert!(
+            plan_session_wfp_filters(
+                WfpPrincipalKey::SandboxSid {
+                    sid: "S-1-5-80-99".into()
+                },
+                18080,
+                Some(18080),
+            )
+            .is_err()
+        );
         let plan = plan_service_wfp_filters(&["S-1-5-80-99".into()]).unwrap();
         assert_eq!(plan.rules.len(), 2);
         assert!(plan.rules.iter().all(|r| r.persistent));

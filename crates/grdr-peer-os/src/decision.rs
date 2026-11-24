@@ -53,6 +53,7 @@ pub struct WindowsPipePeer {
     pub client_pid: u32,
     pub pipe_owner_sid: String,
     pub expected_service_sid: Option<String>,
+    pub pipe_server_pid: Option<u32>,
     pub scm_pid_sample_1: Option<u32>,
     pub scm_pid_sample_2: Option<u32>,
     pub message_identity_sid: Option<String>,
@@ -87,12 +88,22 @@ pub struct PeerObservation {
     pub exe: Option<ExeIdentity>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PrincipalPolicy {
+    #[default]
+    StrictExpected,
+    AllowAnyLocalPrincipal,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PeerAuthPolicy {
     pub expected_unix_uid: Option<u32>,
     pub expected_windows_sid: Option<String>,
     pub require_process_hold: bool,
     pub min_integrity_rid: Option<u32>,
+    #[serde(default)]
+    pub principal_policy: PrincipalPolicy,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -151,6 +162,15 @@ impl PeerRefusal {
     }
 }
 
+impl ProcessHold {
+    pub const fn held_pid(&self) -> Option<u32> {
+        match self {
+            Self::Atomic { key } | Self::Confirmed { key } => Some(key.pid),
+            Self::Unheld => None,
+        }
+    }
+}
+
 impl WindowsPipePeer {
     pub fn check_service_pid(&self) -> ServiceProcessCheck {
         match (self.scm_pid_sample_1, self.scm_pid_sample_2) {
@@ -161,32 +181,39 @@ impl WindowsPipePeer {
 }
 
 pub fn evaluate_peer_auth(obs: &PeerObservation, policy: &PeerAuthPolicy) -> PeerAuthDecision {
-    if policy.require_process_hold && matches!(obs.hold, ProcessHold::Unheld) {
-        return PeerAuthDecision::Refused {
-            reason: PeerRefusal::UnverifiableHold,
-            evidence: PeerRefusal::UnverifiableHold.evidence(),
-        };
+    let cred_pid = match &obs.credentials {
+        PeerCredentials::Linux(c) => c.pid,
+        PeerCredentials::MacOs(t) => t.pid,
+        PeerCredentials::Windows(w) => w.client_pid,
+    };
+
+    if cred_pid == 0 {
+        return refuse(PeerRefusal::UnverifiableHold);
+    }
+
+    if let Some(held_pid) = obs.hold.held_pid() {
+        if held_pid != cred_pid {
+            return refuse(PeerRefusal::UnverifiableHold);
+        }
+    } else if policy.require_process_hold {
+        return refuse(PeerRefusal::UnverifiableHold);
     }
 
     match &obs.credentials {
         PeerCredentials::Linux(creds) => {
-            if let Some(expected_uid) = policy.expected_unix_uid
-                && creds.uid != expected_uid
-            {
-                let reason = PeerRefusal::ServerForeign {
-                    seen: classify_unix_owner(creds.uid, expected_uid),
-                };
-                return PeerAuthDecision::Refused {
-                    evidence: reason.evidence(),
-                    reason,
-                };
+            if let Some(expected_uid) = policy.expected_unix_uid {
+                if creds.uid != expected_uid {
+                    return refuse(PeerRefusal::ServerForeign {
+                        seen: classify_unix_owner(creds.uid, expected_uid),
+                    });
+                }
+            } else if policy.principal_policy != PrincipalPolicy::AllowAnyLocalPrincipal {
+                return refuse(PeerRefusal::ServerForeign {
+                    seen: OwnerClass::ForeignPrincipal,
+                });
             }
             if !creds.pidfd_verified {
-                let reason = PeerRefusal::UnverifiableHold;
-                return PeerAuthDecision::Refused {
-                    evidence: reason.evidence(),
-                    reason,
-                };
+                return refuse(PeerRefusal::UnverifiableHold);
             }
             PeerAuthDecision::Accepted(VerifiedPeer {
                 pid: creds.pid,
@@ -195,16 +222,16 @@ pub fn evaluate_peer_auth(obs: &PeerObservation, policy: &PeerAuthPolicy) -> Pee
             })
         }
         PeerCredentials::MacOs(token) => {
-            if let Some(expected_uid) = policy.expected_unix_uid
-                && token.uid != expected_uid
-            {
-                let reason = PeerRefusal::ServerForeign {
-                    seen: classify_unix_owner(token.uid, expected_uid),
-                };
-                return PeerAuthDecision::Refused {
-                    evidence: reason.evidence(),
-                    reason,
-                };
+            if let Some(expected_uid) = policy.expected_unix_uid {
+                if token.uid != expected_uid {
+                    return refuse(PeerRefusal::ServerForeign {
+                        seen: classify_unix_owner(token.uid, expected_uid),
+                    });
+                }
+            } else if policy.principal_policy != PrincipalPolicy::AllowAnyLocalPrincipal {
+                return refuse(PeerRefusal::ServerForeign {
+                    seen: OwnerClass::ForeignPrincipal,
+                });
             }
             PeerAuthDecision::Accepted(VerifiedPeer {
                 pid: token.pid,
@@ -221,63 +248,91 @@ fn evaluate_windows_peer(
     policy: &PeerAuthPolicy,
     hold: &ProcessHold,
 ) -> PeerAuthDecision {
-    if let Some(expected_sid) = &policy.expected_windows_sid
-        && win.pipe_owner_sid != *expected_sid
-    {
-        let reason = PeerRefusal::ServerForeign {
+    let Ok(owner_sid) = grdr_os_service::validate_windows_sid(&win.pipe_owner_sid) else {
+        return refuse(PeerRefusal::ServerForeign {
             seen: OwnerClass::ForeignPrincipal,
-        };
-        return PeerAuthDecision::Refused {
-            evidence: reason.evidence(),
-            reason,
-        };
+        });
+    };
+
+    if policy.expected_windows_sid.is_none()
+        && win.expected_service_sid.is_none()
+        && policy.principal_policy != PrincipalPolicy::AllowAnyLocalPrincipal
+    {
+        return refuse(PeerRefusal::ServerForeign {
+            seen: OwnerClass::ForeignPrincipal,
+        });
     }
 
-    if win.expected_service_sid.is_some()
-        && matches!(
-            win.check_service_pid(),
-            ServiceProcessCheck::ServiceRestarting
-        )
-    {
-        let reason = PeerRefusal::ServiceRestarting;
-        return PeerAuthDecision::Refused {
-            evidence: reason.evidence(),
-            reason,
+    if let Some(expected_sid) = &policy.expected_windows_sid {
+        let Ok(clean_expected) = grdr_os_service::validate_windows_sid(expected_sid) else {
+            return refuse(PeerRefusal::UnverifiableHold);
         };
+        if owner_sid != clean_expected {
+            return refuse(PeerRefusal::ServerForeign {
+                seen: OwnerClass::ForeignPrincipal,
+            });
+        }
+    }
+
+    if let Some(expected_service_sid) = &win.expected_service_sid {
+        let Ok(clean_svc_sid) = grdr_os_service::validate_windows_sid(expected_service_sid) else {
+            return refuse(PeerRefusal::UnverifiableHold);
+        };
+        if owner_sid != clean_svc_sid {
+            return refuse(PeerRefusal::ServerForeign {
+                seen: OwnerClass::ForeignPrincipal,
+            });
+        }
+        match win.check_service_pid() {
+            ServiceProcessCheck::ServiceRestarting => {
+                return refuse(PeerRefusal::ServiceRestarting);
+            }
+            ServiceProcessCheck::Valid { pid } => {
+                if win.pipe_server_pid != Some(pid) {
+                    return refuse(PeerRefusal::ServerForeign {
+                        seen: OwnerClass::ForeignPrincipal,
+                    });
+                }
+            }
+        }
     }
 
     if win.process_created_ns > win.connected_at_ns {
-        let reason = PeerRefusal::PidReused;
-        return PeerAuthDecision::Refused {
-            evidence: reason.evidence(),
-            reason,
-        };
+        return refuse(PeerRefusal::PidReused);
     }
 
-    if !win.open_as_self_verified || win.message_identity_sid.is_none() {
-        let reason = PeerRefusal::MissingMessageIdentity;
-        return PeerAuthDecision::Refused {
-            evidence: reason.evidence(),
-            reason,
-        };
+    let Some(msg_sid_raw) = win.message_identity_sid.as_deref() else {
+        return refuse(PeerRefusal::MissingMessageIdentity);
+    };
+    let Ok(msg_sid) = grdr_os_service::validate_windows_sid(msg_sid_raw) else {
+        return refuse(PeerRefusal::MissingMessageIdentity);
+    };
+    if !win.open_as_self_verified {
+        return refuse(PeerRefusal::MissingMessageIdentity);
     }
 
-    if let (Some(min_rid), Some(seen_rid)) = (policy.min_integrity_rid, win.integrity_rid)
-        && seen_rid < min_rid
-    {
-        let reason = PeerRefusal::LowIntegrityDenied { seen_rid };
-        return PeerAuthDecision::Refused {
-            evidence: reason.evidence(),
-            reason,
-        };
+    if let Some(min_rid) = policy.min_integrity_rid {
+        match win.integrity_rid {
+            None => return refuse(PeerRefusal::UnverifiableHold),
+            Some(seen_rid) if seen_rid < min_rid => {
+                return refuse(PeerRefusal::LowIntegrityDenied { seen_rid });
+            }
+            Some(_) => {}
+        }
     }
 
-    let sid = win.message_identity_sid.as_deref().unwrap_or("unknown");
     PeerAuthDecision::Accepted(VerifiedPeer {
         pid: win.client_pid,
-        principal_label: format!("sid:{sid}"),
+        principal_label: format!("sid:{msg_sid}"),
         hold_confirmed: !matches!(hold, ProcessHold::Unheld),
     })
+}
+
+fn refuse(reason: PeerRefusal) -> PeerAuthDecision {
+    PeerAuthDecision::Refused {
+        evidence: reason.evidence(),
+        reason,
+    }
 }
 
 fn classify_unix_owner(seen_uid: u32, expected_uid: u32) -> OwnerClass {
@@ -294,28 +349,39 @@ fn classify_unix_owner(seen_uid: u32, expected_uid: u32) -> OwnerClass {
 mod tests {
     use super::*;
 
-    #[test]
-    fn windows_service_restart_is_transient_while_foreign_owner_is_tamper() {
-        let base = WindowsPipePeer {
+    fn sample_windows_peer() -> WindowsPipePeer {
+        WindowsPipePeer {
             client_pid: 400,
             pipe_owner_sid: "S-1-5-80-1".into(),
             expected_service_sid: Some("S-1-5-80-1".into()),
+            pipe_server_pid: Some(500),
             scm_pid_sample_1: Some(500),
-            scm_pid_sample_2: Some(501),
+            scm_pid_sample_2: Some(500),
             message_identity_sid: Some("S-1-5-21-9".into()),
             integrity_rid: Some(0x2000),
             open_as_self_verified: true,
             process_created_ns: 100,
             connected_at_ns: 200,
-        };
-        let policy = PeerAuthPolicy {
+        }
+    }
+
+    fn sample_windows_policy() -> PeerAuthPolicy {
+        PeerAuthPolicy {
             expected_unix_uid: None,
             expected_windows_sid: Some("S-1-5-80-1".into()),
             require_process_hold: true,
             min_integrity_rid: Some(0x2000),
-        };
+            principal_policy: PrincipalPolicy::StrictExpected,
+        }
+    }
+
+    #[test]
+    fn windows_service_restart_is_transient_while_foreign_owner_is_tamper() {
+        let mut restarting = sample_windows_peer();
+        restarting.scm_pid_sample_2 = Some(501);
+        let policy = sample_windows_policy();
         let obs = PeerObservation {
-            credentials: PeerCredentials::Windows(base.clone()),
+            credentials: PeerCredentials::Windows(restarting),
             hold: ProcessHold::Confirmed {
                 key: ProcessKey {
                     pid: 400,
@@ -334,11 +400,10 @@ mod tests {
             }
         );
 
-        let mut stable = base.clone();
-        stable.scm_pid_sample_2 = Some(500);
-        stable.process_created_ns = 300;
+        let mut reused = sample_windows_peer();
+        reused.process_created_ns = 300;
         let obs_reuse = PeerObservation {
-            credentials: PeerCredentials::Windows(stable),
+            credentials: PeerCredentials::Windows(reused),
             ..obs.clone()
         };
         assert_eq!(
@@ -349,7 +414,7 @@ mod tests {
             }
         );
 
-        let mut foreign = base;
+        let mut foreign = sample_windows_peer();
         foreign.pipe_owner_sid = "S-1-5-21-attacker".into();
         let obs_foreign = PeerObservation {
             credentials: PeerCredentials::Windows(foreign),
@@ -357,6 +422,190 @@ mod tests {
         };
         assert!(matches!(
             evaluate_peer_auth(&obs_foreign, &policy),
+            PeerAuthDecision::Refused {
+                reason: PeerRefusal::ServerForeign { .. },
+                evidence: PeerEvidence::Tamper,
+            }
+        ));
+    }
+
+    #[test]
+    fn windows_fail_closes_missing_integrity_and_server_pid_mismatch_and_hold_pid() {
+        let policy = sample_windows_policy();
+        let mut missing_rid = sample_windows_peer();
+        missing_rid.integrity_rid = None;
+        let obs_rid = PeerObservation {
+            credentials: PeerCredentials::Windows(missing_rid),
+            hold: ProcessHold::Confirmed {
+                key: ProcessKey {
+                    pid: 400,
+                    started_at_ticks: 100,
+                },
+            },
+            parent_pid: 100,
+            started_at_ticks: 100,
+            exe: None,
+        };
+        assert_eq!(
+            evaluate_peer_auth(&obs_rid, &policy),
+            PeerAuthDecision::Refused {
+                reason: PeerRefusal::UnverifiableHold,
+                evidence: PeerEvidence::Unverifiable,
+            }
+        );
+
+        let mut mismatched_server = sample_windows_peer();
+        mismatched_server.pipe_server_pid = Some(999);
+        let obs_srv = PeerObservation {
+            credentials: PeerCredentials::Windows(mismatched_server),
+            ..obs_rid.clone()
+        };
+        assert!(matches!(
+            evaluate_peer_auth(&obs_srv, &policy),
+            PeerAuthDecision::Refused {
+                reason: PeerRefusal::ServerForeign { .. },
+                evidence: PeerEvidence::Tamper,
+            }
+        ));
+
+        let mut no_id = sample_windows_peer();
+        no_id.open_as_self_verified = false;
+        let obs_noid = PeerObservation {
+            credentials: PeerCredentials::Windows(no_id),
+            ..obs_rid
+        };
+        assert_eq!(
+            evaluate_peer_auth(&obs_noid, &policy),
+            PeerAuthDecision::Refused {
+                reason: PeerRefusal::MissingMessageIdentity,
+                evidence: PeerEvidence::Unverifiable,
+            }
+        );
+
+        let mismatched_hold = PeerObservation {
+            credentials: PeerCredentials::Linux(UnixPeerCreds {
+                uid: 1000,
+                gid: 1000,
+                pid: 400,
+                pidfd_verified: true,
+            }),
+            hold: ProcessHold::Confirmed {
+                key: ProcessKey {
+                    pid: 999,
+                    started_at_ticks: 1,
+                },
+            },
+            parent_pid: 1,
+            started_at_ticks: 1,
+            exe: None,
+        };
+        assert_eq!(
+            evaluate_peer_auth(
+                &mismatched_hold,
+                &PeerAuthPolicy {
+                    expected_unix_uid: Some(1000),
+                    expected_windows_sid: None,
+                    require_process_hold: true,
+                    min_integrity_rid: None,
+                    principal_policy: PrincipalPolicy::StrictExpected,
+                }
+            ),
+            PeerAuthDecision::Refused {
+                reason: PeerRefusal::UnverifiableHold,
+                evidence: PeerEvidence::Unverifiable,
+            }
+        );
+
+        let mut low_il = sample_windows_peer();
+        low_il.integrity_rid = Some(0x1000);
+        let obs_low_il = PeerObservation {
+            credentials: PeerCredentials::Windows(low_il),
+            hold: ProcessHold::Confirmed {
+                key: ProcessKey {
+                    pid: 400,
+                    started_at_ticks: 100,
+                },
+            },
+            parent_pid: 100,
+            started_at_ticks: 100,
+            exe: None,
+        };
+        assert_eq!(
+            evaluate_peer_auth(&obs_low_il, &policy),
+            PeerAuthDecision::Refused {
+                reason: PeerRefusal::LowIntegrityDenied { seen_rid: 0x1000 },
+                evidence: PeerEvidence::Unverifiable,
+            }
+        );
+
+        let mut blank_msg_sid = sample_windows_peer();
+        blank_msg_sid.message_identity_sid = Some(String::new());
+        let obs_blank_msg = PeerObservation {
+            credentials: PeerCredentials::Windows(blank_msg_sid),
+            ..obs_low_il.clone()
+        };
+        assert_eq!(
+            evaluate_peer_auth(&obs_blank_msg, &policy),
+            PeerAuthDecision::Refused {
+                reason: PeerRefusal::MissingMessageIdentity,
+                evidence: PeerEvidence::Unverifiable,
+            }
+        );
+
+        let zero_pid_mac = PeerObservation {
+            credentials: PeerCredentials::MacOs(MacOsAuditToken {
+                uid: 501,
+                gid: 20,
+                pid: 0,
+                pidversion: 1,
+                audit_session_id: 100,
+            }),
+            hold: ProcessHold::Unheld,
+            parent_pid: 1,
+            started_at_ticks: 1,
+            exe: None,
+        };
+        assert_eq!(
+            evaluate_peer_auth(
+                &zero_pid_mac,
+                &PeerAuthPolicy {
+                    expected_unix_uid: Some(501),
+                    expected_windows_sid: None,
+                    require_process_hold: false,
+                    min_integrity_rid: None,
+                    principal_policy: PrincipalPolicy::StrictExpected,
+                }
+            ),
+            PeerAuthDecision::Refused {
+                reason: PeerRefusal::UnverifiableHold,
+                evidence: PeerEvidence::Unverifiable,
+            }
+        );
+
+        let strict_no_expected = PeerObservation {
+            credentials: PeerCredentials::MacOs(MacOsAuditToken {
+                uid: 501,
+                gid: 20,
+                pid: 700,
+                pidversion: 1,
+                audit_session_id: 100,
+            }),
+            hold: ProcessHold::Unheld,
+            parent_pid: 1,
+            started_at_ticks: 1,
+            exe: None,
+        };
+        assert!(matches!(
+            evaluate_peer_auth(
+                &strict_no_expected,
+                &PeerAuthPolicy {
+                    expected_unix_uid: None,
+                    expected_windows_sid: None,
+                    require_process_hold: false,
+                    min_integrity_rid: None,
+                    principal_policy: PrincipalPolicy::StrictExpected,
+                }
+            ),
             PeerAuthDecision::Refused {
                 reason: PeerRefusal::ServerForeign { .. },
                 evidence: PeerEvidence::Tamper,

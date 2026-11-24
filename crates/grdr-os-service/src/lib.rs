@@ -2,21 +2,26 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 #![deny(clippy::arithmetic_side_effects)]
 
+pub mod ladder;
 pub mod lifecycle;
+pub mod pipe_dacl;
 pub mod supervision;
 
 use grdr_model::CodedError;
 
+pub use ladder::{
+    BootLoopGuard, CrashLoopLadder, FloorRuleUnion, HealthTransitionEvent, LadderAction, LadderRung,
+};
 pub use lifecycle::{
-    AdoptedListener, ListenerTransportKind, NamedPipeAccessRight, NamedPipeDaclSpec,
-    PipeSecurityProfile, ServiceActivationConfig, ServiceAdapter, ServiceManagerBackend,
-    ServiceManagerState, SystemServiceAdapter, WindowsScmServiceState, build_named_pipe_dacl,
+    AdoptedListener, ListenerTransportKind, ServiceActivationConfig, ServiceAdapter,
+    ServiceManagerBackend, ServiceManagerState, SystemServiceAdapter, WindowsScmServiceState,
     format_sd_notify_payload, parse_systemd_listen_fds,
 };
-pub use supervision::{
-    BootLoopGuard, ChildHeartbeatMonitor, ChildLifecycle, CrashLoopLadder, FloorRuleUnion,
-    HealthTransitionEvent, LadderAction, LadderRung, SupervisionDecision,
+pub use pipe_dacl::{
+    NamedPipeAccessRight, NamedPipeDaclSpec, PipeSecurityProfile, build_named_pipe_dacl,
+    validate_windows_sid,
 };
+pub use supervision::{ChildHeartbeatMonitor, ChildLifecycle, SupervisionDecision};
 
 pub const CODE_SVC_INVALID_TRANSITION: &str = "GRDR-SVC-0001";
 pub const CODE_SVC_ACTIVATION_INVALID: &str = "GRDR-SVC-0002";

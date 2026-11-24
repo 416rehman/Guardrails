@@ -8,8 +8,13 @@ use serde::{Deserialize, Serialize};
 
 use grdr_model::ActionClass;
 
+use crate::MacOsSensorError;
+
 pub const ENGINE_BUDGET_SHARE_PCT: u64 = 50;
 pub const DESCENDANTS_HOLD_CAP_PCT: u64 = 80;
+pub const DESCENDANTS_DEADLINE_GUARD_MS: u64 = 10_000;
+pub const MAX_TRACKED_TREE_MEMBERS: usize = 4_096;
+pub const MAX_PENDING_DENIED_EXECS: usize = 1_024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ProcessTreeKey {
@@ -156,9 +161,18 @@ impl AuthDeadlineBudget {
         }
     }
 
-    pub fn for_descendants_supervisor(deadline_floor_ms: u64, fail_closed: bool) -> Self {
+    pub fn for_descendants_supervisor(
+        deadline_floor_ms: u64,
+        fail_closed: bool,
+    ) -> Result<Self, MacOsSensorError> {
+        let max_safe = u64::from(u32::MAX).saturating_sub(DESCENDANTS_DEADLINE_GUARD_MS);
+        if deadline_floor_ms == 0 || deadline_floor_ms >= max_safe {
+            return Err(MacOsSensorError::EsTree(format!(
+                "descendants deadline floor {deadline_floor_ms} ms must be in 1..{max_safe}"
+            )));
+        }
         let hold_cap = deadline_floor_ms.saturating_mul(DESCENDANTS_HOLD_CAP_PCT) / 100;
-        Self {
+        Ok(Self {
             kernel_deadline_ms: deadline_floor_ms,
             engine_cutoff_ms: hold_cap.max(1),
             policy: if fail_closed {
@@ -166,7 +180,7 @@ impl AuthDeadlineBudget {
             } else {
                 DeadlineMissPolicy::DescendantsFailOpen
             },
-        }
+        })
     }
 }
 
@@ -195,10 +209,11 @@ impl EsTreeFollower {
     }
 
     pub fn record_sequence(&mut self, seq_num: u64, now: Timestamp) -> Option<HealthGapEvent> {
-        let gap = match self.next_expected_seq {
+        match self.next_expected_seq {
             Some(expected) if seq_num > expected => {
                 let lost = seq_num.saturating_sub(expected);
                 self.total_sequence_gaps = self.total_sequence_gaps.saturating_add(lost);
+                self.next_expected_seq = Some(seq_num.saturating_add(1));
                 Some(HealthGapEvent {
                     expected_seq: expected,
                     observed_seq: seq_num,
@@ -206,10 +221,17 @@ impl EsTreeFollower {
                     occurred_at: now,
                 })
             }
-            _ => None,
-        };
-        self.next_expected_seq = Some(seq_num.saturating_add(1));
-        gap
+            Some(expected) if seq_num < expected => Some(HealthGapEvent {
+                expected_seq: expected,
+                observed_seq: seq_num,
+                lost_events: 0,
+                occurred_at: now,
+            }),
+            _ => {
+                self.next_expected_seq = Some(seq_num.saturating_add(1));
+                None
+            }
+        }
     }
 
     pub fn record_denied_auth_exec(
@@ -219,6 +241,14 @@ impl EsTreeFollower {
         executable_path: impl Into<String>,
         reason: impl Into<String>,
     ) {
+        // Remove any pre-selected member entry for the denied exec so it never lingers as a ghost.
+        self.members.remove(&target_key);
+        if !self.pending_denied_execs.contains_key(&target_key)
+            && self.pending_denied_execs.len() >= MAX_PENDING_DENIED_EXECS
+            && let Some(oldest) = self.pending_denied_execs.keys().next().copied()
+        {
+            self.pending_denied_execs.remove(&oldest);
+        }
         self.pending_denied_execs.insert(
             target_key,
             (session_id.into(), executable_path.into(), reason.into()),
@@ -243,7 +273,7 @@ impl EsTreeFollower {
     pub fn apply_event(&mut self, event: &EsEventPayload) -> EsApplyOutcome {
         match event {
             EsEventPayload::RegisterAgentRoot { root, session_id } => {
-                self.members.insert(
+                self.insert_member(
                     root.key,
                     TrackedTreeMember {
                         token: root.clone(),
@@ -268,7 +298,7 @@ impl EsTreeFollower {
                     };
                 }
                 if let Some(parent_member) = self.members.get(parent).cloned() {
-                    self.members.insert(
+                    self.insert_member(
                         child.key,
                         TrackedTreeMember {
                             token: child.clone(),
@@ -299,9 +329,19 @@ impl EsTreeFollower {
                 target,
                 executable_path,
             } => {
+                if self.is_muted_incumbent(target) {
+                    self.members.remove(old_key);
+                    self.members.remove(&target.key);
+                    return EsApplyOutcome {
+                        session_id: None,
+                        action_class: ActionClass::Exec,
+                        summary: format!("ES AUTH_EXEC ignored muted incumbent {executable_path}"),
+                        unmuted_targets: Vec::new(),
+                    };
+                }
                 // Pre-select the new exec target before answering AUTH_EXEC so no early event of the new image is missed.
                 if let Some(prev) = self.members.get(old_key).cloned() {
-                    self.members.insert(
+                    self.insert_member(
                         target.key,
                         TrackedTreeMember {
                             token: target.clone(),
@@ -329,7 +369,50 @@ impl EsTreeFollower {
                 new_token,
                 executable_path,
             } => {
-                let session_id = self.members.remove(old_key).map(|m| m.session_id);
+                if self.is_muted_incumbent(new_token) {
+                    self.members.remove(old_key);
+                    self.members.remove(&new_token.key);
+                    return EsApplyOutcome {
+                        session_id: None,
+                        action_class: ActionClass::Exec,
+                        summary: format!(
+                            "ES NOTIFY_EXEC ignored muted incumbent {executable_path}"
+                        ),
+                        unmuted_targets: Vec::new(),
+                    };
+                }
+                let prev = if *old_key != new_token.key {
+                    self.members.remove(old_key)
+                } else {
+                    self.members.get(old_key).cloned()
+                };
+                let existing_session = self
+                    .members
+                    .get(&new_token.key)
+                    .map(|m| (m.session_id.clone(), m.agent_root_pid));
+                let session_id = if let Some((sid, root_pid)) = existing_session {
+                    self.insert_member(
+                        new_token.key,
+                        TrackedTreeMember {
+                            token: new_token.clone(),
+                            session_id: sid.clone(),
+                            agent_root_pid: root_pid,
+                        },
+                    );
+                    Some(sid)
+                } else if let Some(prev_member) = prev {
+                    self.insert_member(
+                        new_token.key,
+                        TrackedTreeMember {
+                            token: new_token.clone(),
+                            session_id: prev_member.session_id.clone(),
+                            agent_root_pid: prev_member.agent_root_pid,
+                        },
+                    );
+                    Some(prev_member.session_id)
+                } else {
+                    None
+                };
                 EsApplyOutcome {
                     session_id,
                     action_class: ActionClass::Exec,
@@ -380,6 +463,22 @@ impl EsTreeFollower {
             response_reason: "supervisor-lost",
         }
     }
+
+    fn insert_member(&mut self, key: ProcessTreeKey, member: TrackedTreeMember) {
+        if !self.members.contains_key(&key) && self.members.len() >= MAX_TRACKED_TREE_MEMBERS {
+            // Evict non-root child entries first so active agent roots stay tracked under load.
+            let victim = self
+                .members
+                .iter()
+                .find(|(_, m)| m.token.key.pid != m.agent_root_pid)
+                .map(|(k, _)| *k)
+                .or_else(|| self.members.keys().next().copied());
+            if let Some(oldest) = victim {
+                self.members.remove(&oldest);
+            }
+        }
+        self.members.insert(key, member);
+    }
 }
 
 pub fn synthesize_denied_exec_audit(
@@ -405,7 +504,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn es_tree_follows_fork_exec_exit_and_detects_seq_gaps() {
+    fn es_tree_follows_fork_exec_exit_and_detects_seq_gaps_and_regressions() {
         let mut follower = EsTreeFollower::new();
         let ts = Timestamp::from_second(1_700_000_000).unwrap();
 
@@ -413,6 +512,10 @@ mod tests {
         let gap = follower.record_sequence(14, ts).unwrap();
         assert_eq!(gap.lost_events, 3);
         assert_eq!(follower.total_sequence_gaps(), 3);
+
+        let reg = follower.record_sequence(11, ts).unwrap();
+        assert_eq!(reg.expected_seq, 15);
+        assert_eq!(reg.lost_events, 0);
 
         let root_key = ProcessTreeKey {
             pid: 500,
@@ -475,23 +578,73 @@ mod tests {
     }
 
     #[test]
-    fn synthesizes_denied_exec_audit_from_exit_event() {
+    fn cleans_denied_auth_exec_ghost_and_validates_descendants_deadline_bounds() {
+        assert!(AuthDeadlineBudget::for_descendants_supervisor(0, true).is_err());
+        assert!(
+            AuthDeadlineBudget::for_descendants_supervisor(u64::from(u32::MAX) - 5_000, true)
+                .is_err()
+        );
+        assert!(AuthDeadlineBudget::for_descendants_supervisor(15_000, true).is_ok());
+
         let mut follower = EsTreeFollower::new();
-        let target = ProcessTreeKey {
-            pid: 888,
-            pidversion: 4,
+        let root_key = ProcessTreeKey {
+            pid: 800,
+            pidversion: 1,
         };
+        follower.apply_event(&EsEventPayload::RegisterAgentRoot {
+            root: EsAuditToken {
+                key: root_key,
+                uid: 501,
+                team_id: None,
+            },
+            session_id: "sess-es-2".into(),
+        });
+
+        let target = ProcessTreeKey {
+            pid: 800,
+            pidversion: 2,
+        };
+        follower.apply_event(&EsEventPayload::AuthExec {
+            old_key: root_key,
+            target: EsAuditToken {
+                key: target,
+                uid: 501,
+                team_id: None,
+            },
+            executable_path: "/usr/bin/sudo".into(),
+        });
         follower.record_denied_auth_exec(
             target,
             "sess-es-2",
             "/usr/bin/sudo",
             "elevate-denied-in-sandbox",
         );
+        let mut live = BTreeMap::new();
+        live.insert(800, 2);
+        let wd = follower.plan_supervisor_loss_kill("sess-es-2", &live);
+        assert!(wd.verified_members_to_kill.is_empty());
+
         let audit = follower
             .consume_exit_for_denied_exec(target, Timestamp::from_second(1_700_000_000).unwrap())
             .unwrap();
         assert_eq!(audit.record_phase, AuditRecordPhase::Effect);
         assert_eq!(audit.outcome, DeniedExecOutcome::Denied);
         assert_eq!(audit.executable_path, "/usr/bin/sudo");
+
+        follower.mute_incumbent_team("APPLEINC01");
+        let exec_muted = follower.apply_event(&EsEventPayload::NotifyExec {
+            old_key: root_key,
+            new_token: EsAuditToken {
+                key: ProcessTreeKey {
+                    pid: 800,
+                    pidversion: 3,
+                },
+                uid: 501,
+                team_id: Some("APPLEINC01".into()),
+            },
+            executable_path: "/usr/bin/true".into(),
+        });
+        assert!(exec_muted.session_id.is_none());
+        assert_eq!(follower.member_count(), 0);
     }
 }

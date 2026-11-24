@@ -7,6 +7,8 @@ pub mod es_tree;
 pub mod network_ext;
 pub mod seatbelt;
 
+use std::collections::VecDeque;
+
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
@@ -35,6 +37,7 @@ pub const CODE_MACSENS_SEATBELT: &str = "GRDR-MACSENS-0001";
 pub const CODE_MACSENS_NETWORK_EXT: &str = "GRDR-MACSENS-0002";
 pub const CODE_MACSENS_ES_TREE: &str = "GRDR-MACSENS-0003";
 pub const CODE_MACSENS_SOURCE: &str = "GRDR-MACSENS-0004";
+pub const MAX_BUFFERED_GAPS: usize = 1_024;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum MacOsSensorError {
@@ -88,7 +91,8 @@ pub struct MacOsSensor<S> {
     device_id: String,
     device_name: String,
     tree: EsTreeFollower,
-    gaps: Vec<HealthGapEvent>,
+    gaps: VecDeque<HealthGapEvent>,
+    dropped_gaps_count: u64,
 }
 
 impl From<MacOsSensorError> for CodedError {
@@ -133,7 +137,8 @@ impl<S: MacOsEventSource> MacOsSensor<S> {
             device_id: device_id.into(),
             device_name: device_name.into(),
             tree: EsTreeFollower::new(),
-            gaps: Vec::new(),
+            gaps: VecDeque::new(),
+            dropped_gaps_count: 0,
         }
     }
 
@@ -142,7 +147,19 @@ impl<S: MacOsEventSource> MacOsSensor<S> {
     }
 
     pub fn drain_health_gaps(&mut self) -> Vec<HealthGapEvent> {
-        std::mem::take(&mut self.gaps)
+        self.gaps.drain(..).collect()
+    }
+
+    pub fn dropped_gaps_count(&self) -> u64 {
+        self.dropped_gaps_count
+    }
+
+    fn push_gap(&mut self, gap: HealthGapEvent) {
+        if self.gaps.len() >= MAX_BUFFERED_GAPS {
+            self.gaps.pop_front();
+            self.dropped_gaps_count = self.dropped_gaps_count.saturating_add(1);
+        }
+        self.gaps.push_back(gap);
     }
 }
 
@@ -180,22 +197,24 @@ impl<S: MacOsEventSource> SensorPort for MacOsSensor<S> {
                     timestamp,
                 } => {
                     if let Some(gap) = self.tree.record_sequence(seq_num, timestamp) {
-                        self.gaps.push(gap);
+                        self.push_gap(gap);
                     }
                     let outcome = self.tree.apply_event(&payload);
-                    out.push(ActionAttempt {
-                        id: format!("att-mac-es-{seq_num}"),
-                        session_id: outcome.session_id.unwrap_or_else(|| "sess-macos".into()),
-                        device_id: self.device_id.clone(),
-                        device_name: self.device_name.clone(),
-                        agent_name,
-                        action_class: outcome.action_class,
-                        control_point: ControlPoint::Sensor,
-                        target,
-                        summary: outcome.summary,
-                        timestamp,
-                        ..Default::default()
-                    });
+                    if let Some(session_id) = outcome.session_id {
+                        out.push(ActionAttempt {
+                            id: format!("att-mac-es-{seq_num}"),
+                            session_id,
+                            device_id: self.device_id.clone(),
+                            device_name: self.device_name.clone(),
+                            agent_name,
+                            action_class: outcome.action_class,
+                            control_point: ControlPoint::Sensor,
+                            target,
+                            summary: outcome.summary,
+                            timestamp,
+                            ..Default::default()
+                        });
+                    }
                 }
                 MacOsRawEvent::DeniedExecSynthesized { audit, agent_name } => {
                     out.push(ActionAttempt {
@@ -242,7 +261,6 @@ impl<S: MacOsEventSource> SensorPort for MacOsSensor<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::VecDeque;
 
     struct ScriptedMacSource {
         queue: VecDeque<MacOsRawEvent>,
@@ -280,5 +298,34 @@ mod tests {
         });
         let mut sensor = MacOsSensor::new(ScriptedMacSource { queue }, "dev-mac-1", "macbook-pro");
         assert!(grdr_ports_testkit::assert_sensor_port_contract(&mut sensor).is_ok());
+
+        let untracked = MacOsRawEvent::EsEvent {
+            payload: EsEventPayload::NotifyFork {
+                parent: ProcessTreeKey {
+                    pid: 9999,
+                    pidversion: 1,
+                },
+                child: EsAuditToken {
+                    key: ProcessTreeKey {
+                        pid: 10000,
+                        pidversion: 1,
+                    },
+                    uid: 501,
+                    team_id: None,
+                },
+            },
+            seq_num: 1,
+            agent_name: "unknown".into(),
+            target: "/bin/ls".into(),
+            timestamp: Timestamp::from_second(1_700_000_000).unwrap(),
+        };
+        let mut untracked_q = VecDeque::new();
+        untracked_q.push_back(untracked);
+        let mut s2 = MacOsSensor::new(
+            ScriptedMacSource { queue: untracked_q },
+            "dev-mac-1",
+            "macbook-pro",
+        );
+        assert!(s2.poll_events(10).unwrap().is_empty());
     }
 }

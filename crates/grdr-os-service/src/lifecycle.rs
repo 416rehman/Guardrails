@@ -7,10 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::ServiceError;
 
-pub const PIPE_FLAG_FIRST_PIPE_INSTANCE: u32 = 0x0008_0000;
-pub const PIPE_REJECT_REMOTE_CLIENTS: u32 = 0x0000_0008;
-pub const PIPE_ACCESS_DUPLEX: u32 = 0x0000_0003;
 pub const SD_NOTIFY_DEFAULT_PID_BASE: u32 = 3;
+pub const MAX_SYSTEMD_LISTEN_FDS: u32 = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "phase", rename_all = "snake_case")]
@@ -64,35 +62,6 @@ pub struct ServiceActivationConfig {
     pub listen_fdnames_raw: Option<String>,
     pub launchd_socket_names: Vec<String>,
     pub notify_socket: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum NamedPipeAccessRight {
-    FileReadData,
-    FileWriteData,
-    FileReadAttributes,
-    ReadControl,
-    Synchronize,
-    FileCreatePipeInstance,
-    FileGenericWrite,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PipeSecurityProfile {
-    ProtectedService { service_sid: String },
-    UserSession { user_sid: String },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct NamedPipeDaclSpec {
-    pub pipe_name: String,
-    pub owner_sid: String,
-    pub open_mode_flags: u32,
-    pub pipe_mode_flags: u32,
-    pub client_rights: Vec<NamedPipeAccessRight>,
-    pub sddl: String,
 }
 
 pub trait ServiceAdapter: Send + Sync {
@@ -154,24 +123,6 @@ impl ServiceManagerState {
             Self::Stopping { .. } => WindowsScmServiceState::StopPending,
             Self::Stopped { .. } => WindowsScmServiceState::Stopped,
         }
-    }
-}
-
-impl NamedPipeAccessRight {
-    pub const fn sddl_code(self) -> &'static str {
-        match self {
-            Self::FileReadData => "FR",
-            Self::FileWriteData => "FW",
-            Self::FileReadAttributes => "FA",
-            Self::ReadControl => "RC",
-            Self::Synchronize => "SY",
-            Self::FileCreatePipeInstance => "FC",
-            Self::FileGenericWrite => "GW",
-        }
-    }
-
-    pub const fn is_forbidden_for_clients(self) -> bool {
-        matches!(self, Self::FileCreatePipeInstance | Self::FileGenericWrite)
     }
 }
 
@@ -241,10 +192,7 @@ pub fn format_sd_notify_payload(state: &ServiceManagerState) -> String {
         ServiceManagerState::Ready => "READY=1\nSTATUS=Ready\n".into(),
         ServiceManagerState::Reloading => "RELOADING=1\nSTATUS=Reloading\n".into(),
         ServiceManagerState::Degraded { reason } => {
-            let safe_reason: String = reason
-                .chars()
-                .filter(|c| *c != '\n' && *c != '\r')
-                .collect();
+            let safe_reason: String = reason.chars().filter(|c| !c.is_control()).collect();
             format!("READY=1\nSTATUS=Degraded: {safe_reason}\n")
         }
         ServiceManagerState::Stopping { .. } => "STOPPING=1\nSTATUS=Stopping\n".into(),
@@ -267,36 +215,48 @@ pub fn parse_systemd_listen_fds(
     if count == 0 {
         return Ok(Vec::new());
     }
-    if let (Some(expected), Some(raw_pid)) = (cfg.expected_pid, cfg.listen_pid_raw.as_deref()) {
-        let listen_pid: u32 = raw_pid
-            .trim()
-            .parse()
-            .map_err(|e| ServiceError::InvalidActivation(format!("invalid LISTEN_PID: {e}")))?;
-        if listen_pid != expected {
-            return Err(ServiceError::InvalidActivation(format!(
-                "LISTEN_PID {listen_pid} does not match process pid {expected}"
-            )));
-        }
+    if count > MAX_SYSTEMD_LISTEN_FDS {
+        return Err(ServiceError::InvalidActivation(format!(
+            "LISTEN_FDS {count} exceeds maximum {MAX_SYSTEMD_LISTEN_FDS}"
+        )));
+    }
+    let expected = cfg.expected_pid.filter(|p| *p != 0).ok_or_else(|| {
+        ServiceError::InvalidActivation("non-zero expected_pid required when LISTEN_FDS > 0".into())
+    })?;
+    let raw_pid = cfg.listen_pid_raw.as_deref().ok_or_else(|| {
+        ServiceError::InvalidActivation("LISTEN_PID is required when LISTEN_FDS > 0".into())
+    })?;
+    let listen_pid: u32 = raw_pid
+        .trim()
+        .parse()
+        .map_err(|e| ServiceError::InvalidActivation(format!("invalid LISTEN_PID: {e}")))?;
+    if listen_pid == 0 || listen_pid != expected {
+        return Err(ServiceError::InvalidActivation(format!(
+            "LISTEN_PID {listen_pid} invalid or does not match expected pid {expected}"
+        )));
     }
 
-    let names: Vec<&str> = cfg
-        .listen_fdnames_raw
-        .as_deref()
-        .map(|s| s.split(':').collect())
-        .unwrap_or_default();
+    let raw_names = cfg.listen_fdnames_raw.as_deref().ok_or_else(|| {
+        ServiceError::InvalidActivation("LISTEN_FDNAMES is required when LISTEN_FDS > 0".into())
+    })?;
+    let names: Vec<&str> = raw_names.split(':').collect();
+    let count_usize = usize::try_from(count)
+        .map_err(|_| ServiceError::InvalidActivation("LISTEN_FDS count overflow".into()))?;
+    if names.len() != count_usize || names.iter().any(|n| n.trim().is_empty()) {
+        return Err(ServiceError::InvalidActivation(format!(
+            "LISTEN_FDNAMES count mismatch or empty entry for LISTEN_FDS={count}"
+        )));
+    }
 
-    let mut adopted = Vec::new();
-    for idx in 0..count {
-        let fd_num = SD_NOTIFY_DEFAULT_PID_BASE.saturating_add(idx);
+    let mut adopted = Vec::with_capacity(count_usize);
+    for (idx, name) in names.into_iter().enumerate() {
+        let idx_u32 = u32::try_from(idx)
+            .map_err(|_| ServiceError::InvalidActivation("LISTEN_FDS index overflow".into()))?;
+        let fd_num = SD_NOTIFY_DEFAULT_PID_BASE.saturating_add(idx_u32);
         let fd_i32 = i32::try_from(fd_num)
-            .map_err(|_| ServiceError::InvalidActivation("LISTEN_FDS overflow".into()))?;
-        let name = names
-            .get(usize::try_from(idx).unwrap_or(usize::MAX))
-            .copied()
-            .filter(|n| !n.is_empty())
-            .unwrap_or("decide");
+            .map_err(|_| ServiceError::InvalidActivation("LISTEN_FDS fd overflow".into()))?;
         adopted.push(AdoptedListener {
-            endpoint_name: name.to_string(),
+            endpoint_name: name.trim().to_string(),
             transport: ListenerTransportKind::UnixSocket,
             descriptor_id: Some(fd_i32),
             path_or_pipe: format!("fd://{fd_i32}"),
@@ -324,80 +284,61 @@ pub fn plan_launchd_listeners(socket_names: &[String]) -> Vec<AdoptedListener> {
     out
 }
 
-pub fn build_named_pipe_dacl(
-    pipe_name: &str,
-    profile: &PipeSecurityProfile,
-    requested_client_rights: &[NamedPipeAccessRight],
-) -> Result<NamedPipeDaclSpec, ServiceError> {
-    if !pipe_name.starts_with(r"\\.\pipe\") || pipe_name.len() <= 9 {
-        return Err(ServiceError::DaclViolation(format!(
-            "invalid Windows named pipe path `{pipe_name}`"
-        )));
-    }
-    for right in requested_client_rights {
-        if right.is_forbidden_for_clients() {
-            return Err(ServiceError::DaclViolation(format!(
-                "client right {:?} is forbidden on endpoint pipes (RFC 0003)",
-                right
-            )));
-        }
-    }
+#[cfg(unix)]
+fn send_systemd_notify_to_socket(raw_sock: &str, payload: &str) -> Result<(), ServiceError> {
+    use std::os::unix::net::UnixDatagram;
 
-    let rights = if requested_client_rights.is_empty() {
-        vec![
-            NamedPipeAccessRight::FileReadData,
-            NamedPipeAccessRight::FileWriteData,
-            NamedPipeAccessRight::FileReadAttributes,
-            NamedPipeAccessRight::ReadControl,
-            NamedPipeAccessRight::Synchronize,
-        ]
-    } else {
-        requested_client_rights.to_vec()
-    };
-
-    let owner_sid = match profile {
-        PipeSecurityProfile::ProtectedService { service_sid } => service_sid.trim(),
-        PipeSecurityProfile::UserSession { user_sid } => user_sid.trim(),
-    };
-    if owner_sid.is_empty() {
-        return Err(ServiceError::DaclViolation(
-            "pipe owner SID cannot be empty".into(),
+    if raw_sock.is_empty() {
+        return Ok(());
+    }
+    if raw_sock.contains('\0') {
+        return Err(ServiceError::NotifyFailed(
+            "NOTIFY_SOCKET contains NUL byte".into(),
         ));
     }
-
-    let client_ace_target = match profile {
-        PipeSecurityProfile::ProtectedService { .. } => "AU",
-        PipeSecurityProfile::UserSession { user_sid } => user_sid.trim(),
-    };
-    let sddl = format!(
-        "O:{owner_sid}D:P(A;;GA;;;SY)(A;;GA;;;{owner_sid})(A;;0x00120083;;;{client_ace_target})"
-    );
-
-    Ok(NamedPipeDaclSpec {
-        pipe_name: pipe_name.to_string(),
-        owner_sid: owner_sid.to_string(),
-        open_mode_flags: PIPE_ACCESS_DUPLEX | PIPE_FLAG_FIRST_PIPE_INSTANCE,
-        pipe_mode_flags: PIPE_REJECT_REMOTE_CLIENTS,
-        client_rights: rights,
-        sddl,
-    })
+    let sock = UnixDatagram::unbound()
+        .map_err(|e| ServiceError::NotifyFailed(format!("unbound unix datagram failed: {e}")))?;
+    if let Some(abstract_name) = raw_sock.strip_prefix('@') {
+        if abstract_name.is_empty() {
+            return Err(ServiceError::NotifyFailed(
+                "empty abstract NOTIFY_SOCKET".into(),
+            ));
+        }
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::linux::net::SocketAddrExt;
+            let addr = std::os::unix::net::SocketAddr::from_abstract_name(abstract_name.as_bytes())
+                .map_err(|e| ServiceError::NotifyFailed(format!("invalid abstract socket: {e}")))?;
+            sock.send_to_addr(payload.as_bytes(), &addr)
+                .map_err(|e| ServiceError::NotifyFailed(format!("sd_notify send failed: {e}")))?;
+            return Ok(());
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            return Err(ServiceError::NotifyFailed(
+                "abstract NOTIFY_SOCKET is only supported on Linux".into(),
+            ));
+        }
+    }
+    if !raw_sock.starts_with('/') {
+        return Err(ServiceError::NotifyFailed(
+            "NOTIFY_SOCKET must be absolute or `@` abstract".into(),
+        ));
+    }
+    sock.send_to(payload.as_bytes(), raw_sock)
+        .map_err(|e| ServiceError::NotifyFailed(format!("sd_notify send failed: {e}")))?;
+    Ok(())
 }
 
 #[cfg(unix)]
 fn send_systemd_notify_from_env(payload: &str) -> Result<(), ServiceError> {
-    use std::os::unix::net::UnixDatagram;
-
-    let Some(sock_path) = std::env::var_os("NOTIFY_SOCKET") else {
+    let Some(sock_os) = std::env::var_os("NOTIFY_SOCKET") else {
         return Ok(());
     };
-    if sock_path.is_empty() {
-        return Ok(());
-    }
-    let sock = UnixDatagram::unbound()
-        .map_err(|e| ServiceError::NotifyFailed(format!("unbound unix datagram failed: {e}")))?;
-    sock.send_to(payload.as_bytes(), sock_path)
-        .map_err(|e| ServiceError::NotifyFailed(format!("sd_notify send failed: {e}")))?;
-    Ok(())
+    let sock_str = sock_os
+        .to_str()
+        .ok_or_else(|| ServiceError::NotifyFailed("NOTIFY_SOCKET is not valid UTF-8".into()))?;
+    send_systemd_notify_to_socket(sock_str, payload)
 }
 
 #[cfg(not(unix))]
@@ -441,7 +382,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_systemd_listen_fds_and_builds_sd_notify_payload() {
+    fn parses_systemd_listen_fds_and_rejects_missing_pid_or_overflow() {
         let cfg = ServiceActivationConfig {
             expected_pid: Some(4242),
             listen_fds_raw: Some("2".into()),
@@ -457,35 +398,74 @@ mod tests {
         assert_eq!(listeners[1].endpoint_name, "local");
         assert_eq!(listeners[1].descriptor_id, Some(4));
 
+        let missing_pid = ServiceActivationConfig {
+            listen_pid_raw: None,
+            ..cfg.clone()
+        };
+        assert!(matches!(
+            parse_systemd_listen_fds(&missing_pid),
+            Err(ServiceError::InvalidActivation(_))
+        ));
+
+        let dos_count = ServiceActivationConfig {
+            listen_fds_raw: Some("4294967295".into()),
+            ..cfg.clone()
+        };
+        assert!(matches!(
+            parse_systemd_listen_fds(&dos_count),
+            Err(ServiceError::InvalidActivation(_))
+        ));
+
+        let missing_expected_pid = ServiceActivationConfig {
+            expected_pid: None,
+            ..cfg.clone()
+        };
+        assert!(matches!(
+            parse_systemd_listen_fds(&missing_expected_pid),
+            Err(ServiceError::InvalidActivation(_))
+        ));
+
+        let zero_pid = ServiceActivationConfig {
+            expected_pid: Some(0),
+            listen_pid_raw: Some("0".into()),
+            ..cfg.clone()
+        };
+        assert!(matches!(
+            parse_systemd_listen_fds(&zero_pid),
+            Err(ServiceError::InvalidActivation(_))
+        ));
+
+        let missing_names = ServiceActivationConfig {
+            listen_fdnames_raw: None,
+            ..cfg
+        };
+        assert!(matches!(
+            parse_systemd_listen_fds(&missing_names),
+            Err(ServiceError::InvalidActivation(_))
+        ));
+
         let notify = format_sd_notify_payload(&ServiceManagerState::Ready);
         assert!(notify.contains("READY=1"));
-    }
-
-    #[test]
-    fn rejects_forbidden_pipe_rights_and_builds_five_right_dacl() {
-        let profile = PipeSecurityProfile::ProtectedService {
-            service_sid: "S-1-5-80-12345".into(),
-        };
-        let err = build_named_pipe_dacl(
-            r"\\.\pipe\grdr-decide",
-            &profile,
-            &[NamedPipeAccessRight::FileGenericWrite],
-        )
-        .unwrap_err();
-        assert!(matches!(err, ServiceError::DaclViolation(_)));
-
-        let err2 = build_named_pipe_dacl(
-            r"\\.\pipe\grdr-decide",
-            &profile,
-            &[NamedPipeAccessRight::FileCreatePipeInstance],
-        )
-        .unwrap_err();
-        assert!(matches!(err2, ServiceError::DaclViolation(_)));
-
-        let spec = build_named_pipe_dacl(r"\\.\pipe\grdr-decide", &profile, &[]).unwrap();
-        assert_eq!(spec.client_rights.len(), 5);
-        assert_ne!(spec.open_mode_flags & PIPE_FLAG_FIRST_PIPE_INSTANCE, 0);
-        assert_ne!(spec.pipe_mode_flags & PIPE_REJECT_REMOTE_CLIENTS, 0);
-        assert!(spec.sddl.contains("O:S-1-5-80-12345"));
+        let degraded = format_sd_notify_payload(&ServiceManagerState::Degraded {
+            reason: "bad\0reason\nREADY=1".into(),
+        });
+        assert!(!degraded.contains('\0'));
+        assert!(!degraded.contains("bad\0"));
+        assert!(!degraded.contains("reason\nREADY=1"));
+        #[cfg(unix)]
+        {
+            assert!(matches!(
+                send_systemd_notify_to_socket("relative.sock", "READY=1\n"),
+                Err(ServiceError::NotifyFailed(_))
+            ));
+            assert!(matches!(
+                send_systemd_notify_to_socket("@", "READY=1\n"),
+                Err(ServiceError::NotifyFailed(_))
+            ));
+            assert!(matches!(
+                send_systemd_notify_to_socket("/tmp/\0evil", "READY=1\n"),
+                Err(ServiceError::NotifyFailed(_))
+            ));
+        }
     }
 }

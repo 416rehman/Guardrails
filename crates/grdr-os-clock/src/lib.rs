@@ -73,7 +73,6 @@ pub trait Clock: Send + Sync {
 #[derive(Debug, Clone)]
 pub struct SystemClock {
     origin: Instant,
-    boot_offset_ns: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -131,10 +130,8 @@ impl Default for SystemClock {
 
 impl SystemClock {
     pub fn new() -> Self {
-        let boot_offset_ns = probe_os_boot_uptime_ns().unwrap_or(0);
         Self {
             origin: Instant::now(),
-            boot_offset_ns,
         }
     }
 
@@ -158,12 +155,8 @@ impl Clock for SystemClock {
     }
 
     fn boot_uptime(&self) -> Result<Duration, ClockError> {
-        if let Some(os_boot_ns) = probe_os_boot_uptime_ns() {
-            return Ok(Duration::from_nanos(os_boot_ns));
-        }
-        Ok(Duration::from_nanos(
-            self.boot_offset_ns.saturating_add(self.elapsed_origin_ns()),
-        ))
+        let os_boot_ns = probe_os_boot_uptime_ns()?;
+        Ok(Duration::from_nanos(os_boot_ns))
     }
 
     fn reading(&self) -> Result<BootClockReading, ClockError> {
@@ -254,8 +247,8 @@ pub fn assess_clock_jump(
     let mono_diff_ns =
         i128::from(current.monotonic.nanos).saturating_sub(i128::from(previous.monotonic.nanos));
 
-    let delta_wall_ms = i64::try_from(wall_diff_ns / NANOS_PER_MS).unwrap_or(i64::MAX);
-    let delta_mono_ms = i64::try_from(mono_diff_ns / NANOS_PER_MS).unwrap_or(i64::MAX);
+    let delta_wall_ms = clamp_i128_to_i64(wall_diff_ns / NANOS_PER_MS);
+    let delta_mono_ms = clamp_i128_to_i64(mono_diff_ns / NANOS_PER_MS);
     let skew_ms = delta_wall_ms.saturating_sub(delta_mono_ms);
     let limit = threshold_ms.max(0);
 
@@ -271,15 +264,56 @@ pub fn assess_clock_jump(
     }
 }
 
-#[cfg(target_os = "linux")]
-fn probe_os_boot_uptime_ns() -> Option<u64> {
-    let raw = std::fs::read_to_string("/proc/uptime").ok()?;
-    parse_proc_uptime_ns(&raw)
+fn clamp_i128_to_i64(val: i128) -> i64 {
+    let clamped = val.clamp(i128::from(i64::MIN), i128::from(i64::MAX));
+    i64::try_from(clamped).unwrap_or(0)
 }
 
-#[cfg(not(target_os = "linux"))]
-fn probe_os_boot_uptime_ns() -> Option<u64> {
-    None
+#[cfg(target_os = "linux")]
+fn probe_os_boot_uptime_ns() -> Result<u64, ClockError> {
+    let raw = std::fs::read_to_string("/proc/uptime")
+        .map_err(|e| ClockError::MonotonicUnavailable(format!("cannot read /proc/uptime: {e}")))?;
+    parse_proc_uptime_ns(&raw)
+        .ok_or_else(|| ClockError::MonotonicUnavailable("invalid /proc/uptime format".into()))
+}
+
+#[cfg(target_os = "windows")]
+#[allow(unsafe_code, reason = "Win32 GetTickCount64 provides host boot uptime")]
+fn probe_os_boot_uptime_ns() -> Result<u64, ClockError> {
+    // SAFETY: GetTickCount64 takes no arguments and has no preconditions.
+    let ms = unsafe { windows_sys::Win32::System::SystemInformation::GetTickCount64() };
+    Ok(ms.saturating_mul(1_000_000))
+}
+
+#[cfg(target_os = "macos")]
+#[allow(
+    unsafe_code,
+    reason = "macOS clock_gettime(CLOCK_UPTIME_RAW) provides host boot uptime"
+)]
+fn probe_os_boot_uptime_ns() -> Result<u64, ClockError> {
+    let mut ts = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: `ts` is valid stack storage passed to POSIX/Darwin `clock_gettime`.
+    let rc = unsafe { libc::clock_gettime(libc::CLOCK_UPTIME_RAW, &mut ts) };
+    if rc != 0 {
+        return Err(ClockError::MonotonicUnavailable(
+            std::io::Error::last_os_error().to_string(),
+        ));
+    }
+    let secs = u64::try_from(ts.tv_sec)
+        .map_err(|_| ClockError::MonotonicUnavailable("negative macOS uptime seconds".into()))?;
+    let nsecs = u64::try_from(ts.tv_nsec)
+        .map_err(|_| ClockError::MonotonicUnavailable("negative macOS uptime nanos".into()))?;
+    Ok(secs.saturating_mul(1_000_000_000).saturating_add(nsecs))
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
+fn probe_os_boot_uptime_ns() -> Result<u64, ClockError> {
+    Err(ClockError::MonotonicUnavailable(
+        "OS boot uptime probe unavailable on target platform".into(),
+    ))
 }
 
 pub fn parse_proc_uptime_ns(raw: &str) -> Option<u64> {
@@ -288,13 +322,16 @@ pub fn parse_proc_uptime_ns(raw: &str) -> Option<u64> {
         Some((s, f)) => (s, f),
         None => (first, ""),
     };
+    if secs_str.is_empty() || !secs_str.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    if !frac_str.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
     let secs = secs_str.parse::<u128>().ok()?;
     let mut frac_ns: u128 = 0;
     let mut scale: u128 = NANOS_PER_SEC / 10;
     for byte in frac_str.bytes().take(9) {
-        if !byte.is_ascii_digit() {
-            return None;
-        }
         let digit = u128::from(byte.saturating_sub(b'0'));
         frac_ns = frac_ns.saturating_add(digit.saturating_mul(scale));
         scale /= 10;
@@ -349,12 +386,15 @@ mod tests {
     }
 
     #[test]
-    fn parses_linux_proc_uptime_precisely() {
+    fn clamps_extreme_negative_i128_deltas_and_rejects_corrupt_uptime() {
+        assert_eq!(clamp_i128_to_i64(i128::MIN), i64::MIN);
+        assert_eq!(clamp_i128_to_i64(i128::MAX), i64::MAX);
         assert_eq!(
             parse_proc_uptime_ns("1234.56 4567.89\n"),
             Some(1_234_560_000_000)
         );
         assert_eq!(parse_proc_uptime_ns("42"), Some(42_000_000_000));
+        assert_eq!(parse_proc_uptime_ns("12.3456789012xyz"), None);
         assert_eq!(parse_proc_uptime_ns("not-a-number"), None);
     }
 }

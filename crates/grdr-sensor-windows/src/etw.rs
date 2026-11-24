@@ -108,6 +108,10 @@ impl EtwProviderKind {
         }
     }
 
+    pub const fn agent_lineage_only(self) -> bool {
+        !matches!(self, Self::KernelProcess | Self::KernelRegistry)
+    }
+
     pub const fn action_class(self) -> ActionClass {
         match self {
             Self::KernelProcess => ActionClass::Exec,
@@ -196,36 +200,50 @@ pub fn normalize_etw_record(
     device_name: &str,
 ) -> EtwNormalizationOutcome {
     // P3: user-mode provider events must match the expected host process and kernel header PID.
-    if record.provider == EtwProviderKind::PowerShellScriptBlock
-        && (!is_powershell_host(&record.process_image)
-            || record.kernel_header_pid != record.claimed_pid)
-    {
-        return EtwNormalizationOutcome::TamperFinding(Finding {
-            id: format!("fnd-etw-spoof-{}", record.kernel_header_pid),
-            title: "ETW user-mode provider PID or host mismatch".into(),
-            class: FindingClass::Tamper,
-            severity: FindingSeverity::High,
-            lifecycle: FindingLifecycle::Open,
-            device_id: device_id.into(),
-            device_name: device_name.into(),
-            session_id: record.session_id.clone(),
-            agent_name: record.agent_name.clone(),
-            rule_id: Some("windows.etw.pid_validation".into()),
-            summary: format!(
-                "PowerShell ETW event rejected: kernel_pid={} claimed_pid={} image={}",
-                record.kernel_header_pid, record.claimed_pid, record.process_image
-            ),
-            target: record.target.clone(),
-            detected_at: record.timestamp,
-        });
+    if record.provider.grade() == EtwProvenanceGrade::ObservedUser {
+        let pid_mismatch = record.kernel_header_pid != record.claimed_pid;
+        let host_mismatch = record.provider == EtwProviderKind::PowerShellScriptBlock
+            && !is_powershell_host(&record.process_image);
+        if pid_mismatch || host_mismatch {
+            return EtwNormalizationOutcome::TamperFinding(Finding {
+                id: format!(
+                    "fnd-etw-spoof-{}-{}",
+                    record.kernel_header_pid,
+                    record.timestamp.as_nanosecond()
+                ),
+                title: "ETW user-mode provider PID or host mismatch".into(),
+                class: FindingClass::Tamper,
+                severity: FindingSeverity::High,
+                lifecycle: FindingLifecycle::Open,
+                device_id: device_id.into(),
+                device_name: device_name.into(),
+                session_id: record.session_id.clone(),
+                agent_name: record.agent_name.clone(),
+                rule_id: Some("windows.etw.pid_validation".into()),
+                summary: format!(
+                    "User-mode ETW event rejected: provider={:?} kernel_pid={} claimed_pid={} image={}",
+                    record.provider,
+                    record.kernel_header_pid,
+                    record.claimed_pid,
+                    record.process_image
+                ),
+                target: record.target.clone(),
+                detected_at: record.timestamp,
+            });
+        }
     }
 
-    if record.provider != EtwProviderKind::KernelProcess && !record.in_agent_lineage {
+    if record.provider.agent_lineage_only() && !record.in_agent_lineage {
         return EtwNormalizationOutcome::DroppedOutOfInterest;
     }
 
     EtwNormalizationOutcome::Attempt(ActionAttempt {
-        id: format!("att-etw-{}-{}", record.kernel_header_pid, record.event_id),
+        id: format!(
+            "att-etw-{}-{}-{}",
+            record.kernel_header_pid,
+            record.event_id,
+            record.timestamp.as_nanosecond()
+        ),
         session_id: record.session_id.clone(),
         device_id: device_id.into(),
         device_name: device_name.into(),
@@ -272,8 +290,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rejects_spoofed_powershell_etw_event_with_tamper_finding() {
-        let spoof = RawEtwRecord {
+    fn rejects_spoofed_powershell_and_dns_client_etw_events_with_tamper_finding() {
+        let ts = Timestamp::from_second(1_700_000_000).unwrap();
+        let spoof_ps = RawEtwRecord {
             provider: EtwProviderKind::PowerShellScriptBlock,
             event_id: 4104,
             kernel_header_pid: 9999,
@@ -284,11 +303,47 @@ mod tests {
             target: "Invoke-Expression".into(),
             session_id: "sess-1".into(),
             agent_name: "claude-code".into(),
-            timestamp: Timestamp::from_second(1_700_000_000).unwrap(),
+            timestamp: ts,
         };
         assert!(matches!(
-            normalize_etw_record(&spoof, "dev-1", "win"),
+            normalize_etw_record(&spoof_ps, "dev-1", "win"),
             EtwNormalizationOutcome::TamperFinding(f) if f.class == FindingClass::Tamper
+        ));
+
+        let spoof_dns = RawEtwRecord {
+            provider: EtwProviderKind::DnsClient,
+            event_id: 3008,
+            kernel_header_pid: 9999,
+            claimed_pid: 4100,
+            parent_pid: 100,
+            process_image: "node.exe".into(),
+            in_agent_lineage: true,
+            target: "exfil.example".into(),
+            session_id: "sess-1".into(),
+            agent_name: "claude-code".into(),
+            timestamp: ts,
+        };
+        assert!(matches!(
+            normalize_etw_record(&spoof_dns, "dev-1", "win"),
+            EtwNormalizationOutcome::TamperFinding(f) if f.class == FindingClass::Tamper
+        ));
+
+        let reg_non_lineage = RawEtwRecord {
+            provider: EtwProviderKind::KernelRegistry,
+            event_id: 1,
+            kernel_header_pid: 555,
+            claimed_pid: 555,
+            parent_pid: 100,
+            process_image: "reg.exe".into(),
+            in_agent_lineage: false,
+            target: r"HKLM\SOFTWARE\Policies\ClaudeCode".into(),
+            session_id: "sess-sys".into(),
+            agent_name: "system".into(),
+            timestamp: ts,
+        };
+        assert!(matches!(
+            normalize_etw_record(&reg_non_lineage, "dev-1", "win"),
+            EtwNormalizationOutcome::Attempt(_)
         ));
     }
 

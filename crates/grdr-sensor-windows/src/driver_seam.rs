@@ -10,6 +10,8 @@ use crate::WindowsSensorError;
 pub const DRIVER_PROTOCOL_MAGIC: [u8; 8] = *b"GRDRWM01";
 pub const DRIVER_PROTOCOL_VERSION: u32 = 1;
 pub const DRIVER_REPLY_DEADLINE_MS: u64 = 50;
+pub const MAX_DRIVER_PAYLOAD_LEN: u32 = 64 * 1024;
+pub const MAX_DRIVER_REPLY_DEADLINE_MS: u32 = 1_000;
 pub const MAX_EARLY_BUGCHECKS: u32 = 2;
 
 #[repr(C)]
@@ -73,6 +75,40 @@ impl Default for DriverProtocolHeader {
     }
 }
 
+impl DriverProtocolHeader {
+    pub fn validate(&self) -> Result<(), WindowsSensorError> {
+        if self.magic != DRIVER_PROTOCOL_MAGIC {
+            return Err(WindowsSensorError::Driver(
+                "invalid Windows driver protocol magic".into(),
+            ));
+        }
+        if self.version != DRIVER_PROTOCOL_VERSION {
+            return Err(WindowsSensorError::Driver(format!(
+                "unsupported Windows driver protocol version {}",
+                self.version
+            )));
+        }
+        if self.message_kind == 0 {
+            return Err(WindowsSensorError::Driver(
+                "driver message_kind must be non-zero".into(),
+            ));
+        }
+        if self.payload_len > MAX_DRIVER_PAYLOAD_LEN {
+            return Err(WindowsSensorError::Driver(format!(
+                "driver payload_len {} exceeds cap {}",
+                self.payload_len, MAX_DRIVER_PAYLOAD_LEN
+            )));
+        }
+        if self.reply_deadline_ms == 0 || self.reply_deadline_ms > MAX_DRIVER_REPLY_DEADLINE_MS {
+            return Err(WindowsSensorError::Driver(format!(
+                "driver reply_deadline_ms {} must be in 1..={}",
+                self.reply_deadline_ms, MAX_DRIVER_REPLY_DEADLINE_MS
+            )));
+        }
+        Ok(())
+    }
+}
+
 impl WindowsDriverBackend for FallbackUserModeDriverSeam {
     fn attachment_kind(&self) -> DriverAttachmentKind {
         DriverAttachmentKind::UserModeOnly
@@ -123,7 +159,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn driver_seam_evaluates_fastpath_floor_and_boot_guard_disables_after_two_bugchecks() {
+    fn driver_seam_validates_header_evaluates_floor_and_disables_after_two_bugchecks() {
+        let mut hdr = DriverProtocolHeader::default();
+        assert!(hdr.validate().is_ok());
+        hdr.magic = *b"BADMAGIC";
+        assert!(hdr.validate().is_err());
+
+        let zero_deadline = DriverProtocolHeader {
+            reply_deadline_ms: 0,
+            ..Default::default()
+        };
+        assert!(zero_deadline.validate().is_err());
+
+        let huge_deadline = DriverProtocolHeader {
+            reply_deadline_ms: MAX_DRIVER_REPLY_DEADLINE_MS + 1,
+            ..Default::default()
+        };
+        assert!(huge_deadline.validate().is_err());
+
+        let huge_payload = DriverProtocolHeader {
+            payload_len: MAX_DRIVER_PAYLOAD_LEN + 1,
+            ..Default::default()
+        };
+        assert!(huge_payload.validate().is_err());
+
         let seam = FallbackUserModeDriverSeam;
         assert_eq!(seam.attachment_kind(), DriverAttachmentKind::UserModeOnly);
         assert_eq!(seam.reply_deadline_ms(), DRIVER_REPLY_DEADLINE_MS);

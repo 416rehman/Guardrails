@@ -3,6 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::WindowsSensorError;
+
 pub const AV_ALTITUDE_MIN: u32 = 320_000;
 pub const AV_ALTITUDE_MAX: u32 = 329_999;
 
@@ -39,20 +41,17 @@ pub enum DevDriveCoverageProbe {
     },
 }
 
-pub fn parse_fsutil_devdrv_output(volume_root: &str, raw: &str) -> DevDriveVolume {
-    let mut trust = DevDriveTrust::Untrusted;
+pub fn parse_fsutil_devdrv_output(
+    volume_root: &str,
+    raw: &str,
+) -> Result<DevDriveVolume, WindowsSensorError> {
+    let mut seen_trust_marker: Option<DevDriveTrust> = None;
     let mut filter_policy = DevDriveFilterPolicy::AllowAll;
     let mut allowed_filters = Vec::new();
 
     for line in raw.lines() {
         let trimmed = line.trim();
         let lower = trimmed.to_ascii_lowercase();
-        if lower.contains("trusted") && !lower.contains("untrusted") {
-            trust = DevDriveTrust::Trusted;
-        }
-        if lower.contains("antivirus") && lower.contains("disallowed") {
-            filter_policy = DevDriveFilterPolicy::DisallowAntivirus;
-        }
         if let Some((_, rest)) = trimmed.split_once(':')
             && lower.starts_with("filters allowed")
         {
@@ -62,15 +61,39 @@ pub fn parse_fsutil_devdrv_output(volume_root: &str, raw: &str) -> DevDriveVolum
                     allowed_filters.push(name.to_string());
                 }
             }
+            continue;
+        }
+
+        if lower.contains("antivirus") && lower.contains("disallowed") {
+            filter_policy = DevDriveFilterPolicy::DisallowAntivirus;
+        }
+        if lower.contains("is not trusted")
+            || lower.contains("is not a trusted developer volume")
+            || lower.contains("trusted: false")
+            || lower.contains("untrusted")
+        {
+            seen_trust_marker = Some(DevDriveTrust::Untrusted);
+        } else if lower.contains("is a trusted developer volume")
+            || lower.contains("trusted: true")
+            || lower.ends_with("is trusted")
+            || lower.ends_with("is trusted.")
+        {
+            seen_trust_marker = Some(DevDriveTrust::Trusted);
         }
     }
 
-    DevDriveVolume {
+    let trust = seen_trust_marker.ok_or_else(|| {
+        WindowsSensorError::DevDrive(format!(
+            "unrecognized fsutil devdrv output for `{volume_root}`"
+        ))
+    })?;
+
+    Ok(DevDriveVolume {
         volume_root: volume_root.to_string(),
         trust,
         filter_policy,
         allowed_filters,
-    }
+    })
 }
 
 pub fn probe_dev_drive_coverage(
@@ -116,7 +139,7 @@ mod tests {
     #[test]
     fn detects_detached_filters_on_trusted_dev_drive() {
         let sample = "Volume D:\\ is a trusted developer volume.\nAntivirus filters are allowed.\nFilters allowed on this volume: None\n";
-        let vol = parse_fsutil_devdrv_output(r"D:\", sample);
+        let vol = parse_fsutil_devdrv_output(r"D:\", sample).unwrap();
         assert_eq!(vol.trust, DevDriveTrust::Trusted);
 
         let probe = probe_dev_drive_coverage(&vol, &[("MsSecFlt", 328010), ("GrdrFilter", 370500)]);
@@ -131,9 +154,27 @@ mod tests {
     }
 
     #[test]
+    fn does_not_misclassify_not_trusted_or_filter_names_as_trusted() {
+        let not_trusted =
+            "Volume E:\\ is not trusted.\nFilters allowed on this volume: TrustedFilter\n";
+        let vol = parse_fsutil_devdrv_output(r"E:\", not_trusted).unwrap();
+        assert_eq!(vol.trust, DevDriveTrust::Untrusted);
+        assert_eq!(vol.allowed_filters, vec!["TrustedFilter"]);
+
+        assert!(matches!(
+            parse_fsutil_devdrv_output(r"F:\", "Error: Access is denied."),
+            Err(WindowsSensorError::DevDrive(_))
+        ));
+        assert!(matches!(
+            parse_fsutil_devdrv_output(r"F:\", ""),
+            Err(WindowsSensorError::DevDrive(_))
+        ));
+    }
+
+    #[test]
     fn allowlisted_filter_reports_full_coverage() {
         let sample = "Volume D:\\ is a trusted developer volume.\nFilters allowed on this volume: GrdrFilter, MsSecFlt\n";
-        let vol = parse_fsutil_devdrv_output(r"D:\", sample);
+        let vol = parse_fsutil_devdrv_output(r"D:\", sample).unwrap();
         let probe = probe_dev_drive_coverage(&vol, &[("MsSecFlt", 328010), ("GrdrFilter", 370500)]);
         assert_eq!(probe, DevDriveCoverageProbe::FullCoverage);
     }

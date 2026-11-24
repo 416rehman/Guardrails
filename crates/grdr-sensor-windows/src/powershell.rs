@@ -72,7 +72,10 @@ pub fn normalize_script_block_4104(
 
     let retained_preview = match capture {
         CaptureLevel::MetadataOnly => String::new(),
-        CaptureLevel::RedactedArguments => truncate_utf8(&event.script_text, REDACTED_MAX_BYTES),
+        CaptureLevel::RedactedArguments => {
+            let redacted = redact_script_arguments(&event.script_text);
+            truncate_utf8(&redacted, REDACTED_MAX_BYTES)
+        }
         CaptureLevel::FullScript => event.script_text.clone(),
     };
 
@@ -103,6 +106,101 @@ pub fn normalize_script_block_4104(
         attempt: Box::new(attempt),
         retained_preview,
     }
+}
+
+fn redact_script_arguments(input: &str) -> String {
+    const SECRET_PREFIXES: &[&str] = &[
+        "sk-",
+        "ghp_",
+        "gho_",
+        "github_pat_",
+        "akia",
+        "aiza",
+        "xoxb-",
+        "xoxp-",
+        "-----begin",
+    ];
+    const SENSITIVE_KEYS: &[&str] = &[
+        "password",
+        "passwd",
+        "token",
+        "secret",
+        "apikey",
+        "api_key",
+        "api-key",
+        "credential",
+        "authorization",
+        "bearer",
+        "basic",
+        "privatekey",
+        "private_key",
+    ];
+
+    let sanitized: String = input
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    let stripped_quotes = strip_quoted_literals(&sanitized);
+    let mut out = Vec::new();
+    let mut redact_next = false;
+
+    for tok in stripped_quotes.split_whitespace() {
+        let lower = tok.to_ascii_lowercase();
+        let trimmed_flag = lower.trim_start_matches('-');
+        if redact_next {
+            out.push("[REDACTED]".to_string());
+            redact_next = false;
+            continue;
+        }
+        if let Some((lhs, _)) = tok.split_once('=') {
+            let lhs_low = lhs.to_ascii_lowercase();
+            if SENSITIVE_KEYS.iter().any(|k| lhs_low.contains(k)) {
+                out.push(format!("{lhs}=[REDACTED]"));
+                continue;
+            }
+        }
+        if SENSITIVE_KEYS
+            .iter()
+            .any(|k| trimmed_flag == *k || trimmed_flag.ends_with(&format!(".{k}")))
+        {
+            out.push(tok.to_string());
+            redact_next = true;
+            continue;
+        }
+        if SECRET_PREFIXES.iter().any(|p| lower.contains(p)) {
+            out.push("[REDACTED]".to_string());
+            continue;
+        }
+        out.push(tok.to_string());
+    }
+    out.join(" ")
+}
+
+fn strip_quoted_literals(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+
+    for ch in input.chars() {
+        if let Some(q) = quote {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' || (q == '\'' && ch == '\'') || ch == '`' {
+                escaped = true;
+            } else if ch == q {
+                quote = None;
+                out.push_str("\"[REDACTED]\"");
+            }
+        } else if ch == '"' || ch == '\'' {
+            quote = Some(ch);
+        } else {
+            out.push(ch);
+        }
+    }
+    if quote.is_some() {
+        out.push_str("\"[REDACTED]\"");
+    }
+    out
 }
 
 fn truncate_utf8(input: &str, max_bytes: usize) -> String {
@@ -142,6 +240,25 @@ mod tests {
                 ..
             } if retained_preview.is_empty()
         ));
+
+        let secret_ev = RawScriptBlockEvent {
+            script_text:
+                "Invoke-RestMethod -Token \"ghp_secret999\" -Headers @{Authorization=\"Bearer sk-secret-1234\"} password=hunter2"
+                    .into(),
+            ..ev.clone()
+        };
+        let redacted =
+            normalize_script_block_4104(&secret_ev, CaptureLevel::RedactedArguments, "d1", "h1");
+        let ScriptBlockNormalization::Accepted {
+            retained_preview, ..
+        } = redacted
+        else {
+            panic!("expected accepted script block");
+        };
+        assert!(retained_preview.contains("Invoke-RestMethod"));
+        assert!(!retained_preview.contains("ghp_secret999"));
+        assert!(!retained_preview.contains("sk-secret-1234"));
+        assert!(!retained_preview.contains("hunter2"));
 
         let bad = RawScriptBlockEvent {
             host_image: "cmd.exe".into(),

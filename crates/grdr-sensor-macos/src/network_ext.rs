@@ -157,7 +157,17 @@ pub fn evaluate_ne_flow(
         };
     }
 
-    let resolved_host = flow.host_name.as_deref().or(flow.tls_sni.as_deref());
+    let resolved_host = flow
+        .host_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            flow.tls_sni
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+        });
     let Some(host) = resolved_host else {
         return match default_policy {
             EgressDefaultPolicy::DefaultDeny => NeFlowVerdict::Drop {
@@ -203,7 +213,7 @@ mod tests {
     }
 
     #[test]
-    fn ne_flow_drops_quic_and_evaluates_opaque_and_sni_hosts() {
+    fn ne_flow_drops_quic_and_treats_blank_host_as_opaque() {
         let quic = NeFlowRecord {
             flow_id: 1,
             agent_name: "claude-code".into(),
@@ -218,18 +228,36 @@ mod tests {
             NeFlowVerdict::Drop { .. }
         ));
 
-        let opaque = NeFlowRecord {
+        let blank_host = NeFlowRecord {
             transport: FlowTransport::Tcp,
-            host_name: None,
+            host_name: Some("   ".into()),
             tls_sni: None,
-            ..quic
+            ..quic.clone()
         };
         assert!(matches!(
-            evaluate_ne_flow(&opaque, &[], EgressDefaultPolicy::DefaultAllow),
-            NeFlowVerdict::AllowOpaqueWithFinding { .. }
+            evaluate_ne_flow(&blank_host, &[], EgressDefaultPolicy::DefaultDeny),
+            NeFlowVerdict::Drop { .. }
         ));
         assert!(matches!(
-            evaluate_ne_flow(&opaque, &[], EgressDefaultPolicy::DefaultDeny),
+            evaluate_ne_flow(&blank_host, &[], EgressDefaultPolicy::DefaultAllow),
+            NeFlowVerdict::AllowOpaqueWithFinding { .. }
+        ));
+
+        let blank_with_sni = NeFlowRecord {
+            host_name: Some("".into()),
+            tls_sni: Some("blocked.example".into()),
+            ..blank_host
+        };
+        let rules = [FloorRuleRef {
+            rule_id: "egress.deny",
+            action_mask: FastActionClass::NetConnect.bit(),
+            prefixes: &[],
+            contains: &["blocked.example"],
+            agents: &[],
+            verdict: FastVerdict::Deny,
+        }];
+        assert!(matches!(
+            evaluate_ne_flow(&blank_with_sni, &rules, EgressDefaultPolicy::DefaultAllow),
             NeFlowVerdict::Drop { .. }
         ));
     }

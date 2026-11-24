@@ -42,20 +42,42 @@ pub fn compute_macos_assurance(
         };
     }
 
+    if !is_macos_os_mediated_class(action_class) {
+        return AssuranceRecord {
+            visibility: Visibility::Claimed,
+            control: ControlStrength::Request,
+            on_failure: OnFailure::Open,
+            tamper: TamperGrade::Admin,
+        };
+    }
+
     let es_active =
         caps.tier == MacOsTier::Tier3EndpointSecurity && caps.es_status == EsClientStatus::Active;
     let ne_active = caps.tier >= MacOsTier::Tier2NetworkExtension
         && caps.content_filter_rung == SlotRung::Enforce;
 
-    if es_active {
-        let (visibility, on_failure) = match action_class {
-            ActionClass::Elevate => (Visibility::Observed, OnFailure::Closed),
-            _ => (Visibility::CrossChecked, OnFailure::Closed),
+    if es_active && action_class != ActionClass::NetConnect {
+        let visibility = match action_class {
+            ActionClass::Elevate => Visibility::Observed,
+            _ => Visibility::CrossChecked,
         };
         return AssuranceRecord {
             visibility,
             control: ControlStrength::MandatoryBoundary,
-            on_failure,
+            on_failure: OnFailure::Closed,
+            tamper: TamperGrade::Admin,
+        };
+    }
+
+    if ne_active && action_class == ActionClass::NetConnect {
+        return AssuranceRecord {
+            visibility: if es_active {
+                Visibility::CrossChecked
+            } else {
+                Visibility::Observed
+            },
+            control: ControlStrength::MandatoryBoundary,
+            on_failure: OnFailure::Open,
             tamper: TamperGrade::Admin,
         };
     }
@@ -77,15 +99,6 @@ pub fn compute_macos_assurance(
         ),
         MacOsContainmentMode::RequestOnly => false,
     };
-
-    if ne_active && action_class == ActionClass::NetConnect {
-        return AssuranceRecord {
-            visibility: Visibility::Observed,
-            control: ControlStrength::MandatoryBoundary,
-            on_failure: OnFailure::Open,
-            tamper: TamperGrade::Admin,
-        };
-    }
 
     AssuranceRecord {
         visibility: Visibility::Claimed,
@@ -113,6 +126,19 @@ pub fn macos_session_level(caps: &MacOsCapabilityFlags) -> AssuranceLevel {
     exec_rec.level().min(file_rec.level()).min(net_rec.level())
 }
 
+const fn is_macos_os_mediated_class(class: ActionClass) -> bool {
+    matches!(
+        class,
+        ActionClass::Exec
+            | ActionClass::FileRead
+            | ActionClass::FileWrite
+            | ActionClass::FileDelete
+            | ActionClass::NetConnect
+            | ActionClass::Elevate
+            | ActionClass::ConfigChange
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,6 +159,10 @@ mod tests {
         assert_eq!(
             compute_macos_assurance(&tier1_request, ActionClass::Exec).visibility,
             Visibility::Claimed
+        );
+        assert_eq!(
+            compute_macos_assurance(&tier1_request, ActionClass::Exec).on_failure,
+            OnFailure::Open
         );
 
         let tier1_wrap_tools = MacOsCapabilityFlags {
@@ -164,20 +194,32 @@ mod tests {
         );
         assert_eq!(macos_session_level(&tier2_ne), AssuranceLevel::Al3Contained);
 
-        let tier3_no_fda = MacOsCapabilityFlags {
+        let tier3_no_ne = MacOsCapabilityFlags {
             tier: MacOsTier::Tier3EndpointSecurity,
-            es_status: EsClientStatus::NotPermittedFda,
+            content_filter_rung: SlotRung::None,
+            es_status: EsClientStatus::Active,
             ..tier2_ne
         };
         assert_eq!(
-            macos_session_level(&tier3_no_fda),
+            compute_macos_assurance(&tier3_no_ne, ActionClass::NetConnect).control,
+            ControlStrength::ScopedBoundary
+        );
+        assert_eq!(
+            compute_macos_assurance(&tier3_no_ne, ActionClass::LlmRequest).level(),
+            AssuranceLevel::Al2Guided
+        );
+        assert_eq!(
+            macos_session_level(&tier3_no_ne),
             AssuranceLevel::Al3Contained
         );
 
-        let tier3_es = MacOsCapabilityFlags {
-            es_status: EsClientStatus::Active,
-            ..tier3_no_fda
+        let tier3_full = MacOsCapabilityFlags {
+            content_filter_rung: SlotRung::Enforce,
+            ..tier3_no_ne
         };
-        assert_eq!(macos_session_level(&tier3_es), AssuranceLevel::Al4Enforced);
+        assert_eq!(
+            macos_session_level(&tier3_full),
+            AssuranceLevel::Al4Enforced
+        );
     }
 }

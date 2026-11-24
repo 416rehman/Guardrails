@@ -51,13 +51,9 @@ pub fn canonicalize_macos_path(raw: &str) -> String {
 }
 
 pub fn generate_sbpl_profile(spec: &SeatbeltProfileSpec) -> Result<String, MacOsSensorError> {
-    if spec.workspace_root.trim().is_empty() || spec.decide_socket_path.trim().is_empty() {
-        return Err(MacOsSensorError::Seatbelt(
-            "workspace_root and decide_socket_path cannot be empty".into(),
-        ));
-    }
-    let workspace = escape_sbpl(&canonicalize_macos_path(&spec.workspace_root));
-    let decide_sock = escape_sbpl(&canonicalize_macos_path(&spec.decide_socket_path));
+    let workspace = validate_and_escape_sbpl_path("workspace_root", &spec.workspace_root)?;
+    let decide_sock =
+        validate_and_escape_sbpl_path("decide_socket_path", &spec.decide_socket_path)?;
 
     let mut lines = vec![
         "(version 1)".to_string(),
@@ -69,12 +65,12 @@ pub fn generate_sbpl_profile(spec: &SeatbeltProfileSpec) -> Result<String, MacOs
     ];
 
     for dir in &spec.state_dirs {
-        let canon = escape_sbpl(&canonicalize_macos_path(dir));
+        let canon = validate_and_escape_sbpl_path("state_dirs", dir)?;
         lines.push(format!("(allow file-write* (subpath \"{canon}\"))"));
     }
 
     for protected in &spec.protected_paths {
-        let canon = escape_sbpl(&canonicalize_macos_path(protected));
+        let canon = validate_and_escape_sbpl_path("protected_paths", protected)?;
         lines.push(format!(
             "(deny file-read* file-write* (subpath \"{canon}\"))"
         ));
@@ -107,7 +103,7 @@ pub fn plan_macos_launch(
     spec: &SeatbeltProfileSpec,
 ) -> Result<SeatbeltLaunchPlan, MacOsSensorError> {
     let lower = agent_kind.trim().to_ascii_lowercase();
-    if lower == "codex" || (lower == "claude-code" && agent_has_own_seatbelt) {
+    if (lower == "codex" || lower == "claude-code") && agent_has_own_seatbelt {
         return Ok(SeatbeltLaunchPlan {
             containment_mode: MacOsContainmentMode::Delegate,
             visibility_is_claimed: true,
@@ -138,8 +134,29 @@ pub fn plan_macos_launch(
     })
 }
 
-fn escape_sbpl(raw: &str) -> String {
-    raw.replace('\\', "\\\\").replace('"', "\\\"")
+fn validate_and_escape_sbpl_path(field: &str, raw: &str) -> Result<String, MacOsSensorError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || !trimmed.starts_with('/') {
+        return Err(MacOsSensorError::Seatbelt(format!(
+            "{field} `{raw}` must be a non-empty absolute path"
+        )));
+    }
+    if trimmed.chars().any(|c| c == '\0' || c.is_control()) {
+        return Err(MacOsSensorError::Seatbelt(format!(
+            "{field} contains forbidden NUL or control characters"
+        )));
+    }
+    if trimmed
+        .split('/')
+        .skip(1)
+        .any(|seg| seg.is_empty() || seg == "." || seg == "..")
+    {
+        return Err(MacOsSensorError::Seatbelt(format!(
+            "{field} `{raw}` contains invalid `.`, `..`, or empty segments"
+        )));
+    }
+    let canon = canonicalize_macos_path(trimmed);
+    Ok(canon.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 #[cfg(test)]
@@ -173,5 +190,58 @@ mod tests {
         assert_eq!(plan.containment_mode, MacOsContainmentMode::Delegate);
         assert!(plan.visibility_is_claimed);
         assert!(plan.on_failure_closed);
+
+        let codex_unboxed = plan_macos_launch("codex", false, &spec).unwrap();
+        assert_eq!(
+            codex_unboxed.containment_mode,
+            MacOsContainmentMode::WrapAgent
+        );
+        assert!(codex_unboxed.profile_sbpl.is_some());
+
+        let mut quoted_spec = spec;
+        quoted_spec.state_dirs = vec![r#"/Users/dev/dir "quoted"\sub"#.into()];
+        let quoted_sbpl = generate_sbpl_profile(&quoted_spec).unwrap();
+        assert!(quoted_sbpl.contains(r#"/Users/dev/dir \"quoted\"\\sub"#));
+    }
+
+    #[test]
+    fn rejects_sbpl_nul_newline_traversal_and_empty_paths() {
+        let base = SeatbeltProfileSpec {
+            session_id: "sess-bad".into(),
+            workspace_root: "/Users/dev/repo".into(),
+            state_dirs: vec![],
+            protected_paths: vec![],
+            decide_socket_path: "/Library/Application Support/grdr/run/decide.sock".into(),
+            proxy_port: DEFAULT_PROXY_LOOPBACK_PORT,
+            deny_elevation_binaries: true,
+        };
+
+        let mut nul_spec = base.clone();
+        nul_spec.workspace_root = "/Users/dev/repo\0evil".into();
+        assert!(matches!(
+            generate_sbpl_profile(&nul_spec),
+            Err(MacOsSensorError::Seatbelt(_))
+        ));
+
+        let mut newline_spec = base.clone();
+        newline_spec.state_dirs = vec!["/Users/dev\n(allow network*)".into()];
+        assert!(matches!(
+            generate_sbpl_profile(&newline_spec),
+            Err(MacOsSensorError::Seatbelt(_))
+        ));
+
+        let mut traversal_spec = base.clone();
+        traversal_spec.protected_paths = vec!["/Users/dev/../etc".into()];
+        assert!(matches!(
+            generate_sbpl_profile(&traversal_spec),
+            Err(MacOsSensorError::Seatbelt(_))
+        ));
+
+        let mut empty_dir_spec = base;
+        empty_dir_spec.state_dirs = vec!["".into()];
+        assert!(matches!(
+            generate_sbpl_profile(&empty_dir_spec),
+            Err(MacOsSensorError::Seatbelt(_))
+        ));
     }
 }

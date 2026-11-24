@@ -12,6 +12,7 @@ renders = "none"
 
 [dependencies]
 grdr-model = { workspace = true }
+grdr-os-service = { workspace = true }
 grdr-wire = { workspace = true }
 jiff = { workspace = true }
 serde = { workspace = true }

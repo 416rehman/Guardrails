@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use grdr_model::ActionClass;
 
 use crate::WindowsSensorError;
+use crate::wfp::validate_sid_syntax;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -88,14 +89,39 @@ pub fn plan_tool_containment(
     protected_paths: &[String],
     memory_limit_bytes: u64,
 ) -> Result<ToolContainmentPlan, WindowsSensorError> {
-    if session_id.trim().is_empty() || sandbox_sid.trim().is_empty() {
+    let clean_session = session_id.trim();
+    if clean_session.is_empty()
+        || clean_session.len() > 128
+        || !clean_session
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(WindowsSensorError::Containment(format!(
+            "invalid containment session_id `{session_id}`"
+        )));
+    }
+    let clean_ws = workspace_root.trim();
+    if clean_ws.is_empty() || clean_ws.chars().any(|c| c == '\0' || c.is_control()) {
         return Err(WindowsSensorError::Containment(
-            "session_id and sandbox_sid cannot be empty".into(),
+            "workspace_root must be non-empty and control-char free".into(),
         ));
     }
+    for path in protected_paths {
+        if path.trim().is_empty() || path.chars().any(|c| c == '\0' || c.is_control()) {
+            return Err(WindowsSensorError::Containment(format!(
+                "invalid protected path `{path}`"
+            )));
+        }
+    }
+    if memory_limit_bytes == 0 {
+        return Err(WindowsSensorError::Containment(
+            "memory_limit_bytes must be non-zero".into(),
+        ));
+    }
+    validate_sid_syntax(sandbox_sid).map_err(|e| WindowsSensorError::Containment(e.to_string()))?;
 
     let job = JobObjectPlan {
-        job_name: format!("grdr-job-{session_id}"),
+        job_name: format!("grdr-job-{clean_session}"),
         no_breakaway: true,
         kill_on_close: true,
         active_process_limit: None,
@@ -104,8 +130,8 @@ pub fn plan_tool_containment(
 
     let token = WriteRestrictedTokenPlan {
         principal_kind,
-        sandbox_sid: sandbox_sid.to_string(),
-        granted_write_paths: vec![workspace_root.to_string()],
+        sandbox_sid: sandbox_sid.trim().to_string(),
+        granted_write_paths: vec![workspace_root.trim().to_string()],
         deny_elevate: true,
     };
 
@@ -113,7 +139,7 @@ pub fn plan_tool_containment(
         .iter()
         .map(|path| DenyAcePlan {
             target_path: path.clone(),
-            sandbox_sid: sandbox_sid.to_string(),
+            sandbox_sid: sandbox_sid.trim().to_string(),
             deny_read_write: true,
             deny_execute: true,
         })
@@ -142,7 +168,56 @@ mod tests {
     }
 
     #[test]
-    fn plans_job_token_and_execute_deny_aces() {
+    fn plans_job_token_and_execute_deny_aces_and_rejects_invalid_inputs() {
+        assert!(
+            plan_tool_containment(
+                "s-1",
+                LaunchRoute::GrdrRun,
+                SandboxPrincipalKind::AppContainer,
+                "not-a-sid",
+                r"D:\repo",
+                &[],
+                1024,
+            )
+            .is_err()
+        );
+        assert!(
+            plan_tool_containment(
+                r"evil\..\job",
+                LaunchRoute::GrdrRun,
+                SandboxPrincipalKind::AppContainer,
+                "S-1-15-2-42",
+                r"D:\repo",
+                &[],
+                1024,
+            )
+            .is_err()
+        );
+        assert!(
+            plan_tool_containment(
+                "s-1",
+                LaunchRoute::GrdrRun,
+                SandboxPrincipalKind::AppContainer,
+                "S-1-15-2-42",
+                "",
+                &[],
+                1024,
+            )
+            .is_err()
+        );
+        assert!(
+            plan_tool_containment(
+                "s-1",
+                LaunchRoute::GrdrRun,
+                SandboxPrincipalKind::AppContainer,
+                "S-1-15-2-42",
+                r"D:\repo",
+                &[],
+                0,
+            )
+            .is_err()
+        );
+
         let plan = plan_tool_containment(
             "s-win-1",
             LaunchRoute::GrdrRun,
