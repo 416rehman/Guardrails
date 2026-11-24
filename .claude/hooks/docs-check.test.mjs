@@ -39,13 +39,13 @@ test("checkWebStack rejects unapproved frameworks, SSR tools, and Node DB ORMs",
   ];
 
   for (const [pkg, version] of banned) {
-    const manifest = JSON.stringify({
-      name: "@grdr/console",
-      dependencies: {
-        react: "^19.1.0",
-        [pkg]: version,
-      },
-    });
+    const manifest = `{
+      "name": "@grdr/console",
+      "dependencies": {
+        "react": "^19.1.0",
+        "${pkg}": "${version}"
+      }
+    }`;
     const found = checkWebStack("web/apps/console/package.json", manifest);
     assert.ok(
       found.some((msg) => msg.includes(`"${pkg}"`) && msg.includes("D-33/D-42")),
@@ -55,13 +55,13 @@ test("checkWebStack rejects unapproved frameworks, SSR tools, and Node DB ORMs",
 });
 
 test("checkWebStack catches banned packages in devDependencies and partial edit_file snippets", () => {
-  const devManifest = JSON.stringify({
-    name: "grdr-web-workspace",
-    devDependencies: {
-      vite: "^6.3.0",
-      prisma: "^6.0.0",
-    },
-  });
+  const devManifest = `{
+    "name": "grdr-web-workspace",
+    "devDependencies": {
+      "vite": "^6.3.0",
+      "prisma": "^6.0.0"
+    }
+  }`;
   const devFound = checkWebStack("web/package.json", devManifest);
   assert.equal(devFound.length, 1);
   assert.match(devFound[0], /"prisma"/);
@@ -85,25 +85,25 @@ test("checkWebStack catches banned packages in devDependencies and partial edit_
 });
 
 test("checkWebStack allows approved Vite, React 19, Astryx, TanStack, and visualization packages", () => {
-  const validManifest = JSON.stringify({
-    name: "@grdr/console",
-    dependencies: {
+  const validManifest = `{
+    "name": "@grdr/console",
+    "dependencies": {
       "@astryxdesign/core": "0.7.17",
       "@grdr/ui": "workspace:*",
       "@tanstack/react-router": "^1.120.0",
       "@ui-sdk/react": "0.1.0-beta.16",
       "@xyflow/react": "^13.0.3",
-      codemirror: "^6.0.1",
-      echarts: "6.1.0",
+      "codemirror": "^6.0.1",
+      "echarts": "6.1.0",
       "openapi-fetch": "^0.13.0",
-      react: "^19.1.0",
-      "react-dom": "^19.1.0",
+      "react": "^19.1.0",
+      "react-dom": "^19.1.0"
     },
-    devDependencies: {
-      vite: "^6.3.0",
-      vitest: "^4.1.12",
-    },
-  });
+    "devDependencies": {
+      "vite": "^6.3.0",
+      "vitest": "^4.1.12"
+    }
+  }`;
   assert.deepEqual(checkWebStack("web/apps/console/package.json", validManifest), []);
 });
 
