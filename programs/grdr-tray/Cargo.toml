@@ -1,0 +1,22 @@
+[package]
+name = "grdr-tray"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[package.metadata.grdr]
+layer = 4
+privilege = "none"
+surface = "public"
+renders = "none"
+
+[dependencies]
+clap = { workspace = true }
+grdr-strings = { workspace = true }
+grdr-ui-model = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

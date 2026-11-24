@@ -89,15 +89,15 @@ created = true
 
 [crates.grdr-strings]
 layer = 2
-created = false
+created = true
 
 [crates.grdr-messages]
 layer = 2
-created = false
+created = true
 
 [crates.grdr-ui-model]
 layer = 3
-created = false
+created = true
 
 [crates.grdr-sensor-linux]
 layer = 3
@@ -205,7 +205,7 @@ created = false
 
 [crates.grdr-approve]
 layer = 4
-created = false
+created = true
 
 [crates.grdr-proxy]
 layer = 4
@@ -221,11 +221,13 @@ created = false
 
 [crates.grdr-tray]
 layer = 4
-created = false
+created = true
 
 [crates.grdr-desktop]
 layer = 4
-created = false
+created = true
+member = false
+manifest = "desktop/grdr-desktop/Cargo.toml"
 
 [crates.grdr-server]
 layer = 4

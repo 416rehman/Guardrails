@@ -1,0 +1,11 @@
+# Pinned Rune upstream mirror lock (`docs/design/28-desktop-and-developer-experience.md` section 2)
+[upstream]
+repo = "https://github.com/anomalyco/rune.git"
+rev = "ec399fdccaac12aba3b639cde54189eecad4b89c"
+rust_toolchain = "1.99.1"
+
+[policy]
+soak_hours = 48
+max_patch_count = 10
+max_patch_lines = 1500
+release_tooling_default = false
