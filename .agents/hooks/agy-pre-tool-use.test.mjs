@@ -258,3 +258,38 @@ test("enforces beta no-backward-compat, no-stopgap, and no-speculative rules in 
     [],
   );
 });
+
+test("enforces grdr-structure S1-S6, interface, commit, and pnpm-only rules via Antigravity PreToolUse", () => {
+  const npmDeny = handleHookPayload(
+    JSON.stringify({
+      toolCall: { name: "run_command", args: { CommandLine: "npx vitest run" } },
+      cwd: "D:/repo",
+    }),
+  );
+  assert.equal(npmDeny.decision, "deny");
+  assert.match(npmDeny.reason, /use pnpm instead of "npx"/);
+
+  const commitDeny = handleHookPayload(
+    JSON.stringify({
+      toolCall: { name: "run_command", args: { CommandLine: 'git commit -m "bad msg"' } },
+      cwd: process.cwd(),
+    }),
+  );
+  assert.equal(commitDeny.decision, "deny");
+  assert.match(commitDeny.reason, /Conventional Commits/);
+
+  const rustDeny = handleHookPayload(
+    JSON.stringify({
+      toolCall: {
+        name: "edit_file",
+        args: {
+          Path: "D:/repo/crates/grdr-core/src/lib.rs",
+          Replacement: "pub fn bad(x: Option<u8>) -> u8 { x.unwrap() }",
+        },
+      },
+      cwd: "D:/repo",
+    }),
+  );
+  assert.equal(rustDeny.decision, "deny");
+  assert.match(rustDeny.reason, /S6/);
+});
