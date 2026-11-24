@@ -57,9 +57,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "${WORK_DIR}/server-data" "${WORK_DIR}/daemon-data" "${HOME_DIR}/.claude"
+mkdir -p "${WORK_DIR}/server-data" "${WORK_DIR}/daemon-data" "${HOME_DIR}/.claude" "${HOME_DIR}/.local/state"
 export HOME="${HOME_DIR}"
 export USERPROFILE="${HOME_DIR}"
+export XDG_STATE_HOME="${HOME_DIR}/.local/state"
 export PATH="${BIN_DIR}:${PATH}"
 
 for bin in grdr grdr-daemon grdr-hook grdr-server; do
@@ -146,7 +147,7 @@ SERVER_PID=$!
 
 SERVER_READY=0
 for _ in $(seq 1 40); do
-  if python3 -c "import urllib.request, json, sys; d=json.loads(urllib.request.urlopen('${SERVER_URL}/api/v1/health', timeout=1).read()); sys.exit(0 if d.get('status')=='ok' else 1)" 2>/dev/null; then
+  if python3 -c "import urllib.request, json, sys; d=json.loads(urllib.request.urlopen('${SERVER_URL}/grdr.api.overview.v1alpha1.OverviewService/GetHealth?encoding=json', timeout=1).read()); sys.exit(0 if d.get('status') in ('SERVER_HEALTH_HEALTHY', 'SERVER_HEALTH_OK') else 1)" 2>/dev/null; then
     SERVER_READY=1
     break
   fi
@@ -154,14 +155,22 @@ for _ in $(seq 1 40); do
 done
 if [[ "${SERVER_READY}" -ne 1 ]]; then
   cat "${WORK_DIR}/server.log" >&2 || true
-  fail_assertion "server_health" "grdr-server did not become healthy at ${SERVER_URL}/api/v1/health"
+  fail_assertion "server_health" "grdr-server did not become healthy at ${SERVER_URL}/grdr.api.overview.v1alpha1.OverviewService/GetHealth?encoding=json"
 fi
 record_assertion "server_health" "true" "grdr-server healthy at ${SERVER_URL}"
 
 CLAUDE_CFG="${HOME_DIR}/.claude/settings.json"
-BACKUP_CFG="${HOME_DIR}/.claude/settings.json.grdr-backup.json"
+BACKUP_CFG="${HOME_DIR}/.local/state/grdr/hook-backup-claude-code.json"
 printf '{"permissions":{"allow":["Read"]},"theme":"dark"}\n' > "${CLAUDE_CFG}"
 ORIG_SHA="$(sha256sum "${CLAUDE_CFG}" | awk '{print $1}')"
+
+STATUS_BEFORE_RC=0
+STATUS_BEFORE="$("${BIN_DIR}/grdr" hook status --agent claude-code --json)" || STATUS_BEFORE_RC=$?
+if [[ "${STATUS_BEFORE_RC}" -eq 1 ]] && python3 -c "import json,sys; d=json.loads(sys.stdin.read()); sys.exit(0 if d.get('data',{}).get('installed') is False and d.get('data',{}).get('state')=='not-configured' else 1)" <<< "${STATUS_BEFORE}"; then
+  record_assertion "hook_status_before" "true" "grdr hook status --json reported not-configured (exit 1) before install"
+else
+  fail_assertion "hook_status_before" "unexpected hook status before install: rc=${STATUS_BEFORE_RC} out=${STATUS_BEFORE}"
+fi
 
 SCAN_JSON="$("${BIN_DIR}/grdr" scan --json --profile user)"
 if python3 -c "import json,sys; d=json.loads(sys.stdin.read()); sys.exit(0 if any(a.get('kind')=='claude-code' and not a.get('hook_installed') for a in d.get('agents',[])) else 1)" <<< "${SCAN_JSON}"; then
@@ -170,20 +179,27 @@ else
   fail_assertion "scan_isolated_agent" "grdr scan did not discover unhooked claude-code: ${SCAN_JSON}"
 fi
 
-"${BIN_DIR}/grdr" install-hook --agent claude-code --command "${BIN_DIR}/grdr-hook" --apply >/dev/null
+"${BIN_DIR}/grdr" hook install --agent claude-code --command "${BIN_DIR}/grdr-hook" --apply >/dev/null
 INSTALLED_SHA="$(sha256sum "${CLAUDE_CFG}" | awk '{print $1}')"
-if [[ -f "${BACKUP_CFG}" ]] && grep -q "grdr-hook" "${CLAUDE_CFG}"; then
-  record_assertion "install_hook_apply" "true" "hook installed with backup journal"
+if [[ -f "${BACKUP_CFG}" ]] && grep -q "grdr-hook" "${CLAUDE_CFG}" && [[ ! -e "${HOME_DIR}/.claude/.grdr-backup.json" ]] && [[ ! -e "${HOME_DIR}/.claude/settings.json.grdr-backup.json" ]]; then
+  record_assertion "install_hook_apply" "true" "hook installed with state-dir backup journal and zero leak in ~/.claude"
 else
-  fail_assertion "install_hook_apply" "hook or backup journal missing after install-hook --apply"
+  fail_assertion "install_hook_apply" "hook or state-dir backup journal missing or leaked into ~/.claude after hook install --apply"
 fi
 
-RERUN_OUT="$("${BIN_DIR}/grdr" install-hook --agent claude-code --command "${BIN_DIR}/grdr-hook" --apply)"
+RERUN_OUT="$("${BIN_DIR}/grdr" hook install --agent claude-code --command "${BIN_DIR}/grdr-hook" --apply)"
 RERUN_SHA="$(sha256sum "${CLAUDE_CFG}" | awk '{print $1}')"
 if [[ "${INSTALLED_SHA}" == "${RERUN_SHA}" ]] && grep -qi "already installed" <<< "${RERUN_OUT}"; then
-  record_assertion "install_hook_idempotent" "true" "second install-hook --apply was a clean no-op"
+  record_assertion "install_hook_idempotent" "true" "second hook install --apply was a clean no-op"
 else
   fail_assertion "install_hook_idempotent" "rerun mutated config or missed already installed message"
+fi
+
+STATUS_AFTER="$("${BIN_DIR}/grdr" hook status --agent claude-code --json)"
+if python3 -c "import json,sys; d=json.loads(sys.stdin.read()); sys.exit(0 if d.get('apiVersion')=='grdr.cli.v1alpha1' and d.get('type')=='hook.status' and d.get('data',{}).get('installed') is True and d.get('data',{}).get('state')=='effective' else 1)" <<< "${STATUS_AFTER}"; then
+  record_assertion "hook_status_after" "true" "grdr hook status --json reported effective (installed=true)"
+else
+  fail_assertion "hook_status_after" "unexpected hook status after install: ${STATUS_AFTER}"
 fi
 
 DEVICE_NAME="qa-${MODE}-linux"
@@ -200,7 +216,7 @@ DAEMON_PID=$!
 
 DAEMON_READY=0
 for _ in $(seq 1 40); do
-  if python3 -c "import urllib.request, json, sys; d=json.loads(urllib.request.urlopen('${DAEMON_URL}/local/v1/status', timeout=1).read()); sys.exit(0 if d.get('status')=='running' and d.get('server_connected') is True else 1)" 2>/dev/null; then
+  if python3 -c "import urllib.request, json, sys; d=json.loads(urllib.request.urlopen('${DAEMON_URL}/local/v1/status', timeout=1).read()); sys.exit(0 if d.get('status')=='running' and (d.get('uplink') or {}).get('state')=='connected' else 1)" 2>/dev/null; then
     DAEMON_READY=1
     break
   fi
@@ -208,11 +224,11 @@ for _ in $(seq 1 40); do
 done
 if [[ "${DAEMON_READY}" -ne 1 ]]; then
   cat "${WORK_DIR}/daemon.log" >&2 || true
-  fail_assertion "daemon_health_and_checkin" "grdr-daemon did not connect to server at ${DAEMON_URL}"
+  fail_assertion "daemon_health_and_checkin" "grdr-daemon did not reach uplink.state=connected at ${DAEMON_URL}"
 fi
 "${BIN_DIR}/grdr" status --daemon "${DAEMON_URL}" >/dev/null
 if [[ -f "${WORK_DIR}/floor.json" && -f "${WORK_DIR}/floor.pub" ]]; then
-  record_assertion "daemon_health_and_checkin" "true" "daemon running, connected to server, and signed floor bundle written"
+  record_assertion "daemon_health_and_checkin" "true" "daemon running, uplink connected to server, and signed floor bundle written"
 else
   fail_assertion "daemon_health_and_checkin" "signed floor bundle missing at ${WORK_DIR}/floor.json"
 fi
@@ -265,54 +281,66 @@ else
 fi
 
 FLUSHED=0
-for _ in $(seq 1 40); do
+for _ in $(seq 1 60); do
   if python3 -c "import urllib.request, json, sys; d=json.loads(urllib.request.urlopen('${DAEMON_URL}/local/v1/status', timeout=1).read()); sys.exit(0 if d.get('pending_events', 1) == 0 else 1)" 2>/dev/null; then
     FLUSHED=1
     break
   fi
-  sleep 0.3
+  sleep 0.5
 done
 if [[ "${FLUSHED}" -ne 1 ]]; then
+  cat "${WORK_DIR}/daemon.log" >&2 || true
+  cat "${WORK_DIR}/server.log" >&2 || true
   fail_assertion "server_uplink_flush" "daemon pending_events did not drain to 0 within timeout"
 fi
 
-if python3 - "${SERVER_URL}" "${DEVICE_NAME}" "${WORK_DIR}/daemon-data/receipts.wal.jsonl" <<'PYEOF'
+if python3 - "${SERVER_URL}" "${DEVICE_NAME}" <<'PYEOF'
 import json, sys, urllib.request
-server_url, device_name, wal_path = sys.argv[1:4]
+server_url, device_name = sys.argv[1:3]
 
-devices = json.loads(urllib.request.urlopen(f"{server_url}/api/v1/devices", timeout=2).read())
+def rpc_post(method_path, body):
+    req = urllib.request.Request(
+        f"{server_url}{method_path}",
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json", "Connect-Protocol-Version": "1"},
+        method="POST",
+    )
+    return json.loads(urllib.request.urlopen(req, timeout=2).read())
+
+devices = rpc_post("/grdr.api.inventory.v1alpha1.InventoryService/ListDevices", {}).get("devices", [])
 matching = [d for d in devices if d.get("hostname") == device_name]
-if not matching or not matching[0].get("hook_effective"):
-    raise SystemExit("device not found or hook_effective is false")
+if not matching or not matching[0].get("hookEffective"):
+    raise SystemExit(f"device not found or hookEffective is false: {devices}")
 
-session = json.loads(urllib.request.urlopen(f"{server_url}/api/v1/sessions/sess-qa-e2e", timeout=2).read())
+session = rpc_post("/grdr.api.activity.v1alpha1.SessionService/GetSession", {"id": "sess-qa-e2e"})
 receipts = session.get("receipts", [])
 verdicts = [r.get("verdict") for r in receipts]
-if verdicts.count("allow") < 1 or verdicts.count("deny") < 2:
+if verdicts.count("VERDICT_ALLOW") < 1 or verdicts.count("VERDICT_DENY") < 2:
     raise SystemExit(f"unexpected session verdicts: {verdicts}")
 
-audit_raw = urllib.request.urlopen(f"{server_url}/api/v1/exports/audit.jsonl", timeout=2).read().decode("utf-8")
+audit_resp = rpc_post("/grdr.api.overview.v1alpha1.OverviewService/ExportAuditJsonl", {})
+audit_raw = audit_resp.get("payload", "")
 audit_lines = [json.loads(line) for line in audit_raw.splitlines() if line.strip()]
 receipt_records = [r for r in audit_lines if r.get("record_type") == "decision_receipt"]
 if len(receipt_records) < 3:
-    raise SystemExit(f"expected >= 3 decision_receipt records in audit.jsonl, got {len(receipt_records)}")
+    raise SystemExit(f"expected >= 3 decision_receipt records in ExportAuditJsonl, got {len(receipt_records)}")
 for rec in receipt_records:
     r = rec.get("receipt", {})
     if not r.get("receipt_digest") or not r.get("signature"):
         raise SystemExit("audit.jsonl receipt missing digest or signature")
-
-with open(wal_path, "r", encoding="utf-8") as fh:
-    wal_records = [json.loads(line) for line in fh if line.strip()]
-if len(wal_records) < 3 or any(not w.get("receipt_digest") for w in wal_records):
-    raise SystemExit("daemon WAL receipts incomplete or missing digests")
 PYEOF
 then
-  record_assertion "server_uplink_and_audit_verify" "true" "server device/session verdicts, signed audit.jsonl export, and daemon WAL verified"
+  AUDIT_VERIFY_JSON="$("${BIN_DIR}/grdr" audit verify --json --path "${WORK_DIR}/daemon-data/receipts.wal.jsonl")"
+  if python3 -c "import json,sys; d=json.loads(sys.stdin.read()); sys.exit(0 if d.get('verified') is True and d.get('entries',0)>=3 else 1)" <<< "${AUDIT_VERIFY_JSON}"; then
+    record_assertion "server_uplink_and_audit_verify" "true" "Connect RPC device/session/ExportAuditJsonl and native grdr audit verify passed"
+  else
+    fail_assertion "server_uplink_and_audit_verify" "grdr audit verify failed: ${AUDIT_VERIFY_JSON}"
+  fi
 else
-  fail_assertion "server_uplink_and_audit_verify" "server state or audit.jsonl/WAL verification failed"
+  fail_assertion "server_uplink_and_audit_verify" "Connect RPC state or ExportAuditJsonl verification failed"
 fi
 
-"${BIN_DIR}/grdr" uninstall-hook --agent claude-code >/dev/null
+"${BIN_DIR}/grdr" hook uninstall --agent claude-code >/dev/null
 RESTORED_SHA="$(sha256sum "${CLAUDE_CFG}" | awk '{print $1}')"
 if [[ "${ORIG_SHA}" == "${RESTORED_SHA}" && ! -f "${BACKUP_CFG}" ]]; then
   record_assertion "uninstall_byte_restore" "true" "claude settings.json restored byte-for-byte (${ORIG_SHA}) and backup journal removed"

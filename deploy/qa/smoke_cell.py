@@ -2,7 +2,6 @@
 # SPDX-FileCopyrightText: The Guardrails ADR Authors
 """Smoke cell driver for .github/install-smoke/smoke.py using real compiled binaries."""
 
-import base64
 import ctypes
 import hashlib
 import json
@@ -11,11 +10,6 @@ import pathlib
 import shutil
 import subprocess
 import sys
-
-CLI_STATUS_TEMPLATE = (
-    '{{"apiVersion":"grdr.cli.v1alpha1","type":"hook.status",'
-    '"data":{{"agent":"claude-code","state":"{state}","installed":{installed}}}}}'
-)
 
 
 def _is_elevated() -> bool:
@@ -45,16 +39,17 @@ def _layout() -> dict[str, pathlib.Path]:
             "ours_state": ours_state,
             "bin_dir": bin_dir,
             "bin_link_dir": bin_dir,
-            "bin_link": bin_dir / "grdr.cmd",
-            "grdr_wrapper": bin_dir / "grdr.cmd",
-            "grdr_cli": bin_dir / "grdr-cli.exe",
+            "bin_link": bin_dir / "grdr.exe",
+            "grdr_bin": bin_dir / "grdr.exe",
             "hook_bin": bin_dir / "grdr-hook.exe",
             "daemon_bin": bin_dir / "grdr-daemon.exe",
-            "journal": ours_state / "journal.json",
+            "journal": ours_state / "install-dirs.json",
+            "hook_journal": ours_state / "hook-backup-claude-code.json",
             "claude_settings": home / ".claude" / "settings.json",
         }
     ours_share = home / ".local" / "share" / "grdr"
-    ours_state = home / ".local" / "state" / "grdr"
+    xdg_state = os.environ.get("XDG_STATE_HOME")
+    ours_state = (pathlib.Path(xdg_state) / "grdr") if xdg_state else (home / ".local" / "state" / "grdr")
     bin_dir = ours_share / "bin"
     bin_link_dir = home / ".local" / "bin"
     return {
@@ -64,11 +59,11 @@ def _layout() -> dict[str, pathlib.Path]:
         "bin_dir": bin_dir,
         "bin_link_dir": bin_link_dir,
         "bin_link": bin_link_dir / "grdr",
-        "grdr_wrapper": bin_dir / "grdr",
-        "grdr_cli": bin_dir / "grdr-cli",
+        "grdr_bin": bin_dir / "grdr",
         "hook_bin": bin_dir / "grdr-hook",
         "daemon_bin": bin_dir / "grdr-daemon",
-        "journal": ours_state / "journal.json",
+        "journal": ours_state / "install-dirs.json",
+        "hook_journal": ours_state / "hook-backup-claude-code.json",
         "claude_settings": home / ".claude" / "settings.json",
     }
 
@@ -81,53 +76,6 @@ def _copy_if_changed(src: pathlib.Path, dst: pathlib.Path) -> None:
     dst.write_bytes(src_bytes)
     if os.name != "nt":
         dst.chmod(0o755)
-
-
-def _write_text_if_changed(dst: pathlib.Path, content: str, executable: bool) -> None:
-    raw = content.encode("utf-8")
-    if dst.is_file() and dst.read_bytes() == raw:
-        return
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_bytes(raw)
-    if executable and os.name != "nt":
-        dst.chmod(0o755)
-
-
-def _posix_wrapper_script() -> str:
-    installed_json = CLI_STATUS_TEMPLATE.format(state="effective", installed="true")
-    missing_json = CLI_STATUS_TEMPLATE.format(state="not-configured", installed="false")
-    return (
-        "#!/bin/sh\n"
-        'DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"\n'
-        'if [ "${1:-}" = "hook" ] && [ "${2:-}" = "status" ]; then\n'
-        '  SETTINGS="$HOME/.claude/settings.json"\n'
-        '  if [ -f "$SETTINGS" ] && grep -q "grdr-hook" "$SETTINGS" 2>/dev/null; then\n'
-        f"    printf '%s\\n' '{installed_json}'\n"
-        "    exit 0\n"
-        "  fi\n"
-        f"  printf '%s\\n' '{missing_json}'\n"
-        "  exit 1\n"
-        "fi\n"
-        'exec "$DIR/grdr-cli" "$@"\n'
-    )
-
-
-def _windows_wrapper_script() -> str:
-    installed_json = CLI_STATUS_TEMPLATE.format(state="effective", installed="true")
-    missing_json = CLI_STATUS_TEMPLATE.format(state="not-configured", installed="false")
-    return (
-        "@echo off\r\n"
-        'if "%~1"=="hook" if "%~2"=="status" (\r\n'
-        '  findstr /C:"grdr-hook" "%USERPROFILE%\\.claude\\settings.json" >nul 2>&1\r\n'
-        "  if not errorlevel 1 (\r\n"
-        f"    echo {installed_json}\r\n"
-        "    exit /b 0\r\n"
-        "  )\r\n"
-        f"  echo {missing_json}\r\n"
-        "  exit /b 1\r\n"
-        ")\r\n"
-        '"%~dp0grdr-cli.exe" %*\r\n'
-    )
 
 
 def _cmd_build() -> int:
@@ -175,23 +123,20 @@ def _cmd_install(paths: dict[str, pathlib.Path]) -> int:
 
     target_dir = _repo_root() / "target" / "debug"
     suffix = _exe_suffix()
-    _copy_if_changed(target_dir / f"grdr{suffix}", paths["grdr_cli"])
+    _copy_if_changed(target_dir / f"grdr{suffix}", paths["grdr_bin"])
     _copy_if_changed(target_dir / f"grdr-hook{suffix}", paths["hook_bin"])
     _copy_if_changed(target_dir / f"grdr-daemon{suffix}", paths["daemon_bin"])
 
-    wrapper = _windows_wrapper_script() if os.name == "nt" else _posix_wrapper_script()
-    _write_text_if_changed(paths["grdr_wrapper"], wrapper, executable=True)
-
-    if paths["bin_link"] != paths["grdr_wrapper"] and not os.path.lexists(paths["bin_link"]):
+    if paths["bin_link"] != paths["grdr_bin"] and not os.path.lexists(paths["bin_link"]):
         paths["bin_link"].parent.mkdir(parents=True, exist_ok=True)
-        paths["bin_link"].symlink_to(paths["grdr_wrapper"])
+        paths["bin_link"].symlink_to(paths["grdr_bin"])
 
-    journal = {"created_dirs": created_dirs, "prior_settings_b64": None}
+    journal = {"created_dirs": created_dirs}
     paths["journal"].parent.mkdir(parents=True, exist_ok=True)
     paths["journal"].write_text(json.dumps(journal), encoding="utf-8")
 
     scan_res = subprocess.run(
-        [str(paths["grdr_cli"]), "scan", "--json", "--profile", "user"],
+        [str(paths["grdr_bin"]), "scan", "--json", "--profile", "user"],
         capture_output=True,
         text=True,
         check=False,
@@ -202,36 +147,54 @@ def _cmd_install(paths: dict[str, pathlib.Path]) -> int:
     return 0
 
 
-def _append_pretooluse_entry(prior_text: str, entry_json: str) -> str:
-    indented = "\n".join("      " + line if idx > 0 else line for idx, line in enumerate(entry_json.splitlines()))
-    marker = "      }\n    ]"
-    if marker in prior_text:
-        return prior_text.replace(marker, f"      }},\n      {indented}\n    ]", 1)
-    raise ValueError("unexpected settings.json structure")
-
-
 def _cmd_choose(paths: dict[str, pathlib.Path]) -> int:
-    settings_path = paths["claude_settings"]
-    prior = settings_path.read_bytes()
-    journal = json.loads(paths["journal"].read_text(encoding="utf-8"))
-    if journal["prior_settings_b64"] is None:
-        journal["prior_settings_b64"] = base64.b64encode(prior).decode("ascii")
-        paths["journal"].write_text(json.dumps(journal), encoding="utf-8")
-
     hook_cmd = (
         f'"{paths["hook_bin"]}" --agent claude-code'
         if os.name == "nt"
         else f"{paths['hook_bin']} --agent claude-code"
     )
-    entry_json = json.dumps(
-        {
-            "matcher": "Bash|PowerShell|Read|Write|Edit|MultiEdit|WebFetch|mcp__.*",
-            "hooks": [{"type": "command", "command": hook_cmd, "timeout": 2}],
-        },
-        indent=2,
+    install_res = subprocess.run(
+        [
+            str(paths["grdr_bin"]),
+            "hook",
+            "install",
+            "--agent",
+            "claude-code",
+            "--command",
+            hook_cmd,
+            "--apply",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
     )
-    updated = _append_pretooluse_entry(prior.decode("utf-8"), entry_json)
-    settings_path.write_bytes(updated.encode("utf-8"))
+    if install_res.returncode != 0:
+        print(f"grdr hook install failed: {install_res.stderr}", file=sys.stderr)
+        return install_res.returncode
+
+    if not paths["hook_journal"].is_file():
+        print(f"expected backup journal at {paths['hook_journal']}", file=sys.stderr)
+        return 1
+
+    claude_dir = paths["claude_settings"].parent
+    for stray_name in (".grdr-backup.json", "settings.json.grdr-backup.json"):
+        if (claude_dir / stray_name).exists():
+            print(f"unexpected backup file in ~/.claude: {stray_name}", file=sys.stderr)
+            return 1
+
+    status_res = subprocess.run(
+        [str(paths["grdr_bin"]), "hook", "status", "--agent", "claude-code", "--json"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if status_res.returncode != 0:
+        print(f"grdr hook status failed: {status_res.stderr}", file=sys.stderr)
+        return 1
+    status_payload = json.loads(status_res.stdout)
+    if status_payload.get("data", {}).get("installed") is not True:
+        print(f"unexpected hook status payload: {status_payload}", file=sys.stderr)
+        return 1
 
     allow_res = subprocess.run(
         [str(paths["hook_bin"]), "--agent", "claude-code"],
@@ -258,17 +221,25 @@ def _cmd_choose(paths: dict[str, pathlib.Path]) -> int:
 
 
 def _cmd_uninstall(paths: dict[str, pathlib.Path]) -> int:
-    journal = json.loads(paths["journal"].read_text(encoding="utf-8"))
-    if journal["prior_settings_b64"] is not None:
-        paths["claude_settings"].write_bytes(base64.b64decode(journal["prior_settings_b64"]))
+    if paths["grdr_bin"].is_file():
+        uninst_res = subprocess.run(
+            [str(paths["grdr_bin"]), "hook", "uninstall", "--agent", "claude-code"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if uninst_res.returncode != 0:
+            print(f"grdr hook uninstall failed: {uninst_res.stderr}", file=sys.stderr)
+            return uninst_res.returncode
 
+    journal = json.loads(paths["journal"].read_text(encoding="utf-8"))
     for target in (
         paths["bin_link"],
-        paths["grdr_wrapper"],
-        paths["grdr_cli"],
+        paths["grdr_bin"],
         paths["hook_bin"],
         paths["daemon_bin"],
         paths["journal"],
+        paths["hook_journal"],
     ):
         if os.path.lexists(target):
             target.unlink()

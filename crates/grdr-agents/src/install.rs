@@ -7,6 +7,12 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
+use crate::install_journal::{
+    PriorFile, atomic_write, detect_state_dir, restore_from_journal, write_journal_if_absent,
+};
+use crate::json_edit::insert_array_entries_preserving_spans;
+use crate::parse::{json_contains_grdr_hook, read_json};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HookTargetKind {
     ClaudeCode,
@@ -23,6 +29,21 @@ pub enum InstallOutcome {
     Unchanged,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HookInstallState {
+    Effective,
+    NotConfigured,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HookStatusReport {
+    pub agent: String,
+    pub state: HookInstallState,
+    pub installed: bool,
+    pub config_path: PathBuf,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HookInstallReport {
     pub agent: String,
@@ -30,18 +51,6 @@ pub struct HookInstallReport {
     pub journal_path: PathBuf,
     pub outcome: InstallOutcome,
     pub preview_json: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "kind", content = "content", rename_all = "snake_case")]
-enum PriorFile {
-    Absent,
-    Present(String),
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct HookBackupJournal {
-    prior: PriorFile,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,14 +87,42 @@ impl HookTargetKind {
         }
     }
 
-    pub fn journal_path(self, home_dir: &Path) -> PathBuf {
-        let cfg = self.config_path(home_dir);
-        let name = cfg
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("settings.json");
-        cfg.with_file_name(format!("{name}.grdr-backup.json"))
+    pub fn journal_path(self, state_dir: &Path) -> PathBuf {
+        state_dir.join(format!("hook-backup-{}.json", self.as_str()))
     }
+}
+
+pub fn hook_status(target: HookTargetKind, home_dir: &Path) -> Result<HookStatusReport, String> {
+    let config_path = target.config_path(home_dir);
+    let mut candidates = vec![config_path.clone()];
+    if target == HookTargetKind::ClaudeCode {
+        candidates.push(home_dir.join(".claude.json"));
+    }
+
+    let mut installed = false;
+    for path in &candidates {
+        if !path.is_file() {
+            continue;
+        }
+        let val = read_json(path).map_err(|e| format!("GRDR-AGENTS-0002: {e}"))?;
+        if json_contains_grdr_hook(&val) {
+            installed = true;
+            break;
+        }
+    }
+
+    let state = if installed {
+        HookInstallState::Effective
+    } else {
+        HookInstallState::NotConfigured
+    };
+
+    Ok(HookStatusReport {
+        agent: target.as_str().into(),
+        state,
+        installed,
+        config_path,
+    })
 }
 
 pub fn install_hook(
@@ -94,8 +131,19 @@ pub fn install_hook(
     hook_command: &str,
     dry_run: bool,
 ) -> Result<HookInstallReport, String> {
+    let state_dir = detect_state_dir(home_dir);
+    install_hook_in_state_dir(target, home_dir, &state_dir, hook_command, dry_run)
+}
+
+pub fn install_hook_in_state_dir(
+    target: HookTargetKind,
+    home_dir: &Path,
+    state_dir: &Path,
+    hook_command: &str,
+    dry_run: bool,
+) -> Result<HookInstallReport, String> {
     let config_path = target.config_path(home_dir);
-    let journal_path = target.journal_path(home_dir);
+    let journal_path = target.journal_path(state_dir);
     let prior = if config_path.is_file() {
         PriorFile::Present(
             fs::read_to_string(&config_path)
@@ -105,26 +153,32 @@ pub fn install_hook(
         PriorFile::Absent
     };
 
-    let mut root: Value = match &prior {
-        PriorFile::Present(raw) if !raw.trim().is_empty() => serde_json::from_str(raw)
-            .map_err(|e| format!("invalid JSON in {}: {e}", config_path.display()))?,
-        _ => Value::Object(Map::new()),
+    let (merge, preview_json) = match &prior {
+        PriorFile::Present(raw) if !raw.trim().is_empty() => {
+            let root: Value = serde_json::from_str(raw)
+                .map_err(|e| format!("invalid JSON in {}: {e}", config_path.display()))?;
+            let pending = collect_pending_entries(&root, target, hook_command)?;
+            if pending.is_empty() {
+                (MergeOutcome::AlreadyPresent, raw.clone())
+            } else {
+                let updated = insert_array_entries_preserving_spans(raw, &pending)?;
+                (MergeOutcome::Added, updated)
+            }
+        }
+        _ => {
+            let mut root = Value::Object(Map::new());
+            let merge = merge_hook_entry(&mut root, target, hook_command)?;
+            let serialized = serde_json::to_string_pretty(&root)
+                .map_err(|e| format!("failed serializing merged hook config: {e}"))?;
+            (merge, format!("{serialized}\n"))
+        }
     };
-
-    let merge = merge_hook_entry(&mut root, target, hook_command)?;
-    let preview_json = serde_json::to_string_pretty(&root)
-        .map_err(|e| format!("failed serializing merged hook config: {e}"))?;
 
     let outcome = match (merge, dry_run) {
         (MergeOutcome::AlreadyPresent, _) => InstallOutcome::AlreadyInstalled,
         (MergeOutcome::Added, true) => InstallOutcome::DryRunPreview,
         (MergeOutcome::Added, false) => {
-            if !journal_path.is_file() {
-                let journal = HookBackupJournal { prior };
-                let journal_bytes = serde_json::to_vec_pretty(&journal)
-                    .map_err(|e| format!("failed serializing backup journal: {e}"))?;
-                atomic_write(&journal_path, &journal_bytes)?;
-            }
+            write_journal_if_absent(&journal_path, prior)?;
             atomic_write(&config_path, preview_json.as_bytes())?;
             InstallOutcome::Applied
         }
@@ -143,28 +197,19 @@ pub fn uninstall_hook(
     target: HookTargetKind,
     home_dir: &Path,
 ) -> Result<HookInstallReport, String> {
+    let state_dir = detect_state_dir(home_dir);
+    uninstall_hook_in_state_dir(target, home_dir, &state_dir)
+}
+
+pub fn uninstall_hook_in_state_dir(
+    target: HookTargetKind,
+    home_dir: &Path,
+    state_dir: &Path,
+) -> Result<HookInstallReport, String> {
     let config_path = target.config_path(home_dir);
-    let journal_path = target.journal_path(home_dir);
+    let journal_path = target.journal_path(state_dir);
 
-    if journal_path.is_file() {
-        let raw_journal = fs::read_to_string(&journal_path)
-            .map_err(|e| format!("failed reading journal {}: {e}", journal_path.display()))?;
-        let journal: HookBackupJournal = serde_json::from_str(&raw_journal)
-            .map_err(|e| format!("corrupt backup journal {}: {e}", journal_path.display()))?;
-
-        let preview_json = match journal.prior {
-            PriorFile::Present(original) => {
-                atomic_write(&config_path, original.as_bytes())?;
-                original
-            }
-            PriorFile::Absent => {
-                if config_path.is_file() {
-                    let _ = fs::remove_file(&config_path);
-                }
-                String::new()
-            }
-        };
-        let _ = fs::remove_file(&journal_path);
+    if let Some(preview_json) = restore_from_journal(&journal_path, &config_path)? {
         return Ok(HookInstallReport {
             agent: target.as_str().into(),
             config_path,
@@ -206,6 +251,53 @@ pub fn uninstall_hook(
         },
         preview_json,
     })
+}
+
+fn collect_pending_entries(
+    root: &Value,
+    target: HookTargetKind,
+    hook_command: &str,
+) -> Result<Vec<(&'static str, Value)>, String> {
+    let root_obj = root
+        .as_object()
+        .ok_or_else(|| "root hook config must be a JSON object".to_string())?;
+    let hooks_obj = match root_obj.get("hooks") {
+        Some(v) => Some(
+            v.as_object()
+                .ok_or_else(|| "`hooks` field must be a JSON object".to_string())?,
+        ),
+        None => None,
+    };
+
+    let desired: Vec<(&'static str, Value)> = match target {
+        HookTargetKind::ClaudeCode => vec![("PreToolUse", claude_hook_entry(hook_command))],
+        HookTargetKind::Gemini => vec![("BeforeTool", gemini_hook_entry(hook_command))],
+        HookTargetKind::Cursor => vec![
+            ("beforeShellExecution", cursor_hook_entry(hook_command)),
+            ("preToolUse", cursor_hook_entry(hook_command)),
+        ],
+    };
+
+    let mut pending = Vec::new();
+    for (event_key, entry) in desired {
+        if let Some(hooks) = hooks_obj
+            && let Some(val) = hooks.get(event_key)
+        {
+            let arr = val
+                .as_array()
+                .ok_or_else(|| format!("`hooks.{event_key}` must be a JSON array"))?;
+            let already = arr.iter().any(|item| {
+                serde_json::to_string(item)
+                    .unwrap_or_default()
+                    .contains("grdr-hook")
+            });
+            if already {
+                continue;
+            }
+        }
+        pending.push((event_key, entry));
+    }
+    Ok(pending)
 }
 
 fn merge_hook_entry(
@@ -333,17 +425,6 @@ fn cursor_hook_entry(hook_command: &str) -> Value {
     })
 }
 
-fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("failed creating {}: {e}", parent.display()))?;
-    }
-    let tmp = path.with_extension("grdr.tmp");
-    fs::write(&tmp, bytes).map_err(|e| format!("failed writing {}: {e}", tmp.display()))?;
-    fs::rename(&tmp, path).map_err(|e| format!("failed committing {}: {e}", path.display()))?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -351,32 +432,73 @@ mod tests {
     #[test]
     fn install_merges_without_clobbering_and_uninstall_restores_byte_for_byte() {
         let home = std::env::temp_dir().join(format!("grdr-inst-{}", uuid::Uuid::now_v7()));
+        let state_dir = home.join(".local").join("state").join("grdr");
         let claude_dir = home.join(".claude");
         fs::create_dir_all(&claude_dir).unwrap();
 
-        let original_raw = "{\n  \"theme\": \"dark\",\n  \"hooks\": {\n    \"PreToolUse\": [\n      { \"matcher\": \"CustomTool\", \"hooks\": [{ \"type\": \"command\", \"command\": \"my-user-hook\" }] }\n    ]\n  }\n}\n";
+        let original_raw = "{\n  \"hooks\": {\n    \"PreToolUse\": [\n      {\n        \"matcher\": \"Bash\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"/opt/other-vendor/bin/check-tool --mode safe\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ]\n  },\n  \"model\": \"example-model\"\n}\n";
         let settings_path = claude_dir.join("settings.json");
         fs::write(&settings_path, original_raw).unwrap();
 
-        let dry = install_hook(HookTargetKind::ClaudeCode, &home, "grdr-hook", true).unwrap();
+        let before_status = hook_status(HookTargetKind::ClaudeCode, &home).unwrap();
+        assert_eq!(before_status.state, HookInstallState::NotConfigured);
+        assert!(!before_status.installed);
+
+        let dry = install_hook_in_state_dir(
+            HookTargetKind::ClaudeCode,
+            &home,
+            &state_dir,
+            "grdr-hook",
+            true,
+        )
+        .unwrap();
         assert_eq!(dry.outcome, InstallOutcome::DryRunPreview);
         assert_eq!(fs::read_to_string(&settings_path).unwrap(), original_raw);
 
-        let applied = install_hook(HookTargetKind::ClaudeCode, &home, "grdr-hook", false).unwrap();
+        let applied = install_hook_in_state_dir(
+            HookTargetKind::ClaudeCode,
+            &home,
+            &state_dir,
+            "grdr-hook",
+            false,
+        )
+        .unwrap();
         assert_eq!(applied.outcome, InstallOutcome::Applied);
+        assert!(applied.journal_path.starts_with(&state_dir));
+        assert!(applied.journal_path.is_file());
+        assert!(!claude_dir.join(".grdr-backup.json").exists());
+        assert!(!claude_dir.join("settings.json.grdr-backup.json").exists());
 
         let merged_text = fs::read_to_string(&settings_path).unwrap();
-        assert!(merged_text.contains("my-user-hook"));
+        assert!(merged_text.contains("\"/opt/other-vendor/bin/check-tool --mode safe\""));
+        assert!(merged_text.contains("\"type\": \"command\""));
+        assert!(merged_text.contains("\"model\": \"example-model\""));
         assert!(merged_text.contains("grdr-hook"));
-        assert!(merged_text.contains("\"theme\": \"dark\""));
 
-        let second = install_hook(HookTargetKind::ClaudeCode, &home, "grdr-hook", false).unwrap();
+        let after_status = hook_status(HookTargetKind::ClaudeCode, &home).unwrap();
+        assert_eq!(after_status.state, HookInstallState::Effective);
+        assert!(after_status.installed);
+
+        let second = install_hook_in_state_dir(
+            HookTargetKind::ClaudeCode,
+            &home,
+            &state_dir,
+            "grdr-hook",
+            false,
+        )
+        .unwrap();
         assert_eq!(second.outcome, InstallOutcome::AlreadyInstalled);
+        assert_eq!(fs::read_to_string(&settings_path).unwrap(), merged_text);
 
-        let removed = uninstall_hook(HookTargetKind::ClaudeCode, &home).unwrap();
+        let removed =
+            uninstall_hook_in_state_dir(HookTargetKind::ClaudeCode, &home, &state_dir).unwrap();
         assert_eq!(removed.outcome, InstallOutcome::Applied);
         assert_eq!(fs::read_to_string(&settings_path).unwrap(), original_raw);
         assert!(!applied.journal_path.exists());
+
+        let final_status = hook_status(HookTargetKind::ClaudeCode, &home).unwrap();
+        assert_eq!(final_status.state, HookInstallState::NotConfigured);
+        assert!(!final_status.installed);
 
         let _ = fs::remove_dir_all(&home);
     }
@@ -384,11 +506,21 @@ mod tests {
     #[test]
     fn cursor_install_creates_new_file_and_uninstall_cleans_up() {
         let home = std::env::temp_dir().join(format!("grdr-inst-cur-{}", uuid::Uuid::now_v7()));
-        let installed = install_hook(HookTargetKind::Cursor, &home, "grdr-hook", false).unwrap();
+        let state_dir = home.join(".local").join("state").join("grdr");
+        let installed = install_hook_in_state_dir(
+            HookTargetKind::Cursor,
+            &home,
+            &state_dir,
+            "grdr-hook",
+            false,
+        )
+        .unwrap();
         assert_eq!(installed.outcome, InstallOutcome::Applied);
         assert!(installed.config_path.is_file());
+        assert!(installed.journal_path.starts_with(&state_dir));
 
-        let removed = uninstall_hook(HookTargetKind::Cursor, &home).unwrap();
+        let removed =
+            uninstall_hook_in_state_dir(HookTargetKind::Cursor, &home, &state_dir).unwrap();
         assert_eq!(removed.outcome, InstallOutcome::Applied);
         assert!(!installed.config_path.exists());
         assert!(!installed.journal_path.exists());

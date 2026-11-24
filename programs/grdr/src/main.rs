@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+mod audit;
 mod doctor;
+mod hook;
 mod mcp_proxy;
 mod runner;
 
@@ -13,10 +15,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use jiff::Timestamp;
 use uuid::Uuid;
 
-use grdr_agents::{
-    HookTargetKind, InstallOutcome, detect_home_dir, discover_local_agents, install_hook,
-    uninstall_hook,
-};
+use grdr_agents::discover_local_agents;
 use grdr_model::{ActionAttempt, ActionClass, ControlPoint, InstallProfile, Verdict};
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -30,6 +29,46 @@ enum ProfileArg {
 struct Cli {
     #[command(subcommand)]
     command: Command,
+}
+
+#[derive(Debug, Subcommand)]
+enum HookCommand {
+    /// Report hook installation status for an agent harness.
+    Status {
+        #[arg(long, default_value = "claude-code")]
+        agent: String,
+
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
+    /// Install or preview Guardrails ADR PreToolUse hooks for an agent harness.
+    Install {
+        #[arg(long, default_value = "claude-code")]
+        agent: String,
+
+        #[arg(long, default_value = "grdr-hook")]
+        command: String,
+
+        #[arg(long, default_value_t = false)]
+        apply: bool,
+    },
+    /// Restore original agent configuration from backup journal and remove Guardrails hooks.
+    Uninstall {
+        #[arg(long, default_value = "claude-code")]
+        agent: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum AuditCommand {
+    /// Verify the hash-chained JSONL local audit log.
+    Verify {
+        #[arg(long, default_value_t = false)]
+        json: bool,
+
+        #[arg(long)]
+        path: Option<PathBuf>,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -60,6 +99,16 @@ enum Command {
 
         #[arg(long, env = "GRDR_DAEMON_URL", default_value = "http://127.0.0.1:8788")]
         daemon: String,
+    },
+    /// Inspect, install, or uninstall agent hooks.
+    Hook {
+        #[command(subcommand)]
+        action: HookCommand,
+    },
+    /// Verify local audit log integrity.
+    Audit {
+        #[command(subcommand)]
+        action: AuditCommand,
     },
     /// Install or preview Guardrails ADR PreToolUse hooks for an agent harness.
     InstallHook {
@@ -141,12 +190,24 @@ fn main() -> ExitCode {
             agent,
             daemon,
         } => run_check(&action, &target, &agent, &daemon),
+        Command::Hook { action } => match action {
+            HookCommand::Status { agent, json } => hook::run_hook_status(&agent, json),
+            HookCommand::Install {
+                agent,
+                command,
+                apply,
+            } => hook::run_install_hook(&agent, &command, apply),
+            HookCommand::Uninstall { agent } => hook::run_uninstall_hook(&agent),
+        },
+        Command::Audit { action } => match action {
+            AuditCommand::Verify { json, path } => audit::run_audit_verify(json, path),
+        },
         Command::InstallHook {
             agent,
             command,
             apply,
-        } => run_install_hook(&agent, &command, apply),
-        Command::UninstallHook { agent } => run_uninstall_hook(&agent),
+        } => hook::run_install_hook(&agent, &command, apply),
+        Command::UninstallHook { agent } => hook::run_uninstall_hook(&agent),
         Command::McpProxy {
             server_name,
             agent,
@@ -292,92 +353,5 @@ fn run_check(action: &str, target: &str, agent: &str, daemon: &str) -> ExitCode 
     match receipt.verdict {
         Verdict::Allow | Verdict::Modify => ExitCode::SUCCESS,
         Verdict::Deny | Verdict::StepUp | Verdict::Defer => ExitCode::from(2),
-    }
-}
-
-fn run_install_hook(agent: &str, command: &str, apply: bool) -> ExitCode {
-    let target = match HookTargetKind::from_name(agent) {
-        Ok(t) => t,
-        Err(err) => {
-            eprintln!("{err}");
-            return ExitCode::FAILURE;
-        }
-    };
-    let Some(home) = detect_home_dir() else {
-        eprintln!("GRDR-CLI-0001: HOME or USERPROFILE environment variable is not set.");
-        return ExitCode::FAILURE;
-    };
-
-    match install_hook(target, &home, command, !apply) {
-        Ok(report) => {
-            match report.outcome {
-                InstallOutcome::DryRunPreview => {
-                    println!(
-                        "Dry run for `{}` ({}). Pass --apply to write atomically:\n{}",
-                        report.agent,
-                        report.config_path.display(),
-                        report.preview_json
-                    );
-                }
-                InstallOutcome::AlreadyInstalled => {
-                    println!(
-                        "Guardrails ADR hook already installed in {}.",
-                        report.config_path.display()
-                    );
-                }
-                InstallOutcome::Applied | InstallOutcome::Unchanged => {
-                    println!(
-                        "Installed Guardrails ADR hook in {} (backup journal: {}).",
-                        report.config_path.display(),
-                        report.journal_path.display()
-                    );
-                }
-            }
-            ExitCode::SUCCESS
-        }
-        Err(err) => {
-            eprintln!("Failed installing hook: {err}");
-            ExitCode::FAILURE
-        }
-    }
-}
-
-fn run_uninstall_hook(agent: &str) -> ExitCode {
-    let target = match HookTargetKind::from_name(agent) {
-        Ok(t) => t,
-        Err(err) => {
-            eprintln!("{err}");
-            return ExitCode::FAILURE;
-        }
-    };
-    let Some(home) = detect_home_dir() else {
-        eprintln!("GRDR-CLI-0001: HOME or USERPROFILE environment variable is not set.");
-        return ExitCode::FAILURE;
-    };
-
-    match uninstall_hook(target, &home) {
-        Ok(report) => {
-            match report.outcome {
-                InstallOutcome::Applied => {
-                    println!(
-                        "Restored {} from backup journal and removed Guardrails ADR hook.",
-                        report.config_path.display()
-                    );
-                }
-                InstallOutcome::Unchanged
-                | InstallOutcome::AlreadyInstalled
-                | InstallOutcome::DryRunPreview => {
-                    println!(
-                        "No Guardrails ADR hook found in {}.",
-                        report.config_path.display()
-                    );
-                }
-            }
-            ExitCode::SUCCESS
-        }
-        Err(err) => {
-            eprintln!("Failed uninstalling hook: {err}");
-            ExitCode::FAILURE
-        }
     }
 }

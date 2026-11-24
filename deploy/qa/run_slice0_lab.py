@@ -40,6 +40,25 @@ def _get_json(url: str) -> object:
         return json.loads(resp.read().decode("utf-8"))
 
 
+def _rpc_post(server_url: str, method_path: str, body: dict[str, object]) -> dict[str, object]:
+    req = urllib.request.Request(
+        f"{server_url}{method_path}",
+        data=json.dumps(body).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Connect-Protocol-Version": "1",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        if resp.status != 200:
+            raise RuntimeError(f"POST {method_path} returned HTTP {resp.status}")
+        parsed = json.loads(resp.read().decode("utf-8"))
+        if not isinstance(parsed, dict):
+            raise RuntimeError(f"unexpected Connect RPC response for {method_path}")
+        return parsed
+
+
 def _wait_ready(url: str, timeout_s: float = 20.0) -> None:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
@@ -126,8 +145,16 @@ def main() -> int:
         env = dict(base_env)
         env["HOME"] = str(home_dir)
         env["USERPROFILE"] = str(home_dir)
+        env["XDG_STATE_HOME"] = str(home_dir / ".local" / "state")
         env["LOCALAPPDATA"] = str(home_dir / "AppData" / "Local")
         env["APPDATA"] = str(home_dir / "AppData" / "Roaming")
+
+        expected_state_dir = (
+            (home_dir / "AppData" / "Local" / "grdr" / "state")
+            if os.name == "nt"
+            else (home_dir / ".local" / "state" / "grdr")
+        )
+        backup_journal = expected_state_dir / "hook-backup-claude-code.json"
 
         server_data = tmp_path / "server-data"
         daemon_data = tmp_path / "daemon-data"
@@ -149,28 +176,43 @@ def main() -> int:
         server_proc = subprocess.Popen(server_cmd, cwd=root, env=env)
         daemon_proc: subprocess.Popen[bytes] | None = None
         try:
-            _wait_ready(f"{server_url}/api/v1/health")
+            _wait_ready(f"{server_url}/grdr.api.overview.v1alpha1.OverviewService/GetHealth?encoding=json")
+
+            status_before = _run([grdr_bin, "hook", "status", "--agent", "claude-code", "--json"], cwd=root, env=env)
+            if status_before.returncode != 1:
+                raise RuntimeError(f"expected hook status exit 1 before install, got {status_before.returncode}")
 
             scan_before = _run([grdr_bin, "scan", "--json", "--profile", "user"], cwd=root, env=env)
             if scan_before.returncode != 0:
                 raise RuntimeError(f"grdr scan failed: {scan_before.stderr}")
 
             inst_first = _run(
-                [grdr_bin, "install-hook", "--agent", "claude-code", "--command", hook_bin, "--apply"],
+                [grdr_bin, "hook", "install", "--agent", "claude-code", "--command", hook_bin, "--apply"],
                 cwd=root,
                 env=env,
             )
             if inst_first.returncode != 0:
-                raise RuntimeError(f"install-hook failed: {inst_first.stderr}")
+                raise RuntimeError(f"hook install failed: {inst_first.stderr}")
+            if not backup_journal.is_file():
+                raise RuntimeError(f"missing state-dir backup journal at {backup_journal}")
+            if (claude_dir / ".grdr-backup.json").exists() or (claude_dir / "settings.json.grdr-backup.json").exists():
+                raise RuntimeError("backup journal leaked into .claude directory")
             sha_first = hashlib.sha256(settings_file.read_bytes()).hexdigest()
 
             inst_rerun = _run(
-                [grdr_bin, "install-hook", "--agent", "claude-code", "--command", hook_bin, "--apply"],
+                [grdr_bin, "hook", "install", "--agent", "claude-code", "--command", hook_bin, "--apply"],
                 cwd=root,
                 env=env,
             )
             if inst_rerun.returncode != 0 or hashlib.sha256(settings_file.read_bytes()).hexdigest() != sha_first:
-                raise RuntimeError("install-hook re-run was not idempotent")
+                raise RuntimeError("hook install re-run was not idempotent")
+
+            status_after = _run([grdr_bin, "hook", "status", "--agent", "claude-code", "--json"], cwd=root, env=env)
+            if status_after.returncode != 0:
+                raise RuntimeError(f"hook status failed after install: {status_after.stderr}")
+            status_obj = json.loads(status_after.stdout)
+            if status_obj.get("data", {}).get("installed") is not True or status_obj.get("data", {}).get("state") != "effective":
+                raise RuntimeError(f"unexpected hook status JSON: {status_obj}")
 
             daemon_proc = subprocess.Popen(
                 [
@@ -264,23 +306,37 @@ def main() -> int:
             else:
                 raise RuntimeError("daemon uplink did not flush pending events in time")
 
-            detail = _get_json(f"{server_url}/api/v1/sessions/{session_id}")
-            if not isinstance(detail, dict):
+            detail = _rpc_post(server_url, "/grdr.api.activity.v1alpha1.SessionService/GetSession", {"id": session_id})
+            receipts = detail.get("receipts")
+            if not isinstance(receipts, list):
                 raise RuntimeError("unexpected session detail response")
-            verdicts = {r["target"]: r["verdict"] for r in detail["receipts"]}
+            verdicts = {r["target"]: r["verdict"] for r in receipts}
             if (
-                verdicts.get("git status") != "allow"
-                or verdicts.get(".claude/settings.json") != "deny"
-                or verdicts.get("git commit --no-verify") != "deny"
-                or verdicts.get("rm -rf /tmp/slice0-lab") != "step_up"
+                verdicts.get("git status") != "VERDICT_ALLOW"
+                or verdicts.get(".claude/settings.json") != "VERDICT_DENY"
+                or verdicts.get("git commit --no-verify") != "VERDICT_DENY"
+                or verdicts.get("rm -rf /tmp/slice0-lab") != "VERDICT_STEP_UP"
             ):
                 raise RuntimeError(f"unexpected session verdicts: {verdicts}")
 
-            uninst = _run([grdr_bin, "uninstall-hook", "--agent", "claude-code"], cwd=root, env=env)
+            audit_res = _run(
+                [grdr_bin, "audit", "verify", "--json", "--path", str(daemon_data / "receipts.wal.jsonl")],
+                cwd=root,
+                env=env,
+            )
+            if audit_res.returncode != 0:
+                raise RuntimeError(f"grdr audit verify failed: {audit_res.stderr}")
+            audit_obj = json.loads(audit_res.stdout)
+            if audit_obj.get("verified") is not True or audit_obj.get("entries", 0) < 4:
+                raise RuntimeError(f"unexpected grdr audit verify result: {audit_obj}")
+
+            uninst = _run([grdr_bin, "hook", "uninstall", "--agent", "claude-code"], cwd=root, env=env)
             if uninst.returncode != 0:
-                raise RuntimeError(f"uninstall-hook failed: {uninst.stderr}")
+                raise RuntimeError(f"hook uninstall failed: {uninst.stderr}")
             if hashlib.sha256(settings_file.read_bytes()).hexdigest() != orig_sha:
                 raise RuntimeError("settings.json was not restored byte-for-byte")
+            if backup_journal.exists():
+                raise RuntimeError("backup journal still present after uninstall")
 
             evidence_dir = os.environ.get("GRDR_LAB_EVIDENCE_DIR")
             if evidence_dir:

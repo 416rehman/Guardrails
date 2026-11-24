@@ -5,6 +5,8 @@ pub mod artifacts;
 pub mod discover;
 pub mod hook_codec;
 pub mod install;
+mod install_journal;
+mod json_edit;
 mod parse;
 pub mod windows_discovery;
 pub mod windows_process_parse;
@@ -17,8 +19,11 @@ pub use discover::{
 };
 pub use hook_codec::{HarnessKind, parse_claude_hook_stdin, parse_hook_stdin};
 pub use install::{
-    HookInstallReport, HookTargetKind, InstallOutcome, install_hook, uninstall_hook,
+    HookInstallReport, HookInstallState, HookStatusReport, HookTargetKind, InstallOutcome,
+    hook_status, install_hook, install_hook_in_state_dir, uninstall_hook,
+    uninstall_hook_in_state_dir,
 };
+pub use install_journal::detect_state_dir;
 pub use windows_discovery::{
     CODE_WIN_SNAPSHOT_UNAVAILABLE, DiscoveryObserverState, ObservedWindowsAgent,
     ProcessInstanceKey, ProcessSnapshotSource, SystemWindowsProcessSource, WindowsDiscoveryEvent,

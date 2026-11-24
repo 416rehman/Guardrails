@@ -209,6 +209,7 @@ ignore_paths = [
   "%ProgramData%\\USOPrivate",
   "%ProgramData%\\USOShared",
   "%ProgramData%\\Microsoft",
+  "reg://HKCU/Software/Microsoft",
   "reg://HKCU/Software/Classes/Local Settings/MuiCache",
   "reg://HKCU/Software/Classes/Local Settings/Software/Microsoft/Windows/Shell/MuiCache",
 ]

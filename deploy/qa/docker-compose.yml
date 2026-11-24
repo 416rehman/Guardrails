@@ -16,7 +16,7 @@ services:
     environment:
       RUST_LOG: info
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8787/api/v1/health"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8787/grdr.api.overview.v1alpha1.OverviewService/GetHealth?encoding=json"]
       interval: 2s
       timeout: 3s
       retries: 15
