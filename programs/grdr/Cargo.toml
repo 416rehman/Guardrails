@@ -19,6 +19,7 @@ grdr-model = { workspace = true }
 grdr-sandbox-engine = { workspace = true }
 jiff = { workspace = true }
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "charset"] }
+serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
 
