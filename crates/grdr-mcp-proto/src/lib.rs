@@ -3,6 +3,9 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::arithmetic_side_effects)]
 
+pub mod progressive;
+pub use progressive::*;
+
 use std::collections::BTreeMap;
 
 use jiff::Timestamp;

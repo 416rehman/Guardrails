@@ -6,6 +6,7 @@ mod connect_mdm;
 mod overview;
 mod persistence;
 mod policy_ops;
+mod query_ir;
 mod response_ops;
 pub(crate) mod users;
 

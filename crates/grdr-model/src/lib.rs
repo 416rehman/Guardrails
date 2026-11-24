@@ -10,6 +10,8 @@ pub mod error;
 pub mod eval;
 pub mod identity;
 pub mod policy;
+pub mod query_catalog;
+pub mod query_ir;
 
 pub use api::*;
 pub use artifacts::*;
@@ -18,3 +20,5 @@ pub use domain::*;
 pub use error::*;
 pub use identity::*;
 pub use policy::*;
+pub use query_catalog::*;
+pub use query_ir::*;
