@@ -1,0 +1,24 @@
+[package]
+name = "grdr-export"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[package.metadata.grdr]
+layer = 3
+privilege = "privileged"
+surface = "internal"
+renders = "none"
+
+[dependencies]
+grdr-crypto = { workspace = true }
+grdr-model = { workspace = true }
+grdr-ports = { workspace = true }
+grdr-schema = { workspace = true }
+jiff = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

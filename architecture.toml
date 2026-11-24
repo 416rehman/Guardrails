@@ -45,7 +45,7 @@ created = true
 
 [crates.grdr-mcp-proto]
 layer = 1
-created = false
+created = true
 
 [crates.grdr-fastpath]
 layer = 1
@@ -65,11 +65,11 @@ created = true
 
 [crates.grdr-compat]
 layer = 1
-created = false
+created = true
 
 [crates.grdr-review]
 layer = 1
-created = false
+created = true
 
 [crates.grdr-ports]
 layer = 2
@@ -137,11 +137,11 @@ created = false
 
 [crates.grdr-broker]
 layer = 3
-created = false
+created = true
 
 [crates.grdr-export]
 layer = 3
-created = false
+created = true
 
 [crates.grdr-rel-sqlite]
 layer = 3

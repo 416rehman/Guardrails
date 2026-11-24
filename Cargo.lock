@@ -469,6 +469,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "grdr-broker"
+version = "0.1.0"
+dependencies = [
+ "grdr-core",
+ "grdr-llm-proto",
+ "grdr-mcp-proto",
+ "grdr-messages",
+ "grdr-model",
+ "grdr-ports",
+ "grdr-ports-testkit",
+ "grdr-strings",
+ "jiff",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "grdr-compat"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "grdr-core"
 version = "0.1.0"
 dependencies = [
@@ -538,6 +565,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "grdr-export"
+version = "0.1.0"
+dependencies = [
+ "grdr-crypto",
+ "grdr-model",
+ "grdr-ports",
+ "grdr-schema",
+ "jiff",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "grdr-fastpath"
 version = "0.1.0"
 
@@ -577,6 +618,17 @@ dependencies = [
 
 [[package]]
 name = "grdr-llm-proto"
+version = "0.1.0"
+dependencies = [
+ "grdr-model",
+ "jiff",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "grdr-mcp-proto"
 version = "0.1.0"
 dependencies = [
  "grdr-model",
@@ -635,6 +687,16 @@ dependencies = [
 name = "grdr-proto"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "grdr-review"
+version = "0.1.0"
+dependencies = [
+ "grdr-model",
  "serde",
  "serde_json",
  "thiserror",

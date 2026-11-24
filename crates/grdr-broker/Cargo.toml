@@ -1,0 +1,30 @@
+[package]
+name = "grdr-broker"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[package.metadata.grdr]
+layer = 3
+privilege = "untrusted"
+surface = "internal"
+renders = "none"
+
+[dependencies]
+grdr-core = { workspace = true }
+grdr-llm-proto = { workspace = true }
+grdr-mcp-proto = { workspace = true }
+grdr-messages = { workspace = true }
+grdr-model = { workspace = true }
+grdr-ports = { workspace = true }
+grdr-strings = { workspace = true }
+jiff = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+grdr-ports-testkit = { workspace = true }
+
+[lints]
+workspace = true
