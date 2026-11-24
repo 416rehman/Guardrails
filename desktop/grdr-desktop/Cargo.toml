@@ -1,0 +1,45 @@
+[package]
+name = "grdr-desktop"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[package.metadata.grdr]
+layer = 4
+privilege = "none"
+surface = "public"
+renders = "rune"
+
+[workspace]
+
+[dependencies]
+grdr-messages = { path = "../../crates/grdr-messages" }
+grdr-strings = { path = "../../crates/grdr-strings" }
+grdr-ui-model = { path = "../../crates/grdr-ui-model" }
+rune = { git = "https://github.com/anomalyco/rune.git", rev = "ec399fdccaac12aba3b639cde54189eecad4b89c" }
+rune-kit = { git = "https://github.com/anomalyco/rune.git", rev = "ec399fdccaac12aba3b639cde54189eecad4b89c", default-features = false }
+
+[patch.crates-io]
+accesskit_atspi_common = { git = "https://github.com/anomalyco/rune.git", rev = "ec399fdccaac12aba3b639cde54189eecad4b89c" }
+accesskit_macos = { git = "https://github.com/anomalyco/rune.git", rev = "ec399fdccaac12aba3b639cde54189eecad4b89c" }
+accesskit_windows = { git = "https://github.com/anomalyco/rune.git", rev = "ec399fdccaac12aba3b639cde54189eecad4b89c" }
+naga = { git = "https://github.com/anomalyco/rune.git", rev = "ec399fdccaac12aba3b639cde54189eecad4b89c" }
+parley_engine = { git = "https://github.com/anomalyco/rune.git", rev = "ec399fdccaac12aba3b639cde54189eecad4b89c" }
+sctk-adwaita = { git = "https://github.com/anomalyco/rune.git", rev = "ec399fdccaac12aba3b639cde54189eecad4b89c" }
+wgpu-hal = { git = "https://github.com/anomalyco/rune.git", rev = "ec399fdccaac12aba3b639cde54189eecad4b89c" }
+winit = { git = "https://github.com/anomalyco/rune.git", rev = "ec399fdccaac12aba3b639cde54189eecad4b89c" }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+indexing_slicing = "deny"
+string_slice = "deny"
+get_unwrap = "deny"
+exit = "deny"

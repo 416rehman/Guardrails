@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/*", "programs/*"]
-exclude = ["bpf/grdr-sensor-linux-bpf"]
+exclude = ["bpf/grdr-sensor-linux-bpf", "desktop/grdr-desktop"]
 
 [workspace.dependencies]
 axum = { version = "0.8", features = ["json", "macros"] }
@@ -17,6 +17,7 @@ grdr-fastpath = { version = "0.1.0", path = "crates/grdr-fastpath" }
 grdr-fastpath-ffi = { version = "0.1.0", path = "crates/grdr-fastpath-ffi" }
 grdr-ffi = { version = "0.1.0", path = "crates/grdr-ffi" }
 grdr-llm-proto = { version = "0.1.0", path = "crates/grdr-llm-proto" }
+grdr-messages = { version = "0.1.0", path = "crates/grdr-messages" }
 grdr-model = { version = "0.1.0", path = "crates/grdr-model" }
 grdr-ports = { version = "0.1.0", path = "crates/grdr-ports" }
 grdr-ports-testkit = { version = "0.1.0", path = "crates/grdr-ports-testkit" }
@@ -25,6 +26,8 @@ grdr-sandbox-engine = { version = "0.1.0", path = "crates/grdr-sandbox-engine" }
 grdr-schema = { version = "0.1.0", path = "crates/grdr-schema" }
 grdr-sensor-linux = { version = "0.1.0", path = "crates/grdr-sensor-linux" }
 grdr-store-local = { version = "0.1.0", path = "crates/grdr-store-local" }
+grdr-strings = { version = "0.1.0", path = "crates/grdr-strings" }
+grdr-ui-model = { version = "0.1.0", path = "crates/grdr-ui-model" }
 grdr-wasm = { version = "0.1.0", path = "crates/grdr-wasm" }
 grdr-wire = { version = "0.1.0", path = "crates/grdr-wire" }
 jiff = { version = "0.2", features = ["serde"] }
