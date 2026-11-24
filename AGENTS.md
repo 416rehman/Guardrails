@@ -34,4 +34,4 @@ Run these before opening or merging a PR:
 - `cargo test --workspace --locked`
 - `cargo deny check`
 - For `web/`: `pnpm --dir web run typecheck`, `pnpm --dir web run test`, `pnpm --dir web run build`
-- For hooks: `node --test .claude/hooks/branch-check.test.mjs .claude/hooks/ci-stop.test.mjs .claude/hooks/docs-check.test.mjs .agents/hooks/agy-pre-tool-use.test.mjs`
+- For hooks: `node --test .claude/hooks/branch-check.test.mjs .claude/hooks/ci-stop.test.mjs .claude/hooks/docs-check.test.mjs .claude/hooks/structure-check.test.mjs .agents/hooks/agy-pre-tool-use.test.mjs`

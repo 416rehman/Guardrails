@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
-// Antigravity (Gemini) PreToolUse hook enforcing branch/PR rules (docs-check.mjs) and
-// Guardrails Studio UI / signs-of-ai-design rules (design-check.mjs).
+// Antigravity (Gemini) PreToolUse hook enforcing branch/PR rules (docs-check.mjs),
+// Guardrails Studio UI rules (design-check.mjs), and structure/workflow rules (structure-check.mjs).
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { evaluateDesignToolPayload } from "../../.claude/hooks/design-check.mjs";
 import { evaluateEngineeringPayload, evaluateHookCommand } from "../../.claude/hooks/docs-check.mjs";
+import { evaluateStructurePayload } from "../../.claude/hooks/structure-check.mjs";
 import { evaluateVisualAuditToolPayload } from "../../.claude/hooks/visual-audit-check.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -26,6 +27,7 @@ export function handleHookPayload(rawText) {
     const findings = [
       ...evaluateEngineeringPayload(payload, cwd),
       ...evaluateDesignToolPayload(payload, cwd),
+      ...evaluateStructurePayload(payload, cwd),
     ];
     if (findings.length > 0) {
       return { decision: "deny", reason: findings.join("\n") };
@@ -45,6 +47,7 @@ export function handleHookPayload(rawText) {
     ...evaluateEngineeringPayload(payload, cwd),
     ...evaluateDesignToolPayload(payload, cwd),
     ...evaluateVisualAuditToolPayload(payload, cwd),
+    ...evaluateStructurePayload(payload, cwd),
   ];
   if (found.length > 0) {
     return { decision: "deny", reason: found.join("\n") };

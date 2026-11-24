@@ -3,7 +3,7 @@
 // Enforces independent UI/UX Visual Design Judge screenshot audit before committing or opening PRs for UI changes.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,6 +11,17 @@ const WEB_UI_CHANGE_RE = /^(?:web\/(?:packages|apps)\/|interface\/brand\/)/;
 const DESKTOP_UI_CHANGE_RE = /^(?:desktop\/grdr-desktop\/src\/|crates\/grdr-ui-model\/)/;
 const COMMITTED_SCREENSHOT_RE = /^(?:web|desktop)\/screenshots\/|\/__screenshots__\//i;
 export const AUDIT_RECORD_REL = ".git/grdr-visual-audit.json";
+
+export function resolveAuditRecordPath(cwd = process.cwd()) {
+  const dotGit = resolve(cwd, ".git");
+  if (existsSync(dotGit) && statSync(dotGit).isFile()) {
+    const gitdirMatch = readFileSync(dotGit, "utf8").match(/^gitdir:\s*(.+)$/m);
+    if (gitdirMatch) {
+      return resolve(cwd, gitdirMatch[1].trim(), "grdr-visual-audit.json");
+    }
+  }
+  return resolve(cwd, AUDIT_RECORD_REL);
+}
 
 function gitLines(args, cwd) {
   try {
@@ -55,7 +66,7 @@ export function recordVisualAudit({
     summary,
     screenshots,
   };
-  const target = resolve(cwd, AUDIT_RECORD_REL);
+  const target = resolveAuditRecordPath(cwd);
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, `${JSON.stringify(record, null, 2)}\n`, "utf8");
   return record;
@@ -73,7 +84,7 @@ export function evaluateVisualAuditFiles(changedFiles, cwd = process.cwd()) {
   const needsDesktop = normalized.some((f) => DESKTOP_UI_CHANGE_RE.test(f));
   if (!needsWeb && !needsDesktop) return [];
 
-  const recordPath = resolve(cwd, AUDIT_RECORD_REL);
+  const recordPath = resolveAuditRecordPath(cwd);
   if (!existsSync(recordPath)) {
     return [
       `visual-audit: UI changes detected (${needsWeb ? "web" : ""}${needsWeb && needsDesktop ? "+" : ""}${needsDesktop ? "desktop" : ""}) without a designer screenshot audit record. Run the grdr-visual-audit subagent over all screenshots and record with: node .claude/hooks/visual-audit-check.mjs --record --verdict pass`,
@@ -84,7 +95,7 @@ export function evaluateVisualAuditFiles(changedFiles, cwd = process.cwd()) {
   try {
     record = JSON.parse(readFileSync(recordPath, "utf8"));
   } catch {
-    return [`visual-audit: audit record at ${AUDIT_RECORD_REL} is unreadable; re-run grdr-visual-audit.`];
+    return [`visual-audit: audit record at ${recordPath} is unreadable; re-run grdr-visual-audit.`];
   }
 
   if (
@@ -155,8 +166,9 @@ if (isMainModule()) {
     const unresolvedIssues = Number(getArg("--unresolved", "0"));
     const unresolvedPolish = Number(getArg("--unresolved-polish", "0"));
     const rec = recordVisualAudit({ cwd: process.cwd(), verdict, summary, unresolvedIssues, unresolvedPolish });
+    const auditRel = relative(process.cwd(), resolveAuditRecordPath(process.cwd())).replace(/\\/g, "/");
     console.log(
-      `Recorded visual audit (${rec.verdict}, ${Object.keys(rec.screenshots).length} screenshot(s)) at ${AUDIT_RECORD_REL}`,
+      `Recorded visual audit (${rec.verdict}, ${Object.keys(rec.screenshots).length} screenshot(s)) at ${auditRel}`,
     );
     process.exit(0);
   }
