@@ -8,7 +8,9 @@ use clap::{Parser, Subcommand, ValueEnum};
 use jiff::Timestamp;
 use uuid::Uuid;
 
-use grdr_agents::discover_local_agents;
+use grdr_agents::{
+    HookTargetKind, detect_home_dir, discover_local_agents, install_hook, uninstall_hook,
+};
 use grdr_core::policy;
 use grdr_model::{
     ActionAttempt, ActionClass, ControlPoint, DecideInput, DecisionReceipt, InstallProfile,
@@ -57,13 +59,21 @@ enum Command {
         #[arg(long, env = "GRDR_DAEMON_URL", default_value = "http://127.0.0.1:8788")]
         daemon: String,
     },
-    /// Print Claude Code PreToolUse hook configuration pointing to grdr-hook.
+    /// Install or preview Guardrails ADR PreToolUse hooks for an agent harness.
     InstallHook {
         #[arg(long, default_value = "claude-code")]
         agent: String,
 
-        #[arg(long, default_value_t = true)]
-        dry_run: bool,
+        #[arg(long, default_value = "grdr-hook")]
+        command: String,
+
+        #[arg(long, default_value_t = false)]
+        apply: bool,
+    },
+    /// Restore original agent configuration from backup journal and remove Guardrails hooks.
+    UninstallHook {
+        #[arg(long, default_value = "claude-code")]
+        agent: String,
     },
 }
 
@@ -78,7 +88,12 @@ fn main() -> ExitCode {
             agent,
             daemon,
         } => run_check(&action, &target, &agent, &daemon),
-        Command::InstallHook { agent, dry_run } => run_install_hook(&agent, dry_run),
+        Command::InstallHook {
+            agent,
+            command,
+            apply,
+        } => run_install_hook(&agent, &command, apply),
+        Command::UninstallHook { agent } => run_uninstall_hook(&agent),
     }
 }
 
@@ -219,26 +234,80 @@ fn run_check(action: &str, target: &str, agent: &str, daemon: &str) -> ExitCode 
     }
 }
 
-fn run_install_hook(agent: &str, _dry_run: bool) -> ExitCode {
-    let hook_json = serde_json::json!({
-        "hooks": {
-            "PreToolUse": [
-                {
-                    "matcher": "Bash|PowerShell|Read|Write|Edit|MultiEdit|WebFetch|mcp__.*",
-                    "hooks": [
-                        {
-                            "type": "command",
-                            "command": "grdr-hook",
-                            "timeout": 2
-                        }
-                    ]
-                }
-            ]
+fn run_install_hook(agent: &str, command: &str, apply: bool) -> ExitCode {
+    let target = match HookTargetKind::from_name(agent) {
+        Ok(t) => t,
+        Err(err) => {
+            eprintln!("{err}");
+            return ExitCode::FAILURE;
         }
-    });
-    println!("Add the following snippet for `{agent}` settings:\n");
-    if let Ok(pretty) = serde_json::to_string_pretty(&hook_json) {
-        println!("{pretty}");
+    };
+    let Some(home) = detect_home_dir() else {
+        eprintln!("GRDR-CLI-0001: HOME or USERPROFILE environment variable is not set.");
+        return ExitCode::FAILURE;
+    };
+
+    match install_hook(target, &home, command, !apply) {
+        Ok(report) => {
+            if report.dry_run {
+                println!(
+                    "Dry run for `{}` ({}). Pass --apply to write atomically:\n{}",
+                    report.agent,
+                    report.config_path.display(),
+                    report.preview_json
+                );
+            } else if report.already_installed {
+                println!(
+                    "Guardrails ADR hook already installed in {}.",
+                    report.config_path.display()
+                );
+            } else {
+                println!(
+                    "Installed Guardrails ADR hook in {} (backup journal: {}).",
+                    report.config_path.display(),
+                    report.journal_path.display()
+                );
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("Failed installing hook: {err}");
+            ExitCode::FAILURE
+        }
     }
-    ExitCode::SUCCESS
+}
+
+fn run_uninstall_hook(agent: &str) -> ExitCode {
+    let target = match HookTargetKind::from_name(agent) {
+        Ok(t) => t,
+        Err(err) => {
+            eprintln!("{err}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let Some(home) = detect_home_dir() else {
+        eprintln!("GRDR-CLI-0001: HOME or USERPROFILE environment variable is not set.");
+        return ExitCode::FAILURE;
+    };
+
+    match uninstall_hook(target, &home) {
+        Ok(report) => {
+            if report.changed {
+                println!(
+                    "Restored {} from backup journal and removed Guardrails ADR hook.",
+                    report.config_path.display()
+                );
+            } else {
+                println!(
+                    "No Guardrails ADR hook found in {}.",
+                    report.config_path.display()
+                );
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("Failed uninstalling hook: {err}");
+            ExitCode::FAILURE
+        }
+    }
 }

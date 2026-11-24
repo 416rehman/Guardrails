@@ -47,6 +47,9 @@ struct Args {
 
     #[arg(long, env = "GRDR_FLOOR_TABLE")]
     floor_table: Option<PathBuf>,
+
+    #[arg(long, env = "GRDR_DAEMON_DATA_DIR")]
+    data_dir: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -66,8 +69,13 @@ async fn main() -> ExitCode {
     let floor_path = args
         .floor_table
         .or_else(|| Some(state::default_floor_table_path()));
-    let state = match DaemonState::init(profile, args.device_name, args.server.clone(), floor_path)
-    {
+    let state = match DaemonState::init_with_store(
+        profile,
+        args.device_name,
+        args.server.clone(),
+        floor_path,
+        args.data_dir,
+    ) {
         Ok(state) => state,
         Err(err) => {
             error!(error = %err, "Failed to initialize endpoint agent daemon");
@@ -133,8 +141,14 @@ mod tests {
 
     #[tokio::test]
     async fn daemon_evaluates_offline_decisions_with_essentials_pack() {
-        let state =
-            DaemonState::init(InstallProfile::User, Some("test-host".into()), None, None).unwrap();
+        let state = DaemonState::init_with_store(
+            InstallProfile::User,
+            Some("test-host".into()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         let app = routes::build_router(state.clone());
 
         let block_req = DecideInput {
@@ -168,8 +182,14 @@ mod tests {
 
     #[tokio::test]
     async fn daemon_consumes_once_grant_on_first_matching_decision() {
-        let state =
-            DaemonState::init(InstallProfile::User, Some("test-host".into()), None, None).unwrap();
+        let state = DaemonState::init_with_store(
+            InstallProfile::User,
+            Some("test-host".into()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         let now = jiff::Timestamp::now();
         {
             let mut guard = state.inner.write().await;
@@ -250,11 +270,12 @@ mod tests {
         let floor_path = floor_dir.join("floor.json");
         let _ = std::fs::remove_dir_all(&floor_dir);
 
-        let daemon = DaemonState::init(
+        let daemon = DaemonState::init_with_store(
             InstallProfile::User,
             Some("test-host".into()),
             None,
             Some(floor_path.clone()),
+            None,
         )
         .unwrap();
 
@@ -301,5 +322,54 @@ mod tests {
 
         drop(guard);
         let _ = std::fs::remove_dir_all(&floor_dir);
+    }
+
+    #[tokio::test]
+    async fn daemon_persists_signing_key_and_pending_events_across_restart() {
+        let data_dir =
+            std::env::temp_dir().join(format!("grdr-daemon-store-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data_dir);
+
+        let key_id_first = {
+            let daemon = DaemonState::init_with_store(
+                InstallProfile::User,
+                Some("persist-host".into()),
+                None,
+                None,
+                Some(data_dir.clone()),
+            )
+            .unwrap();
+            let _ = daemon
+                .decide_local(DecideInput {
+                    session_id: Some("sess-persist".into()),
+                    device_id: None,
+                    device_name: None,
+                    agent_name: "claude-code".into(),
+                    action_class: ActionClass::FileWrite,
+                    control_point: None,
+                    target: ".claude/settings.json".into(),
+                    summary: None,
+                })
+                .await;
+            let guard = daemon.inner.read().await;
+            assert_eq!(guard.pending_receipts.len(), 1);
+            guard.signing_key.key_id().to_string()
+        };
+
+        let restarted = DaemonState::init_with_store(
+            InstallProfile::User,
+            Some("persist-host".into()),
+            None,
+            None,
+            Some(data_dir.clone()),
+        )
+        .unwrap();
+        let guard = restarted.inner.read().await;
+        assert_eq!(guard.signing_key.key_id(), key_id_first);
+        assert_eq!(guard.pending_receipts.len(), 1);
+        assert_eq!(restarted.status().await.pending_events, 1);
+
+        drop(guard);
+        let _ = std::fs::remove_dir_all(&data_dir);
     }
 }

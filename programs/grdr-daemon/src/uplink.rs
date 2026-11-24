@@ -9,7 +9,7 @@ use tracing::{info, warn};
 use grdr_crypto::{verify_grant, verify_pack};
 use grdr_model::{BatchEventsInput, DeviceCheckinRequest, DeviceCheckinResponse, SignatureStatus};
 
-use crate::state::{DaemonData, DaemonState, write_signed_floor_bundle};
+use crate::state::{DaemonData, DaemonState, persist_daemon_snapshot, write_signed_floor_bundle};
 
 pub async fn sync_once(
     state: &DaemonState,
@@ -95,6 +95,9 @@ pub async fn sync_once(
         }
         if let Err(err) = write_signed_floor_bundle(&guard, Timestamp::now()) {
             warn!(error = %err, "Failed writing signed fail-safe floor table");
+        }
+        if let Err(err) = persist_daemon_snapshot(&guard) {
+            warn!(error = %err, "Failed persisting daemon local snapshot");
         }
     }
 
