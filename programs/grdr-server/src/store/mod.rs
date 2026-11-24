@@ -21,7 +21,7 @@ use tokio::sync::{RwLock, broadcast};
 use uuid::Uuid;
 
 use grdr_core::policy;
-use grdr_crypto::{SigningKeypair, load_or_create_keypair};
+use grdr_crypto::{AeadKey, SigningKeypair, load_or_create_keypair};
 use grdr_model::error::CODE_STORE_IO;
 use grdr_model::{
     ActionAttempt, ApprovalRequest, AuditEntry, BrowserAppPolicy, CodedError, DecisionReceipt,
@@ -29,7 +29,9 @@ use grdr_model::{
     OrgPrivacyConfig, OtlpFanoutConfig, PolicyPack, StorageMode, Verdict,
 };
 use grdr_ports::ProfileKind;
+use grdr_proto::common::CollectionKind;
 
+use crate::aip::revision::RevisionTable;
 use crate::demo;
 use persistence::EmbeddedStorage;
 
@@ -73,6 +75,8 @@ pub struct AppState {
     pub(crate) storage: Option<Arc<EmbeddedStorage>>,
     pub backend: StorageBackend,
     pub signing_key: SigningKeypair,
+    pub page_key: AeadKey,
+    pub revisions: Arc<RevisionTable>,
 }
 
 impl StorageBackend {
@@ -207,6 +211,7 @@ impl AppState {
             store.persist_store_data(&data)?;
         }
 
+        let page_key = signing_key.derive_aead_key("aip158.page_token");
         let (live_tx, _) = broadcast::channel(256);
         Ok(Self {
             inner: Arc::new(RwLock::new(data)),
@@ -214,7 +219,13 @@ impl AppState {
             storage,
             backend,
             signing_key,
+            page_key,
+            revisions: Arc::new(RevisionTable::new()),
         })
+    }
+
+    pub(crate) fn bump_revision(&self, collection: CollectionKind) -> u64 {
+        self.revisions.bump(collection)
     }
 
     pub(crate) fn persist_store(&self, data: &StoreData) -> Result<(), CodedError> {

@@ -5,6 +5,9 @@
 use std::fs;
 use std::path::Path;
 
+mod aead;
+pub use aead::{AeadKey, open_token, seal_token};
+
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as B64;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
@@ -38,6 +41,10 @@ pub enum CryptoError {
     Serialization(String),
     #[error("GRDR-CRYPTO-0006: key storage I/O failed: {0}")]
     Io(String),
+    #[error("GRDR-CRYPTO-0007: token encryption failed: {0}")]
+    AeadEncrypt(String),
+    #[error("GRDR-CRYPTO-0008: invalid or tampered sealed token")]
+    InvalidToken,
 }
 
 #[derive(Clone)]
@@ -146,6 +153,10 @@ impl SigningKeypair {
 
     pub fn seed_b64(&self) -> String {
         B64.encode(self.signing_key.to_bytes())
+    }
+
+    pub fn derive_aead_key(&self, domain: &str) -> AeadKey {
+        AeadKey::from_bytes(self.signing_key.to_bytes()).derive_subkey(domain)
     }
 
     pub fn key_id(&self) -> &str {

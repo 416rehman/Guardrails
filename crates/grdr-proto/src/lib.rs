@@ -4,6 +4,10 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod api;
+pub mod common;
+pub mod serde_proto;
+
 pub const PROTO_VERSION: u16 = 1;
 pub const DEFAULT_MAX_IPC_BYTES: usize = 1_048_576;
 

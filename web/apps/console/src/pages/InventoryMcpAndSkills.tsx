@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Device } from "@grdr/api";
+import { api, type Device } from "@grdr/api";
 import { EntityLink, type EntityTarget, Quoted } from "@grdr/kit";
 import {
   Badge,
@@ -13,7 +13,8 @@ import {
   TextInput,
   VStack,
 } from "@grdr/ui";
-import { formatRangeLabel, PagerBar } from "../components/PagerBar";
+import { CursorPagerBar, formatRangeLabel } from "../components/PagerBar";
+import { aipQuote, useServerPage } from "../components/useServerPage";
 import { SkillsAndRulesView } from "./InventorySkillsSection";
 
 export function InventoryMcpAndSkills({
@@ -63,8 +64,6 @@ function McpServersView({
   const [localQuery, setLocalQuery] = useState("");
   const [transportFilter, setTransportFilter] = useState("all");
   const [pinFilter, setPinFilter] = useState("all");
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(25);
 
   const allMcps = useMemo(
     () =>
@@ -78,33 +77,31 @@ function McpServersView({
       ),
     [devices],
   );
+  const deviceOsById = useMemo(() => new Map(devices.map((d) => [d.id, d.os])), [devices]);
 
   const combinedQuery = `${globalQuery} ${localQuery}`.trim().toLowerCase();
-  const filteredMcps = useMemo(
-    () =>
-      allMcps.filter(({ deviceHostname, mcp }) => {
-        if (
-          combinedQuery &&
-          !mcp.name.toLowerCase().includes(combinedQuery) &&
-          !mcp.source_agent.toLowerCase().includes(combinedQuery) &&
-          !mcp.command.toLowerCase().includes(combinedQuery) &&
-          !deviceHostname.toLowerCase().includes(combinedQuery)
-        ) {
-          return false;
-        }
-        if (transportFilter !== "all" && mcp.transport.toLowerCase() !== transportFilter) {
-          return false;
-        }
-        if (pinFilter === "pinned" && !mcp.pinned) return false;
-        if (pinFilter === "unpinned" && mcp.pinned) return false;
-        return true;
-      }),
-    [allMcps, combinedQuery, transportFilter, pinFilter],
-  );
+  const aipFilter = useMemo(() => {
+    const clauses: string[] = [];
+    if (combinedQuery) {
+      clauses.push(
+        `(name:${aipQuote(combinedQuery)} OR source_agent:${aipQuote(combinedQuery)} OR device_name:${aipQuote(combinedQuery)})`,
+      );
+    }
+    if (transportFilter !== "all") clauses.push(`transport = ${aipQuote(transportFilter)}`);
+    if (pinFilter === "pinned") clauses.push("pinned = true");
+    if (pinFilter === "unpinned") clauses.push("pinned = false");
+    return clauses.join(" AND ");
+  }, [combinedQuery, transportFilter, pinFilter]);
 
-  const safePage = page * pageSize >= filteredMcps.length && filteredMcps.length > 0 ? 0 : page;
-  const startIdx = safePage * pageSize;
-  const pagedMcps = filteredMcps.slice(startIdx, startIdx + pageSize);
+  const mcpPage = useServerPage(api.listMcpServersPage, aipFilter, "name asc", 25);
+  const startIdx = mcpPage.pageIndex * mcpPage.pageSize;
+  const pagedMcps = mcpPage.items.map((item) => ({
+    deviceId: item.device_id,
+    deviceHostname: item.device_name,
+    deviceOs: deviceOsById.get(item.device_id) ?? "linux",
+    mcp: item.server,
+  }));
+  const totalMcpsCount = mcpPage.pageInfo.total_size_estimate || pagedMcps.length;
   const pinnedCount = allMcps.filter((m) => m.mcp.pinned).length;
   const stdioCount = allMcps.filter((m) => m.mcp.transport.toLowerCase() === "stdio").length;
   const hasFilters = Boolean(localQuery.trim()) || transportFilter !== "all" || pinFilter !== "all";
@@ -139,7 +136,7 @@ function McpServersView({
               placeholder="Filter by server name, command, or host..."
               startIcon={<GrdrIcon name="search" size={13} color="var(--ink-muted)" />}
               value={localQuery}
-              onChange={(val) => { setLocalQuery(val); setPage(0); }}
+              onChange={(val) => setLocalQuery(val)}
               width="100%"
             />
           </div>
@@ -155,7 +152,7 @@ function McpServersView({
               { value: "http", label: "http" },
               { value: "sse", label: "sse" },
             ]}
-            onChange={(val) => { setTransportFilter(val); setPage(0); }}
+            onChange={(val) => setTransportFilter(val)}
           />
           <GrdrSelect
             label="Filter by pin state"
@@ -168,7 +165,7 @@ function McpServersView({
               { value: "pinned", label: "Pinned" },
               { value: "unpinned", label: "Unpinned" },
             ]}
-            onChange={(val) => { setPinFilter(val); setPage(0); }}
+            onChange={(val) => setPinFilter(val)}
           />
           {hasFilters && (
             <Button
@@ -179,7 +176,6 @@ function McpServersView({
                 setLocalQuery("");
                 setTransportFilter("all");
                 setPinFilter("all");
-                setPage(0);
               }}
             />
           )}
@@ -191,14 +187,14 @@ function McpServersView({
           <HStack justify="between" align="center" style={{ flexWrap: "wrap", gap: 8 }}>
             <HStack gap={2} align="center">
               <GrdrIcon name="plug" size={16} />
-              <Heading level={2}>{`MCP servers (${filteredMcps.length})`}</Heading>
+              <Heading level={2}>{`MCP servers (${totalMcpsCount})`}</Heading>
             </HStack>
             <Text size="sm" color="secondary" className="tabular">
-              {formatRangeLabel(startIdx, pageSize, filteredMcps.length)}
+              {formatRangeLabel(startIdx, Math.max(pagedMcps.length, 1), totalMcpsCount)}
             </Text>
           </HStack>
 
-          {filteredMcps.length === 0 ? (
+          {pagedMcps.length === 0 && !mcpPage.loading ? (
             <Text color="secondary">No MCP server definitions match the active filters.</Text>
           ) : (
             <div className="table-wrap">
@@ -253,13 +249,15 @@ function McpServersView({
             </div>
           )}
 
-          <PagerBar
-            page={safePage}
-            pageSize={pageSize}
-            totalItems={filteredMcps.length}
+          <CursorPagerBar
+            pageIndex={mcpPage.pageIndex}
+            pageSize={mcpPage.pageSize}
+            itemCount={pagedMcps.length}
+            pageInfo={mcpPage.pageInfo}
             label="MCP servers pagination"
-            onPageChange={setPage}
-            onPageSizeChange={(sz) => { setPageSize(sz); setPage(0); }}
+            onNext={mcpPage.goNext}
+            onPrev={mcpPage.goPrev}
+            onPageSizeChange={mcpPage.setPageSize}
           />
         </VStack>
       </Card>

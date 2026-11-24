@@ -11,6 +11,7 @@ surface = "public"
 renders = "none"
 
 [dependencies]
+prost = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 

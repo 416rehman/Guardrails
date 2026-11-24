@@ -1,5 +1,38 @@
+import { CONNECT_PATHS, connectGet, connectPost } from "./connect";
+import {
+  normAgent,
+  normApproval,
+  normArtifact,
+  normAudit,
+  normBrowserEvaluate,
+  normBrowserPolicy,
+  normConnectConfig,
+  normCreateDeploymentKey,
+  normDeploymentKey,
+  normDevice,
+  normFinding,
+  normHealth,
+  normIncident,
+  normIntegration,
+  normKillSwitch,
+  normMcpServer,
+  normMdmRender,
+  normOverview,
+  normPack,
+  normPageInfo,
+  normPrivacyConfig,
+  normReceipt,
+  normReplay,
+  normRule,
+  normSession,
+  normSessionDetail,
+  normTrustedKey,
+  normUser,
+  normUserDetail,
+} from "./normalize";
 import type {
   ActionClass,
+  AgentInventoryItem,
   ApprovalRequest,
   ArtifactEntry,
   AuditEntry,
@@ -15,10 +48,13 @@ import type {
   KillAction,
   KillScope,
   KillSwitchState,
+  McpInventoryItem,
   McpServerEntry,
   Mode,
   OrgPrivacyConfig,
   OverviewResponse,
+  PageQuery,
+  PagedResult,
   PolicyPack,
   PolicyRule,
   ReplaySummary,
@@ -28,65 +64,32 @@ import type {
   UserDetailResponse,
   UserProfile,
 } from "./types";
+import type {
+  BrowserAppPolicy,
+  BrowserDlpClass,
+  BrowserEvaluateResponse,
+  ConnectConfigResponse,
+  CreateDeploymentKeyResponse,
+  DeploymentKey,
+  IntegrationEntry,
+  MdmFormat,
+  MdmRenderResponse,
+} from "./types-connect";
 
-const TOKEN_STORAGE_KEY = "grdr_api_token";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Raw = Record<string, any>;
 
-export function getApiToken(): string {
-  try {
-    return window.sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "";
-  } catch {
-    return "";
-  }
+function pageReqBody(query?: PageQuery): Record<string, unknown> {
+  return {
+    pageSize: query?.page_size ?? 50,
+    pageToken: query?.page_token ?? "",
+    filter: query?.filter ?? "",
+    orderBy: query?.order_by ?? "",
+  };
 }
 
-export function setApiToken(token: string): void {
-  try {
-    const trimmed = token.trim();
-    if (trimmed) {
-      window.sessionStorage.setItem(TOKEN_STORAGE_KEY, trimmed);
-    } else {
-      window.sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-    }
-  } catch {
-    // ignore storage errors in non-browser tests
-  }
-}
-
-function authHeaders(): Record<string, string> {
-  const token = getApiToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
-async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(url, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(),
-      ...(init?.headers ?? {}),
-    },
-  });
-  if (!resp.ok) {
-    let detail = `Request failed (${resp.status})`;
-    try {
-      const parsed = (await resp.json()) as { code?: string; message?: string };
-      if (parsed.message) {
-        detail = parsed.code ? `${parsed.code}: ${parsed.message}` : parsed.message;
-      }
-    } catch {
-      // keep default HTTP status message
-    }
-    throw new Error(detail);
-  }
-  return (await resp.json()) as T;
-}
-
-async function downloadExport(url: string, filename: string): Promise<void> {
-  const resp = await fetch(url, { headers: authHeaders() });
-  if (!resp.ok) {
-    throw new Error(`Export failed (${resp.status})`);
-  }
-  const blob = await resp.blob();
+function triggerDownload(filename: string, contentType: string, payload: string): void {
+  const blob = new Blob([payload], { type: contentType || "application/octet-stream" });
   const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = objectUrl;
@@ -98,30 +101,122 @@ async function downloadExport(url: string, filename: string): Promise<void> {
 }
 
 export const api = {
-  getHealth: () => requestJson<HealthResponse>("/api/v1/health"),
-  getOverview: () => requestJson<OverviewResponse>("/api/v1/overview"),
-  getUsers: () => requestJson<UserProfile[]>("/api/v1/users"),
-  getUserDetail: (id: string) =>
-    requestJson<UserDetailResponse>(`/api/v1/users/${encodeURIComponent(id)}`),
-  getPrivacyConfig: () => requestJson<OrgPrivacyConfig>("/api/v1/privacy/config"),
-  updatePrivacyConfig: (body: {
+  getHealth: async (): Promise<HealthResponse> =>
+    normHealth(await connectGet<Raw>(CONNECT_PATHS.getHealth)),
+
+  getOverview: async (): Promise<OverviewResponse> =>
+    normOverview(await connectGet<Raw>(CONNECT_PATHS.getOverview)),
+
+  getPrivacyConfig: async (): Promise<OrgPrivacyConfig> => {
+    const res = await connectGet<Raw>(CONNECT_PATHS.getPrivacyConfig);
+    return normPrivacyConfig(res.config ?? res);
+  },
+
+  updatePrivacyConfig: async (body: {
     identity_mode?: IdentityMode;
     user_risk_scoring?: boolean;
     actor?: string;
-  }) =>
-    requestJson<OrgPrivacyConfig>("/api/v1/privacy/config", {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    }),
-  getDevices: () => requestJson<Device[]>("/api/v1/devices"),
-  getAgents: () => requestJson<DiscoveredAgent[]>("/api/v1/inventory/agents"),
-  getMcpServers: () => requestJson<McpServerEntry[]>("/api/v1/inventory/mcp-servers"),
-  getArtifacts: () => requestJson<ArtifactEntry[]>("/api/v1/inventory/artifacts"),
-  getSessions: () => requestJson<SessionSummary[]>("/api/v1/sessions"),
-  getSessionDetail: (id: string) =>
-    requestJson<SessionDetailResponse>(`/api/v1/sessions/${encodeURIComponent(id)}`),
-  getPacks: () => requestJson<PolicyPack[]>("/api/v1/policies/packs"),
-  createRule: (body: {
+  }): Promise<OrgPrivacyConfig> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.updatePrivacyConfig, {
+      identityMode: body.identity_mode,
+      userRiskScoring: body.user_risk_scoring,
+      actor: body.actor,
+    });
+    return normPrivacyConfig(res.config ?? res);
+  },
+
+  listUsersPage: async (query?: PageQuery): Promise<PagedResult<UserProfile>> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.listUsers, pageReqBody(query));
+    return {
+      items: (res.users ?? []).map(normUser),
+      page_info: normPageInfo(res.pageInfo ?? res.page_info),
+      etag: res.revision?.etag,
+    };
+  },
+
+  getUsers: async (): Promise<UserProfile[]> =>
+    (await api.listUsersPage({ page_size: 200 })).items,
+
+  getUserDetail: async (id: string): Promise<UserDetailResponse> =>
+    normUserDetail(await connectPost<Raw>(CONNECT_PATHS.getUser, { id })),
+
+  listDevicesPage: async (query?: PageQuery): Promise<PagedResult<Device>> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.listDevices, pageReqBody(query));
+    return {
+      items: (res.devices ?? []).map(normDevice),
+      page_info: normPageInfo(res.pageInfo ?? res.page_info),
+      etag: res.revision?.etag,
+    };
+  },
+
+  getDevices: async (): Promise<Device[]> =>
+    (await api.listDevicesPage({ page_size: 200 })).items,
+
+  listAgentsPage: async (query?: PageQuery): Promise<PagedResult<AgentInventoryItem>> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.listAgents, pageReqBody(query));
+    return {
+      items: (res.items ?? []).map((it: Raw) => ({
+        device_id: it.deviceId ?? it.device_id ?? "",
+        device_name: it.deviceName ?? it.device_name ?? "",
+        agent: normAgent(it.agent ?? {}),
+      })),
+      page_info: normPageInfo(res.pageInfo ?? res.page_info),
+      etag: res.revision?.etag,
+    };
+  },
+
+  getAgents: async (): Promise<DiscoveredAgent[]> =>
+    (await api.listAgentsPage({ page_size: 200 })).items.map((it) => it.agent),
+
+  listMcpServersPage: async (query?: PageQuery): Promise<PagedResult<McpInventoryItem>> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.listMcpServers, pageReqBody(query));
+    return {
+      items: (res.items ?? []).map((it: Raw) => ({
+        device_id: it.deviceId ?? it.device_id ?? "",
+        device_name: it.deviceName ?? it.device_name ?? "",
+        server: normMcpServer(it.server ?? {}),
+      })),
+      page_info: normPageInfo(res.pageInfo ?? res.page_info),
+      etag: res.revision?.etag,
+    };
+  },
+
+  getMcpServers: async (): Promise<McpServerEntry[]> =>
+    (await api.listMcpServersPage({ page_size: 200 })).items.map((it) => it.server),
+
+  listArtifactsPage: async (query?: PageQuery): Promise<PagedResult<ArtifactEntry>> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.listArtifacts, pageReqBody(query));
+    return {
+      items: (res.artifacts ?? []).map(normArtifact),
+      page_info: normPageInfo(res.pageInfo ?? res.page_info),
+      etag: res.revision?.etag,
+    };
+  },
+
+  getArtifacts: async (): Promise<ArtifactEntry[]> =>
+    (await api.listArtifactsPage({ page_size: 200 })).items,
+
+  listSessionsPage: async (query?: PageQuery): Promise<PagedResult<SessionSummary>> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.listSessions, pageReqBody(query));
+    return {
+      items: (res.sessions ?? []).map(normSession),
+      page_info: normPageInfo(res.pageInfo ?? res.page_info),
+      etag: res.revision?.etag,
+    };
+  },
+
+  getSessions: async (): Promise<SessionSummary[]> =>
+    (await api.listSessionsPage({ page_size: 200 })).items,
+
+  getSessionDetail: async (id: string): Promise<SessionDetailResponse> =>
+    normSessionDetail(await connectPost<Raw>(CONNECT_PATHS.getSession, { id })),
+
+  getPacks: async (): Promise<PolicyPack[]> => {
+    const res = await connectGet<Raw>(CONNECT_PATHS.listPacks);
+    return (res.packs ?? []).map(normPack);
+  },
+
+  createRule: async (body: {
     title: string;
     description: string;
     mode: Mode;
@@ -132,12 +227,23 @@ export const api = {
       agents: string[];
     };
     reason_template: string;
-  }) =>
-    requestJson<PolicyRule>("/api/v1/policies/rules", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  updateRule: (
+  }): Promise<PolicyRule> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.createRule, {
+      title: body.title,
+      description: body.description,
+      mode: body.mode,
+      matcher: {
+        actionClasses: body.matcher.action_classes,
+        targetPrefixes: body.matcher.target_prefixes,
+        targetContains: body.matcher.target_contains,
+        agents: body.matcher.agents,
+      },
+      reasonTemplate: body.reason_template,
+    });
+    return normRule(res.rule ?? res);
+  },
+
+  updateRule: async (
     id: string,
     body: {
       title?: string;
@@ -151,53 +257,142 @@ export const api = {
       };
       reason_template?: string;
     },
-  ) =>
-    requestJson<PolicyRule>(`/api/v1/policies/rules/${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    }),
-  deleteRule: (id: string) =>
-    requestJson<PolicyRule>(`/api/v1/policies/rules/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    }),
-  updateRuleMode: (id: string, mode: Mode, replayConfirmed = false) =>
-    requestJson<PolicyRule>(`/api/v1/policies/rules/${encodeURIComponent(id)}/mode`, {
-      method: "PATCH",
-      body: JSON.stringify({ mode, replay_confirmed: replayConfirmed }),
-    }),
-  replayRule: (id: string, candidateMode: Mode) =>
-    requestJson<ReplaySummary>(`/api/v1/policies/rules/${encodeURIComponent(id)}/replay`, {
-      method: "POST",
-      body: JSON.stringify({ candidate_mode: candidateMode }),
-    }),
-  getApprovals: () => requestJson<ApprovalRequest[]>("/api/v1/approvals"),
-  decideApproval: (id: string, approve: boolean, scope: GrantScope, note: string) =>
-    requestJson<ApprovalRequest>(`/api/v1/approvals/${encodeURIComponent(id)}/decide`, {
-      method: "POST",
-      body: JSON.stringify({ approve, scope, note }),
-    }),
-  getFindings: () => requestJson<Finding[]>("/api/v1/findings"),
-  getIncidents: () => requestJson<Incident[]>("/api/v1/incidents"),
-  updateFinding: (id: string, lifecycle: FindingLifecycle) =>
-    requestJson<Finding>(`/api/v1/findings/${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      body: JSON.stringify({ lifecycle }),
-    }),
-  getKillSwitch: () => requestJson<KillSwitchState>("/api/v1/kill-switch"),
-  setKillSwitch: (body: {
+  ): Promise<PolicyRule> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.updateRule, {
+      id,
+      title: body.title,
+      description: body.description,
+      mode: body.mode,
+      matcher: body.matcher
+        ? {
+            actionClasses: body.matcher.action_classes,
+            targetPrefixes: body.matcher.target_prefixes,
+            targetContains: body.matcher.target_contains,
+            agents: body.matcher.agents,
+          }
+        : undefined,
+      reasonTemplate: body.reason_template,
+    });
+    return normRule(res.rule ?? res);
+  },
+
+  deleteRule: async (id: string): Promise<void> => {
+    await connectPost<Raw>(CONNECT_PATHS.deleteRule, { id });
+  },
+
+  updateRuleMode: async (id: string, mode: Mode, replayConfirmed = false): Promise<PolicyRule> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.updateRuleMode, {
+      id,
+      mode,
+      replayConfirmed,
+    });
+    return normRule(res.rule ?? res);
+  },
+
+  replayRule: async (id: string, candidateMode: Mode): Promise<ReplaySummary> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.replayRule, {
+      id,
+      candidateMode,
+    });
+    return normReplay(res.summary ?? res);
+  },
+
+  listApprovalsPage: async (query?: PageQuery): Promise<PagedResult<ApprovalRequest>> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.listApprovals, pageReqBody(query));
+    return {
+      items: (res.approvals ?? []).map(normApproval),
+      page_info: normPageInfo(res.pageInfo ?? res.page_info),
+      etag: res.revision?.etag,
+    };
+  },
+
+  getApprovals: async (): Promise<ApprovalRequest[]> =>
+    (await api.listApprovalsPage({ page_size: 200 })).items,
+
+  decideApproval: async (
+    id: string,
+    approve: boolean,
+    scope: GrantScope,
+    note: string,
+  ): Promise<ApprovalRequest> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.decideApproval, {
+      id,
+      approve,
+      scope,
+      note,
+    });
+    return normApproval(res.approval ?? res);
+  },
+
+  listFindingsPage: async (query?: PageQuery): Promise<PagedResult<Finding>> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.listFindings, pageReqBody(query));
+    return {
+      items: (res.findings ?? []).map(normFinding),
+      page_info: normPageInfo(res.pageInfo ?? res.page_info),
+      etag: res.revision?.etag,
+    };
+  },
+
+  getFindings: async (): Promise<Finding[]> =>
+    (await api.listFindingsPage({ page_size: 200 })).items,
+
+  listIncidentsPage: async (query?: PageQuery): Promise<PagedResult<Incident>> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.listIncidents, pageReqBody(query));
+    return {
+      items: (res.incidents ?? []).map(normIncident),
+      page_info: normPageInfo(res.pageInfo ?? res.page_info),
+      etag: res.revision?.etag,
+    };
+  },
+
+  getIncidents: async (): Promise<Incident[]> =>
+    (await api.listIncidentsPage({ page_size: 200 })).items,
+
+  updateFinding: async (id: string, lifecycle: FindingLifecycle): Promise<Finding> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.updateFinding, { id, lifecycle });
+    return normFinding(res.finding ?? res);
+  },
+
+  getKillSwitch: async (): Promise<KillSwitchState> => {
+    const res = await connectGet<Raw>(CONNECT_PATHS.getKillSwitch);
+    return normKillSwitch(res.killSwitch ?? res.kill_switch ?? res);
+  },
+
+  setKillSwitch: async (body: {
     action: KillAction;
     scope: KillScope;
     target_id: string;
     reason: string;
     duration_minutes?: number;
-  }) =>
-    requestJson<KillSwitchState>("/api/v1/kill-switch", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  getAudit: () => requestJson<AuditEntry[]>("/api/v1/audit"),
-  getKeys: () => requestJson<TrustedKeyInfo[]>("/api/v1/keys"),
-  decideAction: (body: {
+  }): Promise<KillSwitchState> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.setKillSwitch, {
+      action: body.action,
+      scope: body.scope,
+      targetId: body.target_id,
+      reason: body.reason,
+      durationMinutes: body.duration_minutes,
+    });
+    return normKillSwitch(res.killSwitch ?? res.kill_switch ?? res);
+  },
+
+  listAuditEventsPage: async (query?: PageQuery): Promise<PagedResult<AuditEntry>> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.listAuditEvents, pageReqBody(query));
+    return {
+      items: (res.entries ?? []).map(normAudit),
+      page_info: normPageInfo(res.pageInfo ?? res.page_info),
+      etag: res.revision?.etag,
+    };
+  },
+
+  getAudit: async (): Promise<AuditEntry[]> =>
+    (await api.listAuditEventsPage({ page_size: 200 })).items,
+
+  getKeys: async (): Promise<TrustedKeyInfo[]> => {
+    const res = await connectGet<Raw>(CONNECT_PATHS.listKeys);
+    return (res.keys ?? []).map(normTrustedKey);
+  },
+
+  decideAction: async (body: {
     session_id: string;
     device_id: string;
     device_name: string;
@@ -205,49 +400,88 @@ export const api = {
     action_class: ActionClass;
     target: string;
     summary: string;
-  }) =>
-    requestJson<DecisionReceipt>("/api/v1/decide", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  exportOcsf: () => downloadExport("/api/v1/exports/ocsf", "guardrails-ocsf-1.9.json"),
-  exportAuditJsonl: () =>
-    downloadExport("/api/v1/exports/audit.jsonl", "guardrails-audit.jsonl"),
-  getConnectConfig: () => requestJson<import("./types-connect").ConnectConfigResponse>("/api/v1/connect/config"),
-  createDeploymentKey: (body: {
+  }): Promise<DecisionReceipt> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.evaluate, {
+      sessionId: body.session_id,
+      deviceId: body.device_id,
+      deviceName: body.device_name,
+      agentName: body.agent_name,
+      actionClass: body.action_class,
+      target: body.target,
+      summary: body.summary,
+    });
+    return normReceipt(res.receipt ?? res);
+  },
+
+  exportOcsf: async (): Promise<void> => {
+    const res = await connectGet<Raw>(CONNECT_PATHS.exportOcsf);
+    triggerDownload(
+      res.filename ?? "guardrails-ocsf-1.9.json",
+      res.contentType ?? "application/json",
+      res.payload ?? "[]",
+    );
+  },
+
+  exportAuditJsonl: async (): Promise<void> => {
+    const res = await connectGet<Raw>(CONNECT_PATHS.exportAuditJsonl);
+    triggerDownload(
+      res.filename ?? "guardrails-audit.jsonl",
+      res.contentType ?? "application/x-ndjson",
+      res.payload ?? "",
+    );
+  },
+
+  getConnectConfig: async (): Promise<ConnectConfigResponse> =>
+    normConnectConfig(await connectGet<Raw>(CONNECT_PATHS.getConnectConfig)),
+
+  createDeploymentKey: async (body: {
     label: string;
     wave: string;
     install_profile: string;
     max_uses: number;
     ttl_days: number;
-  }) =>
-    requestJson<import("./types-connect").CreateDeploymentKeyResponse>("/api/v1/connect/deployment-keys", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  revokeDeploymentKey: (id: string) =>
-    requestJson<import("./types-connect").DeploymentKey>(
-      `/api/v1/connect/deployment-keys/${encodeURIComponent(id)}/revoke`,
-      { method: "POST" },
+  }): Promise<CreateDeploymentKeyResponse> =>
+    normCreateDeploymentKey(
+      await connectPost<Raw>(CONNECT_PATHS.createDeploymentKey, {
+        label: body.label,
+        wave: body.wave,
+        installProfile: body.install_profile,
+        maxUses: body.max_uses,
+        ttlDays: body.ttl_days,
+      }),
     ),
-  renderMdmConfig: (body: {
-    format: import("./types-connect").MdmFormat;
+
+  revokeDeploymentKey: async (id: string): Promise<DeploymentKey> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.revokeDeploymentKey, { id });
+    return normDeploymentKey(res.key ?? res);
+  },
+
+  renderMdmConfig: async (body: {
+    format: MdmFormat;
     deployment_key_id?: string | null;
     include_browser_extension: boolean;
     update_authority: string;
-  }) =>
-    requestJson<import("./types-connect").MdmRenderResponse>("/api/v1/connect/mdm-render", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  checkIntegrationReadiness: (id: string) =>
-    requestJson<import("./types-connect").IntegrationEntry>(
-      `/api/v1/integrations/${encodeURIComponent(id)}/check-readiness`,
-      { method: "POST" },
+  }): Promise<MdmRenderResponse> =>
+    normMdmRender(
+      await connectPost<Raw>(CONNECT_PATHS.renderMdmConfig, {
+        format: body.format,
+        deploymentKeyId: body.deployment_key_id ?? undefined,
+        includeBrowserExtension: body.include_browser_extension,
+        updateAuthority: body.update_authority,
+      }),
     ),
-  getBrowserPolicies: () =>
-    requestJson<import("./types-connect").BrowserAppPolicy[]>("/api/v1/browser/policies"),
-  updateBrowserPolicy: (
+
+  checkIntegrationReadiness: async (id: string): Promise<IntegrationEntry> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.checkIntegrationReadiness, { id });
+    return normIntegration(res.integration ?? res);
+  },
+
+  getBrowserPolicies: async (): Promise<BrowserAppPolicy[]> => {
+    const res = await connectGet<Raw>(CONNECT_PATHS.listBrowserPolicies);
+    return (res.policies ?? []).map(normBrowserPolicy);
+  },
+
+  updateBrowserPolicy: async (
     id: string,
     body: {
       mode?: Mode;
@@ -255,20 +489,31 @@ export const api = {
       block_secret_paste?: boolean;
       managed_extension_only?: boolean;
     },
-  ) =>
-    requestJson<import("./types-connect").BrowserAppPolicy>(
-      `/api/v1/browser/policies/${encodeURIComponent(id)}`,
-      { method: "PATCH", body: JSON.stringify(body) },
-    ),
-  evaluateBrowserAction: (body: {
+  ): Promise<BrowserAppPolicy> => {
+    const res = await connectPost<Raw>(CONNECT_PATHS.updateBrowserPolicy, {
+      id,
+      mode: body.mode,
+      blockFileUploads: body.block_file_uploads,
+      blockSecretPaste: body.block_secret_paste,
+      managedExtensionOnly: body.managed_extension_only,
+    });
+    return normBrowserPolicy(res.policy ?? res);
+  },
+
+  evaluateBrowserAction: async (body: {
     app_id: string;
     domain: string;
-    dlp_class: import("./types-connect").BrowserDlpClass;
+    dlp_class: BrowserDlpClass;
     file_extension?: string | null;
     has_secret_match: boolean;
-  }) =>
-    requestJson<import("./types-connect").BrowserEvaluateResponse>("/api/v1/browser/evaluate", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+  }): Promise<BrowserEvaluateResponse> =>
+    normBrowserEvaluate(
+      await connectPost<Raw>(CONNECT_PATHS.evaluateBrowser, {
+        appId: body.app_id,
+        domain: body.domain,
+        dlpClass: body.dlp_class,
+        fileExtension: body.file_extension ?? undefined,
+        hasSecretMatch: body.has_secret_match,
+      }),
+    ),
 };

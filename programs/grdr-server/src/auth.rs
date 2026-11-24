@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
-use axum::Json;
 use axum::extract::{Request, State};
-use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, header};
 use axum::middleware::Next;
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 use tower_http::cors::{Any, CorsLayer};
 
-use grdr_model::CodedError;
-use grdr_model::error::CODE_UNAUTHORIZED;
+use crate::connect_codec::extract_request_id;
+use crate::connect_error::{ApiError, WireEncoding, encode_connect_error};
 
 pub const DEFAULT_MAX_BODY_BYTES: usize = 1024 * 1024;
 const ENROLL_HEADER: &str = "x-guardrails-enroll-token";
@@ -44,11 +43,21 @@ pub fn build_cors_layer(security: &ServerSecurityConfig) -> CorsLayer {
 
     let auth_enabled = security.api_token.is_some() || security.enroll_token.is_some();
 
-    let layer = CorsLayer::new().allow_methods(Any).allow_headers([
-        header::AUTHORIZATION,
-        header::CONTENT_TYPE,
-        header::HeaderName::from_static(ENROLL_HEADER),
-    ]);
+    let layer = CorsLayer::new()
+        .allow_methods(Any)
+        .allow_headers([
+            header::AUTHORIZATION,
+            header::CONTENT_TYPE,
+            header::IF_NONE_MATCH,
+            header::HeaderName::from_static(ENROLL_HEADER),
+            header::HeaderName::from_static("connect-protocol-version"),
+            header::HeaderName::from_static("connect-timeout-ms"),
+            header::HeaderName::from_static("grdr-request-id"),
+        ])
+        .expose_headers([
+            header::ETAG,
+            header::HeaderName::from_static("grdr-request-id"),
+        ]);
 
     if !custom.is_empty() {
         return layer.allow_origin(custom);
@@ -82,7 +91,7 @@ pub async fn require_operator_auth(
         return next.run(request).await;
     }
 
-    if request.uri().path() == "/api/v1/live"
+    if request.uri().path() == "/grdr.api.overview.v1alpha1.OverviewService/LiveEvents"
         && let Some(query) = request.uri().query()
         && let Some(token) = extract_query_param(query, "access_token")
         && constant_time_eq(&token, expected)
@@ -90,7 +99,9 @@ pub async fn require_operator_auth(
         return next.run(request).await;
     }
 
+    let req_id = extract_request_id(request.headers());
     unauthorized_response(
+        &req_id,
         "Operator bearer token required.",
         "Provide Authorization: Bearer <token> matching --api-token or GRDR_API_TOKEN.",
     )
@@ -101,7 +112,8 @@ pub async fn require_device_or_operator_auth(
     request: Request,
     next: Next,
 ) -> Response {
-    let is_checkin = request.uri().path() == "/api/v1/devices/checkin";
+    let is_checkin =
+        request.uri().path() == "/grdr.api.inventory.v1alpha1.InventoryService/DeviceCheckin";
     let enroll_token = security.enroll_token.as_deref();
     let api_token = security.api_token.as_deref();
 
@@ -139,12 +151,13 @@ pub async fn require_device_or_operator_auth(
             "Provide an enrollment or operator bearer token.",
         )
     };
-    unauthorized_response(message, next_step)
+    let req_id = extract_request_id(request.headers());
+    unauthorized_response(&req_id, message, next_step)
 }
 
-fn unauthorized_response(message: &str, next_step: &str) -> Response {
-    let body = CodedError::new(CODE_UNAUTHORIZED, message, next_step);
-    (StatusCode::UNAUTHORIZED, Json(body)).into_response()
+fn unauthorized_response(request_id: &str, message: &str, next_step: &str) -> Response {
+    let err = ApiError::unauthenticated(message, next_step);
+    encode_connect_error(WireEncoding::Json, request_id, &err)
 }
 
 fn bearer_token(headers: &HeaderMap) -> Option<&str> {

@@ -1,0 +1,466 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Endpoint devices, discovered agents, MCP servers, artifacts, deployment keys, and integrations.
+syntax = "proto3";
+
+package grdr.api.inventory.v1alpha1;
+
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/resources.proto";
+import "grdr/common/v1alpha1/types.proto";
+
+// Platform endpoint installer specification for onboarding teams.
+message InstallerSpec {
+  // Target OS identifier.
+  string platform = 1;
+  // Human-readable installer title.
+  string label = 2;
+  // Distributed binary version.
+  string version = 3;
+  // Shell or package install command.
+  string command = 4;
+  // SHA-256 verification digest.
+  string sha256 = 5;
+  // Verification doctor command.
+  string doctor_command = 6;
+  // Deployment notes.
+  string notes = 7;
+}
+
+// Endpoint enrolment deployment key metadata (never carries plaintext secret after creation).
+message DeploymentKey {
+  // Unique deployment key identifier.
+  string id = 1;
+  // Operator label.
+  string label = 2;
+  // Redacted token preview prefix.
+  string token_preview = 3;
+  // Assigned daemon install profile.
+  string install_profile = 4;
+  // Rollout wave name.
+  string wave = 5;
+  // Maximum permitted enrolments.
+  uint32 max_uses = 6;
+  // Consumed enrolment count.
+  uint32 used_count = 7;
+  // Key status.
+  grdr.common.v1alpha1.DeploymentKeyStatus status = 8;
+  // RFC 3339 creation timestamp.
+  string created_at = 9;
+  // RFC 3339 expiry timestamp.
+  string expires_at = 10;
+  // Creator identity.
+  string created_by = 11;
+}
+
+// Local OTLP telemetry fanout status and configuration.
+message OtlpFanoutConfig {
+  // Whether local OTLP fanout is active.
+  bool enabled = 1;
+  // gRPC listener port.
+  uint32 grpc_port = 2;
+  // HTTP listener port.
+  uint32 http_port = 3;
+  // Loopback or configured bind address.
+  string bind_address = 4;
+  // Configured downstream collector targets.
+  repeated string downstream_targets = 5;
+  // True when bound strictly to loopback.
+  bool loopback_only = 6;
+  // Accepted span count over the last 24 hours.
+  uint64 accepted_spans_24h = 7;
+}
+
+// Readiness probe check for an integration connector.
+message ReadinessCheck {
+  // Check name.
+  string name = 1;
+  // True when check succeeded.
+  bool passed = 2;
+  // Diagnostic summary.
+  string detail = 3;
+}
+
+// Configured external directory, SaaS, or SIEM integration entry.
+message IntegrationEntry {
+  // Unique integration identifier.
+  string id = 1;
+  // Integration display name.
+  string name = 2;
+  // Vendor or protocol provider name.
+  string provider = 3;
+  // Integration category.
+  grdr.common.v1alpha1.IntegrationCategory category = 4;
+  // Computed operational health state.
+  grdr.common.v1alpha1.IntegrationHealthState state = 5;
+  // Synchronised user count.
+  uint32 synced_users = 6;
+  // RFC 3339 timestamp of the last sync if any.
+  optional string last_sync_at = 7;
+  // Remaining credential lifetime in days if known.
+  optional uint32 credential_expires_in_days = 8;
+  // Operational status detail.
+  string detail = 9;
+  // Executed readiness checks.
+  repeated ReadinessCheck readiness_checks = 10;
+}
+
+// Request for ListDevices using AIP-158 cursor pagination and AIP-160 filters.
+message ListDevicesRequest {
+  // Requested page size (default 50, maximum 1000).
+  uint32 page_size = 1;
+  // AEAD-sealed opaque page cursor token.
+  string page_token = 2;
+  // Bounded AIP-160 filter expression over filterable Device fields.
+  string filter = 3;
+  // Sort specification over sortable Device fields.
+  string order_by = 4;
+}
+
+// Response for ListDevices.
+message ListDevicesResponse {
+  // Current page of enrolled devices.
+  repeated grdr.common.v1alpha1.Device devices = 1;
+  // AIP-158 cursor pagination metadata.
+  grdr.common.v1alpha1.PageInfo page_info = 2;
+  // Revision and ETag metadata.
+  grdr.common.v1alpha1.RevisionMeta revision = 3;
+}
+
+// Request for DeviceCheckin submitted by grdr-daemon endpoints.
+message DeviceCheckinRequest {
+  // Previously assigned device identifier if already enrolled.
+  optional string device_id = 1;
+  // Endpoint hostname.
+  string hostname = 2;
+  // Operating system identifier.
+  string os = 3;
+  // CPU architecture.
+  string arch = 4;
+  // Daemon install profile.
+  grdr.common.v1alpha1.InstallProfile install_profile = 5;
+  // Daemon version string.
+  string daemon_version = 6;
+  // Whether Guardrails hooks are active on the host.
+  bool hook_effective = 7;
+  // Agents discovered during local scan.
+  repeated grdr.common.v1alpha1.DiscoveredAgent agents = 8;
+  // MCP servers discovered during local scan.
+  repeated grdr.common.v1alpha1.McpServerEntry mcp_servers = 9;
+  // Artifacts discovered during local scan.
+  repeated grdr.common.v1alpha1.ArtifactEntry artifacts = 10;
+  // Optional attributed user identifier.
+  optional string user_id = 11;
+  // Optional attributed user display name.
+  optional string user_display = 12;
+  // Endpoint Ed25519 signing public key metadata.
+  optional grdr.common.v1alpha1.TrustedKeyInfo device_public_key = 13;
+}
+
+// Response for DeviceCheckin.
+message DeviceCheckinResponse {
+  // Authoritative enrolled device record.
+  grdr.common.v1alpha1.Device device = 1;
+  // Signed active policy packs to enforce locally.
+  repeated grdr.common.v1alpha1.PolicyPack packs = 2;
+  // Active signed temporary grants targeting this device.
+  repeated grdr.common.v1alpha1.Grant grants = 3;
+  // Current emergency kill-switch state.
+  grdr.common.v1alpha1.KillSwitchState kill_switch = 4;
+  // RFC 3339 authoritative server timestamp.
+  string server_time = 5;
+  // Trusted Ed25519 public keys for local signature verification.
+  repeated grdr.common.v1alpha1.TrustedKeyInfo trusted_keys = 6;
+}
+
+// Discovered agent view paired with owning device metadata for flat fleet queries.
+message AgentInventoryItem {
+  // Owning device identifier.
+  string device_id = 1;
+  // Owning device hostname.
+  string device_name = 2;
+  // Discovered agent details.
+  grdr.common.v1alpha1.DiscoveredAgent agent = 3;
+}
+
+// Request for ListAgents using AIP-158 cursor pagination and AIP-160 filters.
+message ListAgentsRequest {
+  // Requested page size (default 50, maximum 1000).
+  uint32 page_size = 1;
+  // AEAD-sealed opaque page cursor token.
+  string page_token = 2;
+  // Bounded AIP-160 filter expression.
+  string filter = 3;
+  // Sort specification over sortable agent fields.
+  string order_by = 4;
+}
+
+// Response for ListAgents.
+message ListAgentsResponse {
+  // Current page of discovered agents.
+  repeated AgentInventoryItem items = 1;
+  // AIP-158 cursor pagination metadata.
+  grdr.common.v1alpha1.PageInfo page_info = 2;
+  // Revision and ETag metadata.
+  grdr.common.v1alpha1.RevisionMeta revision = 3;
+}
+
+// Discovered MCP server paired with owning device metadata.
+message McpInventoryItem {
+  // Owning device identifier.
+  string device_id = 1;
+  // Owning device hostname.
+  string device_name = 2;
+  // Discovered MCP server details.
+  grdr.common.v1alpha1.McpServerEntry server = 3;
+}
+
+// Request for ListMcpServers using AIP-158 cursor pagination and AIP-160 filters.
+message ListMcpServersRequest {
+  // Requested page size (default 50, maximum 1000).
+  uint32 page_size = 1;
+  // AEAD-sealed opaque page cursor token.
+  string page_token = 2;
+  // Bounded AIP-160 filter expression.
+  string filter = 3;
+  // Sort specification over sortable MCP server fields.
+  string order_by = 4;
+}
+
+// Response for ListMcpServers.
+message ListMcpServersResponse {
+  // Current page of MCP servers.
+  repeated McpInventoryItem items = 1;
+  // AIP-158 cursor pagination metadata.
+  grdr.common.v1alpha1.PageInfo page_info = 2;
+  // Revision and ETag metadata.
+  grdr.common.v1alpha1.RevisionMeta revision = 3;
+}
+
+// Request for ListArtifacts using AIP-158 cursor pagination and AIP-160 filters.
+message ListArtifactsRequest {
+  // Requested page size (default 50, maximum 1000).
+  uint32 page_size = 1;
+  // AEAD-sealed opaque page cursor token.
+  string page_token = 2;
+  // Bounded AIP-160 filter expression.
+  string filter = 3;
+  // Sort specification over sortable artifact fields.
+  string order_by = 4;
+}
+
+// Response for ListArtifacts.
+message ListArtifactsResponse {
+  // Current page of discovered agent artifacts.
+  repeated grdr.common.v1alpha1.ArtifactEntry artifacts = 1;
+  // AIP-158 cursor pagination metadata.
+  grdr.common.v1alpha1.PageInfo page_info = 2;
+  // Revision and ETag metadata.
+  grdr.common.v1alpha1.RevisionMeta revision = 3;
+}
+
+// Request for GetConnectConfig.
+message GetConnectConfigRequest {}
+
+// Response for GetConnectConfig.
+message GetConnectConfigResponse {
+  // Authoritative server origin URL.
+  string server_origin = 1;
+  // Supported endpoint installer commands.
+  repeated InstallerSpec installers = 2;
+  // Provisioned enrolment deployment keys.
+  repeated DeploymentKey deployment_keys = 3;
+  // Local OTLP telemetry fanout state.
+  OtlpFanoutConfig otlp = 4;
+  // Configured directory, SaaS, and export integrations.
+  repeated IntegrationEntry integrations = 5;
+  // Revision and ETag metadata.
+  grdr.common.v1alpha1.RevisionMeta revision = 6;
+}
+
+// Request for CreateDeploymentKey.
+message CreateDeploymentKeyRequest {
+  // Operator label.
+  string label = 1;
+  // Target deployment wave name.
+  string wave = 2;
+  // Assigned install profile.
+  string install_profile = 3;
+  // Maximum permitted uses.
+  uint32 max_uses = 4;
+  // Validity duration in days.
+  uint32 ttl_days = 5;
+}
+
+// Response for CreateDeploymentKey.
+message CreateDeploymentKeyResponse {
+  // Created deployment key metadata.
+  DeploymentKey key = 1;
+  // One-time plaintext enrolment secret shown once to the creator.
+  string plaintext_token = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_SECRET];
+}
+
+// Request for RevokeDeploymentKey.
+message RevokeDeploymentKeyRequest {
+  // Deployment key identifier to revoke.
+  string id = 1;
+}
+
+// Response for RevokeDeploymentKey.
+message RevokeDeploymentKeyResponse {
+  // Updated revoked deployment key metadata.
+  DeploymentKey key = 1;
+}
+
+// Request for RenderMdmConfig.
+message RenderMdmConfigRequest {
+  // Target MDM or browser GPO format.
+  grdr.common.v1alpha1.MdmFormat format = 1;
+  // Optional deployment key identifier to embed.
+  optional string deployment_key_id = 2;
+  // Whether to include browser extension policy enforcement.
+  bool include_browser_extension = 3;
+  // Update authority URL embedded in generated manifests.
+  string update_authority = 4;
+}
+
+// Response for RenderMdmConfig.
+message RenderMdmConfigResponse {
+  // Rendered MDM format.
+  grdr.common.v1alpha1.MdmFormat format = 1;
+  // Suggested configuration filename.
+  string filename = 2;
+  // Configuration MIME content type.
+  string content_type = 3;
+  // Rendered profile or script payload.
+  string payload = 4;
+  // Rollout guidance notes for administrators.
+  repeated string deployment_notes = 5;
+}
+
+// Request for ListIntegrations.
+message ListIntegrationsRequest {}
+
+// Response for ListIntegrations.
+message ListIntegrationsResponse {
+  // Configured directory, SaaS, and SIEM integrations.
+  repeated IntegrationEntry integrations = 1;
+  // Revision and ETag metadata.
+  grdr.common.v1alpha1.RevisionMeta revision = 2;
+}
+
+// Request for CheckIntegrationReadiness.
+message CheckIntegrationReadinessRequest {
+  // Integration identifier to probe.
+  string id = 1;
+}
+
+// Response for CheckIntegrationReadiness.
+message CheckIntegrationReadinessResponse {
+  // Updated integration entry with fresh readiness checks.
+  IntegrationEntry integration = 1;
+}
+
+// Fleet inventory, endpoint enrolment, deployment keys, MDM rendering, and integrations.
+service InventoryService {
+  // Lists enrolled devices with keyset pagination and AIP-160 filters.
+  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "inventory:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_STANDARD;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+    option (grdr.common.v1alpha1.mcp_exposed) = true;
+  }
+
+  // Enrols or refreshes an endpoint device and returns signed policy packs and grants.
+  rpc DeviceCheckin(DeviceCheckinRequest) returns (DeviceCheckinResponse) {
+    option (grdr.common.v1alpha1.scope) = "device:checkin";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_NONE;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_INGEST;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+  }
+
+  // Lists discovered AI coding agents across the fleet with keyset pagination.
+  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "inventory:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_STANDARD;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+    option (grdr.common.v1alpha1.mcp_exposed) = true;
+  }
+
+  // Lists discovered MCP servers across the fleet with keyset pagination.
+  rpc ListMcpServers(ListMcpServersRequest) returns (ListMcpServersResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "inventory:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_STANDARD;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+    option (grdr.common.v1alpha1.mcp_exposed) = true;
+  }
+
+  // Lists discovered skills, rules, plugins, commands, and subagents with keyset pagination.
+  rpc ListArtifacts(ListArtifactsRequest) returns (ListArtifactsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "inventory:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_STANDARD;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+    option (grdr.common.v1alpha1.mcp_exposed) = true;
+  }
+
+  // Returns endpoint onboarding installers, deployment keys, OTLP fanout, and integrations.
+  rpc GetConnectConfig(GetConnectConfigRequest) returns (GetConnectConfigResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "inventory:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_STANDARD;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+  }
+
+  // Creates a new enrolment deployment key.
+  rpc CreateDeploymentKey(CreateDeploymentKeyRequest) returns (CreateDeploymentKeyResponse) {
+    option (grdr.common.v1alpha1.scope) = "keys:write";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_CRITICAL_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_INTERACTIVE;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_CONSEQUENCE;
+  }
+
+  // Revokes an active enrolment deployment key.
+  rpc RevokeDeploymentKey(RevokeDeploymentKeyRequest) returns (RevokeDeploymentKeyResponse) {
+    option (grdr.common.v1alpha1.scope) = "keys:write";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_CRITICAL_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_INTERACTIVE;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_TYPED;
+  }
+
+  // Renders an enterprise MDM or browser GPO deployment artifact.
+  rpc RenderMdmConfig(RenderMdmConfigRequest) returns (RenderMdmConfigResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "inventory:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_STANDARD;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+  }
+
+  // Lists configured directory, SaaS, and export integrations.
+  rpc ListIntegrations(ListIntegrationsRequest) returns (ListIntegrationsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "integrations:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_STANDARD;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+    option (grdr.common.v1alpha1.mcp_exposed) = true;
+  }
+
+  // Runs live readiness probes for a configured integration.
+  rpc CheckIntegrationReadiness(CheckIntegrationReadinessRequest) returns (CheckIntegrationReadinessResponse) {
+    option (grdr.common.v1alpha1.scope) = "integrations:write";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_INTERACTIVE;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+  }
+}

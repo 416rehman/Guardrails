@@ -1,0 +1,198 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Control-plane health, overview posture, verification keys, and audit exports.
+syntax = "proto3";
+
+package grdr.api.overview.v1alpha1;
+
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/resources.proto";
+import "grdr/common/v1alpha1/types.proto";
+
+// Storage engine metadata returned in health responses.
+message StorageMode {
+  // Active backing storage engine kind.
+  grdr.common.v1alpha1.StorageKind kind = 1;
+  // SQLite database path when kind is STORAGE_KIND_SQLITE.
+  optional string path = 2;
+}
+
+// High-level insight tile displayed on the console overview.
+message InsightTile {
+  // Stable tile identifier.
+  string id = 1;
+  // Concise headline summary.
+  string headline = 2;
+  // Primary formatted metric value.
+  string metric = 3;
+  // Comparison context against baseline or target.
+  string comparison = 4;
+  // Suggested navigation label.
+  string action_label = 5;
+  // Target console route path.
+  string route = 6;
+  // Visual status tone indicator.
+  string tone = 7;
+}
+
+// Guided setup checklist item on the console overview.
+message SetupStep {
+  // Stable step identifier.
+  string id = 1;
+  // Step display label.
+  string label = 2;
+  // True when step completion criteria are met.
+  bool done = 3;
+  // Detailed guidance or completion summary.
+  string detail = 4;
+}
+
+// Request for GetHealth.
+message GetHealthRequest {}
+
+// Response for GetHealth.
+message GetHealthResponse {
+  // Overall server health status.
+  grdr.common.v1alpha1.ServerHealth status = 1;
+  // Running server crate version.
+  string version = 2;
+  // Backing storage configuration.
+  StorageMode storage_mode = 3;
+  // RFC 3339 server clock timestamp.
+  string timestamp = 4;
+}
+
+// Request for GetOverview.
+message GetOverviewRequest {}
+
+// Response for GetOverview.
+message GetOverviewResponse {
+  // Overall server health status.
+  grdr.common.v1alpha1.ServerHealth server_status = 1;
+  // Total enrolled endpoint devices.
+  uint64 total_devices = 2;
+  // Currently online endpoint devices.
+  uint64 online_devices = 3;
+  // Total discovered AI coding agents.
+  uint64 total_agents = 4;
+  // Total discovered MCP servers.
+  uint64 total_mcp_servers = 5;
+  // Active monitored sessions.
+  uint64 active_sessions = 6;
+  // Pending step-up approvals.
+  uint64 pending_approvals = 7;
+  // Open security findings.
+  uint64 open_findings = 8;
+  // Open correlated security incidents.
+  uint64 open_incidents = 9;
+  // Current emergency kill-switch state.
+  grdr.common.v1alpha1.KillSwitchState kill_switch = 10;
+  // Operational summary insight tiles.
+  repeated InsightTile tiles = 11;
+  // Onboarding setup checklist steps.
+  repeated SetupStep setup_steps = 12;
+  // Revision and ETag metadata.
+  grdr.common.v1alpha1.RevisionMeta revision = 13;
+}
+
+// Request for ListKeys.
+message ListKeysRequest {}
+
+// Response for ListKeys.
+message ListKeysResponse {
+  // Trusted Ed25519 verification keys published by the server and devices.
+  repeated grdr.common.v1alpha1.TrustedKeyInfo keys = 1;
+  // Revision and ETag metadata.
+  grdr.common.v1alpha1.RevisionMeta revision = 2;
+}
+
+// Request for ExportOcsf.
+message ExportOcsfRequest {}
+
+// Response for ExportOcsf containing an OCSF JSON payload.
+message ExportOcsfResponse {
+  // Suggested download filename.
+  string filename = 1;
+  // MIME content type.
+  string content_type = 2;
+  // Serialized OCSF 1.9 JSON array payload.
+  string payload = 3;
+}
+
+// Request for ExportAuditJsonl.
+message ExportAuditJsonlRequest {}
+
+// Response for ExportAuditJsonl containing NDJSON audit lines.
+message ExportAuditJsonlResponse {
+  // Suggested download filename.
+  string filename = 1;
+  // MIME content type.
+  string content_type = 2;
+  // Newline-delimited JSON audit records.
+  string payload = 3;
+}
+
+// Real-time event broadcast message streamed to console subscribers.
+message LiveEvent {
+  // Unique event identifier.
+  string id = 1;
+  // Topic category such as verdict, approval, checkin, or kill_switch.
+  string topic = 2;
+  // Concise operator-facing event summary.
+  string summary = 3;
+  // Associated enforcement verdict when applicable.
+  optional grdr.common.v1alpha1.Verdict verdict = 4;
+  // RFC 3339 emission timestamp.
+  string timestamp = 5;
+}
+
+// Control-plane overview, health, key distribution, and export operations.
+service OverviewService {
+  // Returns server health, version, and storage mode.
+  rpc GetHealth(GetHealthRequest) returns (GetHealthResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "overview:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_NONE;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_HEALTH;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+    option (grdr.common.v1alpha1.mcp_exposed) = true;
+  }
+
+  // Returns fleet counts, insight tiles, setup checklist, and kill-switch state.
+  rpc GetOverview(GetOverviewRequest) returns (GetOverviewResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "overview:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_STANDARD;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+    option (grdr.common.v1alpha1.mcp_exposed) = true;
+  }
+
+  // Lists trusted Ed25519 verification keys.
+  rpc ListKeys(ListKeysRequest) returns (ListKeysResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "keys:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_STANDARD;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+  }
+
+  // Exports security findings and receipts as OCSF 1.9 JSON.
+  rpc ExportOcsf(ExportOcsfRequest) returns (ExportOcsfResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "audit:export";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_SENSITIVE_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_BULK;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+  }
+
+  // Exports tamper-evident control-plane audit log lines in JSONL format.
+  rpc ExportAuditJsonl(ExportAuditJsonlRequest) returns (ExportAuditJsonlResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "audit:export";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_SENSITIVE_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_BULK;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+  }
+}
