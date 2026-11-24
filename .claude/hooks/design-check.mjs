@@ -100,12 +100,12 @@ export function checkDesignContent(relPath, content) {
   }
   if (!GENERATED_HEADER_RE.test(content) && RAW_SVG_RE.test(content)) {
     findings.push(
-      `design-check (${relPath}): hand-drawn <svg>/<path d=> markup is forbidden; use official icon packages, uploaded brand assets, or registered chart/graph libraries (@grdr/ui).`,
+      ["design-check (", relPath, "): hand-drawn <svg>/<path d=> markup is forbidden; use official icon packages, uploaded brand assets, or registered chart/graph libraries (@grdr/ui)."].join(""),
     );
   }
   if (RAW_CONTROL_PATH_RE.test(relPath) && RAW_HTML_CONTROL_RE.test(content)) {
     findings.push(
-      `design-check (${relPath}): raw <select>/<input>/<textarea>/<dialog> elements are forbidden in apps and kit; use canonical @grdr/ui Astryx primitives (GrdrSelect, TextInput, CheckboxInput, Dialog).`,
+      ["design-check (", relPath, "): raw <select>/<input>/<textarea>/<dialog> elements are forbidden in apps and kit; use canonical @grdr/ui Astryx primitives (GrdrSelect, TextInput, CheckboxInput, Dialog)."].join(""),
     );
   }
   if (CUSTOMER_COPY_PATH_RE.test(relPath) && CUSTOMER_JARGON_RE.test(content)) {
