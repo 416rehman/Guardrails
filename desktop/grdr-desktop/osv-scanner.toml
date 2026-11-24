@@ -1,0 +1,17 @@
+# Scoped ignores for informational upstream unmaintained notices in desktop/grdr-desktop/Cargo.lock.
+# Zero CVSS / zero security exploit; triggered by anomalyco/rune -> accesskit_unix -> zbus 5.19.0.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0370"
+ignoreUntil = 2027-06-01
+reason = "Informational unmaintained notice (merged into zbus 6.0); transitive zbus 5.x dep of upstream anomalyco/rune and accesskit_unix with no security vulnerability."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0371"
+ignoreUntil = 2027-06-01
+reason = "Informational unmaintained notice (merged into zbus 6.0); transitive zbus 5.x dep of upstream anomalyco/rune and accesskit_unix with no security vulnerability."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0372"
+ignoreUntil = 2027-06-01
+reason = "Informational unmaintained notice (merged into zbus 6.0); transitive zbus 5.x dep of upstream anomalyco/rune and accesskit_unix with no security vulnerability."
