@@ -1,22 +1,34 @@
 use grdr_strings::sanitize_untrusted_text;
 use grdr_ui_model::{AppVm, Intent, ModeLevel, Screen, ThemeChoice, reduce};
 use rune::{Color, El, TextStyle, Tx, col, el, icon, row, spacer, text};
-use rune_kit::{Button, ButtonVariant, ControlSize, Divider, Progress, SegmentedControl, State};
+use rune_kit::{
+    Button, ButtonVariant, ControlSize, Divider, IconButton, IconButtonVariant, Progress,
+    SegmentedControl, State,
+};
 
 use crate::icons;
 use crate::theme::StudioTheme;
 
+const BRAND_MARK_PNG: &[u8] = include_bytes!("../assets/guardrails-mark.png");
+
 pub struct DesktopApp {
     pub vm: AppVm,
     pub last_notice: Option<String>,
+    pub brand_mark: rune::Image,
+    pub sidebar_collapsed: bool,
 }
 
 impl DesktopApp {
     #[must_use]
     pub fn new(vm: AppVm) -> Self {
+        let cache = rune::ImageCache::new(std::sync::Arc::new(|| {}));
+        let brand_mark = cache.load(BRAND_MARK_PNG);
+        let _ = brand_mark.wait();
         Self {
             vm,
             last_notice: None,
+            brand_mark,
+            sidebar_collapsed: false,
         }
     }
 
@@ -31,7 +43,7 @@ impl DesktopApp {
                     rule_id,
                     target_mode,
                 } => format!(
-                    "Proposal queued for grdr-approve: widen {rule_id} -> {}",
+                    "Approval request queued: widen {rule_id} -> {}",
                     target_mode.as_str()
                 ),
                 grdr_ui_model::Effect::LaunchApprove { request_id } => {
@@ -67,28 +79,68 @@ pub fn sidebar_rail(app: &DesktopApp, t: &StudioTheme) -> El {
         ),
     ];
 
-    let brand = row()
-        .key("brand")
-        .gap(10.0)
-        .center_y()
-        .padding(4.0)
+    let collapsed = app.sidebar_collapsed;
+    let collapse_icon = if collapsed {
+        &icons::PANEL_OPEN
+    } else {
+        &icons::PANEL_CLOSE
+    };
+    let collapse_label = if collapsed {
+        "Expand navigation"
+    } else {
+        "Collapse navigation"
+    };
+    let collapse_btn = IconButton::new(collapse_icon)
+        .variant(IconButtonVariant::GhostMuted)
+        .control_size(ControlSize::Regular)
+        .label(collapse_label)
+        .help(collapse_label)
+        .on_press(|s: &mut DesktopApp| {
+            s.sidebar_collapsed = !s.sidebar_collapsed;
+        })
+        .build(&t.kit)
+        .key("toggle-sidebar");
+
+    let logo_tile = el()
+        .size(34.0, 34.0)
+        .radius(8.0)
+        .fill(t.c.brand_tile)
+        .border(1.0, t.c.border_strong)
+        .padding(2.0)
         .child(
-            el().size(32.0, 32.0)
-                .radius(8.0)
-                .fill(t.c.action_bg)
-                .center()
-                .child(icon(&icons::BRAND_MARK, 20.0).color(t.c.action_ink)),
-        )
-        .child(
-            col()
-                .gap(2.0)
-                .child(
-                    text("Guardrails ADR")
-                        .font(t.body_strong)
-                        .color(t.c.ink_primary),
-                )
-                .child(text("Desktop console").font(t.caption).color(t.c.ink_muted)),
+            el().w_full()
+                .h_full()
+                .pixels_fit(app.brand_mark.pixels(), rune::SurfaceFit::Fit),
         );
+
+    let brand = if collapsed {
+        col()
+            .key("brand")
+            .gap(10.0)
+            .items_center()
+            .child(logo_tile)
+            .child(collapse_btn)
+    } else {
+        row()
+            .key("brand")
+            .w_full()
+            .gap(8.0)
+            .center_y()
+            .padding(2.0)
+            .child(logo_tile)
+            .child(
+                col()
+                    .gap(2.0)
+                    .child(
+                        text("Guardrails ADR")
+                            .font(t.body_strong)
+                            .color(t.c.ink_primary),
+                    )
+                    .child(text("Desktop console").font(t.caption).color(t.c.ink_muted)),
+            )
+            .child(spacer())
+            .child(collapse_btn)
+    };
 
     let mut nav = col().key("nav-list").gap(4.0).w_full();
     for &(screen, key, label, glyph) in nav_items {
@@ -116,27 +168,35 @@ pub fn sidebar_rail(app: &DesktopApp, t: &StudioTheme) -> El {
             .role("button")
             .label(label)
             .focusable(true)
-            .w_full()
             .h(38.0)
-            .px(12.0)
             .radius(8.0)
             .fill(fill)
             .border(1.0, border)
-            .center_y()
-            .gap(10.0)
-            .child(icon(glyph, 15.0).color(icon_color))
-            .child(text(label).font(label_font).color(ink))
             .on_press(move |s: &mut DesktopApp| {
                 s.dispatch(Intent::Navigate(screen));
             });
 
-        if screen == Screen::Home && !app.vm.home.pending_approvals.is_empty() {
-            item = item.child(spacer()).child(status_pill(
-                &app.vm.home.pending_approvals.len().to_string(),
-                t.c.ask_bg,
-                t.c.ask,
-                t,
-            ));
+        if collapsed {
+            item = item
+                .size(40.0, 38.0)
+                .center()
+                .child(icon(glyph, 16.0).color(icon_color));
+        } else {
+            item = item
+                .w_full()
+                .px(12.0)
+                .center_y()
+                .gap(10.0)
+                .child(icon(glyph, 15.0).color(icon_color))
+                .child(text(label).font(label_font).color(ink));
+            if screen == Screen::Home && !app.vm.home.pending_approvals.is_empty() {
+                item = item.child(spacer()).child(status_pill(
+                    &app.vm.home.pending_approvals.len().to_string(),
+                    t.c.ask_bg,
+                    t.c.ask,
+                    t,
+                ));
+            }
         }
         nav = nav.child(item);
     }
@@ -146,34 +206,62 @@ pub fn sidebar_rail(app: &DesktopApp, t: &StudioTheme) -> El {
         ThemeChoice::Dark => ("Light mode", &icons::SUN),
     };
 
-    col()
+    let rail_w = if collapsed { 68.0 } else { 244.0 };
+    let pad_x = if collapsed { 14.0 } else { 16.0 };
+
+    let mut rail = col()
         .key("sidebar-rail")
-        .w(232.0)
+        .w(rail_w)
         .h_full()
         .fill(t.c.rail)
         .pt(20.0)
         .pb(20.0)
-        .pl(16.0)
-        .pr(16.0)
+        .pl(pad_x)
+        .pr(pad_x)
         .gap(20.0)
         .border(1.0, t.c.border_subtle)
         .child(brand)
         .child(nav)
         .child(spacer())
-        .child(Divider::horizontal().build(&t.kit))
-        .child(
+        .child(Divider::horizontal().build(&t.kit));
+
+    let setup_confirmed = app
+        .vm
+        .first_run
+        .steps
+        .iter()
+        .any(|s| s.id == "turn-on-protection" && s.done);
+    let (status_glyph, status_color, status_text) = if setup_confirmed {
+        (
+            &icons::SHIELD_CHECK,
+            t.c.allow,
+            app.vm.tray_vm().status_label.to_owned(),
+        )
+    } else {
+        (&icons::LAYERS, t.c.ask, "Setup in progress".to_owned())
+    };
+
+    if collapsed {
+        rail = rail.child(
+            IconButton::new(toggle_icon)
+                .variant(IconButtonVariant::Ghost)
+                .control_size(ControlSize::Regular)
+                .label(toggle_label)
+                .help(toggle_label)
+                .on_press(|s: &mut DesktopApp| s.dispatch(Intent::ToggleTheme))
+                .build(&t.kit)
+                .key("toggle-theme"),
+        );
+    } else {
+        rail = rail.child(
             col()
                 .gap(8.0)
                 .child(
                     row()
                         .gap(8.0)
                         .center_y()
-                        .child(icon(&icons::SHIELD_CHECK, 14.0).color(t.c.allow))
-                        .child(
-                            text(app.vm.tray_vm().status_label)
-                                .font(t.caption)
-                                .color(t.c.ink_secondary),
-                        ),
+                        .child(icon(status_glyph, 14.0).color(status_color))
+                        .child(text(status_text).font(t.caption).color(t.c.ink_secondary)),
                 )
                 .child(
                     Button::new(toggle_label)
@@ -184,7 +272,9 @@ pub fn sidebar_rail(app: &DesktopApp, t: &StudioTheme) -> El {
                         .build(&t.kit)
                         .key("toggle-theme"),
                 ),
-        )
+        );
+    }
+    rail
 }
 
 #[must_use]
@@ -246,12 +336,20 @@ pub fn status_pill_with_icon(
 
 #[must_use]
 pub fn assurance_pill(level: &str, boundary: bool, t: &StudioTheme) -> El {
-    let (bg, fg) = if boundary {
-        (t.c.accent_soft, t.c.accent)
-    } else {
-        (t.c.recessed, t.c.ink_secondary)
+    let label = match level {
+        "AL0" => "Observed",
+        "AL1" => "App hook",
+        "AL2" => "Tool proxy",
+        "AL3" => "Sandboxed",
+        "AL4" => "Enforced",
+        other => other,
     };
-    status_pill_with_icon(level, Some(icons::for_assurance(level)), bg, fg, t)
+    let (bg, fg) = if boundary {
+        (t.c.allow_bg, t.c.allow)
+    } else {
+        (t.c.ask_bg, t.c.ask)
+    };
+    status_pill_with_icon(label, Some(icons::for_assurance(level)), bg, fg, t)
 }
 
 #[must_use]
@@ -269,7 +367,7 @@ pub fn mode_pill(mode: ModeLevel, t: &StudioTheme) -> El {
 pub fn coverage_visual(pct: u8, boundary_count: usize, total: usize, t: &StudioTheme) -> El {
     let ring_pct = (f32::from(pct.min(100))) / 100.0;
     let fill_w = (156.0 * ring_pct).max(4.0);
-    let accent = if pct >= 80 { t.c.allow } else { t.c.accent };
+    let accent = if pct >= 50 { t.c.allow } else { t.c.accent };
 
     col()
         .w(212.0)
@@ -285,7 +383,7 @@ pub fn coverage_visual(pct: u8, boundary_count: usize, total: usize, t: &StudioT
                 .gap(8.0)
                 .child(icon(&icons::SHIELD_CHECK, 16.0).color(accent))
                 .child(
-                    text("Boundary gauge")
+                    text("Boundary coverage")
                         .font(t.caption)
                         .color(t.c.ink_secondary),
                 ),
@@ -303,7 +401,7 @@ pub fn coverage_visual(pct: u8, boundary_count: usize, total: usize, t: &StudioT
                 .child(el().w(fill_w).h(8.0).radius(4.0).fill(accent)),
         )
         .child(
-            text(format!("{boundary_count} of {total} agents contained"))
+            text(format!("{boundary_count} of {total} sandboxed"))
                 .font(t.caption)
                 .color(t.c.ink_muted),
         )
@@ -317,40 +415,45 @@ pub fn velocity_sparkline(bars: &[(&str, u32, u32, u32)], t: &StudioTheme) -> El
         .max()
         .unwrap_or(1)
         .max(1) as f32;
+    let total_allow: u32 = bars.iter().map(|(_, a, _, _)| *a).sum();
+    let total_ask: u32 = bars.iter().map(|(_, _, b, _)| *b).sum();
+    let total_block: u32 = bars.iter().map(|(_, _, _, c)| *c).sum();
+    let total_all = total_allow
+        .saturating_add(total_ask)
+        .saturating_add(total_block);
 
-    let mut cols = row().w_full().h(84.0).gap(10.0).items_end();
+    let mut cols = row().w_full().h(92.0).gap(10.0).items_end();
     for &(day, allowed, ask, block) in bars {
-        let total = allowed.saturating_add(ask).saturating_add(block) as f32;
-        let h_allow = ((allowed as f32 / max_total) * 52.0).max(4.0);
+        let day_total = allowed.saturating_add(ask).saturating_add(block);
+        let h_allow = ((allowed as f32 / max_total) * 54.0).max(4.0);
         let h_ask = if ask > 0 {
-            ((ask as f32 / max_total) * 52.0).max(5.0)
+            ((ask as f32 / max_total) * 54.0).max(5.0)
         } else {
             0.0
         };
         let h_block = if block > 0 {
-            ((block as f32 / max_total) * 52.0).max(5.0)
+            ((block as f32 / max_total) * 54.0).max(5.0)
         } else {
             0.0
         };
 
-        let mut stack = col().w(18.0).gap(2.0).items_center();
+        let mut stack = col().w(24.0).gap(0.0).items_center();
         if h_block > 0.0 {
-            stack = stack.child(el().w(14.0).h(h_block).radius(3.0).fill(t.c.block));
+            stack = stack.child(el().w(18.0).h(h_block).fill(t.c.block));
         }
         if h_ask > 0.0 {
-            stack = stack.child(el().w(14.0).h(h_ask).radius(3.0).fill(t.c.ask));
+            stack = stack.child(el().w(18.0).h(h_ask).fill(t.c.ask));
         }
-        if total > 0.0 {
-            stack = stack.child(el().w(14.0).h(h_allow).radius(3.0).fill(t.c.border_strong));
+        if day_total > 0 {
+            stack = stack.child(el().w(18.0).h(h_allow).fill(t.c.border_strong));
         }
 
         cols = cols.child(
-            col()
-                .grow(1.0)
-                .gap(6.0)
-                .items_center()
-                .child(stack)
-                .child(text(day).font(t.caption).color(t.c.ink_muted)),
+            col().grow(1.0).gap(4.0).items_center().child(stack).child(
+                text(format!("{day} ({day_total})"))
+                    .font(t.caption)
+                    .color(t.c.ink_muted),
+            ),
         );
     }
 
@@ -368,14 +471,29 @@ pub fn velocity_sparkline(bars: &[(&str, u32, u32, u32)], t: &StudioTheme) -> El
                 .gap(8.0)
                 .child(icon(&icons::ACTIVITY, 15.0).color(t.c.accent))
                 .child(
-                    text("7-day decision velocity")
+                    text(format!("7-day decision velocity ({total_all})"))
                         .font(t.body_strong)
                         .color(t.c.ink_primary),
                 )
                 .child(spacer())
-                .child(status_pill("Allowed", t.c.canvas, t.c.ink_secondary, t))
-                .child(status_pill("Ask", t.c.ask_bg, t.c.ask, t))
-                .child(status_pill("Block", t.c.block_bg, t.c.block, t)),
+                .child(status_pill(
+                    &format!("Allowed ({total_allow})"),
+                    t.c.canvas,
+                    t.c.ink_secondary,
+                    t,
+                ))
+                .child(status_pill(
+                    &format!("Ask ({total_ask})"),
+                    t.c.ask_bg,
+                    t.c.ask,
+                    t,
+                ))
+                .child(status_pill(
+                    &format!("Blocked ({total_block})"),
+                    t.c.block_bg,
+                    t.c.block,
+                    t,
+                )),
         )
         .child(cols)
 }
@@ -390,6 +508,7 @@ pub fn flow_stage_node(
 ) -> El {
     col()
         .grow(1.0)
+        .h_full()
         .padding(12.0)
         .radius(10.0)
         .fill(t.c.recessed)

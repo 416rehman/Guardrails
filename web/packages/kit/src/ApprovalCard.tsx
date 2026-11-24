@@ -58,7 +58,16 @@ export function ApprovalCard({
             <VerdictBadge verdict="step_up" />
             <strong>{ruleTitle}</strong>
           </HStack>
-          <Badge variant="warning" label={`Grade ${requiredGrade}`} />
+          <Badge
+            variant="warning"
+            label={
+              requiredGrade === "G1"
+                ? "Approval required"
+                : requiredGrade === "G2"
+                  ? "Admin approval"
+                  : requiredGrade
+            }
+          />
         </HStack>
 
         <Text type="supporting" color="secondary" size="sm">

@@ -1,7 +1,7 @@
 import type { Device } from "@grdr/api";
-import { t } from "@grdr/i18n";
-import { AssuranceBadge, ViewStateFrame } from "@grdr/kit";
-import { Badge, Card, GrdrIcon, Heading, HStack, Text, VStack } from "@grdr/ui";
+import { formatOsName, t } from "@grdr/i18n";
+import { AssuranceBadge, Quoted, ViewStateFrame } from "@grdr/kit";
+import { Badge, Card, GrdrIcon, HarnessIcon, Heading, HStack, Text, VStack } from "@grdr/ui";
 
 const MATRIX_AGENTS = ["Claude Code", "Cursor", "Codex", "Gemini CLI"] as const;
 const MATRIX_OS = ["macos", "linux", "windows"] as const;
@@ -43,10 +43,10 @@ export function CoveragePage({ devices }: { devices: Device[] }) {
             <HStack justify="between" align="center">
               <HStack gap={2} align="center">
                 <GrdrIcon name="layers" size={16} color="var(--accent-primary)" />
-                <Heading level={2}>Agent x OS assurance heatmap</Heading>
+                <Heading level={2}>Protection by agent & OS</Heading>
               </HStack>
               <Text size="sm" color="secondary">
-                D-50 assurance level observed per harness across platforms
+                Enforcement strength observed per agent across operating systems
               </Text>
             </HStack>
             <div className="table-wrap">
@@ -64,11 +64,7 @@ export function CoveragePage({ devices }: { devices: Device[] }) {
                     <tr key={agentName}>
                       <td>
                         <HStack gap={2} align="center">
-                          <GrdrIcon
-                            name={agentName === "Claude Code" ? "terminal" : "cpu"}
-                            size={14}
-                            color="var(--ink-secondary)"
-                          />
+                          <HarnessIcon name={agentName} size={15} />
                           <strong>{agentName}</strong>
                         </HStack>
                       </td>
@@ -119,7 +115,7 @@ export function CoveragePage({ devices }: { devices: Device[] }) {
                         <td>
                           <strong>{device.hostname}</strong>
                         </td>
-                        <td>{device.os}</td>
+                        <td>{formatOsName(device.os)}</td>
                         <td>{agent.name}</td>
                         <td>
                           <AssuranceBadge
@@ -155,16 +151,19 @@ export function CoveragePage({ devices }: { devices: Device[] }) {
               ) : (
                 <div className="checklist">
                   {blindSpots.map(({ device, agent }) => (
-                    <div key={`blind-${device.id}-${agent.id}`} className="check-row todo">
-                      <GrdrIcon name="shield-alert" size={16} color="var(--tone-ask)" />
-                      <div>
-                        <div style={{ fontWeight: 500 }}>
-                          {`${agent.name} on ${device.hostname}`}
-                        </div>
-                        <Text type="supporting" color="secondary" size="sm">
-                          {`Hook not proven effective (control=${agent.assurance.control}, install_profile=${device.install_profile}). Run grdr install-hook --apply.`}
-                        </Text>
-                      </div>
+                    <div key={`blind-${device.id}-${agent.id}`} className="check-row todo" style={{ alignItems: "flex-start" }}>
+                      <HStack gap={2} align="start">
+                        <GrdrIcon name="shield-alert" size={16} color="var(--tone-ask)" />
+                        <VStack gap={1}>
+                          <div style={{ fontWeight: 500 }}>
+                            {`${agent.name} on ${device.hostname}`}
+                          </div>
+                          <Text type="supporting" color="secondary" size="sm">
+                            {`${agent.name} hooks are not active yet on this ${formatOsName(device.os)} endpoint. Install the hook with:`}
+                          </Text>
+                          <Quoted text="grdr install-hook --apply" />
+                        </VStack>
+                      </HStack>
                     </div>
                   ))}
                 </div>

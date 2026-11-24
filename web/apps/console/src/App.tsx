@@ -17,15 +17,18 @@ import {
   type PolicyPack,
   type SessionSummary,
 } from "@grdr/api";
-import { CONSOLE_ROUTES, t } from "@grdr/i18n";
+import { CONSOLE_ROUTES, pluralize, t } from "@grdr/i18n";
 import {
   Badge,
   Banner,
   Button,
+  Dialog,
   GrdrIcon,
   GrdrThemeProvider,
   GuardrailsMark,
   HStack,
+  IconButton,
+  Kbd,
   TextInput,
   UiSdkInlineBar,
   iconKeyToName,
@@ -45,6 +48,7 @@ export function App() {
 
   const [route, setRoute] = useState<NavRoute>("home");
   const [theme, setTheme] = useState<GrdrThemeMode>("light");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [streamDisconnected, setStreamDisconnected] = useState(false);
@@ -159,6 +163,15 @@ export function App() {
         setPaletteOpen(false);
       },
     },
+    {
+      id: "connect-api-token",
+      label: getApiToken() ? "Update local API bearer token" : "Connect local API bearer token",
+      hint: "Connection",
+      run: () => {
+        setShowTokenBar(true);
+        setPaletteOpen(false);
+      },
+    },
     ...devices.map((dev) => ({
       id: `dev-${dev.id}`,
       label: `Inspect device ${dev.hostname}`,
@@ -173,16 +186,27 @@ export function App() {
 
   return (
     <GrdrThemeProvider mode={theme}>
-      <div className="shell">
-        <aside className="rail" aria-label="Primary navigation">
-          <div className="brand-mark">
-            <div className="brand-glyph">
-              <GuardrailsMark size={18} />
+      <div className={sidebarCollapsed ? "shell collapsed" : "shell"}>
+        <aside className={sidebarCollapsed ? "rail collapsed" : "rail"} aria-label="Primary navigation">
+          <div className="brand-header">
+            <div className="brand-mark">
+              <div className="brand-glyph">
+                <GuardrailsMark size={18} />
+              </div>
+              {!sidebarCollapsed && (
+                <div className="brand-title">
+                  <strong>{t("grdr.brand.name")}</strong>
+                  <span>{t("grdr.brand.subtitle")}</span>
+                </div>
+              )}
             </div>
-            <div className="brand-title">
-              <strong>{t("grdr.brand.name")}</strong>
-              <span>{t("grdr.brand.subtitle")}</span>
-            </div>
+            <IconButton
+              label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
+              icon={<GrdrIcon name={sidebarCollapsed ? "panel-left-open" : "panel-left-close"} size={15} />}
+              variant="ghost"
+              size="sm"
+              onClick={() => setSidebarCollapsed((c) => !c)}
+            />
           </div>
 
           <nav className="rail-nav">
@@ -190,28 +214,32 @@ export function App() {
               <button
                 key={item.id}
                 type="button"
+                title={t(item.labelKey)}
+                aria-label={t(item.labelKey)}
                 className={`nav-item ${route === item.id ? "active" : ""}`}
                 onClick={() => setRoute(item.id)}
               >
                 <span className="nav-item-label">
                   <GrdrIcon name={iconKeyToName(item.iconKey)} size={16} />
-                  <span>{t(item.labelKey)}</span>
+                  {!sidebarCollapsed && <span>{t(item.labelKey)}</span>}
                 </span>
-                {item.id === "respond" && pendingApprovals > 0 && (
+                {!sidebarCollapsed && item.id === "respond" && pendingApprovals > 0 && (
                   <Badge variant="warning" label={pendingApprovals} />
                 )}
               </button>
             ))}
           </nav>
 
-          <div className="rail-footer">
-            {streamDisconnected && (
-              <div style={{ color: "var(--tone-ask)" }}>{t("console.stream.reconnecting")}</div>
-            )}
-            <div className="tabular">
-              {devices.length} endpoint(s), {sessions.length} session(s)
+          {!sidebarCollapsed && (
+            <div className="rail-footer">
+              {streamDisconnected && (
+                <div style={{ color: "var(--tone-ask)" }}>{t("console.stream.reconnecting")}</div>
+              )}
+              <div className="tabular">
+                {`${pluralize(devices.length, "endpoint")}, ${pluralize(sessions.length, "session")}`}
+              </div>
             </div>
-          </div>
+          )}
         </aside>
 
         <div className="workspace">
@@ -226,22 +254,21 @@ export function App() {
                 <GrdrIcon name="search" size={14} color="var(--ink-muted)" />
                 <span>{searchQuery || "Jump to device, rule, or route..."}</span>
               </span>
-              <span className="kbd-hint">Ctrl K</span>
+              <Kbd keys="mod+k" />
             </button>
 
             <div className="topbar-actions">
               <Button
-                label={getApiToken() ? "Token active" : "API token"}
-                icon={<GrdrIcon name="key-round" size={14} />}
-                onClick={() => setShowTokenBar((prev) => !prev)}
-              />
-              <Button
                 label="Sync"
+                variant="secondary"
+                size="sm"
                 icon={<GrdrIcon name="refresh" size={14} />}
                 onClick={() => void loadAll()}
               />
               <Button
                 label={theme === "dark" ? "Light" : "Dark"}
+                variant="secondary"
+                size="sm"
                 icon={<GrdrIcon name={theme === "dark" ? "sun" : "moon"} size={14} />}
                 aria-label="Toggle color theme"
                 onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
@@ -349,44 +376,41 @@ export function App() {
         </div>
       </div>
 
-      {paletteOpen && (
-        <div
-          className="command-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Command palette"
-          onClick={() => setPaletteOpen(false)}
-        >
-          <div className="command-dialog" onClick={(e) => e.stopPropagation()}>
-            <div style={{ padding: "var(--space-2)" }}>
-              <TextInput
-                label="Filter commands"
-                isLabelHidden
-                placeholder="Type a screen, device hostname, or action..."
-                startIcon={<GrdrIcon name="search" size={14} color="var(--ink-muted)" />}
-                value={searchQuery}
-                onChange={(val) => setSearchQuery(val)}
-                width="100%"
-              />
-            </div>
-            <div className="command-list">
-              {commandActions.map((cmd) => (
-                <button
-                  key={cmd.id}
-                  type="button"
-                  className="command-item"
-                  onClick={cmd.run}
-                >
-                  <span>{cmd.label}</span>
-                  <HStack gap={1} align="center">
-                    <Badge variant="neutral" label={cmd.hint} />
-                  </HStack>
-                </button>
-              ))}
-            </div>
-          </div>
+      <Dialog
+        isOpen={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        purpose="info"
+        width={560}
+        padding={2}
+        aria-label="Command palette"
+      >
+        <div style={{ padding: "var(--space-1)" }}>
+          <TextInput
+            label="Filter commands"
+            isLabelHidden
+            placeholder="Type a screen, device hostname, or action..."
+            startIcon={<GrdrIcon name="search" size={14} color="var(--ink-muted)" />}
+            value={searchQuery}
+            onChange={(val) => setSearchQuery(val)}
+            width="100%"
+          />
         </div>
-      )}
+        <div className="command-list">
+          {commandActions.map((cmd) => (
+            <button
+              key={cmd.id}
+              type="button"
+              className="command-item"
+              onClick={cmd.run}
+            >
+              <span>{cmd.label}</span>
+              <HStack gap={1} align="center">
+                <Badge variant="neutral" label={cmd.hint} />
+              </HStack>
+            </button>
+          ))}
+        </div>
+      </Dialog>
     </GrdrThemeProvider>
   );
 }

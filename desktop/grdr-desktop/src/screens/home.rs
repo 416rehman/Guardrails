@@ -17,11 +17,9 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         .filter(|a| a.control_mode == "Boundary")
         .count();
     let total_agents = vm.agents.len();
-    let coverage_str = format!("{}%", vm.boundary_pct);
     let pending_str = vm.pending_approvals.len().to_string();
     let agents_str = total_agents.to_string();
     let rules_str = app.vm.rules.rules.len().to_string();
-    let coverage_note = format!("{boundary_count} of {total_agents} boundary");
 
     let headline = if vm.pending_approvals.is_empty() {
         vm.summary_line.clone()
@@ -30,6 +28,19 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
             "{} action waiting for your decision",
             vm.pending_approvals.len()
         )
+    };
+
+    let cta = if let Some(first_apr) = vm.pending_approvals.first() {
+        let req_id = first_apr.id.clone();
+        primary_button("hero-review-btn", "Review waiting action", t, move |s| {
+            s.dispatch(Intent::OpenApproval {
+                request_id: req_id.clone(),
+            });
+        })
+    } else {
+        primary_button("hero-review-btn", "Inspect rules", t, |s| {
+            s.dispatch(Intent::Navigate(Screen::Rules));
+        })
     };
 
     let hero_copy = col()
@@ -47,14 +58,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                 .wrap()
                 .w_full(),
         )
-        .child(row().pt(6.0).gap(12.0).child(primary_button(
-            "hero-review-btn",
-            "Inspect rules",
-            t,
-            |s| {
-                s.dispatch(Intent::Navigate(Screen::Rules));
-            },
-        )));
+        .child(row().pt(6.0).gap(12.0).child(cta));
 
     let hero = col()
         .w_full()
@@ -74,10 +78,10 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         )
         .child(metric_strip(
             &[
-                (&coverage_str, "Boundary coverage", &coverage_note),
-                (&pending_str, "Waiting approvals", "Opens grdr-approve"),
                 (&agents_str, "Agents on device", "Local discovery"),
+                (&pending_str, "Waiting approvals", "Native OS prompt"),
                 (&rules_str, "Policy rules", "Compiled locally"),
+                ("169", "Calls this week", "156 allowed · 8 Ask"),
             ],
             t,
         ))
@@ -140,11 +144,8 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                             )
                             .child(
                                 text(format!(
-                                    "{} on {} (Approver: {}, {})",
-                                    apr.agent_name,
-                                    apr.device_name,
-                                    apr.approver_label,
-                                    apr.required_grade
+                                    "{} on {} · Requires your approval ({})",
+                                    apr.agent_name, apr.device_name, apr.approver_label,
                                 ))
                                 .font(t.caption)
                                 .color(t.c.ink_secondary),
@@ -203,7 +204,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
     }
 
     let mut signals_col = col().grow(1.0).gap(8.0).child(ledger_header(
-        "Health & coverage tiles",
+        "Status checks",
         &format!("{} active", vm.tiles.len()),
         t,
     ));

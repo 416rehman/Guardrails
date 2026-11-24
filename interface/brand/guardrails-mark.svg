@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <path
-    d="M 8 47.5 V 25 C 8 17.8 13.8 14 20.5 14 H 43.5 C 50.2 14 56 17.8 56 25 V 47.5 C 56 49.4 53.7 50.2 52.5 48.7 L 47.5 41.2 V 25.8 C 47.5 22.3 45.2 20.5 41.8 20.5 H 22.2 C 18.8 20.5 16.5 22.3 16.5 25.8 V 41.2 L 11.5 48.7 C 10.3 50.2 8 49.4 8 47.5 Z"
-    fill="currentColor"
-  />
-  <path d="M 18.0 43.6 H 46.0 L 49.8 50.5 H 14.2 Z" fill="currentColor" />
-  <path d="M 22.0 36.2 H 42.0 L 45.0 41.6 H 19.0 Z" fill="currentColor" fill-opacity="0.68" />
-  <path d="M 25.4 30.0 H 38.6 L 41.0 34.4 H 23.0 Z" fill="currentColor" fill-opacity="0.44" />
-</svg>

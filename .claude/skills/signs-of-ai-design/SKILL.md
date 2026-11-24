@@ -17,7 +17,7 @@ Automated enforcement lives in `.claude/hooks/design-check.mjs` across both Clau
    - Canonical source: `interface/tokens.json`. Never hardcode raw `#hex` colors anywhere outside token owners (`interface/tokens.json`, `web/packages/tokens/`, `desktop/grdr-desktop/src/theme.rs`).
 2. **Typography Hierarchy:**
    - **DM Sans** (self-hosted OFL) for upright bold confident status headers (`700` weight, never thin hairlines or oversized italic serifs) and crisp UI copy.
-   - **IBM Plex Mono** (self-hosted OFL) strictly for literal paths, command targets, JSON receipts, and rule IDs inside `<Quoted>` — never as hacker-flavored body copy.
+   - **IBM Plex Mono** (self-hosted OFL) strictly for literal paths, command targets, JSON receipts, and rule IDs inside `<Quoted>`, never as hacker-flavored body copy.
 3. **Calm Surface Discipline (Escape the 10 AI Tells):**
    - **No indigo/purple gradients or dark glow shadows** (`#6366F1`, `#8B5CF6`, `#A855F7`, neon `box-shadow`).
    - **No cream+emerald second-wave reflex.**
@@ -26,5 +26,6 @@ Automated enforcement lives in `.claude/hooks/design-check.mjs` across both Clau
    - **Zero decorative live indicators or fake status chrome.** Only display SSE connection state when a real reconnect condition occurs.
    - **Zero left-border colored accent stripes on ordinary cards/rows.** Reserve colored accents for semantic alerts (`Banner`, verdict indicators) and active state pills.
    - **Zero decorative emojis** in product UI (use Lucide / `rune_kit` geometric icons sparingly where they aid scanning).
-   - **Zero placeholder stats or AI buzzwords.** Never write "world-class", "enterprise-grade", "streamline", "supercharge", "unleash", "seamless", or "empower", and never use the legacy term "posture" (use `Mode`, `Assurance level`, `Verdict`, `Grant`, `Receipt`, `Finding`, `Incident`).
+   - **Zero placeholder stats or AI writing tells:** Never use em dashes or en dashes in UI copy or comments, never join UI prose clauses with semicolons (use crisp separate sentences instead), never use AI cliché constructions ("not just X, but Y", "it's not about", "more than just") or buzzwords ("world-class", "enterprise-grade", "streamline", "supercharge", "unleash", "seamless", "empower", "delve", "effortless", "effortlessly", "cutting-edge", "next-gen", "game-changing", "revolutionary", "leverage", "crafted", "bespoke", "holistic", "elevate your", "frictionless"), and never use the legacy term "posture" (use `Mode`, `Assurance level`, `Verdict`, `Grant`, `Receipt`, `Finding`, `Incident`).
    - **Honest domain microcopy:** Name the actual enrolled endpoint, agent, rule, and next step.
+   - **Never hand-draw SVGs:** Zero inline `<svg>` or `<path d="...">` strings authored by hand. Always use real source PNG brand assets, official icon libraries (`lucide-react`, `@icons-pack/react-simple-icons`, generated upstream Lucide for Rune), and real visualization/graph libraries (`echarts`, `@xyflow/react`, `@dagrejs/dagre`).

@@ -14,6 +14,16 @@ Guardrails ADR is an open-source agent detection and response (ADR) platform (`g
 - **Web (`web/`):** Use `pnpm` only (never `npm`, `npx`, `yarn`, or `bun`). Follow `ui-architect` principles: exponential spacing tokens, Lucide icons (never emojis), smart defaults (never empty forms), ethical friction on high-stakes approvals, inert rendering for untrusted text, zero third-party CDN trackers or fonts.
 - **No direct edits to `.git` internals or unpinned external CI actions.**
 
+## Engineering principles
+1. **(Pre-release / Beta dev lifecycle only; drop this rule at GA release):** Do not maintain backward compatibility with previous unreleased dev versions of this platform. Delete outdated code outright with no compatibility layers, migration scripts, or fallback shims (still model data schemas and versioned contracts cleanly for future post-GA compatibility).
+2. Choose the simplest implementation that meets current needs. No speculative abstractions or configuration layers added "just in case".
+3. Grow the system in layers: get a minimal end-to-end slice working first, then extend it. Never tear down working code because of hypothetical future complexity.
+4. Keep components modular with clear separation of concerns.
+5. Prefer mature, maintained third-party libraries; do not rewrite them yourself without a compelling reason.
+6. Inspect existing project dependencies first before adding a new package or writing custom code.
+7. Make architectural decisions for the long term. No "make it work for now and deal with it later" stopgaps.
+8. Research how mature products in our space solve the problem and adopt proven patterns rather than inventing from scratch.
+
 ## Verification gates
 Run these before opening or merging a PR:
 - `cargo fmt --all -- --check`

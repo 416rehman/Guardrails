@@ -1,5 +1,6 @@
-use grdr_ui_model::{InstallProfile, Intent, RenderTier, ThemeChoice};
-use rune::{El, col, el, icon, row, spacer, text};
+use grdr_ui_model::{InstallProfile, Intent, ThemeChoice};
+use rune::{El, Tx, col, icon, row, spacer, text};
+use rune_kit::SegmentedControl;
 
 use crate::icons;
 use crate::kit::{DesktopApp, ledger_header, primary_button, status_pill};
@@ -10,97 +11,117 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
     let prefs = &app.vm.preferences;
     let settings = &app.vm.settings;
 
-    let profile_text = match settings.install_profile {
-        InstallProfile::Protected => "Protected (machine boundary)",
-        InstallProfile::User => "User (requests only)",
+    let profile_idx = match settings.install_profile {
+        InstallProfile::Protected => Some(0),
+        InstallProfile::User => Some(1),
     };
-    let tier_text = match prefs.render_tier {
-        RenderTier::Full => "Full hardware GPU (Rune)",
-        RenderTier::Lite => "Lite reduced motion",
-        RenderTier::Web => "Web fallback",
-    };
-    let theme_text = match prefs.theme {
-        ThemeChoice::Light => "Paper Light",
-        ThemeChoice::Dark => "Nocturne Dark",
+    let theme_idx = match prefs.theme {
+        ThemeChoice::Light => Some(0),
+        ThemeChoice::Dark => Some(1),
     };
 
-    let mut rows =
-        col()
-            .w_full()
-            .gap(4.0)
-            .child(ledger_header("Runtime & preferences", "Local config", t));
+    let profile_ctrl = SegmentedControl::new(&["Protected", "App hooks"], profile_idx)
+        .label("Protection profile")
+        .fit()
+        .on_pick(|s: &mut DesktopApp, idx: usize, _: &mut Tx| {
+            let p = if idx == 0 {
+                InstallProfile::Protected
+            } else {
+                InstallProfile::User
+            };
+            s.dispatch(Intent::SelectInstallProfile(p));
+        })
+        .build(&t.kit);
 
-    for (k, v, glyph) in [
-        (
-            "Install profile",
-            profile_text.to_owned(),
-            &icons::SHIELD_CHECK,
-        ),
-        ("Render tier", tier_text.to_owned(), &icons::CPU),
-        ("Appearance theme", theme_text.to_owned(), &icons::SUN),
-        ("UI locale", prefs.locale.code().to_owned(), &icons::GLOBE),
-    ] {
-        rows = rows.child(
+    let theme_ctrl = SegmentedControl::new(&["Light", "Dark"], theme_idx)
+        .label("Appearance theme")
+        .fit()
+        .on_pick(|s: &mut DesktopApp, idx: usize, _: &mut Tx| {
+            let want_dark = idx == 1;
+            let is_dark = matches!(s.vm.preferences.theme, ThemeChoice::Dark);
+            if want_dark != is_dark {
+                s.dispatch(Intent::ToggleTheme);
+            }
+        })
+        .build(&t.kit);
+
+    let rows = col()
+        .w_full()
+        .gap(4.0)
+        .child(ledger_header("Preferences", "Saved locally", t))
+        .child(
             row()
                 .w_full()
                 .pt(12.0)
                 .pb(12.0)
                 .center_y()
                 .gap(10.0)
-                .child(icon(glyph, 15.0).color(t.c.ink_muted))
-                .child(text(k).font(t.body_strong).color(t.c.ink_primary))
+                .child(icon(&icons::SHIELD_CHECK, 15.0).color(t.c.ink_muted))
+                .child(
+                    text("Protection profile")
+                        .font(t.body_strong)
+                        .color(t.c.ink_primary),
+                )
                 .child(spacer())
-                .child(status_pill(&v, t.c.recessed, t.c.ink_secondary, t)),
+                .child(profile_ctrl),
+        )
+        .child(
+            row()
+                .w_full()
+                .pt(12.0)
+                .pb(12.0)
+                .center_y()
+                .gap(10.0)
+                .child(icon(&icons::SUN, 15.0).color(t.c.ink_muted))
+                .child(
+                    text("Appearance")
+                        .font(t.body_strong)
+                        .color(t.c.ink_primary),
+                )
+                .child(spacer())
+                .child(theme_ctrl),
+        )
+        .child(
+            row()
+                .w_full()
+                .pt(12.0)
+                .pb(12.0)
+                .center_y()
+                .gap(10.0)
+                .child(icon(&icons::GLOBE, 15.0).color(t.c.ink_muted))
+                .child(text("Language").font(t.body_strong).color(t.c.ink_primary))
+                .child(spacer())
+                .child(status_pill(
+                    prefs.locale.code(),
+                    t.c.recessed,
+                    t.c.ink_secondary,
+                    t,
+                )),
         );
-    }
 
     col()
         .key("screen-settings")
         .w_full()
         .gap(24.0)
         .child(
-            row()
-                .gap(12.0)
-                .center_y()
-                .child(
-                    el().size(36.0, 36.0)
-                        .radius(9.0)
-                        .fill(t.c.accent_soft)
-                        .center()
-                        .child(icon(&icons::SLIDERS, 18.0).color(t.c.accent)),
-                )
-                .child(
-                    text("Settings")
-                        .font(t.display_headline)
-                        .color(t.c.ink_primary),
-                ),
+            text("Settings")
+                .font(t.display_headline)
+                .color(t.c.ink_primary),
         )
         .child(
-            text("Manage render tier, appearance, locale, and local web console bridge.")
+            text("Choose protection mode, appearance, and open the full web console.")
                 .font(t.body)
                 .color(t.c.ink_secondary),
         )
         .child(rows)
-        .child(
-            row()
-                .gap(12.0)
-                .child(primary_button(
-                    "toggle-theme-settings",
-                    "Switch appearance",
-                    t,
-                    |s| {
-                        s.dispatch(Intent::ToggleTheme);
-                    },
-                ))
-                .child(primary_button(
-                    "open-web-settings",
-                    "Open local web console",
-                    t,
-                    |s| {
-                        s.dispatch(Intent::OpenWebConsole {
-                            route: "home".to_owned(),
-                        });
-                    },
-                )),
-        )
+        .child(row().gap(12.0).child(primary_button(
+            "open-web-settings",
+            "Open web console",
+            t,
+            |s| {
+                s.dispatch(Intent::OpenWebConsole {
+                    route: "home".to_owned(),
+                });
+            },
+        )))
 }

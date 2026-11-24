@@ -3,11 +3,37 @@ import { Badge, type BadgeVariant } from "@astryxdesign/core/Badge";
 import { Banner, type BannerStatus } from "@astryxdesign/core/Banner";
 import { Button, type ButtonSize, type ButtonVariant } from "@astryxdesign/core/Button";
 import { Card, type CardVariant } from "@astryxdesign/core/Card";
+import { CheckboxInput } from "@astryxdesign/core/CheckboxInput";
+import { Dialog } from "@astryxdesign/core/Dialog";
 import { Divider } from "@astryxdesign/core/Divider";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { Kbd } from "@astryxdesign/core/Kbd";
+import { Pagination } from "@astryxdesign/core/Pagination";
+import { ProgressBar } from "@astryxdesign/core/ProgressBar";
+import { Selector, type SelectorOptionData } from "@astryxdesign/core/Selector";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
+import { Switch } from "@astryxdesign/core/Switch";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
+import { Tooltip } from "@astryxdesign/core/Tooltip";
+import {
+  SiAnthropic,
+  SiClaude,
+  SiClaudecode,
+  SiCloudflare,
+  SiCursor,
+  SiGithubcopilot,
+  SiGoogle,
+  SiGooglegemini,
+  SiKong,
+  SiMetaai,
+  SiMistralai,
+  SiModelcontextprotocol,
+  SiOpencode,
+  SiWindsurf,
+} from "@icons-pack/react-simple-icons";
+import guardrailsMarkPng from "./assets/guardrails-mark.png";
 import {
   Activity,
   AlertCircle,
@@ -38,6 +64,8 @@ import {
   List,
   Lock,
   Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Play,
   Plug,
@@ -54,6 +82,7 @@ import {
   ShieldCheck,
   ShieldHalf,
   ShieldOff,
+  SlidersHorizontal,
   Sun,
   Tag,
   Terminal,
@@ -64,8 +93,29 @@ import {
   Maximize2,
 } from "lucide-react";
 
-export { Badge, Banner, Button, Card, Divider, EmptyState, Heading, HStack, Text, TextInput, VStack };
-export type { BadgeVariant, BannerStatus, ButtonSize, ButtonVariant, CardVariant };
+export {
+  Badge,
+  Banner,
+  Button,
+  Card,
+  CheckboxInput,
+  Dialog,
+  Divider,
+  EmptyState,
+  Heading,
+  HStack,
+  IconButton,
+  Kbd,
+  Pagination,
+  ProgressBar,
+  Selector,
+  Switch,
+  Text,
+  TextInput,
+  Tooltip,
+  VStack,
+};
+export type { BadgeVariant, BannerStatus, ButtonSize, ButtonVariant, CardVariant, SelectorOptionData };
 
 export type GrdrIconName =
   | "activity"
@@ -97,6 +147,8 @@ export type GrdrIconName =
   | "list"
   | "lock"
   | "moon"
+  | "panel-left-close"
+  | "panel-left-open"
   | "pencil"
   | "play"
   | "plug"
@@ -113,6 +165,7 @@ export type GrdrIconName =
   | "shield-check"
   | "shield-half"
   | "shield-off"
+  | "sliders-horizontal"
   | "sun"
   | "tag"
   | "terminal"
@@ -198,6 +251,10 @@ export function GrdrIcon({
       return <Lock {...props} />;
     case "moon":
       return <Moon {...props} />;
+    case "panel-left-close":
+      return <PanelLeftClose {...props} />;
+    case "panel-left-open":
+      return <PanelLeftOpen {...props} />;
     case "pencil":
       return <Pencil {...props} />;
     case "play":
@@ -230,6 +287,8 @@ export function GrdrIcon({
       return <ShieldHalf {...props} />;
     case "shield-off":
       return <ShieldOff {...props} />;
+    case "sliders-horizontal":
+      return <SlidersHorizontal {...props} />;
     case "sun":
       return <Sun {...props} />;
     case "tag":
@@ -311,30 +370,21 @@ export function iconKeyToName(iconKey: string): GrdrIconName {
 }
 
 export function GuardrailsMark({
-  size = 20,
+  size = 24,
   ariaLabel,
 }: {
   size?: number;
   ariaLabel?: string;
 }) {
   return (
-    <svg
+    <img
+      src={guardrailsMarkPng}
       width={size}
       height={size}
-      viewBox="0 0 64 64"
-      fill="none"
-      role={ariaLabel ? "img" : undefined}
-      aria-label={ariaLabel}
+      alt={ariaLabel ?? ""}
       aria-hidden={ariaLabel ? undefined : true}
-    >
-      <path
-        d="M 8 47.5 V 25 C 8 17.8 13.8 14 20.5 14 H 43.5 C 50.2 14 56 17.8 56 25 V 47.5 C 56 49.4 53.7 50.2 52.5 48.7 L 47.5 41.2 V 25.8 C 47.5 22.3 45.2 20.5 41.8 20.5 H 22.2 C 18.8 20.5 16.5 22.3 16.5 25.8 V 41.2 L 11.5 48.7 C 10.3 50.2 8 49.4 8 47.5 Z"
-        fill="currentColor"
-      />
-      <path d="M 18.0 43.6 H 46.0 L 49.8 50.5 H 14.2 Z" fill="currentColor" />
-      <path d="M 22.0 36.2 H 42.0 L 45.0 41.6 H 19.0 Z" fill="currentColor" fillOpacity={0.68} />
-      <path d="M 25.4 30.0 H 38.6 L 41.0 34.4 H 23.0 Z" fill="currentColor" fillOpacity={0.44} />
-    </svg>
+      className="grdr-brand-img"
+    />
   );
 }
 
@@ -346,81 +396,102 @@ export function HarnessIcon({
   size?: number;
 }) {
   const norm = name.trim().toLowerCase();
-  const baseProps = {
-    width: size,
-    height: size,
-    viewBox: "0 0 24 24",
-    fill: "none" as const,
-    "aria-hidden": true as const,
-  };
 
+  if (norm.includes("claude-code") || norm.includes("claude code")) {
+    return <SiClaudecode size={size} color="var(--tone-ask)" aria-hidden="true" />;
+  }
   if (norm.includes("claude")) {
-    return (
-      <svg {...baseProps}>
-        <path
-          d="M12 2v20M4.9 4.9l14.2 14.2M2 12h20M4.9 19.1L19.1 4.9"
-          stroke="var(--tone-ask)"
-          strokeWidth="2"
-          strokeLinecap="round"
-        />
-      </svg>
-    );
+    return <SiClaude size={size} color="var(--tone-ask)" aria-hidden="true" />;
+  }
+  if (norm.includes("anthropic")) {
+    return <SiAnthropic size={size} color="var(--ink-primary)" aria-hidden="true" />;
   }
   if (norm.includes("cursor")) {
-    return (
-      <svg {...baseProps}>
-        <path
-          d="M5 3l14 7.5L12.5 13l-2 7L5 3z"
-          fill="var(--accent-primary)"
-          fillOpacity={0.18}
-          stroke="var(--accent-primary)"
-          strokeWidth="1.8"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
-  }
-  if (norm.includes("codex") || norm.includes("openai")) {
-    return (
-      <svg {...baseProps}>
-        <circle cx="12" cy="12" r="8.5" stroke="var(--accent-primary)" strokeWidth="1.7" />
-        <path d="M8.5 9.5L11.5 12l-3 2.5M12.5 14.5h3.5" stroke="var(--ink-primary)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    );
+    return <SiCursor size={size} color="var(--accent-primary)" aria-hidden="true" />;
   }
   if (norm.includes("gemini")) {
-    return (
-      <svg {...baseProps}>
-        <path
-          d="M12 2.5C12.8 8.2 15.8 11.2 21.5 12C15.8 12.8 12.8 15.8 12 21.5C11.2 15.8 8.2 12.8 2.5 12C8.2 11.2 11.2 8.2 12 2.5Z"
-          fill="var(--accent-primary)"
-          fillOpacity={0.22}
-          stroke="var(--accent-primary)"
-          strokeWidth="1.7"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
+    return <SiGooglegemini size={size} color="var(--accent-primary)" aria-hidden="true" />;
+  }
+  if (norm.includes("google")) {
+    return <SiGoogle size={size} color="var(--accent-primary)" aria-hidden="true" />;
   }
   if (norm.includes("copilot")) {
-    return (
-      <svg {...baseProps}>
-        <rect x="4" y="7" width="16" height="10" rx="4" stroke="var(--tone-allow)" strokeWidth="1.8" />
-        <circle cx="9.5" cy="12" r="1.4" fill="var(--tone-allow)" />
-        <circle cx="14.5" cy="12" r="1.4" fill="var(--tone-allow)" />
-      </svg>
-    );
+    return <SiGithubcopilot size={size} color="var(--tone-allow)" aria-hidden="true" />;
   }
-  if (norm.includes("opencode") || norm.includes("windsurf")) {
-    return (
-      <svg {...baseProps}>
-        <rect x="4" y="4" width="16" height="16" rx="3" stroke="var(--ink-primary)" strokeWidth="1.8" />
-        <path d="M8.5 9L11 12l-2.5 3M13 15h3" stroke="var(--accent-primary)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    );
+  if (norm.includes("windsurf")) {
+    return <SiWindsurf size={size} color="var(--accent-primary)" aria-hidden="true" />;
+  }
+  if (norm.includes("opencode")) {
+    return <SiOpencode size={size} color="var(--ink-primary)" aria-hidden="true" />;
+  }
+  if (norm.includes("meta") || norm.includes("llama")) {
+    return <SiMetaai size={size} color="var(--accent-primary)" aria-hidden="true" />;
+  }
+  if (norm.includes("mistral")) {
+    return <SiMistralai size={size} color="var(--tone-ask)" aria-hidden="true" />;
+  }
+  if (norm.includes("guardrails")) {
+    return <GuardrailsMark size={size} />;
+  }
+  if (norm.includes("kong")) {
+    return <SiKong size={size} color="var(--tone-allow)" aria-hidden="true" />;
+  }
+  if (norm.includes("mcp")) {
+    return <SiModelcontextprotocol size={size} color="var(--ink-primary)" aria-hidden="true" />;
+  }
+  if (norm.includes("litellm")) {
+    return <GrdrIcon name="layers" size={size} color="var(--accent-primary)" />;
+  }
+  if (norm.includes("azure")) {
+    return <GrdrIcon name="box" size={size} color="var(--accent-primary)" />;
+  }
+  if (norm.includes("portkey")) {
+    return <GrdrIcon name="route" size={size} color="var(--tone-ask)" />;
+  }
+  if (norm.includes("bedrock") || norm.includes("aws")) {
+    return <SiCloudflare size={size} color="var(--tone-ask)" aria-hidden="true" />;
+  }
+  if (norm.includes("codex") || norm.includes("openai")) {
+    return <GrdrIcon name="key-round" size={size} color="var(--accent-primary)" />;
+  }
+  if (norm.includes("proxy") || norm.includes("gateway")) {
+    return <GrdrIcon name="server" size={size} color="var(--accent-primary)" />;
   }
 
   return <GrdrIcon name="cpu" size={size} />;
+}
+
+export function GrdrSelect({
+  label,
+  isLabelHidden = false,
+  value,
+  options,
+  onChange,
+  size = "md",
+  variant = "input",
+  width,
+}: {
+  label: string;
+  isLabelHidden?: boolean;
+  value: string;
+  options: ReadonlyArray<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+  size?: "sm" | "md" | "lg";
+  variant?: "input" | "secondary" | "ghost";
+  width?: number | string;
+}) {
+  return (
+    <Selector
+      label={label}
+      isLabelHidden={isLabelHidden}
+      options={options.map((o) => ({ value: o.value, label: o.label }))}
+      value={value}
+      onChange={onChange}
+      size={size}
+      variant={variant}
+      width={width}
+    />
+  );
 }
 
 export function surfaceAction(label: string, icon?: GrdrIconName, children?: ReactNode) {

@@ -12,6 +12,19 @@ metadata:
 
 These are the owner's rules (owner instructions 4, 9, 15 and 26, recorded in `docs/design/_review/04-owner-kit-instructions.md`). Seven of them are the structure checks S1 to S7, which the owner calls V-structure. No tool runs them now: you check your own diff against them before you report, and `eval-diff` checks it again. They are not the security power prompts of `docs/team/04`. Audit A01 and the evaluators check what a pattern cannot. The interface checks UX1 to UX8 belong to `grdr-interface`, loaded after `ui-architect`. Code written to these rules from the first line never meets a finding, so read the rules before you write, not after a review complains.
 
+## Core engineering principles (Beta / Pre-release)
+
+Enforced by `.claude/hooks/docs-check.mjs` and `.agents/hooks/agy-pre-tool-use.mjs`:
+
+1. **(Pre-release / Beta dev lifecycle only; drop at GA release):** Do not maintain backward compatibility with previous unreleased dev versions of this platform. Delete outdated code outright with no compatibility layers, migration scripts, or backup fallback shims (still model data schemas and versioned contracts cleanly for future post-GA evolution).
+2. Choose the simplest implementation that meets current needs. No speculative abstractions or configuration layers added "just in case".
+3. Let the system grow in layers: get a minimal end-to-end slice working first, then add capabilities once it runs. Never tear down working code over hypothetical future complexity.
+4. Keep components modular with clear separation of concerns.
+5. Prefer mature, maintained third-party libraries; do not rewrite them yourself without a compelling reason.
+6. Check what existing project dependencies already provide before adding a new package or writing custom code.
+7. Make architectural decisions for the long term. No "we will make it work for now and deal with it later" stopgaps or `HACK`/`FIXME` workarounds.
+8. Study how mature products in our space solve the problem and reuse proven patterns instead of inventing from scratch.
+
 ## The seven rules
 
 1. **Structures before implementations.** Every Rust file runs in this order: module declarations and imports, then constants and statics, then types (structs, enums, type aliases, traits), then impls, then free functions, then the test module last. TypeScript: imports, constants, types and interfaces, then functions and classes. A reader learns what exists before reading what it does.

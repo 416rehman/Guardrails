@@ -40,8 +40,8 @@ export const OPERATOR_ROUTES: ReadonlyArray<{
 
 export const MESSAGES = {
   "grdr.brand.name": "Guardrails ADR",
-  "grdr.brand.subtitle": "Agent detection & response",
-  "grdr.brand.operator_subtitle": "Operator deployment plane",
+  "grdr.brand.subtitle": "Agent protection",
+  "grdr.brand.operator_subtitle": "Operator plane",
   "console.nav.home": "Home",
   "console.nav.inventory": "Inventory",
   "console.nav.sessions": "Sessions",
@@ -58,11 +58,11 @@ export const MESSAGES = {
   "mode.watch.label": "Watch",
   "mode.ask.label": "Ask",
   "mode.block.label": "Block",
-  "console.verdict.allow": "ALLOW",
-  "console.verdict.modify": "MODIFY",
-  "console.verdict.step_up": "STEP_UP",
-  "console.verdict.defer": "DEFER",
-  "console.verdict.deny": "DENY",
+  "console.verdict.allow": "Allow",
+  "console.verdict.modify": "Modified",
+  "console.verdict.step_up": "Ask",
+  "console.verdict.defer": "Deferred",
+  "console.verdict.deny": "Deny",
   "console.session_label.credential_accessed": "Credential accessed",
   "console.session_label.untrusted_web_fetched": "Untrusted web fetched",
   "console.session_label.repeated_denials": "Repeated denials",
@@ -70,13 +70,55 @@ export const MESSAGES = {
   "console.stream.connected": "Live stream connected",
   "console.stream.reconnecting": "Live updates paused, reconnecting",
   "console.coverage.title": "Coverage",
-  "console.coverage.subtitle": "Assurance levels across endpoints, hook effectiveness, and observable blind spots.",
+  "console.coverage.subtitle": "Protection strength across agents and operating systems.",
 } as const;
 
 export type MessageKey = keyof typeof MESSAGES;
 
 export function t(key: MessageKey): string {
   return MESSAGES[key];
+}
+
+export function pluralize(count: number, singular: string, plural?: string): string {
+  const form = count === 1 ? singular : (plural ?? `${singular}s`);
+  return `${count} ${form}`;
+}
+
+export function formatOsName(os: string): string {
+  const norm = os.trim().toLowerCase();
+  if (norm === "macos" || norm === "darwin") return "macOS";
+  if (norm === "linux") return "Linux";
+  if (norm === "windows") return "Windows";
+  return os;
+}
+
+export function formatActionLabel(actionClass: string): string {
+  switch (actionClass) {
+    case "exec":
+      return "Command run";
+    case "file.read":
+      return "File read";
+    case "file.write":
+      return "File write";
+    case "file.delete":
+      return "File delete";
+    case "net.connect":
+      return "Network connect";
+    case "net.request":
+      return "Network request";
+    case "mcp.call":
+      return "Tool call";
+    case "cred.use":
+      return "Credential access";
+    case "elevate":
+      return "Privilege elevation";
+    case "config.change":
+      return "Config change";
+    case "data.flow":
+      return "Data transfer";
+    default:
+      return actionClass;
+  }
 }
 
 export function presentMode(mode: "off" | "watch" | "ask" | "block"): {
@@ -117,14 +159,26 @@ export function presentVerdict(verdict: "allow" | "modify" | "step_up" | "defer"
 
 export function presentAssurance(level: "AL0" | "AL1" | "AL2" | "AL3" | "AL4", control: string): {
   level: string;
+  label: string;
+  description: string;
   controlLabel: string;
   iconKey: string;
   tone: "success" | "warning" | "neutral";
 } {
   const isBoundary = control.includes("boundary");
   const isRequest = control === "request";
+  const mapped: Record<typeof level, { label: string; description: string }> = {
+    AL0: { label: "Observed", description: "Discovered on device. No hook is active yet." },
+    AL1: { label: "App hook", description: "Checked by the agent's hook before execution" },
+    AL2: { label: "Tool proxy", description: "Routed through the local tool broker" },
+    AL3: { label: "Sandboxed", description: "Isolated inside an operating-system boundary" },
+    AL4: { label: "Enforced", description: "Tamper-resistant boundary enforcement verified" },
+  };
+  const info = mapped[level];
   return {
     level,
+    label: info.label,
+    description: info.description,
     controlLabel: isBoundary ? "Boundary" : isRequest ? "Request" : "Observe",
     iconKey: `assurance.${level.toLowerCase()}`,
     tone: isBoundary ? "success" : isRequest ? "warning" : "neutral",

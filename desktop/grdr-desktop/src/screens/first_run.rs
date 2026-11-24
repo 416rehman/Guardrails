@@ -1,9 +1,11 @@
 use grdr_ui_model::{InstallProfile, Intent};
-use rune::{El, Tx, col, el, icon, row, spacer, text};
-use rune_kit::{Button, ButtonVariant, SegmentedControl};
+use rune::{El, Tx, col, icon, row, spacer, text};
+use rune_kit::SegmentedControl;
 
 use crate::icons;
-use crate::kit::{DesktopApp, ledger_header, setup_progress, status_pill_with_icon};
+use crate::kit::{
+    DesktopApp, ledger_header, primary_button, setup_progress, status_pill_with_icon,
+};
 use crate::theme::StudioTheme;
 
 #[must_use]
@@ -85,21 +87,9 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         .w_full()
         .gap(24.0)
         .child(
-            row()
-                .gap(12.0)
-                .center_y()
-                .child(
-                    el().size(36.0, 36.0)
-                        .radius(9.0)
-                        .fill(t.c.accent_soft)
-                        .center()
-                        .child(icon(&icons::LAYERS, 18.0).color(t.c.accent)),
-                )
-                .child(
-                    text("First run setup")
-                        .font(t.display_headline)
-                        .color(t.c.ink_primary),
-                ),
+            text("First run setup")
+                .font(t.display_headline)
+                .color(t.c.ink_primary),
         )
         .child(
             text("Read-only agent scan complete. Choose Protected so your agents cannot remove hooks or local rules.")
@@ -114,12 +104,14 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                 .gap(16.0)
                 .center_y()
                 .child(profile_picker)
-                .child(
-                    Button::new("Confirm protection")
-                        .icon(&icons::SHIELD_CHECK)
-                        .variant(ButtonVariant::Outline)
-                        .build(&t.kit),
-                ),
+                .child(primary_button(
+                    "confirm-protection-btn",
+                    "Confirm protection",
+                    t,
+                    |s| {
+                        s.dispatch(Intent::ConfirmProtection);
+                    },
+                )),
         )
         .child(list)
 }

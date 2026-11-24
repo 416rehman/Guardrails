@@ -1,4 +1,4 @@
-use rune::{El, col, el, icon, row, spacer, text};
+use rune::{El, col, icon, row, spacer, text};
 
 use crate::icons;
 use crate::kit::{DesktopApp, flow_stage_node, ledger_header, status_pill_with_icon};
@@ -20,7 +20,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
             &icons::GLOBE,
         ),
         (
-            "Organisation readers",
+            "Organization readers",
             vm.managed_org
                 .clone()
                 .unwrap_or_else(|| "None (standalone mode)".to_owned()),
@@ -31,6 +31,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
     let data_flow = row()
         .w_full()
         .gap(10.0)
+        .items_stretch()
         .center_y()
         .child(flow_stage_node(
             &icons::TERMINAL,
@@ -42,8 +43,8 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         .child(icon(&icons::ARROW_RIGHT, 14.0).color(t.c.ink_muted))
         .child(flow_stage_node(
             &icons::SHIELD_CHECK,
-            "2. Local daemon",
-            "Offline compiled floor",
+            "2. Policy check",
+            "Evaluated locally",
             t.c.accent,
             t,
         ))
@@ -51,7 +52,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         .child(flow_stage_node(
             &icons::HARD_DRIVE,
             "3. Local receipts",
-            "Ed25519 WAL on disk",
+            "Signed log on disk",
             t.c.allow,
             t,
         ))
@@ -90,21 +91,9 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         .w_full()
         .gap(24.0)
         .child(
-            row()
-                .gap(12.0)
-                .center_y()
-                .child(
-                    el().size(36.0, 36.0)
-                        .radius(9.0)
-                        .fill(t.c.allow_bg)
-                        .center()
-                        .child(icon(&icons::EYE, 18.0).color(t.c.allow)),
-                )
-                .child(
-                    text(&vm.disclosure_header)
-                        .font(t.display_headline)
-                        .color(t.c.ink_primary),
-                ),
+            text(&vm.disclosure_header)
+                .font(t.display_headline)
+                .color(t.c.ink_primary),
         )
         .child(
             row()
@@ -119,7 +108,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                 ))
                 .child(
                     text(
-                        "Guardrails prompts stay local unless you explicitly join an organisation.",
+                        "Guardrails prompts stay local unless you explicitly join an organization.",
                     )
                     .font(t.body)
                     .color(t.c.ink_secondary),

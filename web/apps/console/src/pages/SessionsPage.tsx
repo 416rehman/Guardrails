@@ -1,10 +1,14 @@
-import { useEffect, useState } from "react";
-import { api, type ActionAttempt, type SessionDetailResponse, type SessionSummary } from "@grdr/api";
+import { useEffect, useMemo, useState } from "react";
+import { api, type ActionAttempt, type AssuranceLevel, type SessionDetailResponse, type SessionSummary } from "@grdr/api";
+import { formatActionLabel, pluralize, presentAssurance } from "@grdr/i18n";
 import { Quoted, SessionLabelBadge, VerdictBadge } from "@grdr/kit";
 import {
   Badge,
   Banner,
   Button,
+  type GrdrFlowEdge,
+  type GrdrFlowNode,
+  GrdrFlowGraph,
   GrdrIcon,
   HarnessIcon,
   Heading,
@@ -28,7 +32,6 @@ export function SessionsPage({
   const [selectedId, setSelectedId] = useState<string | null>(sessions[0]?.id ?? null);
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<SessionViewMode>("graph");
-  const [zoomPct, setZoomPct] = useState<number>(100);
   const [detail, setDetail] = useState<SessionDetailResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,7 +63,10 @@ export function SessionsPage({
       .then((res) => {
         if (!cancelled) {
           setDetail(res);
-          setSelectedAttemptId(res.attempts[0]?.id ?? null);
+          const firstFlagged = res.attempts.find((a) =>
+            res.receipts.some((r) => r.attempt_id === a.id && r.verdict !== "allow"),
+          );
+          setSelectedAttemptId(firstFlagged?.id ?? res.attempts[0]?.id ?? null);
           setError(null);
         }
       })
@@ -78,13 +84,105 @@ export function SessionsPage({
     ? detail?.receipts.find((r) => r.attempt_id === focusedAttempt.id)
     : undefined;
 
+  const { flowNodes, flowEdges } = useMemo(() => {
+    if (!detail) return { flowNodes: [] as GrdrFlowNode[], flowEdges: [] as GrdrFlowEdge[] };
+    const assuranceLabel = presentAssurance(
+      detail.session.assurance_level as AssuranceLevel,
+      detail.session.assurance_level === "AL3" || detail.session.assurance_level === "AL4"
+        ? "boundary"
+        : "request",
+    ).label;
+    const nodes: GrdrFlowNode[] = [
+      {
+        id: "host",
+        label: detail.session.device_name,
+        subtitle: "Enrolled endpoint",
+        badge: "HOST",
+        tone: "accent",
+        icon: "cpu",
+      },
+      {
+        id: "agent",
+        label: detail.session.agent_name,
+        subtitle: `Protection: ${assuranceLabel}`,
+        badge: assuranceLabel,
+        tone: "allow",
+        harnessName: detail.session.agent_name,
+      },
+      {
+        id: "engine",
+        label: "Policy engine",
+        subtitle: "Cedar local eval",
+        badge: "GRDR",
+        tone: "accent",
+        icon: "shield-check",
+      },
+    ];
+    const edges: GrdrFlowEdge[] = [
+      { id: "e-host-agent", source: "host", target: "agent" },
+      { id: "e-agent-engine", source: "agent", target: "engine" },
+    ];
+    for (const attempt of detail.attempts) {
+      const receipt = detail.receipts.find((r) => r.attempt_id === attempt.id);
+      const verdict = receipt?.verdict ?? "allow";
+      const isWatchHit = Boolean(verdict === "allow" && receipt?.rule_id);
+      const tone =
+        verdict === "deny"
+          ? "block"
+          : verdict === "step_up"
+            ? "ask"
+            : isWatchHit
+              ? "watch"
+              : "allow";
+      const badge =
+        verdict === "deny"
+          ? "Deny"
+          : verdict === "step_up"
+            ? "Ask"
+            : isWatchHit
+              ? "Watch"
+              : "Allow";
+      const iconName =
+        verdict === "deny"
+          ? "ban"
+          : verdict === "step_up"
+            ? "hand"
+            : isWatchHit
+              ? "eye"
+              : "check-circle";
+      nodes.push({
+        id: attempt.id,
+        label: formatActionLabel(attempt.action_class),
+        subtitle: attempt.target,
+        badge,
+        tone,
+        icon: iconName,
+        selected: focusedAttempt?.id === attempt.id,
+      });
+      edges.push({
+        id: `e-eng-${attempt.id}`,
+        source: "engine",
+        target: attempt.id,
+        tone:
+          verdict === "deny"
+            ? "block"
+            : isWatchHit
+              ? "watch"
+              : verdict === "allow"
+                ? "allow"
+                : "neutral",
+      });
+    }
+    return { flowNodes: nodes, flowEdges: edges };
+  }, [detail, focusedAttempt?.id]);
+
   return (
     <VStack gap={4}>
       <div className="page-header">
         <div>
           <Heading level={1}>Sessions</Heading>
           <Text color="secondary">
-            Action storylines, interactive execution graphs, and high-density signed receipt streams.
+            Inspect agent sessions as a graph, timeline, or event stream.
           </Text>
         </div>
       </div>
@@ -114,7 +212,7 @@ export function SessionsPage({
                       <div>
                         <strong>{sess.agent_name}</strong>
                         <div className="mono" style={{ color: "var(--ink-muted)" }}>
-                          {`${sess.device_name}, ${sess.total_actions} call(s)`}
+                          {`${sess.device_name} · ${pluralize(sess.total_actions, "call")}`}
                         </div>
                       </div>
                     </HStack>
@@ -174,157 +272,33 @@ export function SessionsPage({
                     ]}
                     onChange={setViewMode}
                   />
-                  <Badge variant="info" label={`${detail.attempts.length} step(s)`} />
+                  <Badge variant="info" label={pluralize(detail.attempts.length, "step")} />
                 </HStack>
               </div>
 
               {viewMode === "graph" && (
-                <div className="graph-workspace" aria-label="Session execution graph">
-                  <div className="graph-toolbar" role="toolbar" aria-label="Graph viewport controls">
-                    <button
-                      type="button"
-                      className="graph-tool-btn"
-                      title="Zoom in"
-                      onClick={() => setZoomPct((z) => Math.min(130, z + 15))}
-                    >
-                      <GrdrIcon name="zoom-in" size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      className="graph-tool-btn"
-                      title="Zoom out"
-                      onClick={() => setZoomPct((z) => Math.max(70, z - 15))}
-                    >
-                      <GrdrIcon name="zoom-out" size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      className="graph-tool-btn"
-                      title="Reset fit"
-                      onClick={() => setZoomPct(100)}
-                    >
-                      <GrdrIcon name="maximize" size={14} />
-                    </button>
-                  </div>
-
-                  <div style={{ overflowX: "auto" }}>
-                    <svg
-                      width={`${zoomPct}%`}
-                      height={Math.max(240, detail.attempts.length * 64 + 40)}
-                      viewBox={`0 0 740 ${Math.max(240, detail.attempts.length * 64 + 40)}`}
-                      role="img"
-                      aria-label="Agent session execution path graph"
-                    >
-                      <circle cx="52" cy="118" r="18" fill="var(--bg-canvas)" stroke="var(--accent-primary)" strokeWidth="2" />
-                      <text x="52" y="122" textAnchor="middle" fontSize="10" fontWeight="700" fill="var(--ink-primary)">
-                        HOST
-                      </text>
-                      <text x="52" y="150" textAnchor="middle" fontSize="11" fill="var(--ink-secondary)">
-                        {detail.session.device_name}
-                      </text>
-
-                      <path d="M 70 118 L 138 118" stroke="var(--border-strong)" strokeWidth="1.6" />
-
-                      <circle cx="158" cy="118" r="18" fill="var(--bg-canvas)" stroke="var(--tone-allow)" strokeWidth="2" />
-                      <text x="158" y="122" textAnchor="middle" fontSize="10" fontWeight="700" fill="var(--tone-allow)">
-                        AGNT
-                      </text>
-                      <text x="158" y="150" textAnchor="middle" fontSize="11" fill="var(--ink-primary)">
-                        {detail.session.agent_name}
-                      </text>
-
-                      <path d="M 176 118 L 244 118" stroke="var(--border-strong)" strokeWidth="1.6" />
-
-                      <circle cx="264" cy="118" r="18" fill="var(--bg-canvas)" stroke="var(--accent-primary)" strokeWidth="2" />
-                      <text x="264" y="122" textAnchor="middle" fontSize="10" fontWeight="700" fill="var(--accent-primary)">
-                        GRDR
-                      </text>
-                      <text x="264" y="150" textAnchor="middle" fontSize="11" fill="var(--ink-secondary)">
-                        Policy engine
-                      </text>
-
-                      {detail.attempts.map((attempt, idx) => {
-                        const receipt = detail.receipts.find((r) => r.attempt_id === attempt.id);
-                        const y = 34 + idx * 62;
-                        const verdict = receipt?.verdict ?? "allow";
-                        const nodeStroke =
-                          verdict === "deny"
-                            ? "var(--tone-block)"
-                            : verdict === "step_up"
-                              ? "var(--tone-ask)"
-                              : "var(--tone-allow)";
-                        const isFocused = focusedAttempt?.id === attempt.id;
-                        const shortTarget =
-                          attempt.target.length > 28
-                            ? `${attempt.target.slice(0, 25)}...`
-                            : attempt.target;
-
-                        return (
-                          <g
-                            key={attempt.id}
-                            style={{ cursor: "pointer" }}
-                            onClick={() => setSelectedAttemptId(attempt.id)}
-                          >
-                            <path
-                              d={`M 282 118 C 330 118, 336 ${y}, 386 ${y}`}
-                              fill="none"
-                              stroke="var(--border-strong)"
-                              strokeWidth="1.6"
-                            />
-                            <circle
-                              cx="404"
-                              cy={y}
-                              r="17"
-                              fill="var(--bg-canvas)"
-                              stroke={nodeStroke}
-                              strokeWidth={isFocused ? "2.6" : "2"}
-                            />
-                            <text
-                              x="404"
-                              y={y + 4}
-                              textAnchor="middle"
-                              fontSize="9"
-                              fontWeight="700"
-                              fill={nodeStroke}
-                            >
-                              {verdict === "deny" ? "DENY" : verdict === "step_up" ? "ASK" : "OK"}
-                            </text>
-                            <rect
-                              x="432"
-                              y={y - 20}
-                              width="288"
-                              height="40"
-                              rx="8"
-                              fill="var(--bg-canvas)"
-                              stroke={isFocused ? "var(--accent-primary)" : "var(--border-subtle)"}
-                              strokeWidth={isFocused ? "1.8" : "1"}
-                            />
-                            <text x="444" y={y - 3} fontSize="12" fontWeight="600" fill="var(--ink-primary)">
-                              {attempt.action_class}
-                            </text>
-                            <text x="444" y={y + 12} fontSize="11" fill="var(--ink-muted)">
-                              {shortTarget}
-                            </text>
-                          </g>
-                        );
-                      })}
-                    </svg>
-                    <HStack justify="center" style={{ marginTop: 4 }}>
-                      <Badge
-                        variant="neutral"
-                        label={`${detail.attempts.length + 3} nodes loaded`}
-                      />
-                    </HStack>
-                  </div>
-                </div>
+                <GrdrFlowGraph
+                  nodes={flowNodes}
+                  edges={flowEdges}
+                  direction="LR"
+                  height={336}
+                  ariaLabel="Agent session execution path graph"
+                  onNodeSelect={(nodeId) => {
+                    if (detail.attempts.some((a) => a.id === nodeId)) {
+                      setSelectedAttemptId(nodeId);
+                    }
+                  }}
+                />
               )}
 
               {viewMode === "timeline" && (
                 <div className="storyline-track">
                   {detail.attempts.map((attempt) => {
                     const receipt = detail.receipts.find((r) => r.attempt_id === attempt.id);
-                    const dotClass =
-                      receipt?.verdict === "allow"
+                    const isWatchHit = Boolean(receipt?.verdict === "allow" && receipt.rule_id);
+                    const dotClass = isWatchHit
+                      ? ""
+                      : receipt?.verdict === "allow"
                         ? "allow"
                         : receipt?.verdict === "step_up"
                           ? "ask"
@@ -342,10 +316,14 @@ export function SessionsPage({
                         <span className={`story-dot ${dotClass}`} aria-hidden="true" />
                         <HStack justify="between" align="center">
                           <HStack gap={2} align="center">
-                            <span className="mono" style={{ fontWeight: 500 }}>
-                              {attempt.action_class}
+                            <span style={{ fontWeight: 600 }}>
+                              {formatActionLabel(attempt.action_class)}
                             </span>
-                            {receipt && <VerdictBadge verdict={receipt.verdict} />}
+                            {isWatchHit ? (
+                              <Badge variant="info" icon={<GrdrIcon name="eye" size={11} />} label="Watch" />
+                            ) : (
+                              receipt && <VerdictBadge verdict={receipt.verdict} />
+                            )}
                           </HStack>
                           <Text size="sm" color="secondary" className="mono">
                             {receipt?.rule_id ?? "baseline"}
@@ -366,9 +344,9 @@ export function SessionsPage({
                     <thead>
                       <tr>
                         <th>Status</th>
-                        <th>Finding / Rule</th>
+                        <th>Rule</th>
                         <th>Action</th>
-                        <th>Collector</th>
+                        <th>Agent</th>
                         <th>Target</th>
                       </tr>
                     </thead>
@@ -382,9 +360,9 @@ export function SessionsPage({
                             className={`selectable ${isFocused ? "selected" : ""}`}
                             onClick={() => setSelectedAttemptId(attempt.id)}
                           >
-                            <td>{receipt ? <VerdictBadge verdict={receipt.verdict} /> : "allow"}</td>
+                            <td>{receipt ? <VerdictBadge verdict={receipt.verdict} /> : "Allow"}</td>
                             <td className="mono">{receipt?.rule_id ?? "baseline"}</td>
-                            <td className="mono">{attempt.action_class}</td>
+                            <td>{formatActionLabel(attempt.action_class)}</td>
                             <td>
                               <HStack gap={1} align="center">
                                 <HarnessIcon name={attempt.agent_name} size={13} />
@@ -404,22 +382,32 @@ export function SessionsPage({
 
               {focusedAttempt && (
                 <div className="ledger-row-drawer">
-                  <HStack justify="between" align="center">
-                    <strong>{focusedReceipt?.rule_id ?? "Observed attempt"}</strong>
+                  <HStack justify="between" align="center" style={{ flexWrap: "wrap", gap: 8 }}>
+                    <HStack gap={2} align="center">
+                      <strong>{formatActionLabel(focusedAttempt.action_class)}</strong>
+                      {focusedReceipt?.rule_id && (
+                        <Badge variant="neutral" label={focusedReceipt.rule_id} />
+                      )}
+                    </HStack>
                     {focusedReceipt?.signature_verified === true && (
-                      <Badge
-                        variant="success"
-                        icon={<GrdrIcon name="shield-check" size={11} />}
-                        label={`Signed (${focusedReceipt.key_id ?? "verified"})`}
-                      />
+                      <span title={`Signing key ${focusedReceipt.key_id ?? "local"}`} style={{ display: "inline-flex" }}>
+                        <Badge
+                          variant="success"
+                          icon={<GrdrIcon name="shield-check" size={11} />}
+                          label="Verified receipt"
+                        />
+                      </span>
                     )}
                   </HStack>
+                  <div>
+                    <Quoted text={focusedAttempt.target} />
+                  </div>
                   <Text size="sm" color="secondary">
                     {focusedReceipt?.reason ?? focusedAttempt.summary}
                   </Text>
                   <HStack justify="between" align="center">
                     <span className="mono" style={{ color: "var(--ink-muted)" }}>
-                      {focusedReceipt ? `Receipt ${focusedReceipt.receipt_digest.slice(0, 16)}` : ""}
+                      {focusedReceipt ? `Receipt ${focusedReceipt.receipt_digest.slice(0, 12)}` : ""}
                     </span>
                     <Button
                       size="sm"

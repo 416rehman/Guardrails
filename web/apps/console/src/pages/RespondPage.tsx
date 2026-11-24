@@ -15,7 +15,10 @@ import {
   Banner,
   Button,
   Card,
+  CheckboxInput,
+  Dialog,
   GrdrIcon,
+  GrdrSelect,
   HarnessIcon,
   Heading,
   HStack,
@@ -53,9 +56,9 @@ export function RespondPage({
   const [killModalOpen, setKillModalOpen] = useState(false);
   const [matrixQuery, setMatrixQuery] = useState("");
   const [matrixConfirmPhrase, setMatrixConfirmPhrase] = useState("");
-  const [blockedAgents, setBlockedAgents] = useState<string[]>(MATRIX_ENDPOINTS);
-  const [blockedModels, setBlockedModels] = useState<string[]>(MATRIX_MODELS);
-  const [blockedGateways, setBlockedGateways] = useState<string[]>(MATRIX_GATEWAYS);
+  const [blockedAgents, setBlockedAgents] = useState<string[]>([]);
+  const [blockedModels, setBlockedModels] = useState<string[]>([]);
+  const [blockedGateways, setBlockedGateways] = useState<string[]>([]);
 
   const pending = approvals.filter((a) => a.state.status === "pending");
 
@@ -109,7 +112,7 @@ export function RespondPage({
         <div>
           <Heading level={1}>Respond</Heading>
           <Text color="secondary">
-            Approve or deny pending step-up requests (1-second armed delay prevents misclicks), review findings, export telemetry, and engage containment.
+            Review pending approvals, investigate findings, and stop compromised sessions.
           </Text>
         </div>
         <Button
@@ -167,7 +170,7 @@ export function RespondPage({
               <GrdrIcon name="hand" size={16} />
               <Heading level={2}>{`Pending approval queue (${pending.length})`}</Heading>
             </HStack>
-            <Badge variant="warning" label="Ethical friction active" />
+            <Badge variant="warning" label="1s hold to confirm" />
           </HStack>
 
           {pending.length === 0 ? (
@@ -387,18 +390,17 @@ export function RespondPage({
             </HStack>
 
             <div className="form-grid">
-              <div className="field">
-                <label htmlFor="ks-scope">Scope</label>
-                <select
-                  id="ks-scope"
-                  value={scope}
-                  onChange={(e) => setScope(e.target.value as KillScope)}
-                >
-                  <option value="session">Session</option>
-                  <option value="device">Device</option>
-                  <option value="organisation">Organisation</option>
-                </select>
-              </div>
+              <GrdrSelect
+                label="Scope"
+                value={scope}
+                options={[
+                  { value: "session", label: "Session" },
+                  { value: "device", label: "Device" },
+                  { value: "organisation", label: "Organisation" },
+                ]}
+                onChange={(val) => setScope(val as KillScope)}
+                width="100%"
+              />
               <TextInput
                 label="Target ID"
                 value={scope === "organisation" ? "*" : targetId}
@@ -413,16 +415,12 @@ export function RespondPage({
                   width="100%"
                 />
               </div>
-              <div className="field full" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <input
-                  id="ks-confirm"
-                  type="checkbox"
-                  checked={confirmKill}
-                  onChange={(e) => setConfirmKill(e.target.checked)}
+              <div className="field full">
+                <CheckboxInput
+                  label="Stop all matching agent actions immediately"
+                  value={confirmKill}
+                  onChange={(checked) => setConfirmKill(checked)}
                 />
-                <label htmlFor="ks-confirm" style={{ margin: 0 }}>
-                  Confirm containment action stops all matching agent actions immediately
-                </label>
               </div>
               <div className="field full" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 <Button
@@ -456,116 +454,125 @@ export function RespondPage({
         </Card>
       </div>
 
-      {killModalOpen && (
-        <div className="killswitch-backdrop" role="dialog" aria-modal="true" aria-label="Scoped Kill Switch Matrix">
-          <div className="killswitch-dialog">
-            <HStack justify="between" align="center">
-              <HStack gap={2} align="center">
-                <GrdrIcon name="shield-off" size={18} color="var(--tone-block)" />
-                <Heading level={2}>Scoped Kill Switch</Heading>
-              </HStack>
-              <Button size="sm" label="Close" icon={<GrdrIcon name="x" size={14} />} onClick={() => setKillModalOpen(false)} />
+      <Dialog
+        isOpen={killModalOpen}
+        onOpenChange={setKillModalOpen}
+        purpose="form"
+        width={880}
+        padding={4}
+        aria-label="Scoped Kill Switch Matrix"
+      >
+        <VStack gap={3}>
+          <HStack justify="between" align="center">
+            <HStack gap={2} align="center">
+              <GrdrIcon name="shield-off" size={18} color="var(--tone-block)" />
+              <Heading level={2}>Scoped Kill Switch</Heading>
             </HStack>
+            <Button size="sm" label="Close" icon={<GrdrIcon name="x" size={14} />} onClick={() => setKillModalOpen(false)} />
+          </HStack>
 
-            <Banner
-              status="error"
-              title="Terminate and block AI on the endpoint and at the gateway"
-              collapsible={false}
-            />
+          <Banner
+            status="error"
+            title={
+              blockedAgents.length + blockedModels.length + blockedGateways.length === 0
+                ? "Select target agent types, model providers, or gateways to contain."
+                : `Preview: will isolate ${blockedAgents.length} agent types, ${blockedModels.length} providers, and ${blockedGateways.length} gateways.`
+            }
+            collapsible={false}
+          />
 
-            <TextInput
-              label="Filter endpoints, model providers, or gateways"
-              value={matrixQuery}
-              onChange={setMatrixQuery}
-              width="100%"
-            />
+          <TextInput
+            label="Filter agent types, model providers, or gateways"
+            value={matrixQuery}
+            onChange={setMatrixQuery}
+            width="100%"
+          />
 
-            <div className="killswitch-cols">
-              <div className="killswitch-col">
-                <strong>{`Endpoint (${blockedAgents.length}/${MATRIX_ENDPOINTS.length})`}</strong>
-                {MATRIX_ENDPOINTS.filter((a) => a.toLowerCase().includes(matrixQuery.toLowerCase())).map((ag) => (
-                  <label key={ag} className="killswitch-check">
-                    <input
-                      type="checkbox"
-                      checked={blockedAgents.includes(ag)}
-                      onChange={(e) =>
-                        setBlockedAgents((prev) =>
-                          e.target.checked ? [...prev, ag] : prev.filter((x) => x !== ag),
-                        )
-                      }
-                    />
-                    <HarnessIcon name={ag} size={14} />
-                    <span>{ag}</span>
-                  </label>
-                ))}
-              </div>
-
-              <div className="killswitch-col">
-                <strong>{`Model providers (${blockedModels.length}/${MATRIX_MODELS.length})`}</strong>
-                {MATRIX_MODELS.filter((m) => m.toLowerCase().includes(matrixQuery.toLowerCase())).map((m) => (
-                  <label key={m} className="killswitch-check">
-                    <input
-                      type="checkbox"
-                      checked={blockedModels.includes(m)}
-                      onChange={(e) =>
-                        setBlockedModels((prev) =>
-                          e.target.checked ? [...prev, m] : prev.filter((x) => x !== m),
-                        )
-                      }
-                    />
-                    <HarnessIcon name={m} size={14} />
-                    <span>{m}</span>
-                  </label>
-                ))}
-              </div>
-
-              <div className="killswitch-col">
-                <strong>{`Gateways (${blockedGateways.length}/${MATRIX_GATEWAYS.length})`}</strong>
-                {MATRIX_GATEWAYS.filter((g) => g.toLowerCase().includes(matrixQuery.toLowerCase())).map((g) => (
-                  <label key={g} className="killswitch-check">
-                    <input
-                      type="checkbox"
-                      checked={blockedGateways.includes(g)}
-                      onChange={(e) =>
-                        setBlockedGateways((prev) =>
-                          e.target.checked ? [...prev, g] : prev.filter((x) => x !== g),
-                        )
-                      }
-                    />
-                    <GrdrIcon name="server" size={14} />
-                    <span>{g}</span>
-                  </label>
-                ))}
-              </div>
+          <div className="killswitch-cols">
+            <div className="killswitch-col">
+              <strong>{`Agent types (${blockedAgents.length}/${MATRIX_ENDPOINTS.length})`}</strong>
+              {MATRIX_ENDPOINTS.filter((a) => a.toLowerCase().includes(matrixQuery.toLowerCase())).map((ag) => (
+                <div key={ag} className="killswitch-check">
+                  <HarnessIcon name={ag} size={14} />
+                  <CheckboxInput
+                    label={ag}
+                    value={blockedAgents.includes(ag)}
+                    onChange={(checked) =>
+                      setBlockedAgents((prev) =>
+                        checked ? [...prev, ag] : prev.filter((x) => x !== ag),
+                      )
+                    }
+                  />
+                </div>
+              ))}
             </div>
 
-            <HStack justify="between" align="end" style={{ gap: 12, flexWrap: "wrap" }}>
-              <div style={{ flex: 1, minWidth: 260 }}>
-                <TextInput
-                  label="Enter target scope confirmation (type: fleet-kill)"
-                  value={matrixConfirmPhrase}
-                  onChange={setMatrixConfirmPhrase}
-                  width="100%"
-                />
-              </div>
-              <HStack gap={2}>
-                <Button label="Cancel" onClick={() => setKillModalOpen(false)} />
-                <Button
-                  variant="destructive"
-                  icon={<GrdrIcon name="alert-octagon" size={14} />}
-                  label={`Activate kill switch (${blockedAgents.length + blockedModels.length + blockedGateways.length})`}
-                  isDisabled={matrixConfirmPhrase.trim().toLowerCase() !== "fleet-kill"}
-                  data-agent-confirm="Confirm fleet-wide kill switch"
-                  onClick={async () => {
-                    await handleKillSwitch("kill");
-                    setKillModalOpen(false);
-                  }}
-                />
-              </HStack>
-            </HStack>
+            <div className="killswitch-col">
+              <strong>{`Model providers (${blockedModels.length}/${MATRIX_MODELS.length})`}</strong>
+              {MATRIX_MODELS.filter((m) => m.toLowerCase().includes(matrixQuery.toLowerCase())).map((m) => (
+                <div key={m} className="killswitch-check">
+                  <HarnessIcon name={m} size={14} />
+                  <CheckboxInput
+                    label={m}
+                    value={blockedModels.includes(m)}
+                    onChange={(checked) =>
+                      setBlockedModels((prev) =>
+                        checked ? [...prev, m] : prev.filter((x) => x !== m),
+                      )
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="killswitch-col">
+              <strong>{`Gateways (${blockedGateways.length}/${MATRIX_GATEWAYS.length})`}</strong>
+              {MATRIX_GATEWAYS.filter((g) => g.toLowerCase().includes(matrixQuery.toLowerCase())).map((g) => (
+                <div key={g} className="killswitch-check">
+                  <HarnessIcon name={g} size={14} />
+                  <CheckboxInput
+                    label={g}
+                    value={blockedGateways.includes(g)}
+                    onChange={(checked) =>
+                      setBlockedGateways((prev) =>
+                        checked ? [...prev, g] : prev.filter((x) => x !== g),
+                      )
+                    }
+                  />
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+
+          <HStack justify="between" align="end" style={{ gap: 20, marginTop: 8, flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 240 }}>
+              <TextInput
+                label="Type fleet-kill to confirm"
+                value={matrixConfirmPhrase}
+                onChange={setMatrixConfirmPhrase}
+                width="100%"
+              />
+            </div>
+            <HStack gap={2}>
+              <Button label="Cancel" onClick={() => setKillModalOpen(false)} />
+              <Button
+                variant="destructive"
+                icon={<GrdrIcon name="alert-octagon" size={14} />}
+                label={`Activate kill switch (${blockedAgents.length + blockedModels.length + blockedGateways.length})`}
+                isDisabled={
+                  blockedAgents.length + blockedModels.length + blockedGateways.length === 0 ||
+                  matrixConfirmPhrase.trim().toLowerCase() !== "fleet-kill"
+                }
+                data-agent-confirm="Confirm fleet-wide kill switch"
+                onClick={async () => {
+                  await handleKillSwitch("kill");
+                  setKillModalOpen(false);
+                }}
+              />
+            </HStack>
+          </HStack>
+        </VStack>
+      </Dialog>
     </VStack>
   );
 }
