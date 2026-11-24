@@ -115,6 +115,8 @@ ignore_paths = [
   "/Library/Updates",
   "/Library/Application Support/Apple",
   "/Library/Keychains",
+  "/Library/Logs",
+  "~/Library/Logs",
   "~/Library/Preferences",
   "~/Library/Application Support/AddressBook",
   "~/Library/Application Support/Knowledge",
@@ -200,9 +202,13 @@ grdr_search_paths = [
 # %TEMP% sits under %LOCALAPPDATA%\Temp and holds transient process scratch files.
 ignore_paths = [
   "%LOCALAPPDATA%\\Temp",
-  "%LOCALAPPDATA%\\Microsoft\\Windows",
+  "%LOCALAPPDATA%\\Microsoft",
+  "%LOCALAPPDATA%\\CrashDumps",
   "%LOCALAPPDATA%\\Mozilla",
   "%APPDATA%\\Mozilla",
+  "%ProgramData%\\USOPrivate",
+  "%ProgramData%\\USOShared",
+  "%ProgramData%\\Microsoft",
   "reg://HKCU/Software/Classes/Local Settings/MuiCache",
   "reg://HKCU/Software/Classes/Local Settings/Software/Microsoft/Windows/Shell/MuiCache",
 ]
