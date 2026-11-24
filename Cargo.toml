@@ -14,7 +14,9 @@ grdr-agents = { version = "0.1.0", path = "crates/grdr-agents" }
 grdr-core = { version = "0.1.0", path = "crates/grdr-core" }
 grdr-crypto = { version = "0.1.0", path = "crates/grdr-crypto" }
 grdr-fastpath = { version = "0.1.0", path = "crates/grdr-fastpath" }
+grdr-llm-proto = { version = "0.1.0", path = "crates/grdr-llm-proto" }
 grdr-model = { version = "0.1.0", path = "crates/grdr-model" }
+grdr-sandbox-engine = { version = "0.1.0", path = "crates/grdr-sandbox-engine" }
 grdr-store-local = { version = "0.1.0", path = "crates/grdr-store-local" }
 jiff = { version = "0.2", features = ["serde"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "charset"] }
