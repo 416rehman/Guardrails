@@ -110,6 +110,12 @@ grdr_search_paths = [
 ]
 ignore_paths = [
   "/Library/Caches",
+  "/Library/Preferences",
+  "/Library/Trial",
+  "/Library/Updates",
+  "~/Library/Preferences",
+  "~/Library/Application Support/AddressBook",
+  "~/Library/Application Support/Knowledge",
 ]
 
 [os.macos.user]
