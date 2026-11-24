@@ -7,7 +7,7 @@ exclude = ["bpf/grdr-sensor-linux-bpf", "desktop/grdr-desktop"]
 axum = { version = "0.8", features = ["json", "macros"] }
 base64 = "0.23"
 clap = { version = "4.5", features = ["derive", "env"] }
-ed25519-dalek = { version = "2.2", default-features = false, features = ["fast"] }
+ed25519-dalek = { version = "3.0", default-features = false, features = ["fast"] }
 futures-util = "0.3"
 getrandom = "0.4"
 grdr-agents = { version = "0.1.0", path = "crates/grdr-agents" }
@@ -35,16 +35,16 @@ grdr-strings = { version = "0.1.0", path = "crates/grdr-strings" }
 grdr-ui-model = { version = "0.1.0", path = "crates/grdr-ui-model" }
 grdr-wasm = { version = "0.1.0", path = "crates/grdr-wasm" }
 grdr-wire = { version = "0.1.0", path = "crates/grdr-wire" }
-jiff = { version = "0.2", features = ["serde"] }
+jiff = { version = "1.0", features = ["serde"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "charset"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-sha2 = "0.10"
+sha2 = "0.11"
 thiserror = "2.0"
 tokio = { version = "1.43", features = ["full"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "fs"] }
+tower-http = { version = "0.7", features = ["cors", "fs"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1.11", features = ["v7", "serde"] }
