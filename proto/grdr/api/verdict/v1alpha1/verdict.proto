@@ -1,0 +1,112 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Real-time policy decision evaluation and daemon telemetry batch ingest.
+syntax = "proto3";
+
+package grdr.api.verdict.v1alpha1;
+
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/resources.proto";
+import "grdr/common/v1alpha1/types.proto";
+
+// Request for Evaluate.
+message EvaluateRequest {
+  // Optional existing session identifier.
+  optional string session_id = 1;
+  // Optional enrolled device identifier.
+  optional string device_id = 2;
+  // Optional device hostname fallback.
+  optional string device_name = 3;
+  // Agent harness name issuing the action attempt.
+  string agent_name = 4;
+  // Classified action category.
+  grdr.common.v1alpha1.ActionClass action_class = 5;
+  // Enforcement control point.
+  optional grdr.common.v1alpha1.ControlPoint control_point = 6;
+  // Target path, host, URL, or MCP tool identifier.
+  string target = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT];
+  // Optional concise summary.
+  optional string summary = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT];
+}
+
+// Response for Evaluate.
+message EvaluateResponse {
+  // Signed decision receipt recording verdict and matched rule.
+  grdr.common.v1alpha1.DecisionReceipt receipt = 1;
+}
+
+// Request for EvaluateBrowser.
+message EvaluateBrowserRequest {
+  // Managed browser AI application identifier.
+  string app_id = 1;
+  // Destination web domain.
+  string domain = 2;
+  // Browser DLP inspection classification.
+  grdr.common.v1alpha1.BrowserDlpClass dlp_class = 3;
+  // Uploaded file extension when dlp_class is file upload.
+  optional string file_extension = 4;
+  // True when client-side scanner matched a secret pattern.
+  bool has_secret_match = 5;
+}
+
+// Response for EvaluateBrowser.
+message EvaluateBrowserResponse {
+  // Evaluated browser application identifier.
+  string app_id = 1;
+  // Browser application display name.
+  string app_name = 2;
+  // Enforced browser verdict.
+  grdr.common.v1alpha1.Verdict verdict = 3;
+  // Matched browser policy rule identifier if denied or stepped up.
+  optional string rule_id = 4;
+  // Explanation rendered for the browser extension UI.
+  string reason = 5;
+  // Evaluated browser DLP class.
+  grdr.common.v1alpha1.BrowserDlpClass dlp_class = 6;
+}
+
+// Request for IngestBatch.
+message IngestBatchRequest {
+  // Sending endpoint device identifier.
+  string device_id = 1;
+  // Action attempts observed since the previous batch.
+  repeated grdr.common.v1alpha1.ActionAttempt attempts = 2;
+  // Decision receipts evaluated locally by the endpoint daemon.
+  repeated grdr.common.v1alpha1.DecisionReceipt receipts = 3;
+}
+
+// Response for IngestBatch.
+message IngestBatchResponse {
+  // Number of attempts and receipts accepted by the server.
+  uint64 accepted = 1;
+  // Number of new security findings synthesized during ingest.
+  uint64 findings_created = 2;
+}
+
+// Policy verdict evaluation and endpoint telemetry batch ingestion.
+service VerdictService {
+  // Evaluates a single agent action attempt against active packs and grants.
+  rpc Evaluate(EvaluateRequest) returns (EvaluateResponse) {
+    option (grdr.common.v1alpha1.scope) = "verdict:evaluate";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_INTERACTIVE;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+  }
+
+  // Evaluates a managed browser AI upload or paste action.
+  rpc EvaluateBrowser(EvaluateBrowserRequest) returns (EvaluateBrowserResponse) {
+    option (grdr.common.v1alpha1.scope) = "verdict:evaluate";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_INTERACTIVE;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+  }
+
+  // Ingests batched action attempts and locally signed decision receipts from endpoints.
+  rpc IngestBatch(IngestBatchRequest) returns (IngestBatchResponse) {
+    option (grdr.common.v1alpha1.scope) = "ingest:write";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_NONE;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_INGEST;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+  }
+}

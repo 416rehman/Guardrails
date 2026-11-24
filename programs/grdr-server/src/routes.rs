@@ -1,46 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
-use std::convert::Infallible;
 use std::path::PathBuf;
-use std::time::Duration;
 
-use axum::extract::{DefaultBodyLimit, Path, State};
-use axum::http::{StatusCode, header};
+use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use axum::middleware;
-use axum::response::sse::{Event, KeepAlive, Sse};
-use axum::response::{IntoResponse, Response};
-use axum::routing::{get, patch, post};
-use axum::{Json, Router};
-use futures_util::stream::Stream;
-use jiff::Timestamp;
-use tokio_stream::StreamExt as _;
-use tokio_stream::wrappers::BroadcastStream;
+use axum::routing::{get, post};
 use tower_http::services::{ServeDir, ServeFile};
-
-use grdr_model::{
-    ApprovalRequest, ArtifactEntry, AuditEntry, BatchEventsInput, CodedError,
-    ConnectConfigResponse, CreateDeploymentKeyRequest, CreateDeploymentKeyResponse,
-    CreateRuleInput, DecideApprovalInput, DecideInput, DecisionReceipt, DeploymentKey, Device,
-    DiscoveredAgent, Finding, HealthResponse, Incident, IntegrationEntry, KillSwitchInput,
-    KillSwitchState, McpServerEntry, MdmRenderRequest, MdmRenderResponse, OrgPrivacyConfig,
-    OverviewResponse, PolicyPack, PolicyRule, ReplayRuleInput, ReplaySummary, ServerHealth,
-    SessionDetailResponse, SessionSummary, TrustedKeyInfo, UpdateFindingInput,
-    UpdatePrivacyConfigInput, UpdateRuleInput, UpdateRuleModeInput, UserDetailResponse,
-    UserProfile,
-};
 
 use crate::auth::{
     self, ServerSecurityConfig, require_device_or_operator_auth, require_operator_auth,
 };
-use crate::exports::{build_audit_jsonl, build_ocsf_events};
-use crate::routes_browser::{get_browser_policies, patch_browser_policy, post_browser_evaluate};
-use crate::routes_query::{
-    get_query_entities, get_query_schema, get_query_user_intent, post_query_sample,
-};
+use crate::rpc;
 use crate::store::AppState;
-
-type ApiResult<T> = Result<Json<T>, (StatusCode, Json<CodedError>)>;
 
 #[cfg(test)]
 pub fn build_router(state: AppState, web_dir: Option<PathBuf>) -> Router {
@@ -54,75 +27,198 @@ pub fn build_router_with_security(
 ) -> Router {
     let cors = auth::build_cors_layer(&security);
 
-    let public_routes = Router::new().route("/api/v1/health", get(health));
+    let public_routes = Router::new().route(
+        "/grdr.api.overview.v1alpha1.OverviewService/GetHealth",
+        get(rpc::overview::get_health).post(rpc::overview::get_health),
+    );
 
     let device_routes = Router::new()
-        .route("/api/v1/devices/checkin", post(device_checkin))
-        .route("/api/v1/events/batch", post(ingest_batch))
+        .route(
+            "/grdr.api.inventory.v1alpha1.InventoryService/DeviceCheckin",
+            post(rpc::inventory::device_checkin),
+        )
+        .route(
+            "/grdr.api.verdict.v1alpha1.VerdictService/IngestBatch",
+            post(rpc::verdict::ingest_batch),
+        )
         .layer(middleware::from_fn_with_state(
             security.clone(),
             require_device_or_operator_auth,
         ));
 
     let operator_routes = Router::new()
-        .route("/api/v1/overview", get(overview))
-        .route("/api/v1/users", get(list_users))
-        .route("/api/v1/users/{id}", get(get_user))
         .route(
-            "/api/v1/privacy/config",
-            get(get_privacy_config).patch(update_privacy_config),
-        )
-        .route("/api/v1/devices", get(list_devices))
-        .route("/api/v1/inventory/agents", get(list_agents))
-        .route("/api/v1/inventory/mcp-servers", get(list_mcp_servers))
-        .route("/api/v1/inventory/artifacts", get(list_artifacts))
-        .route("/api/v1/connect/config", get(get_connect_config))
-        .route(
-            "/api/v1/connect/deployment-keys",
-            post(create_deployment_key),
+            "/grdr.api.overview.v1alpha1.OverviewService/GetOverview",
+            get(rpc::overview::get_overview).post(rpc::overview::get_overview),
         )
         .route(
-            "/api/v1/connect/deployment-keys/{id}/revoke",
-            post(revoke_deployment_key),
+            "/grdr.api.overview.v1alpha1.OverviewService/ListKeys",
+            get(rpc::overview::list_keys).post(rpc::overview::list_keys),
         )
-        .route("/api/v1/connect/mdm-render", post(render_mdm_config))
-        .route("/api/v1/integrations", get(list_integrations))
         .route(
-            "/api/v1/integrations/{id}/check-readiness",
-            post(check_integration_readiness),
+            "/grdr.api.overview.v1alpha1.OverviewService/ExportOcsf",
+            get(rpc::overview::export_ocsf).post(rpc::overview::export_ocsf),
         )
-        .route("/api/v1/query/schema", get(get_query_schema))
-        .route("/api/v1/query/entities", get(get_query_entities))
-        .route("/api/v1/query/user-intent", get(get_query_user_intent))
-        .route("/api/v1/query/sample", post(post_query_sample))
-        .route("/api/v1/browser/policies", get(get_browser_policies))
-        .route("/api/v1/browser/policies/{id}", patch(patch_browser_policy))
-        .route("/api/v1/browser/evaluate", post(post_browser_evaluate))
-        .route("/api/v1/sessions", get(list_sessions))
-        .route("/api/v1/sessions/{id}", get(get_session))
-        .route("/api/v1/decide", post(decide))
-        .route("/api/v1/policies/packs", get(list_packs))
-        .route("/api/v1/policies/rules", post(create_rule))
         .route(
-            "/api/v1/policies/rules/{id}",
-            patch(update_rule).delete(delete_rule),
+            "/grdr.api.overview.v1alpha1.OverviewService/ExportAuditJsonl",
+            get(rpc::overview::export_audit_jsonl).post(rpc::overview::export_audit_jsonl),
         )
-        .route("/api/v1/policies/rules/{id}/mode", patch(update_rule_mode))
-        .route("/api/v1/policies/rules/{id}/replay", post(replay_rule))
-        .route("/api/v1/approvals", get(list_approvals))
-        .route("/api/v1/approvals/{id}/decide", post(decide_approval))
-        .route("/api/v1/findings", get(list_findings))
-        .route("/api/v1/findings/{id}", patch(update_finding))
-        .route("/api/v1/incidents", get(list_incidents))
         .route(
-            "/api/v1/kill-switch",
-            get(get_kill_switch).post(post_kill_switch),
+            "/grdr.api.overview.v1alpha1.OverviewService/LiveEvents",
+            get(rpc::overview::live_stream),
         )
-        .route("/api/v1/audit", get(list_audit))
-        .route("/api/v1/keys", get(list_keys))
-        .route("/api/v1/exports/ocsf", get(export_ocsf))
-        .route("/api/v1/exports/audit.jsonl", get(export_audit_jsonl))
-        .route("/api/v1/live", get(live_stream))
+        .route(
+            "/grdr.api.verdict.v1alpha1.VerdictService/Evaluate",
+            post(rpc::verdict::evaluate),
+        )
+        .route(
+            "/grdr.api.verdict.v1alpha1.VerdictService/EvaluateBrowser",
+            post(rpc::verdict::evaluate_browser),
+        )
+        .route(
+            "/grdr.api.policy.v1alpha1.PolicyService/ListPacks",
+            get(rpc::policy::list_packs).post(rpc::policy::list_packs),
+        )
+        .route(
+            "/grdr.api.policy.v1alpha1.PolicyService/CreateRule",
+            post(rpc::policy::create_rule),
+        )
+        .route(
+            "/grdr.api.policy.v1alpha1.PolicyService/UpdateRule",
+            post(rpc::policy::update_rule),
+        )
+        .route(
+            "/grdr.api.policy.v1alpha1.PolicyService/DeleteRule",
+            post(rpc::policy::delete_rule),
+        )
+        .route(
+            "/grdr.api.policy.v1alpha1.PolicyService/UpdateRuleMode",
+            post(rpc::policy::update_rule_mode),
+        )
+        .route(
+            "/grdr.api.policy.v1alpha1.PolicyService/ReplayRule",
+            get(rpc::policy::replay_rule).post(rpc::policy::replay_rule),
+        )
+        .route(
+            "/grdr.api.policy.v1alpha1.PolicyService/ListBrowserPolicies",
+            get(rpc::policy::list_browser_policies).post(rpc::policy::list_browser_policies),
+        )
+        .route(
+            "/grdr.api.policy.v1alpha1.PolicyService/UpdateBrowserPolicy",
+            post(rpc::policy::update_browser_policy),
+        )
+        .route(
+            "/grdr.api.inventory.v1alpha1.InventoryService/ListDevices",
+            get(rpc::inventory::list_devices).post(rpc::inventory::list_devices),
+        )
+        .route(
+            "/grdr.api.inventory.v1alpha1.InventoryService/ListAgents",
+            get(rpc::inventory::list_agents).post(rpc::inventory::list_agents),
+        )
+        .route(
+            "/grdr.api.inventory.v1alpha1.InventoryService/ListMcpServers",
+            get(rpc::inventory::list_mcp_servers).post(rpc::inventory::list_mcp_servers),
+        )
+        .route(
+            "/grdr.api.inventory.v1alpha1.InventoryService/ListArtifacts",
+            get(rpc::inventory::list_artifacts).post(rpc::inventory::list_artifacts),
+        )
+        .route(
+            "/grdr.api.inventory.v1alpha1.InventoryService/GetConnectConfig",
+            get(rpc::inventory::get_connect_config).post(rpc::inventory::get_connect_config),
+        )
+        .route(
+            "/grdr.api.inventory.v1alpha1.InventoryService/CreateDeploymentKey",
+            post(rpc::inventory::create_deployment_key),
+        )
+        .route(
+            "/grdr.api.inventory.v1alpha1.InventoryService/RevokeDeploymentKey",
+            post(rpc::inventory::revoke_deployment_key),
+        )
+        .route(
+            "/grdr.api.inventory.v1alpha1.InventoryService/RenderMdmConfig",
+            get(rpc::inventory::render_mdm_config).post(rpc::inventory::render_mdm_config),
+        )
+        .route(
+            "/grdr.api.inventory.v1alpha1.InventoryService/ListIntegrations",
+            get(rpc::inventory::list_integrations).post(rpc::inventory::list_integrations),
+        )
+        .route(
+            "/grdr.api.inventory.v1alpha1.InventoryService/CheckIntegrationReadiness",
+            post(rpc::inventory::check_integration_readiness),
+        )
+        .route(
+            "/grdr.api.activity.v1alpha1.SessionService/ListSessions",
+            get(rpc::activity::list_sessions).post(rpc::activity::list_sessions),
+        )
+        .route(
+            "/grdr.api.activity.v1alpha1.SessionService/GetSession",
+            get(rpc::activity::get_session).post(rpc::activity::get_session),
+        )
+        .route(
+            "/grdr.api.activity.v1alpha1.SessionService/GetQuerySchema",
+            get(rpc::activity::get_query_schema).post(rpc::activity::get_query_schema),
+        )
+        .route(
+            "/grdr.api.activity.v1alpha1.SessionService/GetQueryEntities",
+            get(rpc::activity::get_query_entities).post(rpc::activity::get_query_entities),
+        )
+        .route(
+            "/grdr.api.activity.v1alpha1.SessionService/GetQueryUserIntent",
+            get(rpc::activity::get_query_user_intent).post(rpc::activity::get_query_user_intent),
+        )
+        .route(
+            "/grdr.api.activity.v1alpha1.SessionService/SampleQuery",
+            get(rpc::activity::sample_query).post(rpc::activity::sample_query),
+        )
+        .route(
+            "/grdr.api.tenancy.v1alpha1.UserService/ListUsers",
+            get(rpc::tenancy::list_users).post(rpc::tenancy::list_users),
+        )
+        .route(
+            "/grdr.api.tenancy.v1alpha1.UserService/GetUser",
+            get(rpc::tenancy::get_user).post(rpc::tenancy::get_user),
+        )
+        .route(
+            "/grdr.api.tenancy.v1alpha1.UserService/GetPrivacyConfig",
+            get(rpc::tenancy::get_privacy_config).post(rpc::tenancy::get_privacy_config),
+        )
+        .route(
+            "/grdr.api.tenancy.v1alpha1.UserService/UpdatePrivacyConfig",
+            post(rpc::tenancy::update_privacy_config),
+        )
+        .route(
+            "/grdr.api.response.v1alpha1.ResponseService/ListApprovals",
+            get(rpc::response::list_approvals).post(rpc::response::list_approvals),
+        )
+        .route(
+            "/grdr.api.response.v1alpha1.ResponseService/DecideApproval",
+            post(rpc::response::decide_approval),
+        )
+        .route(
+            "/grdr.api.response.v1alpha1.ResponseService/ListFindings",
+            get(rpc::response::list_findings).post(rpc::response::list_findings),
+        )
+        .route(
+            "/grdr.api.response.v1alpha1.ResponseService/UpdateFinding",
+            post(rpc::response::update_finding),
+        )
+        .route(
+            "/grdr.api.response.v1alpha1.ResponseService/ListIncidents",
+            get(rpc::response::list_incidents).post(rpc::response::list_incidents),
+        )
+        .route(
+            "/grdr.api.response.v1alpha1.ResponseService/GetKillSwitch",
+            get(rpc::response::get_kill_switch).post(rpc::response::get_kill_switch),
+        )
+        .route(
+            "/grdr.api.response.v1alpha1.ResponseService/SetKillSwitch",
+            post(rpc::response::set_kill_switch),
+        )
+        .route(
+            "/grdr.api.response.v1alpha1.ResponseService/ListAuditEvents",
+            get(rpc::response::list_audit_events).post(rpc::response::list_audit_events),
+        )
         .layer(middleware::from_fn_with_state(
             security.clone(),
             require_operator_auth,
@@ -144,349 +240,4 @@ pub fn build_router_with_security(
     }
 
     api
-}
-
-fn err_response(err: CodedError) -> (StatusCode, Json<CodedError>) {
-    let status = if err.code.ends_with("0401") {
-        StatusCode::UNAUTHORIZED
-    } else if err.code.ends_with("0404") {
-        StatusCode::NOT_FOUND
-    } else if err.code.ends_with("0409") {
-        StatusCode::CONFLICT
-    } else if err.code.starts_with("GRDR-STORE") {
-        StatusCode::INTERNAL_SERVER_ERROR
-    } else {
-        StatusCode::BAD_REQUEST
-    };
-    (status, Json(err))
-}
-
-async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
-    Json(HealthResponse {
-        status: ServerHealth::Ok,
-        version: env!("CARGO_PKG_VERSION").into(),
-        storage_mode: state.backend.storage_mode(),
-        timestamp: Timestamp::now(),
-    })
-}
-
-async fn overview(State(state): State<AppState>) -> Json<OverviewResponse> {
-    Json(state.overview().await)
-}
-
-async fn list_users(State(state): State<AppState>) -> Json<Vec<UserProfile>> {
-    Json(state.users().await)
-}
-
-async fn get_user(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> ApiResult<UserDetailResponse> {
-    state.user_detail(&id).await.map(Json).map_err(err_response)
-}
-
-async fn get_privacy_config(State(state): State<AppState>) -> Json<OrgPrivacyConfig> {
-    Json(state.privacy_config().await)
-}
-
-async fn update_privacy_config(
-    State(state): State<AppState>,
-    Json(input): Json<UpdatePrivacyConfigInput>,
-) -> ApiResult<OrgPrivacyConfig> {
-    state
-        .update_privacy_config(input)
-        .await
-        .map(Json)
-        .map_err(err_response)
-}
-
-async fn list_artifacts(State(state): State<AppState>) -> Json<Vec<ArtifactEntry>> {
-    Json(state.artifacts().await)
-}
-
-async fn list_devices(State(state): State<AppState>) -> Json<Vec<Device>> {
-    let guard = state.inner.read().await;
-    Json(guard.devices.clone())
-}
-
-async fn device_checkin(
-    State(state): State<AppState>,
-    Json(req): Json<grdr_model::DeviceCheckinRequest>,
-) -> ApiResult<grdr_model::DeviceCheckinResponse> {
-    state
-        .checkin_device(req)
-        .await
-        .map(Json)
-        .map_err(err_response)
-}
-
-async fn list_agents(State(state): State<AppState>) -> Json<Vec<DiscoveredAgent>> {
-    let guard = state.inner.read().await;
-    let agents = guard
-        .devices
-        .iter()
-        .flat_map(|d| d.agents.iter().cloned())
-        .collect();
-    Json(agents)
-}
-
-async fn list_mcp_servers(State(state): State<AppState>) -> Json<Vec<McpServerEntry>> {
-    let guard = state.inner.read().await;
-    let servers = guard
-        .devices
-        .iter()
-        .flat_map(|d| d.mcp_servers.iter().cloned())
-        .collect();
-    Json(servers)
-}
-
-async fn list_sessions(State(state): State<AppState>) -> Json<Vec<SessionSummary>> {
-    Json(state.sessions().await)
-}
-
-async fn get_session(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> ApiResult<SessionDetailResponse> {
-    state
-        .session_detail(&id)
-        .await
-        .map(Json)
-        .map_err(err_response)
-}
-
-async fn ingest_batch(
-    State(state): State<AppState>,
-    Json(batch): Json<BatchEventsInput>,
-) -> ApiResult<grdr_model::BatchEventsResponse> {
-    state
-        .ingest_batch(batch)
-        .await
-        .map(Json)
-        .map_err(err_response)
-}
-
-async fn decide(
-    State(state): State<AppState>,
-    Json(input): Json<DecideInput>,
-) -> ApiResult<DecisionReceipt> {
-    state
-        .evaluate_and_record(input)
-        .await
-        .map(Json)
-        .map_err(err_response)
-}
-
-async fn list_packs(State(state): State<AppState>) -> Json<Vec<PolicyPack>> {
-    let guard = state.inner.read().await;
-    Json(guard.packs.clone())
-}
-
-async fn create_rule(
-    State(state): State<AppState>,
-    Json(input): Json<CreateRuleInput>,
-) -> ApiResult<PolicyRule> {
-    state
-        .create_rule(input)
-        .await
-        .map(Json)
-        .map_err(err_response)
-}
-
-async fn update_rule(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    Json(input): Json<UpdateRuleInput>,
-) -> ApiResult<PolicyRule> {
-    state
-        .update_rule(&id, input)
-        .await
-        .map(Json)
-        .map_err(err_response)
-}
-
-async fn delete_rule(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> ApiResult<PolicyRule> {
-    state.delete_rule(&id).await.map(Json).map_err(err_response)
-}
-
-async fn update_rule_mode(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    Json(input): Json<UpdateRuleModeInput>,
-) -> ApiResult<PolicyRule> {
-    state
-        .update_rule_mode(&id, input)
-        .await
-        .map(Json)
-        .map_err(err_response)
-}
-
-async fn replay_rule(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    Json(input): Json<ReplayRuleInput>,
-) -> ApiResult<ReplaySummary> {
-    state
-        .replay_rule(&id, input.candidate_mode)
-        .await
-        .map(Json)
-        .map_err(err_response)
-}
-
-async fn list_approvals(State(state): State<AppState>) -> Json<Vec<ApprovalRequest>> {
-    Json(state.list_approvals().await)
-}
-
-async fn decide_approval(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    Json(input): Json<DecideApprovalInput>,
-) -> ApiResult<ApprovalRequest> {
-    state
-        .decide_approval(&id, input)
-        .await
-        .map(Json)
-        .map_err(err_response)
-}
-
-async fn list_findings(State(state): State<AppState>) -> Json<Vec<Finding>> {
-    let guard = state.inner.read().await;
-    Json(guard.findings.clone())
-}
-
-async fn list_incidents(State(state): State<AppState>) -> Json<Vec<Incident>> {
-    Json(state.incidents().await)
-}
-
-async fn update_finding(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    Json(input): Json<UpdateFindingInput>,
-) -> ApiResult<Finding> {
-    state
-        .update_finding(&id, input)
-        .await
-        .map(Json)
-        .map_err(err_response)
-}
-
-async fn get_kill_switch(State(state): State<AppState>) -> Json<KillSwitchState> {
-    let guard = state.inner.read().await;
-    Json(guard.kill_switch.clone())
-}
-
-async fn post_kill_switch(
-    State(state): State<AppState>,
-    Json(input): Json<KillSwitchInput>,
-) -> ApiResult<KillSwitchState> {
-    state
-        .set_kill_switch(input)
-        .await
-        .map(Json)
-        .map_err(err_response)
-}
-
-async fn list_audit(State(state): State<AppState>) -> Json<Vec<AuditEntry>> {
-    let guard = state.inner.read().await;
-    Json(guard.audit.clone())
-}
-
-async fn list_keys(State(state): State<AppState>) -> Json<Vec<TrustedKeyInfo>> {
-    Json(state.trusted_keys())
-}
-
-async fn export_ocsf(State(state): State<AppState>) -> Response {
-    let events = {
-        let guard = state.inner.read().await;
-        build_ocsf_events(&guard)
-    };
-    let mut resp = Json(events).into_response();
-    if let Ok(val) = "attachment; filename=\"guardrails-ocsf-1.9.json\"".parse() {
-        resp.headers_mut().insert(header::CONTENT_DISPOSITION, val);
-    }
-    resp
-}
-
-async fn export_audit_jsonl(State(state): State<AppState>) -> Response {
-    let incidents = state.incidents().await;
-    let body = {
-        let guard = state.inner.read().await;
-        build_audit_jsonl(&guard, &incidents)
-    };
-    let mut headers = axum::http::HeaderMap::new();
-    if let Ok(ct) = "application/x-ndjson; charset=utf-8".parse() {
-        headers.insert(header::CONTENT_TYPE, ct);
-    }
-    if let Ok(cd) = "attachment; filename=\"guardrails-audit.jsonl\"".parse() {
-        headers.insert(header::CONTENT_DISPOSITION, cd);
-    }
-    (StatusCode::OK, headers, body).into_response()
-}
-
-async fn live_stream(
-    State(state): State<AppState>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let rx = state.live_tx.subscribe();
-    let stream = BroadcastStream::new(rx).filter_map(|item| match item {
-        Ok(live_event) => serde_json::to_string(&live_event)
-            .ok()
-            .map(|json| Ok(Event::default().event(&live_event.topic).data(json))),
-        Err(_) => None,
-    });
-    Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
-}
-
-async fn get_connect_config(State(state): State<AppState>) -> Json<ConnectConfigResponse> {
-    Json(state.connect_config().await)
-}
-
-async fn create_deployment_key(
-    State(state): State<AppState>,
-    Json(input): Json<CreateDeploymentKeyRequest>,
-) -> ApiResult<CreateDeploymentKeyResponse> {
-    state
-        .create_deployment_key(input)
-        .await
-        .map(Json)
-        .map_err(err_response)
-}
-
-async fn revoke_deployment_key(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> ApiResult<DeploymentKey> {
-    state
-        .revoke_deployment_key(&id)
-        .await
-        .map(Json)
-        .map_err(err_response)
-}
-
-async fn render_mdm_config(
-    State(state): State<AppState>,
-    Json(input): Json<MdmRenderRequest>,
-) -> ApiResult<MdmRenderResponse> {
-    state
-        .render_mdm_config(input)
-        .await
-        .map(Json)
-        .map_err(err_response)
-}
-
-async fn list_integrations(State(state): State<AppState>) -> Json<Vec<IntegrationEntry>> {
-    Json(state.list_integrations().await)
-}
-
-async fn check_integration_readiness(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> ApiResult<IntegrationEntry> {
-    state
-        .check_integration_readiness(&id)
-        .await
-        .map(Json)
-        .map_err(err_response)
 }

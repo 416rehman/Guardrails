@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Device } from "@grdr/api";
+import { api, type Device } from "@grdr/api";
 import {
   presentArtifactKind,
   presentArtifactRiskFlag,
@@ -19,7 +19,8 @@ import {
   TextInput,
   VStack,
 } from "@grdr/ui";
-import { formatRangeLabel, PagerBar } from "../components/PagerBar";
+import { CursorPagerBar, formatRangeLabel } from "../components/PagerBar";
+import { aipQuote, useServerPage } from "../components/useServerPage";
 
 export function SkillsAndRulesView({
   devices,
@@ -36,8 +37,6 @@ export function SkillsAndRulesView({
   const [kindFilter, setKindFilter] = useState("all");
   const [scopeFilter, setScopeFilter] = useState("all");
   const [signalFilter, setSignalFilter] = useState("all");
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(25);
 
   const allArtifacts = useMemo(
     () =>
@@ -51,33 +50,36 @@ export function SkillsAndRulesView({
       ),
     [devices],
   );
+  const deviceOsById = useMemo(() => new Map(devices.map((d) => [d.id, d.os])), [devices]);
 
   const combinedQuery = `${globalQuery} ${localQuery}`.trim().toLowerCase();
-  const filteredArtifacts = useMemo(
-    () =>
-      allArtifacts.filter(({ deviceHostname, artifact }) => {
-        if (
-          combinedQuery &&
-          !artifact.name.toLowerCase().includes(combinedQuery) &&
-          !artifact.path.toLowerCase().includes(combinedQuery) &&
-          !artifact.source_agent.toLowerCase().includes(combinedQuery) &&
-          !deviceHostname.toLowerCase().includes(combinedQuery)
-        ) {
-          return false;
-        }
-        if (kindFilter !== "all" && artifact.kind !== kindFilter) return false;
-        if (scopeFilter !== "all" && artifact.scope !== scopeFilter) return false;
-        if (signalFilter === "flagged" && artifact.risk_flags.length === 0) return false;
-        if (signalFilter === "clean" && artifact.risk_flags.length > 0) return false;
-        return true;
-      }),
-    [allArtifacts, combinedQuery, kindFilter, scopeFilter, signalFilter],
-  );
+  const aipFilter = useMemo(() => {
+    const clauses: string[] = [];
+    if (combinedQuery) {
+      clauses.push(
+        `(name:${aipQuote(combinedQuery)} OR source_agent:${aipQuote(combinedQuery)} OR device_name:${aipQuote(combinedQuery)})`,
+      );
+    }
+    if (kindFilter !== "all") clauses.push(`kind = ${aipQuote(kindFilter)}`);
+    if (scopeFilter !== "all") clauses.push(`scope = ${aipQuote(scopeFilter)}`);
+    return clauses.join(" AND ");
+  }, [combinedQuery, kindFilter, scopeFilter]);
 
-  const safePage =
-    page * pageSize >= filteredArtifacts.length && filteredArtifacts.length > 0 ? 0 : page;
-  const startIdx = safePage * pageSize;
-  const pagedArtifacts = filteredArtifacts.slice(startIdx, startIdx + pageSize);
+  const artifactPage = useServerPage(api.listArtifactsPage, aipFilter, "detected_at desc", 25);
+  const startIdx = artifactPage.pageIndex * artifactPage.pageSize;
+  const pagedArtifacts = artifactPage.items
+    .filter((artifact) => {
+      if (signalFilter === "flagged") return artifact.risk_flags.length > 0;
+      if (signalFilter === "clean") return artifact.risk_flags.length === 0;
+      return true;
+    })
+    .map((artifact) => ({
+      deviceId: artifact.device_id,
+      deviceHostname: artifact.device_name,
+      deviceOs: deviceOsById.get(artifact.device_id) ?? "linux",
+      artifact,
+    }));
+  const totalArtifactsCount = artifactPage.pageInfo.total_size_estimate || pagedArtifacts.length;
   const flaggedCount = allArtifacts.filter((a) => a.artifact.risk_flags.length > 0).length;
   const pinnedCount = allArtifacts.filter((a) => a.artifact.pinned).length;
   const hasFilters =
@@ -120,7 +122,7 @@ export function SkillsAndRulesView({
               placeholder="Filter by artifact name, path, or agent..."
               startIcon={<GrdrIcon name="search" size={13} color="var(--ink-muted)" />}
               value={localQuery}
-              onChange={(val) => { setLocalQuery(val); setPage(0); }}
+              onChange={(val) => setLocalQuery(val)}
               width="100%"
             />
           </div>
@@ -138,7 +140,7 @@ export function SkillsAndRulesView({
               { value: "command", label: "Command" },
               { value: "subagent", label: "Subagent" },
             ]}
-            onChange={(val) => { setKindFilter(val); setPage(0); }}
+            onChange={(val) => setKindFilter(val)}
           />
           <GrdrSelect
             label="Filter by scope"
@@ -152,7 +154,7 @@ export function SkillsAndRulesView({
               { value: "workspace", label: "Workspace" },
               { value: "managed", label: "Managed" },
             ]}
-            onChange={(val) => { setScopeFilter(val); setPage(0); }}
+            onChange={(val) => setScopeFilter(val)}
           />
           <GrdrSelect
             label="Filter by risk signal"
@@ -165,7 +167,7 @@ export function SkillsAndRulesView({
               { value: "flagged", label: "Flagged only" },
               { value: "clean", label: "Clean only" },
             ]}
-            onChange={(val) => { setSignalFilter(val); setPage(0); }}
+            onChange={(val) => setSignalFilter(val)}
           />
           {hasFilters && (
             <Button
@@ -177,7 +179,6 @@ export function SkillsAndRulesView({
                 setKindFilter("all");
                 setScopeFilter("all");
                 setSignalFilter("all");
-                setPage(0);
               }}
             />
           )}
@@ -189,14 +190,14 @@ export function SkillsAndRulesView({
           <HStack justify="between" align="center" style={{ flexWrap: "wrap", gap: 8 }}>
             <HStack gap={2} align="center">
               <GrdrIcon name="file-code" size={16} />
-              <Heading level={2}>{`Skills, rules & plugins (${filteredArtifacts.length})`}</Heading>
+              <Heading level={2}>{`Skills, rules & plugins (${totalArtifactsCount})`}</Heading>
             </HStack>
             <Text size="sm" color="secondary" className="tabular">
-              {formatRangeLabel(startIdx, pageSize, filteredArtifacts.length)}
+              {formatRangeLabel(startIdx, Math.max(pagedArtifacts.length, 1), totalArtifactsCount)}
             </Text>
           </HStack>
 
-          {filteredArtifacts.length === 0 ? (
+          {pagedArtifacts.length === 0 && !artifactPage.loading ? (
             <Text color="secondary">
               No skills, standing rules, commands, or subagents match the active filters.
             </Text>
@@ -267,13 +268,15 @@ export function SkillsAndRulesView({
             </div>
           )}
 
-          <PagerBar
-            page={safePage}
-            pageSize={pageSize}
-            totalItems={filteredArtifacts.length}
+          <CursorPagerBar
+            pageIndex={artifactPage.pageIndex}
+            pageSize={artifactPage.pageSize}
+            itemCount={pagedArtifacts.length}
+            pageInfo={artifactPage.pageInfo}
             label="Skills and rules pagination"
-            onPageChange={setPage}
-            onPageSizeChange={(sz) => { setPageSize(sz); setPage(0); }}
+            onNext={artifactPage.goNext}
+            onPrev={artifactPage.goPrev}
+            onPageSizeChange={artifactPage.setPageSize}
           />
         </VStack>
       </Card>

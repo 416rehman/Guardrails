@@ -3,24 +3,27 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  ApprovalRequest,
-  AuditEntry,
-  BrowserAppPolicy,
-  ConnectConfigResponse,
-  Device,
-  Finding,
-  HealthResponse,
-  Incident,
-  KillSwitchState,
-  OrgPrivacyConfig,
-  OverviewResponse,
-  PolicyPack,
-  SessionDetailResponse,
-  SessionSummary,
-  TrustedKeyInfo,
-  UserDetailResponse,
-  UserProfile,
+import {
+  api,
+  CONNECT_PATHS,
+  ConnectApiError,
+  type ApprovalRequest,
+  type AuditEntry,
+  type BrowserAppPolicy,
+  type ConnectConfigResponse,
+  type Device,
+  type Finding,
+  type HealthResponse,
+  type Incident,
+  type KillSwitchState,
+  type OrgPrivacyConfig,
+  type OverviewResponse,
+  type PolicyPack,
+  type SessionDetailResponse,
+  type SessionSummary,
+  type TrustedKeyInfo,
+  type UserDetailResponse,
+  type UserProfile,
 } from "@grdr/api";
 import { ModeControl, Quoted, VerdictBadge } from "@grdr/kit";
 import { GrdrThemeProvider } from "@grdr/ui";
@@ -367,32 +370,108 @@ function mockJsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function installFetchMock() {
-  return vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-    const url = typeof input === "string" ? input : input.toString();
-    if (url.endsWith("/api/v1/health")) return mockJsonResponse(healthFixture);
-    if (url.endsWith("/api/v1/overview")) return mockJsonResponse(overviewFixture);
-    if (url.endsWith("/api/v1/users")) return mockJsonResponse(usersFixture);
-    if (url.endsWith("/api/v1/users/usr-1")) return mockJsonResponse(userDetailFixture);
-    if (url.endsWith("/api/v1/privacy/config")) return mockJsonResponse(privacyConfigFixture);
-    if (url.endsWith("/api/v1/inventory/artifacts")) {
-      return mockJsonResponse(devicesFixture[0].artifacts ?? []);
+function parsePageBody(init?: RequestInit): { pageSize: number; offset: number; filter: string } {
+  if (!init?.body || typeof init.body !== "string") {
+    return { pageSize: 50, offset: 0, filter: "" };
+  }
+  const parsed = JSON.parse(init.body) as {
+    pageSize?: number;
+    pageToken?: string;
+    filter?: string;
+  };
+  const pageSize = parsed.pageSize && parsed.pageSize > 0 ? parsed.pageSize : 50;
+  const offset = parsed.pageToken ? Number(parsed.pageToken) || 0 : 0;
+  return { pageSize, offset, filter: parsed.filter ?? "" };
+}
+
+function paginateItems<T>(items: T[], init?: RequestInit) {
+  const { pageSize, offset } = parsePageBody(init);
+  const slice = items.slice(offset, offset + pageSize);
+  return {
+    slice,
+    pageInfo: {
+      totalSizeEstimate: items.length,
+      nextPageToken: offset + pageSize < items.length ? String(offset + pageSize) : "",
+      prevPageToken: offset > 0 ? String(Math.max(0, offset - pageSize)) : "",
+    },
+  };
+}
+
+function installFetchMock(opts?: {
+  devices?: Device[];
+  onListRequest?: (path: string, filter: string) => void;
+}) {
+  const devicesList = opts?.devices ?? devicesFixture;
+  const agentItems = devicesList.flatMap((d) =>
+    d.agents.map((agent) => ({ deviceId: d.id, deviceName: d.hostname, agent })),
+  );
+  const mcpItems = devicesList.flatMap((d) =>
+    d.mcp_servers.map((server) => ({ deviceId: d.id, deviceName: d.hostname, server })),
+  );
+  const artifactItems = devicesList.flatMap((d) => d.artifacts ?? []);
+
+  return vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const rawUrl = typeof input === "string" ? input : input.toString();
+    const path = rawUrl.split("?")[0];
+    if (opts?.onListRequest && init?.body) {
+      opts.onListRequest(path, parsePageBody(init).filter);
     }
-    if (url.endsWith("/api/v1/devices")) return mockJsonResponse(devicesFixture);
-    if (url.endsWith("/api/v1/sessions")) return mockJsonResponse(sessionsFixture);
-    if (url.endsWith("/api/v1/sessions/sess-1")) return mockJsonResponse(sessionDetailFixture);
-    if (url.endsWith("/api/v1/policies/packs")) return mockJsonResponse(packsFixture);
-    if (url.endsWith("/api/v1/approvals")) return mockJsonResponse(approvalsFixture);
-    if (url.endsWith("/api/v1/findings")) return mockJsonResponse(findingsFixture);
-    if (url.endsWith("/api/v1/incidents")) return mockJsonResponse(incidentsFixture);
-    if (url.endsWith("/api/v1/kill-switch")) {
+
+    if (path === CONNECT_PATHS.getHealth) return mockJsonResponse(healthFixture);
+    if (path === CONNECT_PATHS.getOverview) return mockJsonResponse(overviewFixture);
+    if (path === CONNECT_PATHS.listUsers) {
+      const { slice, pageInfo } = paginateItems(usersFixture, init);
+      return mockJsonResponse({ users: slice, pageInfo });
+    }
+    if (path === CONNECT_PATHS.getUser) return mockJsonResponse(userDetailFixture);
+    if (path === CONNECT_PATHS.getPrivacyConfig) {
+      return mockJsonResponse({ config: privacyConfigFixture });
+    }
+    if (path === CONNECT_PATHS.listDevices) {
+      const { slice, pageInfo } = paginateItems(devicesList, init);
+      return mockJsonResponse({ devices: slice, pageInfo });
+    }
+    if (path === CONNECT_PATHS.listAgents) {
+      const { slice, pageInfo } = paginateItems(agentItems, init);
+      return mockJsonResponse({ items: slice, pageInfo });
+    }
+    if (path === CONNECT_PATHS.listMcpServers) {
+      const { slice, pageInfo } = paginateItems(mcpItems, init);
+      return mockJsonResponse({ items: slice, pageInfo });
+    }
+    if (path === CONNECT_PATHS.listArtifacts) {
+      const { slice, pageInfo } = paginateItems(artifactItems, init);
+      return mockJsonResponse({ artifacts: slice, pageInfo });
+    }
+    if (path === CONNECT_PATHS.listSessions) {
+      const { slice, pageInfo } = paginateItems(sessionsFixture, init);
+      return mockJsonResponse({ sessions: slice, pageInfo });
+    }
+    if (path === CONNECT_PATHS.getSession) return mockJsonResponse(sessionDetailFixture);
+    if (path === CONNECT_PATHS.listPacks) return mockJsonResponse({ packs: packsFixture });
+    if (path === CONNECT_PATHS.listApprovals) {
+      const { slice, pageInfo } = paginateItems(approvalsFixture, init);
+      return mockJsonResponse({ approvals: slice, pageInfo });
+    }
+    if (path === CONNECT_PATHS.listFindings) {
+      const { slice, pageInfo } = paginateItems(findingsFixture, init);
+      return mockJsonResponse({ findings: slice, pageInfo });
+    }
+    if (path === CONNECT_PATHS.listIncidents) {
+      const { slice, pageInfo } = paginateItems(incidentsFixture, init);
+      return mockJsonResponse({ incidents: slice, pageInfo });
+    }
+    if (path === CONNECT_PATHS.getKillSwitch) {
       const ks: KillSwitchState = { state: "inactive" };
-      return mockJsonResponse(ks);
+      return mockJsonResponse({ killSwitch: ks });
     }
-    if (url.endsWith("/api/v1/keys")) return mockJsonResponse(keysFixture);
-    if (url.endsWith("/api/v1/audit")) return mockJsonResponse(auditFixture);
-    if (url.endsWith("/api/v1/connect/config")) return mockJsonResponse(connectFixture);
-    if (url.endsWith("/api/v1/connect/deployment-keys")) {
+    if (path === CONNECT_PATHS.listKeys) return mockJsonResponse({ keys: keysFixture });
+    if (path === CONNECT_PATHS.listAuditEvents) {
+      const { slice, pageInfo } = paginateItems(auditFixture, init);
+      return mockJsonResponse({ entries: slice, pageInfo });
+    }
+    if (path === CONNECT_PATHS.getConnectConfig) return mockJsonResponse(connectFixture);
+    if (path === CONNECT_PATHS.createDeploymentKey) {
       const issued = {
         key: {
           id: "key-finance-pilot",
@@ -411,13 +490,15 @@ function installFetchMock() {
       };
       return mockJsonResponse(issued);
     }
-    if (url.endsWith("/revoke")) {
+    if (path === CONNECT_PATHS.revokeDeploymentKey) {
       return mockJsonResponse({
-        ...connectFixture.deployment_keys[0],
-        status: "revoked",
+        key: {
+          ...connectFixture.deployment_keys[0],
+          status: "revoked",
+        },
       });
     }
-    if (url.endsWith("/api/v1/connect/mdm-render")) {
+    if (path === CONNECT_PATHS.renderMdmConfig) {
       return mockJsonResponse({
         format: "intune_win32",
         filename: "guardrails-intune-install.ps1",
@@ -426,19 +507,21 @@ function installFetchMock() {
         deployment_notes: ["Package as .intunewin with MSI product-code detection rule."],
       });
     }
-    if (url.includes("/check-readiness")) {
-      return mockJsonResponse(connectFixture.integrations[0]);
+    if (path === CONNECT_PATHS.checkIntegrationReadiness) {
+      return mockJsonResponse({ integration: connectFixture.integrations[0] });
     }
-    if (url.endsWith("/api/v1/browser/policies")) {
-      return mockJsonResponse(browserPoliciesFixture);
+    if (path === CONNECT_PATHS.listBrowserPolicies) {
+      return mockJsonResponse({ policies: browserPoliciesFixture });
     }
-    if (url.includes("/api/v1/browser/policies/")) {
+    if (path === CONNECT_PATHS.updateBrowserPolicy) {
       return mockJsonResponse({
-        ...browserPoliciesFixture[0],
-        mode: "ask",
+        policy: {
+          ...browserPoliciesFixture[0],
+          mode: "ask",
+        },
       });
     }
-    if (url.endsWith("/api/v1/browser/evaluate")) {
+    if (path === CONNECT_PATHS.evaluateBrowser) {
       return mockJsonResponse({
         app_id: "chatgpt",
         app_name: "ChatGPT",
@@ -448,10 +531,14 @@ function installFetchMock() {
         dlp_class: "file_upload",
       });
     }
-    if (url.endsWith("/api/v1/exports/ocsf") || url.endsWith("/api/v1/exports/audit.jsonl")) {
-      return new Response("{}", { status: 200 });
+    if (path === CONNECT_PATHS.exportOcsf || path === CONNECT_PATHS.exportAuditJsonl) {
+      return mockJsonResponse({
+        filename: "export.json",
+        contentType: "application/json",
+        payload: "{}",
+      });
     }
-    return mockJsonResponse({ code: "NOT_FOUND", message: `Unmocked URL ${url}` }, 404);
+    return mockJsonResponse({ code: "not_found", message: `Unmocked RPC ${path}` }, 404);
   });
 }
 
@@ -846,21 +933,7 @@ describe("Console and Operator Plane workflows", () => {
       ],
     }));
 
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url.endsWith("/api/v1/devices")) return mockJsonResponse(manyDevices);
-      if (url.endsWith("/api/v1/overview")) return mockJsonResponse(overviewFixture);
-      if (url.endsWith("/api/v1/users")) return mockJsonResponse(usersFixture);
-      if (url.endsWith("/api/v1/privacy/config")) return mockJsonResponse(privacyConfigFixture);
-      if (url.endsWith("/api/v1/sessions")) return mockJsonResponse(sessionsFixture);
-      if (url.endsWith("/api/v1/sessions/sess-1")) return mockJsonResponse(sessionDetailFixture);
-      if (url.endsWith("/api/v1/policies/packs")) return mockJsonResponse(packsFixture);
-      if (url.endsWith("/api/v1/approvals")) return mockJsonResponse(approvalsFixture);
-      if (url.endsWith("/api/v1/findings")) return mockJsonResponse(findingsFixture);
-      if (url.endsWith("/api/v1/incidents")) return mockJsonResponse(incidentsFixture);
-      if (url.endsWith("/api/v1/kill-switch")) return mockJsonResponse({ state: "inactive" });
-      return mockJsonResponse({});
-    });
+    installFetchMock({ devices: manyDevices });
 
     render(<App />);
     const sidebar = await screen.findByRole("navigation", { name: "Console sections" });
@@ -877,6 +950,47 @@ describe("Console and Operator Plane workflows", () => {
     await waitFor(() => {
       expect(screen.getAllByText("Showing 26-50 of 60").length).toBeGreaterThan(0);
     });
+  });
+
+  it("parses Connect error envelopes with grdrCode and requestId", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          code: "invalid_argument",
+          message: "Unsupported filter field 'prompt_text'",
+          details: [
+            {
+              type: "google.rpc.ErrorInfo",
+              debug: {
+                reason: "INVALID_FILTER",
+                domain: "grdr.api",
+                metadata: { code: "GRDR-API-4002" },
+              },
+            },
+          ],
+        }),
+        {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "grdr-request-id": "req-test-42",
+          },
+        },
+      ),
+    );
+
+    let caught: unknown;
+    try {
+      await api.listUsersPage({ filter: 'prompt_text = "secret"' });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(ConnectApiError);
+    const connectErr = caught as ConnectApiError;
+    expect(connectErr.code).toBe("invalid_argument");
+    expect(connectErr.reason).toBe("INVALID_FILTER");
+    expect(connectErr.grdrCode).toBe("GRDR-API-4002");
+    expect(connectErr.requestId).toBe("req-test-42");
   });
 });
 

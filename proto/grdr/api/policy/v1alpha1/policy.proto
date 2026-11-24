@@ -1,0 +1,290 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Policy pack management, rule lifecycle, counterfactual replay, and browser DLP policies.
+syntax = "proto3";
+
+package grdr.api.policy.v1alpha1;
+
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/resources.proto";
+import "grdr/common/v1alpha1/types.proto";
+
+// Historical attempt outcome previewed by counterfactual rule replay.
+message ReplaySample {
+  // Attempt identifier sampled from recent telemetry.
+  string attempt_id = 1;
+  // Session identifier.
+  string session_id = 2;
+  // Agent harness name.
+  string agent_name = 3;
+  // Action class evaluated.
+  grdr.common.v1alpha1.ActionClass action_class = 4;
+  // Attempt target.
+  string target = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT];
+  // Original enforced verdict.
+  grdr.common.v1alpha1.Verdict current_verdict = 6;
+  // Counterfactual verdict under candidate_mode.
+  grdr.common.v1alpha1.Verdict candidate_verdict = 7;
+  // RFC 3339 attempt timestamp.
+  string timestamp = 8;
+}
+
+// Counterfactual replay impact summary returned before promoting a rule mode.
+message ReplaySummary {
+  // Evaluated rule identifier.
+  string rule_id = 1;
+  // Candidate enforcement mode tested.
+  grdr.common.v1alpha1.Mode candidate_mode = 2;
+  // Human label for the replayed window.
+  string window_label = 3;
+  // Total historical attempts scanned.
+  uint64 total_scanned = 4;
+  // Total attempts matching the rule.
+  uint64 matched = 5;
+  // Attempts that would trigger Ask under candidate_mode.
+  uint64 would_ask = 6;
+  // Attempts that would trigger Block under candidate_mode.
+  uint64 would_block = 7;
+  // Non-matching attempts.
+  uint64 not_matched = 8;
+  // Sampled affected attempts.
+  repeated ReplaySample samples = 9;
+}
+
+// Managed generative AI browser application DLP policy.
+message BrowserAppPolicy {
+  // Unique browser app policy identifier.
+  string id = 1;
+  // Display name of the AI web application.
+  string name = 2;
+  // Protected destination web domains.
+  repeated string domains = 3;
+  // Active enforcement posture mode.
+  grdr.common.v1alpha1.Mode mode = 4;
+  // Whether file uploads are blocked or stepped up.
+  bool block_file_uploads = 5;
+  // Whether pasted secrets are blocked or stepped up.
+  bool block_secret_paste = 6;
+  // Whether only managed browser extensions are permitted.
+  bool managed_extension_only = 7;
+  // Events observed over the last 24 hours.
+  uint32 events_24h = 8;
+  // Blocked events over the last 24 hours.
+  uint32 blocked_24h = 9;
+}
+
+// Request for ListPacks.
+message ListPacksRequest {}
+
+// Response for ListPacks.
+message ListPacksResponse {
+  // Active signed policy packs and their rules.
+  repeated grdr.common.v1alpha1.PolicyPack packs = 1;
+  // Revision and ETag metadata.
+  grdr.common.v1alpha1.RevisionMeta revision = 2;
+}
+
+// Request for CreateRule.
+message CreateRuleRequest {
+  // Target pack identifier; defaults to custom pack when omitted.
+  optional string pack_id = 1;
+  // Concise rule title.
+  string title = 2;
+  // Detailed rule description.
+  string description = 3;
+  // Initial enforcement mode.
+  grdr.common.v1alpha1.Mode mode = 4;
+  // Minimum approval grade when mode is Ask.
+  optional grdr.common.v1alpha1.ApprovalGrade min_grade = 5;
+  // Rule matcher criteria.
+  grdr.common.v1alpha1.RuleMatch matcher = 6;
+  // Explanation template shown on match.
+  string reason_template = 7;
+  // Optional custom Cedar policy text.
+  optional string cedar = 8;
+}
+
+// Response for CreateRule.
+message CreateRuleResponse {
+  // Newly created and re-signed policy rule.
+  grdr.common.v1alpha1.PolicyRule rule = 1;
+}
+
+// Request for UpdateRule.
+message UpdateRuleRequest {
+  // Identifier of the rule to update.
+  string id = 1;
+  // Updated title.
+  optional string title = 2;
+  // Updated description.
+  optional string description = 3;
+  // Updated enforcement mode.
+  optional grdr.common.v1alpha1.Mode mode = 4;
+  // Updated minimum approval grade.
+  optional grdr.common.v1alpha1.ApprovalGrade min_grade = 5;
+  // Updated matcher criteria.
+  optional grdr.common.v1alpha1.RuleMatch matcher = 6;
+  // Updated explanation template.
+  optional string reason_template = 7;
+  // Updated Cedar source text.
+  optional string cedar = 8;
+  // Optional actor attribution.
+  optional string actor = 9;
+}
+
+// Response for UpdateRule.
+message UpdateRuleResponse {
+  // Updated policy rule.
+  grdr.common.v1alpha1.PolicyRule rule = 1;
+}
+
+// Request for DeleteRule.
+message DeleteRuleRequest {
+  // Identifier of the custom rule to delete.
+  string id = 1;
+}
+
+// Response for DeleteRule.
+message DeleteRuleResponse {}
+
+// Request for UpdateRuleMode.
+message UpdateRuleModeRequest {
+  // Identifier of the rule to transition.
+  string id = 1;
+  // Target enforcement mode.
+  grdr.common.v1alpha1.Mode mode = 2;
+  // Optional actor attribution.
+  optional string actor = 3;
+  // Confirmation flag required when promoting directly to Block.
+  optional bool replay_confirmed = 4;
+}
+
+// Response for UpdateRuleMode.
+message UpdateRuleModeResponse {
+  // Updated policy rule after transition.
+  grdr.common.v1alpha1.PolicyRule rule = 1;
+}
+
+// Request for ReplayRule.
+message ReplayRuleRequest {
+  // Identifier of the rule to simulate.
+  string id = 1;
+  // Candidate mode to evaluate against recent telemetry.
+  grdr.common.v1alpha1.Mode candidate_mode = 2;
+}
+
+// Response for ReplayRule.
+message ReplayRuleResponse {
+  // Counterfactual replay summary and affected samples.
+  ReplaySummary summary = 1;
+}
+
+// Request for ListBrowserPolicies.
+message ListBrowserPoliciesRequest {}
+
+// Response for ListBrowserPolicies.
+message ListBrowserPoliciesResponse {
+  // Managed browser AI application DLP policies.
+  repeated BrowserAppPolicy policies = 1;
+  // Revision and ETag metadata.
+  grdr.common.v1alpha1.RevisionMeta revision = 2;
+}
+
+// Request for UpdateBrowserPolicy.
+message UpdateBrowserPolicyRequest {
+  // Browser policy identifier.
+  string id = 1;
+  // Updated mode.
+  optional grdr.common.v1alpha1.Mode mode = 2;
+  // Updated file-upload guard setting.
+  optional bool block_file_uploads = 3;
+  // Updated secret-paste guard setting.
+  optional bool block_secret_paste = 4;
+  // Updated managed-extension-only requirement.
+  optional bool managed_extension_only = 5;
+}
+
+// Response for UpdateBrowserPolicy.
+message UpdateBrowserPolicyResponse {
+  // Updated browser application policy.
+  BrowserAppPolicy policy = 1;
+}
+
+// Policy packs, rule editing, mode promotion replay, and browser DLP policies.
+service PolicyService {
+  // Lists all policy packs and rules. Never exposed to governed agent MCP callers.
+  rpc ListPacks(ListPacksRequest) returns (ListPacksResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "policy:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_STANDARD;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+
+  // Creates a custom policy rule in a signed pack.
+  rpc CreateRule(CreateRuleRequest) returns (CreateRuleResponse) {
+    option (grdr.common.v1alpha1.scope) = "policy:write";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_INTERACTIVE;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_CONSEQUENCE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+
+  // Updates an existing policy rule definition.
+  rpc UpdateRule(UpdateRuleRequest) returns (UpdateRuleResponse) {
+    option (grdr.common.v1alpha1.scope) = "policy:write";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_INTERACTIVE;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_CONSEQUENCE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+
+  // Deletes a custom policy rule.
+  rpc DeleteRule(DeleteRuleRequest) returns (DeleteRuleResponse) {
+    option (grdr.common.v1alpha1.scope) = "policy:write";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_CRITICAL_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_INTERACTIVE;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_TYPED;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+
+  // Transitions a rule enforcement mode after replay verification.
+  rpc UpdateRuleMode(UpdateRuleModeRequest) returns (UpdateRuleModeResponse) {
+    option (grdr.common.v1alpha1.scope) = "policy:write";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_CRITICAL_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_CRITICAL;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_CONSEQUENCE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+
+  // Runs a counterfactual replay simulation for a candidate rule mode.
+  rpc ReplayRule(ReplayRuleRequest) returns (ReplayRuleResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "policy:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_BULK;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+
+  // Lists browser AI application DLP policies.
+  rpc ListBrowserPolicies(ListBrowserPoliciesRequest) returns (ListBrowserPoliciesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "policy:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_STANDARD;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+
+  // Updates browser AI application DLP guard settings.
+  rpc UpdateBrowserPolicy(UpdateBrowserPolicyRequest) returns (UpdateBrowserPolicyResponse) {
+    option (grdr.common.v1alpha1.scope) = "policy:write";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_INTERACTIVE;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_CONSEQUENCE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+}

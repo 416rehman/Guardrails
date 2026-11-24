@@ -1,0 +1,517 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Canonical domain enumerations shared across Guardrails ADR protobuf contracts.
+syntax = "proto3";
+
+package grdr.common.v1alpha1;
+
+// Enforcement posture mode applied to a rule or pack (Off, Watch, Ask, Block).
+enum Mode {
+  // Unspecified enforcement mode.
+  MODE_UNSPECIFIED = 0;
+  // Rule is disabled.
+  MODE_OFF = 1;
+  // Rule records telemetry hits without prompting or blocking.
+  MODE_WATCH = 2;
+  // Rule triggers interactive step-up approval.
+  MODE_ASK = 3;
+  // Rule immediately denies matching attempts.
+  MODE_BLOCK = 4;
+}
+
+// Enforcement verdict returned by policy evaluation.
+enum Verdict {
+  // Unspecified verdict.
+  VERDICT_UNSPECIFIED = 0;
+  // Action is permitted to proceed.
+  VERDICT_ALLOW = 1;
+  // Action is rewritten or constrained before execution.
+  VERDICT_MODIFY = 2;
+  // Action requires out-of-band approval step-up.
+  VERDICT_STEP_UP = 3;
+  // Decision is deferred for asynchronous review.
+  VERDICT_DEFER = 4;
+  // Action is denied.
+  VERDICT_DENY = 5;
+}
+
+// High-level agent action classification evaluated by policy.
+enum ActionClass {
+  // Unspecified action class.
+  ACTION_CLASS_UNSPECIFIED = 0;
+  // Shell or command execution.
+  ACTION_CLASS_EXEC = 1;
+  // File read operation.
+  ACTION_CLASS_FILE_READ = 2;
+  // File creation or modification.
+  ACTION_CLASS_FILE_WRITE = 3;
+  // File deletion.
+  ACTION_CLASS_FILE_DELETE = 4;
+  // Network socket connection.
+  ACTION_CLASS_NET_CONNECT = 5;
+  // Outbound HTTP or network request.
+  ACTION_CLASS_NET_REQUEST = 6;
+  // Model inference request.
+  ACTION_CLASS_LLM_REQUEST = 7;
+  // MCP server transport connection.
+  ACTION_CLASS_MCP_CONNECT = 8;
+  // MCP tool invocation.
+  ACTION_CLASS_MCP_CALL = 9;
+  // Credential or secret access.
+  ACTION_CLASS_CRED_USE = 10;
+  // Subagent process spawn.
+  ACTION_CLASS_AGENT_SPAWN = 11;
+  // Agent or environment configuration mutation.
+  ACTION_CLASS_CONFIG_CHANGE = 12;
+  // Privilege elevation request.
+  ACTION_CLASS_ELEVATE = 13;
+  // Interactive UI automation action.
+  ACTION_CLASS_UI_ACT = 14;
+  // Cross-boundary data flow transfer.
+  ACTION_CLASS_DATA_FLOW = 15;
+}
+
+// Enforcement surface where an action attempt was intercepted.
+enum ControlPoint {
+  // Unspecified control point.
+  CONTROL_POINT_UNSPECIFIED = 0;
+  // Agent harness hook interception.
+  CONTROL_POINT_HOOK = 1;
+  // Managed MCP broker interception.
+  CONTROL_POINT_MCP_BROKER = 2;
+  // Outbound network proxy interception.
+  CONTROL_POINT_PROXY = 3;
+  // OS sandbox containment layer.
+  CONTROL_POINT_SANDBOX = 4;
+  // Host OS telemetry sensor.
+  CONTROL_POINT_SENSOR = 5;
+  // Managed browser extension DLP guard.
+  CONTROL_POINT_BROWSER = 6;
+  // Model or credential gateway.
+  CONTROL_POINT_GATEWAY = 7;
+  // SaaS connector integration boundary.
+  CONTROL_POINT_CONNECTOR = 8;
+}
+
+// Agent telemetry visibility strength.
+enum Visibility {
+  // Unspecified visibility.
+  VISIBILITY_UNSPECIFIED = 0;
+  // No telemetry observed.
+  VISIBILITY_NONE = 1;
+  // Self-reported by agent without independent verification.
+  VISIBILITY_CLAIMED = 2;
+  // Independently observed on host or proxy.
+  VISIBILITY_OBSERVED = 3;
+  // Cross-checked across multiple independent sensors.
+  VISIBILITY_CROSS_CHECKED = 4;
+}
+
+// Enforcement boundary control strength.
+enum ControlStrength {
+  // Unspecified control strength.
+  CONTROL_STRENGTH_UNSPECIFIED = 0;
+  // No active control boundary.
+  CONTROL_STRENGTH_NONE = 1;
+  // Advisory request-level mediation.
+  CONTROL_STRENGTH_REQUEST = 2;
+  // Scoped hook or wrapper mediation.
+  CONTROL_STRENGTH_SCOPED_BOUNDARY = 3;
+  // Mandatory OS-enforced containment boundary.
+  CONTROL_STRENGTH_MANDATORY_BOUNDARY = 4;
+}
+
+// Failure disposition when an enforcer is unreachable.
+enum OnFailure {
+  // Unspecified failure mode.
+  ON_FAILURE_UNSPECIFIED = 0;
+  // Fail open on timeout or transport error.
+  ON_FAILURE_OPEN = 1;
+  // Fail closed on timeout or transport error.
+  ON_FAILURE_CLOSED = 2;
+}
+
+// Tamper-resistance grade of the deployed boundary.
+enum TamperGrade {
+  // Unspecified tamper grade.
+  TAMPER_GRADE_UNSPECIFIED = 0;
+  // User-writable hooks and configuration.
+  TAMPER_GRADE_USER = 1;
+  // Administrator-protected configuration.
+  TAMPER_GRADE_ADMIN = 2;
+  // Platform-enforced signed policy and system service.
+  TAMPER_GRADE_PLATFORM = 3;
+}
+
+// Composite endpoint/agent assurance level (AL0..AL4).
+enum AssuranceLevel {
+  // Unspecified assurance level.
+  ASSURANCE_LEVEL_UNSPECIFIED = 0;
+  // AL0: discovered inventory only.
+  ASSURANCE_LEVEL_AL0 = 1;
+  // AL1: observed telemetry without active enforcement.
+  ASSURANCE_LEVEL_AL1 = 2;
+  // AL2: guided hook/prompt mediation.
+  ASSURANCE_LEVEL_AL2 = 3;
+  // AL3: contained execution boundary.
+  ASSURANCE_LEVEL_AL3 = 4;
+  // AL4: mandatory signed policy enforcement.
+  ASSURANCE_LEVEL_AL4 = 5;
+}
+
+// Endpoint daemon installation profile.
+enum InstallProfile {
+  // Unspecified install profile.
+  INSTALL_PROFILE_UNSPECIFIED = 0;
+  // User-space installation.
+  INSTALL_PROFILE_USER = 1;
+  // Managed system/admin protected installation.
+  INSTALL_PROFILE_PROTECTED = 2;
+}
+
+// Approval grade required to grant an Ask/StepUp request.
+enum ApprovalGrade {
+  // Unspecified approval grade.
+  APPROVAL_GRADE_UNSPECIFIED = 0;
+  // G0: low-risk automated or single acknowledgement.
+  APPROVAL_GRADE_G0 = 1;
+  // G1: standard operator confirmation.
+  APPROVAL_GRADE_G1 = 2;
+  // G2: step-up authentication required.
+  APPROVAL_GRADE_G2 = 3;
+  // G3: dual-approver or hardware-key quorum.
+  APPROVAL_GRADE_G3 = 4;
+}
+
+// Lifetime scope for an approved temporary grant.
+enum GrantScope {
+  // Unspecified grant scope.
+  GRANT_SCOPE_UNSPECIFIED = 0;
+  // Valid for a single attempt.
+  GRANT_SCOPE_ONCE = 1;
+  // Valid for the remainder of the session.
+  GRANT_SCOPE_SESSION = 2;
+  // Valid for one hour.
+  GRANT_SCOPE_ONE_HOUR = 3;
+}
+
+// Lifecycle status of an approval request.
+enum ApprovalStatus {
+  // Unspecified approval status.
+  APPROVAL_STATUS_UNSPECIFIED = 0;
+  // Waiting for operator decision before expiry.
+  APPROVAL_STATUS_PENDING = 1;
+  // Approved with a signed temporary grant.
+  APPROVAL_STATUS_APPROVED = 2;
+  // Explicitly denied by operator.
+  APPROVAL_STATUS_DENIED = 3;
+  // Expired without operator decision.
+  APPROVAL_STATUS_EXPIRED = 4;
+}
+
+// Target scope for emergency kill-switch or freeze actions.
+enum KillScope {
+  // Unspecified kill scope.
+  KILL_SCOPE_UNSPECIFIED = 0;
+  // Single active session.
+  KILL_SCOPE_SESSION = 1;
+  // Single endpoint device.
+  KILL_SCOPE_DEVICE = 2;
+  // Entire organisation tenant.
+  KILL_SCOPE_ORGANISATION = 3;
+}
+
+// Emergency control action requested against the kill switch.
+enum KillAction {
+  // Unspecified kill action.
+  KILL_ACTION_UNSPECIFIED = 0;
+  // Temporarily freeze target activity.
+  KILL_ACTION_FREEZE = 1;
+  // Permanently terminate target activity until release.
+  KILL_ACTION_KILL = 2;
+  // Release active freeze or kill state.
+  KILL_ACTION_RELEASE = 3;
+}
+
+// Current active state of the emergency kill switch.
+enum KillState {
+  // Unspecified kill state.
+  KILL_STATE_UNSPECIFIED = 0;
+  // Normal operation with no active freeze or kill.
+  KILL_STATE_INACTIVE = 1;
+  // Target is temporarily frozen until expiry.
+  KILL_STATE_FROZEN = 2;
+  // Target is killed until explicit release.
+  KILL_STATE_KILLED = 3;
+}
+
+// Category of security finding generated by detections or policy denials.
+enum FindingClass {
+  // Unspecified finding class.
+  FINDING_CLASS_UNSPECIFIED = 0;
+  // Threat detection match.
+  FINDING_CLASS_THREAT = 1;
+  // Policy violation intercepted by Ask or Block rules.
+  FINDING_CLASS_POLICY_VIOLATION = 2;
+  // Overeager or noisy rule hit pattern.
+  FINDING_CLASS_OVEREAGER = 3;
+  // Attempt to bypass containment or tamper with guardrails.
+  FINDING_CLASS_TAMPER = 4;
+  // Coverage gap in endpoint hook or sensor protection.
+  FINDING_CLASS_COVERAGE_GAP = 5;
+}
+
+// Severity level of a finding or incident.
+enum FindingSeverity {
+  // Unspecified severity.
+  FINDING_SEVERITY_UNSPECIFIED = 0;
+  // Low-severity finding.
+  FINDING_SEVERITY_LOW = 1;
+  // Medium-severity finding.
+  FINDING_SEVERITY_MEDIUM = 2;
+  // High-severity finding.
+  FINDING_SEVERITY_HIGH = 3;
+  // Critical-severity finding.
+  FINDING_SEVERITY_CRITICAL = 4;
+}
+
+// Triage lifecycle state of a finding or incident.
+enum FindingLifecycle {
+  // Unspecified finding lifecycle.
+  FINDING_LIFECYCLE_UNSPECIFIED = 0;
+  // Newly opened and untriaged.
+  FINDING_LIFECYCLE_OPEN = 1;
+  // Acknowledged by an operator.
+  FINDING_LIFECYCLE_ACKNOWLEDGED = 2;
+  // Contained or mitigated pending final resolution.
+  FINDING_LIFECYCLE_CONTAINED = 3;
+  // Resolved or remediated.
+  FINDING_LIFECYCLE_RESOLVED = 4;
+}
+
+// OpenTelemetry-aligned execution span kind for an action attempt.
+enum SpanKind {
+  // Unspecified span kind.
+  SPAN_KIND_UNSPECIFIED = 0;
+  // Top-level agent invocation.
+  SPAN_KIND_INVOKE_AGENT = 1;
+  // Conversational chat turn.
+  SPAN_KIND_CHAT = 2;
+  // Tool execution span.
+  SPAN_KIND_EXECUTE_TOOL = 3;
+  // MCP tool or resource call.
+  SPAN_KIND_MCP_CALL = 4;
+  // Host OS effect span.
+  SPAN_KIND_OS_EFFECT = 5;
+  // Subagent delegation spawn.
+  SPAN_KIND_SUBAGENT_SPAWN = 6;
+  // Context compaction event.
+  SPAN_KIND_COMPACTION = 7;
+}
+
+// Provenance confidence source for telemetry records.
+enum ProvenanceSource {
+  // Unspecified provenance source.
+  PROVENANCE_SOURCE_UNSPECIFIED = 0;
+  // Claimed by agent payload.
+  PROVENANCE_SOURCE_CLAIMED = 1;
+  // Observed by local daemon or hook.
+  PROVENANCE_SOURCE_OBSERVED = 2;
+  // Mediated by active enforcement wrapper.
+  PROVENANCE_SOURCE_MEDIATED = 3;
+  // Reconciled across host sensor and proxy logs.
+  PROVENANCE_SOURCE_RECONCILED = 4;
+}
+
+// Behavioural classification labels attached to a session or incident.
+enum SessionLabel {
+  // Unspecified session label.
+  SESSION_LABEL_UNSPECIFIED = 0;
+  // Sensitive credential resource accessed.
+  SESSION_LABEL_CREDENTIAL_ACCESSED = 1;
+  // Untrusted web origin fetched into context.
+  SESSION_LABEL_UNTRUSTED_WEB_FETCHED = 2;
+  // Repeated policy denials observed in session.
+  SESSION_LABEL_REPEATED_DENIALS = 3;
+  // Tainted outbound data exfiltration risk.
+  SESSION_LABEL_TAINTED_EXFIL_RISK = 4;
+}
+
+// Type of AI coding artifact discovered on an endpoint.
+enum ArtifactKind {
+  // Unspecified artifact kind.
+  ARTIFACT_KIND_UNSPECIFIED = 0;
+  // Agent skill definition.
+  ARTIFACT_KIND_SKILL = 1;
+  // Local agent rule file.
+  ARTIFACT_KIND_RULE = 2;
+  // Agent plugin package.
+  ARTIFACT_KIND_PLUGIN = 3;
+  // Custom slash command file.
+  ARTIFACT_KIND_COMMAND = 4;
+  // Subagent prompt or definition.
+  ARTIFACT_KIND_SUBAGENT = 5;
+}
+
+// Scope where an artifact is installed on the host.
+enum ArtifactScope {
+  // Unspecified artifact scope.
+  ARTIFACT_SCOPE_UNSPECIFIED = 0;
+  // User home directory scope.
+  ARTIFACT_SCOPE_USER = 1;
+  // Repository workspace scope.
+  ARTIFACT_SCOPE_WORKSPACE = 2;
+  // System managed scope.
+  ARTIFACT_SCOPE_MANAGED = 3;
+}
+
+// Risk indicator attached to a discovered artifact.
+enum ArtifactRiskFlag {
+  // Unspecified risk flag.
+  ARTIFACT_RISK_FLAG_UNSPECIFIED = 0;
+  // Artifact contains executable scripts.
+  ARTIFACT_RISK_FLAG_HAS_SCRIPTS = 1;
+  // Artifact requests broad filesystem or shell permissions.
+  ARTIFACT_RISK_FLAG_REQUESTS_BROAD_TOOLS = 2;
+  // Artifact contains bidirectional Unicode obfuscation characters.
+  ARTIFACT_RISK_FLAG_BIDI_OBFUSCATION = 3;
+  // Artifact is not pinned to an immutable digest.
+  ARTIFACT_RISK_FLAG_UNPINNED_DIGEST = 4;
+}
+
+// Organisation privacy visibility mode for developer identities (P8).
+enum IdentityMode {
+  // Unspecified identity mode.
+  IDENTITY_MODE_UNSPECIFIED = 0;
+  // Named user directory correlation enabled.
+  IDENTITY_MODE_NAMED = 1;
+  // Works-council pseudonymous mode (prn_ identifiers only).
+  IDENTITY_MODE_PSEUDONYMOUS = 2;
+}
+
+// Additive user risk tier.
+enum RiskTier {
+  // Unspecified risk tier.
+  RISK_TIER_UNSPECIFIED = 0;
+  // Low baseline risk.
+  RISK_TIER_LOW = 1;
+  // Elevated risk requiring attention.
+  RISK_TIER_ELEVATED = 2;
+  // High risk score.
+  RISK_TIER_HIGH = 3;
+  // Critical risk score.
+  RISK_TIER_CRITICAL = 4;
+}
+
+// Status of a device enrolment deployment key.
+enum DeploymentKeyStatus {
+  // Unspecified deployment key status.
+  DEPLOYMENT_KEY_STATUS_UNSPECIFIED = 0;
+  // Key is active and has remaining uses.
+  DEPLOYMENT_KEY_STATUS_ACTIVE = 1;
+  // Key reached max_uses.
+  DEPLOYMENT_KEY_STATUS_EXHAUSTED = 2;
+  // Key passed expires_at timestamp.
+  DEPLOYMENT_KEY_STATUS_EXPIRED = 3;
+  // Key was manually revoked.
+  DEPLOYMENT_KEY_STATUS_REVOKED = 4;
+}
+
+// Supported enterprise MDM configuration export format.
+enum MdmFormat {
+  // Unspecified MDM format.
+  MDM_FORMAT_UNSPECIFIED = 0;
+  // Microsoft Intune Win32 deployment script.
+  MDM_FORMAT_INTUNE_WIN32 = 1;
+  // Apple Jamf configuration mobileconfig.
+  MDM_FORMAT_JAMF_MOBILECONFIG = 2;
+  // Hexnode MDM profile.
+  MDM_FORMAT_HEXNODE = 3;
+  // Tanium deployment package.
+  MDM_FORMAT_TANIUM = 4;
+  // Google Chrome Enterprise policy JSON.
+  MDM_FORMAT_CHROME_ENTERPRISE = 5;
+  // Mozilla Firefox GPO policy JSON.
+  MDM_FORMAT_FIREFOX_GPO = 6;
+  // Linux APT/RPM repository configuration.
+  MDM_FORMAT_LINUX_REPO = 7;
+}
+
+// External integration category.
+enum IntegrationCategory {
+  // Unspecified integration category.
+  INTEGRATION_CATEGORY_UNSPECIFIED = 0;
+  // Directory / SCIM / IdP sync.
+  INTEGRATION_CATEGORY_DIRECTORY_SYNC = 1;
+  // SaaS connector.
+  INTEGRATION_CATEGORY_SAAS_CONNECTOR = 2;
+  // SIEM / OCSF / OTLP export sink.
+  INTEGRATION_CATEGORY_EXPORT_SINK = 3;
+}
+
+// Operational health state of an integration.
+enum IntegrationHealthState {
+  // Unspecified health state.
+  INTEGRATION_HEALTH_STATE_UNSPECIFIED = 0;
+  // Integration is healthy and connected.
+  INTEGRATION_HEALTH_STATE_CONNECTED = 1;
+  // Credentials expiring soon or non-fatal warning.
+  INTEGRATION_HEALTH_STATE_AT_RISK = 2;
+  // Readiness checks failing.
+  INTEGRATION_HEALTH_STATE_DEGRADED = 3;
+  // Integration has not been configured.
+  INTEGRATION_HEALTH_STATE_NOT_CONFIGURED = 4;
+}
+
+// Browser DLP inspection action classification.
+enum BrowserDlpClass {
+  // Unspecified browser DLP class.
+  BROWSER_DLP_CLASS_UNSPECIFIED = 0;
+  // File upload to generative AI web app.
+  BROWSER_DLP_CLASS_FILE_UPLOAD = 1;
+  // Secret or credential paste.
+  BROWSER_DLP_CLASS_PASTE_SECRET = 2;
+  // Source code snippet paste.
+  BROWSER_DLP_CLASS_SOURCE_CODE = 3;
+  // Customer PII paste.
+  BROWSER_DLP_CLASS_CUSTOMER_PII = 4;
+}
+
+// Column visibility class exposed by schema introspection.
+enum SchemaDataClass {
+  // Unspecified schema data class.
+  SCHEMA_DATA_CLASS_UNSPECIFIED = 0;
+  // Operational metadata column.
+  SCHEMA_DATA_CLASS_METADATA = 1;
+  // Named identity column masked in pseudonymous mode.
+  SCHEMA_DATA_CLASS_NAMED_IDENTITY = 2;
+  // Content-class column gated by content grant.
+  SCHEMA_DATA_CLASS_CONTENT = 3;
+  // Secret column never readable.
+  SCHEMA_DATA_CLASS_SECRET = 4;
+}
+
+// Overall server health status.
+enum ServerHealth {
+  // Unspecified server health.
+  SERVER_HEALTH_UNSPECIFIED = 0;
+  // Legacy OK readiness alias.
+  SERVER_HEALTH_OK = 1;
+  // All subsystems healthy.
+  SERVER_HEALTH_HEALTHY = 2;
+  // Partial degradation on secondary subsystem.
+  SERVER_HEALTH_DEGRADED = 3;
+  // Server or primary storage unavailable.
+  SERVER_HEALTH_UNAVAILABLE = 4;
+}
+
+// Backing persistence storage engine kind.
+enum StorageKind {
+  // Unspecified storage kind.
+  STORAGE_KIND_UNSPECIFIED = 0;
+  // Ephemeral in-memory store.
+  STORAGE_KIND_MEMORY = 1;
+  // Embedded SQLite database.
+  STORAGE_KIND_SQLITE = 2;
+}

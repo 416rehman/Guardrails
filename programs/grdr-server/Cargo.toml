@@ -12,6 +12,7 @@ renders = "none"
 
 [dependencies]
 axum = { workspace = true }
+base64 = { workspace = true }
 clap = { workspace = true }
 futures-util = { workspace = true }
 grdr-blob = { workspace = true }
@@ -21,8 +22,10 @@ grdr-crypto = { workspace = true }
 grdr-jobs = { workspace = true }
 grdr-model = { workspace = true }
 grdr-ports = { workspace = true }
+grdr-proto = { workspace = true }
 grdr-rel-sqlite = { workspace = true }
 jiff = { workspace = true }
+prost = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

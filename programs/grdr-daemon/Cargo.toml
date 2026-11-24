@@ -17,6 +17,7 @@ grdr-agents = { workspace = true }
 grdr-core = { workspace = true }
 grdr-crypto = { workspace = true }
 grdr-model = { workspace = true }
+grdr-proto = { workspace = true }
 grdr-store-local = { workspace = true }
 jiff = { workspace = true }
 reqwest = { workspace = true }

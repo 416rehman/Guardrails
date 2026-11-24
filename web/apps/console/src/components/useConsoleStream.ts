@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { getApiToken } from "@grdr/api";
+import { connectLiveUrl } from "@grdr/api";
 
 export function useConsoleStream(
   streamVersion: number,
@@ -8,11 +8,7 @@ export function useConsoleStream(
 ) {
   useEffect(() => {
     void onRefresh();
-    const token = getApiToken();
-    const liveUrl = token
-      ? `/api/v1/live?access_token=${encodeURIComponent(token)}`
-      : "/api/v1/live";
-    const events = new EventSource(liveUrl);
+    const events = new EventSource(connectLiveUrl());
     const refreshHandler = () => {
       void onRefresh();
     };

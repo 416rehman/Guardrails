@@ -444,3 +444,35 @@ export interface HealthResponse {
   storage_mode: StorageMode;
   timestamp: string;
 }
+
+export interface PageInfo {
+  next_page_token: string;
+  prev_page_token: string;
+  total_size_estimate: number;
+  has_more: boolean;
+}
+
+export interface PageQuery {
+  page_size?: number;
+  page_token?: string;
+  filter?: string;
+  order_by?: string;
+}
+
+export interface PagedResult<T> {
+  items: T[];
+  page_info: PageInfo;
+  etag?: string;
+}
+
+export interface AgentInventoryItem {
+  device_id: string;
+  device_name: string;
+  agent: DiscoveredAgent;
+}
+
+export interface McpInventoryItem {
+  device_id: string;
+  device_name: string;
+  server: McpServerEntry;
+}

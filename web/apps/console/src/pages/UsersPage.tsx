@@ -3,7 +3,6 @@ import {
   api,
   type IdentityMode,
   type OrgPrivacyConfig,
-  type RiskTier,
   type UserDetailResponse,
   type UserProfile,
 } from "@grdr/api";
@@ -12,8 +11,6 @@ import { EntityLink, type EntityTarget } from "@grdr/kit";
 import {
   Badge,
   Banner,
-  Button,
-  Card,
   GrdrIcon,
   GrdrSelect,
   Heading,
@@ -24,6 +21,8 @@ import {
   UiSdkSegmentedControl,
   VStack,
 } from "@grdr/ui";
+import { CursorPagerBar } from "../components/PagerBar";
+import { aipQuote, useServerPage } from "../components/useServerPage";
 import {
   capitalizeTier,
   riskBadgeVariant,
@@ -91,24 +90,30 @@ export function UsersPage({
     return [{ value: "all", label: "All departments" }, ...unique.map((d) => ({ value: d, label: d }))];
   }, [users]);
 
+  const isPseudonymous = privacyConfig.identity_mode === "pseudonymous";
   const effectiveQuery = (localFilter || searchQuery).trim().toLowerCase();
-  const filteredUsers = useMemo(
-    () =>
-      users.filter((u) => {
-        const matchesQuery =
-          !effectiveQuery ||
-          u.display_name.toLowerCase().includes(effectiveQuery) ||
-          u.email.toLowerCase().includes(effectiveQuery) ||
-          u.department.toLowerCase().includes(effectiveQuery) ||
-          u.agent_names.some((a) => a.toLowerCase().includes(effectiveQuery));
-        const matchesDept = departmentFilter === "all" || u.department === departmentFilter;
-        const matchesTier = tierFilter === "all" || u.risk_tier === tierFilter;
-        return matchesQuery && matchesDept && matchesTier;
-      }),
-    [users, effectiveQuery, departmentFilter, tierFilter],
-  );
+  const aipFilter = useMemo(() => {
+    const clauses: string[] = [];
+    if (departmentFilter !== "all") clauses.push(`department = ${aipQuote(departmentFilter)}`);
+    if (!isPseudonymous && tierFilter !== "all") clauses.push(`risk_tier = ${aipQuote(tierFilter)}`);
+    if (effectiveQuery) {
+      clauses.push(
+        `(display_name:${aipQuote(effectiveQuery)} OR email:${aipQuote(effectiveQuery)} OR department:${aipQuote(effectiveQuery)})`,
+      );
+    }
+    return clauses.join(" AND ");
+  }, [departmentFilter, tierFilter, isPseudonymous, effectiveQuery]);
 
-  const firstFilteredId = filteredUsers[0]?.id ?? null;
+  const usersPage = useServerPage(
+    api.listUsersPage,
+    aipFilter,
+    "risk_score desc",
+    25,
+    isPseudonymous ? 1 : 0,
+  );
+  const displayedUsers = usersPage.items;
+  const totalUsersCount = usersPage.pageInfo.total_size_estimate || displayedUsers.length;
+  const firstFilteredId = displayedUsers[0]?.id ?? null;
   useEffect(() => {
     if (!selectedUserId && firstFilteredId) {
       setSelection({ kind: "loading", userId: firstFilteredId });
@@ -155,14 +160,15 @@ export function UsersPage({
     }
   }
 
-  const isPseudonymous = privacyConfig.identity_mode === "pseudonymous";
   const highRiskCount = users.filter((u) => u.risk_tier === "critical" || u.risk_tier === "high").length;
   const errorMessage =
     privacySave.kind === "failed"
       ? privacySave.message
-      : selection.kind === "error"
-        ? selection.message
-        : undefined;
+      : usersPage.error
+        ? usersPage.error
+        : selection.kind === "error"
+          ? selection.message
+          : undefined;
 
   return (
     <VStack gap={4}>
@@ -268,22 +274,25 @@ export function UsersPage({
           )}
         </HStack>
         <Text size="sm" color="secondary" className="tabular">
-          {pluralize(filteredUsers.length, "user")}
+          {pluralize(totalUsersCount, "user")}
         </Text>
       </div>
 
       <div className="storyline-split">
         <div className="ledger-section">
           <div className="ledger-header">
-            <Heading level={2}>{`Risk ranking (${filteredUsers.length})`}</Heading>
+            <Heading level={2}>{`Risk ranking (${totalUsersCount})`}</Heading>
           </div>
-          {filteredUsers.length === 0 ? (
-            <Text color="secondary">No users match the active filters.</Text>
+          {displayedUsers.length === 0 ? (
+            <Text color="secondary">
+              {usersPage.loading ? "Loading users..." : "No users match the active filters."}
+            </Text>
           ) : (
             <div className="ledger-list">
-              {filteredUsers.map((u, idx) => {
+              {displayedUsers.map((u, idx) => {
                 const isSelected = selectedUserId === u.id;
                 const highAttention = !isPseudonymous && u.risk_score >= 45;
+                const rankNumber = usersPage.pageIndex * usersPage.pageSize + idx + 1;
                 return (
                   <div
                     key={u.id}
@@ -295,7 +304,7 @@ export function UsersPage({
                       <VStack gap={1}>
                         <HStack gap={2} align="center" style={{ flexWrap: "wrap" }}>
                           <span className="mono" style={{ color: "var(--ink-muted)", fontSize: 12 }}>
-                            {`#${idx + 1}`}
+                            {`#${rankNumber}`}
                           </span>
                           <EntityLink
                             kind="user"
@@ -336,6 +345,16 @@ export function UsersPage({
               })}
             </div>
           )}
+          <CursorPagerBar
+            pageIndex={usersPage.pageIndex}
+            pageSize={usersPage.pageSize}
+            itemCount={displayedUsers.length}
+            pageInfo={usersPage.pageInfo}
+            label="Users pagination"
+            onNext={usersPage.goNext}
+            onPrev={usersPage.goPrev}
+            onPageSizeChange={usersPage.setPageSize}
+          />
         </div>
 
         <UserDetailSection

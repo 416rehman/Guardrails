@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Device } from "@grdr/api";
+import { api, type Device } from "@grdr/api";
 import { AssuranceBadge, EntityLink, type EntityTarget, Quoted } from "@grdr/kit";
 import {
   Button,
@@ -13,7 +13,8 @@ import {
   TextInput,
   VStack,
 } from "@grdr/ui";
-import { formatRangeLabel, PagerBar } from "../components/PagerBar";
+import { CursorPagerBar, formatRangeLabel } from "../components/PagerBar";
+import { aipQuote, useServerPage } from "../components/useServerPage";
 
 export function InventoryAgentsSection({
   devices,
@@ -32,12 +33,9 @@ export function InventoryAgentsSection({
   const [agentTypeFilter, setAgentTypeFilter] = useState(initialAgentFilter);
   const [assuranceFilter, setAssuranceFilter] = useState("all");
   const [hookFilter, setHookFilter] = useState("all");
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(25);
 
   useEffect(() => {
     setAgentTypeFilter(initialAgentFilter);
-    setPage(0);
   }, [initialAgentFilter]);
 
   const allRows = useMemo(
@@ -53,6 +51,11 @@ export function InventoryAgentsSection({
     [devices],
   );
 
+  const deviceOsById = useMemo(
+    () => new Map(devices.map((d) => [d.id, d.os])),
+    [devices],
+  );
+
   const agentTypeOptions = useMemo(() => {
     const names = Array.from(new Set(allRows.map((r) => r.agent.name))).sort();
     return [
@@ -62,42 +65,37 @@ export function InventoryAgentsSection({
   }, [allRows]);
 
   const combinedQuery = `${globalQuery} ${localQuery}`.trim().toLowerCase();
-  const filteredRows = useMemo(
-    () =>
-      allRows.filter(({ deviceHostname, agent }) => {
-        if (
-          combinedQuery &&
-          !agent.name.toLowerCase().includes(combinedQuery) &&
-          !deviceHostname.toLowerCase().includes(combinedQuery) &&
-          !agent.config_path.toLowerCase().includes(combinedQuery)
-        ) {
-          return false;
-        }
-        if (
-          agentTypeFilter !== "all" &&
-          !agent.name.toLowerCase().includes(agentTypeFilter.toLowerCase())
-        ) {
-          return false;
-        }
-        if (assuranceFilter === "sandboxed") {
-          if (agent.assurance_level !== "AL3" && agent.assurance_level !== "AL4") return false;
-        } else if (assuranceFilter === "proxy" && agent.assurance_level !== "AL2") {
-          return false;
-        } else if (assuranceFilter === "hook" && agent.assurance_level !== "AL1") {
-          return false;
-        } else if (assuranceFilter === "observed" && agent.assurance_level !== "AL0") {
-          return false;
-        }
-        if (hookFilter === "installed" && !agent.hook_installed) return false;
-        if (hookFilter === "missing" && agent.hook_installed) return false;
-        return true;
-      }),
-    [allRows, combinedQuery, agentTypeFilter, assuranceFilter, hookFilter],
-  );
+  const aipFilter = useMemo(() => {
+    const clauses: string[] = [];
+    if (combinedQuery) {
+      clauses.push(`(name:${aipQuote(combinedQuery)} OR device_name:${aipQuote(combinedQuery)})`);
+    }
+    if (agentTypeFilter !== "all") {
+      clauses.push(`name:${aipQuote(agentTypeFilter)}`);
+    }
+    if (assuranceFilter === "sandboxed") {
+      clauses.push("(assurance_level = al3 OR assurance_level = al4)");
+    } else if (assuranceFilter === "proxy") {
+      clauses.push("assurance_level = al2");
+    } else if (assuranceFilter === "hook") {
+      clauses.push("assurance_level = al1");
+    } else if (assuranceFilter === "observed") {
+      clauses.push("assurance_level = al0");
+    }
+    if (hookFilter === "installed") clauses.push("hook_installed = true");
+    if (hookFilter === "missing") clauses.push("hook_installed = false");
+    return clauses.join(" AND ");
+  }, [combinedQuery, agentTypeFilter, assuranceFilter, hookFilter]);
 
-  const safePage = page * pageSize >= filteredRows.length && filteredRows.length > 0 ? 0 : page;
-  const startIdx = safePage * pageSize;
-  const pagedRows = filteredRows.slice(startIdx, startIdx + pageSize);
+  const agentPage = useServerPage(api.listAgentsPage, aipFilter, "name asc", 25);
+  const startIdx = agentPage.pageIndex * agentPage.pageSize;
+  const pagedRows = agentPage.items.map((item) => ({
+    deviceId: item.device_id,
+    deviceHostname: item.device_name,
+    deviceOs: deviceOsById.get(item.device_id) ?? "linux",
+    agent: item.agent,
+  }));
+  const totalAgentsCount = agentPage.pageInfo.total_size_estimate || pagedRows.length;
   const sandboxedCount = allRows.filter(
     (r) => r.agent.assurance_level === "AL3" || r.agent.assurance_level === "AL4",
   ).length;
@@ -148,7 +146,7 @@ export function InventoryAgentsSection({
               placeholder="Filter by agent, host, or config path..."
               startIcon={<GrdrIcon name="search" size={13} color="var(--ink-muted)" />}
               value={localQuery}
-              onChange={(val) => { setLocalQuery(val); setPage(0); }}
+              onChange={(val) => setLocalQuery(val)}
               width="100%"
             />
           </div>
@@ -159,7 +157,7 @@ export function InventoryAgentsSection({
             variant="secondary"
             value={agentTypeFilter}
             options={agentTypeOptions}
-            onChange={(val) => { setAgentTypeFilter(val); setPage(0); }}
+            onChange={(val) => setAgentTypeFilter(val)}
           />
           <GrdrSelect
             label="Filter by assurance tier"
@@ -174,7 +172,7 @@ export function InventoryAgentsSection({
               { value: "hook", label: "App hook" },
               { value: "observed", label: "Observed only" },
             ]}
-            onChange={(val) => { setAssuranceFilter(val); setPage(0); }}
+            onChange={(val) => setAssuranceFilter(val)}
           />
           <GrdrSelect
             label="Filter by hook shim"
@@ -187,7 +185,7 @@ export function InventoryAgentsSection({
               { value: "installed", label: "Installed" },
               { value: "missing", label: "Not configured" },
             ]}
-            onChange={(val) => { setHookFilter(val); setPage(0); }}
+            onChange={(val) => setHookFilter(val)}
           />
           {hasFilters && (
             <Button
@@ -199,7 +197,6 @@ export function InventoryAgentsSection({
                 setAgentTypeFilter("all");
                 setAssuranceFilter("all");
                 setHookFilter("all");
-                setPage(0);
               }}
             />
           )}
@@ -211,14 +208,14 @@ export function InventoryAgentsSection({
           <HStack justify="between" align="center" style={{ flexWrap: "wrap", gap: 8 }}>
             <HStack gap={2} align="center">
               <GrdrIcon name="cpu" size={16} />
-              <Heading level={2}>{`Discovered AI agents (${filteredRows.length})`}</Heading>
+              <Heading level={2}>{`Discovered AI agents (${totalAgentsCount})`}</Heading>
             </HStack>
             <Text size="sm" color="secondary" className="tabular">
-              {formatRangeLabel(startIdx, pageSize, filteredRows.length)}
+              {formatRangeLabel(startIdx, Math.max(pagedRows.length, 1), totalAgentsCount)}
             </Text>
           </HStack>
 
-          {filteredRows.length === 0 ? (
+          {pagedRows.length === 0 && !agentPage.loading ? (
             <Text color="secondary">
               No agents match the active filters. Adjust filters or enroll an endpoint running grdr-daemon.
             </Text>
@@ -257,13 +254,15 @@ export function InventoryAgentsSection({
             </div>
           )}
 
-          <PagerBar
-            page={safePage}
-            pageSize={pageSize}
-            totalItems={filteredRows.length}
+          <CursorPagerBar
+            pageIndex={agentPage.pageIndex}
+            pageSize={agentPage.pageSize}
+            itemCount={pagedRows.length}
+            pageInfo={agentPage.pageInfo}
             label="Agents pagination"
-            onPageChange={setPage}
-            onPageSizeChange={(sz) => { setPageSize(sz); setPage(0); }}
+            onNext={agentPage.goNext}
+            onPrev={agentPage.goPrev}
+            onPageSizeChange={agentPage.setPageSize}
           />
         </VStack>
       </Card>

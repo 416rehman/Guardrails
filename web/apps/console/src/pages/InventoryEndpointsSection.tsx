@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Device } from "@grdr/api";
+import { api, type Device } from "@grdr/api";
 import { pluralize, type InventorySectionId } from "@grdr/i18n";
 import { EntityLink, OsLabel } from "@grdr/kit";
 import {
@@ -18,7 +18,8 @@ import {
   UiSdkSegmentedControl,
   VStack,
 } from "@grdr/ui";
-import { formatRangeLabel, PagerBar } from "../components/PagerBar";
+import { CursorPagerBar, formatRangeLabel } from "../components/PagerBar";
+import { aipQuote, useServerPage } from "../components/useServerPage";
 
 type InventoryView = "hexmap" | "table";
 
@@ -42,10 +43,18 @@ export function InventoryEndpointsSection({
   const [viewMode, setViewMode] = useState<InventoryView>("hexmap");
   const [osFilter, setOsFilter] = useState<string>("all");
   const [outliersOnly, setOutliersOnly] = useState(false);
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(25);
 
   const query = searchQuery.trim().toLowerCase();
+  const aipFilter = useMemo(() => {
+    const clauses: string[] = [];
+    if (osFilter !== "all") clauses.push(`os:${aipQuote(osFilter)}`);
+    if (outliersOnly) clauses.push("(online = false OR hook_effective = false)");
+    if (query) clauses.push(`(hostname:${aipQuote(query)} OR os:${aipQuote(query)})`);
+    return clauses.join(" AND ");
+  }, [osFilter, outliersOnly, query]);
+
+  const devicePage = useServerPage(api.listDevicesPage, aipFilter, "hostname asc", 25);
+
   const filteredDevices = useMemo(
     () =>
       devices.filter((d) => {
@@ -91,9 +100,12 @@ export function InventoryEndpointsSection({
     return { al34, al2, al01, total: Math.max(1, agents.length) };
   }, [agents]);
 
-  const safePage = page * pageSize >= filteredDevices.length && filteredDevices.length > 0 ? 0 : page;
-  const startIdx = safePage * pageSize;
-  const pagedDevices = filteredDevices.slice(startIdx, startIdx + pageSize);
+  const pagedDevices =
+    devicePage.items.length > 0 || devicePage.pageInfo.total_size_estimate > 0
+      ? devicePage.items
+      : filteredDevices;
+  const totalDevicesCount = Math.max(devicePage.pageInfo.total_size_estimate, pagedDevices.length);
+  const startIdx = devicePage.pageIndex * devicePage.pageSize;
 
   const hexCells = useMemo<FleetHexCell[]>(() => {
     const cols = 12;
@@ -210,7 +222,7 @@ export function InventoryEndpointsSection({
               { value: "linux", label: "Linux" },
               { value: "windows", label: "Windows" },
             ]}
-            onChange={(val) => { setOsFilter(val); setPage(0); }}
+            onChange={(val) => setOsFilter(val)}
           />
           <GrdrSelect
             label="Filter by agent type"
@@ -222,14 +234,14 @@ export function InventoryEndpointsSection({
               { value: "all", label: "Agent type: All" },
               ...agentTypeBuckets.map(([name]) => ({ value: name.toLowerCase(), label: name })),
             ]}
-            onChange={(val) => { onAgentFilterChange(val); setPage(0); }}
+            onChange={(val) => onAgentFilterChange(val)}
           />
           <Button
             size="sm"
             variant={outliersOnly ? "primary" : "secondary"}
             icon={<GrdrIcon name="alert-triangle" size={13} />}
             label="Outliers only"
-            onClick={() => { setOutliersOnly((prev) => !prev); setPage(0); }}
+            onClick={() => setOutliersOnly((prev) => !prev)}
           />
         </HStack>
 
@@ -276,10 +288,10 @@ export function InventoryEndpointsSection({
           <HStack justify="between" align="center" style={{ flexWrap: "wrap", gap: 8 }}>
             <HStack gap={2} align="center">
               <GrdrIcon name="hard-drive" size={16} />
-              <Heading level={2}>{`Enrolled devices (${filteredDevices.length})`}</Heading>
+              <Heading level={2}>{`Enrolled devices (${totalDevicesCount})`}</Heading>
             </HStack>
             <Text size="sm" color="secondary" className="tabular">
-              {formatRangeLabel(startIdx, pageSize, filteredDevices.length)}
+              {formatRangeLabel(startIdx, Math.max(pagedDevices.length, 1), totalDevicesCount)}
             </Text>
           </HStack>
           <div className="table-wrap">
@@ -336,13 +348,15 @@ export function InventoryEndpointsSection({
               </tbody>
             </table>
           </div>
-          <PagerBar
-            page={safePage}
-            pageSize={pageSize}
-            totalItems={filteredDevices.length}
+          <CursorPagerBar
+            pageIndex={devicePage.pageIndex}
+            pageSize={devicePage.pageSize}
+            itemCount={pagedDevices.length}
+            pageInfo={devicePage.pageInfo}
             label="Enrolled devices pagination"
-            onPageChange={setPage}
-            onPageSizeChange={(sz) => { setPageSize(sz); setPage(0); }}
+            onNext={devicePage.goNext}
+            onPrev={devicePage.goPrev}
+            onPageSizeChange={devicePage.setPageSize}
           />
         </VStack>
       </Card>

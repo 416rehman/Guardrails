@@ -7,7 +7,7 @@ import {
   type SessionSummary,
 } from "@grdr/api";
 import { pluralize } from "@grdr/i18n";
-import { EntityLink, type EntityTarget, SessionLabelBadge } from "@grdr/kit";
+import { EntityLink, type EntityTarget } from "@grdr/kit";
 import {
   Badge,
   Banner,
@@ -16,17 +16,16 @@ import {
   Heading,
   HStack,
   Text,
-  TextInput,
   UiSdkSegmentedControl,
   VStack,
 } from "@grdr/ui";
-import { PagerBar } from "../components/PagerBar";
 import {
   buildSessionFlowGraph,
   SessionAttemptDrawer,
   SessionStreamTable,
   SessionTimelineView,
 } from "./SessionInspectorViews";
+import { SessionListPane } from "./SessionListPane";
 import { TraceWaterfall } from "./TraceWaterfall";
 
 export type SessionViewMode = "graph" | "trace" | "timeline" | "stream";
@@ -80,9 +79,6 @@ export function SessionsPage({
   const [internalViewMode, setInternalViewMode] = useState<SessionViewMode>("graph");
   const [turnFocus, setTurnFocus] = useState<TurnFocus>({ kind: "all" });
   const [detailState, setDetailState] = useState<SessionDetailState>({ kind: "idle" });
-  const [localQuery, setLocalQuery] = useState("");
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(25);
 
   const selectedId =
     selectedSessionId !== undefined
@@ -117,30 +113,11 @@ export function SessionsPage({
     }
   }, [focusedTurn, onClearFocusedTurn]);
 
-  const query = `${searchQuery} ${localQuery}`.trim().toLowerCase();
-  const filtered = useMemo(
-    () =>
-      sessions.filter(
-        (s) =>
-          !query ||
-          s.id.toLowerCase().includes(query) ||
-          s.agent_name.toLowerCase().includes(query) ||
-          s.device_name.toLowerCase().includes(query) ||
-          (s.user_display ?? "").toLowerCase().includes(query),
-      ),
-    [sessions, query],
-  );
-
-  const safePage = page * pageSize >= filtered.length && filtered.length > 0 ? 0 : page;
-  const startIdx = safePage * pageSize;
-  const pagedSessions = filtered.slice(startIdx, startIdx + pageSize);
-  const firstFilteredId = filtered[0]?.id ?? null;
-
   useEffect(() => {
-    if (!selectedId && firstFilteredId) {
-      selectSession(firstFilteredId);
+    if (!selectedId && sessions[0]?.id) {
+      selectSession(sessions[0].id);
     }
-  }, [firstFilteredId, selectedId]);
+  }, [sessions, selectedId]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -213,140 +190,13 @@ export function SessionsPage({
       )}
 
       <div className="storyline-split">
-        <div className="ledger-section">
-          <div className="ledger-header" style={{ flexWrap: "wrap", gap: 8 }}>
-            <h2 className="ledger-title">{`Recorded sessions (${filtered.length})`}</h2>
-            <Text size="sm" color="secondary" className="tabular">
-              {filtered.length === 0
-                ? "0 of 0"
-                : `${startIdx + 1}-${Math.min(startIdx + pageSize, filtered.length)} of ${filtered.length}`}
-            </Text>
-          </div>
-
-          <div style={{ marginBlock: 8 }}>
-            <TextInput
-              label="Search recorded sessions"
-              isLabelHidden
-              size="sm"
-              placeholder="Filter by session, agent, host, or user..."
-              startIcon={<GrdrIcon name="search" size={13} color="var(--ink-muted)" />}
-              value={localQuery}
-              onChange={(val) => {
-                setLocalQuery(val);
-                setPage(0);
-              }}
-              width="100%"
-            />
-          </div>
-
-          <div className="ledger-list">
-            {pagedSessions.map((sess) => {
-              const labels = sess.labels ?? [];
-              const isSelected = selectedId === sess.id;
-              return (
-                <div
-                  key={sess.id}
-                  className={`ledger-row selectable ${isSelected ? "selected" : ""}`}
-                  style={{ paddingInline: 12, cursor: "pointer" }}
-                  onClick={() => selectSession(sess.id)}
-                >
-                  <div className="ledger-row-main">
-                    <VStack gap={1}>
-                      <HStack
-                        gap={1}
-                        align="center"
-                        style={{ flexWrap: "wrap", columnGap: 6, rowGap: 2 }}
-                      >
-                        <EntityLink
-                          kind="agent"
-                          label={sess.agent_name}
-                          compact
-                          onSelect={onOpenEntity}
-                        />
-                        <Text size="sm" color="secondary">
-                          on
-                        </Text>
-                        <EntityLink
-                          kind="device"
-                          id={sess.device_id}
-                          label={sess.device_name}
-                          os={
-                            devices.find(
-                              (d) => d.id === sess.device_id || d.hostname === sess.device_name,
-                            )?.os
-                          }
-                          compact
-                          onSelect={onOpenEntity}
-                        />
-                      </HStack>
-                      <HStack
-                        gap={2}
-                        align="center"
-                        style={{ columnGap: 8, rowGap: 2, flexWrap: "wrap" }}
-                      >
-                        {sess.user_display && (
-                          <EntityLink
-                            kind="user"
-                            id={sess.user_id ?? sess.user_display}
-                            label={sess.user_display}
-                            compact
-                            onSelect={onOpenEntity}
-                          />
-                        )}
-                        <EntityLink
-                          kind="session"
-                          id={sess.id}
-                          label={sess.id}
-                          compact
-                          onSelect={() => selectSession(sess.id)}
-                        />
-                        <Text size="sm" color="secondary" className="tabular">
-                          {`${pluralize(sess.total_actions, "call")} · ${pluralize(sess.turn_count ?? 1, "turn")}`}
-                        </Text>
-                      </HStack>
-                    </VStack>
-                    <HStack gap={1}>
-                      {sess.blocked_count > 0 && (
-                        <Badge
-                          variant="error"
-                          icon={<GrdrIcon name="ban" size={11} />}
-                          label={`${sess.blocked_count} denied`}
-                        />
-                      )}
-                      {sess.step_up_count > 0 && (
-                        <Badge
-                          variant="warning"
-                          icon={<GrdrIcon name="hand" size={11} />}
-                          label={`${sess.step_up_count} ask`}
-                        />
-                      )}
-                    </HStack>
-                  </div>
-
-                  {labels.length > 0 && (
-                    <HStack gap={1}>
-                      {labels.map((lbl) => (
-                        <SessionLabelBadge key={lbl} label={lbl} />
-                      ))}
-                    </HStack>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <PagerBar
-            page={safePage}
-            pageSize={pageSize}
-            totalItems={filtered.length}
-            label="Sessions pagination"
-            onPageChange={setPage}
-            onPageSizeChange={(sz) => {
-              setPageSize(sz);
-              setPage(0);
-            }}
-          />
-        </div>
+        <SessionListPane
+          devices={devices}
+          searchQuery={searchQuery}
+          selectedId={selectedId}
+          onSelectSession={selectSession}
+          onOpenEntity={onOpenEntity}
+        />
 
         <div className="ledger-section">
           {detail ? (

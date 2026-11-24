@@ -11,6 +11,7 @@ pub mod error;
 pub mod eval;
 pub mod identity;
 pub mod policy;
+pub mod proto_conv;
 pub mod query_catalog;
 pub mod query_ir;
 
