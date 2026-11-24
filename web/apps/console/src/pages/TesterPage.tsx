@@ -1,7 +1,18 @@
 import { useState } from "react";
 import { api, type ActionClass, type DecisionReceipt } from "@grdr/api";
 import { Quoted, VerdictBadge } from "@grdr/kit";
-import { Banner, Button, Card, GrdrIcon, Heading, HStack, Text, TextInput, VStack } from "@grdr/ui";
+import {
+  Banner,
+  Button,
+  Card,
+  GrdrIcon,
+  GrdrSelect,
+  Heading,
+  HStack,
+  Text,
+  TextInput,
+  VStack,
+} from "@grdr/ui";
 
 const PRESETS: Array<{ label: string; actionClass: ActionClass; target: string; summary: string }> = [
   {
@@ -73,7 +84,7 @@ export function TesterPage({ onEvaluated }: { onEvaluated: () => void }) {
         <div>
           <Heading level={1}>Live policy tester</Heading>
           <Text color="secondary">
-            Evaluate real actions through the Guardrails policy engine, mint cryptographic receipts, and trigger live SSE session and approval events.
+            Simulate an agent action against active rules and inspect the signed receipt.
           </Text>
         </div>
       </div>
@@ -117,22 +128,21 @@ export function TesterPage({ onEvaluated }: { onEvaluated: () => void }) {
               onChange={(v) => setSessionId(v)}
               isRequired
             />
-            <div className="field">
-              <label htmlFor="test-class">Action class</label>
-              <select
-                id="test-class"
-                value={actionClass}
-                onChange={(e) => setActionClass(e.target.value as ActionClass)}
-              >
-                <option value="exec">exec</option>
-                <option value="file.read">file.read</option>
-                <option value="file.write">file.write</option>
-                <option value="file.delete">file.delete</option>
-                <option value="net.request">net.request</option>
-                <option value="mcp.call">mcp.call</option>
-                <option value="elevate">elevate</option>
-              </select>
-            </div>
+            <GrdrSelect
+              label="Action class"
+              value={actionClass}
+              options={[
+                { value: "exec", label: "exec" },
+                { value: "file.read", label: "file.read" },
+                { value: "file.write", label: "file.write" },
+                { value: "file.delete", label: "file.delete" },
+                { value: "net.request", label: "net.request" },
+                { value: "mcp.call", label: "mcp.call" },
+                { value: "elevate", label: "elevate" },
+              ]}
+              onChange={(val) => setActionClass(val as ActionClass)}
+              width="100%"
+            />
             <TextInput
               label="Target path or command"
               value={target}

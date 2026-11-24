@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod icons;
 mod kit;
 mod screens;
 mod theme;
@@ -141,5 +142,11 @@ mod tests {
         rt.frame(0.016);
         assert_eq!(rt.state.vm.screen, Screen::Privacy);
         assert!(rt.find("screen-privacy").is_some());
+
+        let (sx, sy) = rt.find("toggle-sidebar").expect("toggle-sidebar missing");
+        rt.pointer_down(sx, sy);
+        rt.pointer_up(sx, sy);
+        rt.frame(0.016);
+        assert!(rt.state.sidebar_collapsed);
     }
 }

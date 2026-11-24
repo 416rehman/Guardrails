@@ -1,3 +1,5 @@
+@import "@xyflow/react/dist/style.css";
+
 .grdr-ui-segmented {
   display: inline-flex;
   align-items: center;
@@ -27,6 +29,13 @@
 
 .grdr-ui-seg-item:hover:not([aria-disabled="true"]):not(:disabled) {
   color: var(--ink-primary);
+}
+
+.grdr-ui-seg-item[data-checked] {
+  background-color: var(--bg-canvas);
+  color: var(--ink-primary);
+  border: 1px solid var(--border-subtle);
+  font-weight: 600;
 }
 
 .grdr-ui-seg-item[aria-disabled="true"],
@@ -68,8 +77,10 @@
   inset-block: 0;
   inset-inline-end: 0;
   z-index: 45;
-  width: min(640px, 100vw);
+  box-sizing: border-box;
+  width: min(680px, 100vw);
   overflow-y: auto;
+  overflow-x: hidden;
   background-color: var(--bg-canvas);
   color: var(--ink-primary);
   border-inline-start: 1px solid var(--border-strong);
@@ -78,6 +89,17 @@
   flex-direction: column;
   gap: var(--space-3);
   box-shadow: var(--shadow-overlay);
+}
+
+.grdr-ui-drawer-content .table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.grdr-ui-drawer-content .grdr-ui-quoted {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-all;
 }
 
 .grdr-ui-drawer-header {
@@ -117,4 +139,139 @@
   background-color: var(--press-tint);
   pointer-events: none;
   transition: width 1s linear;
+}
+
+.grdr-flow-wrap {
+  width: 100%;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-recessed);
+  overflow: hidden;
+  position: relative;
+}
+
+.grdr-flow-node {
+  min-width: 210px;
+  max-width: 260px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--border-strong);
+  background-color: var(--bg-canvas);
+  color: var(--ink-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.grdr-flow-node[data-tone="accent"] {
+  border-color: var(--accent-primary);
+}
+
+.grdr-flow-node[data-tone="allow"] {
+  border-color: var(--tone-allow);
+}
+
+.grdr-flow-node[data-tone="watch"] {
+  border-color: var(--tone-watch);
+}
+
+.grdr-flow-node[data-tone="ask"] {
+  border-color: var(--tone-ask);
+}
+
+.grdr-flow-node[data-tone="block"] {
+  border-color: var(--tone-block);
+}
+
+.grdr-flow-node[data-selected="true"] {
+  border-width: 2px;
+  border-color: var(--accent-primary);
+  background-color: var(--accent-soft);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.grdr-flow-node-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.grdr-flow-node-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  min-width: 0;
+  word-break: normal;
+}
+
+.grdr-flow-node-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grdr-flow-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-recessed);
+  color: var(--ink-secondary);
+  flex-shrink: 0;
+}
+
+.grdr-flow-badge[data-tone="allow"] {
+  background-color: var(--tone-allow-bg);
+  color: var(--tone-allow);
+}
+
+.grdr-flow-badge[data-tone="watch"] {
+  background-color: var(--tone-watch-bg);
+  color: var(--tone-watch);
+}
+
+.grdr-flow-badge[data-tone="ask"] {
+  background-color: var(--tone-ask-bg);
+  color: var(--tone-ask);
+}
+
+.grdr-flow-badge[data-tone="block"] {
+  background-color: var(--tone-block-bg);
+  color: var(--tone-block);
+}
+
+.grdr-flow-badge[data-tone="accent"] {
+  background-color: var(--accent-soft);
+  color: var(--accent-primary);
+}
+
+.grdr-flow-wrap .react-flow__controls {
+  box-shadow: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.grdr-flow-wrap .react-flow__controls-button {
+  background-color: var(--bg-canvas);
+  color: var(--ink-primary);
+  border-bottom-color: var(--border-subtle);
+}
+
+.grdr-flow-wrap .react-flow__edge-text {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  fill: var(--ink-secondary);
+}
+
+.grdr-flow-wrap .react-flow__edge-textbg {
+  fill: var(--bg-canvas);
 }

@@ -6,7 +6,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const UI_PATH_RE = /^(?:web\/(?:packages|apps)|desktop\/).+\.(?:[cm]?[jt]sx?|css|html|rs)$/;
+const UI_PATH_RE =
+  /^(?:web\/(?:packages|apps)|desktop\/|interface\/brand\/|crates\/grdr-ui-model\/src\/).+\.(?:[cm]?[jt]sx?|css|html|rs|svg)$/;
+const RAW_CONTROL_PATH_RE = /^(?:web\/apps\/|web\/packages\/kit\/).+\.[cm]?[jt]sx$/;
+const CUSTOMER_COPY_PATH_RE =
+  /^(?:web\/apps\/|web\/packages\/(?:kit|i18n)\/|desktop\/grdr-desktop\/src\/|crates\/grdr-ui-model\/src\/).+\.(?:[cm]?[jt]sx?|rs)$/;
+const SVG_FILE_RE = /^(?:web\/(?:packages|apps)|desktop\/|interface\/brand\/).+\.svg$/i;
 const TOKEN_OWNER_RE = /^(?:web\/packages\/tokens\/|interface\/tokens\.json$|desktop\/grdr-desktop\/src\/theme\.rs$)/;
 const TEST_FILE_RE = /(?:^|\/)(?:tests?\/|.*(?:\.test\.|_test\.))[^/]+$/;
 
@@ -17,11 +22,54 @@ const EXTERNAL_CDN_RE =
   /fonts\.googleapis\.com|fonts\.gstatic\.com|cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com/i;
 const UNCHOSEN_FONT_RE = /\b(?:Space Grotesk|Instrument Serif|Geist Mono|Geist Sans)\b/i;
 const EMOJI_RE = /[\u{1F300}-\u{1FAFF}]/u;
+const EM_OR_EN_DASH_RE = /[\u2014\u2013]/;
 const LEFT_STRIPE_RE = /\b(?:border-inline-start|border-left)\s*:\s*[3-9]\d*px\s+solid\b/i;
-const BANNED_BUZZWORDS_RE =
-  /\b(?:world-class|enterprise-grade|supercharge|streamline|unleash|seamless|empower)\b/i;
+const AI_WRITING_TELLS_RE =
+  /\b(?:world-class|enterprise-grade|supercharge|streamline|streamlined|unleash|seamless|seamlessly|empower|empowering|delve|effortless|effortlessly|cutting-edge|next-gen|game-changing|revolutionary|leverage|leveraging|crafted|bespoke|holistic|synergy|elevate your|reimagine|reimagined|transformative|unparalleled|state-of-the-art|frictionless|harnessing|tapestry|pivotal|multifaceted|not just [^.!?\n]{1,40} but|it's not about|more than just)\b/i;
 const FORBIDDEN_VOCAB_RE = /\bposture\b/i;
 const ASTRYX_OR_UISDK_IMPORT_RE = /['"]@(?:astryxdesign|ui-sdk)\//;
+const RAW_SVG_RE = /<svg\b|<path\s+[^>]*\bd\s*=/i;
+const RAW_HTML_CONTROL_RE = /<(?:select|input|textarea|dialog)\b/;
+const CUSTOMER_JARGON_RE = /\b(?:AL[0-4]\s*[/–-]\s*AL[0-4]|G1\/G2|D-50|grdr-approve)\b/;
+const GENERATED_HEADER_RE = /^\s*\/\/\s*@generated\b/;
+const QUOTED_LITERAL_RE = /"([^"\\]|\\.)*"|'([^'\\]|\\.)*'|`([^`\\]|\\.)*`/g;
+const JSX_INLINE_TEXT_RE = />([^<>{}]*)</g;
+const SEMICOLON_PROSE_RE = /[A-Za-z0-9];\s+[A-Za-z]/;
+const SEMICOLON_DATA_ALLOW_RE =
+  /data:|image\/|charset|font-|color:|padding:|margin:|display:|http|text\/|application\/|&[a-z]+;|use strict/i;
+
+function hasSemicolonProse(relPath, content) {
+  for (const line of content.split(/\r?\n/)) {
+    QUOTED_LITERAL_RE.lastIndex = 0;
+    let match;
+    while ((match = QUOTED_LITERAL_RE.exec(line)) !== null) {
+      const literal = match[0];
+      if (SEMICOLON_PROSE_RE.test(literal) && !SEMICOLON_DATA_ALLOW_RE.test(literal)) {
+        return true;
+      }
+    }
+    if (/\.[jt]sx$/.test(relPath)) {
+      JSX_INLINE_TEXT_RE.lastIndex = 0;
+      let jsxMatch;
+      while ((jsxMatch = JSX_INLINE_TEXT_RE.exec(line)) !== null) {
+        if (SEMICOLON_PROSE_RE.test(jsxMatch[1])) {
+          return true;
+        }
+      }
+      const stripped = line
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\{[^}]+\}/g, " ")
+        .replace(/\/\/.*$/, "");
+      if (
+        SEMICOLON_PROSE_RE.test(stripped) &&
+        !/^\s*(?:import|export|const|let|var|return|if|else|for|while|\}|type\s|interface\s)/.test(line)
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 export function normalizeRepoPath(filePath, cwd = process.cwd()) {
   if (!filePath || typeof filePath !== "string") return "";
@@ -44,6 +92,27 @@ export function checkDesignContent(relPath, content) {
   const findings = [];
   const isTokenOwner = TOKEN_OWNER_RE.test(relPath);
   const isUiWrapper = relPath.startsWith("web/packages/ui/");
+
+  if (SVG_FILE_RE.test(relPath)) {
+    findings.push(
+      `design-check (${relPath}): hand-authored .svg files are forbidden; use official icon libraries or source PNG assets.`,
+    );
+  }
+  if (!GENERATED_HEADER_RE.test(content) && RAW_SVG_RE.test(content)) {
+    findings.push(
+      ["design-check (", relPath, "): hand-drawn <svg>/<path d=> markup is forbidden; use official icon packages, uploaded brand assets, or registered chart/graph libraries (@grdr/ui)."].join(""),
+    );
+  }
+  if (RAW_CONTROL_PATH_RE.test(relPath) && RAW_HTML_CONTROL_RE.test(content)) {
+    findings.push(
+      ["design-check (", relPath, "): raw <select>/<input>/<textarea>/<dialog> elements are forbidden in apps and kit; use canonical @grdr/ui Astryx primitives (GrdrSelect, TextInput, CheckboxInput, Dialog)."].join(""),
+    );
+  }
+  if (CUSTOMER_COPY_PATH_RE.test(relPath) && CUSTOMER_JARGON_RE.test(content)) {
+    findings.push(
+      `design-check (${relPath}): avoid internal codes (AL0-AL4 ranges, G1/G2, D-50, grdr-approve) in customer-facing UI; use plain language.`,
+    );
+  }
 
   if (!isTokenOwner && HEX_COLOR_RE.test(content)) {
     findings.push(
@@ -75,14 +144,24 @@ export function checkDesignContent(relPath, content) {
       `design-check (${relPath}): decorative emojis are forbidden in product UI; use crisp geometric icons.`,
     );
   }
+  if (EM_OR_EN_DASH_RE.test(content)) {
+    findings.push(
+      `design-check (${relPath}): em dashes and en dashes are forbidden in UI copy and comments; use plain punctuation.`,
+    );
+  }
+  if (CUSTOMER_COPY_PATH_RE.test(relPath) && hasSemicolonProse(relPath, content)) {
+    findings.push(
+      `design-check (${relPath}): avoid semicolon-joined sentences in UI copy; use short separate sentences.`,
+    );
+  }
   if (LEFT_STRIPE_RE.test(content)) {
     findings.push(
       `design-check (${relPath}): do not apply colored left border stripes to general cards or checklist rows.`,
     );
   }
-  if (BANNED_BUZZWORDS_RE.test(content)) {
+  if (AI_WRITING_TELLS_RE.test(content)) {
     findings.push(
-      `design-check (${relPath}): replace generic AI marketing filler with factual domain copy.`,
+      `design-check (${relPath}): replace generic AI writing tells and marketing filler with factual domain copy.`,
     );
   }
   if (FORBIDDEN_VOCAB_RE.test(content)) {

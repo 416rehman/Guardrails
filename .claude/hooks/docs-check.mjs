@@ -3,14 +3,28 @@
 // Shared PreToolUse and CI checks:
 // - Refuse direct git push to main/master; require a valid work branch name.
 // - Refuse third-party analytics/fonts or curl|sh in published docs pages.
+// - Enforce engineering principles (delete outdated code in pre-release beta, ban stopgaps & speculative hacks).
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { coversBranch, isValidWorkBranch, loadRules } from "./branch-findings.mjs";
 
+// Rule 1 enforces deleting outdated unreleased dev-version code/shims during pre-release development
+// (while data schemas and wire contracts remain cleanly modeled for post-GA evolution).
+// Flip to false once Guardrails ships out of beta (GA release) to retire the pre-release Rule 1 check.
+export const PRE_RELEASE_BETA = true;
+
 const PRODUCT_PAGE = /^docs\/product\/(?!reference\/_generated\/).+\.mdx?$/;
 const PUBLISHED = /^(site|docs\/product|docs\/runbooks|docs\/training)\/.+\.(mdx?|[cm]?[jt]sx?|json|ya?ml|css|html)$/;
+const PRODUCT_SOURCE_RE = /^(?:crates|programs|desktop|web\/(?:apps|packages))\/.+\.(?:rs|[cm]?[jt]sx?)$/;
+const SOURCE_TEST_RE = /(?:^|\/)(?:tests?\/|.*(?:\.test\.|_test\.))[^/]+$/;
+const GENERATED_SOURCE_RE = /^\s*\/\/\s*@generated\b/;
+const DEPRECATED_OR_COMPAT_RE =
+  /#\[deprecated\b|@deprecated\b|\b(?:backwards?[_ -]?compat(?:ibility)?|compat[_ -]?shim|legacy[_ -]?fallback|migration[_ -]?shim|kept for compatibility|deprecated alias)\b/i;
+const STOPGAP_RE =
+  /\b(?:make it work for now|deal with it later|temporary workaround|temp hack|stopgap)\b|(?:\/\/|\/\*)\s*(?:HACK|FIXME|XXX):/i;
+const SPECULATIVE_COMMENT_RE = /(?:\/\/|\/\*).*?\b(?:just in case|for future use)\b/i;
 const FRONT_MATTER_KEYS = ["id", "type", "personas", "shapes", "covers", "owner_squad", "stability"];
 const THIRD_PARTY =
   /googletagmanager|google-analytics|gtag\(|fonts\.googleapis|fonts\.gstatic|use\.typekit|plausible\.io|segment\.(io|com)|hotjar|cdn\.jsdelivr|unpkg\.com|cdnjs\.cloudflare/;
@@ -157,6 +171,91 @@ function frontMatterKeys(text) {
   return match[1].split(/\r?\n/).map((line) => line.match(/^([A-Za-z_]+):/)?.[1]).filter(Boolean);
 }
 
+export function isProductSourcePath(relPath) {
+  return PRODUCT_SOURCE_RE.test(relPath) && !SOURCE_TEST_RE.test(relPath);
+}
+
+function normalizeRepoPath(filePath, cwd = process.cwd()) {
+  if (!filePath || typeof filePath !== "string") return "";
+  const normalized = filePath.replace(/\\/g, "/");
+  if (/^[A-Za-z]:\//.test(normalized) || normalized.startsWith("/")) {
+    return relative(resolve(cwd), resolve(filePath)).replace(/\\/g, "/");
+  }
+  return normalized.replace(/^\.\//, "");
+}
+
+export function checkEngineeringContent(
+  relPath,
+  content,
+  { preReleaseBeta = PRE_RELEASE_BETA } = {},
+) {
+  if (!isProductSourcePath(relPath) || typeof content !== "string" || GENERATED_SOURCE_RE.test(content)) {
+    return [];
+  }
+  const found = [];
+  if (preReleaseBeta && DEPRECATED_OR_COMPAT_RE.test(content)) {
+    found.push(
+      `engineering rule 1 (${relPath}, pre-release beta): delete outdated code outright instead of adding deprecated annotations or backward-compatibility shims.`,
+    );
+  }
+  if (SPECULATIVE_COMMENT_RE.test(content)) {
+    found.push(
+      `engineering rule 2 (${relPath}): avoid speculative "just in case" or "for future use" layers; implement the simplest design for current needs.`,
+    );
+  }
+  if (STOPGAP_RE.test(content)) {
+    found.push(
+      `engineering rule 7 (${relPath}): remove stopgap/HACK/FIXME workarounds; fix the architecture directly.`,
+    );
+  }
+  return found;
+}
+
+function stagedProductFiles(cwd) {
+  return run("git", ["diff", "--cached", "--name-only", "--diff-filter=d"], cwd)
+    .split(/\r?\n/)
+    .filter(Boolean);
+}
+
+export function evaluateEngineeringPayload(payload, cwd = process.cwd(), options = {}) {
+  if (!payload || typeof payload !== "object") return [];
+
+  const agyToolName = payload?.toolCall?.name ?? "";
+  if (agyToolName === "write_file" || agyToolName === "edit_file") {
+    const args = payload?.toolCall?.args ?? {};
+    const relPath = normalizeRepoPath(args.Path ?? "", cwd);
+    const snippet = args.Content ?? args.Replacement ?? "";
+    return checkEngineeringContent(relPath, snippet, options);
+  }
+
+  const claudeTool = payload?.tool_name ?? "";
+  const claudeInput = payload?.tool_input ?? {};
+  if (claudeTool === "Write" || claudeTool === "Edit") {
+    const relPath = normalizeRepoPath(claudeInput.file_path ?? "", cwd);
+    const snippet = claudeInput.content ?? claudeInput.new_string ?? "";
+    return checkEngineeringContent(relPath, snippet, options);
+  }
+  if (claudeTool === "MultiEdit" && Array.isArray(claudeInput.edits)) {
+    const relPath = normalizeRepoPath(claudeInput.file_path ?? "", cwd);
+    const combined = claudeInput.edits.map((e) => e?.new_string ?? "").join("\n");
+    return checkEngineeringContent(relPath, combined, options);
+  }
+
+  const command = payload?.tool_input?.command ?? payload?.toolCall?.args?.CommandLine ?? "";
+  if (typeof command === "string" && /\bgit(?:\s+-C\s+\S+)?\s+commit\b/.test(command)) {
+    const found = [];
+    for (const relPath of stagedProductFiles(cwd)) {
+      if (!isProductSourcePath(relPath)) continue;
+      const full = resolve(cwd, relPath);
+      if (!existsSync(full)) continue;
+      found.push(...checkEngineeringContent(relPath, readFileSync(full, "utf8"), options));
+    }
+    return found;
+  }
+
+  return [];
+}
+
 export function findings({ files, ref }, cwd = process.cwd()) {
   const found = [];
   for (const path of files.filter((f) => PRODUCT_PAGE.test(f) || PUBLISHED.test(f))) {
@@ -169,6 +268,11 @@ export function findings({ files, ref }, cwd = process.cwd()) {
     }
     if (THIRD_PARTY.test(text)) found.push(`docs: ${path} loads a third-party script, font or analytics.`);
     if (PIPE_TO_SHELL.test(text)) found.push(`docs: ${path} pipes a download into a shell; show signed installation instructions.`);
+  }
+  for (const path of files.filter((f) => isProductSourcePath(f))) {
+    const text = fileAt(ref, path, cwd);
+    if (text === undefined) continue;
+    found.push(...checkEngineeringContent(path, text));
   }
   return found;
 }
@@ -209,7 +313,10 @@ if (isMainModule()) {
       const payload = JSON.parse(readFileSync(0, "utf8"));
       const command = payload.tool_input?.command ?? payload.toolCall?.args?.CommandLine ?? "";
       const cwd = payload.cwd ?? process.cwd();
-      const found = evaluateHookCommand(command, cwd);
+      const found = [
+        ...evaluateHookCommand(command, cwd),
+        ...evaluateEngineeringPayload(payload, cwd),
+      ];
       if (found.length) {
         process.stderr.write(`${found.join("\n")}\n`);
         process.exit(2);

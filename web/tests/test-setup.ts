@@ -22,6 +22,26 @@ if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
   });
 }
 
+if (typeof HTMLDialogElement !== "undefined") {
+  if (!HTMLDialogElement.prototype.showModal) {
+    HTMLDialogElement.prototype.showModal = function showModal() {
+      this.setAttribute("open", "");
+    };
+  }
+  if (!HTMLDialogElement.prototype.close) {
+    HTMLDialogElement.prototype.close = function close() {
+      this.removeAttribute("open");
+    };
+  }
+}
+
+if (typeof globalThis.CSS === "undefined" || typeof globalThis.CSS.escape !== "function") {
+  globalThis.CSS = {
+    ...(globalThis.CSS ?? {}),
+    escape: (value: string) => String(value).replace(/([^\w-])/g, "\\$1"),
+  } as typeof CSS;
+}
+
 afterEach(() => {
   cleanup();
 });

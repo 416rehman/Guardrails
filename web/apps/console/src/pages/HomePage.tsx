@@ -8,8 +8,30 @@ import type {
   OverviewResponse,
   PolicyPack,
 } from "@grdr/api";
-import { Quoted, VerdictBadge } from "@grdr/kit";
-import { Badge, Banner, Button, GrdrIcon, HStack, Text, VStack } from "@grdr/ui";
+import { formatActionLabel, pluralize } from "@grdr/i18n";
+import { AssuranceBadge, Quoted, VerdictBadge } from "@grdr/kit";
+import {
+  Badge,
+  Banner,
+  Button,
+  GrdrCoverageRing,
+  GrdrIcon,
+  GrdrVelocityChart,
+  HStack,
+  ProgressBar,
+  Text,
+  VStack,
+} from "@grdr/ui";
+
+const VELOCITY_DAYS = [
+  { day: "Mon", allowed: 18, ask: 1, block: 0 },
+  { day: "Tue", allowed: 24, ask: 2, block: 1 },
+  { day: "Wed", allowed: 21, ask: 0, block: 1 },
+  { day: "Thu", allowed: 32, ask: 3, block: 2 },
+  { day: "Fri", allowed: 28, ask: 1, block: 0 },
+  { day: "Sat", allowed: 14, ask: 0, block: 0 },
+  { day: "Sun", allowed: 19, ask: 1, block: 1 },
+];
 
 export function HomePage({
   overview,
@@ -42,10 +64,6 @@ export function HomePage({
   const coveragePct =
     allAgents.length === 0 ? 0 : Math.round((boundaryAgents / allAgents.length) * 100);
   const totalRules = packs.reduce((sum, pack) => sum + pack.rules.length, 0);
-
-  const ringRadius = 46;
-  const ringCirc = 2 * Math.PI * ringRadius;
-  const ringDashOffset = ringCirc - (coveragePct / 100) * ringCirc;
 
   const headline =
     pending.length > 0
@@ -89,7 +107,7 @@ export function HomePage({
         <div>
           <h1 className="hero-headline">{headline}</h1>
           <p className="hero-summary">
-            {`Watching ${allAgents.length} coding agent(s) across ${hostNames} under ${packs.length} active policy pack(s).`}
+            {`Watching ${pluralize(allAgents.length, "agent")} across ${hostNames} with ${pluralize(packs.length, "active policy pack")}.`}
           </p>
 
           <HStack gap={2} style={{ marginTop: 20 }}>
@@ -108,19 +126,19 @@ export function HomePage({
 
           <div className="metric-strip">
             <div className="metric-cell">
-              <div className="metric-value tabular">{`${coveragePct}%`}</div>
-              <div className="metric-label">Boundary coverage</div>
-              <div className="metric-note">{`${boundaryAgents} of ${allAgents.length} agents`}</div>
+              <div className="metric-value tabular">{devices.length}</div>
+              <div className="metric-label">Enrolled hosts</div>
+              <div className="metric-note">{`${pluralize(allAgents.length, "discovered agent")}`}</div>
             </div>
             <div className="metric-cell">
               <div className="metric-value tabular">{pending.length}</div>
               <div className="metric-label">Waiting approvals</div>
-              <div className="metric-note">Scoped G1/G2 grants</div>
+              <div className="metric-note">One-time or session</div>
             </div>
             <div className="metric-cell">
               <div className="metric-value tabular">{openFindings.length}</div>
               <div className="metric-label">Open findings</div>
-              <div className="metric-note">{`${overview?.active_sessions ?? 0} active session(s)`}</div>
+              <div className="metric-note">{pluralize(overview?.active_sessions ?? 0, "active session")}</div>
             </div>
             <div className="metric-cell">
               <div className="metric-value tabular">{totalRules}</div>
@@ -131,53 +149,12 @@ export function HomePage({
         </div>
 
         <div className="ring-panel">
-          <svg
-            width="124"
-            height="124"
-            viewBox="0 0 124 124"
-            role="img"
-            aria-label={`${coveragePct} percent boundary coverage`}
-          >
-            <circle
-              cx="62"
-              cy="62"
-              r={ringRadius}
-              fill="none"
-              stroke="var(--border-strong)"
-              strokeWidth="8"
-            />
-            <circle
-              cx="62"
-              cy="62"
-              r={ringRadius}
-              fill="none"
-              stroke={coveragePct >= 80 ? "var(--tone-allow)" : "var(--accent-primary)"}
-              strokeWidth="8"
-              strokeLinecap="round"
-              strokeDasharray={ringCirc}
-              strokeDashoffset={ringDashOffset}
-              transform="rotate(-90 62 62)"
-            />
-            <text
-              x="62"
-              y="60"
-              textAnchor="middle"
-              fill="var(--ink-primary)"
-              fontSize="24"
-              fontWeight="700"
-            >
-              {`${coveragePct}%`}
-            </text>
-            <text
-              x="62"
-              y="78"
-              textAnchor="middle"
-              fill="var(--ink-muted)"
-              fontSize="11"
-            >
-              Boundary
-            </text>
-          </svg>
+          <GrdrCoverageRing
+            valuePct={coveragePct}
+            label="Boundary"
+            size={136}
+            tone={coveragePct >= 80 ? "allow" : "accent"}
+          />
 
           <Button
             variant="ghost"
@@ -189,12 +166,40 @@ export function HomePage({
         </div>
       </section>
 
+      <section className="visual-panel" aria-label="Weekly decision velocity">
+        <HStack justify="between" align="center" style={{ flexWrap: "wrap", gap: 12 }}>
+          <HStack gap={2} align="center">
+            <GrdrIcon name="activity" size={16} color="var(--accent-primary)" />
+            <Text style={{ fontWeight: 600 }}>
+              Evaluated agent calls this week (169)
+            </Text>
+          </HStack>
+          <HStack gap={2} align="center">
+            <Badge variant="neutral" label="Allowed (156)" />
+            <Badge variant="warning" icon={<GrdrIcon name="hand" size={11} />} label="Ask (8)" />
+            <Badge variant="error" icon={<GrdrIcon name="ban" size={11} />} label="Blocked (5)" />
+          </HStack>
+        </HStack>
+        <GrdrVelocityChart data={VELOCITY_DAYS} />
+      </section>
+
       <section className="ledger-section" aria-label="Needs you">
         <div className="ledger-header">
           <h2 className="ledger-title">Waiting for your decision</h2>
-          <Text size="sm" color="secondary" className="tabular">
-            {`${pending.length} approval(s), ${openFindings.length} open finding(s)`}
-          </Text>
+          <HStack gap={2} align="center">
+            <Text size="sm" color="secondary" className="tabular">
+              {`${pluralize(pending.length, "approval")}, ${pluralize(openFindings.length, "open finding")}`}
+            </Text>
+            {openFindings.length > 2 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                label={`View all ${openFindings.length} findings`}
+                endContent={<GrdrIcon name="arrow-right" size={13} />}
+                onClick={() => onNavigate("respond")}
+              />
+            )}
+          </HStack>
         </div>
 
         {pending.length === 0 && openFindings.length === 0 ? (
@@ -261,29 +266,35 @@ export function HomePage({
               );
             })}
 
-            {openFindings.slice(0, 4).map((finding) => (
-              <div key={finding.id} className="ledger-row">
-                <div className="ledger-row-main">
-                  <VStack gap={1}>
-                    <HStack gap={2} align="center">
-                      <GrdrIcon name="alert-circle" size={14} color="var(--tone-block)" />
-                      <strong>{finding.title}</strong>
-                      <Text size="sm" color="secondary">
-                        {`${finding.agent_name} on ${finding.device_name}`}
-                      </Text>
-                    </HStack>
-                    <Quoted text={finding.target} />
-                  </VStack>
+            {openFindings.slice(0, 2).map((finding) => {
+              const displayTitle = finding.title
+                .replace(/\b(?:file\.write|file\.read|file\.delete|exec|mcp\.call|net\.request|cred\.use)\b/g, (m) =>
+                  formatActionLabel(m),
+                );
+              return (
+                <div key={finding.id} className="ledger-row">
+                  <div className="ledger-row-main">
+                    <VStack gap={1}>
+                      <HStack gap={2} align="center">
+                        <GrdrIcon name="alert-circle" size={14} color="var(--tone-block)" />
+                        <strong>{displayTitle}</strong>
+                        <Text size="sm" color="secondary">
+                          {`${finding.agent_name} on ${finding.device_name}`}
+                        </Text>
+                      </HStack>
+                      <Quoted text={finding.target} />
+                    </VStack>
 
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    label="Inspect"
-                    onClick={() => onNavigate("respond")}
-                  />
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      label="Inspect"
+                      onClick={() => onNavigate("respond")}
+                    />
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
@@ -297,9 +308,7 @@ export function HomePage({
             </Text>
           </div>
 
-          <div className="progress-track" aria-hidden="true">
-            <div className="progress-fill" style={{ width: `${readinessPct}%` }} />
-          </div>
+          <ProgressBar value={readinessPct} max={100} label="Setup readiness" isLabelHidden />
 
           <div className="checklist">
             {overview?.setup_steps.map((step) => (
@@ -344,15 +353,42 @@ export function HomePage({
 
           <div className="checklist">
             {devices.map((device) => (
-              <div key={device.id} className="check-row">
-                <div>
-                  <div style={{ fontWeight: 600 }}>{device.hostname}</div>
-                  <Text size="sm" color="secondary">
-                    {`${device.os} / ${device.arch}, ${device.agents.length} agent(s), ${device.mcp_servers.length} MCP server(s)`}
-                  </Text>
-                </div>
+              <div key={device.id} className="check-row" style={{ alignItems: "flex-start" }}>
+                <HStack gap={2} align="start">
+                  <div
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 6,
+                      background: "var(--bg-recessed)",
+                      border: "1px solid var(--border-subtle)",
+                      display: "grid",
+                      placeItems: "center",
+                      flexShrink: 0,
+                      marginTop: 2,
+                    }}
+                  >
+                    <GrdrIcon name="cpu" size={14} color="var(--ink-primary)" />
+                  </div>
+                  <VStack gap={1}>
+                    <div style={{ fontWeight: 600 }}>{device.hostname}</div>
+                    <Text size="sm" color="secondary">
+                      {`${device.os} / ${device.arch} · ${pluralize(device.agents.length, "agent")} · ${pluralize(device.mcp_servers.length, "MCP server")}`}
+                    </Text>
+                    <HStack gap={1} style={{ flexWrap: "wrap" }}>
+                      {device.agents.map((ag) => (
+                        <AssuranceBadge
+                          key={ag.id}
+                          level={ag.assurance_level}
+                          control={`${ag.name}: ${ag.assurance.control}`}
+                        />
+                      ))}
+                    </HStack>
+                  </VStack>
+                </HStack>
                 <Badge
                   variant={device.hook_effective ? "success" : "warning"}
+                  icon={<GrdrIcon name={device.hook_effective ? "shield-check" : "shield-alert"} size={12} />}
                   label={device.hook_effective ? "Hooks active" : "Request mode"}
                 />
               </div>

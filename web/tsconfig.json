@@ -22,5 +22,5 @@
       "@grdr/operator": ["./apps/operator/src/OperatorApp.tsx"]
     }
   },
-  "include": ["packages", "apps", "tests"]
+  "include": ["packages", "apps", "tests", "assets.d.ts"]
 }

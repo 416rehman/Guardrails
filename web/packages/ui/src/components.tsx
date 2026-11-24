@@ -3,11 +3,37 @@ import { Badge, type BadgeVariant } from "@astryxdesign/core/Badge";
 import { Banner, type BannerStatus } from "@astryxdesign/core/Banner";
 import { Button, type ButtonSize, type ButtonVariant } from "@astryxdesign/core/Button";
 import { Card, type CardVariant } from "@astryxdesign/core/Card";
+import { CheckboxInput } from "@astryxdesign/core/CheckboxInput";
+import { Dialog } from "@astryxdesign/core/Dialog";
 import { Divider } from "@astryxdesign/core/Divider";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { Kbd } from "@astryxdesign/core/Kbd";
+import { Pagination } from "@astryxdesign/core/Pagination";
+import { ProgressBar } from "@astryxdesign/core/ProgressBar";
+import { Selector, type SelectorOptionData } from "@astryxdesign/core/Selector";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
+import { Switch } from "@astryxdesign/core/Switch";
 import { Heading, Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
+import { Tooltip } from "@astryxdesign/core/Tooltip";
+import {
+  SiAnthropic,
+  SiClaude,
+  SiClaudecode,
+  SiCloudflare,
+  SiCursor,
+  SiGithubcopilot,
+  SiGoogle,
+  SiGooglegemini,
+  SiKong,
+  SiMetaai,
+  SiMistralai,
+  SiModelcontextprotocol,
+  SiOpencode,
+  SiWindsurf,
+} from "@icons-pack/react-simple-icons";
+import guardrailsMarkPng from "./assets/guardrails-mark.png";
 import {
   Activity,
   AlertCircle,
@@ -22,11 +48,13 @@ import {
   Circle,
   CircleOff,
   Clock,
+  Code2,
   Cpu,
   Download,
   Eye,
   FileJson,
   FileText,
+  GitBranch,
   Hand,
   HardDrive,
   HeartPulse,
@@ -36,6 +64,8 @@ import {
   List,
   Lock,
   Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Play,
   Plug,
@@ -52,15 +82,40 @@ import {
   ShieldCheck,
   ShieldHalf,
   ShieldOff,
+  SlidersHorizontal,
   Sun,
   Tag,
   Terminal,
   Trash2,
   X,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
 } from "lucide-react";
 
-export { Badge, Banner, Button, Card, Divider, EmptyState, Heading, HStack, Text, TextInput, VStack };
-export type { BadgeVariant, BannerStatus, ButtonSize, ButtonVariant, CardVariant };
+export {
+  Badge,
+  Banner,
+  Button,
+  Card,
+  CheckboxInput,
+  Dialog,
+  Divider,
+  EmptyState,
+  Heading,
+  HStack,
+  IconButton,
+  Kbd,
+  Pagination,
+  ProgressBar,
+  Selector,
+  Switch,
+  Text,
+  TextInput,
+  Tooltip,
+  VStack,
+};
+export type { BadgeVariant, BannerStatus, ButtonSize, ButtonVariant, CardVariant, SelectorOptionData };
 
 export type GrdrIconName =
   | "activity"
@@ -76,11 +131,13 @@ export type GrdrIconName =
   | "circle"
   | "circle-off"
   | "clock"
+  | "code"
   | "cpu"
   | "download"
   | "eye"
   | "file-json"
   | "file-text"
+  | "git-branch"
   | "hand"
   | "hard-drive"
   | "heart-pulse"
@@ -90,6 +147,8 @@ export type GrdrIconName =
   | "list"
   | "lock"
   | "moon"
+  | "panel-left-close"
+  | "panel-left-open"
   | "pencil"
   | "play"
   | "plug"
@@ -106,11 +165,15 @@ export type GrdrIconName =
   | "shield-check"
   | "shield-half"
   | "shield-off"
+  | "sliders-horizontal"
   | "sun"
   | "tag"
   | "terminal"
   | "trash"
-  | "x";
+  | "x"
+  | "zoom-in"
+  | "zoom-out"
+  | "maximize";
 
 export function GrdrIcon({
   name,
@@ -156,6 +219,8 @@ export function GrdrIcon({
       return <CircleOff {...props} />;
     case "clock":
       return <Clock {...props} />;
+    case "code":
+      return <Code2 {...props} />;
     case "cpu":
       return <Cpu {...props} />;
     case "download":
@@ -166,6 +231,8 @@ export function GrdrIcon({
       return <FileJson {...props} />;
     case "file-text":
       return <FileText {...props} />;
+    case "git-branch":
+      return <GitBranch {...props} />;
     case "hand":
       return <Hand {...props} />;
     case "hard-drive":
@@ -184,6 +251,10 @@ export function GrdrIcon({
       return <Lock {...props} />;
     case "moon":
       return <Moon {...props} />;
+    case "panel-left-close":
+      return <PanelLeftClose {...props} />;
+    case "panel-left-open":
+      return <PanelLeftOpen {...props} />;
     case "pencil":
       return <Pencil {...props} />;
     case "play":
@@ -216,6 +287,8 @@ export function GrdrIcon({
       return <ShieldHalf {...props} />;
     case "shield-off":
       return <ShieldOff {...props} />;
+    case "sliders-horizontal":
+      return <SlidersHorizontal {...props} />;
     case "sun":
       return <Sun {...props} />;
     case "tag":
@@ -226,6 +299,12 @@ export function GrdrIcon({
       return <Trash2 {...props} />;
     case "x":
       return <X {...props} />;
+    case "zoom-in":
+      return <ZoomIn {...props} />;
+    case "zoom-out":
+      return <ZoomOut {...props} />;
+    case "maximize":
+      return <Maximize2 {...props} />;
   }
 }
 
@@ -288,6 +367,131 @@ export function iconKeyToName(iconKey: string): GrdrIconName {
     default:
       return "shield";
   }
+}
+
+export function GuardrailsMark({
+  size = 24,
+  ariaLabel,
+}: {
+  size?: number;
+  ariaLabel?: string;
+}) {
+  return (
+    <img
+      src={guardrailsMarkPng}
+      width={size}
+      height={size}
+      alt={ariaLabel ?? ""}
+      aria-hidden={ariaLabel ? undefined : true}
+      className="grdr-brand-img"
+    />
+  );
+}
+
+export function HarnessIcon({
+  name,
+  size = 15,
+}: {
+  name: string;
+  size?: number;
+}) {
+  const norm = name.trim().toLowerCase();
+
+  if (norm.includes("claude-code") || norm.includes("claude code")) {
+    return <SiClaudecode size={size} color="var(--tone-ask)" aria-hidden="true" />;
+  }
+  if (norm.includes("claude")) {
+    return <SiClaude size={size} color="var(--tone-ask)" aria-hidden="true" />;
+  }
+  if (norm.includes("anthropic")) {
+    return <SiAnthropic size={size} color="var(--ink-primary)" aria-hidden="true" />;
+  }
+  if (norm.includes("cursor")) {
+    return <SiCursor size={size} color="var(--accent-primary)" aria-hidden="true" />;
+  }
+  if (norm.includes("gemini")) {
+    return <SiGooglegemini size={size} color="var(--accent-primary)" aria-hidden="true" />;
+  }
+  if (norm.includes("google")) {
+    return <SiGoogle size={size} color="var(--accent-primary)" aria-hidden="true" />;
+  }
+  if (norm.includes("copilot")) {
+    return <SiGithubcopilot size={size} color="var(--tone-allow)" aria-hidden="true" />;
+  }
+  if (norm.includes("windsurf")) {
+    return <SiWindsurf size={size} color="var(--accent-primary)" aria-hidden="true" />;
+  }
+  if (norm.includes("opencode")) {
+    return <SiOpencode size={size} color="var(--ink-primary)" aria-hidden="true" />;
+  }
+  if (norm.includes("meta") || norm.includes("llama")) {
+    return <SiMetaai size={size} color="var(--accent-primary)" aria-hidden="true" />;
+  }
+  if (norm.includes("mistral")) {
+    return <SiMistralai size={size} color="var(--tone-ask)" aria-hidden="true" />;
+  }
+  if (norm.includes("guardrails")) {
+    return <GuardrailsMark size={size} />;
+  }
+  if (norm.includes("kong")) {
+    return <SiKong size={size} color="var(--tone-allow)" aria-hidden="true" />;
+  }
+  if (norm.includes("mcp")) {
+    return <SiModelcontextprotocol size={size} color="var(--ink-primary)" aria-hidden="true" />;
+  }
+  if (norm.includes("litellm")) {
+    return <GrdrIcon name="layers" size={size} color="var(--accent-primary)" />;
+  }
+  if (norm.includes("azure")) {
+    return <GrdrIcon name="box" size={size} color="var(--accent-primary)" />;
+  }
+  if (norm.includes("portkey")) {
+    return <GrdrIcon name="route" size={size} color="var(--tone-ask)" />;
+  }
+  if (norm.includes("bedrock") || norm.includes("aws")) {
+    return <SiCloudflare size={size} color="var(--tone-ask)" aria-hidden="true" />;
+  }
+  if (norm.includes("codex") || norm.includes("openai")) {
+    return <GrdrIcon name="key-round" size={size} color="var(--accent-primary)" />;
+  }
+  if (norm.includes("proxy") || norm.includes("gateway")) {
+    return <GrdrIcon name="server" size={size} color="var(--accent-primary)" />;
+  }
+
+  return <GrdrIcon name="cpu" size={size} />;
+}
+
+export function GrdrSelect({
+  label,
+  isLabelHidden = false,
+  value,
+  options,
+  onChange,
+  size = "md",
+  variant = "input",
+  width,
+}: {
+  label: string;
+  isLabelHidden?: boolean;
+  value: string;
+  options: ReadonlyArray<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+  size?: "sm" | "md" | "lg";
+  variant?: "input" | "secondary" | "ghost";
+  width?: number | string;
+}) {
+  return (
+    <Selector
+      label={label}
+      isLabelHidden={isLabelHidden}
+      options={options.map((o) => ({ value: o.value, label: o.label }))}
+      value={value}
+      onChange={onChange}
+      size={size}
+      variant={variant}
+      width={width}
+    />
+  );
 }
 
 export function surfaceAction(label: string, icon?: GrdrIconName, children?: ReactNode) {

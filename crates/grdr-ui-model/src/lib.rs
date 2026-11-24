@@ -320,7 +320,7 @@ impl AppVm {
                 steps: vec![
                     SetupStepVm {
                         id: "scan-agents".to_owned(),
-                        label: "Read-only harness scan completed".to_owned(),
+                        label: "Read-only agent scan completed".to_owned(),
                         detail: "Discovered Claude Code and Cursor".to_owned(),
                         done: true,
                     },
@@ -339,18 +339,18 @@ impl AppVm {
                     SetupStepVm {
                         id: "turn-on-protection".to_owned(),
                         label: "Confirm protection profile".to_owned(),
-                        detail: "Protected pre-selected; one OS confirmation".to_owned(),
+                        detail: "Protected is pre-selected with one OS confirmation".to_owned(),
                         done: false,
                     },
                     SetupStepVm {
                         id: "canary-session".to_owned(),
                         label: "Prove hook enforcement in next session".to_owned(),
-                        detail: "Elevates agents to AL3 boundary".to_owned(),
+                        detail: "Upgrades agents to sandboxed protection".to_owned(),
                         done: false,
                     },
                     SetupStepVm {
                         id: "stepup-grade".to_owned(),
-                        label: "Enrol platform user presence (G1)".to_owned(),
+                        label: "Enable biometric approval".to_owned(),
                         detail: "Windows Hello / Touch ID / polkit".to_owned(),
                         done: false,
                     },
@@ -398,9 +398,9 @@ impl AppVm {
                     },
                     InsightTileVm {
                         id: "prompt-health".to_owned(),
-                        headline: "Prompt health".to_owned(),
+                        headline: "Approval prompts".to_owned(),
                         metric: "2 today".to_owned(),
-                        comparison: "Below 3/day target median".to_owned(),
+                        comparison: "Normal approval volume".to_owned(),
                         action_label: "Review rules".to_owned(),
                         target_screen: Screen::Rules,
                     },
@@ -456,7 +456,7 @@ impl AppVm {
                         target_pattern: "~/.ssh/, ~/.aws/, ~/.gnupg/".to_owned(),
                         mode: ModeLevel::Ask,
                         locked: false,
-                        effective_note: "Asks via grdr-approve (G1)".to_owned(),
+                        effective_note: "Prompts for approval before opening".to_owned(),
                     },
                     RuleRowVm {
                         id: "essentials.secret-exfil-egress".to_owned(),
@@ -473,8 +473,9 @@ impl AppVm {
             },
             privacy: PrivacyVm {
                 disclosure_header: lookup(locale, MessageKey::PrivacyNoticeHeader),
-                capture_scope: "Tool arguments stayed on this device; targets normalized locally."
-                    .to_owned(),
+                capture_scope:
+                    "Tool arguments stay on this device, and targets are normalized locally."
+                        .to_owned(),
                 local_retention_days: 30,
                 telemetry_destination: "Standalone (zero external telemetry)".to_owned(),
                 managed_org: None,
@@ -508,6 +509,7 @@ pub enum Intent {
     Navigate(Screen),
     ToggleTheme,
     SelectInstallProfile(InstallProfile),
+    ConfirmProtection,
     SelectSession(String),
     FilterActivity(Option<String>),
     SelectRulePreset(RulePreset),
@@ -576,6 +578,27 @@ pub fn reduce(app: &mut AppVm, intent: Intent) -> Vec<Effect> {
                 }];
             }
             app.first_run.selected_profile = profile;
+            app.home.install_profile = profile;
+            app.settings.install_profile = profile;
+            Vec::new()
+        }
+        Intent::ConfirmProtection => {
+            if app.agent_caller {
+                return vec![Effect::NotifyReadOnly {
+                    reason: "Agent callers cannot confirm protection settings.".to_owned(),
+                }];
+            }
+            let profile = app.first_run.selected_profile;
+            app.home.install_profile = profile;
+            app.settings.install_profile = profile;
+            if let Some(step) = app
+                .first_run
+                .steps
+                .iter_mut()
+                .find(|s| s.id == "turn-on-protection")
+            {
+                step.done = true;
+            }
             Vec::new()
         }
         Intent::OpenApproval { request_id } => {

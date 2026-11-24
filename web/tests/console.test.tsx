@@ -322,7 +322,7 @@ describe("Astryx and UI SDK components", () => {
         <VerdictBadge verdict="deny" />
       </GrdrThemeProvider>,
     );
-    expect(screen.getByText("DENY")).toBeTruthy();
+    expect(screen.getByText("Deny")).toBeTruthy();
   });
 });
 
@@ -424,6 +424,18 @@ describe("ARCH-101..104 interface workspace guardrails", () => {
     for (const file of files) {
       const content = readFileSync(file, "utf8");
       expect(content).not.toMatch(/fonts\.googleapis\.com|fonts\.gstatic\.com|cdn\.jsdelivr\.net|unpkg\.com/);
+    }
+  });
+
+  it("contains zero hand-drawn inline SVG or path elements across web source files", () => {
+    const files = [
+      ...walkSourceFiles(join(webRoot, "packages")),
+      ...walkSourceFiles(join(webRoot, "apps")),
+    ];
+    for (const file of files) {
+      const content = readFileSync(file, "utf8");
+      expect(content).not.toMatch(/<svg\b/i);
+      expect(content).not.toMatch(/<path\s+[^>]*\bd=/i);
     }
   });
 });

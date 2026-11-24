@@ -8,17 +8,33 @@ import {
   type OverviewResponse,
   type TrustedKeyInfo,
 } from "@grdr/api";
-import { OPERATOR_ROUTES, type OperatorRouteId, t } from "@grdr/i18n";
+import { OPERATOR_ROUTES, type OperatorRouteId, pluralize, t } from "@grdr/i18n";
+
+function formatAuditKind(kind: string): string {
+  switch (kind) {
+    case "policy.pack.loaded":
+      return "Policy pack loaded";
+    case "policy.update":
+      return "Policy updated";
+    case "kill_switch.updated":
+      return "Kill switch changed";
+    default:
+      return kind.replace(/\./g, " ");
+  }
+}
 import { ViewStateFrame } from "@grdr/kit";
 import {
   Badge,
   Banner,
   Button,
   EmptyState,
+  GrdrFlowGraph,
   GrdrIcon,
   GrdrThemeProvider,
+  GuardrailsMark,
   Heading,
   HStack,
+  IconButton,
   Text,
   VStack,
   iconKeyToName,
@@ -35,6 +51,7 @@ interface OperatorSnapshot {
 export function OperatorApp() {
   const [route, setRoute] = useState<OperatorRouteId>("op-overview");
   const [themeMode, setThemeMode] = useState<GrdrThemeMode>("light");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [snapshot, setSnapshot] = useState<OperatorSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -87,16 +104,27 @@ export function OperatorApp() {
 
   return (
     <GrdrThemeProvider mode={themeMode}>
-      <div className="shell">
-        <aside className="rail" aria-label="Operator navigation">
-          <div className="brand-mark">
-            <div className="brand-glyph">
-              <GrdrIcon name="lock" size={16} />
+      <div className={sidebarCollapsed ? "shell collapsed" : "shell"}>
+        <aside className={sidebarCollapsed ? "rail collapsed" : "rail"} aria-label="Operator navigation">
+          <div className="brand-header">
+            <div className="brand-mark">
+              <div className="brand-glyph">
+                <GuardrailsMark size={18} />
+              </div>
+              {!sidebarCollapsed && (
+                <div className="brand-title">
+                  <strong>{t("grdr.brand.name")}</strong>
+                  <span>{t("grdr.brand.operator_subtitle")}</span>
+                </div>
+              )}
             </div>
-            <div className="brand-title">
-              <strong>{t("grdr.brand.name")}</strong>
-              <span>{t("grdr.brand.operator_subtitle")}</span>
-            </div>
+            <IconButton
+              label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
+              icon={<GrdrIcon name={sidebarCollapsed ? "panel-left-open" : "panel-left-close"} size={15} />}
+              variant="ghost"
+              size="sm"
+              onClick={() => setSidebarCollapsed((c) => !c)}
+            />
           </div>
 
           <nav className="rail-nav">
@@ -104,26 +132,24 @@ export function OperatorApp() {
               <button
                 key={item.id}
                 type="button"
+                title={t(item.labelKey)}
+                aria-label={t(item.labelKey)}
                 className={item.id === route ? "nav-item active" : "nav-item"}
                 onClick={() => setRoute(item.id)}
               >
                 <span className="nav-item-label">
                   <GrdrIcon name={iconKeyToName(item.iconKey)} size={16} />
-                  <span>{t(item.labelKey)}</span>
+                  {!sidebarCollapsed && <span>{t(item.labelKey)}</span>}
                 </span>
               </button>
             ))}
           </nav>
 
-          <div className="rail-footer">
-            <Button
-              label={themeMode === "dark" ? "Light theme" : "Dark theme"}
-              variant="ghost"
-              size="sm"
-              icon={<GrdrIcon name={themeMode === "dark" ? "sun" : "moon"} size={14} />}
-              onClick={() => setThemeMode((prev: GrdrThemeMode) => (prev === "dark" ? "light" : "dark"))}
-            />
-          </div>
+          {!sidebarCollapsed && (
+            <div className="rail-footer">
+              <span>Local audit plane</span>
+            </div>
+          )}
         </aside>
 
         <div className="workspace">
@@ -132,13 +158,23 @@ export function OperatorApp() {
               <Badge variant="warning" label="Operator realm" icon={<GrdrIcon name="lock" size={12} />} />
               <span style={{ fontSize: 13 }}>{t("operator.context.banner")}</span>
             </HStack>
-            <Button
-              label="Refresh"
-              variant="secondary"
-              size="sm"
-              icon={<GrdrIcon name="refresh" size={14} />}
-              onClick={() => void load()}
-            />
+            <HStack gap={2} align="center">
+              <Button
+                label="Refresh"
+                variant="secondary"
+                size="sm"
+                icon={<GrdrIcon name="refresh" size={14} />}
+                onClick={() => void load()}
+              />
+              <Button
+                label={themeMode === "dark" ? "Light" : "Dark"}
+                variant="secondary"
+                size="sm"
+                icon={<GrdrIcon name={themeMode === "dark" ? "sun" : "moon"} size={14} />}
+                aria-label="Toggle color theme"
+                onClick={() => setThemeMode((prev: GrdrThemeMode) => (prev === "dark" ? "light" : "dark"))}
+              />
+            </HStack>
           </header>
 
           <main className="content-area">
@@ -193,7 +229,9 @@ export function OperatorApp() {
                       <>
                         <div className="metric-strip" style={{ borderBlockEnd: "1px solid var(--border-subtle)", paddingBlockEnd: 24, marginBlockStart: 0 }}>
                           <div className="metric-cell">
-                            <div className="metric-value tabular">{snapshot.health.status}</div>
+                            <div className="metric-value tabular">
+                              {snapshot.health.status === "ok" ? "Healthy" : snapshot.health.status}
+                            </div>
                             <div className="metric-label">Service health</div>
                             <div className="metric-note">{`Version ${snapshot.health.version} (${snapshot.health.storage_mode})`}</div>
                           </div>
@@ -217,13 +255,45 @@ export function OperatorApp() {
                         <div className="quiet-split">
                           <section className="ledger-section">
                             <div className="ledger-header">
-                              <h2 className="ledger-title">Deployment boundary</h2>
-                              <Badge variant="success" label="P8 isolated" />
+                              <HStack gap={2} align="center">
+                                <GrdrIcon name="shield-check" size={16} color="var(--tone-allow)" />
+                                <h2 className="ledger-title">Deployment boundary</h2>
+                              </HStack>
+                              <Badge variant="success" icon={<GrdrIcon name="lock" size={11} />} label="P8 isolated" />
                             </div>
-                            <div className="kv-row">
-                              <Text color="secondary">Tenant prompt & payload routes</Text>
-                              <Text className="mono">Unmounted (0)</Text>
-                            </div>
+                            <GrdrFlowGraph
+                              direction="LR"
+                              height={220}
+                              ariaLabel="P8 Deployment isolation boundary diagram"
+                              nodes={[
+                                {
+                                  id: "op-realm",
+                                  label: "Operator plane",
+                                  subtitle: `${pluralize(snapshot.keys.length, "key")} · ${pluralize(snapshot.audit.length, "audit")}`,
+                                  badge: "Isolated",
+                                  tone: "accent",
+                                  icon: "server",
+                                },
+                                {
+                                  id: "tenant-plane",
+                                  label: "Tenant payloads",
+                                  subtitle: "Unmounted on operator origin",
+                                  badge: "Blocked",
+                                  tone: "block",
+                                  icon: "lock",
+                                },
+                              ]}
+                              edges={[
+                                {
+                                  id: "p8-wall",
+                                  source: "op-realm",
+                                  target: "tenant-plane",
+                                  label: "No route",
+                                  dashed: true,
+                                  tone: "block",
+                                },
+                              ]}
+                            />
                             <div className="kv-row">
                               <Text color="secondary">Storage engine</Text>
                               <Text className="mono">{snapshot.health.storage_mode}</Text>
@@ -232,12 +302,17 @@ export function OperatorApp() {
                               <Text color="secondary">Kill switch state</Text>
                               <Badge
                                 variant={snapshot.overview.kill_switch.state === "inactive" ? "success" : "error"}
-                                label={snapshot.overview.kill_switch.state}
+                                label={snapshot.overview.kill_switch.state === "inactive" ? "Inactive" : snapshot.overview.kill_switch.state}
                               />
                             </div>
                             <div className="kv-row">
                               <Text color="secondary">Pending operator approvals</Text>
-                              <Text hasTabularNumbers>{snapshot.overview.pending_approvals}</Text>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                label={`${snapshot.overview.pending_approvals} · Inspect audit`}
+                                onClick={() => setRoute("op-audit")}
+                              />
                             </div>
                           </section>
 
@@ -262,7 +337,7 @@ export function OperatorApp() {
                               <table className="table">
                                 <thead>
                                   <tr>
-                                    <th>Kind</th>
+                                    <th>Event</th>
                                     <th>Actor</th>
                                     <th>Summary</th>
                                   </tr>
@@ -270,7 +345,7 @@ export function OperatorApp() {
                                 <tbody>
                                   {snapshot.audit.slice(0, 5).map((entry) => (
                                     <tr key={entry.id}>
-                                      <td className="mono">{entry.kind}</td>
+                                      <td>{formatAuditKind(entry.kind)}</td>
                                       <td>{entry.actor}</td>
                                       <td>{entry.summary}</td>
                                     </tr>

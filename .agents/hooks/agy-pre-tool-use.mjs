@@ -6,7 +6,8 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { evaluateDesignToolPayload } from "../../.claude/hooks/design-check.mjs";
-import { evaluateHookCommand } from "../../.claude/hooks/docs-check.mjs";
+import { evaluateEngineeringPayload, evaluateHookCommand } from "../../.claude/hooks/docs-check.mjs";
+import { evaluateVisualAuditToolPayload } from "../../.claude/hooks/visual-audit-check.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..");
@@ -22,9 +23,12 @@ export function handleHookPayload(rawText) {
         : REPO_ROOT;
 
   if (toolName === "write_file" || toolName === "edit_file") {
-    const designFindings = evaluateDesignToolPayload(payload, cwd);
-    if (designFindings.length > 0) {
-      return { decision: "deny", reason: designFindings.join("\n") };
+    const findings = [
+      ...evaluateEngineeringPayload(payload, cwd),
+      ...evaluateDesignToolPayload(payload, cwd),
+    ];
+    if (findings.length > 0) {
+      return { decision: "deny", reason: findings.join("\n") };
     }
     return { decision: "allow" };
   }
@@ -38,7 +42,9 @@ export function handleHookPayload(rawText) {
   }
   const found = [
     ...evaluateHookCommand(command, cwd),
+    ...evaluateEngineeringPayload(payload, cwd),
     ...evaluateDesignToolPayload(payload, cwd),
+    ...evaluateVisualAuditToolPayload(payload, cwd),
   ];
   if (found.length > 0) {
     return { decision: "deny", reason: found.join("\n") };

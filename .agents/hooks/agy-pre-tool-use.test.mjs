@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { evaluateHookCommand } from "../../.claude/hooks/docs-check.mjs";
+import { checkEngineeringContent, evaluateHookCommand } from "../../.claude/hooks/docs-check.mjs";
 import { handleHookPayload } from "./agy-pre-tool-use.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -128,4 +128,46 @@ test("denies write_file introducing AI design tells into web UI", () => {
   const out = handleHookPayload(payload);
   assert.equal(out.decision, "deny");
   assert.match(out.reason, /design-check/);
+});
+
+test("enforces beta no-backward-compat, no-stopgap, and no-speculative rules in non-test code", () => {
+  const rustCompat = checkEngineeringContent(
+    "crates/grdr-core/src/lib.rs",
+    '#[deprecated(note = "old API")] pub fn legacy() {}\n// backward compatibility shim',
+  );
+  assert.ok(rustCompat.some((f) => f.includes("engineering rule 1")));
+
+  const gaAllowed = checkEngineeringContent(
+    "crates/grdr-core/src/lib.rs",
+    '#[deprecated(note = "old API")] pub fn legacy() {}',
+    { preReleaseBeta: false },
+  );
+  assert.deepEqual(gaAllowed, []);
+
+  const stopgapAndSpeculative = checkEngineeringContent(
+    "web/packages/api/src/client.ts",
+    "// temporary workaround to make it work for now\n// config option just in case we need it later",
+  );
+  assert.ok(stopgapAndSpeculative.some((f) => f.includes("engineering rule 2")));
+  assert.ok(stopgapAndSpeculative.some((f) => f.includes("engineering rule 7")));
+
+  const agyDeny = handleHookPayload(
+    JSON.stringify({
+      toolCall: {
+        name: "edit_file",
+        args: {
+          Path: "D:/repo/crates/grdr-core/src/eval.rs",
+          Replacement: "// HACK: make it work for now",
+        },
+      },
+      cwd: "D:/repo",
+    }),
+  );
+  assert.equal(agyDeny.decision, "deny");
+  assert.match(agyDeny.reason, /engineering rule 7/);
+
+  assert.deepEqual(
+    checkEngineeringContent("crates/grdr-core/tests/compat_test.rs", "// backward compatibility test"),
+    [],
+  );
 });

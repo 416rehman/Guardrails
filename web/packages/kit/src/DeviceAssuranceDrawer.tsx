@@ -1,6 +1,34 @@
-import { Badge, Heading, HStack, Text, UiSdkDrawer, VStack } from "@grdr/ui";
+import { formatOsName, presentAssurance } from "@grdr/i18n";
+import {
+  Badge,
+  type GrdrFlowEdge,
+  type GrdrFlowNode,
+  GrdrFlowGraph,
+  GrdrIcon,
+  Heading,
+  HStack,
+  Text,
+  UiSdkDrawer,
+  VStack,
+} from "@grdr/ui";
 import { AssuranceBadge } from "./VerdictBadge";
 import { Quoted } from "./Quoted";
+
+function friendlyControl(control: string): string {
+  if (control.includes("boundary")) return "OS boundary";
+  if (control === "request") return "Hook request";
+  return "Observation only";
+}
+
+function friendlyVisibility(visibility: string, failMode: string): string {
+  const vis = visibility === "observed" ? "Verified" : "Unverified";
+  const fail = failMode.includes("closed") ? "blocks on bypass" : "allows on bypass";
+  return `${vis} · ${fail}`;
+}
+
+function friendlyTamper(tamper: string): string {
+  return tamper === "admin" ? "Admin locked" : "User editable";
+}
 
 export interface MatrixDevice {
   id: string;
@@ -33,6 +61,56 @@ export function DeviceAssuranceDrawer({
   device: MatrixDevice | null;
   onClose: () => void;
 }) {
+  const assetNodes: GrdrFlowNode[] = [];
+  const assetEdges: GrdrFlowEdge[] = [];
+  if (device) {
+    assetNodes.push({
+      id: "device-host",
+      label: device.hostname,
+      subtitle: `${formatOsName(device.os)} / ${device.arch}`,
+      badge: "Host",
+      tone: "accent",
+      icon: "cpu",
+    });
+    for (const ag of device.agents) {
+      const boundary = ag.assurance.control.includes("boundary");
+      const assuranceText = presentAssurance(ag.assurance_level, ag.assurance.control).label;
+      assetNodes.push({
+        id: `ag-${ag.id}`,
+        label: ag.name,
+        subtitle: friendlyControl(ag.assurance.control),
+        badge: assuranceText,
+        tone: boundary ? "allow" : "ask",
+        harnessName: ag.name,
+      });
+      assetEdges.push({
+        id: `edge-host-${ag.id}`,
+        source: "device-host",
+        target: `ag-${ag.id}`,
+        tone: boundary ? "allow" : "neutral",
+      });
+    }
+    const primaryAgentId = device.agents[0] ? `ag-${device.agents[0].id}` : "device-host";
+    device.mcp_servers.forEach((mcp, idx) => {
+      const mcpId = `mcp-${idx}-${mcp.name}`;
+      assetNodes.push({
+        id: mcpId,
+        label: mcp.name,
+        subtitle: mcp.transport,
+        badge: mcp.pinned ? "Pinned" : "Unpinned",
+        tone: mcp.pinned ? "allow" : "ask",
+        icon: "plug",
+      });
+      assetEdges.push({
+        id: `edge-${primaryAgentId}-${mcpId}`,
+        source: primaryAgentId,
+        target: mcpId,
+        dashed: !mcp.pinned,
+        tone: mcp.pinned ? "allow" : "neutral",
+      });
+    });
+  }
+
   return (
     <UiSdkDrawer
       open={device !== null}
@@ -43,26 +121,51 @@ export function DeviceAssuranceDrawer({
       {device && (
         <VStack gap={3}>
           <HStack gap={2}>
-            <Badge variant="info" label={device.install_profile} />
+            <Badge
+              variant="info"
+              label={device.install_profile === "protected" ? "Protected" : "User mode"}
+            />
             <Badge
               variant={device.hook_effective ? "success" : "warning"}
               label={device.hook_effective ? "Hook active" : "Discovery only"}
             />
-            <Badge variant="neutral" label={`${device.os} / ${device.arch}`} />
+            <Badge variant="neutral" label={`${formatOsName(device.os)} / ${device.arch}`} />
           </HStack>
 
+          <VStack gap={1}>
+            <HStack gap={1} align="center">
+              <GrdrIcon name="route" size={14} color="var(--accent-primary)" />
+              <Text size="sm" style={{ fontWeight: 600 }}>
+                Endpoint asset topology
+              </Text>
+            </HStack>
+            <GrdrFlowGraph
+              nodes={assetNodes}
+              edges={assetEdges}
+              direction="LR"
+              height={236}
+              ariaLabel={`Asset graph for ${device.hostname}`}
+            />
+          </VStack>
+
           <VStack gap={2}>
-            <Heading level={3}>Harness assurance ({device.agents.length})</Heading>
+            <Heading level={3}>Agent protection ({device.agents.length})</Heading>
             {device.agents.length === 0 ? (
-              <Text color="secondary">No local agent harnesses reported for this device.</Text>
+              <Text color="secondary">No local agents reported for this device.</Text>
             ) : (
               <div className="table-wrap">
-                <table>
+                <table style={{ tableLayout: "fixed", width: "100%" }}>
+                  <colgroup>
+                    <col style={{ width: "19%" }} />
+                    <col style={{ width: "21%" }} />
+                    <col style={{ width: "26%" }} />
+                    <col style={{ width: "34%" }} />
+                  </colgroup>
                   <thead>
                     <tr>
                       <th>Agent</th>
-                      <th>Assurance</th>
-                      <th>Visibility / Failure</th>
+                      <th>Protection</th>
+                      <th>Verification</th>
                       <th>Config</th>
                     </tr>
                   </thead>
@@ -72,7 +175,7 @@ export function DeviceAssuranceDrawer({
                         <td>
                           <strong>{agent.name}</strong>
                           <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>
-                            {agent.kind} · tamper: {agent.assurance.tamper}
+                            {friendlyTamper(agent.assurance.tamper)}
                           </div>
                         </td>
                         <td>
@@ -83,13 +186,13 @@ export function DeviceAssuranceDrawer({
                         </td>
                         <td>
                           <div>
-                            {agent.assurance.visibility} · fail-{agent.assurance.on_failure}
+                            {friendlyVisibility(agent.assurance.visibility, agent.assurance.on_failure)}
                           </div>
                           <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>
-                            Hook {agent.hook_installed ? "configured" : "absent"}
+                            {agent.hook_installed ? "Hook configured" : "Hook absent"}
                           </div>
                         </td>
-                        <td>
+                        <td title={agent.config_path}>
                           <Quoted text={agent.config_path} />
                         </td>
                       </tr>

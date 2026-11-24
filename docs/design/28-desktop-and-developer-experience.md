@@ -119,7 +119,7 @@ Every screen renders one `ViewState` of 27 section 4 through the desktop kit; `u
 - Commands applied to this device (freeze, end session, kill) with issuer role, reason and expiry (18).
 
 **My activity.** What my agents did.
-- Session list grouped by day, filter chips Blocked, Asked, Would-be (Watch).
+- Session list grouped by day, clickable timeline call rows under the selected session with filter chips Blocked, Asked, Watch, and zero redundant header text repeating the agent name already highlighted.
 - Session detail: 18's timeline (phases collapsed, verdicts, provenance claimed or observed, gaps as "could not look"), with a table view of the session graph.
 - **Why**, the `BlockCard` pattern shared with 27 section 4.10 and `grdr why`, titled by verdict from the presentation registry ("Why this was blocked", "Why this needs approval", "Why this was changed", "Why this was delayed"): who blocked (section 11), what (plain words, literal call one click away), rule name and pack, the rule's `@message`, what the agent was told, and one primary action chosen by the rule's mode (12 section 4):
   - Ask: names the approver in the presentation registry's words ("You", "Your team's sponsor", "An administrator", "Two approvers"); for self, "Review" opens `grdr-approve`; for anyone else the card shows the request state and the route timer (18);
@@ -132,7 +132,7 @@ Every screen renders one `ViewState` of 27 section 4 through the desktop kit; `u
 
 **Rules (Simple only; 12).** Mode and lists, nothing else.
 - Three presets: **Recommended** (selected by default: Essentials as shipped, every other pack in Watch, D-53), **Stricter** (destructive, secrets and egress packs at Ask), **Watch only** (lowers Essentials, so it is a widening proposal; the confirmation states what stops: "Guardrails will stop blocking writes to your agents' settings"). *Applying: Smart Defaults; Loss Aversion on the widening path.*
-- Pack rows with the four-step mode control. Beside each mode the effective outcome for this device: boundary, request, or not enforceable, per action class (D-44).
+- Pack rows with the four-step mode control (without repetitive "Click to change mode" helper text under unlocked controls; reserve secondary labels for constraints like `Floor locked`) and estimated prompt-rate badges. Beside each mode the effective outcome for this device: boundary, request, or not enforceable, per action class (D-44).
 - Promotion cards after seven days: "This would have asked you 4 times last week" with Promote and Not now (12 section 11).
 - Active approvals and exceptions with expiry and Revoke (narrowing, no step-up). Snooze prompts (narrowing).
 - "Add pack from git" pins a digest in the user layer (12 section 10); adding a forbid-only pack narrows.

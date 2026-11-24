@@ -1,4 +1,4 @@
-import { presentMode } from "@grdr/i18n";
+import { pluralize, presentMode } from "@grdr/i18n";
 import { GrdrIcon, Text, UiSdkSegmentedControl, VStack, iconKeyToName } from "@grdr/ui";
 
 type Mode = "off" | "watch" | "ask" | "block";
@@ -39,7 +39,9 @@ export function ModeControl({
       />
       {typeof boundaryDevices === "number" && typeof requestDevices === "number" && (
         <Text type="supporting" color="secondary" size="sm">
-          {`${presentMode(value).label} here enforces at boundary on ${boundaryDevices} device(s), requests on ${requestDevices}.`}
+          {requestDevices > 0
+            ? `${presentMode(value).label} on ${pluralize(boundaryDevices, "sandboxed device")} and ${pluralize(requestDevices, "app-hook agent")}.`
+            : `Applies in ${presentMode(value).label} mode across ${pluralize(boundaryDevices, "sandboxed device")}.`}
         </Text>
       )}
     </VStack>

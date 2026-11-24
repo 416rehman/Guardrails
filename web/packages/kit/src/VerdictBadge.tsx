@@ -56,11 +56,13 @@ export function AssuranceBadge({
   const variant: BadgeVariant =
     pres.tone === "success" ? "success" : pres.tone === "warning" ? "warning" : "neutral";
   return (
-    <Badge
-      variant={variant}
-      icon={<GrdrIcon name={iconKeyToName(pres.iconKey)} size={12} />}
-      label={`${pres.level} (${pres.controlLabel})`}
-    />
+    <span title={pres.description} style={{ display: "inline-flex" }}>
+      <Badge
+        variant={variant}
+        icon={<GrdrIcon name={iconKeyToName(pres.iconKey)} size={12} />}
+        label={pres.label}
+      />
+    </span>
   );
 }
 

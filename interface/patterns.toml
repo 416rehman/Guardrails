@@ -47,3 +47,19 @@ ui_primitives = ["EmptyState", "Banner", "Card"]
 tokens = ["space-3", "space-4"]
 states = ["loading", "ready", "empty", "stale", "unreachable", "unavailable", "error", "read-only"]
 renderers = ["web", "rune"]
+
+[[pattern]]
+id = "scale-cohort-grid"
+component = "GrdrFleetHexMap"
+ui_primitives = ["Card", "Badge", "Button", "Heading"]
+tokens = ["tone.allow", "tone.ask", "tone.block"]
+states = ["ready", "empty"]
+renderers = ["web"]
+
+[[pattern]]
+id = "causal-taint-edge"
+component = "GrdrFlowGraph"
+ui_primitives = ["Badge", "Icon"]
+tokens = ["tone.allow", "tone.watch", "tone.ask", "tone.block"]
+states = ["ready"]
+renderers = ["web"]

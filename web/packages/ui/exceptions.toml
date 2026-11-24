@@ -8,3 +8,30 @@ gap = "Astryx 0.7.17 provides visual surface components without @ui-sdk/react cr
 wrapper = "web/packages/ui/src/primitives.tsx"
 exit_condition = "Review when Astryx ships native agent-bridge primitives or keep paired via @grdr/ui facade"
 owner = "interfaces"
+
+[[exception]]
+id = "echarts-canvas"
+packages = ["echarts"]
+need = "Coverage rings, 7-day decision velocity stacked bars, sparklines, and large-fleet Canvas honeycomb maps (design/27 sections 7 and 11)"
+gap = "Astryx 0.7.17 does not ship charting or Canvas 2D fleet density primitives"
+wrapper = "web/packages/ui/src/charts.tsx"
+exit_condition = "Keep wrapped behind @grdr/ui Chart components per design/27 section 11"
+owner = "interfaces"
+
+[[exception]]
+id = "react-flow-dagre"
+packages = ["@xyflow/react", "@dagrejs/dagre"]
+need = "Interactive zoomable/pannable session execution DAGs, endpoint asset topology graphs, and P8 boundary diagrams (design/27 sections 5 and 11)"
+gap = "Astryx 0.7.17 does not ship interactive node-edge graph visualization"
+wrapper = "web/packages/ui/src/flow-graph.tsx"
+exit_condition = "Keep wrapped behind @grdr/ui GrdrFlowGraph per design/27 section 11"
+owner = "interfaces"
+
+[[exception]]
+id = "simple-icons-harnesses"
+packages = ["@icons-pack/react-simple-icons"]
+need = "Authentic upstream vendor marks for discovered coding harnesses (Claude Code, Cursor, Gemini, Copilot, Windsurf)"
+gap = "Lucide provides UI action/status glyphs rather than third-party AI harness vendor marks"
+wrapper = "web/packages/ui/src/components.tsx"
+exit_condition = "Keep encapsulated behind HarnessIcon in @grdr/ui"
+owner = "interfaces"

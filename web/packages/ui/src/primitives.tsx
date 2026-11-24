@@ -3,7 +3,6 @@ import { createAgent, type AgentComponent } from "@ui-sdk/react/agent";
 import {
   Drawer,
   DrawerBackdrop,
-  DrawerClose,
   DrawerContent,
   DrawerDescription,
   DrawerTitle,
@@ -13,7 +12,7 @@ import {
   SegmentedControlIndicator,
   SegmentedControlItem,
 } from "@ui-sdk/react/segmented-control";
-import { Button } from "./components";
+import { Button, GrdrIcon } from "./components";
 
 export interface SegmentedOption<T extends string> {
   value: T;
@@ -90,9 +89,14 @@ export function UiSdkDrawer({
             <DrawerTitle>{title}</DrawerTitle>
             {description && <DrawerDescription>{description}</DrawerDescription>}
           </div>
-          <DrawerClose className="btn" aria-label={`Close ${title}`}>
-            Close
-          </DrawerClose>
+          <Button
+            variant="secondary"
+            size="sm"
+            label="Close"
+            aria-label={`Close ${title}`}
+            icon={<GrdrIcon name="x" size={14} />}
+            onClick={onClose}
+          />
         </div>
         {children}
       </DrawerContent>
