@@ -1,8 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ModeControl } from "./components/ModeControl";
 import { Quoted } from "./components/Quoted";
 import { ModeBadge, VerdictBadge } from "./components/VerdictBadge";
+import { InventoryPage } from "./pages/InventoryPage";
+import { ProtectPage } from "./pages/ProtectPage";
 import { RespondPage } from "./pages/RespondPage";
 import { SessionsPage } from "./pages/SessionsPage";
 
@@ -150,8 +152,126 @@ describe("Guardrails console UI primitives", () => {
       expect(screen.getByText("Tainted exfil risk")).toBeTruthy();
       expect(screen.getByText("claude-code session incident (2)")).toBeTruthy();
       expect(await screen.findByText("Signed (kid_test1234)")).toBeTruthy();
+      expect(screen.getByText("Export OCSF 1.9")).toBeTruthy();
+      expect(screen.getByText("Export Audit JSONL")).toBeTruthy();
     } finally {
       globalThis.fetch = fetchMock;
     }
+  });
+
+  it("opens Device Assurance Matrix drawer and protects locked floor rules from editing", () => {
+    render(
+      <div>
+        <InventoryPage
+          devices={[
+            {
+              id: "dev-matrix-1",
+              hostname: "workstation-alpha",
+              os: "linux",
+              arch: "x86_64",
+              install_profile: "protected",
+              daemon_version: "0.1.0",
+              hook_effective: true,
+              online: true,
+              last_seen: "2026-11-23T00:00:00Z",
+              agents: [
+                {
+                  id: "agent-claude",
+                  name: "claude-code",
+                  kind: "coding-agent",
+                  config_path: "~/.claude/settings.json",
+                  hook_installed: true,
+                  assurance_level: "AL3",
+                  assurance: {
+                    visibility: "cross_checked",
+                    control: "scoped-boundary",
+                    on_failure: "closed",
+                    tamper: "verified",
+                  },
+                  mcp_count: 1,
+                  sponsor: null,
+                  detected_at: "2026-11-23T00:00:00Z",
+                },
+              ],
+              mcp_servers: [
+                {
+                  name: "filesystem",
+                  transport: "stdio",
+                  command: "mcp-fs",
+                  source_agent: "claude-code",
+                  config_path: "~/.claude/settings.json",
+                  pinned: true,
+                },
+              ],
+            },
+          ]}
+          searchQuery=""
+          onRefresh={() => {}}
+        />
+        <ProtectPage
+          packs={[
+            {
+              id: "pack-essentials-slice0",
+              name: "Essentials",
+              description: "Baseline policy pack",
+              version: "1.0.0",
+              channel: "stable",
+              rules: [
+                {
+                  id: "essentials.floor",
+                  title: "Protect .claude settings",
+                  description: "Locked floor rule",
+                  mode: "block",
+                  min_grade: "G2",
+                  enabled: true,
+                  locked: true,
+                  matcher: {
+                    action_classes: ["file.write"],
+                    target_prefixes: [],
+                    target_contains: [".claude/settings.json"],
+                    agents: [],
+                  },
+                  hits: 3,
+                  would_ask_hits: 0,
+                  would_block_hits: 3,
+                  reason_template: "Blocked",
+                },
+                {
+                  id: "custom.watch-notes",
+                  title: "Watch release notes",
+                  description: "Custom rule",
+                  mode: "watch",
+                  min_grade: "G1",
+                  enabled: true,
+                  locked: false,
+                  matcher: {
+                    action_classes: ["file.write"],
+                    target_prefixes: [],
+                    target_contains: ["RELEASE"],
+                    agents: [],
+                  },
+                  hits: 1,
+                  would_ask_hits: 1,
+                  would_block_hits: 0,
+                  reason_template: "Watch release",
+                },
+              ],
+            },
+          ]}
+          devices={[]}
+          prefillAttempt={null}
+          onClearPrefill={() => {}}
+          onUpdated={() => {}}
+        />
+      </div>,
+    );
+
+    fireEvent.click(screen.getByText("Inspect matrix"));
+    expect(screen.getByText("Device assurance matrix")).toBeTruthy();
+    expect(screen.getByText("cross_checked · fail-closed")).toBeTruthy();
+
+    expect(screen.getByText("Floor locked")).toBeTruthy();
+    expect(screen.getByLabelText("Edit rule Watch release notes")).toBeTruthy();
+    expect(screen.getByLabelText("Delete rule Watch release notes")).toBeTruthy();
   });
 });

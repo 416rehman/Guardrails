@@ -5,16 +5,17 @@ use std::convert::Infallible;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::extract::{DefaultBodyLimit, Path, State};
+use axum::http::{StatusCode, header};
+use axum::middleware;
 use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use futures_util::stream::Stream;
 use jiff::Timestamp;
 use tokio_stream::StreamExt as _;
 use tokio_stream::wrappers::BroadcastStream;
-use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
 
 use grdr_model::{
@@ -22,32 +23,53 @@ use grdr_model::{
     DecideApprovalInput, DecideInput, DecisionReceipt, Device, DiscoveredAgent, Finding,
     HealthResponse, Incident, KillSwitchInput, KillSwitchState, McpServerEntry, OverviewResponse,
     PolicyPack, PolicyRule, ReplayRuleInput, ReplaySummary, SessionDetailResponse, SessionSummary,
-    TrustedKeyInfo, UpdateFindingInput, UpdateRuleModeInput,
+    TrustedKeyInfo, UpdateFindingInput, UpdateRuleInput, UpdateRuleModeInput,
 };
 
+use crate::auth::{
+    self, ServerSecurityConfig, require_device_or_operator_auth, require_operator_auth,
+};
+use crate::exports::{build_audit_jsonl, build_ocsf_events};
 use crate::store::AppState;
 
 type ApiResult<T> = Result<Json<T>, (StatusCode, Json<CodedError>)>;
 
+#[cfg(test)]
 pub fn build_router(state: AppState, web_dir: Option<PathBuf>) -> Router {
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+    build_router_with_security(state, web_dir, ServerSecurityConfig::default())
+}
 
-    let api = Router::new()
-        .route("/api/v1/health", get(health))
+pub fn build_router_with_security(
+    state: AppState,
+    web_dir: Option<PathBuf>,
+    security: ServerSecurityConfig,
+) -> Router {
+    let cors = auth::build_cors_layer(&security);
+
+    let public_routes = Router::new().route("/api/v1/health", get(health));
+
+    let device_routes = Router::new()
+        .route("/api/v1/devices/checkin", post(device_checkin))
+        .route("/api/v1/events/batch", post(ingest_batch))
+        .layer(middleware::from_fn_with_state(
+            security.clone(),
+            require_device_or_operator_auth,
+        ));
+
+    let operator_routes = Router::new()
         .route("/api/v1/overview", get(overview))
         .route("/api/v1/devices", get(list_devices))
-        .route("/api/v1/devices/checkin", post(device_checkin))
         .route("/api/v1/inventory/agents", get(list_agents))
         .route("/api/v1/inventory/mcp-servers", get(list_mcp_servers))
         .route("/api/v1/sessions", get(list_sessions))
         .route("/api/v1/sessions/{id}", get(get_session))
-        .route("/api/v1/events/batch", post(ingest_batch))
         .route("/api/v1/decide", post(decide))
         .route("/api/v1/policies/packs", get(list_packs))
         .route("/api/v1/policies/rules", post(create_rule))
+        .route(
+            "/api/v1/policies/rules/{id}",
+            patch(update_rule).delete(delete_rule),
+        )
         .route("/api/v1/policies/rules/{id}/mode", patch(update_rule_mode))
         .route("/api/v1/policies/rules/{id}/replay", post(replay_rule))
         .route("/api/v1/approvals", get(list_approvals))
@@ -61,8 +83,20 @@ pub fn build_router(state: AppState, web_dir: Option<PathBuf>) -> Router {
         )
         .route("/api/v1/audit", get(list_audit))
         .route("/api/v1/keys", get(list_keys))
+        .route("/api/v1/exports/ocsf", get(export_ocsf))
+        .route("/api/v1/exports/audit.jsonl", get(export_audit_jsonl))
         .route("/api/v1/live", get(live_stream))
+        .layer(middleware::from_fn_with_state(
+            security.clone(),
+            require_operator_auth,
+        ));
+
+    let api = Router::new()
+        .merge(public_routes)
+        .merge(device_routes)
+        .merge(operator_routes)
         .with_state(state)
+        .layer(DefaultBodyLimit::max(security.max_body_bytes))
         .layer(cors);
 
     if let Some(dir) = web_dir
@@ -76,7 +110,9 @@ pub fn build_router(state: AppState, web_dir: Option<PathBuf>) -> Router {
 }
 
 fn err_response(err: CodedError) -> (StatusCode, Json<CodedError>) {
-    let status = if err.code.ends_with("0404") {
+    let status = if err.code.ends_with("0401") {
+        StatusCode::UNAUTHORIZED
+    } else if err.code.ends_with("0404") {
         StatusCode::NOT_FOUND
     } else if err.code.ends_with("0409") {
         StatusCode::CONFLICT
@@ -190,6 +226,25 @@ async fn create_rule(
         .map_err(err_response)
 }
 
+async fn update_rule(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(input): Json<UpdateRuleInput>,
+) -> ApiResult<PolicyRule> {
+    state
+        .update_rule(&id, input)
+        .await
+        .map(Json)
+        .map_err(err_response)
+}
+
+async fn delete_rule(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<PolicyRule> {
+    state.delete_rule(&id).await.map(Json).map_err(err_response)
+}
+
 async fn update_rule_mode(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -274,6 +329,34 @@ async fn list_audit(State(state): State<AppState>) -> Json<Vec<AuditEntry>> {
 
 async fn list_keys(State(state): State<AppState>) -> Json<Vec<TrustedKeyInfo>> {
     Json(state.trusted_keys())
+}
+
+async fn export_ocsf(State(state): State<AppState>) -> Response {
+    let events = {
+        let guard = state.inner.read().await;
+        build_ocsf_events(&guard)
+    };
+    let mut resp = Json(events).into_response();
+    if let Ok(val) = "attachment; filename=\"guardrails-ocsf-1.9.json\"".parse() {
+        resp.headers_mut().insert(header::CONTENT_DISPOSITION, val);
+    }
+    resp
+}
+
+async fn export_audit_jsonl(State(state): State<AppState>) -> Response {
+    let incidents = state.incidents().await;
+    let body = {
+        let guard = state.inner.read().await;
+        build_audit_jsonl(&guard, &incidents)
+    };
+    let mut headers = axum::http::HeaderMap::new();
+    if let Ok(ct) = "application/x-ndjson; charset=utf-8".parse() {
+        headers.insert(header::CONTENT_TYPE, ct);
+    }
+    if let Ok(cd) = "attachment; filename=\"guardrails-audit.jsonl\"".parse() {
+        headers.insert(header::CONTENT_DISPOSITION, cd);
+    }
+    (StatusCode::OK, headers, body).into_response()
 }
 
 async fn live_stream(

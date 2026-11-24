@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertOctagon, Check, Hand, Layers, ShieldOff } from "lucide-react";
+import { AlertOctagon, Check, Download, FileJson, Hand, Layers, ShieldOff } from "lucide-react";
 import { api } from "../api";
 import { Quoted } from "../components/Quoted";
 import type {
@@ -30,6 +30,7 @@ export function RespondPage({
   onUpdated,
 }: RespondPageProps) {
   const [error, setError] = useState<string | null>(null);
+  const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [armingKey, setArmingKey] = useState<string | null>(null);
   const [armedKey, setArmedKey] = useState<string | null>(null);
 
@@ -202,14 +203,53 @@ export function RespondPage({
 
       <section className="surface">
         <div className="page-header">
-          <h2 className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Layers size={16} />
-            <span>Correlated incidents ({incidents.length})</span>
-          </h2>
-          <span style={{ fontSize: 12.5, color: "var(--ink-secondary)" }}>
-            Findings merged by session lineage, device, and enforcing labels
-          </span>
+          <div>
+            <h2 className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Layers size={16} />
+              <span>Correlated incidents ({incidents.length})</span>
+            </h2>
+            <p style={{ margin: "4px 0 0", color: "var(--ink-secondary)" }}>
+              Findings merged by session lineage, device, and enforcing labels. Export structured telemetry for SIEM ingestion.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="btn"
+              onClick={async () => {
+                setError(null);
+                setExportStatus(null);
+                try {
+                  await api.exportOcsf();
+                  setExportStatus("Downloaded guardrails-ocsf-1.9.json");
+                } catch (err) {
+                  setError((err as Error).message);
+                }
+              }}
+            >
+              <FileJson size={14} />
+              <span>Export OCSF 1.9</span>
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={async () => {
+                setError(null);
+                setExportStatus(null);
+                try {
+                  await api.exportAuditJsonl();
+                  setExportStatus("Downloaded guardrails-audit.jsonl");
+                } catch (err) {
+                  setError((err as Error).message);
+                }
+              }}
+            >
+              <Download size={14} />
+              <span>Export Audit JSONL</span>
+            </button>
+          </div>
         </div>
+        {exportStatus && <div className="banner info">{exportStatus}</div>}
 
         {incidents.length === 0 ? (
           <p style={{ margin: 0, color: "var(--ink-secondary)" }}>No correlated incidents recorded.</p>

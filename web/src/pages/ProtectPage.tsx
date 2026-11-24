@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, Lock, Play, Plus } from "lucide-react";
+import { CheckCircle2, Lock, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import { api } from "../api";
 import { ModeControl } from "../components/ModeControl";
 import { ModeBadge, VerdictBadge } from "../components/VerdictBadge";
 import { Quoted } from "../components/Quoted";
-import type { ActionAttempt, ActionClass, Device, Mode, PolicyPack, ReplaySummary } from "../types";
+import type { ActionAttempt, ActionClass, Device, Mode, PolicyPack, PolicyRule, ReplaySummary } from "../types";
 
 interface ProtectPageProps {
   packs: PolicyPack[];
@@ -38,6 +38,8 @@ export function ProtectPage({
   const [replay, setReplay] = useState<{ ruleId: string; summary: ReplaySummary } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showNewForm, setShowNewForm] = useState<boolean>(prefillAttempt !== null);
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const [title, setTitle] = useState("Require approval for .env secret edits");
   const [actionClass, setActionClass] = useState<ActionClass>("file.write");
@@ -90,24 +92,63 @@ export function ProtectPage({
     }
   }
 
-  async function handleCreateRule(e: React.FormEvent) {
+  async function handleSaveRule(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    const matcher = {
+      action_classes: [actionClass],
+      target_prefixes: [],
+      target_contains: [containsPattern],
+      agents: [],
+    };
     try {
-      await api.createRule({
-        title,
-        description: reason,
-        mode,
-        matcher: {
-          action_classes: [actionClass],
-          target_prefixes: [],
-          target_contains: [containsPattern],
-          agents: [],
-        },
-        reason_template: reason,
-      });
+      if (editingRuleId) {
+        await api.updateRule(editingRuleId, {
+          title,
+          description: reason,
+          mode,
+          matcher,
+          reason_template: reason,
+        });
+      } else {
+        await api.createRule({
+          title,
+          description: reason,
+          mode,
+          matcher,
+          reason_template: reason,
+        });
+      }
+      setEditingRuleId(null);
       setShowNewForm(false);
       onClearPrefill();
+      onUpdated();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  function startEditRule(rule: PolicyRule) {
+    setError(null);
+    setConfirmDeleteId(null);
+    setEditingRuleId(rule.id);
+    setTitle(rule.title);
+    setActionClass(rule.matcher.action_classes[0] ?? "file.write");
+    setContainsPattern(rule.matcher.target_contains[0] ?? "");
+    setMode(rule.mode);
+    setReason(rule.reason_template);
+    setShowNewForm(true);
+  }
+
+  async function handleDeleteRule(ruleId: string) {
+    setError(null);
+    try {
+      await api.deleteRule(ruleId);
+      setConfirmDeleteId(null);
+      if (editingRuleId === ruleId) {
+        setEditingRuleId(null);
+        setShowNewForm(false);
+      }
       onUpdated();
     } catch (err) {
       setError((err as Error).message);
@@ -137,8 +178,10 @@ export function ProtectPage({
 
       {showNewForm && (
         <section className="surface">
-          <h2 className="section-title">Create policy rule</h2>
-          <form onSubmit={handleCreateRule} className="form-grid">
+          <h2 className="section-title">
+            {editingRuleId ? `Edit rule (${editingRuleId})` : "Create policy rule"}
+          </h2>
+          <form onSubmit={handleSaveRule} className="form-grid">
             <div className="field">
               <label htmlFor="rule-title">Rule title</label>
               <input
@@ -187,6 +230,7 @@ export function ProtectPage({
                 type="button"
                 className="btn"
                 onClick={() => {
+                  setEditingRuleId(null);
                   setShowNewForm(false);
                   onClearPrefill();
                 }}
@@ -194,7 +238,7 @@ export function ProtectPage({
                 Cancel
               </button>
               <button type="submit" className="btn btn-primary">
-                Save rule
+                {editingRuleId ? "Update rule" : "Save rule"}
               </button>
             </div>
           </form>
@@ -283,6 +327,7 @@ export function ProtectPage({
                   <th>Match</th>
                   <th>Hits</th>
                   <th>Mode control</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -315,6 +360,51 @@ export function ProtectPage({
                         locked={rule.locked}
                         onChange={(next) => handleModeChange(rule.id, rule.mode, next)}
                       />
+                    </td>
+                    <td>
+                      {rule.locked ? (
+                        <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>
+                          Floor locked
+                        </span>
+                      ) : confirmDeleteId === rule.id ? (
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            className="btn btn-danger"
+                            onClick={() => handleDeleteRule(rule.id)}
+                          >
+                            Confirm delete
+                          </button>
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => setConfirmDeleteId(null)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button
+                            type="button"
+                            className="btn"
+                            aria-label={`Edit rule ${rule.title}`}
+                            onClick={() => startEditRule(rule)}
+                          >
+                            <Pencil size={13} />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="btn"
+                            aria-label={`Delete rule ${rule.title}`}
+                            onClick={() => setConfirmDeleteId(rule.id)}
+                          >
+                            <Trash2 size={13} />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

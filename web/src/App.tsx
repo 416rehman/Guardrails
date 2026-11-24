@@ -3,6 +3,7 @@ import {
   Activity,
   Cpu,
   Home,
+  KeyRound,
   Moon,
   Radio,
   RefreshCw,
@@ -12,7 +13,7 @@ import {
   Sun,
   Terminal,
 } from "lucide-react";
-import { api } from "./api";
+import { api, getApiToken, setApiToken } from "./api";
 import { HomePage } from "./pages/HomePage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { ProtectPage } from "./pages/ProtectPage";
@@ -47,6 +48,9 @@ export function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [liveConnected, setLiveConnected] = useState(false);
   const [loadingError, setLoadingError] = useState<string | null>(null);
+  const [showTokenBar, setShowTokenBar] = useState(false);
+  const [apiTokenInput, setApiTokenInput] = useState(() => getApiToken());
+  const [streamVersion, setStreamVersion] = useState(0);
 
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -90,7 +94,11 @@ export function App() {
 
   useEffect(() => {
     void loadAll();
-    const events = new EventSource("/api/v1/live");
+    const token = getApiToken();
+    const liveUrl = token
+      ? `/api/v1/live?access_token=${encodeURIComponent(token)}`
+      : "/api/v1/live";
+    const events = new EventSource(liveUrl);
     const refreshHandler = () => {
       void loadAll();
     };
@@ -107,7 +115,7 @@ export function App() {
     return () => {
       events.close();
     };
-  }, [loadAll]);
+  }, [loadAll, streamVersion]);
 
   const pendingApprovals = approvals.filter((a) => a.state.status === "pending").length;
 
@@ -184,6 +192,14 @@ export function App() {
           </label>
 
           <div className="topbar-actions">
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setShowTokenBar((prev) => !prev)}
+            >
+              <KeyRound size={14} />
+              <span>{getApiToken() ? "Token active" : "API token"}</span>
+            </button>
             <button type="button" className="btn" onClick={() => void loadAll()}>
               <RefreshCw size={14} />
               <span>Sync</span>
@@ -199,6 +215,44 @@ export function App() {
             </button>
           </div>
         </header>
+
+        {showTokenBar && (
+          <form
+            className="token-popover"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setApiToken(apiTokenInput);
+              setShowTokenBar(false);
+              setStreamVersion((v) => v + 1);
+            }}
+          >
+            <label htmlFor="operator-token-input" style={{ fontSize: 12.5, fontWeight: 500 }}>
+              Operator bearer token
+            </label>
+            <input
+              id="operator-token-input"
+              type="password"
+              placeholder="Paste --api-token value"
+              value={apiTokenInput}
+              onChange={(e) => setApiTokenInput(e.target.value)}
+            />
+            <button type="submit" className="btn btn-primary">
+              Save token
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setApiTokenInput("");
+                setApiToken("");
+                setShowTokenBar(false);
+                setStreamVersion((v) => v + 1);
+              }}
+            >
+              Clear
+            </button>
+          </form>
+        )}
 
         <main className="main-scroll">
           {loadingError && (

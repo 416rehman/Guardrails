@@ -4,6 +4,7 @@
 use std::fmt;
 
 pub const CODE_INVALID_INPUT: &str = "GRDR-MODEL-0001";
+pub const CODE_UNAUTHORIZED: &str = "GRDR-API-0401";
 pub const CODE_NOT_FOUND: &str = "GRDR-API-0404";
 pub const CODE_CONFLICT: &str = "GRDR-API-0409";
 pub const CODE_STORE_IO: &str = "GRDR-STORE-0001";
