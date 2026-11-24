@@ -2,7 +2,36 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 #![deny(clippy::arithmetic_side_effects)]
 
+pub mod blob;
+pub mod bus;
+pub mod jobs;
+pub mod relational;
+pub mod tenant;
+
 use serde::{Deserialize, Serialize};
+
+pub use blob::{
+    BlobMetadata, BlobObject, BlobPort, BlobVersionCondition, ByteRange, CODE_BLOB_ALREADY_EXISTS,
+    CODE_BLOB_INVALID_RANGE, CODE_BLOB_IO, CODE_BLOB_VERSION_CONFLICT,
+};
+pub use bus::{
+    BusAppendMessage, BusLag, BusMessage, BusOffsetRange, BusPort, BusSubscription,
+    CODE_BUS_BEYOND_LOG, CODE_BUS_INVALID_INPUT, CODE_BUS_IO, CODE_BUS_STALE_FENCE,
+};
+pub use jobs::{
+    CODE_JOBS_INVALID_STATE, CODE_JOBS_IO, CODE_JOBS_NOT_FOUND, CODE_JOBS_STALE_FENCE,
+    JobEnqueueOutcome, JobEnqueueRequest, JobPort, JobRecord, JobState, JobStepRecord,
+    JobStepState, LeaseAcquireOutcome, LeaseRecord, LeaseState,
+};
+pub use relational::{
+    DeviceRepo, EntityKind, EntitySearchHit, FindingRepo, KvSnapshotRepo, MigrationRecord,
+    PolicyRepo, RelationalStorePort, SessionSummaryRepo, TenantUserRecord, UserRepo,
+};
+pub use tenant::{
+    CODE_BLOB_INVALID_PATH, CODE_TENANT_INVALID_ID, CODE_TENANT_SCOPE_MISMATCH,
+    CODE_TENANT_WRITE_FORBIDDEN, FencingToken, OrgId, ProfileKind, SetCtx, SingleCtx, TenantCtx,
+    TenantPath, TenantRelPath,
+};
 
 use grdr_model::{
     ActionAttempt, CodedError, DecisionReceipt, Grant, KillSwitchState, LiveEvent, PolicyPack,

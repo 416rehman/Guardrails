@@ -12,7 +12,6 @@ use grdr_model::{
 };
 
 use super::AppState;
-use super::persistence::persist_snapshot;
 
 impl AppState {
     pub async fn decide_approval(
@@ -50,9 +49,7 @@ impl AppState {
                         if let Some(slot) = guard.approvals.get_mut(idx) {
                             slot.state = ApprovalState::Expired { expired_at: now };
                         }
-                        if let Some(dir) = &self.data_dir {
-                            persist_snapshot(dir, &guard)?;
-                        }
+                        self.persist_store(&guard)?;
                         return Err(CodedError::new(
                             CODE_CONFLICT,
                             "This approval request has expired.",
@@ -136,9 +133,7 @@ impl AppState {
                     },
                 );
 
-                if let Some(dir) = &self.data_dir {
-                    persist_snapshot(dir, &guard)?;
-                }
+                self.persist_store(&guard)?;
                 decided
             };
 
@@ -188,9 +183,7 @@ impl AppState {
                     target: updated.id.clone(),
                 },
             );
-            if let Some(dir) = &self.data_dir {
-                persist_snapshot(dir, &guard)?;
-            }
+            self.persist_store(&guard)?;
             updated
         };
 
@@ -242,9 +235,7 @@ impl AppState {
                     target: "kill-switch".into(),
                 },
             );
-            if let Some(dir) = &self.data_dir {
-                persist_snapshot(dir, &guard)?;
-            }
+            self.persist_store(&guard)?;
         }
 
         self.emit_live(

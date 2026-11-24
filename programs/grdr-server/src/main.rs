@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::Parser;
+use grdr_ports::ProfileKind;
 use tokio::net::TcpListener;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
@@ -31,6 +32,9 @@ struct Args {
 
     #[arg(long, env = "GRDR_DATA_DIR")]
     data_dir: Option<PathBuf>,
+
+    #[arg(long, env = "GRDR_SERVER_PROFILE", default_value = "embedded")]
+    profile: String,
 
     #[arg(long, default_value_t = false)]
     memory: bool,
@@ -69,7 +73,15 @@ async fn main() -> ExitCode {
         candidate.join("index.html").is_file().then_some(candidate)
     });
 
-    let state = match AppState::init(data_dir, args.demo_seed) {
+    let profile = match ProfileKind::parse(&args.profile) {
+        Ok(p) => p,
+        Err(err) => {
+            error!(error = %err, "Invalid server storage profile");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let state = match AppState::init_with_profile(profile, data_dir, args.demo_seed) {
         Ok(state) => state,
         Err(err) => {
             error!(error = %err, "Failed to initialize server store");
@@ -1397,5 +1409,88 @@ mod tests {
         .unwrap();
         assert_eq!(eval_res.verdict, grdr_model::Verdict::Deny);
         assert_eq!(eval_res.rule_id.as_deref(), Some("browser.block.chatgpt"));
+    }
+
+    #[tokio::test]
+    async fn embedded_storage_persists_across_reopen_without_state_json() {
+        let dir = std::env::temp_dir().join(format!(
+            "grdr-server-embedded-{}",
+            uuid::Uuid::now_v7().simple()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        {
+            let state = AppState::init(Some(dir.clone()), false).unwrap();
+            assert!(state.storage_mode.starts_with("embedded:sqlite:"));
+            let app = routes::build_router(state, None);
+
+            let checkin = DeviceCheckinRequest {
+                device_id: Some("dev-sqlite-1".into()),
+                hostname: "sqlite-runner".into(),
+                os: "linux".into(),
+                arch: "x86_64".into(),
+                install_profile: InstallProfile::Protected,
+                daemon_version: "0.1.0".into(),
+                hook_effective: true,
+                agents: vec![],
+                mcp_servers: vec![],
+                artifacts: vec![],
+                user_id: None,
+                user_display: None,
+                device_public_key: None,
+            };
+            let resp = app
+                .clone()
+                .oneshot(
+                    Request::post("/api/v1/devices/checkin")
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_vec(&checkin).unwrap()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+
+            let decide_req = DecideInput {
+                session_id: Some("sess-sqlite-1".into()),
+                device_id: Some("dev-sqlite-1".into()),
+                device_name: Some("sqlite-runner".into()),
+                agent_name: "claude-code".into(),
+                action_class: ActionClass::FileRead,
+                control_point: None,
+                target: "/home/ci/.ssh/id_rsa".into(),
+                summary: None,
+            };
+            let resp = app
+                .oneshot(
+                    Request::post("/api/v1/decide")
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_vec(&decide_req).unwrap()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+        }
+
+        assert!(!dir.join("state.json").exists());
+        assert!(dir.join("relational.sqlite3").is_file());
+        assert!(dir.join("bus.sqlite3").is_file());
+        assert!(dir.join("jobs.sqlite3").is_file());
+        assert!(dir.join("blobs").is_dir());
+
+        let reopened = AppState::init(Some(dir.clone()), false).unwrap();
+        let overview = reopened.overview().await;
+        assert_eq!(overview.total_devices, 1);
+        assert_eq!(overview.active_sessions, 1);
+        assert!(overview.pending_approvals >= 1);
+
+        assert!(AppState::init_with_profile(ProfileKind::Ha, Some(dir.clone()), false).is_err());
+        assert!(
+            AppState::init_with_profile(ProfileKind::Distributed, Some(dir.clone()), false)
+                .is_err()
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

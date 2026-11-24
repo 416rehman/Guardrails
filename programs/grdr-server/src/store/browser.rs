@@ -11,7 +11,6 @@ use grdr_model::{
 };
 
 use super::AppState;
-use super::persistence::persist_snapshot;
 
 pub(crate) fn demo_browser_policies() -> Vec<BrowserAppPolicy> {
     vec![
@@ -134,9 +133,7 @@ impl AppState {
                 timestamp: now,
             },
         );
-        if let Some(dir) = &self.data_dir {
-            persist_snapshot(dir, &guard)?;
-        }
+        self.persist_store(&guard)?;
         Ok(updated)
     }
 
@@ -169,9 +166,7 @@ impl AppState {
             res
         };
 
-        if let Some(dir) = &self.data_dir {
-            persist_snapshot(dir, &guard)?;
-        }
+        self.persist_store(&guard)?;
         Ok(response)
     }
 }
