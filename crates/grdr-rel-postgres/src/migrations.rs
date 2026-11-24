@@ -109,49 +109,153 @@ CREATE TABLE IF NOT EXISTS tenant_kv (
 
 ALTER TABLE device ENABLE ROW LEVEL SECURITY;
 ALTER TABLE device FORCE ROW LEVEL SECURITY;
-CREATE POLICY device_tenant_rls ON device USING (
+DROP POLICY IF EXISTS device_tenant_select_rls ON device;
+CREATE POLICY device_tenant_select_rls ON device FOR SELECT USING (
     organisation_id = NULLIF(current_setting('app.org_id', true), '')
-    OR organisation_id = ANY(string_to_array(COALESCE(current_setting('grdr.orgs', true), ''), ','))
-    OR organisation_id IN (
-        SELECT organisation_id FROM delegation_snapshot
-        WHERE snapshot_id = NULLIF(current_setting('grdr.orgset', true), '')
+    OR (
+        organisation_id = ANY(string_to_array(COALESCE(current_setting('grdr.orgs', true), ''), ','))
+        AND organisation_id IN (
+            SELECT organisation_id FROM delegation_snapshot
+            WHERE snapshot_id = NULLIF(current_setting('grdr.orgset', true), '')
+        )
     )
 );
+DROP POLICY IF EXISTS device_tenant_insert_rls ON device;
+CREATE POLICY device_tenant_insert_rls ON device FOR INSERT WITH CHECK (
+    organisation_id = NULLIF(current_setting('app.org_id', true), '')
+);
+DROP POLICY IF EXISTS device_tenant_update_rls ON device;
+CREATE POLICY device_tenant_update_rls ON device FOR UPDATE
+    USING (organisation_id = NULLIF(current_setting('app.org_id', true), ''))
+    WITH CHECK (organisation_id = NULLIF(current_setting('app.org_id', true), ''));
+DROP POLICY IF EXISTS device_tenant_delete_rls ON device;
+CREATE POLICY device_tenant_delete_rls ON device FOR DELETE
+    USING (organisation_id = NULLIF(current_setting('app.org_id', true), ''));
 
 ALTER TABLE session_summary ENABLE ROW LEVEL SECURITY;
 ALTER TABLE session_summary FORCE ROW LEVEL SECURITY;
-CREATE POLICY session_summary_tenant_rls ON session_summary USING (
+DROP POLICY IF EXISTS session_summary_tenant_select_rls ON session_summary;
+CREATE POLICY session_summary_tenant_select_rls ON session_summary FOR SELECT USING (
     organisation_id = NULLIF(current_setting('app.org_id', true), '')
-    OR organisation_id = ANY(string_to_array(COALESCE(current_setting('grdr.orgs', true), ''), ','))
+    OR (
+        organisation_id = ANY(string_to_array(COALESCE(current_setting('grdr.orgs', true), ''), ','))
+        AND organisation_id IN (
+            SELECT organisation_id FROM delegation_snapshot
+            WHERE snapshot_id = NULLIF(current_setting('grdr.orgset', true), '')
+        )
+    )
 );
+DROP POLICY IF EXISTS session_summary_tenant_insert_rls ON session_summary;
+CREATE POLICY session_summary_tenant_insert_rls ON session_summary FOR INSERT WITH CHECK (
+    organisation_id = NULLIF(current_setting('app.org_id', true), '')
+);
+DROP POLICY IF EXISTS session_summary_tenant_update_rls ON session_summary;
+CREATE POLICY session_summary_tenant_update_rls ON session_summary FOR UPDATE
+    USING (organisation_id = NULLIF(current_setting('app.org_id', true), ''))
+    WITH CHECK (organisation_id = NULLIF(current_setting('app.org_id', true), ''));
+DROP POLICY IF EXISTS session_summary_tenant_delete_rls ON session_summary;
+CREATE POLICY session_summary_tenant_delete_rls ON session_summary FOR DELETE
+    USING (organisation_id = NULLIF(current_setting('app.org_id', true), ''));
 
 ALTER TABLE finding ENABLE ROW LEVEL SECURITY;
 ALTER TABLE finding FORCE ROW LEVEL SECURITY;
-CREATE POLICY finding_tenant_rls ON finding USING (
+DROP POLICY IF EXISTS finding_tenant_select_rls ON finding;
+CREATE POLICY finding_tenant_select_rls ON finding FOR SELECT USING (
     organisation_id = NULLIF(current_setting('app.org_id', true), '')
-    OR organisation_id = ANY(string_to_array(COALESCE(current_setting('grdr.orgs', true), ''), ','))
+    OR (
+        organisation_id = ANY(string_to_array(COALESCE(current_setting('grdr.orgs', true), ''), ','))
+        AND organisation_id IN (
+            SELECT organisation_id FROM delegation_snapshot
+            WHERE snapshot_id = NULLIF(current_setting('grdr.orgset', true), '')
+        )
+    )
 );
+DROP POLICY IF EXISTS finding_tenant_insert_rls ON finding;
+CREATE POLICY finding_tenant_insert_rls ON finding FOR INSERT WITH CHECK (
+    organisation_id = NULLIF(current_setting('app.org_id', true), '')
+);
+DROP POLICY IF EXISTS finding_tenant_update_rls ON finding;
+CREATE POLICY finding_tenant_update_rls ON finding FOR UPDATE
+    USING (organisation_id = NULLIF(current_setting('app.org_id', true), ''))
+    WITH CHECK (organisation_id = NULLIF(current_setting('app.org_id', true), ''));
+DROP POLICY IF EXISTS finding_tenant_delete_rls ON finding;
+CREATE POLICY finding_tenant_delete_rls ON finding FOR DELETE
+    USING (organisation_id = NULLIF(current_setting('app.org_id', true), ''));
 
 ALTER TABLE policy_pack ENABLE ROW LEVEL SECURITY;
 ALTER TABLE policy_pack FORCE ROW LEVEL SECURITY;
-CREATE POLICY policy_pack_tenant_rls ON policy_pack USING (
+DROP POLICY IF EXISTS policy_pack_tenant_select_rls ON policy_pack;
+CREATE POLICY policy_pack_tenant_select_rls ON policy_pack FOR SELECT USING (
     organisation_id = NULLIF(current_setting('app.org_id', true), '')
-    OR organisation_id = ANY(string_to_array(COALESCE(current_setting('grdr.orgs', true), ''), ','))
+    OR (
+        organisation_id = ANY(string_to_array(COALESCE(current_setting('grdr.orgs', true), ''), ','))
+        AND organisation_id IN (
+            SELECT organisation_id FROM delegation_snapshot
+            WHERE snapshot_id = NULLIF(current_setting('grdr.orgset', true), '')
+        )
+    )
 );
+DROP POLICY IF EXISTS policy_pack_tenant_insert_rls ON policy_pack;
+CREATE POLICY policy_pack_tenant_insert_rls ON policy_pack FOR INSERT WITH CHECK (
+    organisation_id = NULLIF(current_setting('app.org_id', true), '')
+);
+DROP POLICY IF EXISTS policy_pack_tenant_update_rls ON policy_pack;
+CREATE POLICY policy_pack_tenant_update_rls ON policy_pack FOR UPDATE
+    USING (organisation_id = NULLIF(current_setting('app.org_id', true), ''))
+    WITH CHECK (organisation_id = NULLIF(current_setting('app.org_id', true), ''));
+DROP POLICY IF EXISTS policy_pack_tenant_delete_rls ON policy_pack;
+CREATE POLICY policy_pack_tenant_delete_rls ON policy_pack FOR DELETE
+    USING (organisation_id = NULLIF(current_setting('app.org_id', true), ''));
 
 ALTER TABLE user_profile ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_profile FORCE ROW LEVEL SECURITY;
-CREATE POLICY user_profile_tenant_rls ON user_profile USING (
+DROP POLICY IF EXISTS user_profile_tenant_select_rls ON user_profile;
+CREATE POLICY user_profile_tenant_select_rls ON user_profile FOR SELECT USING (
     organisation_id = NULLIF(current_setting('app.org_id', true), '')
-    OR organisation_id = ANY(string_to_array(COALESCE(current_setting('grdr.orgs', true), ''), ','))
+    OR (
+        organisation_id = ANY(string_to_array(COALESCE(current_setting('grdr.orgs', true), ''), ','))
+        AND organisation_id IN (
+            SELECT organisation_id FROM delegation_snapshot
+            WHERE snapshot_id = NULLIF(current_setting('grdr.orgset', true), '')
+        )
+    )
 );
+DROP POLICY IF EXISTS user_profile_tenant_insert_rls ON user_profile;
+CREATE POLICY user_profile_tenant_insert_rls ON user_profile FOR INSERT WITH CHECK (
+    organisation_id = NULLIF(current_setting('app.org_id', true), '')
+);
+DROP POLICY IF EXISTS user_profile_tenant_update_rls ON user_profile;
+CREATE POLICY user_profile_tenant_update_rls ON user_profile FOR UPDATE
+    USING (organisation_id = NULLIF(current_setting('app.org_id', true), ''))
+    WITH CHECK (organisation_id = NULLIF(current_setting('app.org_id', true), ''));
+DROP POLICY IF EXISTS user_profile_tenant_delete_rls ON user_profile;
+CREATE POLICY user_profile_tenant_delete_rls ON user_profile FOR DELETE
+    USING (organisation_id = NULLIF(current_setting('app.org_id', true), ''));
 
 ALTER TABLE tenant_kv ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tenant_kv FORCE ROW LEVEL SECURITY;
-CREATE POLICY tenant_kv_tenant_rls ON tenant_kv USING (
+DROP POLICY IF EXISTS tenant_kv_tenant_select_rls ON tenant_kv;
+CREATE POLICY tenant_kv_tenant_select_rls ON tenant_kv FOR SELECT USING (
     organisation_id = NULLIF(current_setting('app.org_id', true), '')
-    OR organisation_id = ANY(string_to_array(COALESCE(current_setting('grdr.orgs', true), ''), ','))
+    OR (
+        organisation_id = ANY(string_to_array(COALESCE(current_setting('grdr.orgs', true), ''), ','))
+        AND organisation_id IN (
+            SELECT organisation_id FROM delegation_snapshot
+            WHERE snapshot_id = NULLIF(current_setting('grdr.orgset', true), '')
+        )
+    )
 );
+DROP POLICY IF EXISTS tenant_kv_tenant_insert_rls ON tenant_kv;
+CREATE POLICY tenant_kv_tenant_insert_rls ON tenant_kv FOR INSERT WITH CHECK (
+    organisation_id = NULLIF(current_setting('app.org_id', true), '')
+);
+DROP POLICY IF EXISTS tenant_kv_tenant_update_rls ON tenant_kv;
+CREATE POLICY tenant_kv_tenant_update_rls ON tenant_kv FOR UPDATE
+    USING (organisation_id = NULLIF(current_setting('app.org_id', true), ''))
+    WITH CHECK (organisation_id = NULLIF(current_setting('app.org_id', true), ''));
+DROP POLICY IF EXISTS tenant_kv_tenant_delete_rls ON tenant_kv;
+CREATE POLICY tenant_kv_tenant_delete_rls ON tenant_kv FOR DELETE
+    USING (organisation_id = NULLIF(current_setting('app.org_id', true), ''));
 "#,
     },
     PostgresMigration {
@@ -174,10 +278,28 @@ CREATE INDEX IF NOT EXISTS idx_entity_search_title
 
 ALTER TABLE entity_search_index ENABLE ROW LEVEL SECURITY;
 ALTER TABLE entity_search_index FORCE ROW LEVEL SECURITY;
-CREATE POLICY entity_search_tenant_rls ON entity_search_index USING (
+DROP POLICY IF EXISTS entity_search_tenant_select_rls ON entity_search_index;
+CREATE POLICY entity_search_tenant_select_rls ON entity_search_index FOR SELECT USING (
     organisation_id = NULLIF(current_setting('app.org_id', true), '')
-    OR organisation_id = ANY(string_to_array(COALESCE(current_setting('grdr.orgs', true), ''), ','))
+    OR (
+        organisation_id = ANY(string_to_array(COALESCE(current_setting('grdr.orgs', true), ''), ','))
+        AND organisation_id IN (
+            SELECT organisation_id FROM delegation_snapshot
+            WHERE snapshot_id = NULLIF(current_setting('grdr.orgset', true), '')
+        )
+    )
 );
+DROP POLICY IF EXISTS entity_search_tenant_insert_rls ON entity_search_index;
+CREATE POLICY entity_search_tenant_insert_rls ON entity_search_index FOR INSERT WITH CHECK (
+    organisation_id = NULLIF(current_setting('app.org_id', true), '')
+);
+DROP POLICY IF EXISTS entity_search_tenant_update_rls ON entity_search_index;
+CREATE POLICY entity_search_tenant_update_rls ON entity_search_index FOR UPDATE
+    USING (organisation_id = NULLIF(current_setting('app.org_id', true), ''))
+    WITH CHECK (organisation_id = NULLIF(current_setting('app.org_id', true), ''));
+DROP POLICY IF EXISTS entity_search_tenant_delete_rls ON entity_search_index;
+CREATE POLICY entity_search_tenant_delete_rls ON entity_search_index FOR DELETE
+    USING (organisation_id = NULLIF(current_setting('app.org_id', true), ''));
 "#,
     },
     PostgresMigration {
@@ -255,9 +377,6 @@ CREATE TABLE IF NOT EXISTS user_profile (
     payload_json TEXT NOT NULL,
     PRIMARY KEY (organisation_id, user_id)
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_pg_offline_user_pseudonym
-    ON user_profile (organisation_id, pseudonym_id);
 
 CREATE TABLE IF NOT EXISTS tenant_kv (
     organisation_id TEXT NOT NULL,

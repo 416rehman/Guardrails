@@ -13,7 +13,10 @@ use grdr_ports::{
     TenantCtx, TenantPath,
 };
 
-use crate::crypto::{SessionKeyLookup, load_session_key, open_content_fields};
+use crate::crypto::{
+    SessionKeyLookup, derive_segment_dek, load_session_key, open_content_fields, open_envelope,
+    segment_seal_domain,
+};
 use crate::query_eval::evaluate_rows;
 use crate::schema::lake_sql_err;
 
@@ -60,25 +63,34 @@ pub(crate) fn run_lake_query<B: BlobPort>(
 
         let mut stmt = conn
             .prepare(
-                "SELECT object_key FROM lake_segments
+                "SELECT object_key, retention_class, day FROM lake_segments
                  WHERE organisation_id = ?1 AND logical_deleted_at_ms IS NULL
                  ORDER BY day ASC, segment_id ASC",
             )
             .map_err(lake_sql_err)?;
-        let keys: Vec<String> = stmt
-            .query_map(rusqlite::params![org_id.as_str()], |row| row.get(0))
+        let keys: Vec<(String, String, String)> = stmt
+            .query_map(rusqlite::params![org_id.as_str()], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })
             .map_err(lake_sql_err)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(lake_sql_err)?;
 
-        for rel_key in keys {
+        for (rel_key, class_str, day) in keys {
             let tenant_path =
                 TenantPath::parse(&grdr_ports::SingleCtx::new(org_id.clone()), &rel_key)?;
             let Some(blob) = blobs.get(ctx, &tenant_path)? else {
                 continue;
             };
             scanned_segments = scanned_segments.saturating_add(1);
-            let segment: SealedSegmentBlob = serde_json::from_slice(&blob.bytes).map_err(|e| {
+            let (_, seg_dek) = derive_segment_dek(org_kek, org_id, &class_str, &day);
+            let plain_bytes = open_envelope(
+                &seg_dek,
+                segment_seal_domain(),
+                &[org_id.as_str(), &class_str, &day, &rel_key],
+                &blob.bytes,
+            )?;
+            let segment: SealedSegmentBlob = serde_json::from_slice(&plain_bytes).map_err(|e| {
                 CodedError::new(
                     CODE_LAKE_IO,
                     format!("Corrupt lake segment `{rel_key}`: {e}"),

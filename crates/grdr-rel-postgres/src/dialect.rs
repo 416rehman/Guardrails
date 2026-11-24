@@ -27,6 +27,8 @@ pub enum PostgresStatementId {
     GetKv,
     ListKv,
     DeleteKv,
+    DeleteSearchParent,
+    InsertSearchRow,
     SearchEntities,
     AppliedMigrations,
 }
@@ -54,6 +56,8 @@ impl PostgresSqlRegistry {
         PostgresStatementId::GetKv,
         PostgresStatementId::ListKv,
         PostgresStatementId::DeleteKv,
+        PostgresStatementId::DeleteSearchParent,
+        PostgresStatementId::InsertSearchRow,
         PostgresStatementId::SearchEntities,
         PostgresStatementId::AppliedMigrations,
     ];
@@ -62,7 +66,7 @@ impl PostgresSqlRegistry {
         match id {
             PostgresStatementId::UpsertDevice => {
                 "INSERT INTO device (organisation_id, device_id, hostname, os, arch, online, last_seen, payload_json)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz, $8::jsonb)
+                 VALUES ($1, $2, $3, $4, $5, $6::boolean, $7::timestamptz, $8::jsonb)
                  ON CONFLICT (organisation_id, device_id) DO UPDATE SET
                    hostname = EXCLUDED.hostname,
                    os = EXCLUDED.os,
@@ -158,6 +162,17 @@ impl PostgresSqlRegistry {
             PostgresStatementId::DeleteKv => {
                 "DELETE FROM tenant_kv WHERE organisation_id = $1 AND namespace = $2 AND entry_key = $3"
             }
+            PostgresStatementId::DeleteSearchParent => {
+                "DELETE FROM entity_search_index WHERE organisation_id = $1 AND parent_key = $2"
+            }
+            PostgresStatementId::InsertSearchRow => {
+                "INSERT INTO entity_search_index (organisation_id, entity_kind, entity_id, parent_key, title, subtitle)
+                 VALUES ($1, $2, $3, $4, $5, $6)
+                 ON CONFLICT (organisation_id, entity_kind, entity_id) DO UPDATE SET
+                   parent_key = EXCLUDED.parent_key,
+                   title = EXCLUDED.title,
+                   subtitle = EXCLUDED.subtitle"
+            }
             PostgresStatementId::SearchEntities => {
                 "SELECT entity_kind, entity_id, title, subtitle, 100::bigint AS rank_score
                  FROM entity_search_index
@@ -166,7 +181,7 @@ impl PostgresSqlRegistry {
                  LIMIT $3"
             }
             PostgresStatementId::AppliedMigrations => {
-                "SELECT version, name, applied_at::text FROM schema_migrations ORDER BY version ASC"
+                "SELECT version::text, name, applied_at::text FROM schema_migrations ORDER BY version ASC"
             }
         }
     }

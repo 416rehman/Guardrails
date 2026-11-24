@@ -55,7 +55,13 @@ pub(crate) fn flush_due_batches(
             Some(committed_through.map_or(batch.bus_offset, |cur| cur.max(batch.bus_offset)));
         let mut session_ids = BTreeSet::new();
         let mut archive_day = day_from_ms(now_ms);
-        for rec in batch.records {
+        for mut rec in batch.records {
+            let min_obs = rec
+                .received_at_ms
+                .saturating_sub(30i64.saturating_mul(86_400_000))
+                .max(0);
+            let max_obs = rec.received_at_ms.saturating_add(86_400_000);
+            rec.observed_time_ms = rec.observed_time_ms.clamp(min_obs, max_obs);
             let day = day_from_ms(rec.observed_time_ms);
             archive_day = day.clone();
             session_ids.insert(rec.root_session_id.clone());

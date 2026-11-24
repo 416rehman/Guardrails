@@ -106,13 +106,7 @@ impl PostgresConfig {
             )
         })?;
         let database = db_raw.trim();
-        if database.is_empty() {
-            return Err(CodedError::new(
-                CODE_PG_CONFIG,
-                "PostgreSQL DSN database name cannot be empty.",
-                "Specify the target database name in the DSN.",
-            ));
-        }
+        validate_dsn_token("database", database, true)?;
 
         let (userinfo, hostport) = match authority.rsplit_once('@') {
             Some((u, h)) => (Some(u), h),
@@ -126,12 +120,9 @@ impl PostgresConfig {
             },
             None => ("grdr".to_string(), None),
         };
-        if user.is_empty() {
-            return Err(CodedError::new(
-                CODE_PG_CONFIG,
-                "PostgreSQL DSN user cannot be empty.",
-                "Provide a valid PostgreSQL role in the DSN.",
-            ));
+        validate_dsn_token("user", &user, true)?;
+        if let Some(ref pw) = password {
+            validate_dsn_token("password", pw, false)?;
         }
 
         let mut ssl_mode = PostgresSslMode::Require;
@@ -160,43 +151,107 @@ impl PostgresConfig {
     }
 
     pub fn validate(&self) -> Result<(), CodedError> {
-        if self.application_name.trim().is_empty() {
-            return Err(CodedError::new(
-                CODE_PG_CONFIG,
-                "PostgreSQL application_name cannot be empty.",
-                "Set a non-empty application_name.",
-            ));
-        }
+        validate_dsn_token("application_name", &self.application_name, true)?;
         if let PostgresTransport::TcpWire {
             endpoint,
             database,
             user,
-            ..
+            password,
         } = &self.transport
-            && (endpoint.trim().is_empty() || database.trim().is_empty() || user.trim().is_empty())
         {
-            return Err(CodedError::new(
-                CODE_PG_CONFIG,
-                "PostgreSQL endpoint, database, and user must be non-empty.",
-                "Inspect PostgreSQL connection configuration.",
-            ));
+            validate_dsn_token("endpoint", endpoint, true)?;
+            validate_dsn_token("database", database, true)?;
+            validate_dsn_token("user", user, true)?;
+            if let Some(pw) = password {
+                validate_dsn_token("password", pw, false)?;
+            }
         }
         Ok(())
     }
 }
 
-fn normalize_hostport(raw: &str) -> Result<String, CodedError> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
+fn validate_dsn_token(field: &str, value: &str, reject_whitespace: bool) -> Result<(), CodedError> {
+    if value.trim().is_empty() {
         return Err(CodedError::new(
             CODE_PG_CONFIG,
-            "PostgreSQL host cannot be empty.",
-            "Include host and port in the PostgreSQL DSN.",
+            format!("PostgreSQL {field} cannot be empty."),
+            "Provide a valid PostgreSQL connection configuration.",
         ));
     }
-    if trimmed.contains(':') {
-        Ok(trimmed.to_string())
+    let bad = value
+        .chars()
+        .any(|c| c == '\0' || c.is_control() || (reject_whitespace && c.is_whitespace()));
+    if bad {
+        return Err(CodedError::new(
+            CODE_PG_CONFIG,
+            format!("PostgreSQL {field} contains invalid control or whitespace characters."),
+            "Remove control, NUL, or whitespace characters from PostgreSQL DSN parameters.",
+        ));
+    }
+    Ok(())
+}
+
+fn normalize_hostport(raw: &str) -> Result<String, CodedError> {
+    let trimmed = raw.trim();
+    validate_dsn_token("host", trimmed, true)?;
+    if let Some(after_open) = trimmed.strip_prefix('[') {
+        let (host, rest) = after_open.split_once(']').ok_or_else(|| {
+            CodedError::new(
+                CODE_PG_CONFIG,
+                "Invalid IPv6 host literal in PostgreSQL DSN.",
+                "Use [addr]:port format for IPv6 hosts.",
+            )
+        })?;
+        if host.is_empty() {
+            return Err(CodedError::new(
+                CODE_PG_CONFIG,
+                "PostgreSQL IPv6 host cannot be empty.",
+                "Provide a valid IPv6 host address.",
+            ));
+        }
+        if rest.is_empty() {
+            return Ok(format!("[{host}]:5432"));
+        }
+        let port_str = rest.strip_prefix(':').ok_or_else(|| {
+            CodedError::new(
+                CODE_PG_CONFIG,
+                "Unexpected suffix after IPv6 host in PostgreSQL DSN.",
+                "Use [addr]:port format.",
+            )
+        })?;
+        validate_port(port_str)?;
+        return Ok(format!("[{host}]:{port_str}"));
+    }
+
+    if let Some((host, port_str)) = trimmed.split_once(':') {
+        if host.is_empty() || port_str.contains(':') {
+            return Err(CodedError::new(
+                CODE_PG_CONFIG,
+                "Invalid host:port in PostgreSQL DSN.",
+                "Format PostgreSQL host as host:port.",
+            ));
+        }
+        validate_port(port_str)?;
+        Ok(format!("{host}:{port_str}"))
     } else {
         Ok(format!("{trimmed}:5432"))
     }
+}
+
+fn validate_port(raw: &str) -> Result<u16, CodedError> {
+    let port: u16 = raw.parse().map_err(|_| {
+        CodedError::new(
+            CODE_PG_CONFIG,
+            format!("Invalid PostgreSQL port `{raw}`."),
+            "Specify a numeric TCP port between 1 and 65535.",
+        )
+    })?;
+    if port == 0 {
+        return Err(CodedError::new(
+            CODE_PG_CONFIG,
+            "PostgreSQL port cannot be zero.",
+            "Specify a numeric TCP port between 1 and 65535.",
+        ));
+    }
+    Ok(port)
 }

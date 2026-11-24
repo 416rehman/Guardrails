@@ -5,9 +5,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use grdr_model::CodedError;
 use grdr_ports::{
-    CODE_LAKE_INVALID_QUERY, LakeAggOp, LakeAggSpec, LakeCoverage, LakePredicate, LakeQueryIr,
-    LakeQueryResult, LakeQueryRow, LakeRecord, OrgId, RetentionClass,
+    CODE_LAKE_INVALID_QUERY, HuntTable, LakeAggOp, LakeAggSpec, LakeCoverage, LakePredicate,
+    LakeQueryIr, LakeQueryResult, LakeQueryRow, LakeRecord, OrgId, RetentionClass, parse_hunt_sql,
 };
+
+const DEFAULT_QUERY_LIMIT: usize = 1_000;
+const MAX_QUERY_LIMIT: usize = 100_000;
 
 type QueryRowRef<'a> = &'a (OrgId, LakeRecord, bool, bool);
 
@@ -23,7 +26,7 @@ pub fn evaluate_query_ir(
             include_content,
             limit,
         } => {
-            let mut matched: Vec<&(OrgId, LakeRecord, bool, bool)> = rows
+            let mut matched: Vec<QueryRowRef<'_>> = rows
                 .iter()
                 .filter(|(_, r, _, _)| &r.root_session_id == root_session_id)
                 .collect();
@@ -43,7 +46,7 @@ pub fn evaluate_query_ir(
                         b.1.seq,
                     ))
             });
-            let cap = if *limit == 0 { usize::MAX } else { *limit };
+            let cap = normalize_limit(*limit, DEFAULT_QUERY_LIMIT);
             let out = matched
                 .into_iter()
                 .take(cap)
@@ -67,7 +70,7 @@ pub fn evaluate_query_ir(
             include_content,
             limit,
         } => {
-            let cap = if *limit == 0 { usize::MAX } else { *limit };
+            let cap = normalize_limit(*limit, DEFAULT_QUERY_LIMIT);
             let out = rows
                 .iter()
                 .filter(|(_, rec, _, _)| {
@@ -109,7 +112,7 @@ pub fn evaluate_query_ir(
             value,
             limit,
         } => {
-            let cap = if *limit == 0 { usize::MAX } else { *limit };
+            let cap = normalize_limit(*limit, DEFAULT_QUERY_LIMIT);
             let out = rows
                 .iter()
                 .filter(|(_, rec, _, _)| {
@@ -160,6 +163,14 @@ pub fn evaluate_query_ir(
     }
 }
 
+fn normalize_limit(limit: usize, default_limit: usize) -> usize {
+    if limit == 0 {
+        default_limit
+    } else {
+        limit.min(MAX_QUERY_LIMIT)
+    }
+}
+
 fn eval_aggregate(
     rows: &[(OrgId, LakeRecord, bool, bool)],
     retention_class: RetentionClass,
@@ -175,16 +186,16 @@ fn eval_aggregate(
             rec.retention_class == retention_class && predicates_match(rec, predicates)
         })
         .collect();
-    let mut groups: BTreeMap<Vec<String>, Vec<QueryRowRef<'_>>> = BTreeMap::new();
+    let mut groups: BTreeMap<(OrgId, Vec<String>), Vec<QueryRowRef<'_>>> = BTreeMap::new();
     for item in filtered {
         let key = group_by
             .iter()
             .map(|col| resolve_field(&item.1, col).unwrap_or_default())
             .collect();
-        groups.entry(key).or_default().push(item);
+        groups.entry((item.0.clone(), key)).or_default().push(item);
     }
     let mut out = Vec::new();
-    for (key_vals, group_rows) in groups {
+    for ((org, key_vals), group_rows) in groups {
         let mut cols = BTreeMap::new();
         for (col, val) in group_by.iter().zip(key_vals) {
             cols.insert(col.clone(), val);
@@ -192,17 +203,15 @@ fn eval_aggregate(
         for agg in aggregations {
             cols.insert(agg.alias.clone(), compute_agg(agg, &group_rows));
         }
-        if let Some((org, _, _, _)) = group_rows.first() {
-            out.push(LakeQueryRow {
-                organisation_id: org.clone(),
-                event_id: None,
-                retention_class: Some(retention_class),
-                root_session_id: None,
-                observed_time_ms: None,
-                columns: cols,
-                content_redacted: false,
-            });
-        }
+        out.push(LakeQueryRow {
+            organisation_id: org,
+            event_id: None,
+            retention_class: Some(retention_class),
+            root_session_id: None,
+            observed_time_ms: None,
+            columns: cols,
+            content_redacted: false,
+        });
     }
     Ok(LakeQueryResult {
         rows: out,
@@ -221,31 +230,33 @@ fn eval_hunt(
     scanned_segments: usize,
     tail_rows_merged: usize,
 ) -> Result<LakeQueryResult, CodedError> {
-    let (table_opt, needle_opt) = parse_restricted_hunt(sql_select)?;
-    let cap = if limit == 0 {
-        100_000
-    } else {
-        limit.min(100_000)
-    };
+    let parsed = parse_hunt_sql(sql_select, include_content)?;
+    let requested = normalize_limit(limit, MAX_QUERY_LIMIT);
+    let cap = parsed.sql_limit.map_or(requested, |sql_lim| {
+        if sql_lim == 0 {
+            requested
+        } else {
+            requested.min(sql_lim)
+        }
+    });
     let out = rows
         .iter()
         .filter(|(_, rec, _, _)| {
-            let table_ok = match table_opt.as_deref() {
-                Some("decision") => rec.retention_class == RetentionClass::Decision,
-                Some("activity") => rec.retention_class == RetentionClass::Activity,
-                Some("content") => rec.retention_class == RetentionClass::Content,
-                Some(cat) => rec.category.eq_ignore_ascii_case(cat),
-                None => true,
+            let table_ok = match parsed.table {
+                HuntTable::Decision => rec.retention_class == RetentionClass::Decision,
+                HuntTable::Activity => rec.retention_class == RetentionClass::Activity,
+                HuntTable::Content => rec.retention_class == RetentionClass::Content,
+                HuntTable::Events => true,
             };
-            let filter_ok = needle_opt.as_ref().is_none_or(|needle| {
-                rec.event_id.contains(needle)
-                    || rec.root_session_id.contains(needle)
-                    || rec.fields.values().any(|v| v.contains(needle))
+            let filter_ok = parsed.predicates.iter().all(|(col, val)| {
+                resolve_field_for_hunt(rec, col, include_content).is_some_and(|v| v == *val)
             });
             table_ok && filter_ok
         })
         .take(cap)
-        .map(|(org, rec, shredded, _)| record_to_row(org, rec, &[], include_content, *shredded))
+        .map(|(org, rec, shredded, _)| {
+            record_to_row(org, rec, &parsed.projection, include_content, *shredded)
+        })
         .collect();
     Ok(LakeQueryResult {
         rows: out,
@@ -265,9 +276,18 @@ fn eval_export(
     scanned_segments: usize,
     tail_rows_merged: usize,
 ) -> Result<LakeQueryResult, CodedError> {
-    let start = cursor.and_then(|c| c.parse::<usize>().ok()).unwrap_or(0);
-    let cap = if limit == 0 { 1_000 } else { limit };
-    let filtered: Vec<&(OrgId, LakeRecord, bool, bool)> = rows
+    let start = match cursor {
+        Some(raw) => raw.trim().parse::<usize>().map_err(|_| {
+            CodedError::new(
+                CODE_LAKE_INVALID_QUERY,
+                format!("Invalid export cursor `{raw}`."),
+                "Supply a valid numeric export cursor from the previous page.",
+            )
+        })?,
+        None => 0,
+    };
+    let cap = normalize_limit(limit, DEFAULT_QUERY_LIMIT);
+    let filtered: Vec<QueryRowRef<'_>> = rows
         .iter()
         .filter(|(_, rec, _, _)| retention_class.is_none_or(|rc| rec.retention_class == rc))
         .collect();
@@ -290,36 +310,6 @@ fn eval_export(
         scanned_segments,
         tail_rows_merged,
     })
-}
-
-fn parse_restricted_hunt(sql: &str) -> Result<(Option<String>, Option<String>), CodedError> {
-    let trimmed = sql.trim();
-    let lower = trimmed.to_ascii_lowercase();
-    if !lower.starts_with("select ") {
-        return Err(CodedError::new(
-            CODE_LAKE_INVALID_QUERY,
-            "Hunt queries must be restricted SELECT statements.",
-            "Rewrite the hunt query starting with SELECT.",
-        ));
-    }
-    for forbidden in [
-        ";", "drop ", "delete ", "insert ", "update ", "alter ", "copy ",
-    ] {
-        if lower.contains(forbidden) {
-            return Err(CodedError::new(
-                CODE_LAKE_INVALID_QUERY,
-                format!("Forbidden SQL token `{}` in Hunt query.", forbidden.trim()),
-                "Use read-only SELECT syntax only.",
-            ));
-        }
-    }
-    let table = lower
-        .split(" from ")
-        .nth(1)
-        .and_then(|rest| rest.split_whitespace().next())
-        .map(|s| s.trim_matches('"').to_string());
-    let needle = trimmed.split('\'').nth(1).map(str::to_string);
-    Ok((table, needle))
 }
 
 fn record_to_row(
@@ -375,6 +365,16 @@ fn predicates_match(rec: &LakeRecord, predicates: &[LakePredicate]) -> bool {
     })
 }
 
+fn resolve_field_for_hunt(rec: &LakeRecord, field: &str, include_content: bool) -> Option<String> {
+    if let Some(content_key) = field.strip_prefix("content.") {
+        if !include_content {
+            return None;
+        }
+        return rec.content_fields.get(content_key).cloned();
+    }
+    resolve_field(rec, field)
+}
+
 fn resolve_field(rec: &LakeRecord, field: &str) -> Option<String> {
     match field {
         "event_id" => Some(rec.event_id.clone()),
@@ -387,7 +387,7 @@ fn resolve_field(rec: &LakeRecord, field: &str) -> Option<String> {
     }
 }
 
-fn compute_agg(agg: &LakeAggSpec, rows: &[&(OrgId, LakeRecord, bool, bool)]) -> String {
+fn compute_agg(agg: &LakeAggSpec, rows: &[QueryRowRef<'_>]) -> String {
     match agg.op {
         LakeAggOp::Count => rows.len().to_string(),
         LakeAggOp::Sum => {

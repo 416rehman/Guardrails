@@ -3,18 +3,27 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64_URL;
 use rusqlite::{Connection, OptionalExtension};
 use uuid::Uuid;
 
+use grdr_crypto::AeadKey;
 use grdr_model::CodedError;
 use grdr_ports::{
     BlobPort, CODE_LAKE_IO, FencingToken, LakeBatch, LakeFlushResult, LakeManifest,
     LakeManifestEntry, LakeRecord, OrgId, RetentionClass, SingleCtx, TenantPath,
 };
 
-use crate::crypto::{day_from_ms, sha256_hex};
+use crate::crypto::{
+    ArchivePayload, archive_seal_domain, day_from_ms, derive_segment_dek, seal_envelope,
+    segment_seal_domain, sha256_hex,
+};
 use crate::query::SealedSegmentBlob;
 use crate::schema::lake_sql_err;
+
+const MS_PER_DAY: i64 = 86_400_000;
+const MAX_BACKDATE_MS: i64 = 30 * MS_PER_DAY;
 
 pub(crate) struct FlushContext {
     pub(crate) fence: FencingToken,
@@ -50,9 +59,16 @@ struct ArchiveInsert {
     digest: String,
 }
 
+pub(crate) fn clamp_observed_ms(observed_ms: i64, received_at_ms: i64) -> i64 {
+    let min_ms = received_at_ms.saturating_sub(MAX_BACKDATE_MS).max(0);
+    let max_ms = received_at_ms.saturating_add(MS_PER_DAY);
+    observed_ms.clamp(min_ms, max_ms)
+}
+
 pub(crate) fn flush_org_batches<B: BlobPort>(
     conn: &mut Connection,
     blobs: &B,
+    org_kek: &AeadKey,
     ctx: &SingleCtx,
     mut flush_ctx: FlushContext,
     due_batches: Vec<LakeBatch>,
@@ -67,12 +83,15 @@ pub(crate) fn flush_org_batches<B: BlobPort>(
         committed_through =
             Some(committed_through.map_or(batch.bus_offset, |cur| cur.max(batch.bus_offset)));
         let mut session_ids = BTreeSet::new();
-        let mut archive_day = day_from_ms(flush_ctx.now_ms);
-        for rec in batch.records {
-            let day = day_from_ms(rec.observed_time_ms);
+        let mut archive_day = day_from_ms(flush_ctx.now_ms)?;
+        let mut batch_records = Vec::with_capacity(batch.records.len());
+        for mut rec in batch.records {
+            rec.observed_time_ms = clamp_observed_ms(rec.observed_time_ms, rec.received_at_ms);
+            let day = day_from_ms(rec.observed_time_ms)?;
             archive_day = day.clone();
             session_ids.insert(rec.root_session_id.clone());
             rows_flushed = rows_flushed.saturating_add(1);
+            batch_records.push(rec.clone());
             grouped
                 .entry((rec.retention_class, day))
                 .or_default()
@@ -84,14 +103,31 @@ pub(crate) fn flush_org_batches<B: BlobPort>(
                 batch.lane,
                 Uuid::now_v7().simple()
             );
+            let payload = ArchivePayload {
+                lane: batch.lane.clone(),
+                day: archive_day.clone(),
+                records: batch_records,
+                raw_archive_b64: Some(B64_URL.encode(&batch.archive_bytes)),
+                reduced_sessions: Vec::new(),
+            };
+            let plain_bytes = serde_json::to_vec(&payload).map_err(json_io_err)?;
+            let (arch_key_id, arch_dek) =
+                derive_segment_dek(org_kek, org_id, "archive", &archive_day);
+            let sealed_bytes = seal_envelope(
+                &arch_dek,
+                &arch_key_id,
+                archive_seal_domain(),
+                &[org_id.as_str(), "archive", &archive_day, &arch_key],
+                &plain_bytes,
+            )?;
             let tenant_path = TenantPath::parse(ctx, &arch_key)?;
-            blobs.put(ctx, &tenant_path, &batch.archive_bytes)?;
+            blobs.put(ctx, &tenant_path, &sealed_bytes)?;
             archive_rows.push(ArchiveInsert {
                 arch_key,
                 lane: batch.lane,
                 day: archive_day,
                 sessions: session_ids.into_iter().collect(),
-                digest: sha256_hex(&batch.archive_bytes),
+                digest: sha256_hex(&sealed_bytes),
             });
         }
     }
@@ -126,13 +162,20 @@ pub(crate) fn flush_org_batches<B: BlobPort>(
             day: day.clone(),
             records: records.clone(),
         };
-        let bytes = serde_json::to_vec(&blob_payload).map_err(json_io_err)?;
+        let plain_bytes = serde_json::to_vec(&blob_payload).map_err(json_io_err)?;
+        let (data_key_id, seg_dek) = derive_segment_dek(org_kek, org_id, class.as_str(), &day);
+        let bytes = seal_envelope(
+            &seg_dek,
+            &data_key_id,
+            segment_seal_domain(),
+            &[org_id.as_str(), class.as_str(), &day, &rel_key],
+            &plain_bytes,
+        )?;
         let tenant_path = TenantPath::parse(ctx, &rel_key)?;
         blobs.put(ctx, &tenant_path, &bytes)?;
         let digest = sha256_hex(&bytes);
         let size_bytes = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
         let row_count = u64::try_from(records.len()).unwrap_or(u64::MAX);
-        let data_key_id = format!("dek-{}-{}-{day}", org_id.as_str(), class.as_str());
         manifest_entries.push(LakeManifestEntry {
             object_key: rel_key.clone(),
             retention_class: class,
@@ -167,7 +210,15 @@ pub(crate) fn flush_org_batches<B: BlobPort>(
         .optional()
         .map_err(lake_sql_err)?;
     let entries_json = serde_json::to_string(&manifest_entries).map_err(json_io_err)?;
-    let manifest_digest = sha256_hex(entries_json.as_bytes());
+    let manifest_chain_material = format!(
+        "{}:{}:{}:{}:{}",
+        org_id.as_str(),
+        flush_ctx.manifest_seq,
+        prev_digest.as_deref().unwrap_or("genesis"),
+        flush_ctx.now_ms,
+        entries_json
+    );
+    let manifest_digest = sha256_hex(manifest_chain_material.as_bytes());
     let manifest_key = format!("class=manifest/seq-{}.json", flush_ctx.manifest_seq);
     let manifest_obj = LakeManifest {
         organisation_id: org_id.clone(),
@@ -292,12 +343,12 @@ fn commit_flush_tx(
             ],
         )
         .map_err(lake_sql_err)?;
-        for rec in &seg.records {
-            for obs in &rec.observables {
+
+        for rec in seg.records {
+            for obs in rec.observables {
                 tx.execute(
-                    "INSERT OR IGNORE INTO lake_observables (
-                        organisation_id, observable_type, value, segment_id, event_id
-                     ) VALUES (?1, ?2, ?3, ?4, ?5)",
+                    "INSERT OR IGNORE INTO lake_observables (organisation_id, observable_type, value, segment_id, event_id)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
                     rusqlite::params![
                         org_id.as_str(),
                         obs.observable_type,
@@ -313,7 +364,8 @@ fn commit_flush_tx(
 
     tx.execute(
         "INSERT INTO lake_manifests (
-            organisation_id, manifest_seq, prev_manifest_digest, manifest_digest, object_key, created_at_ms, entries_json
+            organisation_id, manifest_seq, prev_manifest_digest, manifest_digest,
+            object_key, created_at_ms, entries_json
          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         rusqlite::params![
             org_id.as_str(),
@@ -342,7 +394,7 @@ fn commit_flush_tx(
 pub(crate) fn json_io_err(err: serde_json::Error) -> CodedError {
     CodedError::new(
         CODE_LAKE_IO,
-        format!("Lake JSON codec failed: {err}"),
-        "Inspect lake payload serialization.",
+        format!("Lake JSON encoding error: {err}"),
+        "Inspect lake batch record payloads.",
     )
 }

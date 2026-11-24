@@ -92,27 +92,57 @@ impl BusPort for NatsJetStreamBus {
         }
 
         let subject = subject_for(ctx.organisation_id(), stream, partition);
-        let mut wire_frames = Vec::with_capacity(messages.len());
-        let mut batch_bytes = 0u64;
+        let mut prepared = Vec::with_capacity(messages.len());
         for (idx, msg) in messages.iter().enumerate() {
-            batch_bytes =
-                batch_bytes.saturating_add(u64::try_from(msg.payload.len()).unwrap_or(u64::MAX));
-            let msg_id = msg
-                .headers
-                .get("Nats-Msg-Id")
-                .cloned()
-                .unwrap_or_else(|| format!("{}/{stream}/p{partition}/{now_ms}/{idx}", msg.key));
-            if matches!(
-                self.config.transport,
-                NatsTransportMode::JetStreamTcp { .. }
-            ) {
-                wire_frames.push(encode_hpub_cmd(
-                    &subject,
-                    &msg_id,
-                    &msg.headers,
-                    &msg.payload,
+            let msg_id = resolve_msg_id(msg, stream, partition, now_ms, idx)?;
+            let frame = encode_hpub_cmd(&subject, &msg_id, &msg.headers, &msg.payload)?;
+            prepared.push((msg_id, frame, msg));
+        }
+
+        let (wire_frames, all_dup_range) = {
+            let guard = lock_state(&self.state)?;
+            let key = (stream.to_string(), partition);
+            let existing = guard.partitions.get(&key);
+            let cur_bytes = existing.map_or(0, |p| p.total_bytes);
+            let cur_msgs = existing.map_or(0, |p| p.messages.len());
+
+            let mut new_bytes = 0u64;
+            let mut new_count = 0usize;
+            let mut batch_seen = BTreeSet::new();
+            let mut frames_to_send = Vec::new();
+            for (msg_id, frame, msg) in &prepared {
+                let already_seen = existing.is_some_and(|p| p.seen_msg_ids.contains(msg_id))
+                    || !batch_seen.insert(msg_id.clone());
+                if already_seen {
+                    continue;
+                }
+                new_bytes =
+                    new_bytes.saturating_add(u64::try_from(msg.payload.len()).unwrap_or(u64::MAX));
+                new_count = new_count.saturating_add(1);
+                frames_to_send.push(frame.clone());
+            }
+
+            if cur_bytes.saturating_add(new_bytes) > self.config.max_bytes_per_stream
+                || cur_msgs.saturating_add(new_count) > self.config.max_msgs_per_stream
+            {
+                return Err(CodedError::new(
+                    CODE_NATS_STREAM_FULL,
+                    format!("JetStream stream `{stream}` exceeded capacity limits."),
+                    "Return retry_after_ms flow control or increase max_bytes_per_stream.",
                 ));
             }
+            let head = u64::try_from(cur_msgs.saturating_sub(1)).unwrap_or(u64::MAX);
+            (
+                frames_to_send,
+                (new_count == 0).then_some(BusOffsetRange {
+                    first_offset: head,
+                    last_offset: head,
+                }),
+            )
+        };
+
+        if let Some(dup_range) = all_dup_range {
+            return Ok(dup_range);
         }
 
         if let NatsTransportMode::JetStreamTcp { server_url } = &self.config.transport {
@@ -130,27 +160,36 @@ impl BusPort for NatsJetStreamBus {
             .entry((stream.to_string(), partition))
             .or_default();
 
-        if part.total_bytes.saturating_add(batch_bytes) > self.config.max_bytes_per_stream {
+        let mut new_bytes = 0u64;
+        let mut new_count = 0usize;
+        let mut check_seen = BTreeSet::new();
+        for (msg_id, _, msg) in &prepared {
+            if !part.seen_msg_ids.contains(msg_id) && check_seen.insert(msg_id.clone()) {
+                new_bytes =
+                    new_bytes.saturating_add(u64::try_from(msg.payload.len()).unwrap_or(u64::MAX));
+                new_count = new_count.saturating_add(1);
+            }
+        }
+        if part.total_bytes.saturating_add(new_bytes) > self.config.max_bytes_per_stream
+            || part.messages.len().saturating_add(new_count) > self.config.max_msgs_per_stream
+        {
             return Err(CodedError::new(
                 CODE_NATS_STREAM_FULL,
-                format!("JetStream stream `{stream}` exceeded max_bytes limit."),
+                format!("JetStream stream `{stream}` exceeded capacity limits."),
                 "Return retry_after_ms flow control or increase max_bytes_per_stream.",
             ));
         }
 
         let first_offset = u64::try_from(part.messages.len()).unwrap_or(u64::MAX);
-        let mut last_offset = first_offset;
-        for (idx, msg) in messages.iter().enumerate() {
-            let msg_id = msg
-                .headers
-                .get("Nats-Msg-Id")
-                .cloned()
-                .unwrap_or_else(|| format!("{}/{stream}/p{partition}/{now_ms}/{idx}", msg.key));
+        let mut last_offset = first_offset.saturating_sub(1);
+        let mut inserted_any = false;
+        for (msg_id, _, msg) in prepared {
             if !part.seen_msg_ids.insert(msg_id.clone()) {
                 continue;
             }
             let offset = u64::try_from(part.messages.len()).unwrap_or(u64::MAX);
             last_offset = offset;
+            inserted_any = true;
             part.total_bytes = part
                 .total_bytes
                 .saturating_add(u64::try_from(msg.payload.len()).unwrap_or(u64::MAX));
@@ -169,6 +208,14 @@ impl BusPort for NatsJetStreamBus {
                     payload: msg.payload.clone(),
                     appended_at_ms: now_ms,
                 },
+            });
+        }
+
+        if !inserted_any {
+            let head = u64::try_from(part.messages.len().saturating_sub(1)).unwrap_or(0);
+            return Ok(BusOffsetRange {
+                first_offset: head,
+                last_offset: head,
             });
         }
 
@@ -334,6 +381,46 @@ impl BusPort for NatsJetStreamBus {
             pending_messages,
         })
     }
+}
+
+fn resolve_msg_id(
+    msg: &BusAppendMessage,
+    stream: &str,
+    partition: u32,
+    now_ms: i64,
+    idx: usize,
+) -> Result<String, CodedError> {
+    let mut found: Option<String> = None;
+    for (k, v) in &msg.headers {
+        if k.eq_ignore_ascii_case("Nats-Msg-Id") {
+            if found.as_ref().is_some_and(|prev| prev != v) {
+                return Err(CodedError::new(
+                    CODE_BUS_INVALID_INPUT,
+                    "Duplicate Nats-Msg-Id headers with conflicting values.",
+                    "Provide at most one Nats-Msg-Id header.",
+                ));
+            }
+            found = Some(v.clone());
+        }
+    }
+    if let Some(explicit) = found {
+        return Ok(explicit);
+    }
+    if msg
+        .key
+        .chars()
+        .any(|c| matches!(c, '\r' | '\n' | '\0') || c.is_control())
+        || stream
+            .chars()
+            .any(|c| matches!(c, '\r' | '\n' | '\0') || c.is_control())
+    {
+        return Err(CodedError::new(
+            CODE_BUS_INVALID_INPUT,
+            "Bus key or stream contains forbidden control characters.",
+            "Strip CR/LF/NUL characters from message keys and stream names.",
+        ));
+    }
+    Ok(format!("{}/{stream}/p{partition}/{now_ms}/{idx}", msg.key))
 }
 
 fn lock_state<T>(mutex: &Mutex<T>) -> Result<MutexGuard<'_, T>, CodedError> {

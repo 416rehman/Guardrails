@@ -21,6 +21,7 @@ sha2 = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+grdr-crypto = { workspace = true }
 grdr-ports-testkit = { workspace = true }
 
 [lints]

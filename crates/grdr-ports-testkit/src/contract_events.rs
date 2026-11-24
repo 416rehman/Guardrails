@@ -4,9 +4,9 @@
 use std::collections::BTreeMap;
 
 use grdr_ports::{
-    CODE_LAKE_INVALID_QUERY, CODE_LAKE_STALE_FENCE, EventsPort, FencingToken, LakeAggOp,
-    LakeAggSpec, LakeBatch, LakeObservable, LakePredicate, LakeQueryIr, LakeRecord,
-    LegalHoldRequest, LegalHoldScope, OrgId, RetentionClass, SingleCtx, TenantCtx,
+    CODE_LAKE_HOLD_ACTIVE, CODE_LAKE_INVALID_QUERY, CODE_LAKE_STALE_FENCE, EventsPort,
+    FencingToken, LakeAggOp, LakeAggSpec, LakeBatch, LakeObservable, LakePredicate, LakeQueryIr,
+    LakeRecord, LegalHoldRequest, LegalHoldScope, OrgId, RetentionClass, SingleCtx, TenantCtx,
 };
 
 const MS_PER_DAY: i64 = 86_400_000;
@@ -316,11 +316,38 @@ pub fn assert_events_port_contract(lake: &impl EventsPort) -> Result<(), String>
         return Err("expected legal hold to protect Content segment from retention".into());
     }
 
+    let Err(held_erase) = lake.erase_session(&ctx_a, "sess-root-1", "GDPR request", future_40d)
+    else {
+        return Err("expected legal hold to block session erasure".into());
+    };
+    if held_erase.code != CODE_LAKE_HOLD_ACTIVE {
+        return Err(format!(
+            "expected {}, got {}",
+            CODE_LAKE_HOLD_ACTIVE, held_erase.code
+        ));
+    }
+
+    let still_readable = lake
+        .execute_query_ir(
+            &read_a,
+            &LakeQueryIr::Timeline {
+                root_session_id: "sess-root-1".into(),
+                include_content: true,
+                limit: 10,
+            },
+        )
+        .map_err(|e| e.to_string())?;
+    if still_readable.rows.iter().any(|r| r.content_redacted) {
+        return Err("held session content must remain intact until hold is released".into());
+    }
+
+    lake.release_hold(&ctx_a, "hold-1", future_40d)
+        .map_err(|e| e.to_string())?;
     let receipt = lake
         .erase_session(&ctx_a, "sess-root-1", "GDPR request", future_40d)
         .map_err(|e| e.to_string())?;
-    if receipt.keys_destroyed != 1 || receipt.held_segments_deferred < 1 {
-        return Err("expected key destruction and held archive deferral on erase_session".into());
+    if receipt.keys_destroyed != 1 || receipt.archive_segments_reduced < 1 {
+        return Err("expected key destruction and archive reduction after hold release".into());
     }
 
     let post_erase = lake
@@ -337,8 +364,6 @@ pub fn assert_events_port_contract(lake: &impl EventsPort) -> Result<(), String>
         return Err("expected metadata preserved with content_redacted=true after erase".into());
     }
 
-    lake.release_hold(&ctx_a, "hold-1", future_40d)
-        .map_err(|e| e.to_string())?;
     let released_compact = lake
         .compact_and_retain(&ctx_a, f2, future_40d)
         .map_err(|e| e.to_string())?;

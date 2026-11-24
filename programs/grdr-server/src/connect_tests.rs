@@ -946,5 +946,101 @@ async fn profile_validation_and_embedded_lake_pipeline_work() {
         .unwrap();
     assert_eq!(receipt.archive_segments_reduced, 1);
 
+    // Ensure raw unencrypted ingest/events/offset-*.json copies are never written.
+    assert!(
+        !dir.join("blobs")
+            .join("org=org-embedded")
+            .join("ingest")
+            .exists()
+    );
+
+    // Profile mismatch flag validation (P6/D-33)
+    assert_eq!(
+        StorageBackend::from_profile_flags(
+            ProfileKind::Embedded,
+            false,
+            None,
+            Some("postgres://grdr@localhost:5432/grdr".into()),
+            None,
+            None,
+        )
+        .unwrap_err()
+        .code,
+        CODE_STORE_PROFILE_MISMATCH
+    );
+    assert_eq!(
+        StorageBackend::from_profile_flags(
+            ProfileKind::Ha,
+            true,
+            None,
+            Some("postgres://grdr@localhost:5432/grdr".into()),
+            None,
+            Some(dir.join("bucket")),
+        )
+        .unwrap_err()
+        .code,
+        CODE_STORE_PROFILE_MISMATCH
+    );
+    assert_eq!(
+        StorageBackend::from_profile_flags(
+            ProfileKind::Ha,
+            false,
+            Some(dir.join("bucket")),
+            Some("postgres://grdr@localhost:5432/grdr".into()),
+            None,
+            Some(dir.join("bucket")),
+        )
+        .unwrap_err()
+        .code,
+        CODE_STORE_PROFILE_MISMATCH
+    );
+    assert_eq!(
+        StorageBackend::from_profile_flags(
+            ProfileKind::Ha,
+            false,
+            Some(dir.join("other").join("..").join("bucket")),
+            Some("postgres://grdr@localhost:5432/grdr".into()),
+            None,
+            Some(dir.join("bucket")),
+        )
+        .unwrap_err()
+        .code,
+        CODE_STORE_PROFILE_MISMATCH
+    );
+    let existing_bucket = dir.join("existing-bucket");
+    std::fs::create_dir_all(&existing_bucket).unwrap();
+    assert_eq!(
+        StorageBackend::from_profile_flags(
+            ProfileKind::Ha,
+            false,
+            Some(existing_bucket.join("nested-nonexistent-state")),
+            Some("postgres://grdr@localhost:5432/grdr".into()),
+            None,
+            Some(existing_bucket),
+        )
+        .unwrap_err()
+        .code,
+        CODE_STORE_PROFILE_MISMATCH
+    );
+    let ha_backend = StorageBackend::from_profile_flags(
+        ProfileKind::Ha,
+        false,
+        None,
+        Some("postgres://grdr@localhost:5432/grdr".into()),
+        None,
+        Some(dir.join("ha-bucket")),
+    )
+    .unwrap();
+    match &ha_backend {
+        StorageBackend::Ha {
+            object_store_dir,
+            state_dir,
+            ..
+        } => {
+            assert!(!state_dir.starts_with(object_store_dir));
+        }
+        other => panic!("expected Ha backend, got {other:?}"),
+    }
+
     let _ = std::fs::remove_dir_all(&dir);
 }

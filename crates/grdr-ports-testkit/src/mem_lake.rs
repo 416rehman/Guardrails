@@ -7,10 +7,10 @@ use std::sync::{Mutex, MutexGuard};
 use grdr_model::CodedError;
 use grdr_model::error::CODE_STORE_IO;
 use grdr_ports::{
-    CODE_LAKE_NOT_FOUND, CODE_LAKE_STALE_FENCE, ContentKeyState, ErasureReceipt, EventsPort,
-    FencingToken, LakeBatch, LakeCompactionResult, LakeFlushResult, LakeManifest, LakeQueryIr,
-    LakeQueryResult, LakeRecord, LegalHold, LegalHoldRequest, LegalHoldState, OrgId,
-    RetentionClass, SessionContentKey, SingleCtx, TenantCtx,
+    CODE_LAKE_HOLD_ACTIVE, CODE_LAKE_NOT_FOUND, CODE_LAKE_STALE_FENCE, ContentKeyState,
+    ErasureReceipt, EventsPort, FencingToken, LakeBatch, LakeCompactionResult, LakeFlushResult,
+    LakeManifest, LakeQueryIr, LakeQueryResult, LakeRecord, LegalHold, LegalHoldRequest,
+    LegalHoldState, OrgId, RetentionClass, SessionContentKey, SingleCtx, TenantCtx,
 };
 
 use crate::mem_lake_ops::{
@@ -231,6 +231,47 @@ impl EventsPort for MemoryEventLake {
         let org_state = g
             .entry(ctx.organisation_id().as_str().to_string())
             .or_default();
+        let active_holds: Vec<LegalHold> = org_state
+            .holds
+            .values()
+            .filter(|h| h.is_active_at(now_ms))
+            .cloned()
+            .collect();
+        let session_list = vec![root_session_id.to_string()];
+
+        if let Some(key) = org_state.content_keys.get(root_session_id)
+            && matches!(key.state, ContentKeyState::Active)
+        {
+            let key_day = crate::mem_lake_ops::day_from_ms(key.created_at_ms);
+            if active_holds
+                .iter()
+                .any(|h| h.covers(RetentionClass::Content, &key_day, &[], &session_list))
+            {
+                return Err(CodedError::new(
+                    CODE_LAKE_HOLD_ACTIVE,
+                    format!(
+                        "Cannot erase session `{root_session_id}` while an active legal hold applies."
+                    ),
+                    "Release blocking legal holds before re-running session erasure.",
+                ));
+            }
+        }
+        for arch in &org_state.archives {
+            if arch.root_session_ids.contains(root_session_id)
+                && active_holds
+                    .iter()
+                    .any(|h| h.covers(RetentionClass::Content, &arch.day, &[], &session_list))
+            {
+                return Err(CodedError::new(
+                    CODE_LAKE_HOLD_ACTIVE,
+                    format!(
+                        "Cannot erase archive segment for session `{root_session_id}` under active legal hold."
+                    ),
+                    "Release blocking legal holds before re-running session erasure.",
+                ));
+            }
+        }
+
         let destruction_record_id = format!("erasure-{root_session_id}-{now_ms}");
         let mut keys_destroyed = 0usize;
         if let Some(key) = org_state.content_keys.get_mut(root_session_id)
@@ -249,25 +290,9 @@ impl EventsPort for MemoryEventLake {
             root_session_id,
         );
 
-        let active_holds: Vec<LegalHold> = org_state
-            .holds
-            .values()
-            .filter(|h| h.is_active_at(now_ms))
-            .cloned()
-            .collect();
         let mut archive_segments_reduced = 0usize;
-        let mut held_segments_deferred = 0usize;
-        let session_list = vec![root_session_id.to_string()];
         for arch in &mut org_state.archives {
-            if !arch.root_session_ids.contains(root_session_id) {
-                continue;
-            }
-            if active_holds
-                .iter()
-                .any(|h| h.covers(RetentionClass::Content, &arch.day, &[], &session_list))
-            {
-                held_segments_deferred = held_segments_deferred.saturating_add(1);
-            } else if !arch.reduced {
+            if arch.root_session_ids.contains(root_session_id) && !arch.reduced {
                 arch.reduced = true;
                 archive_segments_reduced = archive_segments_reduced.saturating_add(1);
             }
@@ -280,7 +305,7 @@ impl EventsPort for MemoryEventLake {
             erased_at_ms: now_ms,
             keys_destroyed,
             archive_segments_reduced,
-            held_segments_deferred,
+            held_segments_deferred: 0,
             state_log_key: format!("state-log/{destruction_record_id}.json"),
         })
     }

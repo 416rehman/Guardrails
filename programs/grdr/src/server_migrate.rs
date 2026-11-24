@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use rusqlite::Connection;
@@ -36,6 +36,7 @@ pub struct MigrationReport {
     pub kv_entries_copied: usize,
     pub blobs_copied: usize,
     pub bus_messages_replayed: usize,
+    pub lake_catalogue_rows_copied: usize,
 }
 
 pub struct MigrateHaOptions<'a> {
@@ -59,7 +60,7 @@ pub fn run_migrate_command(opts: &MigrateHaOptions<'_>, json: bool) -> ExitCode 
                 }
             } else {
                 println!(
-                    "Migrated embedded store to {} (dry_run={}): orgs={}, devices={}, sessions={}, findings={}, packs={}, users={}, kv={}, blobs={}, bus_tail={}",
+                    "Migrated embedded store to {} (dry_run={}): orgs={}, devices={}, sessions={}, findings={}, packs={}, users={}, kv={}, blobs={}, bus_tail={}, lake_rows={}",
                     report.target_profile,
                     report.dry_run,
                     report.organisations_migrated,
@@ -70,7 +71,8 @@ pub fn run_migrate_command(opts: &MigrateHaOptions<'_>, json: bool) -> ExitCode 
                     report.users_copied,
                     report.kv_entries_copied,
                     report.blobs_copied,
-                    report.bus_messages_replayed
+                    report.bus_messages_replayed,
+                    report.lake_catalogue_rows_copied
                 );
             }
             ExitCode::SUCCESS
@@ -111,10 +113,27 @@ pub fn migrate_embedded_to_ha(opts: &MigrateHaOptions<'_>) -> Result<MigrationRe
 
     let src_rel = SqliteRelationalStore::open(&rel_path)?;
     let src_bus = SqliteLogBus::open(&bus_path)?;
-    let src_blobs = FilesystemBlobStore::open(&blobs_dir)?;
-    let dst_rel = match opts.postgres_dsn {
-        Some(dsn) => PostgresRelationalStore::connect(PostgresConfig::parse_dsn(dsn)?)?,
-        None => PostgresRelationalStore::open_offline()?,
+    let src_blobs = if blobs_dir.is_dir() {
+        Some(FilesystemBlobStore::open(&blobs_dir)?)
+    } else {
+        None
+    };
+
+    let dst_rel = if opts.dry_run {
+        if let Some(dsn) = opts.postgres_dsn {
+            PostgresConfig::parse_dsn(dsn)?.validate()?;
+        }
+        None
+    } else {
+        let store = match opts.postgres_dsn {
+            Some(dsn) => {
+                let s = PostgresRelationalStore::connect(PostgresConfig::parse_dsn(dsn)?)?;
+                s.run_migrations()?;
+                s
+            }
+            None => PostgresRelationalStore::open_offline()?,
+        };
+        Some(store)
     };
     let dst_blobs = if opts.dry_run {
         None
@@ -135,6 +154,7 @@ pub fn migrate_embedded_to_ha(opts: &MigrateHaOptions<'_>) -> Result<MigrationRe
         kv_entries_copied: 0,
         blobs_copied: 0,
         bus_messages_replayed: 0,
+        lake_catalogue_rows_copied: 0,
     };
 
     for org in org_ids {
@@ -142,7 +162,7 @@ pub fn migrate_embedded_to_ha(opts: &MigrateHaOptions<'_>) -> Result<MigrationRe
         let read_ctx = TenantCtx::Single(single_ctx.clone());
         copy_org_relational(
             &src_rel,
-            &dst_rel,
+            dst_rel.as_ref(),
             &single_ctx,
             &read_ctx,
             opts.dry_run,
@@ -151,22 +171,40 @@ pub fn migrate_embedded_to_ha(opts: &MigrateHaOptions<'_>) -> Result<MigrationRe
         copy_org_kv(
             &rel_path,
             &src_rel,
-            &dst_rel,
+            dst_rel.as_ref(),
             &single_ctx,
             &read_ctx,
             opts.dry_run,
             &mut report,
         )?;
-        copy_org_blobs(
-            &src_blobs,
-            dst_blobs.as_ref(),
+        if let Some(ref sb) = src_blobs {
+            copy_org_blobs(
+                sb,
+                dst_blobs.as_ref(),
+                &single_ctx,
+                &read_ctx,
+                opts.dry_run,
+                &mut report,
+            )?;
+        }
+        replay_org_bus_tail(
+            &src_bus,
+            dst_rel.as_ref(),
             &single_ctx,
             &read_ctx,
             opts.dry_run,
             &mut report,
         )?;
-        let msgs = src_bus.fetch(&read_ctx, "events", 0, None, usize::MAX)?;
-        report.bus_messages_replayed = report.bus_messages_replayed.saturating_add(msgs.len());
+    }
+
+    let lake_cat_src = opts.from_data_dir.join("lake-catalogue.sqlite3");
+    if lake_cat_src.is_file() {
+        report.lake_catalogue_rows_copied = copy_lake_catalogue(
+            &lake_cat_src,
+            opts.from_data_dir,
+            opts.target_bucket_dir,
+            opts.dry_run,
+        )?;
     }
 
     Ok(report)
@@ -183,7 +221,14 @@ fn ensure_bucket_empty(dir: &Path) -> Result<(), CodedError> {
             "Verify target bucket path permissions.",
         )
     })?;
-    if entries.next().transpose().ok().flatten().is_some() {
+    let first = entries.next().transpose().map_err(|e| {
+        CodedError::new(
+            CODE_MIGRATE_BUCKET_NOT_EMPTY,
+            format!("Failed reading target bucket `{}`: {e}", dir.display()),
+            "Verify target bucket directory entries are readable.",
+        )
+    })?;
+    if first.is_some() {
         return Err(CodedError::new(
             CODE_MIGRATE_BUCKET_NOT_EMPTY,
             format!(
@@ -213,15 +258,24 @@ fn discover_organisations(rel_path: &Path) -> Result<Vec<OrgId>, CodedError> {
         "user_profile",
         "tenant_kv",
     ] {
+        let exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                rusqlite::params![table],
+                |r| r.get(0),
+            )
+            .map_err(migrate_sql_err)?;
+        if exists == 0 {
+            continue;
+        }
         let sql = format!("SELECT DISTINCT organisation_id FROM {table}");
-        if let Ok(mut stmt) = conn.prepare(&sql)
-            && let Ok(rows) = stmt.query_map([], |r| r.get::<_, String>(0))
-        {
-            for item in rows.flatten() {
-                if let Ok(org) = OrgId::new(item) {
-                    orgs.insert(org);
-                }
-            }
+        let mut stmt = conn.prepare(&sql).map_err(migrate_sql_err)?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(migrate_sql_err)?;
+        for item in rows {
+            let raw = item.map_err(migrate_sql_err)?;
+            orgs.insert(OrgId::new(raw)?);
         }
     }
     Ok(orgs.into_iter().collect())
@@ -229,39 +283,39 @@ fn discover_organisations(rel_path: &Path) -> Result<Vec<OrgId>, CodedError> {
 
 fn copy_org_relational(
     src: &SqliteRelationalStore,
-    dst: &PostgresRelationalStore,
+    dst: Option<&PostgresRelationalStore>,
     single_ctx: &SingleCtx,
     read_ctx: &TenantCtx,
     dry_run: bool,
     report: &mut MigrationReport,
 ) -> Result<(), CodedError> {
     for dev in src.list_devices(read_ctx)? {
-        if !dry_run {
-            dst.upsert_device(single_ctx, &dev)?;
+        if !dry_run && let Some(target) = dst {
+            target.upsert_device(single_ctx, &dev)?;
         }
         report.devices_copied = report.devices_copied.saturating_add(1);
     }
     for sess in src.list_session_summaries(read_ctx)? {
-        if !dry_run {
-            dst.upsert_session_summary(single_ctx, &sess)?;
+        if !dry_run && let Some(target) = dst {
+            target.upsert_session_summary(single_ctx, &sess)?;
         }
         report.sessions_copied = report.sessions_copied.saturating_add(1);
     }
     for fnd in src.list_findings(read_ctx)? {
-        if !dry_run {
-            dst.upsert_finding(single_ctx, &fnd)?;
+        if !dry_run && let Some(target) = dst {
+            target.upsert_finding(single_ctx, &fnd)?;
         }
         report.findings_copied = report.findings_copied.saturating_add(1);
     }
     for pack in src.list_packs(read_ctx)? {
-        if !dry_run {
-            dst.upsert_pack(single_ctx, &pack)?;
+        if !dry_run && let Some(target) = dst {
+            target.upsert_pack(single_ctx, &pack)?;
         }
         report.packs_copied = report.packs_copied.saturating_add(1);
     }
     for user in src.list_users(read_ctx)? {
-        if !dry_run {
-            dst.upsert_user(single_ctx, &user)?;
+        if !dry_run && let Some(target) = dst {
+            target.upsert_user(single_ctx, &user)?;
         }
         report.users_copied = report.users_copied.saturating_add(1);
     }
@@ -271,53 +325,29 @@ fn copy_org_relational(
 fn copy_org_kv(
     rel_path: &Path,
     src: &SqliteRelationalStore,
-    dst: &PostgresRelationalStore,
+    dst: Option<&PostgresRelationalStore>,
     single_ctx: &SingleCtx,
     read_ctx: &TenantCtx,
     dry_run: bool,
     report: &mut MigrationReport,
 ) -> Result<(), CodedError> {
-    let conn = Connection::open(rel_path).map_err(|e| {
-        CodedError::new(
-            CODE_MIGRATE_SOURCE_INVALID,
-            format!("Failed opening source SQLite DB for KV: {e}"),
-            "Verify relational.sqlite3 is readable.",
-        )
-    })?;
+    let conn = Connection::open(rel_path).map_err(migrate_sql_err)?;
     let mut stmt = conn
         .prepare("SELECT DISTINCT namespace FROM tenant_kv WHERE organisation_id = ?1")
-        .map_err(|e| {
-            CodedError::new(
-                CODE_MIGRATE_SOURCE_INVALID,
-                e.to_string(),
-                "Check KV table.",
-            )
-        })?;
+        .map_err(migrate_sql_err)?;
     let namespaces = stmt
         .query_map(
             rusqlite::params![single_ctx.organisation_id().as_str()],
             |r| r.get::<_, String>(0),
         )
-        .map_err(|e| {
-            CodedError::new(
-                CODE_MIGRATE_SOURCE_INVALID,
-                e.to_string(),
-                "Check KV table.",
-            )
-        })?
+        .map_err(migrate_sql_err)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| {
-            CodedError::new(
-                CODE_MIGRATE_SOURCE_INVALID,
-                e.to_string(),
-                "Check KV table.",
-            )
-        })?;
+        .map_err(migrate_sql_err)?;
 
     for ns in namespaces {
         for (key, val) in src.list_kv(read_ctx, &ns)? {
-            if !dry_run {
-                dst.put_kv(single_ctx, &ns, &key, &val)?;
+            if !dry_run && let Some(target) = dst {
+                target.put_kv(single_ctx, &ns, &key, &val)?;
             }
             report.kv_entries_copied = report.kv_entries_copied.saturating_add(1);
         }
@@ -344,4 +374,116 @@ fn copy_org_blobs(
         report.blobs_copied = report.blobs_copied.saturating_add(1);
     }
     Ok(())
+}
+
+fn replay_org_bus_tail(
+    src_bus: &SqliteLogBus,
+    dst: Option<&PostgresRelationalStore>,
+    single_ctx: &SingleCtx,
+    read_ctx: &TenantCtx,
+    dry_run: bool,
+    report: &mut MigrationReport,
+) -> Result<(), CodedError> {
+    for stream in ["events", "decision"] {
+        let msgs = src_bus.fetch(read_ctx, stream, 0, None, usize::MAX)?;
+        for msg in msgs {
+            if !dry_run && let Some(target) = dst {
+                let encoded = serde_json::to_string(&msg).map_err(|e| {
+                    CodedError::new(
+                        CODE_MIGRATE_SOURCE_INVALID,
+                        format!("Failed encoding bus message for replay: {e}"),
+                        "Inspect source bus records.",
+                    )
+                })?;
+                target.put_kv(
+                    single_ctx,
+                    "bus_replay",
+                    &format!("{stream}/p{}/{}", msg.partition, msg.offset),
+                    &encoded,
+                )?;
+            }
+            report.bus_messages_replayed = report.bus_messages_replayed.saturating_add(1);
+        }
+    }
+    Ok(())
+}
+
+fn copy_lake_catalogue(
+    src_cat: &Path,
+    from_data_dir: &Path,
+    target_bucket_dir: &Path,
+    dry_run: bool,
+) -> Result<usize, CodedError> {
+    let conn = Connection::open(src_cat).map_err(migrate_sql_err)?;
+    let mut row_count = 0usize;
+    for table in [
+        "lake_fencing",
+        "lake_segments",
+        "lake_archive_segments",
+        "lake_holds",
+        "lake_content_keys",
+        "lake_manifests",
+        "lake_observables",
+    ] {
+        let exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                rusqlite::params![table],
+                |r| r.get(0),
+            )
+            .map_err(migrate_sql_err)?;
+        if exists == 0 {
+            continue;
+        }
+        let sql = format!("SELECT COUNT(*) FROM {table}");
+        let count: i64 = conn
+            .query_row(&sql, [], |r| r.get(0))
+            .map_err(migrate_sql_err)?;
+        row_count = row_count.saturating_add(usize::try_from(count).unwrap_or(0));
+    }
+
+    if !dry_run {
+        let state_dir = target_state_dir(target_bucket_dir);
+        fs::create_dir_all(&state_dir).map_err(|e| {
+            CodedError::new(
+                CODE_MIGRATE_SOURCE_INVALID,
+                format!("Failed creating target HA state dir: {e}"),
+                "Verify write permissions.",
+            )
+        })?;
+        let dst_cat = state_dir.join("lake-catalogue.sqlite3");
+        let dst_cat_str = dst_cat.to_string_lossy().to_string();
+        let _ = fs::remove_file(&dst_cat);
+        conn.execute("VACUUM INTO ?1", rusqlite::params![dst_cat_str])
+            .map_err(migrate_sql_err)?;
+
+        let src_kek = from_data_dir.join("lake.kek");
+        if src_kek.is_file() {
+            fs::copy(&src_kek, state_dir.join("lake.kek")).map_err(|e| {
+                CodedError::new(
+                    CODE_MIGRATE_SOURCE_INVALID,
+                    format!("Failed copying lake.kek to HA state dir: {e}"),
+                    "Verify permissions on lake.kek.",
+                )
+            })?;
+        }
+    }
+    Ok(row_count)
+}
+
+fn target_state_dir(target_bucket_dir: &Path) -> PathBuf {
+    let name = target_bucket_dir
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "grdr".into());
+    target_bucket_dir.with_file_name(format!("{name}-state"))
+}
+
+fn migrate_sql_err(err: rusqlite::Error) -> CodedError {
+    CodedError::new(
+        CODE_MIGRATE_SOURCE_INVALID,
+        format!("Migration SQLite query failed: {err}"),
+        "Verify source SQLite databases are readable and valid.",
+    )
 }

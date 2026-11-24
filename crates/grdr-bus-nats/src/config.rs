@@ -12,6 +12,7 @@ pub const CODE_NATS_WIRE: &str = "GRDR-NATS-0003";
 pub const CODE_NATS_STREAM_FULL: &str = "GRDR-NATS-0004";
 
 const EVENTS_STREAM_SHARDS: u32 = 8;
+const DEFAULT_NATS_MAX_MSGS: usize = 1_000_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -57,6 +58,7 @@ pub struct NatsConfig {
     pub listener_guard: NatsListenerGuard,
     pub client_name: String,
     pub max_bytes_per_stream: u64,
+    pub max_msgs_per_stream: usize,
     pub max_age_secs: u64,
     pub replicas: u8,
     pub connect_timeout_ms: u32,
@@ -95,6 +97,7 @@ impl NatsConfig {
             listener_guard: NatsListenerGuard::default(),
             client_name: "grdr-server".into(),
             max_bytes_per_stream: 1024 * 1024 * 1024,
+            max_msgs_per_stream: DEFAULT_NATS_MAX_MSGS,
             max_age_secs: 72 * 3600,
             replicas: 3,
             connect_timeout_ms: 5_000,
@@ -103,43 +106,43 @@ impl NatsConfig {
 
     pub fn parse_url(server_url: &str) -> Result<Self, CodedError> {
         let trimmed = server_url.trim();
-        let hostport = trimmed
-            .strip_prefix("nats://")
-            .or_else(|| trimmed.strip_prefix("tls://"))
-            .ok_or_else(|| {
-                CodedError::new(
-                    CODE_NATS_CONFIG,
-                    "NATS server URL must begin with nats:// or tls://.",
-                    "Provide a valid NATS JetStream endpoint URL.",
-                )
-            })?;
-        if hostport.trim().is_empty() {
+        let (scheme, hostport) = if let Some(rest) = trimmed.strip_prefix("nats://") {
+            ("nats://", rest)
+        } else if let Some(rest) = trimmed.strip_prefix("tls://") {
+            ("tls://", rest)
+        } else {
             return Err(CodedError::new(
                 CODE_NATS_CONFIG,
-                "NATS server URL host cannot be empty.",
-                "Include host and port in NATS URL.",
+                "NATS server URL must begin with nats:// or tls://.",
+                "Provide a valid NATS JetStream endpoint URL.",
             ));
-        }
+        };
+        let normalized_hostport = validate_nats_hostport(hostport)?;
         let mut cfg = Self::embedded_default();
         cfg.transport = NatsTransportMode::JetStreamTcp {
-            server_url: trimmed.to_string(),
+            server_url: format!("{scheme}{normalized_hostport}"),
         };
         Ok(cfg)
     }
 
     pub fn validate(&self) -> Result<(), CodedError> {
         self.listener_guard.validate()?;
-        if self.client_name.trim().is_empty() {
+        if self.client_name.trim().is_empty()
+            || self
+                .client_name
+                .chars()
+                .any(|c| c == '\r' || c == '\n' || c == '\0' || c.is_control())
+        {
             return Err(CodedError::new(
                 CODE_NATS_CONFIG,
-                "NATS client_name cannot be empty.",
-                "Set a non-empty NATS client_name.",
+                "NATS client_name must be non-empty without control characters.",
+                "Set a valid NATS client_name.",
             ));
         }
-        if self.max_bytes_per_stream == 0 || self.replicas == 0 {
+        if self.max_bytes_per_stream == 0 || self.max_msgs_per_stream == 0 || self.replicas == 0 {
             return Err(CodedError::new(
                 CODE_NATS_CONFIG,
-                "NATS stream max_bytes_per_stream and replicas must be positive.",
+                "NATS stream max_bytes_per_stream, max_msgs_per_stream, and replicas must be positive.",
                 "Set valid JetStream stream capacity and replication factor.",
             ));
         }
@@ -172,7 +175,7 @@ impl NatsConfig {
 pub fn subject_for(org: &OrgId, stream: &str, partition: u32) -> String {
     format!(
         "grdr.{}.{}.p{partition}",
-        org.as_str(),
+        sanitize_token(org.as_str()),
         sanitize_token(stream)
     )
 }
@@ -197,6 +200,79 @@ pub fn jetstream_stream_name(stream: &str, partition: u32) -> String {
                 .collect::<String>()
         ),
     }
+}
+
+fn validate_nats_hostport(raw: &str) -> Result<String, CodedError> {
+    if raw.is_empty()
+        || raw
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control() || matches!(c, '@' | '/' | '?' | '#'))
+    {
+        return Err(CodedError::new(
+            CODE_NATS_CONFIG,
+            "NATS server URL hostport contains invalid characters.",
+            "Provide a clean nats://host:port or tls://host:port endpoint.",
+        ));
+    }
+    if let Some(after_open) = raw.strip_prefix('[') {
+        let (host, rest) = after_open.split_once(']').ok_or_else(|| {
+            CodedError::new(
+                CODE_NATS_CONFIG,
+                "Invalid IPv6 host literal in NATS URL.",
+                "Use [addr]:port format for IPv6 hosts.",
+            )
+        })?;
+        if host.is_empty() {
+            return Err(CodedError::new(
+                CODE_NATS_CONFIG,
+                "NATS server IPv6 host cannot be empty.",
+                "Provide a valid IPv6 host address.",
+            ));
+        }
+        if rest.is_empty() {
+            return Ok(format!("[{host}]:4222"));
+        }
+        let port_str = rest.strip_prefix(':').ok_or_else(|| {
+            CodedError::new(
+                CODE_NATS_CONFIG,
+                "Unexpected suffix after IPv6 host in NATS URL.",
+                "Use [addr]:port format.",
+            )
+        })?;
+        validate_port(port_str)?;
+        return Ok(format!("[{host}]:{port_str}"));
+    }
+    if let Some((host, port_str)) = raw.split_once(':') {
+        if host.is_empty() || port_str.contains(':') {
+            return Err(CodedError::new(
+                CODE_NATS_CONFIG,
+                "Invalid host:port in NATS URL.",
+                "Format NATS endpoint as host:port.",
+            ));
+        }
+        validate_port(port_str)?;
+        Ok(format!("{host}:{port_str}"))
+    } else {
+        Ok(format!("{raw}:4222"))
+    }
+}
+
+fn validate_port(raw: &str) -> Result<u16, CodedError> {
+    let port: u16 = raw.parse().map_err(|_| {
+        CodedError::new(
+            CODE_NATS_CONFIG,
+            format!("Invalid NATS port `{raw}`."),
+            "Specify a numeric TCP port between 1 and 65535.",
+        )
+    })?;
+    if port == 0 {
+        return Err(CodedError::new(
+            CODE_NATS_CONFIG,
+            "NATS TCP port cannot be zero.",
+            "Specify a numeric TCP port between 1 and 65535.",
+        ));
+    }
+    Ok(port)
 }
 
 fn sanitize_token(raw: &str) -> String {

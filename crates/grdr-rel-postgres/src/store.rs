@@ -4,22 +4,22 @@
 use std::sync::{Mutex, MutexGuard};
 
 use jiff::Timestamp;
+use rusqlite::Connection;
 use rusqlite::types::Value;
-use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use grdr_model::{CodedError, Device, SessionSummary};
-use grdr_ports::{DeviceRepo, EntityKind, SessionSummaryRepo, SingleCtx, TenantCtx};
+use grdr_model::CodedError;
+use grdr_ports::{EntityKind, SingleCtx, TenantCtx};
 
 use crate::config::{
     CODE_PG_CODEC, CODE_PG_IO, CODE_PG_MIGRATION, PostgresConfig, PostgresTransport,
 };
-use crate::dialect::{
-    PostgresSqlRegistry, PostgresStatementId, rls_session_statements, rls_write_statements,
-};
+use crate::dialect::{rls_session_statements, rls_write_statements};
 use crate::migrations::{MigrationPhase, OFFLINE_SCHEMA_SQL, POSTGRES_MIGRATIONS};
-use crate::wire::execute_simple_query_wire;
+use crate::wire::{
+    WireConnParams, WireStatement, execute_extended_tx_wire, execute_simple_query_wire,
+};
 
 #[derive(Debug)]
 pub(crate) enum StoreBackend {
@@ -53,30 +53,78 @@ impl PostgresRelationalStore {
                 user,
                 password,
             } => {
-                for mig in POSTGRES_MIGRATIONS {
-                    let record_sql = format!(
-                        "{}\nINSERT INTO schema_migrations (version, name, phase) VALUES ({}, '{}', '{}') ON CONFLICT (version) DO NOTHING;",
-                        mig.sql,
-                        mig.version,
-                        mig.name,
-                        phase_label(mig.phase),
-                    );
-                    execute_simple_query_wire(
-                        endpoint,
-                        user,
-                        database,
-                        password.as_deref(),
-                        &config.application_name,
-                        config.connect_timeout_ms,
-                        &record_sql,
-                    )?;
-                }
+                let conn = WireConnParams {
+                    endpoint,
+                    user,
+                    database,
+                    app_name: &config.application_name,
+                    timeout_ms: config.connect_timeout_ms,
+                    ssl_mode: config.ssl_mode,
+                };
+                let _ = execute_simple_query_wire(&conn, password.as_deref(), "SELECT 1")?;
                 Ok(Self {
                     config,
                     backend: StoreBackend::WireTcp,
                 })
             }
         }
+    }
+
+    pub fn run_migrations(&self) -> Result<(), CodedError> {
+        let PostgresTransport::TcpWire {
+            endpoint,
+            database,
+            user,
+            password,
+        } = &self.config.transport
+        else {
+            return Ok(());
+        };
+        let conn = WireConnParams {
+            endpoint,
+            user,
+            database,
+            app_name: &self.config.application_name,
+            timeout_ms: self.config.connect_timeout_ms,
+            ssl_mode: self.config.ssl_mode,
+        };
+        let _ = execute_simple_query_wire(
+            &conn,
+            password.as_deref(),
+            "CREATE TABLE IF NOT EXISTS schema_migrations (
+                version INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                phase TEXT NOT NULL,
+                applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );",
+        )?;
+        let applied_rows = execute_simple_query_wire(
+            &conn,
+            password.as_deref(),
+            "SELECT version::text FROM schema_migrations ORDER BY version ASC;",
+        )?;
+        let mut applied_versions = std::collections::BTreeSet::new();
+        for row in applied_rows {
+            if let Some(Some(v_str)) = row.first()
+                && let Ok(ver) = v_str.trim().parse::<u32>()
+            {
+                applied_versions.insert(ver);
+            }
+        }
+        for mig in POSTGRES_MIGRATIONS {
+            if applied_versions.contains(&mig.version) {
+                continue;
+            }
+            let record_sql = format!(
+                "{}\nINSERT INTO schema_migrations (version, name, phase) VALUES ({}, '{}', '{}') ON CONFLICT (version) DO NOTHING;",
+                mig.sql,
+                mig.version,
+                mig.name,
+                phase_label(mig.phase),
+            );
+            let _ = execute_simple_query_wire(&conn, password.as_deref(), &record_sql)?;
+        }
+        Ok(())
     }
 
     pub fn config(&self) -> &PostgresConfig {
@@ -108,11 +156,11 @@ impl PostgresRelationalStore {
         }
     }
 
-    pub(crate) fn execute_wire_with_rls(
+    pub(crate) fn execute_wire_statements(
         &self,
         rls_stmts: &[String],
-        statement_sql: &str,
-    ) -> Result<Vec<Vec<Option<String>>>, CodedError> {
+        statements: &[WireStatement<'_>],
+    ) -> Result<Vec<Vec<Vec<Option<String>>>>, CodedError> {
         let PostgresTransport::TcpWire {
             endpoint,
             database,
@@ -126,219 +174,15 @@ impl PostgresRelationalStore {
                 "Connect with a postgres:// DSN.",
             ));
         };
-        let batch = format!(
-            "BEGIN; {}; {}; COMMIT;",
-            rls_stmts.join("; "),
-            statement_sql.trim_end_matches(';')
-        );
-        execute_simple_query_wire(
+        let conn = WireConnParams {
             endpoint,
             user,
             database,
-            password.as_deref(),
-            &self.config.application_name,
-            self.config.statement_timeout_ms,
-            &batch,
-        )
-    }
-}
-
-impl DeviceRepo for PostgresRelationalStore {
-    fn upsert_device(&self, ctx: &SingleCtx, device: &Device) -> Result<(), CodedError> {
-        let rls = self.rls_guard_sql_for_write(ctx)?;
-        let payload = encode_json(device)?;
-        let org = ctx.organisation_id().as_str();
-        let last_seen = device.last_seen.to_string();
-
-        if matches!(self.backend, StoreBackend::WireTcp) {
-            let sql = format!(
-                "{} -- {}",
-                PostgresSqlRegistry::sql_for(PostgresStatementId::UpsertDevice),
-                sql_literal(org)
-            );
-            let _ = self.execute_wire_with_rls(&rls, &sql)?;
-            return Ok(());
-        }
-
-        let mut conn = self.lock_offline()?;
-        let tx = conn.transaction().map_err(pg_sql_err)?;
-        tx.execute(
-            "INSERT INTO device (organisation_id, device_id, hostname, os, arch, online, last_seen, payload_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-             ON CONFLICT(organisation_id, device_id) DO UPDATE SET
-               hostname = excluded.hostname,
-               os = excluded.os,
-               arch = excluded.arch,
-               online = excluded.online,
-               last_seen = excluded.last_seen,
-               payload_json = excluded.payload_json",
-            rusqlite::params![
-                org,
-                device.id,
-                device.hostname,
-                device.os,
-                device.arch,
-                i64::from(device.online),
-                last_seen,
-                payload
-            ],
-        )
-        .map_err(pg_sql_err)?;
-        let parent_key = format!("device:{}", device.id);
-        delete_search_parent(&tx, org, &parent_key)?;
-        insert_search_row(
-            &tx,
-            org,
-            EntityKind::Device,
-            &device.id,
-            &parent_key,
-            &device.hostname,
-            &format!("{} {}", device.os, device.arch),
-        )?;
-        for agent in &device.agents {
-            insert_search_row(
-                &tx,
-                org,
-                EntityKind::Agent,
-                &agent.id,
-                &parent_key,
-                &agent.name,
-                &agent.kind,
-            )?;
-        }
-        for mcp in &device.mcp_servers {
-            insert_search_row(
-                &tx,
-                org,
-                EntityKind::McpServer,
-                &mcp.name,
-                &parent_key,
-                &mcp.name,
-                &mcp.transport,
-            )?;
-        }
-        tx.commit().map_err(pg_sql_err)?;
-        Ok(())
-    }
-
-    fn get_device(&self, ctx: &TenantCtx, device_id: &str) -> Result<Option<Device>, CodedError> {
-        let rls = self.rls_guard_sql_for_read(ctx)?;
-        if matches!(self.backend, StoreBackend::WireTcp) {
-            let sql = PostgresSqlRegistry::sql_for(PostgresStatementId::GetDevice);
-            let rows = self.execute_wire_with_rls(&rls, sql)?;
-            return rows
-                .first()
-                .and_then(|r| r.first())
-                .and_then(|v| v.as_deref())
-                .map(decode_json)
-                .transpose();
-        }
-
-        let conn = self.lock_offline()?;
-        let placeholders = in_placeholders(ctx.organisation_ids().len(), 2);
-        let sql = format!(
-            "SELECT payload_json FROM device WHERE device_id = ?1 AND organisation_id IN ({placeholders}) LIMIT 1"
-        );
-        let mut params = vec![Value::from(device_id.to_string())];
-        append_org_params(ctx, &mut params);
-        let raw: Option<String> = conn
-            .query_row(&sql, rusqlite::params_from_iter(params), |r| r.get(0))
-            .optional()
-            .map_err(pg_sql_err)?;
-        raw.map(|s| decode_json(&s)).transpose()
-    }
-
-    fn list_devices(&self, ctx: &TenantCtx) -> Result<Vec<Device>, CodedError> {
-        let _ = self.rls_guard_sql_for_read(ctx)?;
-        let conn = self.lock_offline()?;
-        let placeholders = in_placeholders(ctx.organisation_ids().len(), 1);
-        let sql = format!(
-            "SELECT payload_json FROM device WHERE organisation_id IN ({placeholders}) ORDER BY last_seen DESC, device_id ASC"
-        );
-        let mut params = Vec::new();
-        append_org_params(ctx, &mut params);
-        query_json_rows(&conn, &sql, params)
-    }
-}
-
-impl SessionSummaryRepo for PostgresRelationalStore {
-    fn upsert_session_summary(
-        &self,
-        ctx: &SingleCtx,
-        summary: &SessionSummary,
-    ) -> Result<(), CodedError> {
-        let _ = self.rls_guard_sql_for_write(ctx)?;
-        let payload = encode_json(summary)?;
-        let org = ctx.organisation_id().as_str();
-        let mut conn = self.lock_offline()?;
-        let tx = conn.transaction().map_err(pg_sql_err)?;
-        tx.execute(
-            "INSERT INTO session_summary (organisation_id, session_id, device_id, agent_name, user_id, started_at, last_activity, payload_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-             ON CONFLICT(organisation_id, session_id) DO UPDATE SET
-               device_id = excluded.device_id,
-               agent_name = excluded.agent_name,
-               user_id = excluded.user_id,
-               started_at = excluded.started_at,
-               last_activity = excluded.last_activity,
-               payload_json = excluded.payload_json",
-            rusqlite::params![
-                org,
-                summary.id,
-                summary.device_id,
-                summary.agent_name,
-                summary.user_id,
-                summary.started_at.to_string(),
-                summary.last_activity.to_string(),
-                payload
-            ],
-        )
-        .map_err(pg_sql_err)?;
-        let parent_key = format!("session:{}", summary.id);
-        delete_search_parent(&tx, org, &parent_key)?;
-        insert_search_row(
-            &tx,
-            org,
-            EntityKind::Session,
-            &summary.id,
-            &parent_key,
-            &summary.agent_name,
-            &summary.device_name,
-        )?;
-        tx.commit().map_err(pg_sql_err)?;
-        Ok(())
-    }
-
-    fn get_session_summary(
-        &self,
-        ctx: &TenantCtx,
-        session_id: &str,
-    ) -> Result<Option<SessionSummary>, CodedError> {
-        let _ = self.rls_guard_sql_for_read(ctx)?;
-        let conn = self.lock_offline()?;
-        let placeholders = in_placeholders(ctx.organisation_ids().len(), 2);
-        let sql = format!(
-            "SELECT payload_json FROM session_summary WHERE session_id = ?1 AND organisation_id IN ({placeholders}) LIMIT 1"
-        );
-        let mut params = vec![Value::from(session_id.to_string())];
-        append_org_params(ctx, &mut params);
-        let raw: Option<String> = conn
-            .query_row(&sql, rusqlite::params_from_iter(params), |r| r.get(0))
-            .optional()
-            .map_err(pg_sql_err)?;
-        raw.map(|s| decode_json(&s)).transpose()
-    }
-
-    fn list_session_summaries(&self, ctx: &TenantCtx) -> Result<Vec<SessionSummary>, CodedError> {
-        let _ = self.rls_guard_sql_for_read(ctx)?;
-        let conn = self.lock_offline()?;
-        let placeholders = in_placeholders(ctx.organisation_ids().len(), 1);
-        let sql = format!(
-            "SELECT payload_json FROM session_summary WHERE organisation_id IN ({placeholders}) ORDER BY last_activity DESC, session_id ASC"
-        );
-        let mut params = Vec::new();
-        append_org_params(ctx, &mut params);
-        query_json_rows(&conn, &sql, params)
+            app_name: &self.config.application_name,
+            timeout_ms: self.config.statement_timeout_ms,
+            ssl_mode: self.config.ssl_mode,
+        };
+        execute_extended_tx_wire(&conn, password.as_deref(), rls_stmts, statements)
     }
 }
 
@@ -373,10 +217,6 @@ fn phase_label(phase: MigrationPhase) -> &'static str {
         MigrationPhase::Backfill => "backfill",
         MigrationPhase::Contract => "contract",
     }
-}
-
-fn sql_literal(raw: &str) -> String {
-    raw.replace('\'', "''")
 }
 
 pub(crate) fn pg_sql_err(err: rusqlite::Error) -> CodedError {

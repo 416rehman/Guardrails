@@ -5,99 +5,64 @@ use jiff::Timestamp;
 use rusqlite::OptionalExtension;
 use rusqlite::types::Value;
 
-use grdr_model::{CodedError, Finding, PolicyPack};
+use grdr_model::{CodedError, PolicyPack};
 use grdr_ports::{
-    EntityKind, EntitySearchHit, FindingRepo, KvSnapshotRepo, MigrationRecord, PolicyRepo,
-    ProfileKind, RelationalStorePort, SingleCtx, TenantCtx, TenantUserRecord, UserRepo,
+    EntityKind, EntitySearchHit, KvSnapshotRepo, MigrationRecord, PolicyRepo, ProfileKind,
+    RelationalStorePort, SingleCtx, TenantCtx, TenantUserRecord, UserRepo,
 };
 
+use crate::dialect::{PostgresSqlRegistry, PostgresStatementId};
 use crate::store::{
-    PostgresRelationalStore, append_org_params, decode_json, delete_search_parent, encode_json,
-    in_placeholders, insert_search_row, pg_sql_err, query_json_rows,
+    PostgresRelationalStore, StoreBackend, append_org_params, decode_json, delete_search_parent,
+    encode_json, in_placeholders, insert_search_row, pg_sql_err, query_json_rows,
 };
-
-impl FindingRepo for PostgresRelationalStore {
-    fn upsert_finding(&self, ctx: &SingleCtx, finding: &Finding) -> Result<(), CodedError> {
-        let _ = self.rls_guard_sql_for_write(ctx)?;
-        let payload = encode_json(finding)?;
-        let org = ctx.organisation_id().as_str();
-        let mut conn = self.lock_offline()?;
-        let tx = conn.transaction().map_err(pg_sql_err)?;
-        tx.execute(
-            "INSERT INTO finding (organisation_id, finding_id, session_id, device_id, severity, lifecycle, detected_at, payload_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-             ON CONFLICT(organisation_id, finding_id) DO UPDATE SET
-               session_id = excluded.session_id,
-               device_id = excluded.device_id,
-               severity = excluded.severity,
-               lifecycle = excluded.lifecycle,
-               detected_at = excluded.detected_at,
-               payload_json = excluded.payload_json",
-            rusqlite::params![
-                org,
-                finding.id,
-                finding.session_id,
-                finding.device_id,
-                encode_json(&finding.severity)?,
-                encode_json(&finding.lifecycle)?,
-                finding.detected_at.to_string(),
-                payload
-            ],
-        )
-        .map_err(pg_sql_err)?;
-        let parent_key = format!("finding:{}", finding.id);
-        delete_search_parent(&tx, org, &parent_key)?;
-        insert_search_row(
-            &tx,
-            org,
-            EntityKind::Finding,
-            &finding.id,
-            &parent_key,
-            &finding.title,
-            &finding.target,
-        )?;
-        tx.commit().map_err(pg_sql_err)?;
-        Ok(())
-    }
-
-    fn get_finding(
-        &self,
-        ctx: &TenantCtx,
-        finding_id: &str,
-    ) -> Result<Option<Finding>, CodedError> {
-        let _ = self.rls_guard_sql_for_read(ctx)?;
-        let conn = self.lock_offline()?;
-        let placeholders = in_placeholders(ctx.organisation_ids().len(), 2);
-        let sql = format!(
-            "SELECT payload_json FROM finding WHERE finding_id = ?1 AND organisation_id IN ({placeholders}) LIMIT 1"
-        );
-        let mut params = vec![Value::from(finding_id.to_string())];
-        append_org_params(ctx, &mut params);
-        let raw: Option<String> = conn
-            .query_row(&sql, rusqlite::params_from_iter(params), |r| r.get(0))
-            .optional()
-            .map_err(pg_sql_err)?;
-        raw.map(|s| decode_json(&s)).transpose()
-    }
-
-    fn list_findings(&self, ctx: &TenantCtx) -> Result<Vec<Finding>, CodedError> {
-        let _ = self.rls_guard_sql_for_read(ctx)?;
-        let conn = self.lock_offline()?;
-        let placeholders = in_placeholders(ctx.organisation_ids().len(), 1);
-        let sql = format!(
-            "SELECT payload_json FROM finding WHERE organisation_id IN ({placeholders}) ORDER BY detected_at DESC, finding_id ASC"
-        );
-        let mut params = Vec::new();
-        append_org_params(ctx, &mut params);
-        query_json_rows(&conn, &sql, params)
-    }
-}
+use crate::wire::WireStatement;
+use crate::wire_repos::{
+    org_array_param, search_sync_statements, wire_applied_migrations, wire_get_json,
+    wire_list_json, wire_list_kv, wire_search_entities,
+};
 
 impl PolicyRepo for PostgresRelationalStore {
     fn upsert_pack(&self, ctx: &SingleCtx, pack: &PolicyPack) -> Result<(), CodedError> {
-        let _ = self.rls_guard_sql_for_write(ctx)?;
+        let rls = self.rls_guard_sql_for_write(ctx)?;
         let payload = encode_json(pack)?;
         let org = ctx.organisation_id().as_str();
+        let parent_key = format!("pack:{}", pack.id);
+
+        if matches!(self.backend, StoreBackend::WireTcp) {
+            let subtitles: Vec<String> = pack
+                .rules
+                .iter()
+                .map(|r| format!("{} {}", r.id, pack.name))
+                .collect();
+            let search_rows: Vec<_> = pack
+                .rules
+                .iter()
+                .zip(subtitles.iter())
+                .map(|(r, sub)| {
+                    (
+                        EntityKind::Rule,
+                        r.id.as_str(),
+                        r.title.as_str(),
+                        sub.as_str(),
+                    )
+                })
+                .collect();
+            let mut stmts = vec![WireStatement {
+                sql: PostgresSqlRegistry::sql_for(PostgresStatementId::UpsertPolicyPack),
+                params: vec![
+                    Some(org.to_string()),
+                    Some(pack.id.clone()),
+                    Some(pack.name.clone()),
+                    Some(pack.version.clone()),
+                    Some(pack.channel.clone()),
+                    Some(payload),
+                ],
+            }];
+            stmts.extend(search_sync_statements(org, &parent_key, &search_rows));
+            let _ = self.execute_wire_statements(&rls, &stmts)?;
+            return Ok(());
+        }
 
         let mut conn = self.lock_offline()?;
         let tx = conn.transaction().map_err(pg_sql_err)?;
@@ -113,7 +78,6 @@ impl PolicyRepo for PostgresRelationalStore {
         )
         .map_err(pg_sql_err)?;
 
-        let parent_key = format!("pack:{}", pack.id);
         delete_search_parent(&tx, org, &parent_key)?;
         for rule in &pack.rules {
             insert_search_row(
@@ -131,7 +95,16 @@ impl PolicyRepo for PostgresRelationalStore {
     }
 
     fn get_pack(&self, ctx: &TenantCtx, pack_id: &str) -> Result<Option<PolicyPack>, CodedError> {
-        let _ = self.rls_guard_sql_for_read(ctx)?;
+        let rls = self.rls_guard_sql_for_read(ctx)?;
+        if matches!(self.backend, StoreBackend::WireTcp) {
+            return wire_get_json(
+                self,
+                &rls,
+                PostgresStatementId::GetPolicyPack,
+                vec![Some(pack_id.to_string()), Some(org_array_param(ctx))],
+            );
+        }
+
         let conn = self.lock_offline()?;
         let placeholders = in_placeholders(ctx.organisation_ids().len(), 2);
         let sql = format!(
@@ -147,7 +120,16 @@ impl PolicyRepo for PostgresRelationalStore {
     }
 
     fn list_packs(&self, ctx: &TenantCtx) -> Result<Vec<PolicyPack>, CodedError> {
-        let _ = self.rls_guard_sql_for_read(ctx)?;
+        let rls = self.rls_guard_sql_for_read(ctx)?;
+        if matches!(self.backend, StoreBackend::WireTcp) {
+            return wire_list_json(
+                self,
+                &rls,
+                PostgresStatementId::ListPolicyPacks,
+                vec![Some(org_array_param(ctx))],
+            );
+        }
+
         let conn = self.lock_offline()?;
         let placeholders = in_placeholders(ctx.organisation_ids().len(), 1);
         let sql = format!(
@@ -161,9 +143,35 @@ impl PolicyRepo for PostgresRelationalStore {
 
 impl UserRepo for PostgresRelationalStore {
     fn upsert_user(&self, ctx: &SingleCtx, user: &TenantUserRecord) -> Result<(), CodedError> {
-        let _ = self.rls_guard_sql_for_write(ctx)?;
+        let rls = self.rls_guard_sql_for_write(ctx)?;
         let payload = encode_json(user)?;
         let org = ctx.organisation_id().as_str();
+        let parent_key = format!("user:{}", user.id);
+
+        if matches!(self.backend, StoreBackend::WireTcp) {
+            let subtitle = format!("{} {}", user.email, user.department);
+            let search_rows = vec![(
+                EntityKind::User,
+                user.id.as_str(),
+                user.display_name.as_str(),
+                subtitle.as_str(),
+            )];
+            let mut stmts = vec![WireStatement {
+                sql: PostgresSqlRegistry::sql_for(PostgresStatementId::UpsertUser),
+                params: vec![
+                    Some(org.to_string()),
+                    Some(user.id.clone()),
+                    Some(user.display_name.clone()),
+                    Some(user.email.clone()),
+                    Some(user.department.clone()),
+                    Some(user.pseudonym_id.clone()),
+                    Some(payload),
+                ],
+            }];
+            stmts.extend(search_sync_statements(org, &parent_key, &search_rows));
+            let _ = self.execute_wire_statements(&rls, &stmts)?;
+            return Ok(());
+        }
 
         let mut conn = self.lock_offline()?;
         let tx = conn.transaction().map_err(pg_sql_err)?;
@@ -188,7 +196,6 @@ impl UserRepo for PostgresRelationalStore {
         )
         .map_err(pg_sql_err)?;
 
-        let parent_key = format!("user:{}", user.id);
         delete_search_parent(&tx, org, &parent_key)?;
         insert_search_row(
             &tx,
@@ -208,7 +215,16 @@ impl UserRepo for PostgresRelationalStore {
         ctx: &TenantCtx,
         user_id: &str,
     ) -> Result<Option<TenantUserRecord>, CodedError> {
-        let _ = self.rls_guard_sql_for_read(ctx)?;
+        let rls = self.rls_guard_sql_for_read(ctx)?;
+        if matches!(self.backend, StoreBackend::WireTcp) {
+            return wire_get_json(
+                self,
+                &rls,
+                PostgresStatementId::GetUser,
+                vec![Some(user_id.to_string()), Some(org_array_param(ctx))],
+            );
+        }
+
         let conn = self.lock_offline()?;
         let placeholders = in_placeholders(ctx.organisation_ids().len(), 2);
         let sql = format!(
@@ -224,7 +240,16 @@ impl UserRepo for PostgresRelationalStore {
     }
 
     fn list_users(&self, ctx: &TenantCtx) -> Result<Vec<TenantUserRecord>, CodedError> {
-        let _ = self.rls_guard_sql_for_read(ctx)?;
+        let rls = self.rls_guard_sql_for_read(ctx)?;
+        if matches!(self.backend, StoreBackend::WireTcp) {
+            return wire_list_json(
+                self,
+                &rls,
+                PostgresStatementId::ListUsers,
+                vec![Some(org_array_param(ctx))],
+            );
+        }
+
         let conn = self.lock_offline()?;
         let placeholders = in_placeholders(ctx.organisation_ids().len(), 1);
         let sql = format!(
@@ -244,7 +269,21 @@ impl KvSnapshotRepo for PostgresRelationalStore {
         key: &str,
         value_json: &str,
     ) -> Result<(), CodedError> {
-        let _ = self.rls_guard_sql_for_write(ctx)?;
+        let rls = self.rls_guard_sql_for_write(ctx)?;
+        if matches!(self.backend, StoreBackend::WireTcp) {
+            let stmts = [WireStatement {
+                sql: PostgresSqlRegistry::sql_for(PostgresStatementId::PutKv),
+                params: vec![
+                    Some(ctx.organisation_id().as_str().to_string()),
+                    Some(namespace.to_string()),
+                    Some(key.to_string()),
+                    Some(value_json.to_string()),
+                ],
+            }];
+            let _ = self.execute_wire_statements(&rls, &stmts)?;
+            return Ok(());
+        }
+
         let conn = self.lock_offline()?;
         let now_str = Timestamp::now().to_string();
         conn.execute(
@@ -271,7 +310,24 @@ impl KvSnapshotRepo for PostgresRelationalStore {
         namespace: &str,
         key: &str,
     ) -> Result<Option<String>, CodedError> {
-        let _ = self.rls_guard_sql_for_read(ctx)?;
+        let rls = self.rls_guard_sql_for_read(ctx)?;
+        if matches!(self.backend, StoreBackend::WireTcp) {
+            let stmts = [WireStatement {
+                sql: PostgresSqlRegistry::sql_for(PostgresStatementId::GetKv),
+                params: vec![
+                    Some(namespace.to_string()),
+                    Some(key.to_string()),
+                    Some(org_array_param(ctx)),
+                ],
+            }];
+            let res = self.execute_wire_statements(&rls, &stmts)?;
+            return Ok(res
+                .first()
+                .and_then(|rows| rows.first())
+                .and_then(|cols| cols.first())
+                .and_then(|val| val.clone()));
+        }
+
         let conn = self.lock_offline()?;
         let placeholders = in_placeholders(ctx.organisation_ids().len(), 3);
         let sql = format!(
@@ -292,7 +348,11 @@ impl KvSnapshotRepo for PostgresRelationalStore {
         ctx: &TenantCtx,
         namespace: &str,
     ) -> Result<Vec<(String, String)>, CodedError> {
-        let _ = self.rls_guard_sql_for_read(ctx)?;
+        let rls = self.rls_guard_sql_for_read(ctx)?;
+        if matches!(self.backend, StoreBackend::WireTcp) {
+            return wire_list_kv(self, &rls, ctx, namespace);
+        }
+
         let conn = self.lock_offline()?;
         let placeholders = in_placeholders(ctx.organisation_ids().len(), 2);
         let sql = format!(
@@ -314,7 +374,20 @@ impl KvSnapshotRepo for PostgresRelationalStore {
     }
 
     fn delete_kv(&self, ctx: &SingleCtx, namespace: &str, key: &str) -> Result<(), CodedError> {
-        let _ = self.rls_guard_sql_for_write(ctx)?;
+        let rls = self.rls_guard_sql_for_write(ctx)?;
+        if matches!(self.backend, StoreBackend::WireTcp) {
+            let stmts = [WireStatement {
+                sql: PostgresSqlRegistry::sql_for(PostgresStatementId::DeleteKv),
+                params: vec![
+                    Some(ctx.organisation_id().as_str().to_string()),
+                    Some(namespace.to_string()),
+                    Some(key.to_string()),
+                ],
+            }];
+            let _ = self.execute_wire_statements(&rls, &stmts)?;
+            return Ok(());
+        }
+
         let conn = self.lock_offline()?;
         conn.execute(
             "DELETE FROM tenant_kv WHERE organisation_id = ?1 AND namespace = ?2 AND entry_key = ?3",
@@ -336,11 +409,15 @@ impl RelationalStorePort for PostgresRelationalStore {
         query: &str,
         limit: usize,
     ) -> Result<Vec<EntitySearchHit>, CodedError> {
-        let _ = self.rls_guard_sql_for_read(ctx)?;
+        let rls = self.rls_guard_sql_for_read(ctx)?;
         let needle = query.trim().to_ascii_lowercase();
         if needle.is_empty() || limit == 0 {
             return Ok(Vec::new());
         }
+        if matches!(self.backend, StoreBackend::WireTcp) {
+            return wire_search_entities(self, &rls, ctx, &needle, limit);
+        }
+
         let pattern = format!("%{needle}%");
         let conn = self.lock_offline()?;
         let org_count = ctx.organisation_ids().len();
@@ -386,6 +463,10 @@ impl RelationalStorePort for PostgresRelationalStore {
     }
 
     fn applied_migrations(&self) -> Result<Vec<MigrationRecord>, CodedError> {
+        if matches!(self.backend, StoreBackend::WireTcp) {
+            return wire_applied_migrations(self);
+        }
+
         let conn = self.lock_offline()?;
         let mut stmt = conn
             .prepare("SELECT version, name, applied_at FROM schema_migrations ORDER BY version ASC")

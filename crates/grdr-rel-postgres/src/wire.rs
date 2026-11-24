@@ -7,165 +7,177 @@ use std::time::Duration;
 
 use grdr_model::CodedError;
 
-use crate::config::CODE_PG_WIRE;
+use crate::config::{CODE_PG_WIRE, PostgresSslMode};
+pub use crate::wire_codec::{BackendWireMessage, PostgresWireState, TransactionStatus};
+use crate::wire_codec::{
+    PG_SSL_REQUEST_CODE, decode_backend_message, encode_bind_message, encode_execute_message,
+    encode_parse_message, encode_query_message, encode_startup_packet, encode_sync_message,
+    encode_terminate_message, wire_io_err,
+};
 
-const PG_PROTOCOL_V3: u32 = 196_608;
+const MAX_WIRE_ROWS: usize = 100_000;
+const MAX_WIRE_CONTROL_FRAMES: usize = 4_096;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PostgresWireState {
-    Disconnected,
-    Authenticating,
-    Ready,
-    InTransaction,
-    Failed { reason: String },
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StartupAuthState {
+    AwaitingChallenge,
+    Authenticated,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BackendWireMessage {
-    AuthenticationOk,
-    AuthenticationCleartextPassword,
-    ReadyForQuery { status: u8 },
-    RowDescription { columns: Vec<String> },
-    DataRow { values: Vec<Option<String>> },
-    CommandComplete { tag: String },
-    ErrorResponse { message: String },
-    Other { tag: u8 },
+#[derive(Debug, Clone)]
+pub(crate) struct WireStatement<'a> {
+    pub(crate) sql: &'a str,
+    pub(crate) params: Vec<Option<String>>,
 }
 
-pub fn encode_startup_packet(user: &str, database: &str, app_name: &str) -> Vec<u8> {
-    let mut params = Vec::new();
-    for (k, v) in [
-        ("user", user),
-        ("database", database),
-        ("application_name", app_name),
-        ("client_encoding", "UTF8"),
-    ] {
-        params.extend_from_slice(k.as_bytes());
-        params.push(0);
-        params.extend_from_slice(v.as_bytes());
-        params.push(0);
-    }
-    params.push(0);
-
-    let total_len = 8usize.saturating_add(params.len());
-    let len_u32 = u32::try_from(total_len).unwrap_or(u32::MAX);
-    let mut buf = Vec::with_capacity(total_len);
-    buf.extend_from_slice(&len_u32.to_be_bytes());
-    buf.extend_from_slice(&PG_PROTOCOL_V3.to_be_bytes());
-    buf.extend_from_slice(&params);
-    buf
-}
-
-pub fn encode_query_message(sql: &str) -> Vec<u8> {
-    let payload_len = sql.len().saturating_add(1);
-    let total_len = 4usize.saturating_add(payload_len);
-    let len_u32 = u32::try_from(total_len).unwrap_or(u32::MAX);
-    let mut buf = Vec::with_capacity(1usize.saturating_add(total_len));
-    buf.push(b'Q');
-    buf.extend_from_slice(&len_u32.to_be_bytes());
-    buf.extend_from_slice(sql.as_bytes());
-    buf.push(0);
-    buf
-}
-
-pub fn encode_password_message(password: &str) -> Vec<u8> {
-    let total_len = 4usize.saturating_add(password.len()).saturating_add(1);
-    let len_u32 = u32::try_from(total_len).unwrap_or(u32::MAX);
-    let mut buf = Vec::with_capacity(1usize.saturating_add(total_len));
-    buf.push(b'p');
-    buf.extend_from_slice(&len_u32.to_be_bytes());
-    buf.extend_from_slice(password.as_bytes());
-    buf.push(0);
-    buf
-}
-
-pub fn encode_terminate_message() -> [u8; 5] {
-    [b'X', 0, 0, 0, 4]
-}
-
-pub fn decode_backend_message<R: Read>(reader: &mut R) -> Result<BackendWireMessage, CodedError> {
-    let mut header = [0u8; 5];
-    reader.read_exact(&mut header).map_err(wire_io_err)?;
-    let tag = header[0];
-    let len = u32::from_be_bytes([header[1], header[2], header[3], header[4]]);
-    if len < 4 {
-        return Err(CodedError::new(
-            CODE_PG_WIRE,
-            format!("Invalid PostgreSQL wire frame length {len}."),
-            "Verify PostgreSQL 18 server wire protocol.",
-        ));
-    }
-    let body_len = usize::try_from(len.saturating_sub(4)).unwrap_or(0);
-    let mut body = vec![0u8; body_len];
-    reader.read_exact(&mut body).map_err(wire_io_err)?;
-
-    match tag {
-        b'R' => {
-            let auth_code = match body.get(..4) {
-                Some([b0, b1, b2, b3]) => i32::from_be_bytes([*b0, *b1, *b2, *b3]),
-                _ => -1,
-            };
-            match auth_code {
-                0 => Ok(BackendWireMessage::AuthenticationOk),
-                3 => Ok(BackendWireMessage::AuthenticationCleartextPassword),
-                other => Err(CodedError::new(
-                    CODE_PG_WIRE,
-                    format!("Unsupported PostgreSQL wire auth method code {other}."),
-                    "Configure trust/cleartext over TLS or pg_hba auth for wire client.",
-                )),
-            }
-        }
-        b'Z' => Ok(BackendWireMessage::ReadyForQuery {
-            status: body.first().copied().unwrap_or(b'I'),
-        }),
-        b'C' => {
-            let tag_str = String::from_utf8_lossy(trim_nul(&body)).to_string();
-            Ok(BackendWireMessage::CommandComplete { tag: tag_str })
-        }
-        b'E' => {
-            let msg = parse_error_fields(&body);
-            Ok(BackendWireMessage::ErrorResponse { message: msg })
-        }
-        b'T' => Ok(parse_row_description(&body)),
-        b'D' => Ok(parse_data_row(&body)),
-        _ => Ok(BackendWireMessage::Other { tag }),
-    }
+#[derive(Debug, Clone)]
+pub struct WireConnParams<'a> {
+    pub endpoint: &'a str,
+    pub user: &'a str,
+    pub database: &'a str,
+    pub app_name: &'a str,
+    pub timeout_ms: u32,
+    pub ssl_mode: PostgresSslMode,
 }
 
 pub fn execute_simple_query_wire(
-    endpoint: &str,
-    user: &str,
-    database: &str,
+    conn: &WireConnParams<'_>,
     password: Option<&str>,
-    app_name: &str,
-    timeout_ms: u32,
     sql: &str,
 ) -> Result<Vec<Vec<Option<String>>>, CodedError> {
-    let mut stream = TcpStream::connect(endpoint).map_err(|e| {
+    let mut stream = open_authenticated_stream(conn, password)?;
+    let res = run_simple_on_stream(&mut stream, sql);
+    let _ = stream.write_all(&encode_terminate_message());
+    res
+}
+
+pub(crate) fn execute_extended_tx_wire(
+    conn: &WireConnParams<'_>,
+    password: Option<&str>,
+    rls_stmts: &[String],
+    statements: &[WireStatement<'_>],
+) -> Result<Vec<Vec<Vec<Option<String>>>>, CodedError> {
+    let mut stream = open_authenticated_stream(conn, password)?;
+    let mut setup = String::from("BEGIN;");
+    for rls in rls_stmts {
+        setup.push(' ');
+        setup.push_str(rls.trim_end_matches(';'));
+        setup.push(';');
+    }
+    if let Err(err) = run_simple_on_stream(&mut stream, &setup) {
+        let _ = stream.write_all(&encode_terminate_message());
+        return Err(err);
+    }
+
+    let mut results = Vec::with_capacity(statements.len());
+    for stmt in statements {
+        match run_extended_statement(&mut stream, stmt.sql, &stmt.params) {
+            Ok(rows) => results.push(rows),
+            Err(err) => {
+                let _ = run_simple_on_stream(&mut stream, "ROLLBACK;");
+                let _ = stream.write_all(&encode_terminate_message());
+                return Err(err);
+            }
+        }
+    }
+
+    if let Err(err) = run_simple_on_stream(&mut stream, "COMMIT;") {
+        let _ = stream.write_all(&encode_terminate_message());
+        return Err(err);
+    }
+    let _ = stream.write_all(&encode_terminate_message());
+    Ok(results)
+}
+
+fn open_authenticated_stream(
+    conn: &WireConnParams<'_>,
+    password: Option<&str>,
+) -> Result<TcpStream, CodedError> {
+    if matches!(
+        conn.ssl_mode,
+        PostgresSslMode::Require | PostgresSslMode::VerifyCa | PostgresSslMode::VerifyFull
+    ) {
+        return Err(CodedError::new(
+            CODE_PG_WIRE,
+            format!(
+                "PostgreSQL sslmode={} requires TLS stream wrapping, which is not enabled in this build.",
+                conn.ssl_mode.as_str()
+            ),
+            "Terminate TLS via a verified local proxy/tunnel with sslmode=disable, or enable TLS transport.",
+        ));
+    }
+
+    let mut stream = TcpStream::connect(conn.endpoint).map_err(|e| {
         CodedError::new(
             CODE_PG_WIRE,
-            format!("Failed connecting to PostgreSQL endpoint `{endpoint}`: {e}"),
+            format!(
+                "Failed connecting to PostgreSQL endpoint `{}`: {e}",
+                conn.endpoint
+            ),
             "Verify PostgreSQL 18 host, port, and network reachability.",
         )
     })?;
-    let dur = Duration::from_millis(u64::from(timeout_ms.max(100)));
+    let dur = Duration::from_millis(u64::from(conn.timeout_ms.max(100)));
     let _ = stream.set_read_timeout(Some(dur));
     let _ = stream.set_write_timeout(Some(dur));
 
-    let startup = encode_startup_packet(user, database, app_name);
+    if conn.ssl_mode == PostgresSslMode::Prefer {
+        let mut ssl_req = [0u8; 8];
+        ssl_req[..4].copy_from_slice(&8u32.to_be_bytes());
+        ssl_req[4..8].copy_from_slice(&PG_SSL_REQUEST_CODE.to_be_bytes());
+        stream.write_all(&ssl_req).map_err(wire_io_err)?;
+        let mut reply = [0u8; 1];
+        stream.read_exact(&mut reply).map_err(wire_io_err)?;
+        if reply[0] == b'S' {
+            let _ = stream.write_all(&encode_terminate_message());
+            return Err(CodedError::new(
+                CODE_PG_WIRE,
+                "PostgreSQL server accepted SSLRequest, but TLS stream wrapping is not enabled in this build.",
+                "Use a verified TLS proxy or enable TLS transport.",
+            ));
+        }
+        if reply[0] != b'N' {
+            return Err(CodedError::new(
+                CODE_PG_WIRE,
+                "Invalid PostgreSQL SSLRequest response byte.",
+                "Verify PostgreSQL 18 server protocol.",
+            ));
+        }
+    }
+
+    let startup = encode_startup_packet(conn.user, conn.database, conn.app_name)?;
     stream.write_all(&startup).map_err(wire_io_err)?;
 
     let mut state = PostgresWireState::Authenticating;
+    let mut auth_state = StartupAuthState::AwaitingChallenge;
+    let mut control_frames = 0usize;
     while !matches!(state, PostgresWireState::Ready) {
         match decode_backend_message(&mut stream)? {
-            BackendWireMessage::AuthenticationOk => {}
+            BackendWireMessage::AuthenticationOk => {
+                auth_state = StartupAuthState::Authenticated;
+            }
             BackendWireMessage::AuthenticationCleartextPassword => {
-                let pw = password.unwrap_or("");
-                stream
-                    .write_all(&encode_password_message(pw))
-                    .map_err(wire_io_err)?;
+                let _ = stream.write_all(&encode_terminate_message());
+                let detail = if password.is_none_or(str::is_empty) {
+                    "PostgreSQL requested cleartext password authentication without configured credentials on an unencrypted TCP connection."
+                } else {
+                    "Refusing PostgreSQL cleartext password authentication over an unencrypted TCP connection."
+                };
+                return Err(CodedError::new(
+                    CODE_PG_WIRE,
+                    detail,
+                    "Use TLS-wrapped transport or loopback trust/SCRAM authentication.",
+                ));
             }
             BackendWireMessage::ReadyForQuery { .. } => {
+                if auth_state != StartupAuthState::Authenticated {
+                    let _ = stream.write_all(&encode_terminate_message());
+                    return Err(CodedError::new(
+                        CODE_PG_WIRE,
+                        "PostgreSQL sent ReadyForQuery before AuthenticationOk.",
+                        "Reject incomplete authentication handshake.",
+                    ));
+                }
                 state = PostgresWireState::Ready;
             }
             BackendWireMessage::ErrorResponse { message } => {
@@ -175,109 +187,117 @@ pub fn execute_simple_query_wire(
                     "Verify PostgreSQL credentials and database name.",
                 ));
             }
-            _ => {}
+            _ => {
+                control_frames = control_frames.saturating_add(1);
+                if control_frames > MAX_WIRE_CONTROL_FRAMES {
+                    let _ = stream.write_all(&encode_terminate_message());
+                    return Err(control_frame_limit_err());
+                }
+            }
         }
     }
+    Ok(stream)
+}
 
-    stream
-        .write_all(&encode_query_message(sql))
-        .map_err(wire_io_err)?;
+fn run_simple_on_stream(
+    stream: &mut TcpStream,
+    sql: &str,
+) -> Result<Vec<Vec<Option<String>>>, CodedError> {
+    let msg = encode_query_message(sql)?;
+    stream.write_all(&msg).map_err(wire_io_err)?;
     let mut rows = Vec::new();
+    let mut control_frames = 0usize;
     loop {
-        match decode_backend_message(&mut stream)? {
-            BackendWireMessage::DataRow { values } => rows.push(values),
+        match decode_backend_message(stream)? {
+            BackendWireMessage::DataRow { values } => {
+                if rows.len() >= MAX_WIRE_ROWS {
+                    return Err(row_limit_err());
+                }
+                rows.push(values);
+            }
             BackendWireMessage::ReadyForQuery { .. } => break,
             BackendWireMessage::ErrorResponse { message } => {
-                let _ = stream.write_all(&encode_terminate_message());
                 return Err(CodedError::new(
                     CODE_PG_WIRE,
                     format!("PostgreSQL query error: {message}"),
                     "Inspect SQL query and RLS session settings.",
                 ));
             }
-            _ => {}
+            _ => {
+                control_frames = control_frames.saturating_add(1);
+                if control_frames > MAX_WIRE_CONTROL_FRAMES {
+                    return Err(control_frame_limit_err());
+                }
+            }
         }
     }
-    let _ = stream.write_all(&encode_terminate_message());
     Ok(rows)
 }
 
-fn trim_nul(bytes: &[u8]) -> &[u8] {
-    bytes.strip_suffix(&[0]).unwrap_or(bytes)
-}
+fn run_extended_statement(
+    stream: &mut TcpStream,
+    sql: &str,
+    params: &[Option<String>],
+) -> Result<Vec<Vec<Option<String>>>, CodedError> {
+    stream
+        .write_all(&encode_parse_message("", sql)?)
+        .map_err(wire_io_err)?;
+    stream
+        .write_all(&encode_bind_message("", "", params)?)
+        .map_err(wire_io_err)?;
+    stream
+        .write_all(&encode_execute_message("", 0)?)
+        .map_err(wire_io_err)?;
+    stream
+        .write_all(&encode_sync_message())
+        .map_err(wire_io_err)?;
+    stream.flush().map_err(wire_io_err)?;
 
-fn parse_error_fields(body: &[u8]) -> String {
-    let mut idx = 0usize;
-    let mut message = None;
-    while let Some(&code) = body.get(idx) {
-        idx = idx.saturating_add(1);
-        if code == 0 {
-            break;
-        }
-        let end = body
-            .get(idx..)
-            .and_then(|s| s.iter().position(|&b| b == 0))
-            .map_or(body.len(), |pos| idx.saturating_add(pos));
-        if code == b'M'
-            && let Some(slice) = body.get(idx..end)
-        {
-            message = Some(String::from_utf8_lossy(slice).to_string());
-        }
-        idx = end.saturating_add(1);
-    }
-    message.unwrap_or_else(|| "unknown PostgreSQL error".into())
-}
-
-fn parse_row_description(body: &[u8]) -> BackendWireMessage {
-    let count = match body.get(..2) {
-        Some([b0, b1]) => u16::from_be_bytes([*b0, *b1]) as usize,
-        _ => 0,
-    };
-    let mut cols = Vec::with_capacity(count);
-    let mut idx = 2usize;
-    for _ in 0..count {
-        let Some(rel_nul) = body.get(idx..).and_then(|s| s.iter().position(|&b| b == 0)) else {
-            break;
-        };
-        let end = idx.saturating_add(rel_nul);
-        if let Some(name_slice) = body.get(idx..end) {
-            cols.push(String::from_utf8_lossy(name_slice).to_string());
-        }
-        idx = end.saturating_add(1).saturating_add(18);
-    }
-    BackendWireMessage::RowDescription { columns: cols }
-}
-
-fn parse_data_row(body: &[u8]) -> BackendWireMessage {
-    let count = match body.get(..2) {
-        Some([b0, b1]) => u16::from_be_bytes([*b0, *b1]) as usize,
-        _ => 0,
-    };
-    let mut values = Vec::with_capacity(count);
-    let mut idx = 2usize;
-    for _ in 0..count {
-        let Some([b0, b1, b2, b3]) = body.get(idx..idx.saturating_add(4)) else {
-            break;
-        };
-        let col_len = i32::from_be_bytes([*b0, *b1, *b2, *b3]);
-        idx = idx.saturating_add(4);
-        if col_len < 0 {
-            values.push(None);
-        } else {
-            let ulen = usize::try_from(col_len).unwrap_or(0);
-            let end = idx.saturating_add(ulen);
-            let slice = body.get(idx..end).unwrap_or(&[]);
-            values.push(Some(String::from_utf8_lossy(slice).to_string()));
-            idx = end;
+    let mut rows = Vec::new();
+    let mut query_err: Option<String> = None;
+    let mut control_frames = 0usize;
+    loop {
+        match decode_backend_message(stream)? {
+            BackendWireMessage::DataRow { values } => {
+                if rows.len() >= MAX_WIRE_ROWS {
+                    return Err(row_limit_err());
+                }
+                rows.push(values);
+            }
+            BackendWireMessage::ErrorResponse { message } => {
+                query_err = Some(message);
+            }
+            BackendWireMessage::ReadyForQuery { .. } => break,
+            _ => {
+                control_frames = control_frames.saturating_add(1);
+                if control_frames > MAX_WIRE_CONTROL_FRAMES {
+                    return Err(control_frame_limit_err());
+                }
+            }
         }
     }
-    BackendWireMessage::DataRow { values }
+    if let Some(msg) = query_err {
+        return Err(CodedError::new(
+            CODE_PG_WIRE,
+            format!("PostgreSQL extended query error: {msg}"),
+            "Inspect SQL parameters and RLS policies.",
+        ));
+    }
+    Ok(rows)
 }
 
-fn wire_io_err(err: std::io::Error) -> CodedError {
+fn control_frame_limit_err() -> CodedError {
     CodedError::new(
         CODE_PG_WIRE,
-        format!("PostgreSQL wire I/O failed: {err}"),
-        "Check PostgreSQL socket connection.",
+        format!("PostgreSQL wire response exceeded {MAX_WIRE_CONTROL_FRAMES} control frames."),
+        "Inspect PostgreSQL server protocol stream.",
+    )
+}
+
+fn row_limit_err() -> CodedError {
+    CodedError::new(
+        CODE_PG_WIRE,
+        format!("PostgreSQL wire response exceeded {MAX_WIRE_ROWS} rows."),
+        "Paginate large queries.",
     )
 }

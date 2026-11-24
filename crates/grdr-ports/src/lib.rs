@@ -6,6 +6,7 @@ pub mod blob;
 pub mod bus;
 pub mod clock;
 pub mod events;
+pub mod hunt_sql;
 pub mod jobs;
 pub mod relational;
 pub mod tenant;
@@ -29,6 +30,7 @@ pub use events::{
     LakeQueryRow, LakeRecord, LegalHold, LegalHoldRequest, LegalHoldScope, LegalHoldState,
     RetentionClass, SessionContentKey,
 };
+pub use hunt_sql::{HuntTable, ParsedHunt, parse_hunt_sql};
 pub use jobs::{
     CODE_JOBS_INVALID_STATE, CODE_JOBS_IO, CODE_JOBS_NOT_FOUND, CODE_JOBS_STALE_FENCE,
     JobEnqueueOutcome, JobEnqueueRequest, JobPort, JobRecord, JobState, JobStepRecord,

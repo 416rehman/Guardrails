@@ -1,37 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 
 use rusqlite::{Connection, OptionalExtension};
-use uuid::Uuid;
 
 use grdr_crypto::AeadKey;
 use grdr_model::CodedError;
 use grdr_ports::{
-    BlobPort, CODE_LAKE_IO, CODE_LAKE_NOT_FOUND, CODE_LAKE_STALE_FENCE, ErasureReceipt, EventsPort,
-    FencingToken, LakeBatch, LakeCompactionResult, LakeFlushResult, LakeManifest, LakeQueryIr,
-    LakeQueryResult, LegalHold, LegalHoldRequest, LegalHoldScope, LegalHoldState, OrgId,
-    RetentionClass, SingleCtx, TenantCtx, TenantPath,
+    BlobPort, CODE_LAKE_IO, CODE_LAKE_STALE_FENCE, ErasureReceipt, EventsPort, FencingToken,
+    LakeBatch, LakeCompactionResult, LakeFlushResult, LakeManifest, LakeQueryIr, LakeQueryResult,
+    LegalHold, LegalHoldRequest, OrgId, SingleCtx, TenantCtx,
 };
 
 use crate::crypto::{SessionKeyLookup, ensure_session_key, seal_content_fields};
+use crate::erasure::{erase_session_records, place_hold_record, release_hold_record};
 use crate::flush::{FlushContext, flush_org_batches, json_io_err};
 use crate::query::run_lake_query;
-use crate::retention::{load_active_holds, run_retention_and_compaction};
+use crate::retention::run_retention_and_compaction;
 use crate::schema::{configure_and_migrate_catalogue, lake_sql_err};
 
-struct HoldRow {
-    scope_json: String,
-    reason: String,
-    incident_ref: Option<String>,
-    created_by: String,
-    created_at_ms: i64,
-    expires_at_ms: Option<i64>,
-}
+const DEFAULT_PITR_LAG_MS: i64 = 7 * 86_400_000;
 
 #[derive(Debug)]
 pub struct LakeStore<B: BlobPort> {
@@ -65,7 +57,7 @@ impl<B: BlobPort> LakeStore<B> {
             catalogue: Mutex::new(conn),
             memtable: Mutex::new(BTreeMap::new()),
             org_kek,
-            pitr_lag_ms: 0,
+            pitr_lag_ms: DEFAULT_PITR_LAG_MS,
         })
     }
 
@@ -77,7 +69,7 @@ impl<B: BlobPort> LakeStore<B> {
             catalogue: Mutex::new(conn),
             memtable: Mutex::new(BTreeMap::new()),
             org_kek,
-            pitr_lag_ms: 0,
+            pitr_lag_ms: DEFAULT_PITR_LAG_MS,
         })
     }
 
@@ -88,6 +80,11 @@ impl<B: BlobPort> LakeStore<B> {
 
     pub fn blobs(&self) -> &B {
         &self.blobs
+    }
+
+    #[cfg(test)]
+    pub(crate) fn org_kek(&self) -> &AeadKey {
+        &self.org_kek
     }
 
     fn lock_cat(&self) -> Result<MutexGuard<'_, Connection>, CodedError> {
@@ -168,25 +165,25 @@ impl<B: BlobPort> EventsPort for LakeStore<B> {
         let mut conn = self.lock_cat()?;
         let (snapshot_seq, manifest_seq) = check_and_advance_fence(&conn, org_id, fence)?;
 
-        let mut mem = self.lock_mem()?;
-        let org_batches = mem.entry(org_id.as_str().to_string()).or_default();
-        let mut due_batches = Vec::new();
-        let mut keep_batches = Vec::new();
-        for batch in org_batches.drain(..) {
-            let max_rx = batch
-                .records
-                .iter()
-                .map(|r| r.received_at_ms)
-                .max()
-                .unwrap_or(now_ms);
-            if max_rx <= due_before_ms {
-                due_batches.push(batch);
-            } else {
-                keep_batches.push(batch);
-            }
-        }
-        *org_batches = keep_batches;
-        drop(mem);
+        let due_batches = {
+            let mem = self.lock_mem()?;
+            mem.get(org_id.as_str())
+                .map(|batches| {
+                    batches
+                        .iter()
+                        .filter(|b| {
+                            b.records
+                                .iter()
+                                .map(|r| r.received_at_ms)
+                                .max()
+                                .unwrap_or(now_ms)
+                                <= due_before_ms
+                        })
+                        .cloned()
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        };
 
         if due_batches.is_empty() {
             return Ok(LakeFlushResult {
@@ -204,9 +201,15 @@ impl<B: BlobPort> EventsPort for LakeStore<B> {
             });
         }
 
-        flush_org_batches(
+        let flushed_keys: BTreeSet<(u32, u64, String)> = due_batches
+            .iter()
+            .map(|b| (b.partition, b.bus_offset, b.lane.clone()))
+            .collect();
+
+        let res = flush_org_batches(
             &mut conn,
             &self.blobs,
+            &self.org_kek,
             ctx,
             FlushContext {
                 fence,
@@ -215,7 +218,14 @@ impl<B: BlobPort> EventsPort for LakeStore<B> {
                 now_ms,
             },
             due_batches,
-        )
+        )?;
+
+        let mut mem = self.lock_mem()?;
+        if let Some(org_batches) = mem.get_mut(org_id.as_str()) {
+            org_batches
+                .retain(|b| !flushed_keys.contains(&(b.partition, b.bus_offset, b.lane.clone())));
+        }
+        Ok(res)
     }
 
     fn execute_query_ir(
@@ -234,42 +244,7 @@ impl<B: BlobPort> EventsPort for LakeStore<B> {
         hold: &LegalHoldRequest,
     ) -> Result<LegalHold, CodedError> {
         let conn = self.lock_cat()?;
-        let record = LegalHold {
-            organisation_id: ctx.organisation_id().clone(),
-            hold_id: hold.hold_id.clone(),
-            scope: hold.scope.clone(),
-            reason: hold.reason.clone(),
-            incident_ref: hold.incident_ref.clone(),
-            created_by: hold.created_by.clone(),
-            created_at_ms: hold.created_at_ms,
-            expires_at_ms: hold.expires_at_ms,
-            state: LegalHoldState::Active,
-        };
-        conn.execute(
-            "INSERT INTO lake_holds (
-                organisation_id, hold_id, scope_json, reason, incident_ref, created_by,
-                created_at_ms, expires_at_ms, state_json
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-             ON CONFLICT(organisation_id, hold_id) DO UPDATE SET
-               scope_json = excluded.scope_json,
-               reason = excluded.reason,
-               incident_ref = excluded.incident_ref,
-               expires_at_ms = excluded.expires_at_ms,
-               state_json = excluded.state_json",
-            rusqlite::params![
-                ctx.organisation_id().as_str(),
-                record.hold_id,
-                serde_json::to_string(&record.scope).map_err(json_io_err)?,
-                record.reason,
-                record.incident_ref,
-                record.created_by,
-                record.created_at_ms,
-                record.expires_at_ms,
-                serde_json::to_string(&record.state).map_err(json_io_err)?
-            ],
-        )
-        .map_err(lake_sql_err)?;
-        Ok(record)
+        place_hold_record(&conn, ctx, hold)
     }
 
     fn release_hold(
@@ -279,54 +254,7 @@ impl<B: BlobPort> EventsPort for LakeStore<B> {
         now_ms: i64,
     ) -> Result<LegalHold, CodedError> {
         let conn = self.lock_cat()?;
-        let row: Option<HoldRow> = conn
-            .query_row(
-                "SELECT scope_json, reason, incident_ref, created_by, created_at_ms, expires_at_ms
-                 FROM lake_holds WHERE organisation_id = ?1 AND hold_id = ?2",
-                rusqlite::params![ctx.organisation_id().as_str(), hold_id],
-                |r| {
-                    Ok(HoldRow {
-                        scope_json: r.get(0)?,
-                        reason: r.get(1)?,
-                        incident_ref: r.get(2)?,
-                        created_by: r.get(3)?,
-                        created_at_ms: r.get(4)?,
-                        expires_at_ms: r.get(5)?,
-                    })
-                },
-            )
-            .optional()
-            .map_err(lake_sql_err)?;
-        let Some(hold) = row else {
-            return Err(CodedError::new(
-                CODE_LAKE_NOT_FOUND,
-                format!("Hold `{hold_id}` not found."),
-                "List active holds and verify hold_id.",
-            ));
-        };
-        let state = LegalHoldState::Released {
-            released_at_ms: now_ms,
-        };
-        conn.execute(
-            "UPDATE lake_holds SET state_json = ?3 WHERE organisation_id = ?1 AND hold_id = ?2",
-            rusqlite::params![
-                ctx.organisation_id().as_str(),
-                hold_id,
-                serde_json::to_string(&state).map_err(json_io_err)?
-            ],
-        )
-        .map_err(lake_sql_err)?;
-        Ok(LegalHold {
-            organisation_id: ctx.organisation_id().clone(),
-            hold_id: hold_id.to_string(),
-            scope: serde_json::from_str::<LegalHoldScope>(&hold.scope_json).map_err(json_io_err)?,
-            reason: hold.reason,
-            incident_ref: hold.incident_ref,
-            created_by: hold.created_by,
-            created_at_ms: hold.created_at_ms,
-            expires_at_ms: hold.expires_at_ms,
-            state,
-        })
+        release_hold_record(&conn, ctx, hold_id, now_ms)
     }
 
     fn erase_session(
@@ -336,91 +264,16 @@ impl<B: BlobPort> EventsPort for LakeStore<B> {
         reason: &str,
         now_ms: i64,
     ) -> Result<ErasureReceipt, CodedError> {
-        let org_id = ctx.organisation_id();
-        let conn = self.lock_cat()?;
-        let destruction_record_id = format!("erasure-{}", Uuid::now_v7().simple());
-        let state_log_key = format!("state-log/{destruction_record_id}.json");
-        let state_log_payload = serde_json::to_vec(&serde_json::json!({
-            "kind": "session_content_key_destruction",
-            "organisation_id": org_id.as_str(),
-            "root_session_id": root_session_id,
-            "reason": reason,
-            "erased_at_ms": now_ms,
-            "destruction_record_id": destruction_record_id,
-        }))
-        .map_err(json_io_err)?;
-        self.blobs.put(
+        let mut conn = self.lock_cat()?;
+        erase_session_records(
+            &mut conn,
+            &self.blobs,
+            &self.org_kek,
             ctx,
-            &TenantPath::parse(ctx, &state_log_key)?,
-            &state_log_payload,
-        )?;
-
-        let updated = conn
-            .execute(
-                "UPDATE lake_content_keys
-                 SET state = 'destroyed', wrapped_key = '', destroyed_at_ms = ?3, destruction_record_id = ?4
-                 WHERE organisation_id = ?1 AND root_session_id = ?2 AND state = 'active'",
-                rusqlite::params![org_id.as_str(), root_session_id, now_ms, destruction_record_id],
-            )
-            .map_err(lake_sql_err)?;
-
-        let active_holds = load_active_holds(&conn, org_id, now_ms)?;
-        let mut stmt = conn
-            .prepare(
-                "SELECT object_key, day, root_session_ids_json, reduced_at_ms
-                 FROM lake_archive_segments WHERE organisation_id = ?1",
-            )
-            .map_err(lake_sql_err)?;
-        let arch_rows = stmt
-            .query_map(rusqlite::params![org_id.as_str()], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, Option<i64>>(3)?,
-                ))
-            })
-            .map_err(lake_sql_err)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(lake_sql_err)?;
-        drop(stmt);
-
-        let mut archive_segments_reduced = 0usize;
-        let mut held_segments_deferred = 0usize;
-        let session_list = vec![root_session_id.to_string()];
-        for (obj_key, day, sess_json, reduced_at) in arch_rows {
-            let sessions: Vec<String> = serde_json::from_str(&sess_json).map_err(json_io_err)?;
-            if !sessions.iter().any(|s| s == root_session_id) {
-                continue;
-            }
-            if active_holds
-                .iter()
-                .any(|h| h.covers(RetentionClass::Content, &day, &[], &session_list))
-            {
-                held_segments_deferred = held_segments_deferred.saturating_add(1);
-                continue;
-            }
-            if reduced_at.is_none() {
-                conn.execute(
-                    "UPDATE lake_archive_segments SET reduced_at_ms = ?3
-                     WHERE organisation_id = ?1 AND object_key = ?2",
-                    rusqlite::params![org_id.as_str(), obj_key, now_ms],
-                )
-                .map_err(lake_sql_err)?;
-                archive_segments_reduced = archive_segments_reduced.saturating_add(1);
-            }
-        }
-
-        Ok(ErasureReceipt {
-            organisation_id: org_id.clone(),
-            root_session_id: root_session_id.to_string(),
-            destruction_record_id,
-            erased_at_ms: now_ms,
-            keys_destroyed: updated,
-            archive_segments_reduced,
-            held_segments_deferred,
-            state_log_key,
-        })
+            root_session_id,
+            reason,
+            now_ms,
+        )
     }
 
     fn compact_and_retain(

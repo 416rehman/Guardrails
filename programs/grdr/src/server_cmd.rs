@@ -118,7 +118,9 @@ mod tests {
     use crate::server_migrate::{
         CODE_MIGRATE_BUCKET_NOT_EMPTY, CODE_MIGRATE_INVALID_TARGET, migrate_embedded_to_ha,
     };
-    use crate::server_preflight::{CheckOutcome, build_preflight_report};
+    use crate::server_preflight::{
+        CheckOutcome, build_preflight_report, build_preflight_report_with_probes,
+    };
 
     #[test]
     fn server_preflight_validates_all_profiles() {
@@ -132,6 +134,20 @@ mod tests {
         });
         assert_eq!(embedded.overall, CheckOutcome::Warn);
 
+        let strict_code = run_preflight(
+            &PreflightOptions {
+                profile: "embedded",
+                data_dir: None,
+                backup_dir: None,
+                postgres_dsn: None,
+                nats_url: None,
+                object_store_dir: None,
+            },
+            true,
+            true,
+        );
+        assert_eq!(strict_code, ExitCode::FAILURE);
+
         let ha_bad = build_preflight_report(&PreflightOptions {
             profile: "ha",
             data_dir: None,
@@ -142,18 +158,66 @@ mod tests {
         });
         assert_eq!(ha_bad.overall, CheckOutcome::Fail);
 
-        let dist_dir = std::env::temp_dir().join("grdr-preflight-bucket");
+        let dist_dir = std::env::temp_dir().join(format!(
+            "grdr-preflight-bucket-{}",
+            uuid::Uuid::now_v7().simple()
+        ));
+        std::fs::create_dir_all(&dist_dir).unwrap();
         let dist_ok = build_preflight_report(&PreflightOptions {
             profile: "distributed",
             data_dir: None,
             backup_dir: None,
-            postgres_dsn: Some(
-                "postgres://grdr:pw@pg.example.test:5432/guardrails?sslmode=require",
-            ),
-            nats_url: Some("nats://nats.example.test:4222"),
+            postgres_dsn: Some("postgres://grdr@pg.example.test:5432/guardrails?sslmode=require"),
+            nats_url: Some("tls://nats.example.test:4222"),
             object_store_dir: Some(&dist_dir),
         });
         assert_eq!(dist_ok.overall, CheckOutcome::Pass);
+        let _ = std::fs::remove_dir_all(&dist_dir);
+
+        let prefer_warn = build_preflight_report(&PreflightOptions {
+            profile: "ha",
+            data_dir: None,
+            backup_dir: None,
+            postgres_dsn: Some("postgres://grdr@pg.example.test:5432/guardrails?sslmode=prefer"),
+            nats_url: None,
+            object_store_dir: Some(&std::env::temp_dir()),
+        });
+        assert_eq!(prefer_warn.overall, CheckOutcome::Warn);
+
+        let pg_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let nats_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let pg_addr = pg_listener.local_addr().unwrap();
+        let nats_addr = nats_listener.local_addr().unwrap();
+        let live_ok = build_preflight_report_with_probes(
+            &PreflightOptions {
+                profile: "distributed",
+                data_dir: None,
+                backup_dir: None,
+                postgres_dsn: Some(&format!(
+                    "postgres://grdr@{pg_addr}/guardrails?sslmode=require"
+                )),
+                nats_url: Some(&format!("tls://{nats_addr}")),
+                object_store_dir: Some(&std::env::temp_dir()),
+            },
+            true,
+        );
+        assert_eq!(live_ok.overall, CheckOutcome::Pass);
+        drop(pg_listener);
+        drop(nats_listener);
+        let live_fail = build_preflight_report_with_probes(
+            &PreflightOptions {
+                profile: "ha",
+                data_dir: None,
+                backup_dir: None,
+                postgres_dsn: Some(&format!(
+                    "postgres://grdr@{pg_addr}/guardrails?sslmode=require"
+                )),
+                nats_url: None,
+                object_store_dir: Some(&std::env::temp_dir()),
+            },
+            true,
+        );
+        assert_eq!(live_fail.overall, CheckOutcome::Fail);
     }
 
     #[test]
@@ -213,6 +277,19 @@ mod tests {
             )
             .unwrap();
 
+        let dry = migrate_embedded_to_ha(&MigrateHaOptions {
+            to_profile: "ha",
+            from_data_dir: &src_dir,
+            target_bucket_dir: &dst_bucket,
+            postgres_dsn: None,
+            dry_run: true,
+        })
+        .unwrap();
+        assert_eq!(dry.devices_copied, 1);
+        assert_eq!(dry.blobs_copied, 1);
+        assert_eq!(dry.bus_messages_replayed, 1);
+        assert!(!dst_bucket.exists());
+
         let bad_target = migrate_embedded_to_ha(&MigrateHaOptions {
             to_profile: "distributed",
             from_data_dir: &src_dir,
@@ -235,7 +312,6 @@ mod tests {
         assert_eq!(report.blobs_copied, 1);
         assert_eq!(report.bus_messages_replayed, 1);
 
-        // Second run against non-empty bucket must refuse cleanly.
         let err = migrate_embedded_to_ha(&MigrateHaOptions {
             to_profile: "ha",
             from_data_dir: &src_dir,

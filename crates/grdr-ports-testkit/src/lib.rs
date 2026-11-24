@@ -44,6 +44,30 @@ pub struct FixedClock {
     monotonic_ms: AtomicU64,
 }
 
+#[derive(Debug, Default)]
+struct MemoryStoreInner {
+    snapshot: Option<PortSnapshot>,
+    receipts: Vec<DecisionReceipt>,
+}
+
+#[derive(Debug, Default)]
+pub struct MemoryStoreAdapter {
+    inner: Mutex<MemoryStoreInner>,
+}
+
+#[derive(Debug, Default)]
+pub struct MemoryEventSink {
+    queue: VecDeque<LiveEvent>,
+}
+
+#[derive(Debug, Default)]
+pub struct MemorySensorAdapter {
+    events: VecDeque<ActionAttempt>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct StubSandboxAdapter;
+
 impl FixedClock {
     pub fn new(timestamp: Timestamp, monotonic_ms: u64) -> Self {
         let ts_ms = u64::try_from(timestamp.as_millisecond()).unwrap_or(0);
@@ -69,30 +93,6 @@ impl Clock for FixedClock {
         self.monotonic_ms.load(Ordering::SeqCst)
     }
 }
-
-#[derive(Debug, Default)]
-struct MemoryStoreInner {
-    snapshot: Option<PortSnapshot>,
-    receipts: Vec<DecisionReceipt>,
-}
-
-#[derive(Debug, Default)]
-pub struct MemoryStoreAdapter {
-    inner: Mutex<MemoryStoreInner>,
-}
-
-#[derive(Debug, Default)]
-pub struct MemoryEventSink {
-    queue: VecDeque<LiveEvent>,
-}
-
-#[derive(Debug, Default)]
-pub struct MemorySensorAdapter {
-    events: VecDeque<ActionAttempt>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct StubSandboxAdapter;
 
 impl StorePort for MemoryStoreAdapter {
     fn save_snapshot(&self, snapshot: &PortSnapshot) -> Result<(), CodedError> {

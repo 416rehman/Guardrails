@@ -1164,6 +1164,7 @@ dependencies = [
 name = "grdr-lake"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "grdr-blob",
  "grdr-crypto",
  "grdr-model",
@@ -1176,6 +1177,7 @@ dependencies = [
  "sha2",
  "thiserror",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]
@@ -1272,6 +1274,7 @@ dependencies = [
 name = "grdr-rel-postgres"
 version = "0.1.0"
 dependencies = [
+ "grdr-crypto",
  "grdr-model",
  "grdr-ports",
  "grdr-ports-testkit",

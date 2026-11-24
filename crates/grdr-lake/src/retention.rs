@@ -124,7 +124,13 @@ pub(crate) fn run_retention_and_compaction<B: BlobPort>(
         if phys_del.is_some() {
             continue;
         }
-        let class = RetentionClass::parse(&class_str).unwrap_or(RetentionClass::Activity);
+        let class = RetentionClass::parse(&class_str).ok_or_else(|| {
+            CodedError::new(
+                CODE_LAKE_IO,
+                format!("Invalid retention_class `{class_str}` in lake_segments."),
+                "Inspect lake_segments catalogue integrity.",
+            )
+        })?;
         let devices: Vec<String> = serde_json::from_str(&dev_json).map_err(codec_err)?;
         let sessions: Vec<String> = serde_json::from_str(&sess_json).map_err(codec_err)?;
         let is_held = active_holds
@@ -223,7 +229,7 @@ fn expire_old_keys(
 
     let mut destroyed = 0usize;
     for (root_session_id, created_at_ms, _) in due_keys {
-        let day = day_from_ms(created_at_ms);
+        let day = day_from_ms(created_at_ms)?;
         let sessions = vec![root_session_id.clone()];
         let held = active_holds
             .iter()

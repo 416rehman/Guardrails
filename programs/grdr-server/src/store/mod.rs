@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+mod adapters;
 mod browser;
 mod connect;
 mod connect_mdm;
@@ -41,6 +42,7 @@ use grdr_proto::common::CollectionKind;
 use crate::aip::revision::RevisionTable;
 use crate::demo;
 use persistence::EmbeddedStorage;
+use profile::resolve_ha_dirs;
 #[cfg(test)]
 pub use profile::{
     BlobAdapterKind, BusAdapterKind, LakeAdapterKind, ProfileAdapterSet, RelationalAdapterKind,
@@ -107,8 +109,31 @@ impl StorageBackend {
         object_store_dir: Option<PathBuf>,
     ) -> Result<Self, CodedError> {
         match profile {
-            ProfileKind::Embedded => Ok(Self::from_flags(memory, data_dir)),
+            ProfileKind::Embedded => {
+                if postgres_dsn.is_some() || nats_url.is_some() || object_store_dir.is_some() {
+                    return Err(CodedError::new(
+                        CODE_STORE_PROFILE_MISMATCH,
+                        "Embedded profile does not accept --postgres-dsn, --nats-url, or --object-store-dir.",
+                        "Use --profile ha or --profile distributed for external adapters.",
+                    ));
+                }
+                if memory && data_dir.is_some() {
+                    return Err(CodedError::new(
+                        CODE_STORE_PROFILE_MISMATCH,
+                        "Embedded --memory mode cannot be combined with --data-dir.",
+                        "Omit --data-dir for ephemeral memory or omit --memory for disk storage.",
+                    ));
+                }
+                Ok(Self::from_flags(memory, data_dir))
+            }
             ProfileKind::Ha => {
+                if memory || nats_url.is_some() {
+                    return Err(CodedError::new(
+                        CODE_STORE_PROFILE_MISMATCH,
+                        "HA profile cannot be combined with --memory or --nats-url.",
+                        "Omit --memory/--nats-url or switch to --profile distributed.",
+                    ));
+                }
                 let dsn = postgres_dsn.ok_or_else(|| {
                     CodedError::new(
                         CODE_STORE_PROFILE_MISMATCH,
@@ -116,19 +141,22 @@ impl StorageBackend {
                         "Pass --postgres-dsn postgres://... or use --profile embedded.",
                     )
                 })?;
-                let blob_dir = object_store_dir.or(data_dir).ok_or_else(|| {
-                    CodedError::new(
-                        CODE_STORE_PROFILE_MISMATCH,
-                        "HA profile requires --object-store-dir or --data-dir.",
-                        "Provide an object-store directory or bucket path.",
-                    )
-                })?;
+                let (object_store_dir, state_dir) =
+                    resolve_ha_dirs(data_dir, object_store_dir, "HA")?;
                 Ok(Self::Ha {
                     postgres_dsn: dsn,
-                    object_store_dir: blob_dir,
+                    object_store_dir,
+                    state_dir,
                 })
             }
             ProfileKind::Distributed => {
+                if memory {
+                    return Err(CodedError::new(
+                        CODE_STORE_PROFILE_MISMATCH,
+                        "Distributed profile cannot be combined with --memory.",
+                        "Omit --memory for Distributed mode.",
+                    ));
+                }
                 let dsn = postgres_dsn.ok_or_else(|| {
                     CodedError::new(
                         CODE_STORE_PROFILE_MISMATCH,
@@ -143,17 +171,13 @@ impl StorageBackend {
                         "Pass --nats-url nats://... or use --profile ha.",
                     )
                 })?;
-                let blob_dir = object_store_dir.or(data_dir).ok_or_else(|| {
-                    CodedError::new(
-                        CODE_STORE_PROFILE_MISMATCH,
-                        "Distributed profile requires --object-store-dir or --data-dir.",
-                        "Provide an object-store directory or bucket path.",
-                    )
-                })?;
+                let (object_store_dir, state_dir) =
+                    resolve_ha_dirs(data_dir, object_store_dir, "Distributed")?;
                 Ok(Self::Distributed {
                     postgres_dsn: dsn,
                     nats_url: nats,
-                    object_store_dir: blob_dir,
+                    object_store_dir,
+                    state_dir,
                 })
             }
         }
@@ -214,21 +238,25 @@ impl AppState {
 
         let now = Timestamp::now();
         let signing_key = match &backend {
-            StorageBackend::Disk(dir)
-            | StorageBackend::Ha {
-                object_store_dir: dir,
-                ..
+            StorageBackend::Disk(dir) => {
+                load_or_create_keypair(&dir.join("signing.key")).map_err(|e| {
+                    CodedError::new(
+                        CODE_STORE_IO,
+                        format!("Failed initializing server signing key: {e}"),
+                        "Verify write permissions in --data-dir.",
+                    )
+                })?
             }
-            | StorageBackend::Distributed {
-                object_store_dir: dir,
-                ..
-            } => load_or_create_keypair(&dir.join("signing.key")).map_err(|e| {
-                CodedError::new(
-                    CODE_STORE_IO,
-                    format!("Failed initializing server signing key: {e}"),
-                    "Verify write permissions in --data-dir.",
-                )
-            })?,
+            StorageBackend::Ha { state_dir, .. }
+            | StorageBackend::Distributed { state_dir, .. } => {
+                load_or_create_keypair(&state_dir.join("signing.key")).map_err(|e| {
+                    CodedError::new(
+                        CODE_STORE_IO,
+                        format!("Failed initializing server signing key: {e}"),
+                        "Verify write permissions in state directory.",
+                    )
+                })?
+            }
             StorageBackend::Memory => SigningKeypair::generate().map_err(|e| {
                 CodedError::new(
                     CODE_STORE_IO,
@@ -241,22 +269,26 @@ impl AppState {
         let storage = match &backend {
             StorageBackend::Disk(dir) => Some(Arc::new(EmbeddedStorage::open(dir)?)),
             StorageBackend::Memory => None,
-            StorageBackend::Ha { postgres_dsn, .. } => {
-                let pg_cfg = grdr_rel_postgres::PostgresConfig::parse_dsn(postgres_dsn)?;
-                let _pg = grdr_rel_postgres::PostgresRelationalStore::connect(pg_cfg)?;
-                None
-            }
+            StorageBackend::Ha {
+                postgres_dsn,
+                object_store_dir,
+                state_dir,
+            } => Some(Arc::new(EmbeddedStorage::open_ha(
+                state_dir,
+                object_store_dir,
+                postgres_dsn,
+            )?)),
             StorageBackend::Distributed {
                 postgres_dsn,
                 nats_url,
-                ..
-            } => {
-                let pg_cfg = grdr_rel_postgres::PostgresConfig::parse_dsn(postgres_dsn)?;
-                let _pg = grdr_rel_postgres::PostgresRelationalStore::connect(pg_cfg)?;
-                let nats_cfg = grdr_bus_nats::NatsConfig::parse_url(nats_url)?;
-                let _nats = grdr_bus_nats::NatsJetStreamBus::connect(nats_cfg)?;
-                None
-            }
+                object_store_dir,
+                state_dir,
+            } => Some(Arc::new(EmbeddedStorage::open_distributed(
+                state_dir,
+                object_store_dir,
+                postgres_dsn,
+                nats_url,
+            )?)),
         };
 
         let mut data = match &storage {
