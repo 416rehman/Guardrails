@@ -1146,6 +1146,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "grdr-ipc-os"
+version = "0.1.0"
+dependencies = [
+ "grdr-crypto",
+ "grdr-model",
+ "grdr-wire",
+ "jiff 1.0.2",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "grdr-jobs"
 version = "0.1.0"
 dependencies = [
@@ -1225,6 +1238,41 @@ dependencies = [
  "sha2",
  "thiserror",
  "uuid",
+]
+
+[[package]]
+name = "grdr-os-clock"
+version = "0.1.0"
+dependencies = [
+ "grdr-model",
+ "grdr-ports",
+ "jiff 1.0.2",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "grdr-os-service"
+version = "0.1.0"
+dependencies = [
+ "grdr-model",
+ "jiff 1.0.2",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "grdr-peer-os"
+version = "0.1.0"
+dependencies = [
+ "grdr-model",
+ "grdr-wire",
+ "jiff 1.0.2",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]
@@ -1350,6 +1398,34 @@ dependencies = [
  "grdr-ports",
  "grdr-ports-testkit",
  "jiff 1.0.2",
+ "thiserror",
+]
+
+[[package]]
+name = "grdr-sensor-macos"
+version = "0.1.0"
+dependencies = [
+ "grdr-fastpath",
+ "grdr-model",
+ "grdr-ports",
+ "grdr-ports-testkit",
+ "jiff 1.0.2",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "grdr-sensor-windows"
+version = "0.1.0"
+dependencies = [
+ "grdr-fastpath",
+ "grdr-model",
+ "grdr-ports",
+ "grdr-ports-testkit",
+ "jiff 1.0.2",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 

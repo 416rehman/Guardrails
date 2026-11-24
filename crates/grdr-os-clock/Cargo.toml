@@ -1,0 +1,24 @@
+[package]
+name = "grdr-os-clock"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[package.metadata.grdr]
+layer = 3
+privilege = "none"
+surface = "internal"
+renders = "none"
+
+[dependencies]
+grdr-model = { workspace = true }
+grdr-ports = { workspace = true }
+jiff = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
