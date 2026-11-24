@@ -13,9 +13,8 @@ use uuid::Uuid;
 
 use grdr_agents::{HarnessKind, detect_hostname, parse_hook_stdin};
 use grdr_core::compile::evaluate_compiled_floor;
-use grdr_core::policy::sha256_hex;
+use grdr_core::policy::{essentials_pack, evaluate, sha256_hex};
 use grdr_crypto::verify_floor_table;
-use grdr_model::eval::{essentials_pack, evaluate_attempt};
 use grdr_model::{
     ActionAttempt, ActionClass, ControlPoint, DecideInput, DecisionReceipt, KillSwitchState, Mode,
     SignatureStatus, SignedFloorBundle, TrustedKeyInfo, Verdict,
@@ -239,7 +238,7 @@ fn evaluate_failsafe(
     }
 
     let packs = vec![essentials_pack()];
-    evaluate_attempt(
+    evaluate(
         attempt,
         &packs,
         &[],
@@ -306,6 +305,7 @@ mod tests {
                 would_ask_hits: 0,
                 would_block_hits: 0,
                 reason_template: "Blocked custom prod deploy.".into(),
+                cedar: None,
             }],
             key_id: None,
             signature: None,

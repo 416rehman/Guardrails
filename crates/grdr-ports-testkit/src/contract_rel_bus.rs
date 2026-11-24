@@ -174,6 +174,7 @@ pub fn assert_relational_store_contract(store: &impl RelationalStorePort) -> Res
             would_ask_hits: 0,
             would_block_hits: 0,
             reason_template: "Blocked".into(),
+            cedar: None,
         }],
         key_id: None,
         signature: None,

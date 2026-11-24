@@ -1,0 +1,61 @@
+// Canonical Cedar 4.x schema for the Guardrails ADR Console API plane (v1alpha1).
+// Governing spec: docs/design/23-api-policy-as-code-and-mcp-server.md section 6.
+namespace Grdr::Console {
+  entity Organisation;
+  entity Group in [Organisation];
+  entity User in [Group] {
+    pseudonym: String,
+  };
+  entity ServiceAccount in [Group];
+  entity AgentSession in [User, Group];
+
+  entity PolicyPack in [Group, Organisation];
+  entity PolicyRule in [PolicyPack, Group, Organisation];
+  entity Approval in [Group, Organisation];
+  entity Finding in [Group, Organisation];
+  entity Incident in [Group, Organisation];
+  entity Device in [Group, Organisation];
+
+  type ConsoleContext = {
+    roles: Set<String>,
+    token_scopes: Set<String>,
+    person_proof_age_s: Long,
+    lineage: Set<String>,
+  };
+
+  action "policy.read" appliesTo {
+    principal: [User, ServiceAccount, AgentSession],
+    resource: [PolicyPack, PolicyRule],
+    context: ConsoleContext,
+  };
+
+  action "policy.propose" appliesTo {
+    principal: [User, ServiceAccount, AgentSession],
+    resource: [PolicyPack, PolicyRule],
+    context: ConsoleContext,
+  };
+
+  action "policy.approve" appliesTo {
+    principal: [User, ServiceAccount],
+    resource: [PolicyPack, PolicyRule],
+    context: ConsoleContext,
+  };
+
+  action "approval.decide" appliesTo {
+    principal: [User, ServiceAccount],
+    resource: [Approval],
+    context: ConsoleContext,
+  };
+
+  action "finding.update" appliesTo {
+    principal: [User, ServiceAccount, AgentSession],
+    resource: [Finding, Incident],
+    context: ConsoleContext,
+  };
+
+  action "killswitch.set" appliesTo {
+    principal: [User, ServiceAccount],
+    resource: [Device, Organisation],
+    context: ConsoleContext,
+  };
+}

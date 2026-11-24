@@ -227,7 +227,7 @@ fn collect_rule_changes(base: &PolicyRule, cand: &PolicyRule, out: &mut Vec<Rule
         });
     }
 
-    if base.matcher != cand.matcher {
+    if base.matcher != cand.matcher || base.cedar != cand.cedar {
         out.push(RuleDelta {
             rule_id: base.id.clone(),
             title: cand.title.clone(),

@@ -29,7 +29,7 @@ impl AppState {
             .filter(|id| !id.trim().is_empty())
             .unwrap_or_else(|| "pack-essentials-slice0".into());
 
-        let rule = PolicyRule {
+        let mut rule = PolicyRule {
             id: format!("custom.{}", slugify_id(&input.title, 48, "node")),
             title: input.title,
             description: input.description,
@@ -42,7 +42,20 @@ impl AppState {
             would_ask_hits: 0,
             would_block_hits: 0,
             reason_template: input.reason_template,
+            cedar: None,
         };
+        let cedar_source = match input.cedar.filter(|s| !s.trim().is_empty()) {
+            Some(custom) => custom,
+            None => policy::render_rule_cedar(&rule),
+        };
+        policy::validate_cedar_rule(&cedar_source).map_err(|err| {
+            CodedError::new(
+                CODE_INVALID_INPUT,
+                format!("Invalid Cedar rule policy: {err}"),
+                "Fix the Cedar policy syntax or schema types before saving.",
+            )
+        })?;
+        rule.cedar = Some(cedar_source);
 
         {
             let mut guard = self.inner.write().await;
@@ -192,11 +205,32 @@ impl AppState {
                     if let Some(min_grade) = input.min_grade {
                         rule.min_grade = min_grade;
                     }
+                    let matcher_updated = input.matcher.is_some();
                     if let Some(matcher) = input.matcher {
                         rule.matcher = matcher;
                     }
                     if let Some(reason_template) = input.reason_template {
                         rule.reason_template = reason_template;
+                    }
+                    if let Some(cedar_src) = input.cedar.filter(|s| !s.trim().is_empty()) {
+                        policy::validate_cedar_rule(&cedar_src).map_err(|err| {
+                            CodedError::new(
+                                CODE_INVALID_INPUT,
+                                format!("Invalid Cedar rule policy: {err}"),
+                                "Fix the Cedar policy syntax or schema types before saving.",
+                            )
+                        })?;
+                        rule.cedar = Some(cedar_src);
+                    } else if rule.cedar.is_none() || matcher_updated {
+                        let rendered = policy::render_rule_cedar(rule);
+                        policy::validate_cedar_rule(&rendered).map_err(|err| {
+                            CodedError::new(
+                                CODE_INVALID_INPUT,
+                                format!("Invalid Cedar rule policy: {err}"),
+                                "Verify rule action classes and matcher targets.",
+                            )
+                        })?;
+                        rule.cedar = Some(rendered);
                     }
                     let cloned = rule.clone();
                     let _ = self.signing_key.sign_pack(pack);

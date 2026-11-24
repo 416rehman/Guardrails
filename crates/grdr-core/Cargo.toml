@@ -11,11 +11,14 @@ surface = "public"
 renders = "none"
 
 [dependencies]
+cedar-policy = { workspace = true }
 grdr-fastpath = { workspace = true }
 grdr-model = { workspace = true }
+grdr-schema = { workspace = true }
 jiff = { workspace = true }
 serde = { workspace = true }
 sha2 = { workspace = true }
+thiserror = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]

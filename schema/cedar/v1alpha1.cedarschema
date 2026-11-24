@@ -1,0 +1,348 @@
+// Canonical Cedar 4.x schema for Guardrails ADR runtime decisions (v1alpha1).
+// Governing spec: docs/design/12-policy-engine.md section 2 (D-08, D-51, RFC 0013).
+namespace Grdr {
+  entity Organisation;
+  entity Group in [Group, Organisation];
+  entity User in [Group] {
+    department: String,
+    risk_tier: String,
+  };
+  entity Device in [Group, User] {
+    os: String,
+    profile: String,
+  };
+  entity Agent {
+    tier: String,
+    classes: Set<String>,
+  };
+  entity AgentInstance in [Agent, Device, Group, User];
+  entity Session in [Session, AgentInstance] {
+    depth: Long,
+    contained: Bool,
+    containment: String,
+    classes: Set<String>,
+  };
+  entity Process in [Device] {
+    actor_kind: String,
+    agent_capable_host: Bool,
+    classes: Set<String>,
+  };
+
+  entity Skill {
+    kind: String,
+    digest_pinned: Bool,
+    has_scripts: Bool,
+    requests_broad_tools: Bool,
+    bidi_obfuscation: Bool,
+    classes: Set<String>,
+  };
+  entity Executable {
+    classes: Set<String>,
+  };
+  entity Path {
+    in_workspace: Bool,
+    classes: Set<String>,
+  };
+  entity Endpoint {
+    port: Long,
+    classes: Set<String>,
+  };
+  entity ModelEndpoint {
+    provider: String,
+    classes: Set<String>,
+  };
+  entity McpServer {
+    transport: String,
+    identity_pinned: Bool,
+    classes: Set<String>,
+  };
+  entity McpTool in [McpServer] {
+    manifest_pinned: Bool,
+    write_capable: Bool,
+    classes: Set<String>,
+  };
+  entity Credential {
+    classes: Set<String>,
+  };
+  entity ConfigTarget {
+    classes: Set<String>,
+  };
+  entity ElevationRoute {
+    classes: Set<String>,
+  };
+  entity UiTarget {
+    classes: Set<String>,
+  };
+  entity Sink {
+    classes: Set<String>,
+  };
+
+  type SessionContext = {
+    labels: Set<String>,
+    label_epoch: Long,
+  };
+  type AttributionContext = {
+    grade: Long,
+    actor_kind: String,
+    evidence: Set<String>,
+  };
+  type AssuranceContext = {
+    visibility: Long,
+    control: Long,
+    tamper: Long,
+    fail_closed: Bool,
+  };
+  type ScheduleContext = {};
+  type CommandContext = {
+    classes: Set<String>,
+  };
+  type HttpContext = {
+    classes: Set<String>,
+  };
+  type CloudContext = {
+    provider: String,
+    account_classes: Set<String>,
+    tenant_classes: Set<String>,
+    verified: Bool,
+  };
+  type TenantContext = {
+    classes: Set<String>,
+    verified: Bool,
+  };
+  type McpArgsContext = {
+    classes: Set<String>,
+    extracted: Bool,
+  };
+  type ChildAgentContext = {
+    depth: Long,
+    contained: Bool,
+    classes: Set<String>,
+  };
+
+  action "any";
+  action "file";
+  action "net";
+  action "mcp";
+
+  action "exec" in [Action::"any"] appliesTo {
+    principal: [Session, Process],
+    resource: [Executable],
+    context: {
+      session: SessionContext,
+      grants: Set<String>,
+      attribution: AttributionContext,
+      assurance: AssuranceContext,
+      facts: Set<String>,
+      control_point: String,
+      schedule: ScheduleContext,
+      command: CommandContext,
+    },
+  };
+
+  action "file.read" in [Action::"any", Action::"file"] appliesTo {
+    principal: [Session, Process],
+    resource: [Path],
+    context: {
+      session: SessionContext,
+      grants: Set<String>,
+      attribution: AttributionContext,
+      assurance: AssuranceContext,
+      facts: Set<String>,
+      control_point: String,
+      schedule: ScheduleContext,
+      recursive: Bool,
+    },
+  };
+
+  action "file.write" in [Action::"any", Action::"file"] appliesTo {
+    principal: [Session, Process],
+    resource: [Path],
+    context: {
+      session: SessionContext,
+      grants: Set<String>,
+      attribution: AttributionContext,
+      assurance: AssuranceContext,
+      facts: Set<String>,
+      control_point: String,
+      schedule: ScheduleContext,
+      recursive: Bool,
+    },
+  };
+
+  action "file.delete" in [Action::"any", Action::"file"] appliesTo {
+    principal: [Session, Process],
+    resource: [Path],
+    context: {
+      session: SessionContext,
+      grants: Set<String>,
+      attribution: AttributionContext,
+      assurance: AssuranceContext,
+      facts: Set<String>,
+      control_point: String,
+      schedule: ScheduleContext,
+      recursive: Bool,
+    },
+  };
+
+  action "net.connect" in [Action::"any", Action::"net"] appliesTo {
+    principal: [Session, Process],
+    resource: [Endpoint],
+    context: {
+      session: SessionContext,
+      grants: Set<String>,
+      attribution: AttributionContext,
+      assurance: AssuranceContext,
+      facts: Set<String>,
+      control_point: String,
+      schedule: ScheduleContext,
+    },
+  };
+
+  action "net.request" in [Action::"any", Action::"net"] appliesTo {
+    principal: [Session, Process],
+    resource: [Endpoint],
+    context: {
+      session: SessionContext,
+      grants: Set<String>,
+      attribution: AttributionContext,
+      assurance: AssuranceContext,
+      facts: Set<String>,
+      control_point: String,
+      schedule: ScheduleContext,
+      http: HttpContext,
+      cloud: CloudContext,
+    },
+  };
+
+  action "llm.request" in [Action::"any", Action::"net"] appliesTo {
+    principal: [Session, Process],
+    resource: [ModelEndpoint],
+    context: {
+      session: SessionContext,
+      grants: Set<String>,
+      attribution: AttributionContext,
+      assurance: AssuranceContext,
+      facts: Set<String>,
+      control_point: String,
+      schedule: ScheduleContext,
+      tenant: TenantContext,
+    },
+  };
+
+  action "mcp.connect" in [Action::"any", Action::"mcp"] appliesTo {
+    principal: [Session, Process],
+    resource: [McpServer],
+    context: {
+      session: SessionContext,
+      grants: Set<String>,
+      attribution: AttributionContext,
+      assurance: AssuranceContext,
+      facts: Set<String>,
+      control_point: String,
+      schedule: ScheduleContext,
+    },
+  };
+
+  action "mcp.call" in [Action::"any", Action::"mcp"] appliesTo {
+    principal: [Session, Process],
+    resource: [McpTool],
+    context: {
+      session: SessionContext,
+      grants: Set<String>,
+      attribution: AttributionContext,
+      assurance: AssuranceContext,
+      facts: Set<String>,
+      control_point: String,
+      schedule: ScheduleContext,
+      args: McpArgsContext,
+    },
+  };
+
+  action "cred.use" in [Action::"any"] appliesTo {
+    principal: [Session, Process],
+    resource: [Credential],
+    context: {
+      session: SessionContext,
+      grants: Set<String>,
+      attribution: AttributionContext,
+      assurance: AssuranceContext,
+      facts: Set<String>,
+      control_point: String,
+      schedule: ScheduleContext,
+      mode: String,
+    },
+  };
+
+  action "agent.spawn" in [Action::"any"] appliesTo {
+    principal: [Session],
+    resource: [Agent],
+    context: {
+      session: SessionContext,
+      grants: Set<String>,
+      attribution: AttributionContext,
+      assurance: AssuranceContext,
+      facts: Set<String>,
+      control_point: String,
+      schedule: ScheduleContext,
+      child: ChildAgentContext,
+    },
+  };
+
+  action "config.change" in [Action::"any"] appliesTo {
+    principal: [Session, Process],
+    resource: [ConfigTarget],
+    context: {
+      session: SessionContext,
+      grants: Set<String>,
+      attribution: AttributionContext,
+      assurance: AssuranceContext,
+      facts: Set<String>,
+      control_point: String,
+      schedule: ScheduleContext,
+      change_classes: Set<String>,
+    },
+  };
+
+  action "elevate" in [Action::"any"] appliesTo {
+    principal: [Session, Process],
+    resource: [ElevationRoute],
+    context: {
+      session: SessionContext,
+      grants: Set<String>,
+      attribution: AttributionContext,
+      assurance: AssuranceContext,
+      facts: Set<String>,
+      control_point: String,
+      schedule: ScheduleContext,
+    },
+  };
+
+  action "ui.act" in [Action::"any"] appliesTo {
+    principal: [Session, Process],
+    resource: [UiTarget],
+    context: {
+      session: SessionContext,
+      grants: Set<String>,
+      attribution: AttributionContext,
+      assurance: AssuranceContext,
+      facts: Set<String>,
+      control_point: String,
+      schedule: ScheduleContext,
+    },
+  };
+
+  action "data.flow" in [Action::"any"] appliesTo {
+    principal: [Session],
+    resource: [Sink],
+    context: {
+      session: SessionContext,
+      grants: Set<String>,
+      attribution: AttributionContext,
+      assurance: AssuranceContext,
+      facts: Set<String>,
+      control_point: String,
+      schedule: ScheduleContext,
+      source_labels: Set<String>,
+    },
+  };
+}

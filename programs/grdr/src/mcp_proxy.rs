@@ -270,6 +270,7 @@ mod tests {
                 would_ask_hits: 0,
                 would_block_hits: 0,
                 reason_template: "Destructive MCP tool call blocked.".into(),
+                cedar: None,
             }],
             key_id: None,
             signature: None,

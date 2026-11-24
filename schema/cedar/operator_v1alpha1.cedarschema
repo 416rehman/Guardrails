@@ -1,0 +1,39 @@
+// Canonical Cedar 4.x schema for the Guardrails ADR Operator control plane (v1alpha1).
+// Governing spec: docs/design/23-api-policy-as-code-and-mcp-server.md section 15, D-70.
+namespace Grdr::Operator {
+  entity OperatorUser;
+  entity OperatorServiceAccount;
+  entity DeploymentSetting;
+  entity Organisation;
+  entity SigningKey;
+
+  type OperatorContext = {
+    roles: Set<String>,
+    token_scopes: Set<String>,
+    person_proof_age_s: Long,
+  };
+
+  action "setting.read" appliesTo {
+    principal: [OperatorUser, OperatorServiceAccount],
+    resource: [DeploymentSetting],
+    context: OperatorContext,
+  };
+
+  action "setting.write" appliesTo {
+    principal: [OperatorUser, OperatorServiceAccount],
+    resource: [DeploymentSetting],
+    context: OperatorContext,
+  };
+
+  action "org.provision" appliesTo {
+    principal: [OperatorUser, OperatorServiceAccount],
+    resource: [Organisation],
+    context: OperatorContext,
+  };
+
+  action "key.rotate" appliesTo {
+    principal: [OperatorUser, OperatorServiceAccount],
+    resource: [SigningKey],
+    context: OperatorContext,
+  };
+}

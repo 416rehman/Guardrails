@@ -58,6 +58,7 @@ struct CanonicalRule<'a> {
     locked: bool,
     matcher: &'a RuleMatch,
     reason_template: &'a str,
+    cedar: Option<&'a str>,
 }
 
 #[derive(Serialize)]
@@ -339,6 +340,7 @@ fn canonical_pack_bytes(pack: &PolicyPack) -> Result<Vec<u8>, CryptoError> {
             locked: r.locked,
             matcher: &r.matcher,
             reason_template: &r.reason_template,
+            cedar: r.cedar.as_deref(),
         })
         .collect();
     let canonical = CanonicalPack {
