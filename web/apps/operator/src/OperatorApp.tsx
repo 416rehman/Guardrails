@@ -95,8 +95,8 @@ export function OperatorApp() {
               <GrdrIcon name="lock" size={18} />
             </div>
             <div className="brand-title">
-              <strong>{t("brand.name")}</strong>
-              <span>{t("brand.operator_subtitle")}</span>
+              <strong>{t("grdr.brand.name")}</strong>
+              <span>{t("grdr.brand.operator_subtitle")}</span>
             </div>
           </div>
 
@@ -131,7 +131,7 @@ export function OperatorApp() {
           <header className="topbar operator-context">
             <HStack gap={2} align="center">
               <Badge variant="warning" label="Operator realm" icon={<GrdrIcon name="lock" size={12} />} />
-              <Text size="sm">{t("operator.banner")}</Text>
+              <Text size="sm">{t("operator.context.banner")}</Text>
             </HStack>
             <Button
               label="Refresh"

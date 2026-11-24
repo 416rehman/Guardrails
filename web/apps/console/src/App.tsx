@@ -121,8 +121,8 @@ export function App() {
               <GrdrIcon name="shield" size={18} />
             </div>
             <div className="brand-title">
-              <strong>{t("brand.name")}</strong>
-              <span>{t("brand.subtitle")}</span>
+              <strong>{t("grdr.brand.name")}</strong>
+              <span>{t("grdr.brand.subtitle")}</span>
             </div>
           </div>
 
@@ -152,7 +152,7 @@ export function App() {
                 size={13}
                 color={liveConnected ? "var(--tone-allow)" : "var(--ink-muted)"}
               />
-              <span>{liveConnected ? t("stream.connected") : t("stream.reconnecting")}</span>
+              <span>{liveConnected ? t("console.stream.connected") : t("console.stream.reconnecting")}</span>
             </HStack>
             <div className="tabular">
               {devices.length} endpoint(s) · {sessions.length} session(s)

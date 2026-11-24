@@ -18,8 +18,8 @@ export function CoveragePage({ devices }: { devices: Device[] }) {
     <VStack gap={4}>
       <div className="page-header">
         <div>
-          <Heading level={1}>{t("coverage.title")}</Heading>
-          <Text color="secondary">{t("coverage.subtitle")}</Text>
+          <Heading level={1}>{t("console.coverage.title")}</Heading>
+          <Text color="secondary">{t("console.coverage.subtitle")}</Text>
         </div>
         <Badge
           variant={coveragePct >= 80 ? "success" : "warning"}
