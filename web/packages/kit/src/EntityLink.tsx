@@ -1,7 +1,14 @@
 import { formatOsName } from "@grdr/i18n";
 import { GrdrIcon, HarnessIcon, HStack, OsIcon } from "@grdr/ui";
 
-export type EntityKind = "device" | "agent" | "session" | "rule" | "mcp";
+export type EntityKind =
+  | "device"
+  | "agent"
+  | "session"
+  | "rule"
+  | "mcp"
+  | "user"
+  | "artifact";
 
 export interface EntityTarget {
   kind: EntityKind;
@@ -58,7 +65,11 @@ export function EntityLink({
               ? "activity"
               : kind === "rule"
                 ? "shield"
-                : "plug"
+                : kind === "user"
+                  ? "user"
+                  : kind === "artifact"
+                    ? "file-code"
+                    : "plug"
         }
         size={iconSize}
       />

@@ -251,6 +251,7 @@ fn run_check(action: &str, target: &str, agent: &str, daemon: &str) -> ExitCode 
         target: target.into(),
         summary: format!("grdr check {action}"),
         timestamp: now,
+        ..Default::default()
     };
     let (receipt, source) = mcp_proxy::evaluate_via_daemon_or_offline(&attempt, daemon);
 

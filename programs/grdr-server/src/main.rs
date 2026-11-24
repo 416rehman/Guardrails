@@ -145,6 +145,9 @@ mod tests {
             hook_effective: true,
             agents: vec![],
             mcp_servers: vec![],
+            artifacts: vec![],
+            user_id: None,
+            user_display: None,
             device_public_key: None,
         };
         let resp = app
@@ -737,6 +740,9 @@ mod tests {
             hook_effective: true,
             agents: vec![],
             mcp_servers: vec![],
+            artifacts: vec![],
+            user_id: None,
+            user_display: None,
             device_public_key: None,
         };
         let checkin_unauth = app
@@ -886,6 +892,7 @@ mod tests {
         assert_eq!(patched_rule.title, "Ask on temp secret writes");
 
         let del_resp = app
+            .clone()
             .oneshot(
                 Request::delete(format!("/api/v1/policies/rules/{}", created_rule.id))
                     .header("authorization", "Bearer op-secret-123")
@@ -895,5 +902,126 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(del_resp.status(), StatusCode::OK);
+
+        // Users directory, risk ranking, artifacts, trace turns, and works-council privacy toggle.
+        let users_resp = app
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/users")
+                    .header("authorization", "Bearer op-secret-123")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(users_resp.status(), StatusCode::OK);
+        let users: Vec<grdr_model::UserProfile> = serde_json::from_slice(
+            &axum::body::to_bytes(users_resp.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(users.len(), 3);
+        assert_eq!(users[0].id, "usr-maya-chen");
+        assert!(users[0].risk_score >= users[1].risk_score);
+
+        let user_detail_resp = app
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/users/usr-maya-chen")
+                    .header("authorization", "Bearer op-secret-123")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(user_detail_resp.status(), StatusCode::OK);
+        let user_detail: grdr_model::UserDetailResponse = serde_json::from_slice(
+            &axum::body::to_bytes(user_detail_resp.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(!user_detail.recent_attempts.is_empty());
+
+        let sess_resp = app
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/sessions/sess-demo-refactor")
+                    .header("authorization", "Bearer op-secret-123")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(sess_resp.status(), StatusCode::OK);
+        let sess_detail: grdr_model::SessionDetailResponse = serde_json::from_slice(
+            &axum::body::to_bytes(sess_resp.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(sess_detail.turns.len(), 3);
+        assert!(sess_detail.turns.iter().any(|t| t.has_compaction));
+
+        let artifacts_resp = app
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/inventory/artifacts")
+                    .header("authorization", "Bearer op-secret-123")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(artifacts_resp.status(), StatusCode::OK);
+        let artifacts: Vec<grdr_model::ArtifactEntry> = serde_json::from_slice(
+            &axum::body::to_bytes(artifacts_resp.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(artifacts.len() >= 3);
+
+        let privacy_resp = app
+            .clone()
+            .oneshot(
+                Request::patch("/api/v1/privacy/config")
+                    .header("authorization", "Bearer op-secret-123")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&grdr_model::UpdatePrivacyConfigInput {
+                            identity_mode: Some(grdr_model::IdentityMode::Pseudonymous),
+                            user_risk_scoring: None,
+                            actor: Some("privacy-officer".into()),
+                        })
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(privacy_resp.status(), StatusCode::OK);
+
+        let masked_users_resp = app
+            .oneshot(
+                Request::get("/api/v1/users")
+                    .header("authorization", "Bearer op-secret-123")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let masked_users: Vec<grdr_model::UserProfile> = serde_json::from_slice(
+            &axum::body::to_bytes(masked_users_resp.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(
+            masked_users
+                .iter()
+                .all(|u| u.display_name.starts_with("prn_") && u.risk_score == 0)
+        );
     }
 }

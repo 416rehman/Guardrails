@@ -5,6 +5,7 @@ mod overview;
 mod persistence;
 mod policy_ops;
 mod response_ops;
+pub(crate) mod users;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -21,9 +22,9 @@ use grdr_model::eval::add_seconds;
 use grdr_model::{
     ActionAttempt, ApprovalRequest, ApprovalState, AuditEntry, BatchEventsInput,
     BatchEventsResponse, CodedError, DecideInput, DecisionReceipt, Device, DeviceCheckinRequest,
-    DeviceCheckinResponse, Finding, Grant, Incident, KillSwitchState, LiveEvent, PolicyPack,
-    SessionDetailResponse, SessionSummary, SignatureStatus, TrustedKeyInfo, Verdict, slugify_id,
-    summarize_sessions,
+    DeviceCheckinResponse, Finding, Grant, Incident, KillSwitchState, LiveEvent, OrgPrivacyConfig,
+    PolicyPack, SessionDetailResponse, SessionSummary, SignatureStatus, TrustedKeyInfo, Verdict,
+    slugify_id, summarize_session_turns, summarize_sessions,
 };
 
 use crate::demo;
@@ -37,6 +38,10 @@ pub(crate) const MAX_RETAINED_EVENTS: usize = 500;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoreData {
     pub packs: Vec<PolicyPack>,
+    #[serde(default)]
+    pub user_directory: Vec<users::DirectoryUserRecord>,
+    #[serde(default)]
+    pub privacy: OrgPrivacyConfig,
     pub devices: Vec<Device>,
     pub attempts: Vec<ActionAttempt>,
     pub receipts: Vec<DecisionReceipt>,
@@ -60,6 +65,8 @@ impl Default for StoreData {
     fn default() -> Self {
         Self {
             packs: vec![policy::essentials_pack()],
+            user_directory: Vec::new(),
+            privacy: OrgPrivacyConfig::default(),
             devices: Vec::new(),
             attempts: Vec::new(),
             receipts: Vec::new(),
@@ -105,6 +112,7 @@ impl AppState {
         if demo_seed && data.devices.is_empty() && data.attempts.is_empty() {
             let seed = demo::build_demo_seed(now);
             data.packs = seed.packs;
+            data.user_directory = seed.user_directory;
             data.devices = seed.devices;
             data.attempts = seed.attempts;
             data.receipts = seed.receipts;
@@ -167,6 +175,9 @@ impl AppState {
             hook_effective: req.hook_effective,
             agents: req.agents,
             mcp_servers: req.mcp_servers,
+            artifacts: req.artifacts,
+            user_id: req.user_id,
+            user_display: req.user_display,
             last_seen: now,
             public_key: req.device_public_key,
         };
@@ -386,6 +397,7 @@ impl AppState {
         let states = session::replay_session_states(&guard.attempts, &guard.receipts);
         let mut summaries = summarize_sessions(&guard.attempts, &guard.receipts);
         session::attach_session_labels(&mut summaries, &states);
+        users::mask_sessions(&mut summaries, &guard);
         summaries
     }
 
@@ -425,12 +437,18 @@ impl AppState {
                 )
             })?;
 
-        let attempts = guard
+        let mut summary_vec = [summary];
+        users::mask_sessions(&mut summary_vec, &guard);
+        let [summary] = summary_vec;
+
+        let mut attempts: Vec<ActionAttempt> = guard
             .attempts
             .iter()
             .filter(|a| a.session_id == session_id)
             .cloned()
             .collect();
+        users::mask_attempts(&mut attempts, &guard);
+
         let mut keys = self.trusted_keys();
         for device in &guard.devices {
             if let Some(pk) = &device.public_key
@@ -439,7 +457,7 @@ impl AppState {
                 keys.push(pk.clone());
             }
         }
-        let receipts = guard
+        let receipts: Vec<DecisionReceipt> = guard
             .receipts
             .iter()
             .filter(|r| r.session_id == session_id)
@@ -454,10 +472,19 @@ impl AppState {
             })
             .collect();
 
+        let turns = summarize_session_turns(&attempts, &receipts);
+        let user = summary.user_id.as_deref().and_then(|uid| {
+            users::build_user_profiles(&guard)
+                .into_iter()
+                .find(|u| u.id == uid)
+        });
+
         Ok(SessionDetailResponse {
             session: summary,
             attempts,
             receipts,
+            turns,
+            user,
         })
     }
 

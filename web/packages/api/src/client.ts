@@ -1,6 +1,7 @@
 import type {
   ActionClass,
   ApprovalRequest,
+  ArtifactEntry,
   AuditEntry,
   DecisionReceipt,
   Device,
@@ -9,12 +10,14 @@ import type {
   FindingLifecycle,
   GrantScope,
   HealthResponse,
+  IdentityMode,
   Incident,
   KillAction,
   KillScope,
   KillSwitchState,
   McpServerEntry,
   Mode,
+  OrgPrivacyConfig,
   OverviewResponse,
   PolicyPack,
   PolicyRule,
@@ -22,6 +25,8 @@ import type {
   SessionDetailResponse,
   SessionSummary,
   TrustedKeyInfo,
+  UserDetailResponse,
+  UserProfile,
 } from "./types";
 
 const TOKEN_STORAGE_KEY = "grdr_api_token";
@@ -95,9 +100,23 @@ async function downloadExport(url: string, filename: string): Promise<void> {
 export const api = {
   getHealth: () => requestJson<HealthResponse>("/api/v1/health"),
   getOverview: () => requestJson<OverviewResponse>("/api/v1/overview"),
+  getUsers: () => requestJson<UserProfile[]>("/api/v1/users"),
+  getUserDetail: (id: string) =>
+    requestJson<UserDetailResponse>(`/api/v1/users/${encodeURIComponent(id)}`),
+  getPrivacyConfig: () => requestJson<OrgPrivacyConfig>("/api/v1/privacy/config"),
+  updatePrivacyConfig: (body: {
+    identity_mode?: IdentityMode;
+    user_risk_scoring?: boolean;
+    actor?: string;
+  }) =>
+    requestJson<OrgPrivacyConfig>("/api/v1/privacy/config", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
   getDevices: () => requestJson<Device[]>("/api/v1/devices"),
   getAgents: () => requestJson<DiscoveredAgent[]>("/api/v1/inventory/agents"),
   getMcpServers: () => requestJson<McpServerEntry[]>("/api/v1/inventory/mcp-servers"),
+  getArtifacts: () => requestJson<ArtifactEntry[]>("/api/v1/inventory/artifacts"),
   getSessions: () => requestJson<SessionSummary[]>("/api/v1/sessions"),
   getSessionDetail: (id: string) =>
     requestJson<SessionDetailResponse>(`/api/v1/sessions/${encodeURIComponent(id)}`),

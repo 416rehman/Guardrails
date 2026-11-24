@@ -1,5 +1,6 @@
 export type ConsoleRouteId =
   | "home"
+  | "users"
   | "inventory"
   | "sessions"
   | "protect"
@@ -19,6 +20,7 @@ export const CONSOLE_ROUTES: ReadonlyArray<{
   iconKey: string;
 }> = [
   { id: "home", labelKey: "console.nav.home", iconKey: "nav.home" },
+  { id: "users", labelKey: "console.nav.users", iconKey: "nav.users" },
   { id: "inventory", labelKey: "console.nav.inventory", iconKey: "nav.inventory" },
   { id: "sessions", labelKey: "console.nav.sessions", iconKey: "nav.sessions" },
   { id: "protect", labelKey: "console.nav.protect", iconKey: "nav.protect" },
@@ -43,6 +45,7 @@ export const MESSAGES = {
   "grdr.brand.subtitle": "Agent protection",
   "grdr.brand.operator_subtitle": "Operator plane",
   "console.nav.home": "Home",
+  "console.nav.users": "Users",
   "console.nav.inventory": "Inventory",
   "console.nav.sessions": "Sessions",
   "console.nav.protect": "Protect",
@@ -144,6 +147,51 @@ export function presentFindingTitle(rawTitle: string, agentName?: string): strin
 export function capitalizeLabel(value: string): string {
   if (!value) return value;
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+export function presentArtifactKind(kind: string): string {
+  switch (kind) {
+    case "skill":
+      return "Skill";
+    case "rule":
+      return "Rule";
+    case "plugin":
+      return "Plugin";
+    case "command":
+      return "Command";
+    case "subagent":
+      return "Subagent";
+    default:
+      return capitalizeLabel(kind);
+  }
+}
+
+export function presentArtifactScope(scope: string): string {
+  switch (scope) {
+    case "user":
+      return "User";
+    case "workspace":
+      return "Workspace";
+    case "managed":
+      return "Managed";
+    default:
+      return capitalizeLabel(scope);
+  }
+}
+
+export function presentArtifactRiskFlag(flag: string): string {
+  switch (flag) {
+    case "has-scripts":
+      return "Has scripts";
+    case "requests-broad-tools":
+      return "Broad tools";
+    case "bidi-obfuscation":
+      return "Bidi obfuscation";
+    case "unpinned-digest":
+      return "Unpinned digest";
+    default:
+      return capitalizeLabel(flag.replace(/-/g, " "));
+  }
 }
 
 export function presentMode(mode: "off" | "watch" | "ask" | "block"): {

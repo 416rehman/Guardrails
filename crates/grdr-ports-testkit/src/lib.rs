@@ -295,6 +295,7 @@ pub fn assert_decision_engine_contract(
         target: ".claude/settings.json".into(),
         summary: "Write protected settings".into(),
         timestamp: now,
+        ..Default::default()
     };
     let r_deny = engine
         .evaluate(&denied_attempt)
@@ -314,6 +315,7 @@ pub fn assert_decision_engine_contract(
         target: "git status".into(),
         summary: "Safe git status".into(),
         timestamp: now,
+        ..Default::default()
     };
     let r_allow = engine
         .evaluate(&safe_attempt)
@@ -420,6 +422,7 @@ mod tests {
             target: "ls".into(),
             summary: "Sensor test".into(),
             timestamp: sample_timestamp(),
+            ..Default::default()
         });
         assert!(assert_sensor_port_contract(&mut sensor).is_ok());
 

@@ -172,6 +172,7 @@ impl SensorPort for LinuxProcSensor {
                 target: target.clone(),
                 summary: format!("Process pid={pid} uid={} cmd={}", snap.uid, snap.comm),
                 timestamp: now,
+                ..Default::default()
             });
         }
         Ok(attempts)

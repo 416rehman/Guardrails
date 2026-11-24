@@ -221,6 +221,7 @@ impl<E: DecisionEnginePort> LlmBroker<E> {
                 meta.tool_names.len()
             ),
             timestamp: ctx.timestamp,
+            ..Default::default()
         };
 
         let receipt = self.engine.evaluate(&attempt)?;

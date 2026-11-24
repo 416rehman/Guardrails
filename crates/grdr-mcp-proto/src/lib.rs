@@ -362,6 +362,7 @@ pub fn mcp_call_to_attempt(
         target: target.clone(),
         summary: format!("MCP {} ({})", req.method.as_wire(), target),
         timestamp: ctx.timestamp,
+        ..Default::default()
     })
 }
 

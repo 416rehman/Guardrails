@@ -14,8 +14,10 @@ import {
   type KillSwitchState,
   type NavRoute,
   type OverviewResponse,
+  type OrgPrivacyConfig,
   type PolicyPack,
   type SessionSummary,
+  type UserProfile,
 } from "@grdr/api";
 import { CONSOLE_ROUTES, pluralize, t } from "@grdr/i18n";
 import { type EntityTarget } from "@grdr/kit";
@@ -44,6 +46,7 @@ import { ProtectPage } from "./pages/ProtectPage";
 import { RespondPage } from "./pages/RespondPage";
 import { SessionsPage } from "./pages/SessionsPage";
 import { TesterPage } from "./pages/TesterPage";
+import { UsersPage } from "./pages/UsersPage";
 
 export function App() {
   useUiSdkReadOnlyAgentBridge();
@@ -60,6 +63,11 @@ export function App() {
   const [streamVersion, setStreamVersion] = useState(0);
 
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [privacyConfig, setPrivacyConfig] = useState<OrgPrivacyConfig>({
+    identity_mode: "named",
+    user_risk_scoring: true,
+  });
   const [devices, setDevices] = useState<Device[]>([]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [packs, setPacks] = useState<PolicyPack[]>([]);
@@ -69,14 +77,19 @@ export function App() {
   const [killSwitch, setKillSwitch] = useState<KillSwitchState>({ state: "inactive" });
   const [prefillAttempt, setPrefillAttempt] = useState<ActionAttempt | null>(null);
   const [focusedEntity, setFocusedEntity] = useState<EntityTarget | null>(null);
+  const [focusedTurn, setFocusedTurn] = useState<number | null>(null);
   const [returnRoute, setReturnRoute] = useState<{ route: NavRoute; label: string } | null>(null);
 
   function handleOpenEntity(target: EntityTarget) {
     let dest: NavRoute = route;
     switch (target.kind) {
+      case "user":
+        dest = "users";
+        break;
       case "device":
       case "agent":
       case "mcp":
+      case "artifact":
         dest = "inventory";
         break;
       case "session":
@@ -97,10 +110,25 @@ export function App() {
     setRoute(dest);
   }
 
+  function handleOpenSessionTurn(sessionId: string, turnIndex: number) {
+    const originMeta = CONSOLE_ROUTES.find((r) => r.id === route);
+    if (route !== "sessions") {
+      setReturnRoute({
+        route,
+        label: originMeta ? t(originMeta.labelKey) : route,
+      });
+    }
+    setFocusedEntity({ kind: "session", id: sessionId, label: sessionId });
+    setFocusedTurn(turnIndex);
+    setRoute("sessions");
+  }
+
   const loadAll = useCallback(async () => {
     try {
-      const [ov, dev, sess, pk, apr, fnd, inc, ks] = await Promise.all([
+      const [ov, usr, prv, dev, sess, pk, apr, fnd, inc, ks] = await Promise.all([
         api.getOverview(),
+        api.getUsers(),
+        api.getPrivacyConfig(),
         api.getDevices(),
         api.getSessions(),
         api.getPacks(),
@@ -110,6 +138,8 @@ export function App() {
         api.getKillSwitch(),
       ]);
       setOverview(ov);
+      setUsers(usr);
+      setPrivacyConfig(prv);
       setDevices(dev);
       setSessions(sess);
       setPacks(pk);
@@ -142,6 +172,7 @@ export function App() {
     events.addEventListener("uplink.batch", refreshHandler);
     events.addEventListener("finding.updated", refreshHandler);
     events.addEventListener("kill_switch.updated", refreshHandler);
+    events.addEventListener("privacy.updated", refreshHandler);
 
     return () => {
       events.close();
@@ -391,6 +422,18 @@ export function App() {
                 onDecideApproval={handleDecideApproval}
               />
             )}
+            {route === "users" && (
+              <UsersPage
+                users={users}
+                privacyConfig={privacyConfig}
+                searchQuery={searchQuery}
+                focusedEntity={focusedEntity}
+                onClearFocus={() => setFocusedEntity(null)}
+                onOpenEntity={handleOpenEntity}
+                onOpenSessionTurn={handleOpenSessionTurn}
+                onPrivacyUpdated={() => void loadAll()}
+              />
+            )}
             {route === "inventory" && (
               <InventoryPage
                 devices={devices}
@@ -407,7 +450,9 @@ export function App() {
                 devices={devices}
                 searchQuery={searchQuery}
                 focusedEntity={focusedEntity}
+                focusedTurn={focusedTurn}
                 onClearFocus={() => setFocusedEntity(null)}
+                onClearFocusedTurn={() => setFocusedTurn(null)}
                 onOpenEntity={handleOpenEntity}
                 onCreateRuleFromAttempt={(attempt) => {
                   setPrefillAttempt(attempt);
@@ -435,6 +480,7 @@ export function App() {
                 killSwitch={killSwitch}
                 defaultSessionId={sessions[0]?.id ?? "sess-demo-refactor"}
                 onOpenEntity={handleOpenEntity}
+                onOpenSessionTurn={handleOpenSessionTurn}
                 onUpdated={() => void loadAll()}
               />
             )}

@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Device } from "@grdr/api";
-import { formatOsName, pluralize } from "@grdr/i18n";
+import {
+  formatOsName,
+  pluralize,
+  presentArtifactKind,
+  presentArtifactRiskFlag,
+  presentArtifactScope,
+} from "@grdr/i18n";
 import { AssuranceBadge, DeviceAssuranceDrawer, EntityLink, type EntityTarget, OsLabel, Quoted } from "@grdr/kit";
 import {
   Badge,
@@ -69,6 +75,16 @@ export function InventoryPage({
         setSelectedDeviceId(owner.id);
       }
       onClearFocus?.();
+    } else if (focusedEntity.kind === "artifact") {
+      const owner = devices.find((d) =>
+        (d.artifacts ?? []).some(
+          (a) => a.id === focusedEntity.id || a.name === focusedEntity.label,
+        ),
+      );
+      if (owner) {
+        setSelectedDeviceId(owner.id);
+      }
+      onClearFocus?.();
     }
   }, [focusedEntity, devices, onClearFocus]);
 
@@ -115,6 +131,20 @@ export function InventoryPage({
     })),
   );
 
+  const artifacts = filteredDevices.flatMap((device) =>
+    (device.artifacts ?? [])
+      .filter(
+        (art) =>
+          agentFilter === "all" || art.source_agent.toLowerCase().includes(agentFilter),
+      )
+      .map((artifact) => ({
+        deviceId: device.id,
+        deviceHostname: device.hostname,
+        deviceOs: device.os,
+        artifact,
+      })),
+  );
+
   const activeDevices = filteredDevices.filter((d) => d.online).length;
   const activePct =
     filteredDevices.length === 0 ? 0 : Math.round((activeDevices / filteredDevices.length) * 100);
@@ -146,9 +176,18 @@ export function InventoryPage({
   const hexCells = useMemo<FleetHexCell[]>(() => {
     const cols = 12;
     return filteredDevices.map((dev, idx) => {
+      const fullBoundary =
+        dev.agents.length > 0 &&
+        dev.agents.every(
+          (a) =>
+            a.hook_installed &&
+            (a.assurance_level === "AL2" ||
+              a.assurance_level === "AL3" ||
+              a.assurance_level === "AL4"),
+        );
       const status: FleetHexCell["status"] = !dev.online
         ? "blind"
-        : dev.hook_effective
+        : dev.hook_effective && fullBoundary
           ? "boundary"
           : "partial";
       return {
@@ -629,6 +668,102 @@ export function InventoryPage({
                           icon={<GrdrIcon name={mcp.pinned ? "lock" : "alert-triangle"} size={11} />}
                           label={mcp.pinned ? "Pinned" : "Unpinned"}
                         />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </VStack>
+      </Card>
+
+      <Card padding={3}>
+        <VStack gap={3}>
+          <HStack gap={2} align="center">
+            <GrdrIcon name="file-code" size={16} />
+            <Heading level={2}>{`Skills, rules & plugins (${artifacts.length})`}</Heading>
+          </HStack>
+          {artifacts.length === 0 ? (
+            <Text color="secondary">
+              No skills, standing rules, commands, or subagents discovered on matching devices.
+            </Text>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Artifact</th>
+                    <th>Kind</th>
+                    <th>Scope</th>
+                    <th>Agent & device</th>
+                    <th>Digest</th>
+                    <th>Usage</th>
+                    <th>Signals</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {artifacts.map(({ deviceId, deviceHostname, deviceOs, artifact }) => (
+                    <tr key={artifact.id}>
+                      <td>
+                        <VStack gap={1}>
+                          <EntityLink
+                            kind="artifact"
+                            id={artifact.id}
+                            label={artifact.name}
+                            compact
+                            onSelect={onOpenEntity}
+                          />
+                          <Quoted text={artifact.path} />
+                        </VStack>
+                      </td>
+                      <td>
+                        <Badge variant="neutral" label={presentArtifactKind(artifact.kind)} />
+                      </td>
+                      <td>
+                        <Text size="sm">{presentArtifactScope(artifact.scope)}</Text>
+                      </td>
+                      <td>
+                        <HStack gap={1} align="center" style={{ flexWrap: "nowrap", columnGap: 6 }}>
+                          <EntityLink
+                            kind="agent"
+                            label={artifact.source_agent}
+                            compact
+                            onSelect={onOpenEntity}
+                          />
+                          <EntityLink
+                            kind="device"
+                            id={deviceId}
+                            label={deviceHostname}
+                            os={deviceOs}
+                            compact
+                            onSelect={onOpenEntity}
+                          />
+                        </HStack>
+                      </td>
+                      <td className="nowrap-cell">
+                        <Quoted text={artifact.content_digest.slice(0, 8)} />
+                      </td>
+                      <td className="tabular">{artifact.usage_count}</td>
+                      <td>
+                        {artifact.risk_flags.length === 0 ? (
+                          <StatusInline
+                            tone="allow"
+                            icon={<GrdrIcon name="check-circle" size={12} />}
+                            label={artifact.pinned ? "Pinned" : "Clean"}
+                          />
+                        ) : (
+                          <HStack gap={1} style={{ flexWrap: "wrap" }}>
+                            {artifact.risk_flags.map((flag) => (
+                              <Badge
+                                key={flag}
+                                variant={flag === "bidi-obfuscation" ? "error" : "warning"}
+                                icon={<GrdrIcon name="alert-triangle" size={11} />}
+                                label={presentArtifactRiskFlag(flag)}
+                              />
+                            ))}
+                          </HStack>
+                        )}
                       </td>
                     </tr>
                   ))}

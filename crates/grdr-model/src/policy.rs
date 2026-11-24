@@ -47,6 +47,40 @@ pub struct PolicyPack {
     pub signature: Option<String>,
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum SpanKind {
+    InvokeAgent,
+    Chat,
+    #[default]
+    ExecuteTool,
+    McpCall,
+    OsEffect,
+    SubagentSpawn,
+    Compaction,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ProvenanceSource {
+    Claimed,
+    #[default]
+    Observed,
+    Mediated,
+    Reconciled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SecondaryAction {
+    pub command: String,
+    pub action_class: ActionClass,
+    pub target: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActionAttempt {
     pub id: String,
@@ -59,6 +93,28 @@ pub struct ActionAttempt {
     pub target: String,
     pub summary: String,
     pub timestamp: Timestamp,
+    #[serde(default)]
+    pub user_id: Option<String>,
+    #[serde(default)]
+    pub user_display: Option<String>,
+    #[serde(default = "default_turn_index")]
+    pub turn_index: u32,
+    #[serde(default)]
+    pub span_id: Option<String>,
+    #[serde(default)]
+    pub parent_span_id: Option<String>,
+    #[serde(default)]
+    pub span_kind: SpanKind,
+    #[serde(default)]
+    pub duration_ms: u64,
+    #[serde(default)]
+    pub provenance: ProvenanceSource,
+    #[serde(default)]
+    pub secondary_actions: Vec<SecondaryAction>,
+    #[serde(default)]
+    pub skill_used: Option<String>,
+    #[serde(default)]
+    pub compaction: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -219,6 +275,34 @@ pub struct CompiledFloorTable {
     pub signature: Option<String>,
 }
 
+impl Default for ActionAttempt {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            session_id: String::new(),
+            device_id: String::new(),
+            device_name: String::new(),
+            agent_name: String::new(),
+            action_class: ActionClass::Exec,
+            control_point: ControlPoint::Hook,
+            target: String::new(),
+            summary: String::new(),
+            timestamp: Timestamp::UNIX_EPOCH,
+            user_id: None,
+            user_display: None,
+            turn_index: default_turn_index(),
+            span_id: None,
+            parent_span_id: None,
+            span_kind: SpanKind::ExecuteTool,
+            duration_ms: 0,
+            provenance: ProvenanceSource::Observed,
+            secondary_actions: Vec::new(),
+            skill_used: None,
+            compaction: false,
+        }
+    }
+}
+
 impl Grant {
     pub fn is_active(&self, now: Timestamp) -> bool {
         if self.expires_at.is_some_and(|exp| exp <= now) {
@@ -253,6 +337,10 @@ impl Grant {
         }
         target_pattern_matches(&self.target_pattern, &attempt.target)
     }
+}
+
+fn default_turn_index() -> u32 {
+    1
 }
 
 fn target_pattern_matches(pattern: &str, target: &str) -> bool {
@@ -290,6 +378,7 @@ mod tests {
             target: target.into(),
             summary: target.into(),
             timestamp: Timestamp::from_second(1_700_000_000).unwrap(),
+            ..Default::default()
         }
     }
 

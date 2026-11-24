@@ -17,14 +17,18 @@ import {
   VStack,
 } from "@grdr/ui";
 
-type SessionViewMode = "graph" | "timeline" | "stream";
+import { TraceWaterfall } from "./TraceWaterfall";
+
+type SessionViewMode = "graph" | "trace" | "timeline" | "stream";
 
 export function SessionsPage({
   sessions,
   devices = [],
   searchQuery,
   focusedEntity,
+  focusedTurn,
   onClearFocus,
+  onClearFocusedTurn,
   onOpenEntity,
   onCreateRuleFromAttempt,
 }: {
@@ -32,13 +36,16 @@ export function SessionsPage({
   devices?: Device[];
   searchQuery: string;
   focusedEntity?: EntityTarget | null;
+  focusedTurn?: number | null;
   onClearFocus?: () => void;
+  onClearFocusedTurn?: () => void;
   onOpenEntity?: (target: EntityTarget) => void;
   onCreateRuleFromAttempt: (attempt: ActionAttempt) => void;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(sessions[0]?.id ?? null);
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<SessionViewMode>("graph");
+  const [activeTurn, setActiveTurn] = useState<number | null>(null);
   const [detail, setDetail] = useState<SessionDetailResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,6 +55,14 @@ export function SessionsPage({
       onClearFocus?.();
     }
   }, [focusedEntity, onClearFocus]);
+
+  useEffect(() => {
+    if (typeof focusedTurn === "number" && focusedTurn > 0) {
+      setViewMode("trace");
+      setActiveTurn(focusedTurn);
+      onClearFocusedTurn?.();
+    }
+  }, [focusedTurn, onClearFocusedTurn]);
 
   const query = searchQuery.trim().toLowerCase();
   const filtered = sessions.filter(
@@ -241,7 +256,19 @@ export function SessionsPage({
                           onSelect={onOpenEntity}
                         />
                       </HStack>
-                      <HStack gap={2} align="center" style={{ columnGap: 6, rowGap: 2 }}>
+                      <HStack gap={2} align="center" style={{ columnGap: 6, rowGap: 2, flexWrap: "wrap" }}>
+                        {sess.user_display && (
+                          <>
+                            <EntityLink
+                              kind="user"
+                              id={sess.user_id ?? sess.user_display}
+                              label={sess.user_display}
+                              compact
+                              onSelect={onOpenEntity}
+                            />
+                            <span style={{ color: "var(--ink-muted)" }} aria-hidden="true">·</span>
+                          </>
+                        )}
                         <EntityLink
                           kind="session"
                           id={sess.id}
@@ -251,7 +278,7 @@ export function SessionsPage({
                         />
                         <span style={{ color: "var(--ink-muted)" }} aria-hidden="true">·</span>
                         <Text size="sm" color="secondary" className="tabular">
-                          {pluralize(sess.total_actions, "call")}
+                          {`${pluralize(sess.total_actions, "call")} · ${pluralize(sess.turn_count ?? 1, "turn")}`}
                         </Text>
                       </HStack>
                     </VStack>
@@ -308,15 +335,29 @@ export function SessionsPage({
                       onSelect={onOpenEntity}
                     />
                   </HStack>
-                  <EntityLink
-                    kind="session"
-                    id={detail.session.id}
-                    label={detail.session.id}
-                    compact
-                    onSelect={() => setSelectedId(detail.session.id)}
-                  />
+                  <HStack gap={2} align="center" style={{ flexWrap: "wrap" }}>
+                    <EntityLink
+                      kind="session"
+                      id={detail.session.id}
+                      label={detail.session.id}
+                      compact
+                      onSelect={() => setSelectedId(detail.session.id)}
+                    />
+                    {detail.session.user_display && (
+                      <>
+                        <span style={{ color: "var(--ink-muted)" }} aria-hidden="true">·</span>
+                        <EntityLink
+                          kind="user"
+                          id={detail.session.user_id ?? detail.session.user_display}
+                          label={detail.session.user_display}
+                          compact
+                          onSelect={onOpenEntity}
+                        />
+                      </>
+                    )}
+                  </HStack>
                 </VStack>
-                <HStack gap={2} align="center">
+                <HStack gap={2} align="center" style={{ flexWrap: "wrap" }}>
                   <UiSdkSegmentedControl<SessionViewMode>
                     ariaLabel="Session inspection mode"
                     value={viewMode}
@@ -325,6 +366,11 @@ export function SessionsPage({
                         value: "graph",
                         label: "Graph",
                         icon: <GrdrIcon name="git-branch" size={13} />,
+                      },
+                      {
+                        value: "trace",
+                        label: "Trace",
+                        icon: <GrdrIcon name="route" size={13} />,
                       },
                       {
                         value: "timeline",
@@ -342,6 +388,19 @@ export function SessionsPage({
                   <Badge variant="info" label={pluralize(detail.attempts.length, "step")} />
                 </HStack>
               </div>
+
+              {viewMode === "trace" && (
+                <TraceWaterfall
+                  attempts={detail.attempts}
+                  receipts={detail.receipts}
+                  turns={detail.turns ?? []}
+                  activeTurn={activeTurn}
+                  selectedAttemptId={focusedAttempt?.id ?? null}
+                  onSelectTurn={setActiveTurn}
+                  onSelectAttempt={setSelectedAttemptId}
+                  onOpenEntity={onOpenEntity}
+                />
+              )}
 
               {viewMode === "graph" && (
                 <GrdrFlowGraph

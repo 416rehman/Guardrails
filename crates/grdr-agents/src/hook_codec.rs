@@ -104,6 +104,7 @@ pub fn parse_hook_stdin(
         target,
         summary,
         timestamp: Timestamp::now(),
+        ..Default::default()
     })
 }
 

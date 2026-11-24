@@ -182,6 +182,7 @@ where
                 target,
                 summary,
                 timestamp: Timestamp::now(),
+                ..Default::default()
             };
             let receipt = evaluator(&attempt);
             if matches!(
