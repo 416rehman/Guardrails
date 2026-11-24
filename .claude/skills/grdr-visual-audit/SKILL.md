@@ -42,3 +42,10 @@ Whenever any UI file (`web/packages/`, `web/apps/`, `desktop/grdr-desktop/src/`,
    node .claude/hooks/visual-audit-check.mjs --record --verdict pass --unresolved 0 --unresolved-polish 0 --summary "<concise summary>"
    ```
    `.claude/hooks/visual-audit-check.mjs` hashes all local screenshots into `.git/grdr-visual-audit.json` (while rejecting any staged/committed screenshots under `web/screenshots/`, `desktop/screenshots/`, or `**/__screenshots__/`) and blocks `git commit` or `gh pr create` for any UI change without a fresh audit stamp showing zero unresolved blocking or polish findings.
+6. **Attach verified screenshots directly to PRs and issues (never commit PNGs):**
+   Upload verified screenshots from local `web/screenshots/` or `desktop/screenshots/` directly to the PR or issue using GitHub CLI `--attach`:
+   ```powershell
+   $gh = Join-Path $env:LOCALAPPDATA 'gh-cli-2.105.0\bin\gh.exe'
+   & $gh pr comment <n> --attach web/screenshots/<shot>.png --body-file <comment-file>
+   & $gh issue comment <n> --attach web/screenshots/<shot>.png --body-file <comment-file>
+   ```

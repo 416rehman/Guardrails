@@ -3,7 +3,8 @@
 Guardrails ADR is an open-source agent detection and response (ADR) platform (`grdr`).
 
 ## Shipping & workflow
-- Build directly from the architecture design docs (`docs/design/00-decisions.md`, `03`, `11`, `12`, `20`, `23`, `27`). Follow issue-first development: create GitHub issue(s) before starting implementation (split multi-part work into separate issues), link every PR via `Closes #<n>` in the PR body, and close with verification summary comments and PR-attached screenshots (never committed in git).
+- Build directly from the architecture design docs (`docs/design/00-decisions.md`, `03`, `11`, `12`, `20`, `23`, `27`). Follow issue-first development: create self-contained GitHub issue(s) before starting implementation (quoting the user request, design doc refs, exact scope, and verification commands so any cold agent can execute them; split multi-part work into separate issues). Multi-issue waves can run in parallel isolated `Workspace: "share"` worktrees.
+- Link every PR via `Closes #<n>` in the PR body, and close with verification summary comments. Screenshots must NEVER be committed in git; upload verified screenshots directly to PRs and issues via `gh pr comment <n> --attach <png>` / `gh issue comment <n> --attach <png>`.
 - Work on descriptive feature/fix branches (`feat/<slug>`, `fix/<slug>`, `chore/<slug>`, `docs/<slug>`, `refactor/<slug>`), never pushing directly to `main`, and open a clean PR to merge.
 - Keep commit messages to a single short Conventional Commit line (`feat(web): ...`), max 72 chars, no body, no AI trailers.
 
