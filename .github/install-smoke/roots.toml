@@ -113,9 +113,14 @@ ignore_paths = [
   "/Library/Preferences",
   "/Library/Trial",
   "/Library/Updates",
+  "/Library/Application Support/Apple",
   "~/Library/Preferences",
   "~/Library/Application Support/AddressBook",
   "~/Library/Application Support/Knowledge",
+  "~/Library/Application Support/com.apple.*",
+  "~/Library/Application Support/CloudDocs",
+  "~/Library/Application Support/FileProvider",
+  "~/Library/Application Support/CrashReporter",
 ]
 
 [os.macos.user]

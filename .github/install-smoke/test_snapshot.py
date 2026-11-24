@@ -121,6 +121,38 @@ class RootsConfigTest(unittest.TestCase):
         self.assertTrue(snapshot.is_under_ours("task://\\grdr-daemon", win_ours, snapshot.OsName.WINDOWS))
         self.assertFalse(snapshot.is_under_ours("task://\\other\\grdr-daemon", win_ours, snapshot.OsName.WINDOWS))
 
+    def test_wildcard_ignore_paths_match_dir_and_descendants_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app_support = pathlib.Path(tmp) / "Library" / "Application Support"
+            apple_dir = app_support / "com.apple.wallpaper" / "Store"
+            apple_dir.mkdir(parents=True)
+            (apple_dir / "Index.plist").write_text("apple\n", encoding="utf-8")
+            grdr_dir = app_support / "grdr" / "bin"
+            grdr_dir.mkdir(parents=True)
+            (grdr_dir / "grdr").write_text("bin\n", encoding="utf-8")
+
+            host_os = snapshot.detect_host_os()
+            cfg = {
+                **self.cfg,
+                "os": {
+                    **self.cfg["os"],
+                    host_os.value: {
+                        **self.cfg["os"][host_os.value],
+                        "ignore_paths": [str(app_support / "com.apple.*")],
+                    },
+                },
+            }
+            entries = snapshot.capture_snapshot(
+                cfg,
+                host_os,
+                snapshot.Profile.USER,
+                override_roots=[str(app_support)],
+            )
+            norm_keys = {snapshot.normalize_for_match(k, host_os) for k in entries}
+            self.assertIn(snapshot.normalize_for_match(str(grdr_dir / "grdr"), host_os), norm_keys)
+            self.assertNotIn(snapshot.normalize_for_match(str(app_support / "com.apple.wallpaper"), host_os), norm_keys)
+            self.assertNotIn(snapshot.normalize_for_match(str(apple_dir / "Index.plist"), host_os), norm_keys)
+
     def test_windows_non_symlink_reparse_point_records_unreadable(self) -> None:
         fake_stat = unittest.mock.Mock(
             st_mode=0o100666,

@@ -295,10 +295,38 @@ def _entry_metadata_cached(
     return _entry_metadata(path, st, os_name, chunk_bytes, fast_stat=fast_stat)
 
 
+def _ancestor_prefixes(norm_path: str, sep: str) -> list[str]:
+    parts = norm_path.split(sep)
+    if len(parts) <= 1:
+        return [norm_path]
+    prefixes: list[str] = []
+    acc = ""
+    for i, part in enumerate(parts):
+        if i == 0:
+            acc = sep if part == "" else part
+        elif acc == sep:
+            acc = sep + part
+        else:
+            acc = acc + sep + part
+        if acc != sep:
+            prefixes.append(acc)
+    return prefixes if prefixes else [norm_path]
+
+
 def _is_ignored(norm_path: str, ignored: list[str], os_name: OsName) -> bool:
     sep = "\\" if os_name == OsName.WINDOWS else "/"
+    path_cmp = norm_path.lower() if os_name == OsName.WINDOWS else norm_path
+    prefixes: list[str] | None = None
     for item in ignored:
-        if norm_path == item or norm_path.startswith(item.rstrip(sep) + sep):
+        item_cmp = item.lower() if os_name == OsName.WINDOWS else item
+        if "*" in item_cmp:
+            if prefixes is None:
+                prefixes = _ancestor_prefixes(path_cmp, sep)
+            if fnmatch.fnmatchcase(path_cmp, item_cmp) or any(
+                fnmatch.fnmatchcase(prefix, item_cmp) for prefix in prefixes
+            ):
+                return True
+        elif path_cmp == item_cmp or path_cmp.startswith(item_cmp.rstrip(sep) + sep):
             return True
     return False
 
@@ -399,10 +427,15 @@ def _use_fast_stat(
 def _prefix_overlaps(norm_dir: str, prefixes: list[str], os_name: OsName) -> list[str]:
     sep = "\\" if os_name == OsName.WINDOWS else "/"
     dir_prefix = norm_dir.rstrip(sep) + sep
-    return [
-        p for p in prefixes
-        if p == norm_dir or p.startswith(dir_prefix) or norm_dir.startswith(p.rstrip(sep) + sep)
-    ]
+    matched: list[str] = []
+    for p in prefixes:
+        if "*" in p or "?" in p:
+            base = p.split("*", 1)[0].split("?", 1)[0]
+            if not base or base == norm_dir or base.startswith(dir_prefix) or norm_dir.startswith(base):
+                matched.append(p)
+        elif p == norm_dir or p.startswith(dir_prefix) or norm_dir.startswith(p.rstrip(sep) + sep):
+            matched.append(p)
+    return matched
 
 
 def _scan_fs_root(
