@@ -10,6 +10,7 @@ import {
   evaluateVisualAuditFiles,
   evaluateVisualAuditToolPayload,
   recordVisualAudit,
+  resolveAuditRecordPath,
 } from "./visual-audit-check.mjs";
 
 function makeTempUiRepo(t) {
@@ -73,4 +74,20 @@ test("evaluates git commit payload with staged web UI file", (t) => {
     dir,
   );
   assert.ok(denied.some((m) => m.includes("visual-audit")));
+});
+
+test("supports git worktree .git gitdir file without throwing EEXIST", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "grdr-vaudit-wt-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  mkdirSync(join(dir, ".worktree-gitdir"), { recursive: true });
+  mkdirSync(join(dir, "web/screenshots"), { recursive: true });
+  writeFileSync(join(dir, ".git"), "gitdir: .worktree-gitdir\n", "utf8");
+  writeFileSync(join(dir, "web/screenshots/home.png"), "png-desktop", "utf8");
+  writeFileSync(join(dir, "web/screenshots/home-mobile.png"), "png-mobile", "utf8");
+
+  const resolved = resolveAuditRecordPath(dir);
+  assert.equal(resolved, join(dir, ".worktree-gitdir", "grdr-visual-audit.json"));
+
+  recordVisualAudit({ cwd: dir, verdict: "pass", summary: "Worktree clean", unresolvedIssues: 0, unresolvedPolish: 0 });
+  assert.deepEqual(evaluateVisualAuditFiles(["web/apps/console/src/App.tsx"], dir), []);
 });
