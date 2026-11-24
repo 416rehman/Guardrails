@@ -1,0 +1,52 @@
+services:
+  grdr-server:
+    build:
+      context: ../..
+      dockerfile: deploy/qa/Dockerfile
+      target: server
+    command:
+      - "--bind"
+      - "0.0.0.0:8787"
+      - "--profile"
+      - "embedded"
+      - "--data-dir"
+      - "/var/lib/grdr"
+      - "--web-dir"
+      - "/opt/grdr/web"
+    environment:
+      RUST_LOG: info
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8787/api/v1/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 3s
+    volumes:
+      - grdr-server-data:/var/lib/grdr
+    networks:
+      - qa-internal
+
+  endpoint-runner:
+    build:
+      context: ../..
+      dockerfile: deploy/qa/Dockerfile
+      target: endpoint
+    depends_on:
+      grdr-server:
+        condition: service_healthy
+    environment:
+      GRDR_SERVER_URL: "http://grdr-server:8787"
+      GRDR_DAEMON_BIND: "127.0.0.1:8788"
+      GRDR_DAEMON_URL: "http://127.0.0.1:8788"
+      GRDR_DEVICE_NAME: "qa-docker-endpoint"
+      RUST_LOG: info
+    networks:
+      - qa-internal
+
+networks:
+  qa-internal:
+    driver: bridge
+    internal: true
+
+volumes:
+  grdr-server-data:

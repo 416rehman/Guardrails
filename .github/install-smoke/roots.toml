@@ -110,6 +110,21 @@ grdr_search_paths = [
 ]
 ignore_paths = [
   "/Library/Caches",
+  "/Library/Preferences",
+  "/Library/Trial",
+  "/Library/Updates",
+  "/Library/Application Support/Apple",
+  "/Library/Keychains",
+  "/Library/Logs",
+  "~/Library/Logs",
+  "~/Library/Preferences",
+  "~/Library/Application Support/AddressBook",
+  "~/Library/Application Support/Knowledge",
+  "~/Library/Application Support/com.apple.*",
+  "~/Library/Application Support/CloudDocs",
+  "~/Library/Application Support/FileProvider",
+  "~/Library/Application Support/CrashReporter",
+  "~/Library/Application Support/networkserviceproxy",
 ]
 
 [os.macos.user]
@@ -187,6 +202,15 @@ grdr_search_paths = [
 # %TEMP% sits under %LOCALAPPDATA%\Temp and holds transient process scratch files.
 ignore_paths = [
   "%LOCALAPPDATA%\\Temp",
+  "%LOCALAPPDATA%\\Microsoft",
+  "%LOCALAPPDATA%\\CrashDumps",
+  "%LOCALAPPDATA%\\Mozilla",
+  "%APPDATA%\\Mozilla",
+  "%ProgramData%\\USOPrivate",
+  "%ProgramData%\\USOShared",
+  "%ProgramData%\\Microsoft",
+  "reg://HKCU/Software/Classes/Local Settings/MuiCache",
+  "reg://HKCU/Software/Classes/Local Settings/Software/Microsoft/Windows/Shell/MuiCache",
 ]
 windows_registry = [
   "HKCU\\Software",

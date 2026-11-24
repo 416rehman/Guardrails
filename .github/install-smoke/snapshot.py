@@ -151,6 +151,8 @@ def _home_dir(os_name: OsName, env: Mapping[str, str]) -> str:
 def expand_path(raw: str, os_name: OsName, env: Mapping[str, str] | None = None) -> str:
     source = os.environ if env is None else env
     text = raw
+    if text.startswith(VIRTUAL_PREFIXES):
+        return text
     if text == "~" or text.startswith(("~/", "~\\")):
         text = _home_dir(os_name, source) + text[1:]
     if os_name == OsName.WINDOWS:
@@ -219,20 +221,33 @@ def _windows_owner_sid(path: str) -> str:
         _KERNEL32.LocalFree(sid_str)
 
 
-def _entry_metadata(path: str, st: os.stat_result, os_name: OsName, chunk_bytes: int) -> SnapshotEntry:
+def _entry_metadata(
+    path: str,
+    st: os.stat_result,
+    os_name: OsName,
+    chunk_bytes: int,
+    *,
+    fast_stat: bool = False,
+) -> SnapshotEntry:
     is_reparse = os_name == OsName.WINDOWS and bool(getattr(st, "st_file_attributes", 0) & WINDOWS_REPARSE_ATTR)
     if stat.S_ISLNK(st.st_mode) or is_reparse:
         kind = EntryKind.SYMLINK
-        try:
-            digest = f"symlink:{sha256_bytes(os.readlink(path).encode('utf-8', 'surrogateescape'))}"
-        except OSError:
-            digest = "symlink:<unreadable>"
+        if fast_stat:
+            digest = f"symlink:attr:{getattr(st, 'st_file_attributes', 0):08x}"
+        else:
+            try:
+                digest = f"symlink:{sha256_bytes(os.readlink(path).encode('utf-8', 'surrogateescape'))}"
+            except (OSError, ValueError):
+                digest = "symlink:<unreadable>"
     elif stat.S_ISDIR(st.st_mode):
         kind = EntryKind.DIR
         digest = ""
     elif stat.S_ISREG(st.st_mode):
         kind = EntryKind.FILE
-        digest = _sha256_file(path, chunk_bytes)
+        if fast_stat:
+            digest = f"stat:{st.st_size}:{st.st_mtime_ns}:{st.st_ino}"
+        else:
+            digest = _sha256_file(path, chunk_bytes)
     else:
         kind = EntryKind.OTHER
         digest = ""
@@ -240,17 +255,87 @@ def _entry_metadata(path: str, st: os.stat_result, os_name: OsName, chunk_bytes:
     if os_name == OsName.WINDOWS:
         attrs = getattr(st, "st_file_attributes", 0)
         mode = f"{stat.S_IMODE(st.st_mode):04o}:attr:{attrs:08x}"
-        owner = _windows_owner_sid(path)
+        owner = f"attr:{attrs:08x}" if fast_stat else _windows_owner_sid(path)
     else:
         mode = f"{stat.S_IMODE(st.st_mode):04o}"
         owner = f"{st.st_uid}:{st.st_gid}"
     return SnapshotEntry(path=path, kind=kind, mode=mode, owner=owner, sha256=digest)
 
 
+def _stat_signature(st: os.stat_result, fast_stat: bool) -> tuple[Any, ...]:
+    return (
+        st.st_mode,
+        st.st_ino,
+        st.st_dev,
+        st.st_size,
+        st.st_mtime_ns,
+        st.st_ctime_ns,
+        st.st_uid,
+        st.st_gid,
+        getattr(st, "st_file_attributes", 0),
+        fast_stat,
+    )
+
+
+def _entry_metadata_cached(
+    path: str,
+    st: os.stat_result,
+    os_name: OsName,
+    chunk_bytes: int,
+    stat_cache: dict[str, tuple[tuple[Any, ...], SnapshotEntry]] | None,
+    *,
+    fast_stat: bool = False,
+) -> SnapshotEntry:
+    if stat_cache is not None:
+        sig = _stat_signature(st, fast_stat)
+        cached = stat_cache.get(path)
+        if cached is not None and cached[0] == sig:
+            return cached[1]
+        entry = _entry_metadata(path, st, os_name, chunk_bytes, fast_stat=fast_stat)
+        stat_cache[path] = (sig, entry)
+        return entry
+    return _entry_metadata(path, st, os_name, chunk_bytes, fast_stat=fast_stat)
+
+
+def _ancestor_prefixes(norm_path: str, sep: str) -> list[str]:
+    parts = norm_path.split(sep)
+    if len(parts) <= 1:
+        return [norm_path]
+    prefixes: list[str] = []
+    acc = ""
+    for i, part in enumerate(parts):
+        if i == 0:
+            acc = sep if part == "" else part
+        elif acc == sep:
+            acc = sep + part
+        else:
+            acc = acc + sep + part
+        if acc != sep:
+            prefixes.append(acc)
+    return prefixes if prefixes else [norm_path]
+
+
 def _is_ignored(norm_path: str, ignored: list[str], os_name: OsName) -> bool:
-    sep = "\\" if os_name == OsName.WINDOWS else "/"
+    is_virtual = norm_path.startswith(VIRTUAL_PREFIXES)
+    sep = "/" if is_virtual else ("\\" if os_name == OsName.WINDOWS else "/")
+    path_cmp = norm_path.lower() if os_name == OsName.WINDOWS else norm_path
+    prefixes: list[str] | None = None
     for item in ignored:
-        if norm_path == item or norm_path.startswith(item.rstrip(sep) + sep):
+        item_cmp = item.lower() if os_name == OsName.WINDOWS else item
+        if item_cmp.startswith(VIRTUAL_PREFIXES) != is_virtual:
+            continue
+        if "*" in item_cmp:
+            if prefixes is None:
+                prefixes = _ancestor_prefixes(path_cmp, sep)
+            if fnmatch.fnmatchcase(path_cmp, item_cmp) or any(
+                fnmatch.fnmatchcase(prefix, item_cmp) for prefix in prefixes
+            ):
+                return True
+        elif (
+            path_cmp == item_cmp
+            or path_cmp.startswith(item_cmp.rstrip(sep) + sep)
+            or (is_virtual and path_cmp.startswith(item_cmp.rstrip(sep) + "::"))
+        ):
             return True
     return False
 
@@ -275,12 +360,103 @@ def _can_walk_root(
     return not _is_ignored(resolved, ignored, os_name)
 
 
+def _system_stat_prefixes(
+    config: Mapping[str, Any],
+    os_name: OsName,
+    profile: Profile,
+    env: Mapping[str, str],
+) -> tuple[list[str], list[str]]:
+    raw_full = [
+        "~/.claude",
+        "~/.config",
+        "~/.local/share",
+        "~/.local/state",
+        "~/.local/bin",
+        "/etc",
+        "/opt/grdr",
+        "/run/grdr",
+        "/var/lib/grdr",
+        "/var/lib/grdr-engine",
+        "/var/db/grdr-engine",
+        "/var/run/grdr",
+        "~/Library/Application Support/grdr",
+        "/Library/Application Support/grdr",
+        "%LOCALAPPDATA%\\grdr",
+        "%ProgramData%\\grdr",
+        config["os"][os_name.value]["claude_dropin_dir"],
+    ]
+    full_prefixes = [
+        normalize_for_match(expand_path(p, os_name, env), os_name)
+        for p in raw_full
+    ]
+    for pat in ours_patterns(config, os_name, profile, env):
+        if pat.startswith(VIRTUAL_PREFIXES):
+            continue
+        base_pat = pat.split("*", 1)[0].split("?", 1)[0].rstrip("/\\")
+        if base_pat:
+            full_prefixes.append(normalize_for_match(base_pat, os_name))
+
+    raw_stat = [
+        "/usr",
+        "/var/lib",
+        "/Library",
+        "/Applications",
+        "/System",
+        "/var/db/receipts",
+        "%ProgramFiles%",
+        "%ProgramFiles(x86)%",
+        "%ProgramData%",
+        "%LOCALAPPDATA%\\Programs",
+        "%LOCALAPPDATA%\\Packages",
+        "%LOCALAPPDATA%\\Microsoft",
+        "~/.cache",
+        "~/.cargo",
+        "~/.rustup",
+    ]
+    stat_prefixes = [
+        normalize_for_match(expand_path(p, os_name, env), os_name)
+        for p in raw_stat
+    ]
+    return full_prefixes, stat_prefixes
+
+
+def _use_fast_stat(
+    norm_path: str,
+    os_name: OsName,
+    full_prefixes: list[str],
+    stat_prefixes: list[str],
+) -> bool:
+    if not stat_prefixes:
+        return False
+    if _is_ignored(norm_path, full_prefixes, os_name):
+        return False
+    return _is_ignored(norm_path, stat_prefixes, os_name)
+
+
+def _prefix_overlaps(norm_dir: str, prefixes: list[str], os_name: OsName) -> list[str]:
+    sep = "\\" if os_name == OsName.WINDOWS else "/"
+    dir_prefix = norm_dir.rstrip(sep) + sep
+    matched: list[str] = []
+    for p in prefixes:
+        if "*" in p or "?" in p:
+            base = p.split("*", 1)[0].split("?", 1)[0]
+            if not base or base == norm_dir or base.startswith(dir_prefix) or norm_dir.startswith(base):
+                matched.append(p)
+        elif p == norm_dir or p.startswith(dir_prefix) or norm_dir.startswith(p.rstrip(sep) + sep):
+            matched.append(p)
+    return matched
+
+
 def _scan_fs_root(
     root_path: str,
     ignored: list[str],
     os_name: OsName,
     chunk_bytes: int,
     records: dict[str, SnapshotEntry],
+    *,
+    stat_cache: dict[str, tuple[tuple[Any, ...], SnapshotEntry]] | None = None,
+    full_prefixes: list[str] | None = None,
+    stat_prefixes: list[str] | None = None,
 ) -> None:
     try:
         root_stat = os.lstat(root_path)
@@ -293,17 +469,28 @@ def _scan_fs_root(
     norm = normalize_for_match(root_path, os_name)
     if _is_ignored(norm, ignored, os_name):
         return
-    root_entry = _entry_metadata(root_path, root_stat, os_name, chunk_bytes)
+    full_list = _prefix_overlaps(norm, full_prefixes or [], os_name)
+    stat_list = _prefix_overlaps(norm, stat_prefixes or [], os_name)
+    ignored_list = _prefix_overlaps(norm, ignored, os_name)
+    root_fast = bool(stat_list) and not full_list and _is_ignored(norm, stat_list, os_name)
+    root_entry = _entry_metadata_cached(
+        root_path,
+        root_stat,
+        os_name,
+        chunk_bytes,
+        stat_cache,
+        fast_stat=root_fast or _use_fast_stat(norm, os_name, full_list, stat_list),
+    )
     records[root_path] = root_entry
     if not _can_walk_root(root_path, root_entry, ignored, os_name):
         return
 
-    stack = [root_path]
+    stack = [(root_path, root_fast)]
     while stack:
-        current = stack.pop()
+        current, cur_fast = stack.pop()
         try:
             with os.scandir(current) as it:
-                children = sorted(it, key=lambda item: item.name)
+                children = list(it)
         except OSError:
             records[current] = SnapshotEntry(
                 current, EntryKind.DIR_UNREADABLE, records[current].mode, records[current].owner, "<unreadable>"
@@ -311,17 +498,29 @@ def _scan_fs_root(
             continue
         for child in children:
             child_path = os.path.normpath(child.path)
-            if _is_ignored(normalize_for_match(child_path, os_name), ignored, os_name):
-                continue
+            if ignored_list or (not cur_fast and (full_list or stat_list)):
+                child_norm = normalize_for_match(child_path, os_name)
+                if ignored_list and _is_ignored(child_norm, ignored_list, os_name):
+                    continue
+                child_fast = cur_fast or _use_fast_stat(child_norm, os_name, full_list, stat_list)
+            else:
+                child_fast = cur_fast
             try:
                 st = child.stat(follow_symlinks=False)
             except OSError:
                 records[child_path] = SnapshotEntry(child_path, EntryKind.OTHER, "", "", "<unreadable>")
                 continue
-            entry = _entry_metadata(child_path, st, os_name, chunk_bytes)
+            entry = _entry_metadata_cached(
+                child_path,
+                st,
+                os_name,
+                chunk_bytes,
+                stat_cache,
+                fast_stat=child_fast,
+            )
             records[child_path] = entry
             if entry.kind == EntryKind.DIR:
-                stack.append(child_path)
+                stack.append((child_path, child_fast))
 
 
 def _run_ps_json(script: str) -> Any:
@@ -341,7 +540,11 @@ def _run_ps_json(script: str) -> Any:
     return parsed if isinstance(parsed, list) else [parsed]
 
 
-def _scan_windows_registry(hives: list[str], records: dict[str, SnapshotEntry]) -> None:
+def _scan_windows_registry(
+    hives: list[str],
+    records: dict[str, SnapshotEntry],
+    ignored: list[str] | None = None,
+) -> None:
     if winreg is None:
         return
     hive_map = {"HKCU": winreg.HKEY_CURRENT_USER, "HKLM": winreg.HKEY_LOCAL_MACHINE}
@@ -350,14 +553,22 @@ def _scan_windows_registry(hives: list[str], records: dict[str, SnapshotEntry]) 
         hive = hive_map.get(prefix.upper())
         if hive is None:
             raise OracleError(ERR_CONFIG, f"unknown registry hive in {spec}")
-        _walk_registry_key(hive, prefix.upper(), subkey, records)
+        _walk_registry_key(hive, prefix.upper(), subkey, records, ignored)
 
 
-def _walk_registry_key(hive: int, hive_label: str, subkey: str, records: dict[str, SnapshotEntry]) -> None:
+def _walk_registry_key(
+    hive: int,
+    hive_label: str,
+    subkey: str,
+    records: dict[str, SnapshotEntry],
+    ignored: list[str] | None = None,
+) -> None:
     stack = [subkey]
     while stack:
         current = stack.pop()
         key_uri = f"reg://{hive_label}/{current.replace(chr(92), '/')}"
+        if ignored and _is_ignored(normalize_for_match(key_uri, OsName.WINDOWS), ignored, OsName.WINDOWS):
+            continue
         try:
             with winreg.OpenKey(hive, current, 0, winreg.KEY_READ) as handle:
                 nkeys, nvals, _ = winreg.QueryInfoKey(handle)
@@ -410,18 +621,36 @@ def capture_snapshot(
     profile: Profile,
     env: Mapping[str, str] | None = None,
     override_roots: list[str] | None = None,
+    *,
+    stat_cache: dict[str, tuple[tuple[Any, ...], SnapshotEntry]] | None = None,
+    system_stat_only: bool = False,
 ) -> dict[str, SnapshotEntry]:
     source = os.environ if env is None else env
     chunk_bytes = int(config["limits"]["read_chunk_bytes"])
     os_cfg = config["os"][os_name.value]
     raw_roots = override_roots if override_roots is not None else os_cfg[profile.value]["scan_roots"]
     ignored = [normalize_for_match(expand_path(p, os_name, source), os_name) for p in os_cfg.get("ignore_paths", [])]
+    full_prefixes, stat_prefixes = (
+        _system_stat_prefixes(config, os_name, profile, source) if system_stat_only else ([], [])
+    )
     records: dict[str, SnapshotEntry] = {}
     for raw_root in raw_roots:
-        _scan_fs_root(expand_path(raw_root, os_name, source), ignored, os_name, chunk_bytes, records)
+        _scan_fs_root(
+            expand_path(raw_root, os_name, source),
+            ignored,
+            os_name,
+            chunk_bytes,
+            records,
+            stat_cache=stat_cache,
+            full_prefixes=full_prefixes,
+            stat_prefixes=stat_prefixes,
+        )
 
     if os_name == OsName.WINDOWS and os.name == "nt" and override_roots is None:
-        _scan_windows_registry(os_cfg.get("windows_registry", []), records)
+        hives = list(os_cfg.get("windows_registry", []))
+        if system_stat_only and profile == Profile.USER:
+            hives = [h for h in hives if not h.upper().startswith("HKLM\\")]
+        _scan_windows_registry(hives, records, ignored)
         if os_cfg.get("windows_tasks"):
             _scan_windows_tasks(records)
         if os_cfg.get("windows_services"):

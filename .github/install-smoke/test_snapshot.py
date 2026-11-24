@@ -121,6 +121,96 @@ class RootsConfigTest(unittest.TestCase):
         self.assertTrue(snapshot.is_under_ours("task://\\grdr-daemon", win_ours, snapshot.OsName.WINDOWS))
         self.assertFalse(snapshot.is_under_ours("task://\\other\\grdr-daemon", win_ours, snapshot.OsName.WINDOWS))
 
+    def test_wildcard_ignore_paths_match_dir_and_descendants_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app_support = pathlib.Path(tmp) / "Library" / "Application Support"
+            apple_dir = app_support / "com.apple.wallpaper" / "Store"
+            apple_dir.mkdir(parents=True)
+            (apple_dir / "Index.plist").write_text("apple\n", encoding="utf-8")
+            grdr_dir = app_support / "grdr" / "bin"
+            grdr_dir.mkdir(parents=True)
+            (grdr_dir / "grdr").write_text("bin\n", encoding="utf-8")
+
+            host_os = snapshot.detect_host_os()
+            cfg = {
+                **self.cfg,
+                "os": {
+                    **self.cfg["os"],
+                    host_os.value: {
+                        **self.cfg["os"][host_os.value],
+                        "ignore_paths": [str(app_support / "com.apple.*")],
+                    },
+                },
+            }
+            entries = snapshot.capture_snapshot(
+                cfg,
+                host_os,
+                snapshot.Profile.USER,
+                override_roots=[str(app_support)],
+            )
+            norm_keys = {snapshot.normalize_for_match(k, host_os) for k in entries}
+            self.assertIn(snapshot.normalize_for_match(str(grdr_dir / "grdr"), host_os), norm_keys)
+            self.assertNotIn(snapshot.normalize_for_match(str(app_support / "com.apple.wallpaper"), host_os), norm_keys)
+            self.assertNotIn(snapshot.normalize_for_match(str(apple_dir / "Index.plist"), host_os), norm_keys)
+
+    def test_virtual_registry_expand_and_ignore_boundary(self) -> None:
+        raw = "reg://HKCU/Software/Classes/Local Settings/MuiCache"
+        expanded = snapshot.expand_path(raw, snapshot.OsName.WINDOWS, {})
+        self.assertEqual(expanded, raw)
+        ignored = [snapshot.normalize_for_match(expanded, snapshot.OsName.WINDOWS)]
+        self.assertTrue(snapshot._is_ignored("reg://hkcu/software/classes/local settings/muicache", ignored, snapshot.OsName.WINDOWS))
+        self.assertTrue(snapshot._is_ignored("reg://hkcu/software/classes/local settings/muicache/sub", ignored, snapshot.OsName.WINDOWS))
+        self.assertTrue(snapshot._is_ignored("reg://hkcu/software/classes/local settings/muicache::entry", ignored, snapshot.OsName.WINDOWS))
+        self.assertFalse(snapshot._is_ignored("reg://hkcu/software/classes/local settings/muicache-other", ignored, snapshot.OsName.WINDOWS))
+        self.assertFalse(snapshot._is_ignored("reg://hkcu/software/grdr", ignored, snapshot.OsName.WINDOWS))
+        self.assertFalse(snapshot._is_ignored("reg://hkcu/software/grdr::version", ignored, snapshot.OsName.WINDOWS))
+
+    def test_windows_non_symlink_reparse_point_records_unreadable(self) -> None:
+        fake_stat = unittest.mock.Mock(
+            st_mode=0o100666,
+            st_file_attributes=snapshot.WINDOWS_REPARSE_ATTR,
+        )
+        with (
+            unittest.mock.patch.object(snapshot.os, "readlink", side_effect=ValueError("not a symbolic link")),
+            unittest.mock.patch.object(snapshot, "_windows_owner_sid", return_value="S-1-5-18"),
+        ):
+            entry = snapshot._entry_metadata(
+                "C:\\Users\\alice\\AppData\\Local\\Microsoft\\WindowsApps\\python3.exe",
+                fake_stat,
+                snapshot.OsName.WINDOWS,
+                65536,
+            )
+        self.assertEqual(entry.kind, snapshot.EntryKind.SYMLINK)
+        self.assertEqual(entry.sha256, "symlink:<unreadable>")
+
+    def test_stat_cache_reuses_unchanged_entries_and_invalidates_on_change(self) -> None:
+        host_os = snapshot.detect_host_os()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp) / "scan_root"
+            root.mkdir()
+            target = root / "sample.bin"
+            target.write_bytes(b"alpha")
+            cfg = {
+                **self.cfg,
+                "os": {
+                    **self.cfg["os"],
+                    host_os.value: {**self.cfg["os"][host_os.value], "ignore_paths": []},
+                },
+            }
+            cache: dict[str, tuple[tuple[object, ...], snapshot.SnapshotEntry]] = {}
+            orig_sha = snapshot._sha256_file
+            with unittest.mock.patch.object(snapshot, "_sha256_file", wraps=orig_sha) as sha_mock:
+                first = snapshot.capture_snapshot(cfg, host_os, snapshot.Profile.USER, override_roots=[str(root)], stat_cache=cache)
+                self.assertEqual(sha_mock.call_count, 1)
+                second = snapshot.capture_snapshot(cfg, host_os, snapshot.Profile.USER, override_roots=[str(root)], stat_cache=cache)
+                self.assertEqual(sha_mock.call_count, 1)
+                self.assertEqual(first[str(target)], second[str(target)])
+
+                target.write_bytes(b"beta-longer")
+                third = snapshot.capture_snapshot(cfg, host_os, snapshot.Profile.USER, override_roots=[str(root)], stat_cache=cache)
+                self.assertEqual(sha_mock.call_count, 2)
+                self.assertNotEqual(first[str(target)].sha256, third[str(target)].sha256)
+
 
 class PlannerTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -763,6 +853,23 @@ class R4AndR5LocalTest(unittest.TestCase):
                     runner_exec._verify_unelevated_windows_token(token)
         finally:
             runner_exec._KERNEL32.CloseHandle(token)
+
+    @unittest.skipUnless(os.name == "nt", "Windows-only token test")
+    def test_windows_deelevated_child_inherits_valid_stdin_handle(self) -> None:
+        child_script = (
+            "import subprocess, sys; "
+            "r = subprocess.run([sys.executable, '-I', '-c', 'print(42)'], "
+            "capture_output=True, text=True, check=True); "
+            "print(r.stdout.strip())"
+        )
+        res = runner_exec._run_with_windows_token(
+            [sys.executable, "-I", "-c", child_script],
+            os.environ,
+            ROOT,
+            15,
+        )
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(res.stdout.strip(), "42")
 
     def test_run_self_test_scopes_to_isolated_roots(self) -> None:
         seen_roots: list[list[str] | None] = []

@@ -42,6 +42,8 @@ from snapshot import (
     unexpected_diffs_outside_ours,
 )
 
+_DEFAULT_CAPTURE_SNAPSHOT = capture_snapshot
+
 ERR_UNIT_LINT = "GRDR-GATE-0014"
 ERR_SELF_TEST = "GRDR-GATE-0015"
 REQUIRED_CELL_KEYS = ("id", "runner", "profile", "build", "install", "choose", "uninstall")
@@ -270,6 +272,14 @@ def _verify_hook_status(
     return "hook status JSON did not report installed entries"
 
 
+def _step_exit_reason(prefix: str, stderr: str) -> str:
+    collapsed = " ".join(stderr.split())
+    if not collapsed:
+        return prefix
+    tail = collapsed[-300:] if len(collapsed) > 300 else collapsed
+    return f"{prefix}: {tail}"
+
+
 def run_r4_cell(
     cell: CellSpec,
     roots_cfg: Mapping[str, Any],
@@ -296,8 +306,21 @@ def run_r4_cell(
     def run_cmd(cmd: str, *, elevated: bool = False) -> CommandResult:
         return run_step_command(cmd, os_name, cell.profile, run_env, repo_root, timeout, elevated=elevated)
 
+    stat_cache: dict[str, tuple[tuple[Any, ...], SnapshotEntry]] = {}
+
     def snap() -> dict[str, SnapshotEntry]:
-        return capture_snapshot(roots_cfg, os_name, cell.profile, run_env, override_roots=override_roots)
+        if override_roots is not None:
+            return capture_snapshot(roots_cfg, os_name, cell.profile, run_env, override_roots=override_roots)
+        if capture_snapshot is _DEFAULT_CAPTURE_SNAPSHOT:
+            return capture_snapshot(
+                roots_cfg,
+                os_name,
+                cell.profile,
+                run_env,
+                stat_cache=stat_cache,
+                system_stat_only=True,
+            )
+        return capture_snapshot(roots_cfg, os_name, cell.profile, run_env)
 
     seed_src = repo_root / roots_cfg["limits"]["claude_seed_fixture"]
     try:
@@ -310,11 +333,12 @@ def run_r4_cell(
         return fail(StepName.SEED, f"cannot seed Claude settings: {type(err).__name__}")
 
     snap_s0 = snap()
-    if run_cmd(cell.build).returncode != 0:
-        return fail(StepName.INSTALL, "build exited non-zero")
+    build_res = run_cmd(cell.build)
+    if build_res.returncode != 0:
+        return fail(StepName.INSTALL, _step_exit_reason("build exited non-zero", build_res.stderr))
     inst_res = run_cmd(cell.install, elevated=needs_elevated)
     if inst_res.returncode != 0:
-        return fail(StepName.INSTALL, f"install exited {inst_res.returncode}")
+        return fail(StepName.INSTALL, _step_exit_reason(f"install exited {inst_res.returncode}", inst_res.stderr))
 
     snap_s1 = snap()
     bad_s1 = unexpected_diffs_outside_ours(diff_snapshots(snap_s0, snap_s1), snap_s1, patterns, os_name)
@@ -324,7 +348,7 @@ def run_r4_cell(
 
     rerun_res = run_cmd(cell.install, elevated=needs_elevated)
     if rerun_res.returncode != 0:
-        return fail(StepName.INSTALL_RERUN, f"install re-run exited {rerun_res.returncode}")
+        return fail(StepName.INSTALL_RERUN, _step_exit_reason(f"install re-run exited {rerun_res.returncode}", rerun_res.stderr))
     rerun_diffs = diff_snapshots(snap_s1, snap())
     if rerun_diffs:
         return fail(StepName.INSTALL_RERUN, "re-run not idempotent:\n" + "\n".join(format_diff(rerun_diffs)))
@@ -332,7 +356,7 @@ def run_r4_cell(
 
     choose_res = run_cmd(cell.choose, elevated=needs_elevated)
     if choose_res.returncode != 0:
-        return fail(StepName.CHOOSE, f"choose exited {choose_res.returncode}")
+        return fail(StepName.CHOOSE, _step_exit_reason(f"choose exited {choose_res.returncode}", choose_res.stderr))
     snap_choose = snap()
     choose_errs = verify_choose_changes(snap_s1, snap_choose, roots_cfg, os_name, cell.profile, seeded_bytes, run_env)
     if choose_errs:
@@ -355,7 +379,7 @@ def run_r4_cell(
 
     uninst_res = run_cmd(cell.uninstall, elevated=needs_elevated)
     if uninst_res.returncode != 0:
-        return fail(StepName.UNINSTALL, f"uninstall exited {uninst_res.returncode}")
+        return fail(StepName.UNINSTALL, _step_exit_reason(f"uninstall exited {uninst_res.returncode}", uninst_res.stderr))
     s2_diffs = diff_snapshots(snap_s0, snap())
     if s2_diffs:
         return fail(StepName.UNINSTALL, "post-uninstall snapshot differs from S0:\n" + "\n".join(format_diff(s2_diffs)))
@@ -365,6 +389,18 @@ def run_r4_cell(
 
 def isolated_env(home_dir: pathlib.Path, base_env: Mapping[str, str]) -> dict[str, str]:
     env = dict(base_env)
+    orig_home_raw = (base_env.get("USERPROFILE") or base_env.get("HOME")) if os.name == "nt" else base_env.get("HOME")
+    if orig_home_raw:
+        orig_home = pathlib.Path(orig_home_raw)
+        env["CARGO_HOME"] = base_env.get("CARGO_HOME") or str(orig_home / ".cargo")
+        env["RUSTUP_HOME"] = base_env.get("RUSTUP_HOME") or str(orig_home / ".rustup")
+    home_dir.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        subprocess.run(
+            ["icacls", str(home_dir), "/grant", "*S-1-5-11:(OI)(CI)F", "/T", "/Q"],
+            check=False,
+            capture_output=True,
+        )
     env["HOME"] = str(home_dir)
     env["XDG_CONFIG_HOME"] = str(home_dir / ".config")
     env["XDG_DATA_HOME"] = str(home_dir / ".local" / "share")

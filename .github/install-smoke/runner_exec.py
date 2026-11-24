@@ -24,9 +24,8 @@ from snapshot import OracleError, OsName, Profile
 ERR_CONFIG = "GRDR-GATE-0010"
 ERR_ELEVATION = "GRDR-GATE-0013"
 
-SAFER_SCOPEID_MACHINE = 1
-SAFER_LEVELID_NORMALUSER = 0x20000
-SAFER_LEVEL_OPEN = 1
+DISABLE_MAX_PRIVILEGE = 0x1
+LUA_TOKEN = 0x4
 TOKEN_ELEVATION = 20
 TOKEN_INTEGRITY_LEVEL = 25
 TOKEN_QUERY = 0x0008
@@ -131,16 +130,18 @@ if os.name == "nt":
     _ADVAPI32.DuplicateToken.restype = wintypes.BOOL
     _ADVAPI32.CheckTokenMembership.argtypes = [wintypes.HANDLE, ctypes.c_void_p, ctypes.POINTER(wintypes.BOOL)]
     _ADVAPI32.CheckTokenMembership.restype = wintypes.BOOL
-    _ADVAPI32.SaferCreateLevel.argtypes = [
-        wintypes.DWORD, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p
+    _ADVAPI32.CreateRestrictedToken.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        ctypes.POINTER(wintypes.HANDLE),
     ]
-    _ADVAPI32.SaferCreateLevel.restype = wintypes.BOOL
-    _ADVAPI32.SaferComputeTokenFromLevel.argtypes = [
-        ctypes.c_void_p, wintypes.HANDLE, ctypes.POINTER(wintypes.HANDLE), wintypes.DWORD, ctypes.c_void_p
-    ]
-    _ADVAPI32.SaferComputeTokenFromLevel.restype = wintypes.BOOL
-    _ADVAPI32.SaferCloseLevel.argtypes = [ctypes.c_void_p]
-    _ADVAPI32.SaferCloseLevel.restype = wintypes.BOOL
+    _ADVAPI32.CreateRestrictedToken.restype = wintypes.BOOL
     _ADVAPI32.CreateProcessAsUserW.argtypes = [
         wintypes.HANDLE, wintypes.LPCWSTR, wintypes.LPWSTR, ctypes.c_void_p, ctypes.c_void_p,
         wintypes.BOOL, wintypes.DWORD, ctypes.c_void_p, wintypes.LPCWSTR,
@@ -243,19 +244,21 @@ def _create_unelevated_windows_token() -> wintypes.HANDLE:
     proc_token = wintypes.HANDLE()
     desired = TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_ADJUST_DEFAULT
     if not _ADVAPI32.OpenProcessToken(_KERNEL32.GetCurrentProcess(), desired, ctypes.byref(proc_token)):
-        raise OracleError(ERR_ELEVATION, "OpenProcessToken failed")
+        raise OracleError(ERR_ELEVATION, f"OpenProcessToken failed ({ctypes.get_last_error()})")
     try:
-        level = ctypes.c_void_p()
-        if not _ADVAPI32.SaferCreateLevel(
-            SAFER_SCOPEID_MACHINE, SAFER_LEVELID_NORMALUSER, SAFER_LEVEL_OPEN, ctypes.byref(level), None
-        ):
-            raise OracleError(ERR_ELEVATION, "SaferCreateLevel failed")
         restricted = wintypes.HANDLE()
-        try:
-            if not _ADVAPI32.SaferComputeTokenFromLevel(level, proc_token, ctypes.byref(restricted), 0, None):
-                raise OracleError(ERR_ELEVATION, "SaferComputeTokenFromLevel failed")
-        finally:
-            _ADVAPI32.SaferCloseLevel(level)
+        if not _ADVAPI32.CreateRestrictedToken(
+            proc_token,
+            DISABLE_MAX_PRIVILEGE | LUA_TOKEN,
+            0,
+            None,
+            0,
+            None,
+            0,
+            None,
+            ctypes.byref(restricted),
+        ):
+            raise OracleError(ERR_ELEVATION, f"CreateRestrictedToken failed ({ctypes.get_last_error()})")
         try:
             _set_medium_integrity(restricted)
             _verify_unelevated_windows_token(restricted)
@@ -274,21 +277,35 @@ def _run_with_windows_token(
     timeout_seconds: int,
 ) -> CommandResult:
     sa = _SecurityAttributes(ctypes.sizeof(_SecurityAttributes), None, True)
+    in_r, in_w = wintypes.HANDLE(), wintypes.HANDLE()
     out_r, out_w = wintypes.HANDLE(), wintypes.HANDLE()
     err_r, err_w = wintypes.HANDLE(), wintypes.HANDLE()
+    if not _KERNEL32.CreatePipe(ctypes.byref(in_r), ctypes.byref(in_w), ctypes.byref(sa), 0):
+        raise OracleError(ERR_ELEVATION, "CreatePipe stdin failed")
     if not _KERNEL32.CreatePipe(ctypes.byref(out_r), ctypes.byref(out_w), ctypes.byref(sa), 0):
+        _KERNEL32.CloseHandle(in_r)
+        _KERNEL32.CloseHandle(in_w)
         raise OracleError(ERR_ELEVATION, "CreatePipe stdout failed")
     if not _KERNEL32.CreatePipe(ctypes.byref(err_r), ctypes.byref(err_w), ctypes.byref(sa), 0):
+        _KERNEL32.CloseHandle(in_r)
+        _KERNEL32.CloseHandle(in_w)
         _KERNEL32.CloseHandle(out_r)
         _KERNEL32.CloseHandle(out_w)
         raise OracleError(ERR_ELEVATION, "CreatePipe stderr failed")
+    _KERNEL32.SetHandleInformation(in_w, HANDLE_FLAG_INHERIT, 0)
     _KERNEL32.SetHandleInformation(out_r, HANDLE_FLAG_INHERIT, 0)
     _KERNEL32.SetHandleInformation(err_r, HANDLE_FLAG_INHERIT, 0)
 
-    token = _create_unelevated_windows_token()
+    try:
+        token = _create_unelevated_windows_token()
+    except Exception:
+        for handle in (in_r, in_w, out_r, out_w, err_r, err_w):
+            _KERNEL32.CloseHandle(handle)
+        raise
     si = _StartupInfoW()
     si.cb = ctypes.sizeof(_StartupInfoW)
     si.dwFlags = STARTF_USESTDHANDLES
+    si.hStdInput = in_r
     si.hStdOutput = out_w
     si.hStdError = err_w
     pi = _ProcessInfo()
@@ -299,6 +316,8 @@ def _run_with_windows_token(
         str(cwd), ctypes.byref(si), ctypes.byref(pi),
     )
     _KERNEL32.CloseHandle(token)
+    _KERNEL32.CloseHandle(in_r)
+    _KERNEL32.CloseHandle(in_w)
     _KERNEL32.CloseHandle(out_w)
     _KERNEL32.CloseHandle(err_w)
     if not ok:
