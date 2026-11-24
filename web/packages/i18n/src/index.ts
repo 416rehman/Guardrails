@@ -14,6 +14,36 @@ export type OperatorRouteId =
   | "op-settings"
   | "op-audit";
 
+export type InventorySectionId =
+  | "endpoints"
+  | "agents"
+  | "mcps"
+  | "skills"
+  | "connect";
+
+export type SessionsSectionId = "graph" | "trace" | "timeline";
+
+export type ProtectSectionId = "rules" | "browser";
+
+export interface ConsoleNavChild {
+  id: string;
+  labelKey: keyof typeof MESSAGES;
+  iconKey: string;
+}
+
+export interface ConsoleNavItem {
+  id: ConsoleRouteId;
+  labelKey: keyof typeof MESSAGES;
+  iconKey: string;
+  children?: ReadonlyArray<ConsoleNavChild>;
+}
+
+export interface ConsoleNavGroup {
+  id: "overview" | "fleet" | "protection";
+  labelKey: keyof typeof MESSAGES;
+  items: ReadonlyArray<ConsoleNavItem>;
+}
+
 export const CONSOLE_ROUTES: ReadonlyArray<{
   id: ConsoleRouteId;
   labelKey: keyof typeof MESSAGES;
@@ -27,6 +57,63 @@ export const CONSOLE_ROUTES: ReadonlyArray<{
   { id: "respond", labelKey: "console.nav.respond", iconKey: "nav.respond" },
   { id: "coverage", labelKey: "console.nav.coverage", iconKey: "nav.coverage" },
   { id: "tester", labelKey: "console.nav.tester", iconKey: "nav.tester" },
+];
+
+export const CONSOLE_NAV_GROUPS: ReadonlyArray<ConsoleNavGroup> = [
+  {
+    id: "overview",
+    labelKey: "console.nav.group.overview",
+    items: [
+      { id: "home", labelKey: "console.nav.home", iconKey: "nav.home" },
+      { id: "coverage", labelKey: "console.nav.coverage", iconKey: "nav.coverage" },
+    ],
+  },
+  {
+    id: "fleet",
+    labelKey: "console.nav.group.fleet",
+    items: [
+      { id: "users", labelKey: "console.nav.users", iconKey: "nav.users" },
+      {
+        id: "inventory",
+        labelKey: "console.nav.inventory",
+        iconKey: "nav.inventory",
+        children: [
+          { id: "endpoints", labelKey: "console.nav.inventory.endpoints", iconKey: "hard-drive" },
+          { id: "agents", labelKey: "console.nav.inventory.agents", iconKey: "cpu" },
+          { id: "mcps", labelKey: "console.nav.inventory.mcps", iconKey: "plug" },
+          { id: "skills", labelKey: "console.nav.inventory.skills", iconKey: "file-code" },
+          { id: "connect", labelKey: "console.nav.inventory.connect", iconKey: "key-round" },
+        ],
+      },
+      {
+        id: "sessions",
+        labelKey: "console.nav.sessions",
+        iconKey: "nav.sessions",
+        children: [
+          { id: "graph", labelKey: "console.nav.sessions.graph", iconKey: "git-branch" },
+          { id: "trace", labelKey: "console.nav.sessions.trace", iconKey: "route" },
+          { id: "timeline", labelKey: "console.nav.sessions.timeline", iconKey: "list" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "protection",
+    labelKey: "console.nav.group.protection",
+    items: [
+      {
+        id: "protect",
+        labelKey: "console.nav.protect",
+        iconKey: "nav.protect",
+        children: [
+          { id: "rules", labelKey: "console.nav.protect.rules", iconKey: "shield" },
+          { id: "browser", labelKey: "console.nav.protect.browser", iconKey: "globe" },
+        ],
+      },
+      { id: "respond", labelKey: "console.nav.respond", iconKey: "nav.respond" },
+      { id: "tester", labelKey: "console.nav.tester", iconKey: "nav.tester" },
+    ],
+  },
 ];
 
 export const OPERATOR_ROUTES: ReadonlyArray<{
@@ -47,11 +134,24 @@ export const MESSAGES = {
   "console.nav.home": "Home",
   "console.nav.users": "Users",
   "console.nav.inventory": "Inventory",
+  "console.nav.inventory.endpoints": "Endpoints",
+  "console.nav.inventory.agents": "Agents",
+  "console.nav.inventory.mcps": "MCP servers",
+  "console.nav.inventory.skills": "Skills & rules",
+  "console.nav.inventory.connect": "Connect & MDM",
   "console.nav.sessions": "Sessions",
+  "console.nav.sessions.graph": "Sessions",
+  "console.nav.sessions.trace": "Trace waterfall",
+  "console.nav.sessions.timeline": "Timeline",
   "console.nav.protect": "Protect",
+  "console.nav.protect.rules": "Policy rules",
+  "console.nav.protect.browser": "Browser AI",
   "console.nav.respond": "Respond",
   "console.nav.coverage": "Coverage",
   "console.nav.tester": "Live Tester",
+  "console.nav.group.overview": "Overview",
+  "console.nav.group.fleet": "Fleet & Activity",
+  "console.nav.group.protection": "Protection & Response",
   "operator.nav.overview": "Overview",
   "operator.nav.health": "Health",
   "operator.nav.settings": "Settings",
