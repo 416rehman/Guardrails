@@ -31,6 +31,8 @@ pub struct PolicyRule {
     pub would_ask_hits: u64,
     pub would_block_hits: u64,
     pub reason_template: String,
+    #[serde(default)]
+    pub cedar: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

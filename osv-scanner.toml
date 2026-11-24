@@ -1,0 +1,7 @@
+# Scoped ignore for informational upstream unmaintained notice in Cargo.lock.
+# Zero CVSS / zero security vulnerability; transitive chrono dep of cedar-policy-core datetime feature.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0543"
+ignoreUntil = 2027-06-01
+reason = "Informational unmaintained notice for chrono; transitive dep of cedar-policy-core datetime feature with no upstream replacement yet."

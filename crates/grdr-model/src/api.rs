@@ -248,6 +248,8 @@ pub struct CreateRuleInput {
     pub min_grade: Option<ApprovalGrade>,
     pub matcher: RuleMatch,
     pub reason_template: String,
+    #[serde(default)]
+    pub cedar: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -265,6 +267,8 @@ pub struct UpdateRuleInput {
     pub min_grade: Option<ApprovalGrade>,
     pub matcher: Option<RuleMatch>,
     pub reason_template: Option<String>,
+    #[serde(default)]
+    pub cedar: Option<String>,
     pub actor: Option<String>,
 }
 

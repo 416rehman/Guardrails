@@ -337,6 +337,7 @@ mod tests {
                 agents: vec![],
             },
             reason_template: "Production database access requires admin approval.".into(),
+            cedar: None,
         };
         let resp = app
             .clone()
@@ -853,6 +854,7 @@ mod tests {
                 agents: vec![],
             },
             reason_template: "Monitor /tmp/secret".into(),
+            cedar: None,
         };
         let created_resp = app
             .clone()
@@ -887,6 +889,7 @@ mod tests {
                             min_grade: Some(ApprovalGrade::G2),
                             matcher: None,
                             reason_template: None,
+                            cedar: None,
                             actor: None,
                         })
                         .unwrap(),
@@ -904,6 +907,44 @@ mod tests {
         .unwrap();
         assert_eq!(patched_rule.mode, Mode::Ask);
         assert_eq!(patched_rule.title, "Ask on temp secret writes");
+        assert!(
+            patched_rule
+                .cedar
+                .as_deref()
+                .unwrap_or("")
+                .contains("forbid")
+        );
+
+        let bad_cedar = CreateRuleInput {
+            pack_id: None,
+            title: "Invalid permit rule".into(),
+            description: "Should be rejected".into(),
+            mode: Mode::Ask,
+            min_grade: None,
+            matcher: RuleMatch {
+                action_classes: vec![ActionClass::Exec],
+                target_prefixes: vec![],
+                target_contains: vec!["echo".into()],
+                agents: vec![],
+            },
+            reason_template: "Reject permit".into(),
+            cedar: Some(
+                r#"permit (principal is Grdr::Session, action == Grdr::Action::"exec", resource);"#
+                    .into(),
+            ),
+        };
+        let bad_resp = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/policies/rules")
+                    .header("authorization", "Bearer op-secret-123")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&bad_cedar).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(bad_resp.status(), StatusCode::BAD_REQUEST);
 
         let del_resp = app
             .clone()

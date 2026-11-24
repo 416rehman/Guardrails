@@ -2,6 +2,8 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 #![deny(clippy::arithmetic_side_effects)]
 
+pub mod cedar;
+
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
