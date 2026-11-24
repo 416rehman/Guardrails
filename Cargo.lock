@@ -510,6 +510,21 @@ dependencies = [
 [[package]]
 name = "grdr-engine"
 version = "0.1.0"
+dependencies = [
+ "clap",
+ "grdr-core",
+ "grdr-crypto",
+ "grdr-model",
+ "grdr-ports",
+ "grdr-ports-testkit",
+ "grdr-proto",
+ "grdr-store-local",
+ "grdr-wire",
+ "jiff",
+ "serde",
+ "serde_json",
+ "uuid",
+]
 
 [[package]]
 name = "grdr-fastpath"
@@ -586,6 +601,11 @@ dependencies = [
 [[package]]
 name = "grdr-proto"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+]
 
 [[package]]
 name = "grdr-sandbox-engine"
@@ -609,6 +629,13 @@ dependencies = [
 [[package]]
 name = "grdr-sensor-linux"
 version = "0.1.0"
+dependencies = [
+ "grdr-model",
+ "grdr-ports",
+ "grdr-ports-testkit",
+ "jiff",
+ "thiserror",
+]
 
 [[package]]
 name = "grdr-server"

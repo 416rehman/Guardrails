@@ -18,8 +18,10 @@ grdr-llm-proto = { version = "0.1.0", path = "crates/grdr-llm-proto" }
 grdr-model = { version = "0.1.0", path = "crates/grdr-model" }
 grdr-ports = { version = "0.1.0", path = "crates/grdr-ports" }
 grdr-ports-testkit = { version = "0.1.0", path = "crates/grdr-ports-testkit" }
+grdr-proto = { version = "0.1.0", path = "crates/grdr-proto" }
 grdr-sandbox-engine = { version = "0.1.0", path = "crates/grdr-sandbox-engine" }
 grdr-schema = { version = "0.1.0", path = "crates/grdr-schema" }
+grdr-sensor-linux = { version = "0.1.0", path = "crates/grdr-sensor-linux" }
 grdr-store-local = { version = "0.1.0", path = "crates/grdr-store-local" }
 grdr-wire = { version = "0.1.0", path = "crates/grdr-wire" }
 jiff = { version = "0.2", features = ["serde"] }
