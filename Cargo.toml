@@ -11,7 +11,9 @@ ed25519-dalek = { version = "3.0", default-features = false, features = ["fast"]
 futures-util = "0.3"
 getrandom = "0.4"
 grdr-agents = { version = "0.1.0", path = "crates/grdr-agents" }
+grdr-blob = { version = "0.1.0", path = "crates/grdr-blob" }
 grdr-broker = { version = "0.1.0", path = "crates/grdr-broker" }
+grdr-bus-log = { version = "0.1.0", path = "crates/grdr-bus-log" }
 grdr-compat = { version = "0.1.0", path = "crates/grdr-compat" }
 grdr-core = { version = "0.1.0", path = "crates/grdr-core" }
 grdr-crypto = { version = "0.1.0", path = "crates/grdr-crypto" }
@@ -19,6 +21,7 @@ grdr-export = { version = "0.1.0", path = "crates/grdr-export" }
 grdr-fastpath = { version = "0.1.0", path = "crates/grdr-fastpath" }
 grdr-fastpath-ffi = { version = "0.1.0", path = "crates/grdr-fastpath-ffi" }
 grdr-ffi = { version = "0.1.0", path = "crates/grdr-ffi" }
+grdr-jobs = { version = "0.1.0", path = "crates/grdr-jobs" }
 grdr-llm-proto = { version = "0.1.0", path = "crates/grdr-llm-proto" }
 grdr-mcp-proto = { version = "0.1.0", path = "crates/grdr-mcp-proto" }
 grdr-messages = { version = "0.1.0", path = "crates/grdr-messages" }
@@ -26,6 +29,7 @@ grdr-model = { version = "0.1.0", path = "crates/grdr-model" }
 grdr-ports = { version = "0.1.0", path = "crates/grdr-ports" }
 grdr-ports-testkit = { version = "0.1.0", path = "crates/grdr-ports-testkit" }
 grdr-proto = { version = "0.1.0", path = "crates/grdr-proto" }
+grdr-rel-sqlite = { version = "0.1.0", path = "crates/grdr-rel-sqlite" }
 grdr-review = { version = "0.1.0", path = "crates/grdr-review" }
 grdr-sandbox-engine = { version = "0.1.0", path = "crates/grdr-sandbox-engine" }
 grdr-schema = { version = "0.1.0", path = "crates/grdr-schema" }
@@ -37,6 +41,7 @@ grdr-wasm = { version = "0.1.0", path = "crates/grdr-wasm" }
 grdr-wire = { version = "0.1.0", path = "crates/grdr-wire" }
 jiff = { version = "1.0", features = ["serde"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "charset"] }
+rusqlite = { version = "0.43", default-features = false, features = ["bundled"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.11"

@@ -12,7 +12,6 @@ use grdr_model::{
 };
 
 use super::AppState;
-use super::persistence::persist_snapshot;
 
 impl AppState {
     pub async fn create_rule(&self, input: CreateRuleInput) -> Result<PolicyRule, CodedError> {
@@ -71,9 +70,7 @@ impl AppState {
                     target: rule.id.clone(),
                 },
             );
-            if let Some(dir) = &self.data_dir {
-                persist_snapshot(dir, &guard)?;
-            }
+            self.persist_store(&guard)?;
         }
 
         self.emit_live(
@@ -142,9 +139,7 @@ impl AppState {
                     target: rule.id.clone(),
                 },
             );
-            if let Some(dir) = &self.data_dir {
-                persist_snapshot(dir, &guard)?;
-            }
+            self.persist_store(&guard)?;
             rule
         };
 
@@ -227,9 +222,7 @@ impl AppState {
                     target: rule.id.clone(),
                 },
             );
-            if let Some(dir) = &self.data_dir {
-                persist_snapshot(dir, &guard)?;
-            }
+            self.persist_store(&guard)?;
             rule
         };
 
@@ -281,9 +274,7 @@ impl AppState {
                     target: rule.id.clone(),
                 },
             );
-            if let Some(dir) = &self.data_dir {
-                persist_snapshot(dir, &guard)?;
-            }
+            self.persist_store(&guard)?;
             rule
         };
 

@@ -15,7 +15,6 @@ use grdr_model::{
     UserDetailResponse, UserProfile, Verdict, compute_user_risk, summarize_sessions,
 };
 
-use super::persistence::persist_snapshot;
 use super::{AppState, StoreData};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -409,9 +408,7 @@ impl AppState {
                 target: "org-privacy".into(),
             },
         );
-        if let Some(dir) = &self.data_dir {
-            persist_snapshot(dir, &guard)?;
-        }
+        self.persist_store(&guard)?;
         drop(guard);
         self.emit_live(
             "privacy.updated",

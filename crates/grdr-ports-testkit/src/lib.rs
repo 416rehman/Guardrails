@@ -2,8 +2,22 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 #![deny(clippy::arithmetic_side_effects)]
 
+pub mod contract_blob_jobs;
+pub mod contract_rel_bus;
+pub mod mem_blob;
+pub mod mem_bus;
+pub mod mem_jobs;
+pub mod mem_relational;
+
 use std::collections::VecDeque;
 use std::sync::Mutex;
+
+pub use contract_blob_jobs::{assert_blob_port_contract, assert_job_port_contract};
+pub use contract_rel_bus::{assert_bus_port_contract, assert_relational_store_contract};
+pub use mem_blob::MemoryBlobStore;
+pub use mem_bus::MemoryLogBus;
+pub use mem_jobs::MemoryJobJournal;
+pub use mem_relational::MemoryRelationalStore;
 
 use jiff::Timestamp;
 
@@ -428,5 +442,17 @@ mod tests {
 
         let sandbox = StubSandboxAdapter;
         assert!(assert_sandbox_port_contract(&sandbox).is_ok());
+
+        let rel = MemoryRelationalStore::default();
+        assert!(assert_relational_store_contract(&rel).is_ok());
+
+        let bus = MemoryLogBus::default();
+        assert!(assert_bus_port_contract(&bus).is_ok());
+
+        let blobs = MemoryBlobStore::default();
+        assert!(assert_blob_port_contract(&blobs).is_ok());
+
+        let jobs = MemoryJobJournal::default();
+        assert!(assert_job_port_contract(&jobs).is_ok());
     }
 }

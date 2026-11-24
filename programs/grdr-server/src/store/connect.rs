@@ -14,7 +14,6 @@ use super::AppState;
 use super::connect_mdm::{
     CODE_CONNECT_INVALID, DEMO_ORIGIN, default_installers, render_mdm_artifact,
 };
-use super::persistence::persist_snapshot;
 
 const CODE_CONNECT_NOT_FOUND: &str = "GRDR-CONNECT-0002";
 const MAX_KEY_USES: u32 = 50_000;
@@ -129,9 +128,7 @@ impl AppState {
                 timestamp: now,
             },
         );
-        if let Some(dir) = &self.data_dir {
-            persist_snapshot(dir, &guard)?;
-        }
+        self.persist_store(&guard)?;
 
         Ok(CreateDeploymentKeyResponse {
             key,
@@ -174,9 +171,7 @@ impl AppState {
                 timestamp: now,
             },
         );
-        if let Some(dir) = &self.data_dir {
-            persist_snapshot(dir, &guard)?;
-        }
+        self.persist_store(&guard)?;
         Ok(updated)
     }
 
@@ -267,9 +262,7 @@ impl AppState {
                 timestamp: now,
             },
         );
-        if let Some(dir) = &self.data_dir {
-            persist_snapshot(dir, &guard)?;
-        }
+        self.persist_store(&guard)?;
         Ok(updated)
     }
 }

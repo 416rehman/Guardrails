@@ -1,81 +1,322 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
-use std::fs;
+use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::Mutex;
 
 use jiff::Timestamp;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 use uuid::Uuid;
 
+use grdr_blob::FilesystemBlobStore;
+use grdr_bus_log::SqliteLogBus;
 use grdr_core::detect;
-use grdr_model::error::CODE_STORE_IO;
+use grdr_jobs::SqliteJobJournal;
+use grdr_model::error::{CODE_STORE_CORRUPT, CODE_STORE_IO};
 use grdr_model::eval::add_seconds;
 use grdr_model::{
     ActionAttempt, ApprovalGrade, ApprovalRequest, ApprovalState, CodedError, DecisionReceipt,
-    PolicyPack, Verdict,
+    PolicyPack, Verdict, summarize_sessions,
 };
+use grdr_ports::{
+    BlobPort, BusAppendMessage, BusPort, DeviceRepo, FencingToken, FindingRepo, JobPort,
+    KvSnapshotRepo, LeaseAcquireOutcome, LeaseState, OrgId, PolicyRepo, SessionSummaryRepo,
+    SingleCtx, TenantCtx, TenantPath, TenantUserRecord, UserRepo,
+};
+use grdr_rel_sqlite::SqliteRelationalStore;
 
+use super::users::DirectoryUserRecord;
 use super::{MAX_RETAINED_EVENTS, StoreData};
 
-pub(crate) fn persist_snapshot(dir: &Path, data: &StoreData) -> Result<(), CodedError> {
-    fs::create_dir_all(dir).map_err(|e| {
-        CodedError::new(
-            CODE_STORE_IO,
-            format!("Unable to create {}: {e}", dir.display()),
-            "Verify disk permissions.",
-        )
-    })?;
-    let tmp = dir.join("state.json.tmp");
-    let final_path = dir.join("state.json");
-    let json = serde_json::to_string_pretty(data).map_err(|e| {
-        CodedError::new(
-            CODE_STORE_IO,
-            format!("Failed serializing snapshot: {e}"),
-            "Retry persistence.",
-        )
-    })?;
-    fs::write(&tmp, json).map_err(|e| {
-        CodedError::new(
-            CODE_STORE_IO,
-            format!("Failed writing temp snapshot {}: {e}", tmp.display()),
-            "Check free disk space.",
-        )
-    })?;
-    fs::rename(&tmp, &final_path).map_err(|e| {
-        CodedError::new(
-            CODE_STORE_IO,
-            format!("Failed committing snapshot {}: {e}", final_path.display()),
-            "Verify target is writable.",
-        )
-    })
+const EMBEDDED_ORG_ID: &str = "org-embedded";
+const KV_NAMESPACE_STATE: &str = "server_state";
+const EVENTS_STREAM: &str = "events";
+const STORE_CONSUMER_GROUP: &str = "store";
+const STORE_LEASE_NAME: &str = "embedded-store";
+const STORE_HOLDER_NAME: &str = "grdr-server";
+const LEASE_TTL_MS: i64 = 60_000;
+
+pub(crate) struct EmbeddedStorage {
+    org_ctx: SingleCtx,
+    relational: SqliteRelationalStore,
+    bus: SqliteLogBus,
+    blobs: FilesystemBlobStore,
+    jobs: SqliteJobJournal,
+    bus_fence: Mutex<FencingToken>,
 }
 
-pub(crate) fn load_from_dir(dir: &Path) -> Result<StoreData, CodedError> {
-    fs::create_dir_all(dir).map_err(|e| {
-        CodedError::new(
-            CODE_STORE_IO,
-            format!("Unable to create data directory {}: {e}", dir.display()),
-            "Verify filesystem permissions for --data-dir.",
-        )
-    })?;
-    let snapshot_path = dir.join("state.json");
-    if !snapshot_path.exists() {
-        return Ok(StoreData::default());
+impl EmbeddedStorage {
+    pub(crate) fn open(dir: &Path) -> Result<Self, CodedError> {
+        let org = OrgId::new(EMBEDDED_ORG_ID)?;
+        let org_ctx = SingleCtx::new(org);
+
+        let relational = SqliteRelationalStore::open(&dir.join("relational.sqlite3"))?;
+        let bus = SqliteLogBus::open(&dir.join("bus.sqlite3"))?;
+        let blobs = FilesystemBlobStore::open(&dir.join("blobs"))?;
+        let jobs = SqliteJobJournal::open(&dir.join("jobs.sqlite3"))?;
+
+        let now_ms = Timestamp::now().as_millisecond();
+        let fence =
+            match jobs.acquire_lease(STORE_LEASE_NAME, STORE_HOLDER_NAME, now_ms, LEASE_TTL_MS)? {
+                LeaseAcquireOutcome::Acquired(rec) => match rec.state {
+                    LeaseState::Held { fence, .. } => fence,
+                    _ => FencingToken::new(1),
+                },
+                LeaseAcquireOutcome::Contended { fence, .. } => fence,
+            };
+        let sub = bus.subscribe(
+            STORE_CONSUMER_GROUP,
+            EVENTS_STREAM,
+            0,
+            STORE_HOLDER_NAME,
+            fence,
+            now_ms.saturating_add(LEASE_TTL_MS),
+        )?;
+
+        Ok(Self {
+            org_ctx,
+            relational,
+            bus,
+            blobs,
+            jobs,
+            bus_fence: Mutex::new(sub.fence),
+        })
     }
-    let raw = fs::read_to_string(&snapshot_path).map_err(|e| {
+
+    pub(crate) fn load_store_data(&self) -> Result<StoreData, CodedError> {
+        let read_ctx = TenantCtx::Single(self.org_ctx.clone());
+        let initialized = self
+            .relational
+            .get_kv(&read_ctx, KV_NAMESPACE_STATE, "initialized")?;
+        if initialized.is_none() {
+            return Ok(StoreData::default());
+        }
+
+        let mut data = StoreData {
+            packs: self.relational.list_packs(&read_ctx)?,
+            devices: self.relational.list_devices(&read_ctx)?,
+            findings: self.relational.list_findings(&read_ctx)?,
+            user_directory: self
+                .relational
+                .list_users(&read_ctx)?
+                .into_iter()
+                .map(|u| DirectoryUserRecord {
+                    id: u.id,
+                    display_name: u.display_name,
+                    email: u.email,
+                    department: u.department,
+                    idp_source: u.idp_source,
+                    pseudonym_id: u.pseudonym_id,
+                })
+                .collect(),
+            ..StoreData::default()
+        };
+
+        if let Some(v) = load_kv_json(&self.relational, &read_ctx, "privacy")? {
+            data.privacy = v;
+        }
+        if let Some(v) = load_kv_json(&self.relational, &read_ctx, "otlp_config")? {
+            data.otlp_config = v;
+        }
+        if let Some(v) = load_kv_json(&self.relational, &read_ctx, "kill_switch")? {
+            data.kill_switch = v;
+        }
+        if let Some(v) = load_kv_json(&self.relational, &read_ctx, "deployment_keys")? {
+            data.deployment_keys = v;
+        }
+        if let Some(v) = load_kv_json(&self.relational, &read_ctx, "integrations")? {
+            data.integrations = v;
+        }
+        if let Some(v) = load_kv_json(&self.relational, &read_ctx, "browser_policies")? {
+            data.browser_policies = v;
+        }
+        if let Some(v) = load_kv_json(&self.relational, &read_ctx, "approvals")? {
+            data.approvals = v;
+        }
+        if let Some(v) = load_kv_json(&self.relational, &read_ctx, "grants")? {
+            data.grants = v;
+        }
+        if let Some(v) = load_kv_json(&self.relational, &read_ctx, "audit")? {
+            data.audit = v;
+        }
+        if let Some(v) = load_kv_json(&self.relational, &read_ctx, "attempts")? {
+            data.attempts = v;
+        }
+        if let Some(v) = load_kv_json(&self.relational, &read_ctx, "receipts")? {
+            data.receipts = v;
+        }
+        Ok(data)
+    }
+
+    pub(crate) fn persist_store_data(&self, data: &StoreData) -> Result<(), CodedError> {
+        for pack in &data.packs {
+            self.relational.upsert_pack(&self.org_ctx, pack)?;
+        }
+        for dev in &data.devices {
+            self.relational.upsert_device(&self.org_ctx, dev)?;
+        }
+        for finding in &data.findings {
+            self.relational.upsert_finding(&self.org_ctx, finding)?;
+        }
+        for user in &data.user_directory {
+            self.relational.upsert_user(
+                &self.org_ctx,
+                &TenantUserRecord {
+                    id: user.id.clone(),
+                    display_name: user.display_name.clone(),
+                    email: user.email.clone(),
+                    department: user.department.clone(),
+                    idp_source: user.idp_source.clone(),
+                    pseudonym_id: user.pseudonym_id.clone(),
+                },
+            )?;
+        }
+        for summary in summarize_sessions(&data.attempts, &data.receipts) {
+            self.relational
+                .upsert_session_summary(&self.org_ctx, &summary)?;
+        }
+
+        put_kv_json(&self.relational, &self.org_ctx, "privacy", &data.privacy)?;
+        put_kv_json(
+            &self.relational,
+            &self.org_ctx,
+            "otlp_config",
+            &data.otlp_config,
+        )?;
+        put_kv_json(
+            &self.relational,
+            &self.org_ctx,
+            "kill_switch",
+            &data.kill_switch,
+        )?;
+        put_kv_json(
+            &self.relational,
+            &self.org_ctx,
+            "deployment_keys",
+            &data.deployment_keys,
+        )?;
+        put_kv_json(
+            &self.relational,
+            &self.org_ctx,
+            "integrations",
+            &data.integrations,
+        )?;
+        put_kv_json(
+            &self.relational,
+            &self.org_ctx,
+            "browser_policies",
+            &data.browser_policies,
+        )?;
+        put_kv_json(
+            &self.relational,
+            &self.org_ctx,
+            "approvals",
+            &data.approvals,
+        )?;
+        put_kv_json(&self.relational, &self.org_ctx, "grants", &data.grants)?;
+        put_kv_json(&self.relational, &self.org_ctx, "audit", &data.audit)?;
+        put_kv_json(&self.relational, &self.org_ctx, "attempts", &data.attempts)?;
+        put_kv_json(&self.relational, &self.org_ctx, "receipts", &data.receipts)?;
+        self.relational
+            .put_kv(&self.org_ctx, KV_NAMESPACE_STATE, "initialized", "true")?;
+        Ok(())
+    }
+
+    pub(crate) fn append_and_commit_event(
+        &self,
+        device_id: &str,
+        payload_bytes: &[u8],
+    ) -> Result<(), CodedError> {
+        let now_ms = Timestamp::now().as_millisecond();
+        let mut headers = BTreeMap::new();
+        headers.insert("device_id".into(), device_id.into());
+        let range = self.bus.append(
+            &self.org_ctx,
+            EVENTS_STREAM,
+            0,
+            &[BusAppendMessage {
+                key: device_id.into(),
+                headers,
+                payload: payload_bytes.to_vec(),
+            }],
+            now_ms,
+        )?;
+        let mut fence = self.bus_fence.lock().map_err(|_| {
+            CodedError::new(
+                CODE_STORE_IO,
+                "Embedded bus fence mutex poisoned.",
+                "Restart server.",
+            )
+        })?;
+        if matches!(
+            self.jobs.inspect_lease(STORE_LEASE_NAME, now_ms)?.state,
+            LeaseState::Vacant | LeaseState::Expired { .. }
+        ) && let LeaseAcquireOutcome::Acquired(rec) =
+            self.jobs
+                .acquire_lease(STORE_LEASE_NAME, STORE_HOLDER_NAME, now_ms, LEASE_TTL_MS)?
+            && let LeaseState::Held { fence: renewed, .. } = rec.state
+        {
+            self.bus.subscribe(
+                STORE_CONSUMER_GROUP,
+                EVENTS_STREAM,
+                0,
+                STORE_HOLDER_NAME,
+                renewed,
+                now_ms.saturating_add(LEASE_TTL_MS),
+            )?;
+            *fence = renewed;
+        }
+        self.bus.commit(
+            STORE_CONSUMER_GROUP,
+            EVENTS_STREAM,
+            0,
+            range.last_offset,
+            None,
+            *fence,
+        )?;
+        let blob_path = TenantPath::parse(
+            &self.org_ctx,
+            &format!("ingest/events/offset-{}.json", range.last_offset),
+        )?;
+        self.blobs.put(&self.org_ctx, &blob_path, payload_bytes)?;
+        Ok(())
+    }
+}
+
+fn load_kv_json<T: DeserializeOwned>(
+    store: &SqliteRelationalStore,
+    ctx: &TenantCtx,
+    key: &str,
+) -> Result<Option<T>, CodedError> {
+    let Some(raw) = store.get_kv(ctx, KV_NAMESPACE_STATE, key)? else {
+        return Ok(None);
+    };
+    let parsed = serde_json::from_str(&raw).map_err(|e| {
         CodedError::new(
-            CODE_STORE_IO,
-            format!("Failed reading {}: {e}", snapshot_path.display()),
-            "Ensure state.json is readable or start with --memory.",
+            CODE_STORE_CORRUPT,
+            format!("Corrupt relational KV payload for `{key}`: {e}"),
+            "Inspect embedded SQLite database state.",
         )
     })?;
-    serde_json::from_str(&raw).map_err(|e| {
+    Ok(Some(parsed))
+}
+
+fn put_kv_json<T: Serialize>(
+    store: &SqliteRelationalStore,
+    ctx: &SingleCtx,
+    key: &str,
+    value: &T,
+) -> Result<(), CodedError> {
+    let json = serde_json::to_string(value).map_err(|e| {
         CodedError::new(
             CODE_STORE_IO,
-            format!("Corrupt state snapshot {}: {e}", snapshot_path.display()),
-            "Inspect or remove the corrupt state.json file.",
+            format!("Failed encoding relational KV payload for `{key}`: {e}"),
+            "Check server state serialization.",
         )
-    })
+    })?;
+    store.put_kv(ctx, KV_NAMESPACE_STATE, key, &json)
 }
 
 pub(crate) fn record_attempt_and_receipt(
