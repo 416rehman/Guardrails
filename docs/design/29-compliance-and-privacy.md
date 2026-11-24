@@ -199,6 +199,8 @@ Both profiles enforce the privacy floor: `redacted arguments` leave the device o
 
 Hostnames and hardware serials are identifier-class fields that go only to the vault. They are never written into events.
 
+**Enterprise Windows telemetry privacy advisory (`grdr doctor`).** On Windows endpoints, Microsoft's `CLICodingAgentUsage` feature (Feature ID `62580080`) can emit coding-agent usage telemetry when Windows Optional Diagnostic Data is enabled. `grdr doctor` includes a read-only `WindowsTelemetryAdvisory` check (`WindowsOptionalTelemetryState`: `NotApplicable | Disabled | EnabledExposure | Unknown`) that inspects `HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection\AllowTelemetry`, `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection\AllowTelemetry`, and Feature Management override `62580080` via registry read without touching DiagTrack or `AggregatorHost.exe` internals, guiding enterprise administrators to set `AllowTelemetry` to `1` (Required) or `0` (Security/Off on Enterprise) via GPO.
+
 ### 9. The monitored person's view
 
 The person sees the same surface in the desktop app's Privacy and My activity screens (D-43), the tray, the local console and `grdr privacy show`. 27 and 28 design the screens. This document fixes the content, which no layer, white-label build or embedding can remove:

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+mod doctor;
 mod mcp_proxy;
 mod runner;
 
@@ -115,6 +116,17 @@ enum Command {
         #[arg(trailing_var_arg = true, required = true)]
         command: Vec<String>,
     },
+    /// Inspect local endpoint readiness, agent discovery, and Windows telemetry exposure (read-only).
+    Doctor {
+        #[arg(long, default_value_t = false)]
+        json: bool,
+
+        #[arg(long, value_enum, default_value_t = ProfileArg::User)]
+        profile: ProfileArg,
+
+        #[arg(long, default_value_t = false)]
+        strict: bool,
+    },
 }
 
 fn main() -> ExitCode {
@@ -158,6 +170,17 @@ fn main() -> ExitCode {
             &allow_env,
             &command,
         ),
+        Command::Doctor {
+            json,
+            profile,
+            strict,
+        } => {
+            let install_profile = match profile {
+                ProfileArg::User => InstallProfile::User,
+                ProfileArg::Protected => InstallProfile::Protected,
+            };
+            doctor::run_doctor(json, install_profile, strict)
+        }
     }
 }
 
