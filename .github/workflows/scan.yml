@@ -182,22 +182,24 @@ jobs:
         with:
           tool: semgrep-rules
           keys: repository commit severities
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ steps.rules.outputs.repository }}
-          ref: ${{ steps.rules.outputs.commit }}
-          path: .semgrep-rules
-          persist-credentials: false
       - name: Run the Rust rules, and the TypeScript rules once web/ exists
         env:
           IMAGE: ${{ steps.semgrep.outputs.image }}
+          RULES_REPO: ${{ steps.rules.outputs.repository }}
+          RULES_COMMIT: ${{ steps.rules.outputs.commit }}
           SEVERITIES: ${{ steps.rules.outputs.severities }}
         run: |
-          configs=(--config .semgrep-rules/rust)
-          if [ -d web ]; then configs+=(--config .semgrep-rules/typescript --config .semgrep-rules/javascript); fi
+          rules_dir="$(mktemp -d)"
+          trap 'rm -rf "$rules_dir"' EXIT
+          git -c core.hooksPath=/dev/null init -q "$rules_dir"
+          git -C "$rules_dir" -c core.hooksPath=/dev/null fetch --depth=1 --no-tags "https://github.com/${RULES_REPO}.git" "$RULES_COMMIT"
+          git -C "$rules_dir" -c core.hooksPath=/dev/null checkout -q --detach FETCH_HEAD
+          chmod -R a+rX "$rules_dir"
+          configs=(--config /rules/rust)
+          if [ -d web ]; then configs+=(--config /rules/typescript --config /rules/javascript); fi
           levels=()
           for severity in $SEVERITIES; do levels+=(--severity "$severity"); done
-          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/src" -w /src "$IMAGE" \
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/src:ro" -v "$rules_dir:/rules:ro" -w /src "$IMAGE" \
             semgrep scan --metrics=off --error --disable-version-check \
-            --exclude .semgrep-rules --exclude third_party --exclude target \
+            --exclude third_party --exclude target \
             "${levels[@]}" "${configs[@]}"
