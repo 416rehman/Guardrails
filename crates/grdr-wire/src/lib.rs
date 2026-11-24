@@ -8,7 +8,7 @@ use jiff::Timestamp;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use grdr_crypto::{SigningKeypair, verify_bytes};
+use grdr_crypto::{SigningKeypair, fill_random, sha256_hex, verify_bytes};
 use grdr_model::TrustedKeyInfo;
 
 pub const WIRE_PROTOCOL_VERSION: u16 = 1;
@@ -103,6 +103,12 @@ impl ReplayWindow {
         self.seen.insert(key);
         Ok(())
     }
+}
+
+pub fn generate_nonce() -> Result<String, WireError> {
+    let mut raw = [0u8; 16];
+    fill_random(&mut raw).map_err(|e| WireError::Crypto(e.to_string()))?;
+    Ok(sha256_hex(&raw))
 }
 
 pub fn sign_envelope<T: Serialize>(
@@ -276,7 +282,8 @@ mod tests {
             summary: None,
         };
 
-        let env = sign_envelope(&kp, "nonce-001", now, input).unwrap();
+        let n1 = generate_nonce().unwrap();
+        let env = sign_envelope(&kp, n1, now, input).unwrap();
         let frame = encode_frame(&env).unwrap();
         let (mut decoded, consumed): (WireEnvelope<DecideInput>, usize) =
             decode_frame(&frame).unwrap();
@@ -292,7 +299,7 @@ mod tests {
         assert!(matches!(replay_err, WireError::ReplayDetected { .. }));
 
         // Tampered payload fails Ed25519 verification.
-        decoded.nonce = "nonce-002".into();
+        decoded.payload.target = "cat /etc/shadow".into();
         let tamper_err = window
             .verify_and_record(&decoded, &trusted, now)
             .unwrap_err();
@@ -300,7 +307,8 @@ mod tests {
 
         // Out-of-window timestamp fails skew check.
         let stale = Timestamp::from_second(1_700_000_200).unwrap();
-        let env_stale = sign_envelope(&kp, "nonce-003", now, decoded.payload.clone()).unwrap();
+        let n3 = generate_nonce().unwrap();
+        let env_stale = sign_envelope(&kp, n3, now, decoded.payload.clone()).unwrap();
         assert_eq!(
             window.verify_and_record(&env_stale, &trusted, stale),
             Err(WireError::ExpiredTimestamp)
