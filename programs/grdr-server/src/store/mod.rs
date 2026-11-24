@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+mod connect;
+mod connect_mdm;
 mod overview;
 mod persistence;
 mod policy_ops;
@@ -21,10 +23,11 @@ use grdr_model::error::{CODE_INVALID_INPUT, CODE_NOT_FOUND, CODE_STORE_IO};
 use grdr_model::eval::add_seconds;
 use grdr_model::{
     ActionAttempt, ApprovalRequest, ApprovalState, AuditEntry, BatchEventsInput,
-    BatchEventsResponse, CodedError, DecideInput, DecisionReceipt, Device, DeviceCheckinRequest,
-    DeviceCheckinResponse, Finding, Grant, Incident, KillSwitchState, LiveEvent, OrgPrivacyConfig,
-    PolicyPack, SessionDetailResponse, SessionSummary, SignatureStatus, TrustedKeyInfo, Verdict,
-    slugify_id, summarize_session_turns, summarize_sessions,
+    BatchEventsResponse, CodedError, DecideInput, DecisionReceipt, DeploymentKey, Device,
+    DeviceCheckinRequest, DeviceCheckinResponse, Finding, Grant, Incident, IntegrationEntry,
+    KillSwitchState, LiveEvent, OrgPrivacyConfig, OtlpFanoutConfig, PolicyPack,
+    SessionDetailResponse, SessionSummary, SignatureStatus, TrustedKeyInfo, Verdict, slugify_id,
+    summarize_session_turns, summarize_sessions,
 };
 
 use crate::demo;
@@ -42,6 +45,12 @@ pub struct StoreData {
     pub user_directory: Vec<users::DirectoryUserRecord>,
     #[serde(default)]
     pub privacy: OrgPrivacyConfig,
+    #[serde(default)]
+    pub deployment_keys: Vec<DeploymentKey>,
+    #[serde(default)]
+    pub integrations: Vec<IntegrationEntry>,
+    #[serde(default)]
+    pub otlp_config: OtlpFanoutConfig,
     pub devices: Vec<Device>,
     pub attempts: Vec<ActionAttempt>,
     pub receipts: Vec<DecisionReceipt>,
@@ -67,6 +76,9 @@ impl Default for StoreData {
             packs: vec![policy::essentials_pack()],
             user_directory: Vec::new(),
             privacy: OrgPrivacyConfig::default(),
+            deployment_keys: Vec::new(),
+            integrations: Vec::new(),
+            otlp_config: OtlpFanoutConfig::default(),
             devices: Vec::new(),
             attempts: Vec::new(),
             receipts: Vec::new(),
@@ -120,6 +132,12 @@ impl AppState {
             data.grants = seed.grants;
             data.findings = seed.findings;
             data.audit = seed.audit;
+        }
+        if demo_seed && data.deployment_keys.is_empty() && data.integrations.is_empty() {
+            let demo_connect = connect_mdm::demo_connect_state(now);
+            data.deployment_keys = demo_connect.deployment_keys;
+            data.integrations = demo_connect.integrations;
+            data.otlp_config = demo_connect.otlp_config;
         }
 
         for pack in &mut data.packs {

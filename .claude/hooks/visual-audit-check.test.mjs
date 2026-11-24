@@ -53,8 +53,14 @@ test("denies UI commit when visual audit record or mobile screenshot is missing,
   assert.deepEqual(evaluateVisualAuditFiles(["web/apps/console/src/App.tsx"], dir), []);
 
   writeFileSync(join(dir, "web/screenshots/home.png"), "png-v2-modified", "utf8");
-  const stale = evaluateVisualAuditFiles(["web/screenshots/home.png"], dir);
+  const stale = evaluateVisualAuditFiles(["web/apps/console/src/App.tsx"], dir);
   assert.ok(stale.some((m) => m.includes("unaudited")));
+
+  const rejectedWebShot = evaluateVisualAuditFiles(["web/screenshots/home.png"], dir);
+  assert.ok(rejectedWebShot.some((m) => m.includes("must not be committed")));
+
+  const rejectedDesktopShot = evaluateVisualAuditFiles(["desktop/screenshots/home.png"], dir);
+  assert.ok(rejectedDesktopShot.some((m) => m.includes("must not be committed")));
 });
 
 test("evaluates git commit payload with staged web UI file", (t) => {

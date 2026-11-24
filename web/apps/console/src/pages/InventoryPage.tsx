@@ -8,6 +8,7 @@ import {
   presentArtifactScope,
 } from "@grdr/i18n";
 import { AssuranceBadge, DeviceAssuranceDrawer, EntityLink, type EntityTarget, OsLabel, Quoted } from "@grdr/kit";
+import { ConnectSection } from "./ConnectSection";
 import {
   Badge,
   Button,
@@ -27,6 +28,7 @@ import {
   VStack,
 } from "@grdr/ui";
 
+type InventorySection = "fleet" | "connect";
 type InventoryView = "hexmap" | "table";
 
 export function InventoryPage({
@@ -44,6 +46,7 @@ export function InventoryPage({
   onOpenEntity?: (target: EntityTarget) => void;
   onRefresh: () => void;
 }) {
+  const [section, setSection] = useState<InventorySection>("fleet");
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<InventoryView>("hexmap");
   const [agentFilter, setAgentFilter] = useState<string>("all");
@@ -213,12 +216,28 @@ export function InventoryPage({
             Devices, coding agents, and tool servers across your fleet.
           </Text>
         </div>
-        <Button
-          label="Refresh inventory"
-          icon={<GrdrIcon name="refresh" size={14} />}
-          onClick={onRefresh}
-        />
+        <HStack gap={2} align="center" style={{ flexWrap: "wrap" }}>
+          <UiSdkSegmentedControl<InventorySection>
+            ariaLabel="Inventory section"
+            value={section}
+            options={[
+              { value: "fleet", label: "Fleet & Skills" },
+              { value: "connect", label: "Connect & Integrations" },
+            ]}
+            onChange={setSection}
+          />
+          <Button
+            label="Refresh inventory"
+            icon={<GrdrIcon name="refresh" size={14} />}
+            onClick={onRefresh}
+          />
+        </HStack>
       </div>
+
+      {section === "connect" ? (
+        <ConnectSection />
+      ) : (
+        <>
 
       <div className="fleet-strip" aria-label="Fleet telemetry distribution">
         <div className="fleet-card">
@@ -779,6 +798,8 @@ export function InventoryPage({
         onOpenEntity={onOpenEntity}
         onClose={() => setSelectedDeviceId(null)}
       />
+        </>
+      )}
     </VStack>
   );
 }

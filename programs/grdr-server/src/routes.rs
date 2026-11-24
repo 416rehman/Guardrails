@@ -19,9 +19,11 @@ use tokio_stream::wrappers::BroadcastStream;
 use tower_http::services::{ServeDir, ServeFile};
 
 use grdr_model::{
-    ApprovalRequest, ArtifactEntry, AuditEntry, BatchEventsInput, CodedError, CreateRuleInput,
-    DecideApprovalInput, DecideInput, DecisionReceipt, Device, DiscoveredAgent, Finding,
-    HealthResponse, Incident, KillSwitchInput, KillSwitchState, McpServerEntry, OrgPrivacyConfig,
+    ApprovalRequest, ArtifactEntry, AuditEntry, BatchEventsInput, CodedError,
+    ConnectConfigResponse, CreateDeploymentKeyRequest, CreateDeploymentKeyResponse,
+    CreateRuleInput, DecideApprovalInput, DecideInput, DecisionReceipt, DeploymentKey, Device,
+    DiscoveredAgent, Finding, HealthResponse, Incident, IntegrationEntry, KillSwitchInput,
+    KillSwitchState, McpServerEntry, MdmRenderRequest, MdmRenderResponse, OrgPrivacyConfig,
     OverviewResponse, PolicyPack, PolicyRule, ReplayRuleInput, ReplaySummary,
     SessionDetailResponse, SessionSummary, TrustedKeyInfo, UpdateFindingInput,
     UpdatePrivacyConfigInput, UpdateRuleInput, UpdateRuleModeInput, UserDetailResponse,
@@ -70,6 +72,21 @@ pub fn build_router_with_security(
         .route("/api/v1/inventory/agents", get(list_agents))
         .route("/api/v1/inventory/mcp-servers", get(list_mcp_servers))
         .route("/api/v1/inventory/artifacts", get(list_artifacts))
+        .route("/api/v1/connect/config", get(get_connect_config))
+        .route(
+            "/api/v1/connect/deployment-keys",
+            post(create_deployment_key),
+        )
+        .route(
+            "/api/v1/connect/deployment-keys/{id}/revoke",
+            post(revoke_deployment_key),
+        )
+        .route("/api/v1/connect/mdm-render", post(render_mdm_config))
+        .route("/api/v1/integrations", get(list_integrations))
+        .route(
+            "/api/v1/integrations/{id}/check-readiness",
+            post(check_integration_readiness),
+        )
         .route("/api/v1/sessions", get(list_sessions))
         .route("/api/v1/sessions/{id}", get(get_session))
         .route("/api/v1/decide", post(decide))
@@ -409,4 +426,56 @@ async fn live_stream(
         Err(_) => None,
     });
     Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+}
+
+async fn get_connect_config(State(state): State<AppState>) -> Json<ConnectConfigResponse> {
+    Json(state.connect_config().await)
+}
+
+async fn create_deployment_key(
+    State(state): State<AppState>,
+    Json(input): Json<CreateDeploymentKeyRequest>,
+) -> ApiResult<CreateDeploymentKeyResponse> {
+    state
+        .create_deployment_key(input)
+        .await
+        .map(Json)
+        .map_err(err_response)
+}
+
+async fn revoke_deployment_key(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<DeploymentKey> {
+    state
+        .revoke_deployment_key(&id)
+        .await
+        .map(Json)
+        .map_err(err_response)
+}
+
+async fn render_mdm_config(
+    State(state): State<AppState>,
+    Json(input): Json<MdmRenderRequest>,
+) -> ApiResult<MdmRenderResponse> {
+    state
+        .render_mdm_config(input)
+        .await
+        .map(Json)
+        .map_err(err_response)
+}
+
+async fn list_integrations(State(state): State<AppState>) -> Json<Vec<IntegrationEntry>> {
+    Json(state.list_integrations().await)
+}
+
+async fn check_integration_readiness(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<IntegrationEntry> {
+    state
+        .check_integration_readiness(&id)
+        .await
+        .map(Json)
+        .map_err(err_response)
 }

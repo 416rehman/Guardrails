@@ -258,6 +258,87 @@ export function presentAssurance(level: "AL0" | "AL1" | "AL2" | "AL3" | "AL4", c
   };
 }
 
+export function presentMdmFormat(format: string): string {
+  switch (format) {
+    case "intune_win32":
+      return "Intune Win32 (.intunewin / PS1)";
+    case "jamf_mobileconfig":
+      return "Jamf Pro (.mobileconfig)";
+    case "hexnode":
+      return "Hexnode MDM";
+    case "tanium":
+      return "Tanium Deploy";
+    case "chrome_enterprise":
+      return "Chrome / Edge Enterprise";
+    case "firefox_gpo":
+      return "Firefox AD GPO / policies.json";
+    case "linux_repo":
+      return "Linux apt / dnf config";
+    default:
+      return capitalizeLabel(format);
+  }
+}
+
+export function presentIntegrationCategory(category: string): string {
+  switch (category) {
+    case "directory_sync":
+      return "Directory sync";
+    case "saas_connector":
+      return "SaaS activity";
+    case "export_sink":
+      return "Export sink";
+    default:
+      return capitalizeLabel(category);
+  }
+}
+
+export function presentIntegrationHealth(state: string): {
+  label: string;
+  tone: "allow" | "ask" | "block" | "neutral";
+} {
+  switch (state) {
+    case "connected":
+      return { label: "Connected", tone: "allow" };
+    case "at_risk":
+      return { label: "At risk", tone: "ask" };
+    case "degraded":
+      return { label: "Degraded", tone: "block" };
+    case "not_configured":
+    default:
+      return { label: "Not configured", tone: "neutral" };
+  }
+}
+
+export function presentDeploymentKeyStatus(status: string): {
+  label: string;
+  tone: "allow" | "ask" | "block" | "neutral";
+} {
+  switch (status) {
+    case "active":
+      return { label: "Active", tone: "allow" };
+    case "exhausted":
+      return { label: "Quota reached", tone: "ask" };
+    case "expired":
+      return { label: "Expired", tone: "neutral" };
+    case "revoked":
+    default:
+      return { label: "Revoked", tone: "block" };
+  }
+}
+
+export function presentInstallProfile(profile: string): string {
+  switch (profile) {
+    case "standard":
+      return "Standard";
+    case "enforced":
+      return "Enforced boundary";
+    case "watch":
+      return "Watch baseline";
+    default:
+      return capitalizeLabel(profile);
+  }
+}
+
 export function presentSessionLabel(
   label: "credential_accessed" | "untrusted_web_fetched" | "repeated_denials" | "tainted_exfil_risk",
 ): { text: string; tone: "warning" | "info" | "danger" } {

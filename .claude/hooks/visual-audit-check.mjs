@@ -7,8 +7,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const WEB_UI_CHANGE_RE = /^(?:web\/(?:packages|apps)\/|interface\/brand\/|web\/screenshots\/)/;
-const DESKTOP_UI_CHANGE_RE = /^(?:desktop\/grdr-desktop\/src\/|desktop\/screenshots\/|crates\/grdr-ui-model\/)/;
+const WEB_UI_CHANGE_RE = /^(?:web\/(?:packages|apps)\/|interface\/brand\/)/;
+const DESKTOP_UI_CHANGE_RE = /^(?:desktop\/grdr-desktop\/src\/|crates\/grdr-ui-model\/)/;
+const COMMITTED_SCREENSHOT_RE = /^(?:web|desktop)\/screenshots\/|\/__screenshots__\//i;
 export const AUDIT_RECORD_REL = ".git/grdr-visual-audit.json";
 
 function gitLines(args, cwd) {
@@ -62,6 +63,12 @@ export function recordVisualAudit({
 
 export function evaluateVisualAuditFiles(changedFiles, cwd = process.cwd()) {
   const normalized = changedFiles.map((f) => f.replace(/\\/g, "/"));
+  const committedShots = normalized.filter((f) => COMMITTED_SCREENSHOT_RE.test(f));
+  if (committedShots.length > 0) {
+    return [
+      `visual-audit: screenshots must not be committed to the repository (${committedShots.join(", ")}). Keep them gitignored locally and attach them to GitHub issues or PRs instead.`,
+    ];
+  }
   const needsWeb = normalized.some((f) => WEB_UI_CHANGE_RE.test(f));
   const needsDesktop = normalized.some((f) => DESKTOP_UI_CHANGE_RE.test(f));
   if (!needsWeb && !needsDesktop) return [];
