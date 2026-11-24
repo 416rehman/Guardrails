@@ -183,6 +183,7 @@ mod tests {
             target: ".claude/settings.json".into(),
             summary: "Edit protected settings".into(),
             timestamp: ts,
+            ..Default::default()
         };
 
         let eval_input = serde_json::json!({ "attempt": attempt }).to_string();

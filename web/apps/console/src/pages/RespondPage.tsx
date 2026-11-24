@@ -42,6 +42,7 @@ export function RespondPage({
   killSwitch,
   defaultSessionId,
   onOpenEntity,
+  onOpenSessionTurn,
   onUpdated,
 }: {
   approvals: ApprovalRequest[];
@@ -51,6 +52,7 @@ export function RespondPage({
   killSwitch: KillSwitchState;
   defaultSessionId: string;
   onOpenEntity?: (target: EntityTarget) => void;
+  onOpenSessionTurn?: (sessionId: string, turnIndex: number) => void;
   onUpdated: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -449,7 +451,16 @@ export function RespondPage({
                         />
                       </td>
                       <td>
-                        <HStack gap={1}>
+                        <HStack gap={1} style={{ flexWrap: "wrap" }}>
+                          {onOpenSessionTurn && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              icon={<GrdrIcon name="route" size={12} />}
+                              label="Inspect trace"
+                              onClick={() => onOpenSessionTurn(f.session_id, 1)}
+                            />
+                          )}
                           {f.lifecycle === "open" && (
                             <Button
                               size="sm"
@@ -693,7 +704,7 @@ export function RespondPage({
             <div style={{ flex: 1, minWidth: 240 }}>
               <TextInput
                 label="Type fleet-kill to confirm"
-                placeholder="fleet-kill"
+                placeholder="Enter confirmation phrase"
                 value={matrixConfirmPhrase}
                 onChange={setMatrixConfirmPhrase}
                 width="100%"

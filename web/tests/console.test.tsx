@@ -11,10 +11,14 @@ import type {
   HealthResponse,
   Incident,
   KillSwitchState,
+  OrgPrivacyConfig,
   OverviewResponse,
   PolicyPack,
+  SessionDetailResponse,
   SessionSummary,
   TrustedKeyInfo,
+  UserDetailResponse,
+  UserProfile,
 } from "@grdr/api";
 import { ModeControl, Quoted, VerdictBadge } from "@grdr/kit";
 import { GrdrThemeProvider } from "@grdr/ui";
@@ -88,6 +92,58 @@ const devicesFixture: Device[] = [
         pinned: false,
       },
     ],
+    artifacts: [
+      {
+        id: "art_skl_usr_deploy",
+        name: "deploy-helper",
+        kind: "skill",
+        scope: "user",
+        source_agent: "claude-code",
+        path: "~/.claude/skills/deploy-helper",
+        content_digest: "9b71d224bd62f3785d96d46ad3ea3d73",
+        file_count: 2,
+        total_bytes: 1200,
+        usage_count: 7,
+        pinned: false,
+        risk_flags: ["has-scripts"],
+        device_id: "dev-1",
+        device_name: "devbox.local",
+        user_id: "usr-1",
+        detected_at: "2026-11-23T11:30:00Z",
+      },
+    ],
+    user_id: "usr-1",
+    user_display: "Maya Chen",
+  },
+];
+
+const usersFixture: UserProfile[] = [
+  {
+    id: "usr-1",
+    display_name: "Maya Chen",
+    email: "maya.chen@acme-eng.example",
+    department: "Platform Engineering",
+    idp_source: "Okta JWKS",
+    pseudonym_id: "prn_test_01",
+    device_ids: ["dev-1"],
+    agent_names: ["claude-code"],
+    artifact_count: 1,
+    session_count: 1,
+    blocked_count: 1,
+    asked_count: 1,
+    watch_count: 1,
+    finding_count: 1,
+    risk_score: 64,
+    risk_tier: "high",
+    risk_factors: [
+      {
+        code: "risk.blocked_actions",
+        label: "Blocked actions",
+        points: 18,
+        count: 1,
+      },
+    ],
+    last_active: "2026-11-23T12:00:00Z",
   },
 ];
 
@@ -97,6 +153,9 @@ const sessionsFixture: SessionSummary[] = [
     device_id: "dev-1",
     device_name: "devbox.local",
     agent_name: "claude-code",
+    user_id: "usr-1",
+    user_display: "Maya Chen",
+    turn_count: 2,
     started_at: "2026-11-23T11:50:00Z",
     last_activity: "2026-11-23T12:00:00Z",
     total_actions: 4,
@@ -107,6 +166,66 @@ const sessionsFixture: SessionSummary[] = [
     labels: ["credential_accessed"],
   },
 ];
+
+const sessionDetailFixture: SessionDetailResponse = {
+  session: sessionsFixture[0],
+  attempts: [
+    {
+      id: "att-1",
+      session_id: "sess-1",
+      device_id: "dev-1",
+      device_name: "devbox.local",
+      agent_name: "claude-code",
+      action_class: "exec",
+      control_point: "hook",
+      target: "git status && curl https://example.test",
+      summary: "Compound command",
+      timestamp: "2026-11-23T11:55:00Z",
+      user_id: "usr-1",
+      user_display: "Maya Chen",
+      turn_index: 2,
+      span_kind: "subagent_spawn",
+      duration_ms: 450,
+      provenance: "observed",
+      secondary_actions: [
+        { command: "git status", action_class: "exec", target: "git status" },
+      ],
+      skill_used: "deploy-helper",
+      compaction: true,
+    },
+  ],
+  receipts: [],
+  turns: [
+    {
+      turn_index: 2,
+      trace_id: "trc_sess-1_2",
+      span_count: 1,
+      duration_ms: 450,
+      blocked_count: 0,
+      asked_count: 0,
+      has_compaction: true,
+      has_subagent_handoff: true,
+      started_at: "2026-11-23T11:55:00Z",
+    },
+  ],
+  user: usersFixture[0],
+};
+
+const userDetailFixture: UserDetailResponse = {
+  user: usersFixture[0],
+  devices: devicesFixture,
+  sessions: sessionsFixture,
+  recent_attempts: sessionDetailFixture.attempts,
+  receipts: [],
+  findings: [],
+  artifacts: devicesFixture[0].artifacts ?? [],
+  identity_mode: "named",
+};
+
+const privacyConfigFixture: OrgPrivacyConfig = {
+  identity_mode: "named",
+  user_risk_scoring: true,
+};
 
 const packsFixture: PolicyPack[] = [
   {
@@ -251,8 +370,15 @@ function installFetchMock() {
     const url = typeof input === "string" ? input : input.toString();
     if (url.endsWith("/api/v1/health")) return mockJsonResponse(healthFixture);
     if (url.endsWith("/api/v1/overview")) return mockJsonResponse(overviewFixture);
+    if (url.endsWith("/api/v1/users")) return mockJsonResponse(usersFixture);
+    if (url.endsWith("/api/v1/users/usr-1")) return mockJsonResponse(userDetailFixture);
+    if (url.endsWith("/api/v1/privacy/config")) return mockJsonResponse(privacyConfigFixture);
+    if (url.endsWith("/api/v1/inventory/artifacts")) {
+      return mockJsonResponse(devicesFixture[0].artifacts ?? []);
+    }
     if (url.endsWith("/api/v1/devices")) return mockJsonResponse(devicesFixture);
     if (url.endsWith("/api/v1/sessions")) return mockJsonResponse(sessionsFixture);
+    if (url.endsWith("/api/v1/sessions/sess-1")) return mockJsonResponse(sessionDetailFixture);
     if (url.endsWith("/api/v1/policies/packs")) return mockJsonResponse(packsFixture);
     if (url.endsWith("/api/v1/approvals")) return mockJsonResponse(approvalsFixture);
     if (url.endsWith("/api/v1/findings")) return mockJsonResponse(findingsFixture);
@@ -359,6 +485,21 @@ describe("Console and Operator Plane workflows", () => {
     fireEvent.click(screen.getByRole("button", { name: "Protect" }));
     await waitFor(() => {
       expect(screen.getByText("Protect SSH keys")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Users" })[0]);
+    await waitFor(() => {
+      expect(screen.getByText("Users & risk directory")).toBeTruthy();
+      expect(screen.getAllByText("Maya Chen").length).toBeGreaterThan(0);
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Sessions" })[0]);
+    await waitFor(() => {
+      expect(screen.getByRole("radio", { name: "Trace" })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("radio", { name: "Trace" }));
+    await waitFor(() => {
+      expect(screen.getByText(/Decomposed shell actions/)).toBeTruthy();
     });
   });
 

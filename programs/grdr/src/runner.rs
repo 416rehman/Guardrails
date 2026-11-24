@@ -32,6 +32,7 @@ pub fn check_spawn_policy(
         target,
         summary: "Containment launch check".into(),
         timestamp: Timestamp::now(),
+        ..Default::default()
     };
     evaluate_via_daemon_or_offline(&attempt, daemon_url).0
 }

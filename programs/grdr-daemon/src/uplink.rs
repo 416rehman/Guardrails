@@ -29,6 +29,11 @@ pub async fn sync_once(
             hook_effective: guard.discovery.agents.iter().any(|a| a.hook_installed),
             agents: guard.discovery.agents.clone(),
             mcp_servers: guard.discovery.mcp_servers.clone(),
+            artifacts: guard.discovery.artifacts.clone(),
+            user_id: None,
+            user_display: std::env::var("USERNAME")
+                .or_else(|_| std::env::var("USER"))
+                .ok(),
             device_public_key: Some(guard.signing_key.public_info()),
         };
         let batch = if guard.pending_receipts.is_empty() {

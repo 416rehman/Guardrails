@@ -197,6 +197,7 @@ mod tests {
             target: target.into(),
             summary: target.into(),
             timestamp: Timestamp::from_second(1_700_000_000).unwrap(),
+            ..Default::default()
         }
     }
 

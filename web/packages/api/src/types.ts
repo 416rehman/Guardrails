@@ -11,6 +11,24 @@ export type SessionLabel =
   | "tainted_exfil_risk";
 export type KillScope = "session" | "device" | "organisation";
 export type KillAction = "freeze" | "kill" | "release";
+export type IdentityMode = "named" | "pseudonymous";
+export type RiskTier = "low" | "elevated" | "high" | "critical";
+export type ArtifactKind = "skill" | "rule" | "plugin" | "command" | "subagent";
+export type ArtifactScope = "user" | "workspace" | "managed";
+export type ArtifactRiskFlag =
+  | "has-scripts"
+  | "requests-broad-tools"
+  | "bidi-obfuscation"
+  | "unpinned-digest";
+export type SpanKind =
+  | "invoke_agent"
+  | "chat"
+  | "execute_tool"
+  | "mcp_call"
+  | "os_effect"
+  | "subagent_spawn"
+  | "compaction";
+export type ProvenanceSource = "claimed" | "observed" | "mediated" | "reconciled";
 
 export type ActionClass =
   | "exec"
@@ -31,6 +49,7 @@ export type ActionClass =
 
 export type NavRoute =
   | "home"
+  | "users"
   | "inventory"
   | "sessions"
   | "protect"
@@ -67,6 +86,25 @@ export interface McpServerEntry {
   pinned: boolean;
 }
 
+export interface ArtifactEntry {
+  id: string;
+  name: string;
+  kind: ArtifactKind;
+  scope: ArtifactScope;
+  source_agent: string;
+  path: string;
+  content_digest: string;
+  file_count: number;
+  total_bytes: number;
+  usage_count: number;
+  pinned: boolean;
+  risk_flags: ArtifactRiskFlag[];
+  device_id: string;
+  device_name: string;
+  user_id?: string | null;
+  detected_at: string;
+}
+
 export interface Device {
   id: string;
   hostname: string;
@@ -78,7 +116,22 @@ export interface Device {
   hook_effective: boolean;
   agents: DiscoveredAgent[];
   mcp_servers: McpServerEntry[];
+  artifacts?: ArtifactEntry[];
+  user_id?: string | null;
+  user_display?: string | null;
   last_seen: string;
+}
+
+export interface TurnSummary {
+  turn_index: number;
+  trace_id: string;
+  span_count: number;
+  duration_ms: number;
+  blocked_count: number;
+  asked_count: number;
+  has_compaction: boolean;
+  has_subagent_handoff: boolean;
+  started_at: string;
 }
 
 export interface SessionSummary {
@@ -86,6 +139,10 @@ export interface SessionSummary {
   device_id: string;
   device_name: string;
   agent_name: string;
+  user_id?: string | null;
+  user_display?: string | null;
+  turn_count?: number;
+  parent_session_id?: string | null;
   started_at: string;
   last_activity: string;
   total_actions: number;
@@ -94,6 +151,12 @@ export interface SessionSummary {
   watch_hits: number;
   assurance_level: AssuranceLevel;
   labels?: SessionLabel[];
+}
+
+export interface SecondaryAction {
+  command: string;
+  action_class: ActionClass;
+  target: string;
 }
 
 export interface ActionAttempt {
@@ -107,6 +170,50 @@ export interface ActionAttempt {
   target: string;
   summary: string;
   timestamp: string;
+  user_id?: string | null;
+  user_display?: string | null;
+  turn_index?: number;
+  span_id?: string | null;
+  parent_span_id?: string | null;
+  span_kind?: SpanKind;
+  duration_ms?: number;
+  provenance?: ProvenanceSource;
+  secondary_actions?: SecondaryAction[];
+  skill_used?: string | null;
+  compaction?: boolean;
+}
+
+export interface OrgPrivacyConfig {
+  identity_mode: IdentityMode;
+  user_risk_scoring: boolean;
+}
+
+export interface UserRiskFactor {
+  code: string;
+  label: string;
+  points: number;
+  count: number;
+}
+
+export interface UserProfile {
+  id: string;
+  display_name: string;
+  email: string;
+  department: string;
+  idp_source: string;
+  pseudonym_id: string;
+  device_ids: string[];
+  agent_names: string[];
+  artifact_count: number;
+  session_count: number;
+  blocked_count: number;
+  asked_count: number;
+  watch_count: number;
+  finding_count: number;
+  risk_score: number;
+  risk_tier: RiskTier;
+  risk_factors: UserRiskFactor[];
+  last_active: string;
 }
 
 export interface DecisionReceipt {
@@ -137,6 +244,19 @@ export interface SessionDetailResponse {
   session: SessionSummary;
   attempts: ActionAttempt[];
   receipts: DecisionReceipt[];
+  turns?: TurnSummary[];
+  user?: UserProfile | null;
+}
+
+export interface UserDetailResponse {
+  user: UserProfile;
+  devices: Device[];
+  sessions: SessionSummary[];
+  recent_attempts: ActionAttempt[];
+  receipts: DecisionReceipt[];
+  findings: Finding[];
+  artifacts: ArtifactEntry[];
+  identity_mode: IdentityMode;
 }
 
 export interface RuleMatch {

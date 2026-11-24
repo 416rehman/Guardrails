@@ -12,6 +12,7 @@ use grdr_model::{
     McpServerEntry, OnFailure, TamperGrade, Visibility,
 };
 
+use crate::artifacts::scan_artifacts_for_roots;
 use crate::parse::{
     display_path, extract_mcp_servers, extract_toml_mcp_headers, json_contains_grdr_hook, read_json,
 };
@@ -28,8 +29,15 @@ struct JsonAgentSpec<'a> {
 pub fn discover_local_agents(profile: InstallProfile) -> DiscoveryReport {
     let home = detect_home_dir();
     let appdata = env::var_os("APPDATA").map(PathBuf::from);
+    let cwd = env::current_dir().ok();
     let hostname = detect_hostname();
-    discover_from_roots(&hostname, home.as_deref(), appdata.as_deref(), profile)
+    discover_from_roots_with_workspace(
+        &hostname,
+        home.as_deref(),
+        appdata.as_deref(),
+        cwd.as_deref(),
+        profile,
+    )
 }
 
 pub fn detect_hostname() -> String {
@@ -44,6 +52,16 @@ pub fn discover_from_roots(
     device_name: &str,
     home: Option<&Path>,
     appdata: Option<&Path>,
+    profile: InstallProfile,
+) -> DiscoveryReport {
+    discover_from_roots_with_workspace(device_name, home, appdata, None, profile)
+}
+
+pub fn discover_from_roots_with_workspace(
+    device_name: &str,
+    home: Option<&Path>,
+    appdata: Option<&Path>,
+    workspace: Option<&Path>,
     profile: InstallProfile,
 ) -> DiscoveryReport {
     let now = Timestamp::now();
@@ -150,6 +168,15 @@ pub fn discover_from_roots(
         );
     }
 
+    let artifacts = scan_artifacts_for_roots(
+        device_name,
+        home,
+        workspace,
+        now,
+        &mut scanned_paths,
+        &mut warnings,
+    );
+
     DiscoveryReport {
         device_name: device_name.into(),
         os: env::consts::OS.into(),
@@ -157,6 +184,7 @@ pub fn discover_from_roots(
         install_profile: profile,
         agents,
         mcp_servers,
+        artifacts,
         scanned_paths,
         warnings,
         scanned_at: now,

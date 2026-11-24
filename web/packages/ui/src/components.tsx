@@ -53,6 +53,8 @@ import {
   Box,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Circle,
   CircleOff,
   Clock,
@@ -60,9 +62,11 @@ import {
   Cpu,
   Download,
   Eye,
+  FileCode2,
   FileJson,
   FileText,
   GitBranch,
+  GitFork,
   Globe,
   Hand,
   HardDrive,
@@ -97,6 +101,8 @@ import {
   Tag,
   Terminal,
   Trash2,
+  User,
+  Users,
   X,
   ZoomIn,
   ZoomOut,
@@ -193,6 +199,8 @@ export type GrdrIconName =
   | "box"
   | "check"
   | "check-circle"
+  | "chevron-down"
+  | "chevron-right"
   | "circle"
   | "circle-off"
   | "clock"
@@ -200,9 +208,11 @@ export type GrdrIconName =
   | "cpu"
   | "download"
   | "eye"
+  | "file-code"
   | "file-json"
   | "file-text"
   | "git-branch"
+  | "git-fork"
   | "globe"
   | "hand"
   | "hard-drive"
@@ -237,6 +247,8 @@ export type GrdrIconName =
   | "tag"
   | "terminal"
   | "trash"
+  | "user"
+  | "users"
   | "x"
   | "zoom-in"
   | "zoom-out"
@@ -282,6 +294,10 @@ export function GrdrIcon({
       return <Check {...props} />;
     case "check-circle":
       return <CheckCircle2 {...props} />;
+    case "chevron-down":
+      return <ChevronDown {...props} />;
+    case "chevron-right":
+      return <ChevronRight {...props} />;
     case "circle":
       return <Circle {...props} />;
     case "circle-off":
@@ -296,12 +312,16 @@ export function GrdrIcon({
       return <Download {...props} />;
     case "eye":
       return <Eye {...props} />;
+    case "file-code":
+      return <FileCode2 {...props} />;
     case "file-json":
       return <FileJson {...props} />;
     case "file-text":
       return <FileText {...props} />;
     case "git-branch":
       return <GitBranch {...props} />;
+    case "git-fork":
+      return <GitFork {...props} />;
     case "globe":
       return <Globe {...props} />;
     case "hand":
@@ -370,6 +390,10 @@ export function GrdrIcon({
       return <Terminal {...props} />;
     case "trash":
       return <Trash2 {...props} />;
+    case "user":
+      return <User {...props} />;
+    case "users":
+      return <Users {...props} />;
     case "x":
       return <X {...props} />;
     case "zoom-in":
@@ -417,6 +441,8 @@ export function iconKeyToName(iconKey: string): GrdrIconName {
       return "shield-alert";
     case "nav.home":
       return "home";
+    case "nav.users":
+      return "users";
     case "nav.inventory":
       return "cpu";
     case "nav.sessions":
@@ -534,7 +560,7 @@ export function HarnessIcon({
     return <GrdrIcon name="route" size={size} color="var(--tone-ask)" />;
   }
   if (norm.includes("bedrock") || norm.includes("aws")) {
-    return <SiCloudflare size={size} color="var(--tone-ask)" aria-hidden="true" />;
+    return <GrdrIcon name="server" size={size} color="var(--tone-ask)" />;
   }
   if (norm.includes("codex") || norm.includes("openai")) {
     return <GrdrIcon name="key-round" size={size} color="var(--accent-primary)" />;

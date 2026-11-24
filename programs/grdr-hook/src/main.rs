@@ -68,6 +68,7 @@ fn main() -> ExitCode {
             target,
             summary: "CLI hook test invocation".into(),
             timestamp: Timestamp::now(),
+            ..Default::default()
         }
     } else if !std::io::stdin().is_terminal() {
         let mut raw = String::new();

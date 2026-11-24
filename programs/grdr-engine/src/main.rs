@@ -242,6 +242,7 @@ impl SandboxEngine {
                     target,
                     summary,
                     timestamp: Timestamp::now(),
+                    ..Default::default()
                 };
                 match self.evaluate(&attempt) {
                     Ok(receipt) => (
@@ -369,6 +370,7 @@ fn main() -> ExitCode {
                 target,
                 summary: "Standalone engine evaluation".into(),
                 timestamp: Timestamp::now(),
+                ..Default::default()
             };
             match engine.evaluate(&attempt) {
                 Ok(receipt) => {

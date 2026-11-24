@@ -189,6 +189,7 @@ mod tests {
                     target: target.into(),
                     summary: target.into(),
                     timestamp: now,
+                    ..Default::default()
                 };
                 let full = evaluate(&attempt, &packs, &[], &KillSwitchState::Inactive, now);
                 assert_eq!(full.verdict, Verdict::Deny);

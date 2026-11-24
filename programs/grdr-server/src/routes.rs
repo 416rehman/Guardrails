@@ -19,11 +19,13 @@ use tokio_stream::wrappers::BroadcastStream;
 use tower_http::services::{ServeDir, ServeFile};
 
 use grdr_model::{
-    ApprovalRequest, AuditEntry, BatchEventsInput, CodedError, CreateRuleInput,
+    ApprovalRequest, ArtifactEntry, AuditEntry, BatchEventsInput, CodedError, CreateRuleInput,
     DecideApprovalInput, DecideInput, DecisionReceipt, Device, DiscoveredAgent, Finding,
-    HealthResponse, Incident, KillSwitchInput, KillSwitchState, McpServerEntry, OverviewResponse,
-    PolicyPack, PolicyRule, ReplayRuleInput, ReplaySummary, SessionDetailResponse, SessionSummary,
-    TrustedKeyInfo, UpdateFindingInput, UpdateRuleInput, UpdateRuleModeInput,
+    HealthResponse, Incident, KillSwitchInput, KillSwitchState, McpServerEntry, OrgPrivacyConfig,
+    OverviewResponse, PolicyPack, PolicyRule, ReplayRuleInput, ReplaySummary,
+    SessionDetailResponse, SessionSummary, TrustedKeyInfo, UpdateFindingInput,
+    UpdatePrivacyConfigInput, UpdateRuleInput, UpdateRuleModeInput, UserDetailResponse,
+    UserProfile,
 };
 
 use crate::auth::{
@@ -58,9 +60,16 @@ pub fn build_router_with_security(
 
     let operator_routes = Router::new()
         .route("/api/v1/overview", get(overview))
+        .route("/api/v1/users", get(list_users))
+        .route("/api/v1/users/{id}", get(get_user))
+        .route(
+            "/api/v1/privacy/config",
+            get(get_privacy_config).patch(update_privacy_config),
+        )
         .route("/api/v1/devices", get(list_devices))
         .route("/api/v1/inventory/agents", get(list_agents))
         .route("/api/v1/inventory/mcp-servers", get(list_mcp_servers))
+        .route("/api/v1/inventory/artifacts", get(list_artifacts))
         .route("/api/v1/sessions", get(list_sessions))
         .route("/api/v1/sessions/{id}", get(get_session))
         .route("/api/v1/decide", post(decide))
@@ -135,6 +144,36 @@ async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
 
 async fn overview(State(state): State<AppState>) -> Json<OverviewResponse> {
     Json(state.overview().await)
+}
+
+async fn list_users(State(state): State<AppState>) -> Json<Vec<UserProfile>> {
+    Json(state.users().await)
+}
+
+async fn get_user(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<UserDetailResponse> {
+    state.user_detail(&id).await.map(Json).map_err(err_response)
+}
+
+async fn get_privacy_config(State(state): State<AppState>) -> Json<OrgPrivacyConfig> {
+    Json(state.privacy_config().await)
+}
+
+async fn update_privacy_config(
+    State(state): State<AppState>,
+    Json(input): Json<UpdatePrivacyConfigInput>,
+) -> ApiResult<OrgPrivacyConfig> {
+    state
+        .update_privacy_config(input)
+        .await
+        .map(Json)
+        .map_err(err_response)
+}
+
+async fn list_artifacts(State(state): State<AppState>) -> Json<Vec<ArtifactEntry>> {
+    Json(state.artifacts().await)
 }
 
 async fn list_devices(State(state): State<AppState>) -> Json<Vec<Device>> {

@@ -114,7 +114,6 @@ export function HomePage({
             ) : (
               devices.map((dev, idx) => (
                 <span key={dev.id} style={{ display: "inline-flex", alignItems: "center" }}>
-                  {idx > 0 && <span style={{ color: "var(--ink-muted)", marginInlineEnd: 4 }}>,</span>}
                   <EntityLink
                     kind="device"
                     id={dev.id}
@@ -122,6 +121,9 @@ export function HomePage({
                     os={dev.os}
                     onSelect={onOpenEntity}
                   />
+                  {idx < devices.length - 1 && (
+                    <span style={{ color: "var(--ink-muted)" }}>,</span>
+                  )}
                 </span>
               ))
             )}
