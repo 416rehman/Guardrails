@@ -533,10 +533,21 @@ version = "0.1.0"
 [[package]]
 name = "grdr-fastpath-ffi"
 version = "0.1.0"
+dependencies = [
+ "grdr-fastpath",
+]
 
 [[package]]
 name = "grdr-ffi"
 version = "0.1.0"
+dependencies = [
+ "grdr-core",
+ "grdr-fastpath",
+ "grdr-model",
+ "jiff",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "grdr-hook"
@@ -677,6 +688,14 @@ dependencies = [
 [[package]]
 name = "grdr-wasm"
 version = "0.1.0"
+dependencies = [
+ "grdr-core",
+ "grdr-fastpath",
+ "grdr-model",
+ "jiff",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "grdr-wire"

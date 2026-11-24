@@ -10,6 +10,14 @@ privilege = "none"
 surface = "public"
 renders = "none"
 
+[dependencies]
+grdr-core = { workspace = true }
+grdr-fastpath = { workspace = true }
+grdr-model = { workspace = true }
+jiff = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
 # A copy of the root [workspace.lints] with unsafe_code = "deny" in place of "forbid", so a
 # reasoned #[allow(unsafe_code)] can admit one item. Keep it in step with the root table.
 [lints.rust]
