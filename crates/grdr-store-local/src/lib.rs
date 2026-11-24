@@ -9,9 +9,12 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use grdr_crypto::{SigningKeypair, load_or_create_keypair};
+use grdr_model::error::{CODE_STORE_CORRUPT, CODE_STORE_IO};
 use grdr_model::{
-    ActionAttempt, DecisionReceipt, Grant, KillSwitchState, PolicyPack, TrustedKeyInfo, Verdict,
+    ActionAttempt, CodedError, DecisionReceipt, Grant, KillSwitchState, PolicyPack, TrustedKeyInfo,
+    Verdict,
 };
+use grdr_ports::{PortSnapshot, StorePort};
 
 pub const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 const SNAPSHOT_FILE: &str = "state.json";
@@ -164,6 +167,84 @@ impl LocalStore {
     }
 }
 
+impl From<StoreError> for CodedError {
+    fn from(err: StoreError) -> Self {
+        match err {
+            StoreError::Codec(detail) => CodedError::new(
+                CODE_STORE_CORRUPT,
+                detail,
+                "Check or remove corrupted store JSON state.",
+            ),
+            StoreError::Io { path, detail } => CodedError::new(
+                CODE_STORE_IO,
+                format!("{path}: {detail}"),
+                "Verify directory permissions in daemon data dir.",
+            ),
+            StoreError::Key(detail) => CodedError::new(
+                CODE_STORE_IO,
+                detail,
+                "Verify signing key permissions in daemon data dir.",
+            ),
+        }
+    }
+}
+
+impl From<&PortSnapshot> for PersistedDaemonSnapshot {
+    fn from(s: &PortSnapshot) -> Self {
+        Self {
+            schema_version: s.schema_version,
+            device_id: s.device_id.clone(),
+            hostname: s.hostname.clone(),
+            packs: s.packs.clone(),
+            grants: s.grants.clone(),
+            trusted_keys: s.trusted_keys.clone(),
+            kill_switch: s.kill_switch.clone(),
+            attempts: s.attempts.clone(),
+            receipts: s.receipts.clone(),
+            pending_attempts: s.pending_attempts.clone(),
+            pending_receipts: s.pending_receipts.clone(),
+        }
+    }
+}
+
+impl From<PersistedDaemonSnapshot> for PortSnapshot {
+    fn from(s: PersistedDaemonSnapshot) -> Self {
+        Self {
+            schema_version: s.schema_version,
+            device_id: s.device_id,
+            hostname: s.hostname,
+            packs: s.packs,
+            grants: s.grants,
+            trusted_keys: s.trusted_keys,
+            kill_switch: s.kill_switch,
+            attempts: s.attempts,
+            receipts: s.receipts,
+            pending_attempts: s.pending_attempts,
+            pending_receipts: s.pending_receipts,
+        }
+    }
+}
+
+impl StorePort for LocalStore {
+    fn save_snapshot(&self, snapshot: &PortSnapshot) -> Result<(), CodedError> {
+        let converted = PersistedDaemonSnapshot::from(snapshot);
+        self.save_snapshot(&converted).map_err(CodedError::from)
+    }
+
+    fn load_snapshot(&self) -> Result<Option<PortSnapshot>, CodedError> {
+        let loaded = self.load_snapshot().map_err(CodedError::from)?;
+        Ok(loaded.map(PortSnapshot::from))
+    }
+
+    fn append_receipt(&self, receipt: &DecisionReceipt) -> Result<(), CodedError> {
+        self.append_receipt_wal(receipt).map_err(CodedError::from)
+    }
+
+    fn read_receipts(&self) -> Result<Vec<DecisionReceipt>, CodedError> {
+        self.read_receipt_wal().map_err(CodedError::from)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -233,6 +314,16 @@ mod tests {
         assert_eq!(wal.len(), 1);
         assert_eq!(wal[0].receipt_id, "rcp-1");
 
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn local_store_satisfies_store_port_contract() {
+        let dir =
+            std::env::temp_dir().join(format!("grdr-store-local-contract-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let store = LocalStore::open(dir.clone()).unwrap();
+        grdr_ports_testkit::assert_store_port_contract(&store).unwrap();
         let _ = fs::remove_dir_all(&dir);
     }
 }
