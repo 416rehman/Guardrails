@@ -9,6 +9,17 @@ const CONVENTIONAL_COMMIT_RE =
   /^(feat|fix|chore|docs|refactor|test|ci|build|perf|style)(\([a-z0-9._-]+\))?:\s+\S/;
 const AI_TRAILER_RE = /(?:`n|\b)Co-Authored-By\s*:|\bGenerated with\b|\u{1F916}/iu;
 const BANNED_PKG_MGRS = new Set(["npm", "npx", "yarn", "bun"]);
+const WEB_CSS_RE = /^web\/.+\.css$/;
+const WEB_UI_PKG_RE = /^web\/packages\/ui\//;
+const WEB_KIT_OR_APP_RE = /^web\/(?:packages\/kit|apps)\//;
+const REACT_ARIA_IMPORT_RE =
+  /(?:\bfrom\s+|\bimport\s*\(?\s*|\brequire\s*\(\s*)(['"])(?:@react-aria\/[^'"]+|react-aria(?:-components)?(?:\/[^'"]*)?)\1/;
+const ASTRYX_IMPORT_RE =
+  /(?:\bfrom\s+|\bimport\s*\(?\s*|\brequire\s*\(\s*)(['"])@(?:astryxdesign|ui-sdk)\/[^'"]+\1/;
+const PHYSICAL_CSS_PROP_RE =
+  /(?<![A-Za-z0-9_-])(?:margin|padding|border)-(?:left|right)(?:-(?:width|style|color))?\s*:/i;
+const DANGEROUS_HTML_RE = /\bdangerouslySetInnerHTML\b/;
+const PINNED_SHA_RE = /^[^@\s]+@[0-9a-f]{40}$/i;
 
 export function scanRust(content) {
   const lines = content.split(/\r?\n/);
@@ -386,6 +397,53 @@ export function evaluateStructureCommand(command) {
     const tokens = tokenizeSegment(segment);
     findings.push(...checkPnpmOnlyTokens(tokens));
     findings.push(...checkGitCommitTokens(tokens));
+  }
+  return findings;
+}
+
+export function checkWebInterface(relPath, scanned) {
+  const findings = [];
+  const codeOnly = scanned.map((l) => l.codeLine).join("\n");
+  const rawCodeOnly = scanned.map((l) => l.rawCodeLine).join("\n");
+
+  if (WEB_CSS_RE.test(relPath)) {
+    if (PHYSICAL_CSS_PROP_RE.test(codeOnly)) {
+      findings.push(
+        `grdr-interface (${relPath}, UX6): replace physical margin/padding/border left/right CSS properties with logical inline-start/inline-end properties.`,
+      );
+    }
+    return findings;
+  }
+
+  if (!WEB_UI_PKG_RE.test(relPath) && REACT_ARIA_IMPORT_RE.test(rawCodeOnly)) {
+    findings.push(
+      `grdr-interface (${relPath}, ARCH-103): react-aria / react-aria-components may only be imported inside web/packages/ui/.`,
+    );
+  }
+  if (WEB_KIT_OR_APP_RE.test(relPath) && ASTRYX_IMPORT_RE.test(rawCodeOnly)) {
+    findings.push(
+      `grdr-interface (${relPath}, ARCH-101..102): @astryxdesign/* and @ui-sdk/* may not be imported inside web/packages/kit/ or web/apps/; import from @grdr/ui.`,
+    );
+  }
+  if (DANGEROUS_HTML_RE.test(codeOnly)) {
+    findings.push(`grdr-interface (${relPath}): dangerouslySetInnerHTML is forbidden in web/.`);
+  }
+  return findings;
+}
+
+export function checkWorkflowPins(relPath, content) {
+  const findings = [];
+  const lines = content.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i += 1) {
+    const match = lines[i].match(/^\s*(?:-\s*)?uses\s*:\s*([^\s#]+)/);
+    if (!match) continue;
+    const ref = match[1].replace(/^['"]|['"]$/g, "");
+    if (ref.startsWith("./") || ref.startsWith("../") || ref.startsWith("$/.")) continue;
+    if (!PINNED_SHA_RE.test(ref)) {
+      findings.push(
+        `workflow hygiene (${relPath}:${i + 1}): external action "${ref}" must be pinned to a full 40-hex commit SHA or be a local ./ action.`,
+      );
+    }
   }
   return findings;
 }

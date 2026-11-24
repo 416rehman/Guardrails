@@ -6,6 +6,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  checkWebInterface,
+  checkWorkflowPins,
   countNonTestCodeLines,
   evaluateStructureCommand,
   scanRust,
@@ -24,9 +26,6 @@ const TS_SOURCE_RE = /^web\/(?:apps|packages)\/.+\.[cm]?tsx?$/;
 const TS_DECLARATION_RE = /\.d\.[cm]?ts$/;
 const SCRIPT_TEST_PATH_RE = /(?:^|\/)(?:__tests__|e2e|tests?)\/|\.(?:test|spec)\.[cm]?[jt]sx?$/;
 const WEB_CODE_RE = /^web\/.+\.(?:[cm]?[jt]sx?|css)$/;
-const WEB_CSS_RE = /^web\/.+\.css$/;
-const WEB_UI_PKG_RE = /^web\/packages\/ui\//;
-const WEB_KIT_OR_APP_RE = /^web\/(?:packages\/kit|apps)\//;
 const IGNORED_DIR_RE = /(?:^|\/)(?:node_modules|target|dist)\//;
 const GENERATED_RE = /^\s*\/\/\s*@generated\b/m;
 
@@ -40,22 +39,12 @@ const SAFETY_COMMENT_RE = /\/\/\s*SAFETY:|\/\*\s*SAFETY:/;
 const STATE_FIELD_NAME_RE = /^(?:state|status|phase|stage|mode)$/;
 const RUST_INT_TYPE_RE = /^(?:u8|u16|u32|u64|u128|usize|i8|i16|i32|i64|i128|isize)$/;
 const RUST_STR_TYPE_RE = /^(?:(?:std::string::)?String|&(?:'[A-Za-z_]\w*\s+)?str)$/;
-const RUST_IMPL_OR_FN_RE =
-  /^(?:pub(?:\s*\([^)]*\))?\s+)?(?:(?:default|const|async|unsafe)\s+)*(?:extern\s+(?:"[^"]*"\s+)?)?(?:impl|fn)\b/;
+const RUST_FN_MODIFIERS = new Set(["default", "const", "async", "unsafe"]);
 const RUST_DECL_RE = /^(?:pub(?:\s*\([^)]*\))?\s+)?(?:unsafe\s+)?(?:struct|enum|trait|type|static)\b/;
 const RUST_CONST_DECL_RE = /^(?:pub(?:\s*\([^)]*\))?\s+)?const\s+[A-Za-z_]\w*\s*:/;
 const RUST_PANIC_RE =
   /\.unwrap\s*\(|\.unwrap_err\s*\(|\.expect\s*\(|\.expect_err\s*\(|\b(?:panic|todo|unimplemented|unreachable)\s*!|\b(?:std::)?process::exit\b/;
 const RUST_UNSAFE_BLOCK_RE = /\bunsafe\s*(?:\{|$)/;
-
-const REACT_ARIA_IMPORT_RE =
-  /(?:\bfrom\s+|\bimport\s*\(?\s*|\brequire\s*\(\s*)(['"])(?:@react-aria\/[^'"]+|react-aria(?:-components)?(?:\/[^'"]*)?)\1/;
-const ASTRYX_IMPORT_RE =
-  /(?:\bfrom\s+|\bimport\s*\(?\s*|\brequire\s*\(\s*)(['"])@(?:astryxdesign|ui-sdk)\/[^'"]+\1/;
-const PHYSICAL_CSS_PROP_RE =
-  /(?<![A-Za-z0-9_-])(?:margin|padding|border)-(?:left|right)(?:-(?:width|style|color))?\s*:/i;
-const DANGEROUS_HTML_RE = /\bdangerouslySetInnerHTML\b/;
-const PINNED_SHA_RE = /^[^@\s]+@[0-9a-f]{40}$/i;
 
 export function normalizeRepoPath(filePath, cwd = process.cwd()) {
   if (!filePath || typeof filePath !== "string") return "";
@@ -126,6 +115,17 @@ function checkS1(relPath, content, isFullWrite, target, cwd) {
   ];
 }
 
+function isRustImplOrFn(trimmed) {
+  let rest = trimmed.replace(/^pub(?:\s*\([^)]*\))?\s+/, "");
+  while (true) {
+    const wordMatch = rest.match(/^([a-z]+)\s+/);
+    if (!wordMatch || !RUST_FN_MODIFIERS.has(wordMatch[1])) break;
+    rest = rest.slice(wordMatch[0].length);
+  }
+  rest = rest.replace(/^extern\s+(?:"[^"]*"\s+)?/, "");
+  return /^(?:impl|fn)\b/.test(rest);
+}
+
 function checkS2(relPath, scannedRust) {
   let sawImplOrFn = false;
   for (let i = 0; i < scannedRust.length; i += 1) {
@@ -134,7 +134,7 @@ function checkS2(relPath, scannedRust) {
     const trimmed = line.codeLine.trim();
     if (!trimmed || trimmed.startsWith("#[") || trimmed.startsWith("#![")) continue;
 
-    if (RUST_IMPL_OR_FN_RE.test(trimmed)) {
+    if (isRustImplOrFn(trimmed)) {
       sawImplOrFn = true;
     } else if (sawImplOrFn && (RUST_DECL_RE.test(trimmed) || RUST_CONST_DECL_RE.test(trimmed))) {
       return [
@@ -233,7 +233,7 @@ function checkRustS4(relPath, scanned) {
     if (!allow && (boolCount >= 3 || badStateField)) {
       const detail = badStateField ? `field "${badStateField}"` : `${boolCount} bool fields`;
       findings.push(
-        `S4 (${relPath}:${i + 1}): struct ${structMatch[1]} has an implicit state machine (${detail}); use an enum or annotate with // grdr:allow-s4 <reason>.`,
+        `S4 (${relPath}:${i + 1}): struct ${structMatch[1]} has an implicit state machine (${detail}); use an enum or annotate with // grdr:allow-s4 reason.`,
       );
     }
     i = bodyEnd;
@@ -244,10 +244,10 @@ function checkRustS4(relPath, scanned) {
 function checkTsS4(relPath, scanned) {
   const findings = [];
   for (let i = 0; i < scanned.length; i += 1) {
-    const ifaceMatch = scanned[i].codeLine.match(
-      /^(?:export\s+)?(?:interface|type)\s+([A-Za-z_]\w*)(?:[^=;{]*=\s*)?[^{;]*\{/,
-    );
-    if (!ifaceMatch) continue;
+    const line = scanned[i].codeLine;
+    if (!line.includes("{")) continue;
+    const ifaceMatch = line.match(/^(?:export\s+)?(?:interface|type)\s+([A-Za-z_]\w*)\b/);
+    if (!ifaceMatch || line.slice(0, line.indexOf("{")).includes(";")) continue;
 
     let allow = hasPrecedingAllowS4(scanned, i, "@");
     let depth = 0;
@@ -291,7 +291,7 @@ function checkTsS4(relPath, scanned) {
     if (!allow && (boolCount >= 3 || badStateField)) {
       const detail = badStateField ? `field "${badStateField}"` : `${boolCount} boolean fields`;
       findings.push(
-        `S4 (${relPath}:${i + 1}): ${ifaceMatch[1]} has an implicit state machine (${detail}); use a discriminated union or annotate with // grdr:allow-s4 <reason>.`,
+        `S4 (${relPath}:${i + 1}): ${ifaceMatch[1]} has an implicit state machine (${detail}); use a discriminated union or annotate with // grdr:allow-s4 reason.`,
       );
     }
     i = endIdx;
@@ -318,7 +318,7 @@ function checkTsS4(relPath, scanned) {
           const closed = frames.pop();
           if (closed.count >= 3 && !closed.allow) {
             findings.push(
-              `S4 (${relPath}:${closed.startLine}): component has ${closed.count} boolean/null useState flags; consolidate into a state union or annotate with // grdr:allow-s4 <reason>.`,
+              `S4 (${relPath}:${closed.startLine}): component has ${closed.count} boolean/null useState flags; consolidate into a state union or annotate with // grdr:allow-s4 reason.`,
             );
           }
         }
@@ -326,7 +326,7 @@ function checkTsS4(relPath, scanned) {
     }
     if (frames[0].count >= 3 && !frames[0].allow) {
       findings.push(
-        `S4 (${relPath}:1): snippet has ${frames[0].count} boolean/null useState flags; consolidate into a state union or annotate with // grdr:allow-s4 <reason>.`,
+        `S4 (${relPath}:1): snippet has ${frames[0].count} boolean/null useState flags; consolidate into a state union or annotate with // grdr:allow-s4 reason.`,
       );
     }
   }
@@ -355,53 +355,6 @@ function checkS6(relPath, scanned, startIdx = 0, endIdx = scanned.length - 1) {
     }
     if (RUST_UNSAFE_BLOCK_RE.test(code) && !hasSafetyComment(scanned, i)) {
       findings.push(`S6 (${relPath}:${i + 1}): unsafe block requires a preceding // SAFETY: comment.`);
-    }
-  }
-  return findings;
-}
-
-function checkWebInterface(relPath, scanned) {
-  const findings = [];
-  const codeOnly = scanned.map((l) => l.codeLine).join("\n");
-  const rawCodeOnly = scanned.map((l) => l.rawCodeLine).join("\n");
-
-  if (WEB_CSS_RE.test(relPath)) {
-    if (PHYSICAL_CSS_PROP_RE.test(codeOnly)) {
-      findings.push(
-        `grdr-interface (${relPath}, UX6): replace physical margin/padding/border left/right CSS properties with logical inline-start/inline-end properties.`,
-      );
-    }
-    return findings;
-  }
-
-  if (!WEB_UI_PKG_RE.test(relPath) && REACT_ARIA_IMPORT_RE.test(rawCodeOnly)) {
-    findings.push(
-      `grdr-interface (${relPath}, ARCH-103): react-aria / react-aria-components may only be imported inside web/packages/ui/.`,
-    );
-  }
-  if (WEB_KIT_OR_APP_RE.test(relPath) && ASTRYX_IMPORT_RE.test(rawCodeOnly)) {
-    findings.push(
-      `grdr-interface (${relPath}, ARCH-101..102): @astryxdesign/* and @ui-sdk/* may not be imported inside web/packages/kit/ or web/apps/; import from @grdr/ui.`,
-    );
-  }
-  if (DANGEROUS_HTML_RE.test(codeOnly)) {
-    findings.push(`grdr-interface (${relPath}): dangerouslySetInnerHTML is forbidden in web/.`);
-  }
-  return findings;
-}
-
-function checkWorkflowPins(relPath, content) {
-  const findings = [];
-  const lines = content.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i += 1) {
-    const match = lines[i].match(/^\s*(?:-\s*)?uses\s*:\s*([^\s#]+)/);
-    if (!match) continue;
-    const ref = match[1].replace(/^['"]|['"]$/g, "");
-    if (ref.startsWith("./") || ref.startsWith("../") || ref.startsWith("$/.")) continue;
-    if (!PINNED_SHA_RE.test(ref)) {
-      findings.push(
-        `workflow hygiene (${relPath}:${i + 1}): external action "${ref}" must be pinned to a full 40-hex commit SHA or be a local ./ action.`,
-      );
     }
   }
   return findings;
