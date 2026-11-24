@@ -108,21 +108,23 @@ export function ConsoleShell() {
 
   const updateSearch = useCallback(
     (patch: Partial<ConsoleSearchParams>) => {
-      const merged: Record<string, unknown> = {
-        ...urlSearch,
-        ...patch,
-      };
-      for (const key of Object.keys(merged)) {
-        if (merged[key] === undefined) {
-          delete merged[key];
-        }
-      }
       void navigate({
         to: ".",
-        search: merged,
+        search: (prev: Record<string, unknown>) => {
+          const merged: Record<string, unknown> = {
+            ...validateConsoleSearch(prev ?? {}),
+            ...patch,
+          };
+          for (const key of Object.keys(merged)) {
+            if (merged[key] === undefined) {
+              delete merged[key];
+            }
+          }
+          return merged;
+        },
       });
     },
-    [navigate, urlSearch],
+    [navigate],
   );
 
   const handleOpenEntity = useCallback(

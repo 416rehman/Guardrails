@@ -43,6 +43,21 @@ services:
     networks:
       - qa-internal
 
+  playwright-e2e:
+    build:
+      context: ../..
+      dockerfile: deploy/qa/Dockerfile
+      target: playwright-e2e
+    profiles:
+      - e2e
+    depends_on:
+      grdr-server:
+        condition: service_healthy
+    environment:
+      GRDR_E2E_BASE_URL: "http://grdr-server:8787"
+    networks:
+      - qa-internal
+
 networks:
   qa-internal:
     driver: bridge

@@ -39,3 +39,11 @@ RUN sed -i 's/\r$//' /opt/grdr/qa/run-slice0-e2e.sh && chmod 0755 /opt/grdr/qa/r
 USER 10001:10001
 WORKDIR /home/grdrqa
 ENTRYPOINT ["/bin/bash", "/opt/grdr/qa/run-slice0-e2e.sh"]
+
+FROM node:22-bookworm-slim AS playwright-e2e
+WORKDIR /src
+RUN corepack enable && corepack prepare pnpm@10.6.1 --activate
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml web/tsconfig.json web/playwright.config.ts ./web/
+COPY web/e2e ./web/e2e
+RUN pnpm --dir web install --frozen-lockfile && pnpm --dir web exec playwright install chromium --with-deps
+ENTRYPOINT ["pnpm", "--dir", "web", "run", "test:e2e"]
