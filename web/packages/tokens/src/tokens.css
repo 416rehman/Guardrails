@@ -1,5 +1,12 @@
-:root {
-  /* Exponential 4px spacing scale (design/27 section 10, base 4, ratio 2) */
+@import "@fontsource/dm-sans/latin-400.css";
+@import "@fontsource/dm-sans/latin-500.css";
+@import "@fontsource/dm-sans/latin-700.css";
+@import "@fontsource/ibm-plex-mono/latin-400.css";
+@import "@fontsource/ibm-plex-mono/latin-500.css";
+
+:root,
+html[data-theme="light"] {
+  /* Exponential 4px spacing scale (base 4, ratio 2) */
   --space-0-5: 2px;
   --space-1: 4px;
   --space-2: 8px;
@@ -8,79 +15,102 @@
   --space-5: 64px;
   --space-6: 128px;
 
-  /* Typography (OFL self-hosted / system stack; zero third-party font CDNs) */
-  --font-sans: "Inter Variable", "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: "JetBrains Mono", "Cascadia Mono", ui-monospace, SFMono-Regular, monospace;
+  /* Committed Guardrails Studio typography (self-hosted OFL) */
+  --font-sans: "DM Sans", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
 
-  /* Radii & motion */
+  /* Varied radii by element hierarchy */
   --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --motion-quick: 120ms;
-  --motion-standard: 200ms;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 9999px;
+
+  /* Motion timings */
+  --motion-quick: 140ms;
+  --motion-standard: 220ms;
   --motion-emphasis: 320ms;
   --approval-arm-default: 1000ms;
   --approval-arm-irreversible: 2000ms;
 
-  /* Dark instrument palette (default) */
-  --bg-canvas: #0e1116;
-  --bg-surface: #151a22;
-  --bg-elevated: #1c232e;
-  --bg-hover: #212936;
-  --border-subtle: #252d3a;
-  --border-strong: #344054;
-  --ink-primary: #e8edf5;
-  --ink-secondary: #98a4b8;
-  --ink-muted: #6f7c91;
+  /* Architectural Paper Light (default) */
+  --bg-canvas: #FFFFFF;
+  --bg-rail: #F7F7F5;
+  --bg-surface: #FFFFFF;
+  --bg-elevated: #F7F7F5;
+  --bg-recessed: #F3F3F0;
+  --bg-hover: #ECECE7;
+  --border-subtle: #E6E6E0;
+  --border-strong: #CFCFC8;
+  --ink-primary: #111111;
+  --ink-secondary: #52524E;
+  --ink-muted: #767670;
 
-  --accent-primary: #3b82f6;
-  --accent-soft: rgba(59, 130, 246, 0.14);
+  --action-primary-bg: #111111;
+  --action-primary-ink: #FFFFFF;
+  --accent-primary: #0F52BA;
+  --accent-soft: rgba(15, 82, 186, 0.08);
+  --backdrop-scrim: rgba(17, 17, 17, 0.42);
+  --shadow-overlay: 0 16px 40px rgba(17, 17, 17, 0.12);
+  --press-tint: rgba(255, 255, 255, 0.24);
 
-  /* Locked semantic status & mode tones */
-  --tone-allow: #38b27a;
-  --tone-allow-bg: rgba(56, 178, 122, 0.14);
-  --tone-watch: #60a5fa;
-  --tone-watch-bg: rgba(96, 165, 250, 0.14);
-  --tone-ask: #e5a83b;
-  --tone-ask-bg: rgba(229, 168, 59, 0.14);
-  --tone-block: #e05263;
-  --tone-block-bg: rgba(224, 82, 99, 0.14);
-  --tone-neutral: #8e9aaf;
-  --tone-neutral-bg: rgba(142, 154, 175, 0.14);
-  --tone-operator: #7c3aed;
-  --tone-operator-bg: rgba(124, 58, 237, 0.16);
+  /* Semantic verdict & mode tokens */
+  --tone-allow: #166534;
+  --tone-allow-bg: rgba(22, 101, 52, 0.09);
+  --tone-watch: #0F52BA;
+  --tone-watch-bg: rgba(15, 82, 186, 0.09);
+  --tone-ask: #B45309;
+  --tone-ask-bg: rgba(180, 83, 9, 0.10);
+  --tone-block: #B91C1C;
+  --tone-block-bg: rgba(185, 28, 28, 0.09);
+  --tone-neutral: #52524E;
+  --tone-neutral-bg: rgba(82, 82, 78, 0.09);
 
-  --focus-ring: 0 0 0 2px #0e1116, 0 0 0 4px #3b82f6;
+  --operator-bar-bg: #1C1917;
+  --operator-bar-ink: #FAFAF9;
+  --operator-badge-bg: #F59E0B;
+  --operator-badge-ink: #1C1917;
+
+  --focus-ring: 0 0 0 2px #FFFFFF, 0 0 0 4px #0F52BA;
 }
 
-html[data-theme="light"] {
-  --bg-canvas: #f4f6f8;
-  --bg-surface: #ffffff;
-  --bg-elevated: #f9fafb;
-  --bg-hover: #eef2f6;
-  --border-subtle: #d8dee6;
-  --border-strong: #b6c0ce;
-  --ink-primary: #111827;
-  --ink-secondary: #475467;
-  --ink-muted: #667085;
+html[data-theme="dark"] {
+  --bg-canvas: #121211;
+  --bg-rail: #181816;
+  --bg-surface: #181816;
+  --bg-elevated: #1F1F1C;
+  --bg-recessed: #1F1F1C;
+  --bg-hover: #272723;
+  --border-subtle: #2A2A26;
+  --border-strong: #3D3D37;
+  --ink-primary: #F4F4F0;
+  --ink-secondary: #A6A69E;
+  --ink-muted: #787871;
 
-  --accent-primary: #2563eb;
-  --accent-soft: rgba(37, 99, 235, 0.1);
+  --action-primary-bg: #F4F4F0;
+  --action-primary-ink: #111111;
+  --accent-primary: #5B9BFF;
+  --accent-soft: rgba(91, 155, 255, 0.14);
+  --backdrop-scrim: rgba(0, 0, 0, 0.65);
+  --shadow-overlay: 0 20px 48px rgba(0, 0, 0, 0.55);
+  --press-tint: rgba(255, 255, 255, 0.18);
 
-  --tone-allow: #15803d;
-  --tone-allow-bg: rgba(21, 128, 61, 0.1);
-  --tone-watch: #1d4ed8;
-  --tone-watch-bg: rgba(29, 78, 216, 0.1);
-  --tone-ask: #b45309;
-  --tone-ask-bg: rgba(180, 83, 9, 0.11);
-  --tone-block: #be123c;
-  --tone-block-bg: rgba(190, 18, 60, 0.1);
-  --tone-neutral: #475467;
-  --tone-neutral-bg: rgba(71, 84, 103, 0.1);
-  --tone-operator: #6d28d9;
-  --tone-operator-bg: rgba(109, 40, 217, 0.12);
+  --tone-allow: #4ADE80;
+  --tone-allow-bg: rgba(74, 222, 128, 0.13);
+  --tone-watch: #60A5FA;
+  --tone-watch-bg: rgba(96, 165, 250, 0.14);
+  --tone-ask: #FBBF24;
+  --tone-ask-bg: rgba(251, 191, 36, 0.14);
+  --tone-block: #F87171;
+  --tone-block-bg: rgba(248, 113, 113, 0.14);
+  --tone-neutral: #A6A69E;
+  --tone-neutral-bg: rgba(166, 166, 158, 0.14);
 
-  --focus-ring: 0 0 0 2px #ffffff, 0 0 0 4px #2563eb;
+  --operator-bar-bg: #292524;
+  --operator-bar-ink: #FAFAF9;
+  --operator-badge-bg: #FBBF24;
+  --operator-badge-ink: #1C1917;
+
+  --focus-ring: 0 0 0 2px #121211, 0 0 0 4px #5B9BFF;
 }
 
 @media (prefers-reduced-motion: reduce) {

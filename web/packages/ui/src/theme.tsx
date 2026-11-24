@@ -5,7 +5,7 @@ import "@astryxdesign/theme-neutral/fonts.css";
 import "@grdr/tokens/tokens.css";
 import "./ui.css";
 
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Theme } from "@astryxdesign/core/theme";
 import { neutralTheme } from "@astryxdesign/theme-neutral/built";
 
@@ -16,7 +16,13 @@ export interface GrdrThemeProviderProps {
   children: ReactNode;
 }
 
-export function GrdrThemeProvider({ mode = "dark", children }: GrdrThemeProviderProps) {
+export function GrdrThemeProvider({ mode = "light", children }: GrdrThemeProviderProps) {
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.documentElement.setAttribute("data-theme", mode);
+    }
+  }, [mode]);
+
   return (
     <Theme theme={neutralTheme} mode={mode}>
       {children}

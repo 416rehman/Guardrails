@@ -2,7 +2,7 @@
   "grdr-pre-tool-gate": {
     "PreToolUse": [
       {
-        "matcher": "run_command",
+        "matcher": "run_command|write_file|edit_file",
         "hooks": [
           {
             "type": "command",

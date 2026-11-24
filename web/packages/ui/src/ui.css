@@ -2,10 +2,10 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-0-5);
-  padding: 2px;
+  padding: 3px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
-  background-color: var(--bg-canvas);
+  background-color: var(--bg-recessed);
 }
 
 .grdr-ui-seg-item {
@@ -13,25 +13,32 @@
   align-items: center;
   gap: var(--space-1);
   min-height: 28px;
-  padding-inline: 10px;
+  padding-inline: 11px;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--ink-secondary);
+  font-family: var(--font-sans);
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
+  transition: background-color var(--motion-quick) ease, color var(--motion-quick) ease;
+}
+
+.grdr-ui-seg-item:hover:not([aria-disabled="true"]):not(:disabled) {
+  color: var(--ink-primary);
 }
 
 .grdr-ui-seg-item[aria-disabled="true"],
 .grdr-ui-seg-item:disabled {
-  opacity: 0.45;
+  opacity: 0.42;
   cursor: not-allowed;
 }
 
 .grdr-ui-seg-item[data-checked][data-tone="off"] {
-  background-color: var(--tone-neutral-bg);
+  background-color: var(--bg-canvas);
   color: var(--ink-primary);
+  border: 1px solid var(--border-subtle);
 }
 
 .grdr-ui-seg-item[data-checked][data-tone="watch"] {
@@ -53,7 +60,7 @@
   position: fixed;
   inset: 0;
   z-index: 40;
-  background-color: rgba(8, 11, 16, 0.62);
+  background-color: var(--backdrop-scrim);
 }
 
 .grdr-ui-drawer-content {
@@ -63,13 +70,14 @@
   z-index: 45;
   width: min(640px, 100vw);
   overflow-y: auto;
-  background-color: var(--bg-surface);
+  background-color: var(--bg-canvas);
   color: var(--ink-primary);
   border-inline-start: 1px solid var(--border-strong);
   padding: var(--space-4);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  box-shadow: var(--shadow-overlay);
 }
 
 .grdr-ui-drawer-header {
@@ -85,13 +93,15 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  padding-inline: 6px;
-  padding-block: 2px;
+  padding-inline: 8px;
+  padding-block: 3px;
   border-radius: var(--radius-sm);
-  background-color: var(--bg-canvas);
+  background-color: var(--bg-recessed);
   border: 1px solid var(--border-subtle);
+  color: var(--ink-primary);
   font-family: var(--font-mono);
   font-size: 12px;
+  line-height: 1.45;
   word-break: break-word;
 }
 
@@ -104,7 +114,7 @@
   position: absolute;
   inset-block: 0;
   inset-inline-start: 0;
-  background-color: rgba(255, 255, 255, 0.22);
+  background-color: var(--press-tint);
   pointer-events: none;
   transition: width 1s linear;
 }

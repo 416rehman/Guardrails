@@ -14,5 +14,5 @@ export const LOCKED_SEMANTIC_TONES = {
   ask: "var(--tone-ask)",
   block: "var(--tone-block)",
   neutral: "var(--tone-neutral)",
-  operator: "var(--tone-operator)",
+  accent: "var(--accent-primary)",
 } as const;

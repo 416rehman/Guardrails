@@ -332,108 +332,99 @@ export function ProtectPage({
       )}
 
       {packs.map((pack) => (
-        <Card key={pack.id} padding={3}>
-          <VStack gap={3}>
-            <HStack justify="between" align="center">
-              <VStack gap={1}>
-                <Heading level={2}>{`${pack.name} (${pack.version})`}</Heading>
-                <Text color="secondary">{pack.description}</Text>
-              </VStack>
-              <Badge variant="info" label={pack.channel} />
-            </HStack>
-
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Rule</th>
-                    <th>Match</th>
-                    <th>Hits</th>
-                    <th>Mode control</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pack.rules.map((rule) => (
-                    <tr key={rule.id}>
-                      <td>
-                        <HStack gap={2} align="center" style={{ flexWrap: "wrap" }}>
-                          <strong>{rule.title}</strong>
-                          {rule.locked && (
-                            <span style={{ flexShrink: 0, display: "inline-flex" }}>
-                              <Badge
-                                variant="error"
-                                icon={<GrdrIcon name="lock" size={11} />}
-                                label="Floor"
-                              />
-                            </span>
-                          )}
-                        </HStack>
-                        <Text type="supporting" color="secondary" size="sm">
-                          {rule.description}
-                        </Text>
-                      </td>
-                      <td>
-                        <div className="mono">{rule.matcher.action_classes.join(", ")}</div>
-                        <Text color="secondary" size="sm">
-                          {rule.matcher.target_contains.slice(0, 3).join(", ")}
-                        </Text>
-                      </td>
-                      <td className="tabular">{rule.hits}</td>
-                      <td>
-                        <ModeControl
-                          value={rule.mode}
-                          locked={rule.locked}
-                          boundaryDevices={boundaryDevices}
-                          requestDevices={requestDevices}
-                          onChange={(next) => void handleModeChange(rule.id, rule.mode, next)}
-                        />
-                      </td>
-                      <td>
-                        {rule.locked ? (
-                          <Text color="secondary" size="sm">
-                            Floor locked
-                          </Text>
-                        ) : confirmDeleteId === rule.id ? (
-                          <HStack gap={1}>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              label="Confirm delete"
-                              onClick={() => void handleDeleteRule(rule.id)}
-                            />
-                            <Button
-                              size="sm"
-                              label="Cancel"
-                              onClick={() => setConfirmDeleteId(null)}
-                            />
-                          </HStack>
-                        ) : (
-                          <HStack gap={1}>
-                            <Button
-                              size="sm"
-                              label="Edit"
-                              aria-label={`Edit rule ${rule.title}`}
-                              icon={<GrdrIcon name="pencil" size={13} />}
-                              onClick={() => startEditRule(rule)}
-                            />
-                            <Button
-                              size="sm"
-                              label="Delete"
-                              aria-label={`Delete rule ${rule.title}`}
-                              icon={<GrdrIcon name="trash" size={13} />}
-                              onClick={() => setConfirmDeleteId(rule.id)}
-                            />
-                          </HStack>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <section key={pack.id} className="ledger-section">
+          <div className="ledger-header">
+            <div>
+              <h2 className="ledger-title">{`${pack.name} (${pack.version})`}</h2>
+              <Text color="secondary">{pack.description}</Text>
             </div>
-          </VStack>
-        </Card>
+            <Badge variant="info" label={pack.channel} />
+          </div>
+
+          <div className="ledger-list">
+            {pack.rules.map((rule) => (
+              <div key={rule.id} className="ledger-row">
+                <div className="ledger-row-main">
+                  <VStack gap={1} style={{ flex: 1, minWidth: 260 }}>
+                    <HStack gap={2} align="center" style={{ flexWrap: "wrap" }}>
+                      <strong>{rule.title}</strong>
+                      {rule.locked && (
+                        <span style={{ flexShrink: 0, display: "inline-flex" }}>
+                          <Badge
+                            variant="error"
+                            icon={<GrdrIcon name="lock" size={11} />}
+                            label="Floor"
+                          />
+                        </span>
+                      )}
+                    </HStack>
+                    <Text type="supporting" color="secondary" size="sm">
+                      {rule.description}
+                    </Text>
+                    <HStack gap={2} align="center" style={{ flexWrap: "wrap", marginTop: 4 }}>
+                      <span className="mono" style={{ color: "var(--ink-muted)" }}>
+                        {rule.matcher.action_classes.join(", ")}
+                      </span>
+                      {rule.matcher.target_contains.slice(0, 3).map((pat) => (
+                        <Quoted key={pat} text={pat} />
+                      ))}
+                      <Text size="sm" color="secondary" className="tabular">
+                        {`${rule.hits} hit(s)`}
+                      </Text>
+                    </HStack>
+                  </VStack>
+
+                  <HStack gap={3} align="center" style={{ flexWrap: "wrap" }}>
+                    <ModeControl
+                      value={rule.mode}
+                      locked={rule.locked}
+                      boundaryDevices={boundaryDevices}
+                      requestDevices={requestDevices}
+                      onChange={(next) => void handleModeChange(rule.id, rule.mode, next)}
+                    />
+
+                    {rule.locked ? (
+                      <Text color="secondary" size="sm">
+                        Floor locked
+                      </Text>
+                    ) : confirmDeleteId === rule.id ? (
+                      <HStack gap={1}>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          label="Confirm delete"
+                          onClick={() => void handleDeleteRule(rule.id)}
+                        />
+                        <Button
+                          size="sm"
+                          label="Cancel"
+                          onClick={() => setConfirmDeleteId(null)}
+                        />
+                      </HStack>
+                    ) : (
+                      <HStack gap={1}>
+                        <Button
+                          size="sm"
+                          label="Edit"
+                          aria-label={`Edit rule ${rule.title}`}
+                          icon={<GrdrIcon name="pencil" size={13} />}
+                          onClick={() => startEditRule(rule)}
+                        />
+                        <Button
+                          size="sm"
+                          label="Delete"
+                          aria-label={`Delete rule ${rule.title}`}
+                          icon={<GrdrIcon name="trash" size={13} />}
+                          onClick={() => setConfirmDeleteId(rule.id)}
+                        />
+                      </HStack>
+                    )}
+                  </HStack>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       ))}
     </VStack>
   );
