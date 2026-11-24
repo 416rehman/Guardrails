@@ -114,6 +114,7 @@ ignore_paths = [
   "/Library/Trial",
   "/Library/Updates",
   "/Library/Application Support/Apple",
+  "/Library/Keychains",
   "~/Library/Preferences",
   "~/Library/Application Support/AddressBook",
   "~/Library/Application Support/Knowledge",
@@ -121,6 +122,7 @@ ignore_paths = [
   "~/Library/Application Support/CloudDocs",
   "~/Library/Application Support/FileProvider",
   "~/Library/Application Support/CrashReporter",
+  "~/Library/Application Support/networkserviceproxy",
 ]
 
 [os.macos.user]

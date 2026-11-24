@@ -277,21 +277,35 @@ def _run_with_windows_token(
     timeout_seconds: int,
 ) -> CommandResult:
     sa = _SecurityAttributes(ctypes.sizeof(_SecurityAttributes), None, True)
+    in_r, in_w = wintypes.HANDLE(), wintypes.HANDLE()
     out_r, out_w = wintypes.HANDLE(), wintypes.HANDLE()
     err_r, err_w = wintypes.HANDLE(), wintypes.HANDLE()
+    if not _KERNEL32.CreatePipe(ctypes.byref(in_r), ctypes.byref(in_w), ctypes.byref(sa), 0):
+        raise OracleError(ERR_ELEVATION, "CreatePipe stdin failed")
     if not _KERNEL32.CreatePipe(ctypes.byref(out_r), ctypes.byref(out_w), ctypes.byref(sa), 0):
+        _KERNEL32.CloseHandle(in_r)
+        _KERNEL32.CloseHandle(in_w)
         raise OracleError(ERR_ELEVATION, "CreatePipe stdout failed")
     if not _KERNEL32.CreatePipe(ctypes.byref(err_r), ctypes.byref(err_w), ctypes.byref(sa), 0):
+        _KERNEL32.CloseHandle(in_r)
+        _KERNEL32.CloseHandle(in_w)
         _KERNEL32.CloseHandle(out_r)
         _KERNEL32.CloseHandle(out_w)
         raise OracleError(ERR_ELEVATION, "CreatePipe stderr failed")
+    _KERNEL32.SetHandleInformation(in_w, HANDLE_FLAG_INHERIT, 0)
     _KERNEL32.SetHandleInformation(out_r, HANDLE_FLAG_INHERIT, 0)
     _KERNEL32.SetHandleInformation(err_r, HANDLE_FLAG_INHERIT, 0)
 
-    token = _create_unelevated_windows_token()
+    try:
+        token = _create_unelevated_windows_token()
+    except Exception:
+        for handle in (in_r, in_w, out_r, out_w, err_r, err_w):
+            _KERNEL32.CloseHandle(handle)
+        raise
     si = _StartupInfoW()
     si.cb = ctypes.sizeof(_StartupInfoW)
     si.dwFlags = STARTF_USESTDHANDLES
+    si.hStdInput = in_r
     si.hStdOutput = out_w
     si.hStdError = err_w
     pi = _ProcessInfo()
@@ -302,6 +316,8 @@ def _run_with_windows_token(
         str(cwd), ctypes.byref(si), ctypes.byref(pi),
     )
     _KERNEL32.CloseHandle(token)
+    _KERNEL32.CloseHandle(in_r)
+    _KERNEL32.CloseHandle(in_w)
     _KERNEL32.CloseHandle(out_w)
     _KERNEL32.CloseHandle(err_w)
     if not ok:

@@ -842,6 +842,23 @@ class R4AndR5LocalTest(unittest.TestCase):
         finally:
             runner_exec._KERNEL32.CloseHandle(token)
 
+    @unittest.skipUnless(os.name == "nt", "Windows-only token test")
+    def test_windows_deelevated_child_inherits_valid_stdin_handle(self) -> None:
+        child_script = (
+            "import subprocess, sys; "
+            "r = subprocess.run([sys.executable, '-I', '-c', 'print(42)'], "
+            "capture_output=True, text=True, check=True); "
+            "print(r.stdout.strip())"
+        )
+        res = runner_exec._run_with_windows_token(
+            [sys.executable, "-I", "-c", child_script],
+            os.environ,
+            ROOT,
+            15,
+        )
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(res.stdout.strip(), "42")
+
     def test_run_self_test_scopes_to_isolated_roots(self) -> None:
         seen_roots: list[list[str] | None] = []
         orig_run_r4 = smoke.run_r4_cell
