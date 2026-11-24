@@ -10,5 +10,13 @@ privilege = "none"
 surface = "public"
 renders = "none"
 
+[dependencies]
+grdr-core = { workspace = true }
+grdr-fastpath = { workspace = true }
+grdr-model = { workspace = true }
+jiff = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
 [lints]
 workspace = true
