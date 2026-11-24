@@ -1,0 +1,18 @@
+@import "../../console/src/styles.css";
+
+.kv-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) 0;
+  border-block-end: 1px solid var(--border-subtle);
+}
+
+.kv-row:last-child {
+  border-block-end: none;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}

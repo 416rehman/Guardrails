@@ -1,0 +1,49 @@
+# Guardrails interface pattern registry (design/27 section 10).
+
+[[pattern]]
+id = "mode-control"
+component = "ModeControl"
+ui_primitives = ["UiSdkSegmentedControl", "Icon", "Text"]
+tokens = ["mode.off", "mode.watch", "mode.ask", "mode.block"]
+states = ["ready", "read-only"]
+renderers = ["web", "rune", "term"]
+
+[[pattern]]
+id = "approval-card"
+component = "ApprovalCard"
+ui_primitives = ["Card", "Button", "Badge", "Text"]
+tokens = ["approval-arm-default", "approval-arm-irreversible"]
+states = ["ready", "read-only"]
+renderers = ["web", "native"]
+
+[[pattern]]
+id = "quoted-untrusted"
+component = "Quoted"
+ui_primitives = ["Badge", "Icon", "Text"]
+tokens = ["color.bg.canvas", "color.border.subtle"]
+states = ["ready"]
+renderers = ["web", "rune", "term", "notify"]
+
+[[pattern]]
+id = "insight-tile"
+component = "InsightTile"
+ui_primitives = ["Card", "Heading", "Text", "Button"]
+tokens = ["space-2", "space-3"]
+states = ["ready", "loading", "empty"]
+renderers = ["web", "rune"]
+
+[[pattern]]
+id = "device-assurance-drawer"
+component = "DeviceAssuranceDrawer"
+ui_primitives = ["UiSdkDrawer", "Badge", "Button", "Heading"]
+tokens = ["space-3", "space-4"]
+states = ["ready", "empty"]
+renderers = ["web"]
+
+[[pattern]]
+id = "view-state-frame"
+component = "ViewStateFrame"
+ui_primitives = ["EmptyState", "Banner", "Card"]
+tokens = ["space-3", "space-4"]
+states = ["loading", "ready", "empty", "stale", "unreachable", "unavailable", "error", "read-only"]
+renderers = ["web", "rune"]

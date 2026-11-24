@@ -1,0 +1,89 @@
+# Guardrails ADR interface routes registry (design/27 section 3).
+
+[[route]]
+id = "home"
+title = "console.nav.home"
+icon = "nav.home"
+area = "console"
+scopes = ["device", "organisation"]
+requires = "daemon"
+
+[[route]]
+id = "inventory"
+title = "console.nav.inventory"
+icon = "nav.inventory"
+area = "console"
+scopes = ["device", "organisation"]
+requires = "daemon"
+
+[[route]]
+id = "sessions"
+title = "console.nav.sessions"
+icon = "nav.sessions"
+area = "console"
+scopes = ["device", "organisation"]
+requires = "daemon"
+
+[[route]]
+id = "protect"
+title = "console.nav.protect"
+icon = "nav.protect"
+area = "console"
+scopes = ["device", "organisation"]
+requires = "daemon"
+
+[[route]]
+id = "respond"
+title = "console.nav.respond"
+icon = "nav.respond"
+area = "console"
+scopes = ["device", "organisation"]
+requires = "daemon"
+
+[[route]]
+id = "coverage"
+title = "console.nav.coverage"
+icon = "nav.coverage"
+area = "console"
+scopes = ["device", "organisation"]
+requires = "daemon"
+
+[[route]]
+id = "tester"
+title = "console.nav.tester"
+icon = "nav.tester"
+area = "console"
+scopes = ["device", "organisation"]
+requires = "daemon"
+
+[[route]]
+id = "op-overview"
+title = "operator.nav.overview"
+icon = "nav.operator_overview"
+area = "operator"
+scopes = ["operator"]
+requires = "operator-api"
+
+[[route]]
+id = "op-health"
+title = "operator.nav.health"
+icon = "nav.operator_health"
+area = "operator"
+scopes = ["operator"]
+requires = "operator-api"
+
+[[route]]
+id = "op-settings"
+title = "operator.nav.settings"
+icon = "nav.operator_settings"
+area = "operator"
+scopes = ["operator"]
+requires = "operator-api"
+
+[[route]]
+id = "op-audit"
+title = "operator.nav.audit"
+icon = "nav.operator_audit"
+area = "operator"
+scopes = ["operator"]
+requires = "operator-api"
