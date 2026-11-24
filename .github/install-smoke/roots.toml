@@ -40,6 +40,7 @@ grdr_search_paths = [
 ignore_paths = [
   "/var/lib/waagent",
   "/var/lib/systemd/timesync",
+  "/var/lib/systemd/timers",
 ]
 
 [os.linux.user]

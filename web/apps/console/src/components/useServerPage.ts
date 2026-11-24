@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PageInfo, PageQuery, PagedResult } from "@grdr/api";
 import { CONSOLE_SCOPE } from "../queries";
@@ -52,36 +52,37 @@ export function useServerPage<T>(
     options?.pageSize && options.pageSize > 0 ? options.pageSize : localPageSize;
   const resource = options?.resource ?? orderBy;
 
-  const prevFilterRef = useRef({ filter, orderBy, pageSize });
+  const scopeKey = `${filter}\0${orderBy}\0${pageSize}`;
+  const [settledScopeKey, setSettledScopeKey] = useState(scopeKey);
+  const scopeMismatch = settledScopeKey !== scopeKey;
+  const effectivePageToken = scopeMismatch ? "" : pageToken;
+  const effectivePageIndex = scopeMismatch ? 0 : pageIndex;
+
   useEffect(() => {
-    const prev = prevFilterRef.current;
-    if (
-      prev.filter !== filter ||
-      prev.orderBy !== orderBy ||
-      prev.pageSize !== pageSize
-    ) {
-      prevFilterRef.current = { filter, orderBy, pageSize };
-      if (isUrlControlled) {
-        if (pageToken !== "" || pageIndex !== 0) {
-          options.onPageChange?.({ pageToken: "", pageIndex: 0 });
-        }
-      } else {
-        setLocalPageToken("");
-        setLocalPageIndex(0);
+    if (!scopeMismatch) return;
+    if (isUrlControlled) {
+      if (pageToken !== "" || pageIndex !== 0) {
+        options.onPageChange?.({ pageToken: "", pageIndex: 0 });
+        return;
       }
+      setSettledScopeKey(scopeKey);
+    } else {
+      setLocalPageToken("");
+      setLocalPageIndex(0);
+      setSettledScopeKey(scopeKey);
     }
-  }, [filter, orderBy, pageSize, isUrlControlled, options, pageToken, pageIndex]);
+  }, [scopeMismatch, scopeKey, isUrlControlled, options, pageToken, pageIndex]);
 
   const query = useQuery({
     queryKey: [
       CONSOLE_SCOPE,
       resource,
-      { filter, orderBy, pageSize, pageToken, refreshKey },
+      { filter, orderBy, pageSize, pageToken: effectivePageToken, refreshKey },
     ],
     queryFn: () =>
       fetcher({
         page_size: pageSize,
-        page_token: pageToken,
+        page_token: effectivePageToken,
         filter,
         order_by: orderBy,
       }),
@@ -146,7 +147,7 @@ export function useServerPage<T>(
   return {
     items,
     pageInfo,
-    pageIndex,
+    pageIndex: effectivePageIndex,
     pageSize,
     loading: query.isLoading,
     error,

@@ -12,3 +12,7 @@ grdr-data/
 web/screenshots/
 desktop/screenshots/
 **/__screenshots__/
+web/test-results/
+web/playwright-report/
+web/blob-report/
+web/playwright/.cache/

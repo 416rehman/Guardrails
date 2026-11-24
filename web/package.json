@@ -9,9 +9,11 @@
     "build": "vite --config apps/console/vite.config.ts build && vite --config apps/operator/vite.config.ts build",
     "preview": "vite --config apps/console/vite.config.ts preview",
     "typecheck": "tsc --noEmit && tsc -p apps/console/tsconfig.json --noEmit && tsc -p apps/operator/tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@testing-library/react": "^16.3.0",
     "@types/node": "^26.6.6",
     "@types/react": "^19.1.0",
