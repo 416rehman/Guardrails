@@ -27,6 +27,7 @@ $daemonProc = $null
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 $origHome = $env:HOME
 $origUserProfile = $env:USERPROFILE
+$origLocalAppData = $env:LOCALAPPDATA
 
 function Add-Assertion {
     param([string]$Name, [bool]$Passed, [string]$Detail)
@@ -57,6 +58,19 @@ function Invoke-HttpText {
     return $resp.Content
 }
 
+function Invoke-ConnectJson {
+    param([string]$BaseUrl, [string]$MethodPath, [string]$BodyJson = "{}")
+    $resp = Invoke-WebRequest `
+        -Uri "$BaseUrl$MethodPath" `
+        -Method Post `
+        -ContentType "application/json" `
+        -Headers @{ "Connect-Protocol-Version" = "1" } `
+        -Body $BodyJson `
+        -UseBasicParsing `
+        -TimeoutSec 5
+    return ($resp.Content | ConvertFrom-Json)
+}
+
 function Invoke-ProcessWithStdin {
     param(
         [string]$FilePath,
@@ -77,10 +91,12 @@ function Invoke-ProcessWithStdin {
     $proc = New-Object System.Diagnostics.Process
     $proc.StartInfo = $psi
     $null = $proc.Start()
-    if ($null -ne $StdinText) {
-        $proc.StandardInput.Write($StdinText)
+    if (-not [string]::IsNullOrEmpty($StdinText)) {
+        $inBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($StdinText)
+        $proc.StandardInput.BaseStream.Write($inBytes, 0, $inBytes.Length)
+        $proc.StandardInput.BaseStream.Flush()
     }
-    $proc.StandardInput.Close()
+    $proc.StandardInput.BaseStream.Close()
     $stdout = $proc.StandardOutput.ReadToEnd()
     $stderr = $proc.StandardError.ReadToEnd()
     $proc.WaitForExit()
@@ -103,7 +119,7 @@ function Get-DefenderThreatKeys {
 }
 
 function Write-QaReport {
-    param([string]$Status, [hashtable]$Extra)
+    param([string]$Status, $Extra)
     $parentDir = Split-Path -Parent $ReportPath
     if (-not [string]::IsNullOrWhiteSpace($parentDir) -and -not (Test-Path $parentDir)) {
         New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
@@ -120,7 +136,7 @@ function Write-QaReport {
         passed_count   = $passedCount
         failed_count   = $failedCount
         defender       = $Extra
-        assertions     = @($assertions)
+        assertions     = $assertions.ToArray()
     }
     $payload | ConvertTo-Json -Depth 6 | Set-Content -Path $ReportPath -Encoding UTF8
 }
@@ -135,12 +151,15 @@ $defenderStatus = [ordered]@{
 $finalStatus = "failed"
 
 try {
+    $localAppDir = Join-Path $HomeDir "AppData\Local"
     New-Item -ItemType Directory -Path (Join-Path $WorkDir "server-data") -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $WorkDir "daemon-data") -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $HomeDir ".claude") -Force | Out-Null
+    New-Item -ItemType Directory -Path $localAppDir -Force | Out-Null
 
     $env:HOME = $HomeDir
     $env:USERPROFILE = $HomeDir
+    $env:LOCALAPPDATA = $localAppDir
     $env:PATH = "$BinDir;$env:PATH"
 
     foreach ($binName in @("grdr.exe", "grdr-daemon.exe", "grdr-hook.exe", "grdr-server.exe")) {
@@ -151,14 +170,14 @@ try {
     }
 
     $mpStatusCmd = Get-Command Get-MpComputerStatus -ErrorAction SilentlyContinue
-    $baselineThreats = Get-DefenderThreatKeys
+    $baselineThreats = @(Get-DefenderThreatKeys)
     if ($mpStatusCmd) {
         try {
             $mp = Get-MpComputerStatus -ErrorAction Stop
             $defenderStatus.available = $true
             $defenderStatus.realtime_enabled = [bool]$mp.RealTimeProtectionEnabled
-            $defenderStatus.baseline_detections = $baselineThreats.Count
-            Add-Assertion -Name "defender_baseline" -Passed $true -Detail "RealTimeProtectionEnabled=$($mp.RealTimeProtectionEnabled), baseline_detections=$($baselineThreats.Count)"
+            $defenderStatus.baseline_detections = @($baselineThreats).Count
+            Add-Assertion -Name "defender_baseline" -Passed $true -Detail "RealTimeProtectionEnabled=$($mp.RealTimeProtectionEnabled), baseline_detections=$(@($baselineThreats).Count)"
         } catch {
             Add-Assertion -Name "defender_baseline" -Passed $true -Detail "Defender cmdlets present but status query skipped: $($_.Exception.Message)"
         }
@@ -183,8 +202,8 @@ try {
     $serverReady = $false
     for ($i = 0; $i -lt 40; $i++) {
         try {
-            $health = (Invoke-HttpText "$serverUrl/api/v1/health") | ConvertFrom-Json
-            if ($health.status -eq "ok") {
+            $health = (Invoke-HttpText "$serverUrl/grdr.api.overview.v1alpha1.OverviewService/GetHealth?encoding=json") | ConvertFrom-Json
+            if ($health.status -in @("SERVER_HEALTH_HEALTHY", "SERVER_HEALTH_OK")) {
                 $serverReady = $true
                 break
             }
@@ -192,17 +211,24 @@ try {
         Start-Sleep -Milliseconds 250
     }
     if (-not $serverReady) {
-        Fail-Assertion -Name "server_health" -Detail "grdr-server did not become healthy at $serverUrl/api/v1/health"
+        Fail-Assertion -Name "server_health" -Detail "grdr-server did not become healthy at $serverUrl/grdr.api.overview.v1alpha1.OverviewService/GetHealth?encoding=json"
     }
     Add-Assertion -Name "server_health" -Passed $true -Detail "grdr-server healthy at $serverUrl"
 
     $claudeCfg = Join-Path $HomeDir ".claude\settings.json"
-    $backupCfg = Join-Path $HomeDir ".claude\settings.json.grdr-backup.json"
-    '{"permissions":{"allow":["Read"]},"theme":"dark"}' | Set-Content -Path $claudeCfg -Encoding UTF8 -NoNewline
+    $backupCfg = Join-Path $localAppDir "grdr\state\hook-backup-claude-code.json"
+    [System.IO.File]::WriteAllText($claudeCfg, '{"permissions":{"allow":["Read"]},"theme":"dark"}', [System.Text.UTF8Encoding]::new($false))
     $origSha = (Get-FileHash -Path $claudeCfg -Algorithm SHA256).Hash
 
     $grdrExe = Join-Path $BinDir "grdr.exe"
     $hookExe = Join-Path $BinDir "grdr-hook.exe"
+
+    $statusBeforeRes = Invoke-ProcessWithStdin -FilePath $grdrExe -ArgumentList @("hook", "status", "--agent", "claude-code", "--json") -StdinText ""
+    $statusBeforeObj = $statusBeforeRes.Stdout | ConvertFrom-Json
+    if ($statusBeforeRes.ExitCode -ne 1 -or $statusBeforeObj.data.installed -ne $false -or $statusBeforeObj.data.state -ne "not-configured") {
+        Fail-Assertion -Name "hook_status_before" -Detail "expected not-configured exit 1 before install, got rc=$($statusBeforeRes.ExitCode)"
+    }
+    Add-Assertion -Name "hook_status_before" -Passed $true -Detail "grdr hook status --json reported not-configured (exit 1)"
 
     $scanRes = Invoke-ProcessWithStdin -FilePath $grdrExe -ArgumentList @("scan", "--json", "--profile", "user") -StdinText ""
     if ($scanRes.ExitCode -ne 0) {
@@ -215,19 +241,28 @@ try {
     }
     Add-Assertion -Name "scan_isolated_agent" -Passed $true -Detail "discovered unhooked claude-code in isolated home"
 
-    $installRes = Invoke-ProcessWithStdin -FilePath $grdrExe -ArgumentList @("install-hook", "--agent", "claude-code", "--command", $hookExe, "--apply") -StdinText ""
-    if ($installRes.ExitCode -ne 0 -or -not (Test-Path $backupCfg)) {
-        Fail-Assertion -Name "install_hook_apply" -Detail "install-hook failed or backup journal missing"
+    $installRes = Invoke-ProcessWithStdin -FilePath $grdrExe -ArgumentList @("hook", "install", "--agent", "claude-code", "--command", $hookExe, "--apply") -StdinText ""
+    $leakedBackup1 = Join-Path $HomeDir ".claude\.grdr-backup.json"
+    $leakedBackup2 = Join-Path $HomeDir ".claude\settings.json.grdr-backup.json"
+    if ($installRes.ExitCode -ne 0 -or -not (Test-Path $backupCfg) -or (Test-Path $leakedBackup1) -or (Test-Path $leakedBackup2)) {
+        Fail-Assertion -Name "install_hook_apply" -Detail "hook install failed, state-dir backup journal missing, or backup leaked into .claude"
     }
     $installedSha = (Get-FileHash -Path $claudeCfg -Algorithm SHA256).Hash
-    Add-Assertion -Name "install_hook_apply" -Passed $true -Detail "hook installed with backup journal"
+    Add-Assertion -Name "install_hook_apply" -Passed $true -Detail "hook installed with state-dir backup journal"
 
-    $rerunRes = Invoke-ProcessWithStdin -FilePath $grdrExe -ArgumentList @("install-hook", "--agent", "claude-code", "--command", $hookExe, "--apply") -StdinText ""
+    $rerunRes = Invoke-ProcessWithStdin -FilePath $grdrExe -ArgumentList @("hook", "install", "--agent", "claude-code", "--command", $hookExe, "--apply") -StdinText ""
     $rerunSha = (Get-FileHash -Path $claudeCfg -Algorithm SHA256).Hash
     if ($rerunRes.ExitCode -ne 0 -or $rerunSha -ne $installedSha -or $rerunRes.Stdout -notmatch "already installed") {
         Fail-Assertion -Name "install_hook_idempotent" -Detail "idempotent rerun mutated config or missed already installed message"
     }
-    Add-Assertion -Name "install_hook_idempotent" -Passed $true -Detail "second install-hook --apply was a clean no-op"
+    Add-Assertion -Name "install_hook_idempotent" -Passed $true -Detail "second hook install --apply was a clean no-op"
+
+    $statusAfterRes = Invoke-ProcessWithStdin -FilePath $grdrExe -ArgumentList @("hook", "status", "--agent", "claude-code", "--json") -StdinText ""
+    $statusAfterObj = $statusAfterRes.Stdout | ConvertFrom-Json
+    if ($statusAfterRes.ExitCode -ne 0 -or $statusAfterObj.data.installed -ne $true -or $statusAfterObj.data.state -ne "effective") {
+        Fail-Assertion -Name "hook_status_after" -Detail "expected effective exit 0 after install, got rc=$($statusAfterRes.ExitCode)"
+    }
+    Add-Assertion -Name "hook_status_after" -Passed $true -Detail "grdr hook status --json reported effective (installed=true)"
 
     $daemonExe = Join-Path $BinDir "grdr-daemon.exe"
     $daemonData = Join-Path $WorkDir "daemon-data"
@@ -244,7 +279,7 @@ try {
     for ($i = 0; $i -lt 40; $i++) {
         try {
             $st = (Invoke-HttpText "$daemonUrl/local/v1/status") | ConvertFrom-Json
-            if ($st.status -eq "running" -and $st.server_connected -eq $true) {
+            if ($st.status -eq "running" -and $st.uplink.state -eq "connected") {
                 $daemonReady = $true
                 break
             }
@@ -252,9 +287,9 @@ try {
         Start-Sleep -Milliseconds 250
     }
     if (-not $daemonReady -or -not (Test-Path $floorFile) -or -not (Test-Path $floorKey)) {
-        Fail-Assertion -Name "daemon_health_and_checkin" -Detail "daemon failed readiness or floor bundle write"
+        Fail-Assertion -Name "daemon_health_and_checkin" -Detail "daemon failed uplink.state=connected readiness or floor bundle write"
     }
-    Add-Assertion -Name "daemon_health_and_checkin" -Passed $true -Detail "daemon running, connected to server, signed floor bundle written"
+    Add-Assertion -Name "daemon_health_and_checkin" -Passed $true -Detail "daemon running, uplink connected to server, signed floor bundle written"
 
     $allowRes = Invoke-ProcessWithStdin -FilePath $hookExe `
         -ArgumentList @("--daemon", $daemonUrl, "--timeout-ms", "2000", "--floor-table", $floorFile, "--floor-key", $floorKey) `
@@ -297,27 +332,38 @@ try {
         Fail-Assertion -Name "server_uplink_and_audit_verify" -Detail "daemon pending_events did not drain to 0"
     }
 
-    $session = (Invoke-HttpText "$serverUrl/api/v1/sessions/sess-qa-win") | ConvertFrom-Json
-    $auditRaw = Invoke-HttpText "$serverUrl/api/v1/exports/audit.jsonl"
+    $session = Invoke-ConnectJson -BaseUrl $serverUrl -MethodPath "/grdr.api.activity.v1alpha1.SessionService/GetSession" -BodyJson '{"id":"sess-qa-win"}'
+    $exportResp = Invoke-ConnectJson -BaseUrl $serverUrl -MethodPath "/grdr.api.overview.v1alpha1.OverviewService/ExportAuditJsonl" -BodyJson "{}"
+    $auditRaw = $exportResp.payload
     $auditLines = @($auditRaw -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_ | ConvertFrom-Json })
     $receiptRecords = @($auditLines | Where-Object { $_.record_type -eq "decision_receipt" })
     if (@($session.receipts).Count -lt 2 -or $receiptRecords.Count -lt 2) {
-        Fail-Assertion -Name "server_uplink_and_audit_verify" -Detail "missing session receipts or audit.jsonl records"
+        Fail-Assertion -Name "server_uplink_and_audit_verify" -Detail "missing session receipts or ExportAuditJsonl records"
     }
-    Add-Assertion -Name "server_uplink_and_audit_verify" -Passed $true -Detail "server session receipts and signed audit.jsonl verified"
 
-    $uninstRes = Invoke-ProcessWithStdin -FilePath $grdrExe -ArgumentList @("uninstall-hook", "--agent", "claude-code") -StdinText ""
+    $walPath = Join-Path $daemonData "receipts.wal.jsonl"
+    $auditVerifyRes = Invoke-ProcessWithStdin -FilePath $grdrExe -ArgumentList @("audit", "verify", "--json", "--path", $walPath) -StdinText ""
+    if ($auditVerifyRes.ExitCode -ne 0) {
+        Fail-Assertion -Name "server_uplink_and_audit_verify" -Detail "grdr audit verify failed: $($auditVerifyRes.Stderr)"
+    }
+    $auditVerifyObj = $auditVerifyRes.Stdout | ConvertFrom-Json
+    if ($auditVerifyObj.verified -ne $true -or $auditVerifyObj.entries -lt 2) {
+        Fail-Assertion -Name "server_uplink_and_audit_verify" -Detail "unexpected grdr audit verify payload: $($auditVerifyRes.Stdout)"
+    }
+    Add-Assertion -Name "server_uplink_and_audit_verify" -Passed $true -Detail "Connect RPC session/ExportAuditJsonl and native grdr audit verify verified"
+
+    $uninstRes = Invoke-ProcessWithStdin -FilePath $grdrExe -ArgumentList @("hook", "uninstall", "--agent", "claude-code") -StdinText ""
     $restoredSha = (Get-FileHash -Path $claudeCfg -Algorithm SHA256).Hash
     if ($uninstRes.ExitCode -ne 0 -or $restoredSha -ne $origSha -or (Test-Path $backupCfg)) {
         Fail-Assertion -Name "uninstall_byte_restore" -Detail "settings.json restore mismatch or backup journal still present"
     }
     Add-Assertion -Name "uninstall_byte_restore" -Passed $true -Detail "settings.json restored byte-for-byte ($origSha)"
 
-    $postThreats = Get-DefenderThreatKeys
-    $defenderStatus.post_run_detections = $postThreats.Count
+    $postThreats = @(Get-DefenderThreatKeys)
+    $defenderStatus.post_run_detections = @($postThreats).Count
     $newThreats = @($postThreats | Where-Object { $baselineThreats -notcontains $_ -and $_ -match "grdr|guardrails" })
-    $defenderStatus.new_grdr_detections = $newThreats.Count
-    if ($newThreats.Count -gt 0) {
+    $defenderStatus.new_grdr_detections = @($newThreats).Count
+    if (@($newThreats).Count -gt 0) {
         Fail-Assertion -Name "defender_s04_coexistence" -Detail "Windows Defender flagged grdr artifacts: $($newThreats -join ', ')"
     }
     Add-Assertion -Name "defender_s04_coexistence" -Passed $true -Detail "zero Defender false-positive threat detections during install/run/uninstall"
@@ -327,6 +373,7 @@ try {
 finally {
     $env:HOME = $origHome
     $env:USERPROFILE = $origUserProfile
+    $env:LOCALAPPDATA = $origLocalAppData
     if ($daemonProc -and -not $daemonProc.HasExited) {
         Stop-Process -Id $daemonProc.Id -Force -ErrorAction SilentlyContinue
     }

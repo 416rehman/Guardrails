@@ -3,6 +3,7 @@
 #![deny(clippy::arithmetic_side_effects)]
 
 pub mod analyze;
+pub mod audit;
 pub mod compile;
 pub mod detect;
 pub mod discover;

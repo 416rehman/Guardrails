@@ -10,8 +10,8 @@ mod signals;
 use cedar_policy::{Authorizer, Decision};
 pub use grdr_model::eval::{essentials_pack, sha256_hex};
 use grdr_model::{
-    ActionAttempt, CommandParseStatus, DecisionReceipt, Grant, KillSwitchState, Mode, PolicyPack,
-    Verdict,
+    ActionAttempt, ActionClass, CommandParseStatus, DecisionReceipt, Grant, KillSwitchState, Mode,
+    PolicyPack, Verdict,
 };
 use jiff::Timestamp;
 
@@ -35,6 +35,17 @@ pub enum PolicyError {
     ValidationFailed { rule_id: String, detail: String },
     #[error("GRDR-POL-0005: failed to build Cedar request: {detail}")]
     RequestBuildFailed { detail: String },
+}
+
+pub struct ReceiptDigestInput<'a> {
+    pub attempt_id: &'a str,
+    pub session_id: &'a str,
+    pub agent_name: &'a str,
+    pub action_class: ActionClass,
+    pub target: &'a str,
+    pub verdict: Verdict,
+    pub rule_id: Option<&'a str>,
+    pub decided_at: Timestamp,
 }
 
 struct ReceiptOutcome {
@@ -415,23 +426,36 @@ fn fail_closed_receipt(
     )
 }
 
+pub fn compute_receipt_digest(input: &ReceiptDigestInput<'_>) -> String {
+    let payload = format!(
+        "{}:{}:{}:{}:{}:{:?}:{}:{}",
+        input.attempt_id,
+        input.session_id,
+        input.agent_name,
+        input.action_class.as_str(),
+        input.target,
+        input.verdict,
+        input.rule_id.unwrap_or("none"),
+        input.decided_at.as_second()
+    );
+    sha256_hex(payload.as_bytes())
+}
+
 fn build_receipt(
     attempt: &ActionAttempt,
     outcome: ReceiptOutcome,
     now: Timestamp,
 ) -> DecisionReceipt {
-    let payload = format!(
-        "{}:{}:{}:{}:{}:{:?}:{}:{}",
-        attempt.id,
-        attempt.session_id,
-        attempt.agent_name,
-        attempt.action_class.as_str(),
-        attempt.target,
-        outcome.verdict,
-        outcome.rule_id.as_deref().unwrap_or("none"),
-        now.as_second()
-    );
-    let receipt_digest = sha256_hex(payload.as_bytes());
+    let receipt_digest = compute_receipt_digest(&ReceiptDigestInput {
+        attempt_id: &attempt.id,
+        session_id: &attempt.session_id,
+        agent_name: &attempt.agent_name,
+        action_class: attempt.action_class,
+        target: &attempt.target,
+        verdict: outcome.verdict,
+        rule_id: outcome.rule_id.as_deref(),
+        decided_at: now,
+    });
     let short_id: String = receipt_digest.chars().take(32).collect();
 
     DecisionReceipt {
