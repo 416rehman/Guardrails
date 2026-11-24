@@ -3,6 +3,7 @@ import type { Device } from "@grdr/api";
 import type { InventorySectionId } from "@grdr/i18n";
 import { DeviceAssuranceDrawer, type EntityTarget } from "@grdr/kit";
 import { Button, GrdrIcon, Heading, HStack, Text, UiSdkSegmentedControl, VStack } from "@grdr/ui";
+import type { ConsoleSearchParams } from "../searchSchema";
 import { ConnectSection } from "./ConnectSection";
 import { InventoryAgentsSection } from "./InventoryAgentsSection";
 import { InventoryEndpointsSection } from "./InventoryEndpointsSection";
@@ -19,6 +20,8 @@ const SECTION_SUBTITLES: Record<InventorySectionId, string> = {
 export function InventoryPage({
   devices,
   searchQuery,
+  urlSearch,
+  onUpdateSearch,
   section,
   onSectionChange,
   selectedDeviceId,
@@ -30,6 +33,8 @@ export function InventoryPage({
 }: {
   devices: Device[];
   searchQuery: string;
+  urlSearch?: ConsoleSearchParams;
+  onUpdateSearch?: (patch: Partial<ConsoleSearchParams>) => void;
   section: InventorySectionId;
   onSectionChange: (next: InventorySectionId) => void;
   selectedDeviceId: string | null;
@@ -39,7 +44,17 @@ export function InventoryPage({
   onOpenEntity?: (target: EntityTarget) => void;
   onRefresh: () => void;
 }) {
-  const [agentFilter, setAgentFilter] = useState<string>("all");
+  const [fallbackAgentFilter, setFallbackAgentFilter] = useState<string>("all");
+  const agentFilter = urlSearch?.agent ?? fallbackAgentFilter;
+
+  function setAgentFilter(next: string) {
+    setFallbackAgentFilter(next);
+    onUpdateSearch?.({
+      agent: next === "all" ? undefined : next,
+      pageToken: undefined,
+      page: undefined,
+    });
+  }
 
   useEffect(() => {
     if (!focusedEntity) return;
@@ -47,7 +62,7 @@ export function InventoryPage({
       const match = devices.find((d) => d.id === focusedEntity.id || d.hostname === focusedEntity.label);
       if (match) {
         onSelectDevice(match.id);
-        setAgentFilter("all");
+        setFallbackAgentFilter("all");
       }
       onSectionChange("endpoints");
       onClearFocus?.();
@@ -102,6 +117,8 @@ export function InventoryPage({
           devices={devices}
           globalQuery={searchQuery}
           initialAgentFilter={agentFilter}
+          urlSearch={urlSearch}
+          onUpdateSearch={onUpdateSearch}
           onSelectDevice={(id) => onSelectDevice(id)}
           onOpenEntity={onOpenEntity}
         />
@@ -112,6 +129,8 @@ export function InventoryPage({
           mode={section}
           devices={devices}
           globalQuery={searchQuery}
+          urlSearch={urlSearch}
+          onUpdateSearch={onUpdateSearch}
           onSelectDevice={(id) => onSelectDevice(id)}
           onOpenEntity={onOpenEntity}
         />
@@ -121,6 +140,8 @@ export function InventoryPage({
         <InventoryEndpointsSection
           devices={devices}
           searchQuery={searchQuery}
+          urlSearch={urlSearch}
+          onUpdateSearch={onUpdateSearch}
           agentFilter={agentFilter}
           selectedDeviceId={selectedDevice?.id ?? null}
           onAgentFilterChange={setAgentFilter}

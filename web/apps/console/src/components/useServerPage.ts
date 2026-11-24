@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PageInfo, PageQuery, PagedResult } from "@grdr/api";
+import { CONSOLE_SCOPE } from "../queries";
 
 const EMPTY_PAGE_INFO: PageInfo = {
   next_page_token: "",
@@ -7,6 +9,15 @@ const EMPTY_PAGE_INFO: PageInfo = {
   total_size_estimate: 0,
   has_more: false,
 };
+
+export interface ServerPageUrlOptions {
+  resource?: string;
+  pageToken?: string;
+  pageIndex?: number;
+  pageSize?: number;
+  onPageChange?: (next: { pageToken: string; pageIndex: number }) => void;
+  onPageSizeChange?: (nextSize: number) => void;
+}
 
 export interface ServerPageState<T> {
   items: T[];
@@ -27,75 +38,117 @@ export function useServerPage<T>(
   orderBy: string,
   initialPageSize = 25,
   refreshKey = 0,
+  options?: ServerPageUrlOptions,
 ): ServerPageState<T> {
-  const [pageSize, setPageSizeState] = useState(initialPageSize);
-  const [pageToken, setPageToken] = useState("");
-  const [pageIndex, setPageIndex] = useState(0);
-  const [items, setItems] = useState<T[]>([]);
-  const [pageInfo, setPageInfo] = useState<PageInfo>(EMPTY_PAGE_INFO);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [reloadNonce, setReloadNonce] = useState(0);
+  const queryClient = useQueryClient();
+  const [localPageSize, setLocalPageSize] = useState(initialPageSize);
+  const [localPageToken, setLocalPageToken] = useState("");
+  const [localPageIndex, setLocalPageIndex] = useState(0);
 
-  useEffect(() => {
-    setPageToken("");
-    setPageIndex(0);
-  }, [filter, orderBy, pageSize]);
+  const isUrlControlled = options?.onPageChange !== undefined;
+  const pageToken = isUrlControlled ? (options.pageToken ?? "") : localPageToken;
+  const pageIndex = isUrlControlled ? (options.pageIndex ?? 0) : localPageIndex;
+  const pageSize =
+    options?.pageSize && options.pageSize > 0 ? options.pageSize : localPageSize;
+  const resource = options?.resource ?? orderBy;
 
+  const prevFilterRef = useRef({ filter, orderBy, pageSize });
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setError(null);
-    void fetcher({
-      page_size: pageSize,
-      page_token: pageToken,
-      filter,
-      order_by: orderBy,
-    })
-      .then((res) => {
-        if (!active) return;
-        setItems(res.items);
-        setPageInfo(res.page_info);
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (!active) return;
-        setError(err instanceof Error ? err.message : "Failed loading page");
-        setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [fetcher, pageSize, pageToken, filter, orderBy, reloadNonce, refreshKey]);
+    const prev = prevFilterRef.current;
+    if (
+      prev.filter !== filter ||
+      prev.orderBy !== orderBy ||
+      prev.pageSize !== pageSize
+    ) {
+      prevFilterRef.current = { filter, orderBy, pageSize };
+      if (isUrlControlled) {
+        if (pageToken !== "" || pageIndex !== 0) {
+          options.onPageChange?.({ pageToken: "", pageIndex: 0 });
+        }
+      } else {
+        setLocalPageToken("");
+        setLocalPageIndex(0);
+      }
+    }
+  }, [filter, orderBy, pageSize, isUrlControlled, options, pageToken, pageIndex]);
+
+  const query = useQuery({
+    queryKey: [
+      CONSOLE_SCOPE,
+      resource,
+      { filter, orderBy, pageSize, pageToken, refreshKey },
+    ],
+    queryFn: () =>
+      fetcher({
+        page_size: pageSize,
+        page_token: pageToken,
+        filter,
+        order_by: orderBy,
+      }),
+  });
+
+  const pageInfo = query.data?.page_info ?? EMPTY_PAGE_INFO;
+  const items = query.data?.items ?? [];
+  const error =
+    query.error instanceof Error
+      ? query.error.message
+      : query.error
+        ? "Failed loading page"
+        : null;
 
   const goNext = useCallback(() => {
     if (!pageInfo.next_page_token) return;
-    setPageToken(pageInfo.next_page_token);
-    setPageIndex((i) => i + 1);
-  }, [pageInfo.next_page_token]);
+    if (isUrlControlled) {
+      options.onPageChange?.({
+        pageToken: pageInfo.next_page_token,
+        pageIndex: pageIndex + 1,
+      });
+    } else {
+      setLocalPageToken(pageInfo.next_page_token);
+      setLocalPageIndex((i) => i + 1);
+    }
+  }, [pageInfo.next_page_token, isUrlControlled, options, pageIndex]);
 
   const goPrev = useCallback(() => {
     if (!pageInfo.prev_page_token) return;
-    setPageToken(pageInfo.prev_page_token);
-    setPageIndex((i) => Math.max(0, i - 1));
-  }, [pageInfo.prev_page_token]);
+    if (isUrlControlled) {
+      options.onPageChange?.({
+        pageToken: pageInfo.prev_page_token,
+        pageIndex: Math.max(0, pageIndex - 1),
+      });
+    } else {
+      setLocalPageToken(pageInfo.prev_page_token);
+      setLocalPageIndex((i) => Math.max(0, i - 1));
+    }
+  }, [pageInfo.prev_page_token, isUrlControlled, options, pageIndex]);
 
-  const setPageSize = useCallback((size: number) => {
-    setPageSizeState(size);
-    setPageToken("");
-    setPageIndex(0);
-  }, []);
+  const setPageSize = useCallback(
+    (size: number) => {
+      if (options?.onPageSizeChange) {
+        options.onPageSizeChange(size);
+      } else {
+        setLocalPageSize(size);
+      }
+      if (isUrlControlled) {
+        options.onPageChange?.({ pageToken: "", pageIndex: 0 });
+      } else {
+        setLocalPageToken("");
+        setLocalPageIndex(0);
+      }
+    },
+    [isUrlControlled, options],
+  );
 
   const refresh = useCallback(() => {
-    setReloadNonce((n) => n + 1);
-  }, []);
+    void queryClient.invalidateQueries({ queryKey: [CONSOLE_SCOPE, resource] });
+  }, [queryClient, resource]);
 
   return {
     items,
     pageInfo,
     pageIndex,
     pageSize,
-    loading,
+    loading: query.isLoading,
     error,
     goNext,
     goPrev,

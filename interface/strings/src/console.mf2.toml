@@ -1,0 +1,205 @@
+# Web console UI language tokens (D-69).
+
+["console.nav.home"]
+desc = "Console navigation item: Home"
+max = 24
+risk = "normal"
+msg = "Home"
+
+["console.nav.users"]
+desc = "Console navigation item: Users"
+max = 24
+risk = "normal"
+msg = "Users"
+
+["console.nav.inventory"]
+desc = "Console navigation item: Inventory"
+max = 24
+risk = "normal"
+msg = "Inventory"
+
+["console.nav.inventory.endpoints"]
+desc = "Inventory sub-navigation: Endpoints"
+max = 28
+risk = "normal"
+msg = "Endpoints"
+
+["console.nav.inventory.agents"]
+desc = "Inventory sub-navigation: Agents"
+max = 28
+risk = "normal"
+msg = "Agents"
+
+["console.nav.inventory.mcps"]
+desc = "Inventory sub-navigation: MCP servers"
+max = 28
+risk = "normal"
+msg = "MCP servers"
+
+["console.nav.inventory.skills"]
+desc = "Inventory sub-navigation: Skills & rules"
+max = 28
+risk = "normal"
+msg = "Skills & rules"
+
+["console.nav.inventory.connect"]
+desc = "Inventory sub-navigation: Connect & MDM"
+max = 28
+risk = "normal"
+msg = "Connect & MDM"
+
+["console.nav.sessions"]
+desc = "Console navigation item: Sessions"
+max = 24
+risk = "normal"
+msg = "Sessions"
+
+["console.nav.sessions.graph"]
+desc = "Sessions sub-navigation: Sessions graph"
+max = 28
+risk = "normal"
+msg = "Sessions"
+
+["console.nav.sessions.trace"]
+desc = "Sessions sub-navigation: Trace waterfall"
+max = 28
+risk = "normal"
+msg = "Trace waterfall"
+
+["console.nav.sessions.timeline"]
+desc = "Sessions sub-navigation: Timeline"
+max = 28
+risk = "normal"
+msg = "Timeline"
+
+["console.nav.protect"]
+desc = "Console navigation item: Protect"
+max = 24
+risk = "normal"
+msg = "Protect"
+
+["console.nav.protect.rules"]
+desc = "Protect sub-navigation: Policy rules"
+max = 28
+risk = "normal"
+msg = "Policy rules"
+
+["console.nav.protect.browser"]
+desc = "Protect sub-navigation: Browser AI"
+max = 28
+risk = "normal"
+msg = "Browser AI"
+
+["console.nav.respond"]
+desc = "Console navigation item: Respond"
+max = 24
+risk = "normal"
+msg = "Respond"
+
+["console.nav.coverage"]
+desc = "Console navigation item: Coverage"
+max = 24
+risk = "normal"
+msg = "Coverage"
+
+["console.nav.tester"]
+desc = "Console navigation item: Live Tester"
+max = 24
+risk = "normal"
+msg = "Live Tester"
+
+["console.nav.group.overview"]
+desc = "Sidebar group heading: Overview"
+max = 28
+risk = "normal"
+msg = "Overview"
+
+["console.nav.group.fleet"]
+desc = "Sidebar group heading: Fleet & Activity"
+max = 32
+risk = "normal"
+msg = "Fleet & Activity"
+
+["console.nav.group.protection"]
+desc = "Sidebar group heading: Protection & Response"
+max = 36
+risk = "normal"
+msg = "Protection & Response"
+
+["console.verdict.allow"]
+desc = "Console table verdict label: Allow"
+max = 20
+risk = "safety"
+msg = "Allow"
+
+["console.verdict.modify"]
+desc = "Console table verdict label: Modified"
+max = 20
+risk = "safety"
+msg = "Modified"
+
+["console.verdict.step_up"]
+desc = "Console table verdict label: Ask"
+max = 20
+risk = "safety"
+msg = "Ask"
+
+["console.verdict.defer"]
+desc = "Console table verdict label: Deferred"
+max = 20
+risk = "safety"
+msg = "Deferred"
+
+["console.verdict.deny"]
+desc = "Console table verdict label: Deny"
+max = 20
+risk = "safety"
+msg = "Deny"
+
+["console.session_label.credential_accessed"]
+desc = "Console session label: Credential accessed"
+max = 40
+risk = "normal"
+msg = "Credential accessed"
+
+["console.session_label.untrusted_web_fetched"]
+desc = "Console session label: Untrusted web fetched"
+max = 40
+risk = "normal"
+msg = "Untrusted web fetched"
+
+["console.session_label.repeated_denials"]
+desc = "Console session label: Repeated denials"
+max = 40
+risk = "normal"
+msg = "Repeated denials"
+
+["console.session_label.tainted_exfil_risk"]
+desc = "Console session label: Tainted exfil risk"
+max = 40
+risk = "normal"
+msg = "Tainted exfil risk"
+
+["console.stream.connected"]
+desc = "SSE live stream status when connected"
+max = 48
+risk = "normal"
+msg = "Live stream connected"
+
+["console.stream.reconnecting"]
+desc = "SSE live stream status when reconnecting"
+max = 60
+risk = "normal"
+msg = "Live updates paused, reconnecting"
+
+["console.coverage.title"]
+desc = "Coverage page heading"
+max = 32
+risk = "normal"
+msg = "Coverage"
+
+["console.coverage.subtitle"]
+desc = "Coverage page subtitle"
+max = 96
+risk = "normal"
+msg = "Protection strength across agents and operating systems."

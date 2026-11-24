@@ -13,10 +13,11 @@ import {
 import { capitalizeLabel } from "@grdr/i18n";
 import { type EntityTarget } from "@grdr/kit";
 import { Banner, Button, GrdrIcon, Heading, Text, VStack } from "@grdr/ui";
+import type { ConsoleSearchParams } from "../searchSchema";
 import { KillSwitchSection, type KillSwitchFlow } from "./KillSwitchControls";
+import { FindingsSection } from "./FindingsSection";
 import {
   CorrelatedIncidentsSection,
-  FindingsSection,
   PendingApprovalsSection,
 } from "./RespondSections";
 
@@ -32,6 +33,8 @@ export function RespondPage({
   devices = [],
   killSwitch,
   defaultSessionId,
+  urlSearch,
+  onUpdateSearch,
   onOpenEntity,
   onOpenSessionTurn,
   onUpdated,
@@ -42,6 +45,8 @@ export function RespondPage({
   devices?: Device[];
   killSwitch: KillSwitchState;
   defaultSessionId: string;
+  urlSearch?: ConsoleSearchParams;
+  onUpdateSearch?: (patch: Partial<ConsoleSearchParams>) => void;
   onOpenEntity?: (target: EntityTarget) => void;
   onOpenSessionTurn?: (sessionId: string, turnIndex: number) => void;
   onUpdated: () => void;
@@ -194,6 +199,8 @@ export function RespondPage({
       <PendingApprovalsSection
         devices={devices}
         refreshKey={refreshKey}
+        urlSearch={urlSearch}
+        onUpdateSearch={onUpdateSearch}
         onAllow={handleAllow}
         onDeny={handleDeny}
         onOpenEntity={onOpenEntity}
@@ -202,6 +209,8 @@ export function RespondPage({
       <CorrelatedIncidentsSection
         devices={devices}
         refreshKey={refreshKey}
+        urlSearch={urlSearch}
+        onUpdateSearch={onUpdateSearch}
         exportedMessage={feedback.kind === "exported" ? feedback.message : undefined}
         onExportOcsf={handleExportOcsf}
         onExportAuditJsonl={handleExportAuditJsonl}
@@ -211,6 +220,8 @@ export function RespondPage({
       <FindingsSection
         devices={devices}
         refreshKey={refreshKey}
+        urlSearch={urlSearch}
+        onUpdateSearch={onUpdateSearch}
         onUpdateLifecycle={handleFindingStatus}
         onOpenEntity={onOpenEntity}
         onOpenSessionTurn={onOpenSessionTurn}

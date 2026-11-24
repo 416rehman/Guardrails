@@ -15,28 +15,71 @@ import {
 } from "@grdr/ui";
 import { CursorPagerBar, formatRangeLabel } from "../components/PagerBar";
 import { aipQuote, useServerPage } from "../components/useServerPage";
+import type { ConsoleSearchParams } from "../searchSchema";
 
 export function InventoryAgentsSection({
   devices,
   globalQuery,
   initialAgentFilter = "all",
+  urlSearch,
+  onUpdateSearch,
   onSelectDevice,
   onOpenEntity,
 }: {
   devices: Device[];
   globalQuery: string;
   initialAgentFilter?: string;
+  urlSearch?: ConsoleSearchParams;
+  onUpdateSearch?: (patch: Partial<ConsoleSearchParams>) => void;
   onSelectDevice: (deviceId: string) => void;
   onOpenEntity?: (target: EntityTarget) => void;
 }) {
-  const [localQuery, setLocalQuery] = useState("");
-  const [agentTypeFilter, setAgentTypeFilter] = useState(initialAgentFilter);
-  const [assuranceFilter, setAssuranceFilter] = useState("all");
-  const [hookFilter, setHookFilter] = useState("all");
+  const [fallbackQuery, setFallbackQuery] = useState("");
+  const [fallbackAgentType, setFallbackAgentType] = useState(initialAgentFilter);
+  const [fallbackAssurance, setFallbackAssurance] = useState("all");
+  const [fallbackHook, setFallbackHook] = useState("all");
 
   useEffect(() => {
-    setAgentTypeFilter(initialAgentFilter);
+    setFallbackAgentType(initialAgentFilter);
   }, [initialAgentFilter]);
+
+  const localQuery = urlSearch?.q ?? fallbackQuery;
+  const agentTypeFilter = urlSearch?.agent ?? fallbackAgentType;
+  const assuranceFilter = urlSearch?.assurance ?? fallbackAssurance;
+  const hookFilter = urlSearch?.hook ?? fallbackHook;
+
+  const setLocalQuery = (q: string) => {
+    setFallbackQuery(q);
+    onUpdateSearch?.({
+      q: q.trim() ? q : undefined,
+      pageToken: undefined,
+      page: undefined,
+    });
+  };
+  const setAgentTypeFilter = (agent: string) => {
+    setFallbackAgentType(agent);
+    onUpdateSearch?.({
+      agent: agent === "all" ? undefined : agent,
+      pageToken: undefined,
+      page: undefined,
+    });
+  };
+  const setAssuranceFilter = (assurance: string) => {
+    setFallbackAssurance(assurance);
+    onUpdateSearch?.({
+      assurance: assurance === "all" ? undefined : assurance,
+      pageToken: undefined,
+      page: undefined,
+    });
+  };
+  const setHookFilter = (hook: string) => {
+    setFallbackHook(hook);
+    onUpdateSearch?.({
+      hook: hook === "all" ? undefined : hook,
+      pageToken: undefined,
+      page: undefined,
+    });
+  };
 
   const allRows = useMemo(
     () =>
@@ -87,7 +130,32 @@ export function InventoryAgentsSection({
     return clauses.join(" AND ");
   }, [combinedQuery, agentTypeFilter, assuranceFilter, hookFilter]);
 
-  const agentPage = useServerPage(api.listAgentsPage, aipFilter, "name asc", 25);
+  const agentPage = useServerPage(
+    api.listAgentsPage,
+    aipFilter,
+    "name asc",
+    25,
+    0,
+    onUpdateSearch
+      ? {
+          resource: "agentsPage",
+          pageToken: urlSearch?.pageToken ?? "",
+          pageIndex: urlSearch?.page ?? 0,
+          pageSize: urlSearch?.pageSize ?? 25,
+          onPageChange: ({ pageToken, pageIndex }) =>
+            onUpdateSearch({
+              pageToken: pageToken || undefined,
+              page: pageIndex > 0 ? pageIndex : undefined,
+            }),
+          onPageSizeChange: (nextSize) =>
+            onUpdateSearch({
+              pageSize: nextSize === 25 ? undefined : nextSize,
+              pageToken: undefined,
+              page: undefined,
+            }),
+        }
+      : { resource: "agentsPage" },
+  );
   const startIdx = agentPage.pageIndex * agentPage.pageSize;
   const pagedRows = agentPage.items.map((item) => ({
     deviceId: item.device_id,
@@ -193,10 +261,18 @@ export function InventoryAgentsSection({
               variant="ghost"
               label="Reset filters"
               onClick={() => {
-                setLocalQuery("");
-                setAgentTypeFilter("all");
-                setAssuranceFilter("all");
-                setHookFilter("all");
+                setFallbackQuery("");
+                setFallbackAgentType("all");
+                setFallbackAssurance("all");
+                setFallbackHook("all");
+                onUpdateSearch?.({
+                  q: undefined,
+                  agent: undefined,
+                  assurance: undefined,
+                  hook: undefined,
+                  pageToken: undefined,
+                  page: undefined,
+                });
               }}
             />
           )}

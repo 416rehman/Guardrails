@@ -1,3 +1,33 @@
+import {
+  BRAND_NAME,
+  BRAND_SHORT_NAME,
+  ICON_REGISTRY,
+  INTERFACE_ROUTES,
+  MESSAGES,
+  PRESENTATION_REGISTRY,
+  SUPPORTED_LOCALES,
+  VOCABULARY_TERMS,
+  lookupMessage,
+  t,
+  type LocaleCode,
+  type MessageKey,
+} from "./generated";
+
+export {
+  BRAND_NAME,
+  BRAND_SHORT_NAME,
+  ICON_REGISTRY,
+  INTERFACE_ROUTES,
+  MESSAGES,
+  PRESENTATION_REGISTRY,
+  SUPPORTED_LOCALES,
+  VOCABULARY_TERMS,
+  lookupMessage,
+  t,
+  type LocaleCode,
+  type MessageKey,
+};
+
 export type ConsoleRouteId =
   | "home"
   | "users"
@@ -27,37 +57,32 @@ export type ProtectSectionId = "rules" | "browser";
 
 export interface ConsoleNavChild {
   id: string;
-  labelKey: keyof typeof MESSAGES;
+  labelKey: MessageKey;
   iconKey: string;
 }
 
 export interface ConsoleNavItem {
   id: ConsoleRouteId;
-  labelKey: keyof typeof MESSAGES;
+  labelKey: MessageKey;
   iconKey: string;
   children?: ReadonlyArray<ConsoleNavChild>;
 }
 
 export interface ConsoleNavGroup {
   id: "overview" | "fleet" | "protection";
-  labelKey: keyof typeof MESSAGES;
+  labelKey: MessageKey;
   items: ReadonlyArray<ConsoleNavItem>;
 }
 
 export const CONSOLE_ROUTES: ReadonlyArray<{
   id: ConsoleRouteId;
-  labelKey: keyof typeof MESSAGES;
+  labelKey: MessageKey;
   iconKey: string;
-}> = [
-  { id: "home", labelKey: "console.nav.home", iconKey: "nav.home" },
-  { id: "users", labelKey: "console.nav.users", iconKey: "nav.users" },
-  { id: "inventory", labelKey: "console.nav.inventory", iconKey: "nav.inventory" },
-  { id: "sessions", labelKey: "console.nav.sessions", iconKey: "nav.sessions" },
-  { id: "protect", labelKey: "console.nav.protect", iconKey: "nav.protect" },
-  { id: "respond", labelKey: "console.nav.respond", iconKey: "nav.respond" },
-  { id: "coverage", labelKey: "console.nav.coverage", iconKey: "nav.coverage" },
-  { id: "tester", labelKey: "console.nav.tester", iconKey: "nav.tester" },
-];
+}> = INTERFACE_ROUTES.filter((r) => r.area === "console").map((r) => ({
+  id: r.id as ConsoleRouteId,
+  labelKey: r.titleKey,
+  iconKey: r.iconKey,
+}));
 
 export const CONSOLE_NAV_GROUPS: ReadonlyArray<ConsoleNavGroup> = [
   {
@@ -118,69 +143,13 @@ export const CONSOLE_NAV_GROUPS: ReadonlyArray<ConsoleNavGroup> = [
 
 export const OPERATOR_ROUTES: ReadonlyArray<{
   id: OperatorRouteId;
-  labelKey: keyof typeof MESSAGES;
+  labelKey: MessageKey;
   iconKey: string;
-}> = [
-  { id: "op-overview", labelKey: "operator.nav.overview", iconKey: "nav.operator_overview" },
-  { id: "op-health", labelKey: "operator.nav.health", iconKey: "nav.operator_health" },
-  { id: "op-settings", labelKey: "operator.nav.settings", iconKey: "nav.operator_settings" },
-  { id: "op-audit", labelKey: "operator.nav.audit", iconKey: "nav.operator_audit" },
-];
-
-export const MESSAGES = {
-  "grdr.brand.name": "Guardrails ADR",
-  "grdr.brand.subtitle": "Agent protection",
-  "grdr.brand.operator_subtitle": "Operator plane",
-  "console.nav.home": "Home",
-  "console.nav.users": "Users",
-  "console.nav.inventory": "Inventory",
-  "console.nav.inventory.endpoints": "Endpoints",
-  "console.nav.inventory.agents": "Agents",
-  "console.nav.inventory.mcps": "MCP servers",
-  "console.nav.inventory.skills": "Skills & rules",
-  "console.nav.inventory.connect": "Connect & MDM",
-  "console.nav.sessions": "Sessions",
-  "console.nav.sessions.graph": "Sessions",
-  "console.nav.sessions.trace": "Trace waterfall",
-  "console.nav.sessions.timeline": "Timeline",
-  "console.nav.protect": "Protect",
-  "console.nav.protect.rules": "Policy rules",
-  "console.nav.protect.browser": "Browser AI",
-  "console.nav.respond": "Respond",
-  "console.nav.coverage": "Coverage",
-  "console.nav.tester": "Live Tester",
-  "console.nav.group.overview": "Overview",
-  "console.nav.group.fleet": "Fleet & Activity",
-  "console.nav.group.protection": "Protection & Response",
-  "operator.nav.overview": "Overview",
-  "operator.nav.health": "Health",
-  "operator.nav.settings": "Settings",
-  "operator.nav.audit": "Audit log",
-  "operator.context.banner": "Operator context: Deployment administration realm only. No route to tenant prompts or agent content.",
-  "mode.off.label": "Off",
-  "mode.watch.label": "Watch",
-  "mode.ask.label": "Ask",
-  "mode.block.label": "Block",
-  "console.verdict.allow": "Allow",
-  "console.verdict.modify": "Modified",
-  "console.verdict.step_up": "Ask",
-  "console.verdict.defer": "Deferred",
-  "console.verdict.deny": "Deny",
-  "console.session_label.credential_accessed": "Credential accessed",
-  "console.session_label.untrusted_web_fetched": "Untrusted web fetched",
-  "console.session_label.repeated_denials": "Repeated denials",
-  "console.session_label.tainted_exfil_risk": "Tainted exfil risk",
-  "console.stream.connected": "Live stream connected",
-  "console.stream.reconnecting": "Live updates paused, reconnecting",
-  "console.coverage.title": "Coverage",
-  "console.coverage.subtitle": "Protection strength across agents and operating systems.",
-} as const;
-
-export type MessageKey = keyof typeof MESSAGES;
-
-export function t(key: MessageKey): string {
-  return MESSAGES[key];
-}
+}> = INTERFACE_ROUTES.filter((r) => r.area === "operator").map((r) => ({
+  id: r.id as OperatorRouteId,
+  labelKey: r.titleKey,
+  iconKey: r.iconKey,
+}));
 
 export function pluralize(count: number, singular: string, plural?: string): string {
   const form = count === 1 ? singular : (plural ?? `${singular}s`);

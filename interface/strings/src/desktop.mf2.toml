@@ -1,0 +1,141 @@
+# Desktop, tray, and approval language tokens (D-69).
+
+["desktop.nav.first_run"]
+rust_variant = "NavFirstRun"
+desc = "Desktop navigation: first run screen"
+max = 32
+risk = "normal"
+msg = "First run"
+
+["desktop.nav.home"]
+rust_variant = "NavHome"
+desc = "Desktop navigation: home screen"
+max = 32
+risk = "normal"
+msg = "Home"
+
+["desktop.nav.activity"]
+rust_variant = "NavActivity"
+desc = "Desktop navigation: monitored developer activity screen"
+max = 32
+risk = "normal"
+msg = "My activity"
+
+["desktop.nav.rules"]
+rust_variant = "NavRules"
+desc = "Desktop navigation: rules screen"
+max = 32
+risk = "normal"
+msg = "Rules"
+
+["desktop.nav.privacy"]
+rust_variant = "NavPrivacy"
+desc = "Desktop navigation: privacy disclosure screen"
+max = 32
+risk = "normal"
+msg = "Privacy"
+
+["desktop.nav.settings"]
+rust_variant = "NavSettings"
+desc = "Desktop navigation: settings screen"
+max = 32
+risk = "normal"
+msg = "Settings"
+
+["desktop.status.protected"]
+rust_variant = "ProfileProtectedStatus"
+desc = "Desktop status badge for protected profile"
+max = 32
+risk = "safety"
+msg = "Protected"
+
+["desktop.status.requests_only"]
+rust_variant = "ProfileUserRequestsOnly"
+desc = "Desktop status badge for user-mode hook requests"
+max = 40
+risk = "safety"
+msg = "On (requests only)"
+
+["desktop.status.scan_only"]
+rust_variant = "ScanOnlyStatus"
+desc = "Desktop status badge when daemon only scans"
+max = 40
+risk = "safety"
+msg = "Scan only, not protecting"
+
+["desktop.approver.self"]
+rust_variant = "ApproverSelf"
+desc = "Approver label for self-approval"
+max = 32
+risk = "safety"
+msg = "You"
+
+["desktop.approver.sponsor"]
+rust_variant = "ApproverSponsor"
+desc = "Approver label for team sponsor"
+max = 40
+risk = "safety"
+msg = "Your team's sponsor"
+
+["desktop.approver.admin"]
+rust_variant = "ApproverAdmin"
+desc = "Approver label for administrator"
+max = 40
+risk = "safety"
+msg = "An administrator"
+
+["desktop.approver.quorum"]
+rust_variant = "ApproverQuorum"
+desc = "Approver label for two-person quorum"
+max = 40
+risk = "safety"
+msg = "Two approvers"
+
+["desktop.why.blocked"]
+rust_variant = "WhyBlocked"
+desc = "Block card heading when action was blocked"
+max = 48
+risk = "safety"
+msg = "Why this was blocked"
+
+["desktop.why.step_up"]
+rust_variant = "WhyStepUp"
+desc = "Block card heading when action needs approval"
+max = 48
+risk = "safety"
+msg = "Why this needs approval"
+
+["desktop.why.modified"]
+rust_variant = "WhyModified"
+desc = "Block card heading when action was modified"
+max = 48
+risk = "safety"
+msg = "Why this was changed"
+
+["desktop.why.delayed"]
+rust_variant = "WhyDelayed"
+desc = "Block card heading when action was delayed"
+max = 48
+risk = "safety"
+msg = "Why this was delayed"
+
+["desktop.rules.widening_confirm"]
+rust_variant = "WideningWarningTitle"
+desc = "Step-up confirmation heading when lowering protection below floor"
+max = 80
+risk = "safety"
+msg = "Guardrails will stop enforcing below this floor"
+
+["desktop.privacy.disclosure"]
+rust_variant = "PrivacyNoticeHeader"
+desc = "Privacy disclosure heading on local device"
+max = 80
+risk = "safety"
+msg = "What Guardrails observes and retains on this device"
+
+["desktop.render.web_fallback"]
+rust_variant = "RenderWebNotice"
+desc = "Status notice when desktop falls back to web console"
+max = 80
+risk = "normal"
+msg = "Running in Web tier. Opening local console."

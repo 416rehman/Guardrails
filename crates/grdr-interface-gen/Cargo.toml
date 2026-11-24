@@ -1,0 +1,20 @@
+[package]
+name = "grdr-interface-gen"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[package.metadata.grdr]
+layer = 4
+privilege = "none"
+surface = "internal"
+renders = "none"
+
+[dependencies]
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

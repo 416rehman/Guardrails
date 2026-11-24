@@ -1,0 +1,33 @@
+# Supported UI and pseudo-locale registry (D-69).
+
+[[locale]]
+tag = "en-US"
+rust_variant = "EnUs"
+tier = "shipped"
+script = "latn"
+direction = "ltr"
+aliases = ["en", "en-us", "c", "posix"]
+
+[[locale]]
+tag = "en-XA"
+rust_variant = "EnXa"
+tier = "pseudo"
+script = "latn"
+direction = "ltr"
+aliases = ["en-xa"]
+
+[[locale]]
+tag = "ar-XB"
+rust_variant = "ArXb"
+tier = "pseudo"
+script = "arab"
+direction = "rtl"
+aliases = ["ar-xb"]
+
+[[locale]]
+tag = "ja-XC"
+rust_variant = "JaXc"
+tier = "pseudo"
+script = "jpan"
+direction = "ltr"
+aliases = ["ja-xc"]

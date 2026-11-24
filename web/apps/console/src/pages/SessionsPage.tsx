@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   api,
   type ActionAttempt,
@@ -19,6 +20,8 @@ import {
   UiSdkSegmentedControl,
   VStack,
 } from "@grdr/ui";
+import { consoleQueryKeys } from "../queries";
+import type { ConsoleSearchParams } from "../searchSchema";
 import {
   buildSessionFlowGraph,
   SessionAttemptDrawer,
@@ -34,12 +37,6 @@ type SessionSelection =
   | { kind: "none" }
   | { kind: "selected"; sessionId: string };
 
-type SessionDetailState =
-  | { kind: "idle" }
-  | { kind: "loading"; sessionId: string }
-  | { kind: "ready"; detail: SessionDetailResponse; selectedAttemptId?: string }
-  | { kind: "error"; sessionId: string; message: string };
-
 type TurnFocus =
   | { kind: "all" }
   | { kind: "turn"; turnIndex: number };
@@ -48,6 +45,8 @@ export function SessionsPage({
   sessions,
   devices = [],
   searchQuery,
+  urlSearch,
+  onUpdateSearch,
   section,
   onSectionChange,
   selectedSessionId,
@@ -62,6 +61,8 @@ export function SessionsPage({
   sessions: SessionSummary[];
   devices?: Device[];
   searchQuery: string;
+  urlSearch?: ConsoleSearchParams;
+  onUpdateSearch?: (patch: Partial<ConsoleSearchParams>) => void;
   section?: SessionViewMode;
   onSectionChange?: (next: SessionViewMode) => void;
   selectedSessionId?: string | null;
@@ -77,8 +78,8 @@ export function SessionsPage({
     sessions[0] ? { kind: "selected", sessionId: sessions[0].id } : { kind: "none" },
   );
   const [internalViewMode, setInternalViewMode] = useState<SessionViewMode>("graph");
-  const [turnFocus, setTurnFocus] = useState<TurnFocus>({ kind: "all" });
-  const [detailState, setDetailState] = useState<SessionDetailState>({ kind: "idle" });
+  const [fallbackTurn, setFallbackTurn] = useState<TurnFocus>({ kind: "all" });
+  const [fallbackAttemptId, setFallbackAttemptId] = useState<string | null>(null);
 
   const selectedId =
     selectedSessionId !== undefined
@@ -87,6 +88,12 @@ export function SessionsPage({
         ? internalSelection.sessionId
         : null;
   const viewMode = section ?? internalViewMode;
+  const activeTurn =
+    urlSearch?.turn !== undefined
+      ? urlSearch.turn
+      : fallbackTurn.kind === "turn"
+        ? fallbackTurn.turnIndex
+        : null;
 
   function selectSession(id: string | null) {
     setInternalSelection(id ? { kind: "selected", sessionId: id } : { kind: "none" });
@@ -108,10 +115,11 @@ export function SessionsPage({
   useEffect(() => {
     if (typeof focusedTurn === "number" && focusedTurn > 0) {
       changeViewMode("trace");
-      setTurnFocus({ kind: "turn", turnIndex: focusedTurn });
+      setFallbackTurn({ kind: "turn", turnIndex: focusedTurn });
+      onUpdateSearch?.({ turn: focusedTurn });
       onClearFocusedTurn?.();
     }
-  }, [focusedTurn, onClearFocusedTurn]);
+  }, [focusedTurn, onClearFocusedTurn, onUpdateSearch]);
 
   useEffect(() => {
     if (!selectedId && sessions[0]?.id) {
@@ -119,46 +127,32 @@ export function SessionsPage({
     }
   }, [sessions, selectedId]);
 
-  useEffect(() => {
-    if (!selectedId) {
-      setDetailState({ kind: "idle" });
-      return;
-    }
-    let cancelled = false;
-    setDetailState({ kind: "loading", sessionId: selectedId });
-    api
-      .getSessionDetail(selectedId)
-      .then((res) => {
-        if (!cancelled) {
-          const firstFlagged = res.attempts.find((a) =>
-            res.receipts.some((r) => r.attempt_id === a.id && r.verdict !== "allow"),
-          );
-          setDetailState({
-            kind: "ready",
-            detail: res,
-            selectedAttemptId: firstFlagged?.id ?? res.attempts[0]?.id,
-          });
-        }
-      })
-      .catch((err: Error) => {
-        if (!cancelled) {
-          setDetailState({ kind: "error", sessionId: selectedId, message: err.message });
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedId, sessions]);
+  const detailQuery = useQuery<SessionDetailResponse>({
+    queryKey: consoleQueryKeys.sessionDetail(selectedId ?? ""),
+    queryFn: () => api.getSessionDetail(selectedId ?? ""),
+    enabled: Boolean(selectedId),
+  });
 
-  const detail = detailState.kind === "ready" ? detailState.detail : null;
-  const selectedAttemptId = detailState.kind === "ready" ? (detailState.selectedAttemptId ?? null) : null;
-  const setSelectedAttemptId = (attemptId: string | null) => {
-    setDetailState((prev) =>
-      prev.kind === "ready"
-        ? { ...prev, selectedAttemptId: attemptId ?? undefined }
-        : prev,
-    );
-  };
+  const detail = detailQuery.data ?? null;
+  const firstFlagged = detail?.attempts.find((a) =>
+    detail.receipts.some((r) => r.attempt_id === a.id && r.verdict !== "allow"),
+  );
+  const selectedAttemptId =
+    urlSearch?.attemptId ??
+    fallbackAttemptId ??
+    firstFlagged?.id ??
+    detail?.attempts[0]?.id ??
+    null;
+
+  function selectAttempt(attemptId: string | null) {
+    setFallbackAttemptId(attemptId);
+    onUpdateSearch?.({ attemptId: attemptId ?? undefined });
+  }
+
+  function selectTurn(turn: number | null) {
+    setFallbackTurn(turn === null ? { kind: "all" } : { kind: "turn", turnIndex: turn });
+    onUpdateSearch?.({ turn: turn ?? undefined });
+  }
 
   const focusedAttempt =
     detail?.attempts.find((a) => a.id === selectedAttemptId) ?? detail?.attempts[0] ?? null;
@@ -174,6 +168,9 @@ export function SessionsPage({
     [detail, focusedAttempt?.id],
   );
 
+  const detailError =
+    detailQuery.error instanceof Error ? detailQuery.error.message : null;
+
   return (
     <VStack gap={4}>
       <div className="page-header">
@@ -185,14 +182,16 @@ export function SessionsPage({
         </div>
       </div>
 
-      {detailState.kind === "error" && (
-        <Banner status="error" title={detailState.message} collapsible={false} />
+      {detailError && (
+        <Banner status="error" title={detailError} collapsible={false} />
       )}
 
       <div className="storyline-split">
         <SessionListPane
           devices={devices}
           searchQuery={searchQuery}
+          urlSearch={urlSearch}
+          onUpdateSearch={onUpdateSearch}
           selectedId={selectedId}
           onSelectSession={selectSession}
           onOpenEntity={onOpenEntity}
@@ -282,12 +281,10 @@ export function SessionsPage({
                   attempts={detail.attempts}
                   receipts={detail.receipts}
                   turns={detail.turns ?? []}
-                  activeTurn={turnFocus.kind === "turn" ? turnFocus.turnIndex : null}
+                  activeTurn={activeTurn}
                   selectedAttemptId={focusedAttempt?.id ?? null}
-                  onSelectTurn={(t) =>
-                    setTurnFocus(t === null ? { kind: "all" } : { kind: "turn", turnIndex: t })
-                  }
-                  onSelectAttempt={setSelectedAttemptId}
+                  onSelectTurn={selectTurn}
+                  onSelectAttempt={selectAttempt}
                   onOpenEntity={onOpenEntity}
                 />
               )}
@@ -313,7 +310,7 @@ export function SessionsPage({
                         label: detail.session.agent_name,
                       });
                     } else if (detail.attempts.some((a) => a.id === nodeId)) {
-                      setSelectedAttemptId(nodeId);
+                      selectAttempt(nodeId);
                     }
                   }}
                 />
@@ -324,7 +321,7 @@ export function SessionsPage({
                   attempts={detail.attempts}
                   receipts={detail.receipts}
                   focusedAttemptId={focusedAttempt?.id ?? null}
-                  onSelectAttempt={setSelectedAttemptId}
+                  onSelectAttempt={selectAttempt}
                   onOpenEntity={onOpenEntity}
                 />
               )}
@@ -334,7 +331,7 @@ export function SessionsPage({
                   attempts={detail.attempts}
                   receipts={detail.receipts}
                   focusedAttemptId={focusedAttempt?.id ?? null}
-                  onSelectAttempt={setSelectedAttemptId}
+                  onSelectAttempt={selectAttempt}
                   onOpenEntity={onOpenEntity}
                 />
               )}

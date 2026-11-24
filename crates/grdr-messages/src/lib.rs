@@ -1,3 +1,6 @@
+mod generated;
+
+pub use generated::{GENERATED_BRAND_NAME, PresentedValue, present_enum};
 use grdr_strings::{Locale, MessageKey, lookup, sanitize_untrusted_text};
 use serde::{Deserialize, Serialize};
 

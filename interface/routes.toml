@@ -9,6 +9,14 @@ scopes = ["device", "organisation"]
 requires = "daemon"
 
 [[route]]
+id = "users"
+title = "console.nav.users"
+icon = "nav.users"
+area = "console"
+scopes = ["device", "organisation"]
+requires = "daemon"
+
+[[route]]
 id = "inventory"
 title = "console.nav.inventory"
 icon = "nav.inventory"

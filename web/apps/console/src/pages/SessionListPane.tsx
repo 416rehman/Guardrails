@@ -5,21 +5,36 @@ import { EntityLink, type EntityTarget, SessionLabelBadge } from "@grdr/kit";
 import { Badge, Banner, GrdrIcon, HStack, Text, TextInput, VStack } from "@grdr/ui";
 import { CursorPagerBar } from "../components/PagerBar";
 import { aipQuote, useServerPage } from "../components/useServerPage";
+import type { ConsoleSearchParams } from "../searchSchema";
 
 export function SessionListPane({
   devices,
   searchQuery,
+  urlSearch,
+  onUpdateSearch,
   selectedId,
   onSelectSession,
   onOpenEntity,
 }: {
   devices: Device[];
   searchQuery: string;
+  urlSearch?: ConsoleSearchParams;
+  onUpdateSearch?: (patch: Partial<ConsoleSearchParams>) => void;
   selectedId: string | null;
   onSelectSession: (id: string) => void;
   onOpenEntity?: (target: EntityTarget) => void;
 }) {
-  const [localQuery, setLocalQuery] = useState("");
+  const [fallbackQuery, setFallbackQuery] = useState("");
+  const localQuery = urlSearch?.q ?? fallbackQuery;
+  const setLocalQuery = (q: string) => {
+    setFallbackQuery(q);
+    onUpdateSearch?.({
+      q: q.trim() ? q : undefined,
+      pageToken: undefined,
+      page: undefined,
+    });
+  };
+
   const query = `${searchQuery} ${localQuery}`.trim().toLowerCase();
 
   const aipFilter = useMemo(() => {
@@ -28,7 +43,33 @@ export function SessionListPane({
     return `(id:${q} OR agent_name:${q} OR device_name:${q} OR user_id:${q})`;
   }, [query]);
 
-  const sessionsPage = useServerPage(api.listSessionsPage, aipFilter, "last_activity desc", 25);
+  const sessionsPage = useServerPage(
+    api.listSessionsPage,
+    aipFilter,
+    "last_activity desc",
+    25,
+    0,
+    onUpdateSearch
+      ? {
+          resource: "sessionsPage",
+          pageToken: urlSearch?.pageToken ?? "",
+          pageIndex: urlSearch?.page ?? 0,
+          pageSize: urlSearch?.pageSize ?? 25,
+          onPageChange: ({ pageToken, pageIndex }) =>
+            onUpdateSearch({
+              pageToken: pageToken || undefined,
+              page: pageIndex > 0 ? pageIndex : undefined,
+            }),
+          onPageSizeChange: (nextSize) =>
+            onUpdateSearch({
+              pageSize: nextSize === 25 ? undefined : nextSize,
+              pageToken: undefined,
+              page: undefined,
+            }),
+        }
+      : { resource: "sessionsPage" },
+  );
+
   const displayedSessions: SessionSummary[] = sessionsPage.items;
   const totalCount = sessionsPage.pageInfo.total_size_estimate || displayedSessions.length;
   const startIdx = sessionsPage.pageIndex * sessionsPage.pageSize;
