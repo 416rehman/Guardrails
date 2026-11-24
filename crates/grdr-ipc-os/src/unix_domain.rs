@@ -337,7 +337,7 @@ mod tests {
             hdr.extend_from_slice(&64u32.to_be_bytes());
             let _ = writer.write_all(&hdr);
             for _ in 0..8 {
-                if writer.write_all(&[b'x']).is_err() {
+                if writer.write_all(b"x").is_err() {
                     break;
                 }
                 std::thread::sleep(Duration::from_millis(12));
