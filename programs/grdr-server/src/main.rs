@@ -5,6 +5,7 @@ mod auth;
 mod demo;
 mod exports;
 mod routes;
+mod routes_query;
 mod store;
 
 use std::path::PathBuf;
@@ -1142,5 +1143,178 @@ mod tests {
         )
         .unwrap();
         assert_eq!(entra.state, grdr_model::IntegrationHealthState::AtRisk);
+    }
+
+    #[tokio::test]
+    async fn progressive_query_routes_enforce_schema_hidden_and_privacy_modes() {
+        let state = AppState::init(None, true).unwrap();
+        let app = routes::build_router(state, None);
+
+        let schema_resp = app
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/query/schema")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(schema_resp.status(), StatusCode::OK);
+        let named_schema: Vec<grdr_model::EntitySchema> = serde_json::from_slice(
+            &axum::body::to_bytes(schema_resp.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        let users_cols = &named_schema
+            .iter()
+            .find(|e| e.name == "users")
+            .unwrap()
+            .columns;
+        assert!(users_cols.iter().any(|c| c.name == "user_email"));
+        let attempts_cols = &named_schema
+            .iter()
+            .find(|e| e.name == "attempts")
+            .unwrap()
+            .columns;
+        assert!(!attempts_cols.iter().any(|c| c.name == "prompt_body"));
+        assert!(!attempts_cols.iter().any(|c| c.name == "raw_secret"));
+
+        let sample_resp = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/query/sample")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&grdr_model::QueryRequest {
+                            entity: "attempts".into(),
+                            columns: vec!["id".into(), "agent_name".into(), "target".into()],
+                            limit: Some(50),
+                            filter_text: None,
+                        })
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(sample_resp.status(), StatusCode::OK);
+        let sample: grdr_model::QuerySampleResponse = serde_json::from_slice(
+            &axum::body::to_bytes(sample_resp.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(sample.plan.effective_limit, grdr_model::MAX_SAMPLE_LIMIT);
+        assert!(!sample.rows.is_empty());
+
+        let sess_sample_resp = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/query/sample")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&grdr_model::QueryRequest {
+                            entity: "sessions".into(),
+                            columns: vec![
+                                "id".into(),
+                                "pseudonym_id".into(),
+                                "user_display".into(),
+                            ],
+                            limit: Some(5),
+                            filter_text: None,
+                        })
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(sess_sample_resp.status(), StatusCode::OK);
+        let sess_sample: grdr_model::QuerySampleResponse = serde_json::from_slice(
+            &axum::body::to_bytes(sess_sample_resp.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(sess_sample.rows.iter().all(|row| {
+            matches!(
+                row.get("pseudonym_id"),
+                Some(grdr_model::QueryCellValue::Text(p)) if p.starts_with("prn_")
+            )
+        }));
+
+        let entities_resp = app
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/query/entities")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(entities_resp.status(), StatusCode::OK);
+
+        let privacy_resp = app
+            .clone()
+            .oneshot(
+                Request::patch("/api/v1/privacy/config")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&grdr_model::UpdatePrivacyConfigInput {
+                            identity_mode: Some(grdr_model::IdentityMode::Pseudonymous),
+                            user_risk_scoring: None,
+                            actor: Some("works-council".into()),
+                        })
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(privacy_resp.status(), StatusCode::OK);
+
+        let intent_resp = app
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/query/user-intent")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(intent_resp.status(), StatusCode::OK);
+        let intent: grdr_model::UserIntentDescriptor = serde_json::from_slice(
+            &axum::body::to_bytes(intent_resp.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(intent.identity_mode, grdr_model::IdentityMode::Pseudonymous);
+        assert!(
+            intent
+                .schema_hidden_fields
+                .iter()
+                .any(|f| f == "user_email")
+        );
+
+        let blocked_resp = app
+            .oneshot(
+                Request::post("/api/v1/query/sample")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&grdr_model::QueryRequest {
+                            entity: "users".into(),
+                            columns: vec!["user_email".into()],
+                            limit: Some(5),
+                            filter_text: None,
+                        })
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(blocked_resp.status(), StatusCode::BAD_REQUEST);
     }
 }

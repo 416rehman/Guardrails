@@ -34,6 +34,9 @@ use crate::auth::{
     self, ServerSecurityConfig, require_device_or_operator_auth, require_operator_auth,
 };
 use crate::exports::{build_audit_jsonl, build_ocsf_events};
+use crate::routes_query::{
+    get_query_entities, get_query_schema, get_query_user_intent, post_query_sample,
+};
 use crate::store::AppState;
 
 type ApiResult<T> = Result<Json<T>, (StatusCode, Json<CodedError>)>;
@@ -87,6 +90,10 @@ pub fn build_router_with_security(
             "/api/v1/integrations/{id}/check-readiness",
             post(check_integration_readiness),
         )
+        .route("/api/v1/query/schema", get(get_query_schema))
+        .route("/api/v1/query/entities", get(get_query_entities))
+        .route("/api/v1/query/user-intent", get(get_query_user_intent))
+        .route("/api/v1/query/sample", post(post_query_sample))
         .route("/api/v1/sessions", get(list_sessions))
         .route("/api/v1/sessions/{id}", get(get_session))
         .route("/api/v1/decide", post(decide))
