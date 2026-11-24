@@ -42,6 +42,10 @@ if (typeof globalThis.CSS === "undefined" || typeof globalThis.CSS.escape !== "f
   } as typeof CSS;
 }
 
+if (typeof Element !== "undefined" && !Element.prototype.getAnimations) {
+  Element.prototype.getAnimations = () => [];
+}
+
 afterEach(() => {
   cleanup();
 });

@@ -1,12 +1,13 @@
 use grdr_ui_model::{Intent, Screen};
-use rune::{El, col, el, icon, row, spacer, text};
+use rune::{Color, El, Shadow, col, el, icon, row, spacer, text};
 
 use crate::icons;
 use crate::kit::{
-    DesktopApp, assurance_pill, coverage_visual, ledger_header, metric_strip, primary_button,
-    quoted_chip, status_pill, status_pill_with_icon, velocity_sparkline,
+    ChipSurface, DesktopApp, agent_glyph, assurance_pill, entity_link, ledger_header, metric_strip,
+    primary_button, quoted_chip, status_pill, status_pill_with_icon,
 };
 use crate::theme::StudioTheme;
+use crate::viz::{coverage_visual, is_dark_theme, texture_overlay, velocity_sparkline};
 
 #[must_use]
 pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
@@ -62,7 +63,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
 
     let hero = col()
         .w_full()
-        .gap(16.0)
+        .gap(12.0)
         .child(
             row()
                 .w_full()
@@ -73,6 +74,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                     vm.boundary_pct,
                     boundary_count,
                     total_agents,
+                    app,
                     t,
                 )),
         )
@@ -95,6 +97,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                 ("Sat", 14, 0, 0),
                 ("Sun", 19, 1, 1),
             ],
+            app,
             t,
         ));
 
@@ -113,85 +116,115 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
     } else {
         for apr in &vm.pending_approvals {
             let req_id = apr.id.clone();
+            let card_row = row()
+                .w_full()
+                .padding(14.0)
+                .center_y()
+                .gap(16.0)
+                .child(
+                    col()
+                        .grow(1.0)
+                        .gap(6.0)
+                        .child(
+                            row()
+                                .gap(8.0)
+                                .center_y()
+                                .child(status_pill_with_icon(
+                                    "ASK",
+                                    Some(&icons::HAND),
+                                    t.c.ask_bg,
+                                    t.c.ask,
+                                    t,
+                                ))
+                                .child(
+                                    text(&apr.rule_title)
+                                        .font(t.body_strong)
+                                        .color(t.c.ink_primary),
+                                ),
+                        )
+                        .child(
+                            row()
+                                .gap(5.0)
+                                .center_y()
+                                .child(entity_link(
+                                    "home-apr-agent",
+                                    agent_glyph(&apr.agent_name),
+                                    &apr.agent_name,
+                                    t,
+                                    |s| s.dispatch(Intent::Navigate(Screen::MyActivity)),
+                                ))
+                                .child(text("on").font(t.caption).color(t.c.ink_muted))
+                                .child(entity_link(
+                                    "home-apr-device",
+                                    &icons::HARD_DRIVE,
+                                    &apr.device_name,
+                                    t,
+                                    |s| s.dispatch(Intent::Navigate(Screen::Settings)),
+                                ))
+                                .child(
+                                    text(format!("· {}", apr.approver_label))
+                                        .font(t.caption)
+                                        .color(t.c.ink_secondary),
+                                ),
+                        )
+                        .child(quoted_chip(&apr.target_quoted, ChipSurface::OnRecessed, t)),
+                )
+                .child(primary_button("review-apr", "Review", t, move |s| {
+                    s.dispatch(Intent::OpenApproval {
+                        request_id: req_id.clone(),
+                    });
+                }));
+
             approvals_col = approvals_col.child(
-                row()
+                col()
                     .key(apr.id.as_str())
                     .w_full()
-                    .pt(10.0)
-                    .pb(10.0)
-                    .center_y()
-                    .gap(16.0)
-                    .child(
-                        col()
-                            .grow(1.0)
-                            .gap(6.0)
-                            .child(
-                                row()
-                                    .gap(8.0)
-                                    .center_y()
-                                    .child(status_pill_with_icon(
-                                        "ASK",
-                                        Some(&icons::HAND),
-                                        t.c.ask_bg,
-                                        t.c.ask,
-                                        t,
-                                    ))
-                                    .child(
-                                        text(&apr.rule_title)
-                                            .font(t.body_strong)
-                                            .color(t.c.ink_primary),
-                                    ),
-                            )
-                            .child(
-                                text(format!(
-                                    "{} on {} · Requires your approval ({})",
-                                    apr.agent_name, apr.device_name, apr.approver_label,
-                                ))
-                                .font(t.caption)
-                                .color(t.c.ink_secondary),
-                            )
-                            .child(quoted_chip(&apr.target_quoted, t)),
+                    .continuous_corners()
+                    .radius(12.0)
+                    .clip_rounded(12.0)
+                    .gradient(t.c.panel_top, t.c.panel_bottom)
+                    .radial_gradient(
+                        [0.08, 0.25],
+                        160.0,
+                        [(0.0, t.c.ask.alpha(0.11)), (1.0, Color::TRANSPARENT)],
                     )
-                    .child(primary_button("review-apr", "Review", t, move |s| {
-                        s.dispatch(Intent::OpenApproval {
-                            request_id: req_id.clone(),
-                        });
-                    })),
+                    .border_gradient(1.0, t.c.ask.alpha(0.32), t.c.border_subtle)
+                    .box_shadow(Shadow {
+                        x: 0.0,
+                        y: 1.0,
+                        blur: 0.0,
+                        spread: 0.0,
+                        color: t.c.specular_rim,
+                        inset: true,
+                    })
+                    .shadow(4.0, 12.0, t.c.drop_shadow)
+                    .child(card_row),
             );
         }
     }
 
-    let mut agents_col = col().grow(1.0).gap(8.0).child(ledger_header(
+    let dark = is_dark_theme(t);
+    let mut agents_col = col().grow(1.0).gap(6.0).child(ledger_header(
         "Agents on this device",
         &format!("{} detected", vm.agents.len()),
         t,
     ));
     for agent in &vm.agents {
         let is_boundary = agent.control_mode == "Boundary";
-        let agent_glyph = if agent.name.contains("Claude") {
-            &icons::TERMINAL
-        } else {
-            &icons::CPU
-        };
+        let glyph = agent_glyph(&agent.name);
         agents_col = agents_col.child(
             row()
                 .w_full()
-                .pt(8.0)
-                .pb(8.0)
+                .pt(4.0)
+                .pb(4.0)
                 .center_y()
                 .gap(10.0)
                 .child(
-                    el().size(28.0, 28.0)
-                        .radius(6.0)
-                        .fill(t.c.recessed)
-                        .border(1.0, t.c.border_subtle)
-                        .center()
-                        .child(icon(agent_glyph, 14.0).color(t.c.ink_primary)),
-                )
-                .child(
                     col()
-                        .gap(2.0)
-                        .child(text(&agent.name).font(t.body_strong).color(t.c.ink_primary))
+                        .gap(3.0)
+                        .child(entity_link("home-agent-link", glyph, &agent.name, t, |s| {
+                            s.dispatch(Intent::Navigate(Screen::MyActivity))
+                        }))
                         .child(
                             text(&agent.hook_health)
                                 .font(t.caption)
@@ -203,7 +236,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         );
     }
 
-    let mut signals_col = col().grow(1.0).gap(8.0).child(ledger_header(
+    let mut signals_col = col().grow(1.0).gap(6.0).child(ledger_header(
         "Status checks",
         &format!("{} active", vm.tiles.len()),
         t,
@@ -215,21 +248,25 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
             &icons::ACTIVITY
         };
         let tile_color = if idx == 0 { t.c.ask } else { t.c.accent };
+        let mut icon_well = el()
+            .size(28.0, 28.0)
+            .radius(6.0)
+            .clip_rounded(6.0)
+            .fill(t.c.recessed)
+            .border(1.0, t.c.border_subtle)
+            .center();
+        if idx == 0 {
+            icon_well = icon_well.child(texture_overlay(app.textures.hatch(dark)));
+        }
+        icon_well = icon_well.child(icon(tile_glyph, 14.0).color(tile_color));
         signals_col = signals_col.child(
             row()
                 .w_full()
-                .pt(8.0)
-                .pb(8.0)
+                .pt(4.0)
+                .pb(4.0)
                 .center_y()
                 .gap(10.0)
-                .child(
-                    el().size(28.0, 28.0)
-                        .radius(6.0)
-                        .fill(t.c.recessed)
-                        .border(1.0, t.c.border_subtle)
-                        .center()
-                        .child(icon(tile_glyph, 14.0).color(tile_color)),
-                )
+                .child(icon_well)
                 .child(
                     col()
                         .grow(1.0)
@@ -252,7 +289,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
     col()
         .key("screen-home")
         .w_full()
-        .gap(24.0)
+        .gap(13.0)
         .child(hero)
         .child(approvals_col)
         .child(

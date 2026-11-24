@@ -362,6 +362,32 @@ describe("Console and Operator Plane workflows", () => {
     });
   });
 
+  it("deep-links clickable EntityLink pills across Home, Inventory drawer, and Protect", async () => {
+    installFetchMock();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("1 action waiting for your decision")).toBeTruthy();
+    });
+
+    const hostLinks = screen.getAllByRole("button", { name: "devbox.local" });
+    fireEvent.click(hostLinks[0]);
+    await waitFor(() => {
+      expect(screen.getByText("Device assurance matrix")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Back to Home" })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Close Device assurance matrix" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to Home" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "rule-1" })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "rule-1" }));
+    await waitFor(() => {
+      expect(screen.getByText("Protect SSH keys")).toBeTruthy();
+    });
+  });
+
   it("renders OperatorApp with locked operator-context banner and routes", async () => {
     installFetchMock();
     render(<OperatorApp />);

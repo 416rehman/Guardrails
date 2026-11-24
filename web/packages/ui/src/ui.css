@@ -275,3 +275,110 @@
 .grdr-flow-wrap .react-flow__edge-textbg {
   fill: var(--bg-canvas);
 }
+
+.grdr-entity-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding-inline: 0;
+  padding-block: 1px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-primary);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  max-width: 100%;
+  min-width: 0;
+  cursor: pointer;
+  vertical-align: baseline;
+  text-decoration: none;
+  transition:
+    color var(--motion-quick) ease,
+    background-color var(--motion-quick) ease,
+    box-shadow var(--motion-quick) ease;
+}
+
+.grdr-entity-link > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-decoration: underline;
+  text-decoration-style: solid;
+  text-decoration-color: var(--border-strong);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-skip-ink: auto;
+  transition: text-decoration-color var(--motion-quick) ease;
+}
+
+.grdr-entity-link svg {
+  flex-shrink: 0;
+}
+
+.grdr-entity-link.compact {
+  gap: 4px;
+  font-size: 12.5px;
+}
+
+.grdr-entity-link[data-entity-kind="session"] svg,
+.grdr-entity-link[data-entity-kind="rule"] svg,
+.grdr-entity-link[data-entity-kind="mcp"] svg {
+  color: var(--ink-muted);
+  transition: color var(--motion-quick) ease;
+}
+
+.grdr-entity-link[data-entity-kind="session"],
+.grdr-entity-link[data-entity-kind="rule"] {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-secondary);
+}
+
+.grdr-entity-link:hover {
+  background-color: var(--accent-soft);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  color: var(--accent-primary);
+}
+
+.grdr-entity-link:hover > span {
+  text-decoration-color: var(--accent-primary);
+}
+
+.grdr-entity-link:hover svg {
+  color: var(--accent-primary);
+}
+
+.grdr-entity-link:active {
+  opacity: 0.78;
+}
+
+.grdr-entity-link:focus-visible {
+  outline: none;
+  background-color: var(--accent-soft);
+  color: var(--accent-primary);
+  box-shadow: var(--focus-ring);
+}
+
+.grdr-entity-link:focus-visible > span {
+  text-decoration-color: var(--accent-primary);
+}
+
+.grdr-entity-link:focus-visible svg {
+  color: var(--accent-primary);
+}
+
+@media (pointer: coarse) {
+  .grdr-entity-link {
+    padding-block: 4px;
+  }
+}
+
+@media (max-width: 820px) {
+  .grdr-ui-drawer-content {
+    padding: var(--space-3);
+  }
+}

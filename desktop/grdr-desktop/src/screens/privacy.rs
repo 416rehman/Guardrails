@@ -1,12 +1,14 @@
 use rune::{El, col, icon, row, spacer, text};
 
 use crate::icons;
-use crate::kit::{DesktopApp, flow_stage_node, ledger_header, status_pill_with_icon};
+use crate::kit::{DesktopApp, ledger_header, status_pill_with_icon};
 use crate::theme::StudioTheme;
+use crate::viz::{flow_connector, flow_stage_node, hardware_panel, is_dark_theme};
 
 #[must_use]
 pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
     let vm = &app.vm.privacy;
+    let dark = is_dark_theme(t);
     let rows = [
         ("Capture level", vm.capture_scope.clone(), &icons::EYE),
         (
@@ -28,42 +30,53 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         ),
     ];
 
-    let data_flow = row()
-        .w_full()
-        .gap(10.0)
-        .items_stretch()
-        .center_y()
-        .child(flow_stage_node(
-            &icons::TERMINAL,
-            "1. Agent calls",
-            "Claude Code, Cursor, Codex",
-            t.c.ink_primary,
-            t,
-        ))
-        .child(icon(&icons::ARROW_RIGHT, 14.0).color(t.c.ink_muted))
-        .child(flow_stage_node(
-            &icons::SHIELD_CHECK,
-            "2. Policy check",
-            "Evaluated locally",
-            t.c.accent,
-            t,
-        ))
-        .child(icon(&icons::ARROW_RIGHT, 14.0).color(t.c.ink_muted))
-        .child(flow_stage_node(
-            &icons::HARD_DRIVE,
-            "3. Local receipts",
-            "Signed log on disk",
-            t.c.allow,
-            t,
-        ))
-        .child(icon(&icons::ARROW_RIGHT, 14.0).color(t.c.ink_muted))
-        .child(flow_stage_node(
-            &icons::CIRCLE_OFF,
-            "4. External egress",
-            "0 bytes uploaded",
-            t.c.ink_secondary,
-            t,
-        ));
+    let data_flow = hardware_panel(
+        "privacy-flow-stage",
+        14.0,
+        app.textures.dither(dark),
+        t,
+        row()
+            .w_full()
+            .padding(14.0)
+            .gap(6.0)
+            .items_stretch()
+            .center_y()
+            .child(flow_stage_node(
+                &icons::TERMINAL,
+                "1. Agent calls",
+                "Claude Code, Cursor, Codex",
+                t.c.ink_primary,
+                None,
+                t,
+            ))
+            .child(flow_connector(t.c.accent, t))
+            .child(flow_stage_node(
+                &icons::SHIELD_CHECK,
+                "2. Policy check",
+                "Evaluated locally",
+                t.c.accent,
+                None,
+                t,
+            ))
+            .child(flow_connector(t.c.allow, t))
+            .child(flow_stage_node(
+                &icons::HARD_DRIVE,
+                "3. Local receipts",
+                "Signed log on disk",
+                t.c.allow,
+                None,
+                t,
+            ))
+            .child(flow_connector(t.c.ink_muted, t))
+            .child(flow_stage_node(
+                &icons::CIRCLE_OFF,
+                "4. External egress",
+                "0 bytes uploaded",
+                t.c.ink_secondary,
+                Some(app.textures.hatch(dark)),
+                t,
+            )),
+    );
 
     let mut table =
         col()

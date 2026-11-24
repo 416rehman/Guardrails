@@ -40,6 +40,7 @@ export function recordVisualAudit({
   verdict = "pass",
   summary = "",
   unresolvedIssues = 0,
+  unresolvedPolish = 0,
 }) {
   const screenshots = {
     ...collectScreenshotHashes(cwd, "web"),
@@ -49,6 +50,7 @@ export function recordVisualAudit({
     recordedAt: new Date().toISOString(),
     verdict,
     unresolvedIssues: Number(unresolvedIssues),
+    unresolvedPolish: Number(unresolvedPolish),
     summary,
     screenshots,
   };
@@ -78,9 +80,13 @@ export function evaluateVisualAuditFiles(changedFiles, cwd = process.cwd()) {
     return [`visual-audit: audit record at ${AUDIT_RECORD_REL} is unreadable; re-run grdr-visual-audit.`];
   }
 
-  if (record.verdict !== "pass" || Number(record.unresolvedIssues ?? 0) > 0) {
+  if (
+    record.verdict !== "pass" ||
+    Number(record.unresolvedIssues ?? 0) > 0 ||
+    Number(record.unresolvedPolish ?? 0) > 0
+  ) {
     return [
-      `visual-audit: last screenshot audit verdict is "${record.verdict}" with ${record.unresolvedIssues} unresolved issue(s). Fix all issues, re-snap, and re-run the judge.`,
+      `visual-audit: last screenshot audit verdict is "${record.verdict}" with ${record.unresolvedIssues ?? 0} blocking and ${record.unresolvedPolish ?? 0} polish issue(s). Action all blocking and polish findings, re-snap, and re-run the judge.`,
     ];
   }
 
@@ -91,6 +97,12 @@ export function evaluateVisualAuditFiles(changedFiles, cwd = process.cwd()) {
     const entries = Object.entries(current);
     if (entries.length === 0) {
       findings.push(`visual-audit: no captured PNG screenshots found under ${area}/screenshots/.`);
+      continue;
+    }
+    if (area === "web" && !entries.some(([path]) => /-mobile\.png$/i.test(path))) {
+      findings.push(
+        "visual-audit: missing responsive mobile screenshot(s) (*-mobile.png) under web/screenshots/. Capture mobile viewport screenshots and run the judge.",
+      );
       continue;
     }
     const recorded = record.screenshots ?? {};
@@ -134,7 +146,8 @@ if (isMainModule()) {
     const verdict = getArg("--verdict", "pass");
     const summary = getArg("--summary", "Verified by UI/UX Visual Design Judge");
     const unresolvedIssues = Number(getArg("--unresolved", "0"));
-    const rec = recordVisualAudit({ cwd: process.cwd(), verdict, summary, unresolvedIssues });
+    const unresolvedPolish = Number(getArg("--unresolved-polish", "0"));
+    const rec = recordVisualAudit({ cwd: process.cwd(), verdict, summary, unresolvedIssues, unresolvedPolish });
     console.log(
       `Recorded visual audit (${rec.verdict}, ${Object.keys(rec.screenshots).length} screenshot(s)) at ${AUDIT_RECORD_REL}`,
     );

@@ -4,6 +4,7 @@ mod icons;
 mod kit;
 mod screens;
 mod theme;
+mod viz;
 
 use grdr_ui_model::{AppVm, Screen, ThemeChoice};
 use kit::DesktopApp;

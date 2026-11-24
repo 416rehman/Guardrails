@@ -1,12 +1,18 @@
 import type { Device } from "@grdr/api";
 import { formatOsName, t } from "@grdr/i18n";
-import { AssuranceBadge, Quoted, ViewStateFrame } from "@grdr/kit";
-import { Badge, Card, GrdrIcon, HarnessIcon, Heading, HStack, Text, VStack } from "@grdr/ui";
+import { AssuranceBadge, EntityLink, type EntityTarget, Quoted, ViewStateFrame } from "@grdr/kit";
+import { Badge, Card, GrdrIcon, Heading, HStack, OsIcon, Text, VStack } from "@grdr/ui";
 
 const MATRIX_AGENTS = ["Claude Code", "Cursor", "Codex", "Gemini CLI"] as const;
 const MATRIX_OS = ["macos", "linux", "windows"] as const;
 
-export function CoveragePage({ devices }: { devices: Device[] }) {
+export function CoveragePage({
+  devices,
+  onOpenEntity,
+}: {
+  devices: Device[];
+  onOpenEntity?: (target: EntityTarget) => void;
+}) {
   const allAgents = devices.flatMap((d) => d.agents.map((a) => ({ device: d, agent: a })));
   const protectedCount = allAgents.filter((x) =>
     x.agent.assurance.control.includes("boundary"),
@@ -54,19 +60,36 @@ export function CoveragePage({ devices }: { devices: Device[] }) {
                 <thead>
                   <tr>
                     <th>Agent harness</th>
-                    <th>macOS</th>
-                    <th>Linux</th>
-                    <th>Windows</th>
+                    <th>
+                      <HStack gap={1} align="center">
+                        <OsIcon os="macos" size={13} />
+                        <span>macOS</span>
+                      </HStack>
+                    </th>
+                    <th>
+                      <HStack gap={1} align="center">
+                        <OsIcon os="linux" size={13} />
+                        <span>Linux</span>
+                      </HStack>
+                    </th>
+                    <th>
+                      <HStack gap={1} align="center">
+                        <OsIcon os="windows" size={13} />
+                        <span>Windows</span>
+                      </HStack>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {MATRIX_AGENTS.map((agentName) => (
                     <tr key={agentName}>
                       <td>
-                        <HStack gap={2} align="center">
-                          <HarnessIcon name={agentName} size={15} />
-                          <strong>{agentName}</strong>
-                        </HStack>
+                        <EntityLink
+                          kind="agent"
+                          label={agentName}
+                          compact
+                          onSelect={onOpenEntity}
+                        />
                       </td>
                       {MATRIX_OS.map((osKey) => {
                         const match = allAgents.find(
@@ -75,7 +98,7 @@ export function CoveragePage({ devices }: { devices: Device[] }) {
                             item.agent.name.toLowerCase().includes(agentName.split(" ")[0].toLowerCase()),
                         );
                         return (
-                          <td key={`${agentName}-${osKey}`}>
+                          <td key={`${agentName}-${osKey}`} className={match ? undefined : "heatmap-cell-unobserved"}>
                             {match ? (
                               <AssuranceBadge
                                 level={match.agent.assurance_level}
@@ -94,7 +117,6 @@ export function CoveragePage({ devices }: { devices: Device[] }) {
             </div>
           </section>
 
-          <div className="grid-2">
           <Card padding={3}>
             <VStack gap={3}>
               <Heading level={2}>{`Assurance matrix by endpoint (${allAgents.length})`}</Heading>
@@ -103,7 +125,6 @@ export function CoveragePage({ devices }: { devices: Device[] }) {
                   <thead>
                     <tr>
                       <th>Endpoint</th>
-                      <th>OS</th>
                       <th>Agent</th>
                       <th>Assurance</th>
                       <th>Hook health</th>
@@ -113,10 +134,24 @@ export function CoveragePage({ devices }: { devices: Device[] }) {
                     {allAgents.map(({ device, agent }) => (
                       <tr key={`${device.id}-${agent.id}`}>
                         <td>
-                          <strong>{device.hostname}</strong>
+                          <EntityLink
+                            kind="device"
+                            id={device.id}
+                            label={device.hostname}
+                            os={device.os}
+                            compact
+                            onSelect={onOpenEntity}
+                          />
                         </td>
-                        <td>{formatOsName(device.os)}</td>
-                        <td>{agent.name}</td>
+                        <td>
+                          <EntityLink
+                            kind="agent"
+                            id={agent.id}
+                            label={agent.name}
+                            compact
+                            onSelect={onOpenEntity}
+                          />
+                        </td>
                         <td>
                           <AssuranceBadge
                             level={agent.assurance_level}
@@ -126,9 +161,10 @@ export function CoveragePage({ devices }: { devices: Device[] }) {
                         <td>
                           <Badge
                             variant={device.hook_effective && agent.hook_installed ? "success" : "warning"}
+                            icon={<GrdrIcon name={device.hook_effective && agent.hook_installed ? "check-circle" : "alert-triangle"} size={12} />}
                             label={
                               device.hook_effective && agent.hook_installed
-                                ? "Proven active"
+                                ? "Hook active"
                                 : "Could not prove hook"
                             }
                           />
@@ -151,15 +187,32 @@ export function CoveragePage({ devices }: { devices: Device[] }) {
               ) : (
                 <div className="checklist">
                   {blindSpots.map(({ device, agent }) => (
-                    <div key={`blind-${device.id}-${agent.id}`} className="check-row todo" style={{ alignItems: "flex-start" }}>
+                    <div key={`blind-${device.id}-${agent.id}`} className="check-row todo blind-spot-row" style={{ alignItems: "flex-start" }}>
                       <HStack gap={2} align="start">
                         <GrdrIcon name="shield-alert" size={16} color="var(--tone-ask)" />
                         <VStack gap={1}>
-                          <div style={{ fontWeight: 500 }}>
-                            {`${agent.name} on ${device.hostname}`}
-                          </div>
+                          <HStack gap={1} align="center" style={{ flexWrap: "wrap", columnGap: 6, rowGap: 2 }}>
+                            <EntityLink
+                              kind="agent"
+                              id={agent.id}
+                              label={agent.name}
+                              compact
+                              onSelect={onOpenEntity}
+                            />
+                            <Text size="sm" color="secondary">
+                              on
+                            </Text>
+                            <EntityLink
+                              kind="device"
+                              id={device.id}
+                              label={device.hostname}
+                              os={device.os}
+                              compact
+                              onSelect={onOpenEntity}
+                            />
+                          </HStack>
                           <Text type="supporting" color="secondary" size="sm">
-                            {`${agent.name} hooks are not active yet on this ${formatOsName(device.os)} endpoint. Install the hook with:`}
+                            {`Hook coverage is not active yet on this ${formatOsName(device.os)} endpoint. Install the hook with:`}
                           </Text>
                           <Quoted text="grdr install-hook --apply" />
                         </VStack>
@@ -170,7 +223,6 @@ export function CoveragePage({ devices }: { devices: Device[] }) {
               )}
             </VStack>
           </Card>
-          </div>
         </VStack>
       )}
     </VStack>

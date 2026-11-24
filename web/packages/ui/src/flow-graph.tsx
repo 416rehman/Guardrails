@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -196,6 +196,23 @@ function computeLayout(
   return { nodes, edges };
 }
 
+function useIsCompactViewport(): boolean {
+  const [compact, setCompact] = useState(() =>
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia("(max-width: 640px)").matches
+      : false,
+  );
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mql = window.matchMedia("(max-width: 640px)");
+    const update = () => setCompact(mql.matches);
+    update();
+    mql.addEventListener("change", update);
+    return () => mql.removeEventListener("change", update);
+  }, []);
+  return compact;
+}
+
 export function GrdrFlowGraph({
   nodes,
   edges,
@@ -211,9 +228,12 @@ export function GrdrFlowGraph({
   ariaLabel: string;
   onNodeSelect?: (nodeId: string) => void;
 }) {
+  const compactViewport = useIsCompactViewport();
+  const effectiveDirection: "LR" | "TB" = compactViewport ? "TB" : direction;
+  const effectiveHeight = compactViewport && direction === "LR" ? Math.max(height, 260) : height;
   const layouted = useMemo(
-    () => computeLayout(nodes, edges, direction),
-    [nodes, edges, direction],
+    () => computeLayout(nodes, edges, effectiveDirection),
+    [nodes, edges, effectiveDirection],
   );
 
   const canRenderFlow =
@@ -225,7 +245,7 @@ export function GrdrFlowGraph({
         className="grdr-flow-wrap"
         role="region"
         aria-label={ariaLabel}
-        style={{ height, padding: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}
+        style={{ height: effectiveHeight, padding: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}
       >
         {nodes.map((node) => (
           <button
@@ -256,14 +276,16 @@ export function GrdrFlowGraph({
       className="grdr-flow-wrap"
       role="region"
       aria-label={ariaLabel}
-      style={{ height }}
+      style={{ height: effectiveHeight }}
     >
       <ReactFlow
+        key={effectiveDirection}
         nodes={layouted.nodes}
         edges={layouted.edges}
         nodeTypes={NODE_TYPES}
+        minZoom={0.35}
         fitView
-        fitViewOptions={{ padding: 0.28, maxZoom: 1.05 }}
+        fitViewOptions={{ padding: 0.24, maxZoom: 1.05 }}
         nodesDraggable={false}
         nodesConnectable={false}
         proOptions={{ hideAttribution: true }}

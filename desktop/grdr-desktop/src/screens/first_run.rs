@@ -7,10 +7,12 @@ use crate::kit::{
     DesktopApp, ledger_header, primary_button, setup_progress, status_pill_with_icon,
 };
 use crate::theme::StudioTheme;
+use crate::viz::{hardware_panel, is_dark_theme};
 
 #[must_use]
 pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
     let vm = &app.vm.first_run;
+    let dark = is_dark_theme(t);
     let done = vm.steps.iter().filter(|s| s.done).count();
     let total = vm.steps.len();
 
@@ -19,19 +21,18 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         InstallProfile::User => Some(1),
     };
 
-    let profile_picker =
-        SegmentedControl::new(&["Protected (boundary)", "User (requests only)"], selected)
-            .label("Protection install profile")
-            .fit()
-            .on_pick(|s: &mut DesktopApp, idx: usize, _: &mut Tx| {
-                let p = if idx == 0 {
-                    InstallProfile::Protected
-                } else {
-                    InstallProfile::User
-                };
-                s.dispatch(Intent::SelectInstallProfile(p));
-            })
-            .build(&t.kit);
+    let profile_picker = SegmentedControl::new(&["Protected (boundary)", "User mode"], selected)
+        .label("Protection install profile")
+        .fit()
+        .on_pick(|s: &mut DesktopApp, idx: usize, _: &mut Tx| {
+            let p = if idx == 0 {
+                InstallProfile::Protected
+            } else {
+                InstallProfile::User
+            };
+            s.dispatch(Intent::SelectInstallProfile(p));
+        })
+        .build(&t.kit);
 
     let mut list = col().w_full().gap(4.0).child(ledger_header(
         "Onboarding progress",
@@ -98,7 +99,35 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                 .wrap()
                 .w_full(),
         )
-        .child(setup_progress(done, total, t))
+        .child(hardware_panel(
+            "first-run-stage",
+            14.0,
+            app.textures.dither(dark),
+            t,
+            col()
+                .w_full()
+                .padding(16.0)
+                .gap(10.0)
+                .child(
+                    row()
+                        .w_full()
+                        .center_y()
+                        .gap(8.0)
+                        .child(icon(&icons::SHIELD_CHECK, 15.0).color(t.c.accent))
+                        .child(
+                            text("Read-only baseline check")
+                                .font(t.body_strong)
+                                .color(t.c.ink_primary),
+                        )
+                        .child(spacer())
+                        .child(
+                            text(format!("{done} of {total} complete"))
+                                .font(t.caption)
+                                .color(t.c.ink_muted),
+                        ),
+                )
+                .child(setup_progress(done, total, t)),
+        ))
         .child(
             row()
                 .gap(16.0)

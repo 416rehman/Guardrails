@@ -1,12 +1,14 @@
 use grdr_ui_model::{Intent, RulePreset};
-use rune::{El, Tx, col, icon, row, spacer, text};
+use rune::{El, Shadow, Tx, col, icon, row, spacer, text};
 use rune_kit::SegmentedControl;
 
 use crate::icons;
 use crate::kit::{
-    DesktopApp, ledger_header, mode_pill, mode_segmented, quoted_chip, status_pill_with_icon,
+    ChipSurface, DesktopApp, ledger_header, mode_pill, mode_segmented, quoted_chip,
+    status_pill_with_icon,
 };
 use crate::theme::StudioTheme;
+use crate::viz::top_stripe_ribbon;
 
 #[must_use]
 pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
@@ -57,54 +59,76 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
             ));
         }
 
-        rules_col = rules_col.child(
-            row()
-                .key(rule.id.as_str())
-                .w_full()
-                .pt(12.0)
-                .pb(12.0)
-                .center_y()
-                .gap(16.0)
-                .child(
-                    col()
-                        .grow(1.0)
-                        .gap(4.0)
-                        .child(title_row)
-                        .child(
-                            text(&rule.description)
-                                .font(t.caption)
-                                .color(t.c.ink_secondary)
-                                .wrap()
-                                .w_full(),
-                        )
-                        .child(
-                            row()
-                                .gap(8.0)
-                                .center_y()
-                                .child(quoted_chip(&rule.target_pattern, t))
-                                .child(icon(&icons::SHIELD_CHECK, 12.0).color(t.c.ink_muted))
-                                .child(
-                                    text(&rule.effective_note)
-                                        .font(t.caption)
-                                        .color(t.c.ink_muted),
-                                ),
-                        ),
-                )
-                .child(spacer())
-                .child({
-                    let mut mode_col = col().items_end().gap(4.0).child(mode_segmented(
-                        rule.id.clone(),
-                        rule.mode,
-                        rule.locked,
-                        t,
-                    ));
-                    if rule.locked {
-                        mode_col = mode_col
-                            .child(text("Floor locked").font(t.caption).color(t.c.ink_muted));
-                    }
-                    mode_col
-                }),
-        );
+        let rule_row = row()
+            .w_full()
+            .pt(12.0)
+            .pb(12.0)
+            .center_y()
+            .gap(16.0)
+            .child(
+                col()
+                    .grow(1.0)
+                    .gap(4.0)
+                    .child(title_row)
+                    .child(
+                        text(&rule.description)
+                            .font(t.caption)
+                            .color(t.c.ink_secondary)
+                            .wrap()
+                            .w_full(),
+                    )
+                    .child(
+                        row()
+                            .gap(8.0)
+                            .center_y()
+                            .child(quoted_chip(&rule.target_pattern, ChipSurface::OnCanvas, t))
+                            .child(icon(&icons::SHIELD_CHECK, 12.0).color(t.c.ink_muted))
+                            .child(
+                                text(&rule.effective_note)
+                                    .font(t.caption)
+                                    .color(t.c.ink_muted),
+                            ),
+                    ),
+            )
+            .child(spacer())
+            .child({
+                let mut mode_col = col().items_end().gap(4.0).child(mode_segmented(
+                    rule.id.clone(),
+                    rule.mode,
+                    rule.locked,
+                    t,
+                ));
+                if rule.locked {
+                    mode_col =
+                        mode_col.child(text("Floor locked").font(t.caption).color(t.c.ink_muted));
+                }
+                mode_col
+            });
+
+        if rule.locked {
+            rules_col = rules_col.child(
+                col()
+                    .key(rule.id.as_str())
+                    .w_full()
+                    .continuous_corners()
+                    .radius(10.0)
+                    .clip_rounded(10.0)
+                    .fill(t.c.recessed)
+                    .border_gradient(1.0, t.c.rim_top, t.c.border_subtle)
+                    .box_shadow(Shadow {
+                        x: 0.0,
+                        y: 1.0,
+                        blur: 0.0,
+                        spread: 0.0,
+                        color: t.c.specular_rim,
+                        inset: true,
+                    })
+                    .child(top_stripe_ribbon(&app.textures.stripe_floor, 3.0))
+                    .child(rule_row.px(12.0)),
+            );
+        } else {
+            rules_col = rules_col.child(rule_row.key(rule.id.as_str()));
+        }
     }
 
     col()

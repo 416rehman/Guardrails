@@ -24,6 +24,7 @@ Enforced by `.claude/hooks/docs-check.mjs` and `.agents/hooks/agy-pre-tool-use.m
 6. Check what existing project dependencies already provide before adding a new package or writing custom code.
 7. Make architectural decisions for the long term. No "we will make it work for now and deal with it later" stopgaps or `HACK`/`FIXME` workarounds.
 8. Study how mature products in our space solve the problem and reuse proven patterns instead of inventing from scratch.
+9. Push back on harmful changes: if a requested task or change would hurt the end product more than it helps (for example, forcing compile-time static typing where data-driven extensibility or clean modularity is required), push back directly, explain the trade-off, and propose a better alternative instead of blindly implementing it.
 
 ## The seven rules
 

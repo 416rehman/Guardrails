@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   api,
   type ApprovalRequest,
+  type Device,
   type Finding,
   type FindingLifecycle,
   type GrantScope,
@@ -9,7 +10,8 @@ import {
   type KillScope,
   type KillSwitchState,
 } from "@grdr/api";
-import { ApprovalCard, Quoted, SessionLabelBadge } from "@grdr/kit";
+import { capitalizeLabel, presentFindingTitle } from "@grdr/i18n";
+import { ApprovalCard, EntityLink, type EntityTarget, Quoted, SessionLabelBadge } from "@grdr/kit";
 import {
   Badge,
   Banner,
@@ -35,15 +37,19 @@ export function RespondPage({
   approvals,
   findings,
   incidents,
+  devices = [],
   killSwitch,
   defaultSessionId,
+  onOpenEntity,
   onUpdated,
 }: {
   approvals: ApprovalRequest[];
   findings: Finding[];
   incidents: Incident[];
+  devices?: Device[];
   killSwitch: KillSwitchState;
   defaultSessionId: string;
+  onOpenEntity?: (target: EntityTarget) => void;
   onUpdated: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -127,34 +133,34 @@ export function RespondPage({
         <div className="metric-cell">
           <div className="metric-value tabular">{pending.length}</div>
           <div className="metric-label">Waiting approvals</div>
-          <div className="kpi-bar">
-            <div style={{ width: `${Math.min(100, pending.length * 25 + 15)}%`, background: "var(--tone-ask)" }} />
+          <div className="kpi-bar" style={{ height: 6 }}>
+            <div style={{ width: `${Math.min(100, pending.length * 25 + 15)}%`, background: "var(--viz-ask-start)" }} />
           </div>
         </div>
         <div className="metric-cell">
           <div className="metric-value tabular">{findings.length}</div>
           <div className="metric-label">Open findings</div>
-          <div className="kpi-bar">
-            <div style={{ width: "30%", background: "var(--tone-block)" }} />
-            <div style={{ width: "45%", background: "var(--tone-ask)" }} />
-            <div style={{ width: "25%", background: "var(--tone-watch)" }} />
+          <div className="kpi-bar" style={{ height: 6 }}>
+            <div style={{ width: "30%", background: "var(--viz-block-start)" }} />
+            <div style={{ width: "45%", background: "var(--viz-ask-start)" }} />
+            <div style={{ width: "25%", background: "var(--viz-watch-start)" }} />
           </div>
         </div>
         <div className="metric-cell">
           <div className="metric-value tabular">{incidents.length}</div>
           <div className="metric-label">Correlated incidents</div>
-          <div className="kpi-bar">
-            <div style={{ width: "65%", background: "var(--tone-block)" }} />
+          <div className="kpi-bar" style={{ height: 6 }}>
+            <div style={{ width: "65%", background: "var(--viz-block-start)" }} />
           </div>
         </div>
         <div className="metric-cell">
-          <div className="metric-value tabular">{killSwitch.state}</div>
+          <div className="metric-value tabular">{capitalizeLabel(killSwitch.state)}</div>
           <div className="metric-label">Kill switch status</div>
-          <div className="kpi-bar">
+          <div className="kpi-bar" style={{ height: 6 }}>
             <div
               style={{
                 width: "100%",
-                background: killSwitch.state === "inactive" ? "var(--tone-allow)" : "var(--tone-block)",
+                background: killSwitch.state === "inactive" ? "var(--viz-allow-start)" : "var(--viz-block-start)",
               }}
             />
           </div>
@@ -181,15 +187,19 @@ export function RespondPage({
                 <ApprovalCard
                   key={req.id}
                   id={req.id}
+                  ruleId={req.rule_id}
                   ruleTitle={req.rule_title}
                   requiredGrade={req.required_grade}
                   agentName={req.agent_name}
                   actionClass={req.action_class}
+                  deviceId={req.device_id}
                   deviceName={req.device_name}
+                  deviceOs={devices.find((d) => d.id === req.device_id || d.hostname === req.device_name)?.os}
                   target={req.target}
                   reason={req.reason}
                   onAllow={handleAllow}
                   onDeny={handleDeny}
+                  onOpenEntity={onOpenEntity}
                 />
               ))}
             </VStack>
@@ -267,10 +277,32 @@ export function RespondPage({
                         </Text>
                       </td>
                       <td>
-                        <div className="mono">{inc.session_id}</div>
-                        <Text color="secondary" size="sm">
-                          {inc.device_name}
-                        </Text>
+                        <VStack gap={1}>
+                          <EntityLink
+                            kind="session"
+                            id={inc.session_id}
+                            label={inc.session_id}
+                            compact
+                            onSelect={onOpenEntity}
+                          />
+                          <HStack gap={1} align="center" style={{ flexWrap: "wrap", columnGap: 6, rowGap: 2 }}>
+                            <EntityLink
+                              kind="agent"
+                              label={inc.agent_name}
+                              compact
+                              onSelect={onOpenEntity}
+                            />
+                            <span style={{ color: "var(--ink-muted)" }}>on</span>
+                            <EntityLink
+                              kind="device"
+                              id={inc.device_id}
+                              label={inc.device_name}
+                              os={devices.find((d) => d.id === inc.device_id || d.hostname === inc.device_name)?.os}
+                              compact
+                              onSelect={onOpenEntity}
+                            />
+                          </HStack>
+                        </VStack>
                       </td>
                       <td>
                         {inc.labels.length === 0 ? (
@@ -292,13 +324,31 @@ export function RespondPage({
                               ? "error"
                               : "warning"
                           }
-                          label={inc.severity}
+                          icon={
+                            <GrdrIcon
+                              name={
+                                inc.severity === "critical"
+                                  ? "alert-octagon"
+                                  : inc.severity === "high"
+                                    ? "alert-triangle"
+                                    : "alert-circle"
+                              }
+                              size={11}
+                            />
+                          }
+                          label={capitalizeLabel(inc.severity)}
                         />
                       </td>
                       <td>
                         <Badge
                           variant={inc.lifecycle === "resolved" ? "success" : "info"}
-                          label={inc.lifecycle}
+                          icon={
+                            <GrdrIcon
+                              name={inc.lifecycle === "resolved" ? "check-circle" : "circle"}
+                              size={11}
+                            />
+                          }
+                          label={capitalizeLabel(inc.lifecycle)}
                         />
                       </td>
                     </tr>
@@ -310,25 +360,55 @@ export function RespondPage({
         </VStack>
       </Card>
 
-      <div className="grid-2">
-        <Card padding={3}>
-          <VStack gap={3}>
-            <Heading level={2}>{`Findings (${findings.length})`}</Heading>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Finding</th>
-                    <th>Severity</th>
-                    <th>Status</th>
-                    <th>Transition</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {findings.map((f) => (
+      <Card padding={3}>
+        <VStack gap={3}>
+          <Heading level={2}>{`Findings (${findings.length})`}</Heading>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Finding</th>
+                  <th>Severity</th>
+                  <th>Status</th>
+                  <th>Transition</th>
+                </tr>
+              </thead>
+              <tbody>
+                {findings.map((f) => {
+                  const titleText = presentFindingTitle(f.title, f.agent_name);
+                  return (
                     <tr key={f.id}>
                       <td>
-                        <strong>{f.title}</strong>
+                        <strong>{titleText}</strong>
+                        <HStack gap={1} align="center" style={{ flexWrap: "wrap", columnGap: 6, rowGap: 2, marginTop: 4 }}>
+                          <EntityLink
+                            kind="agent"
+                            label={f.agent_name}
+                            compact
+                            onSelect={onOpenEntity}
+                          />
+                          <span style={{ color: "var(--ink-muted)" }}>on</span>
+                          <EntityLink
+                            kind="device"
+                            id={f.device_id}
+                            label={f.device_name}
+                            os={devices.find((d) => d.id === f.device_id || d.hostname === f.device_name)?.os}
+                            compact
+                            onSelect={onOpenEntity}
+                          />
+                          {f.rule_id && (
+                            <>
+                              <span style={{ color: "var(--ink-muted)" }} aria-hidden="true">·</span>
+                              <EntityLink
+                                kind="rule"
+                                id={f.rule_id}
+                                label={f.rule_id}
+                                compact
+                                onSelect={onOpenEntity}
+                              />
+                            </>
+                          )}
+                        </HStack>
                         <div style={{ marginTop: 4 }}>
                           <Quoted text={f.target} />
                         </div>
@@ -340,13 +420,31 @@ export function RespondPage({
                               ? "error"
                               : "warning"
                           }
-                          label={f.severity}
+                          icon={
+                            <GrdrIcon
+                              name={
+                                f.severity === "critical"
+                                  ? "alert-octagon"
+                                  : f.severity === "high"
+                                    ? "alert-triangle"
+                                    : "alert-circle"
+                              }
+                              size={11}
+                            />
+                          }
+                          label={capitalizeLabel(f.severity)}
                         />
                       </td>
                       <td>
                         <Badge
                           variant={f.lifecycle === "resolved" ? "success" : "info"}
-                          label={f.lifecycle}
+                          icon={
+                            <GrdrIcon
+                              name={f.lifecycle === "resolved" ? "check-circle" : "circle"}
+                              size={11}
+                            />
+                          }
+                          label={capitalizeLabel(f.lifecycle)}
                         />
                       </td>
                       <td>
@@ -369,25 +467,27 @@ export function RespondPage({
                         </HStack>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </VStack>
-        </Card>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </VStack>
+      </Card>
 
-        <Card padding={3}>
-          <VStack gap={3}>
-            <HStack justify="between" align="center">
-              <HStack gap={2} align="center">
-                <GrdrIcon name="shield-off" size={16} />
-                <Heading level={2}>Scoped kill switch</Heading>
-              </HStack>
-              <Badge
-                variant={killSwitch.state === "inactive" ? "success" : "error"}
-                label={killSwitch.state}
-              />
+      <Card padding={3}>
+        <VStack gap={3}>
+          <HStack justify="between" align="center">
+            <HStack gap={2} align="center">
+              <GrdrIcon name="shield-off" size={16} />
+              <Heading level={2}>Scoped kill switch</Heading>
             </HStack>
+            <Badge
+              variant={killSwitch.state === "inactive" ? "success" : "error"}
+              label={capitalizeLabel(killSwitch.state)}
+            />
+          </HStack>
+          <div className="hazard-ribbon" aria-hidden="true" />
 
             <div className="form-grid">
               <GrdrSelect
@@ -452,7 +552,6 @@ export function RespondPage({
             </div>
           </VStack>
         </Card>
-      </div>
 
       <Dialog
         isOpen={killModalOpen}
@@ -470,6 +569,7 @@ export function RespondPage({
             </HStack>
             <Button size="sm" label="Close" icon={<GrdrIcon name="x" size={14} />} onClick={() => setKillModalOpen(false)} />
           </HStack>
+          <div className="hazard-ribbon" aria-hidden="true" />
 
           <Banner
             status="error"
@@ -483,6 +583,7 @@ export function RespondPage({
 
           <TextInput
             label="Filter agent types, model providers, or gateways"
+            placeholder="Filter by name..."
             value={matrixQuery}
             onChange={setMatrixQuery}
             width="100%"
@@ -493,7 +594,6 @@ export function RespondPage({
               <strong>{`Agent types (${blockedAgents.length}/${MATRIX_ENDPOINTS.length})`}</strong>
               {MATRIX_ENDPOINTS.filter((a) => a.toLowerCase().includes(matrixQuery.toLowerCase())).map((ag) => (
                 <div key={ag} className="killswitch-check">
-                  <HarnessIcon name={ag} size={14} />
                   <CheckboxInput
                     label={ag}
                     value={blockedAgents.includes(ag)}
@@ -503,6 +603,7 @@ export function RespondPage({
                       )
                     }
                   />
+                  <HarnessIcon name={ag} size={14} />
                 </div>
               ))}
             </div>
@@ -511,7 +612,6 @@ export function RespondPage({
               <strong>{`Model providers (${blockedModels.length}/${MATRIX_MODELS.length})`}</strong>
               {MATRIX_MODELS.filter((m) => m.toLowerCase().includes(matrixQuery.toLowerCase())).map((m) => (
                 <div key={m} className="killswitch-check">
-                  <HarnessIcon name={m} size={14} />
                   <CheckboxInput
                     label={m}
                     value={blockedModels.includes(m)}
@@ -521,6 +621,7 @@ export function RespondPage({
                       )
                     }
                   />
+                  <HarnessIcon name={m} size={14} />
                 </div>
               ))}
             </div>
@@ -529,7 +630,6 @@ export function RespondPage({
               <strong>{`Gateways (${blockedGateways.length}/${MATRIX_GATEWAYS.length})`}</strong>
               {MATRIX_GATEWAYS.filter((g) => g.toLowerCase().includes(matrixQuery.toLowerCase())).map((g) => (
                 <div key={g} className="killswitch-check">
-                  <HarnessIcon name={g} size={14} />
                   <CheckboxInput
                     label={g}
                     value={blockedGateways.includes(g)}
@@ -539,6 +639,7 @@ export function RespondPage({
                       )
                     }
                   />
+                  <HarnessIcon name={g} size={14} />
                 </div>
               ))}
             </div>
@@ -548,6 +649,7 @@ export function RespondPage({
             <div style={{ flex: 1, minWidth: 240 }}>
               <TextInput
                 label="Type fleet-kill to confirm"
+                placeholder="fleet-kill"
                 value={matrixConfirmPhrase}
                 onChange={setMatrixConfirmPhrase}
                 width="100%"

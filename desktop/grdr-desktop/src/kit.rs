@@ -1,6 +1,6 @@
 use grdr_strings::sanitize_untrusted_text;
 use grdr_ui_model::{AppVm, Intent, ModeLevel, Screen, ThemeChoice, reduce};
-use rune::{Color, El, TextStyle, Tx, col, el, icon, row, spacer, text};
+use rune::{Color, Cursor, El, Shadow, Span, TextStyle, Tx, col, el, icon, row, spacer, text};
 use rune_kit::{
     Button, ButtonVariant, ControlSize, Divider, IconButton, IconButtonVariant, Progress,
     SegmentedControl, State,
@@ -8,6 +8,7 @@ use rune_kit::{
 
 use crate::icons;
 use crate::theme::StudioTheme;
+use crate::viz::DesktopTextures;
 
 const BRAND_MARK_PNG: &[u8] = include_bytes!("../assets/guardrails-mark.png");
 
@@ -15,6 +16,7 @@ pub struct DesktopApp {
     pub vm: AppVm,
     pub last_notice: Option<String>,
     pub brand_mark: rune::Image,
+    pub textures: DesktopTextures,
     pub sidebar_collapsed: bool,
 }
 
@@ -24,10 +26,12 @@ impl DesktopApp {
         let cache = rune::ImageCache::new(std::sync::Arc::new(|| {}));
         let brand_mark = cache.load(BRAND_MARK_PNG);
         let _ = brand_mark.wait();
+        let textures = DesktopTextures::new(&cache);
         Self {
             vm,
             last_notice: None,
             brand_mark,
+            textures,
             sidebar_collapsed: false,
         }
     }
@@ -145,16 +149,6 @@ pub fn sidebar_rail(app: &DesktopApp, t: &StudioTheme) -> El {
     let mut nav = col().key("nav-list").gap(4.0).w_full();
     for &(screen, key, label, glyph) in nav_items {
         let active = app.vm.screen == screen;
-        let fill = if active {
-            t.c.canvas
-        } else {
-            Color::TRANSPARENT
-        };
-        let border = if active {
-            t.c.border_subtle
-        } else {
-            Color::TRANSPARENT
-        };
         let ink = if active {
             t.c.ink_primary
         } else {
@@ -168,13 +162,36 @@ pub fn sidebar_rail(app: &DesktopApp, t: &StudioTheme) -> El {
             .role("button")
             .label(label)
             .focusable(true)
+            .cursor(Cursor::Pointer)
+            .continuous_corners()
             .h(38.0)
             .radius(8.0)
-            .fill(fill)
-            .border(1.0, border)
+            .hover_group()
+            .hover(t.c.hover)
+            .press_scale(0.98)
+            .focus_ring(2.0, 2.0, t.c.accent)
             .on_press(move |s: &mut DesktopApp| {
                 s.dispatch(Intent::Navigate(screen));
             });
+
+        if active {
+            item = item
+                .gradient(t.c.panel_top, t.c.canvas)
+                .border_gradient(1.0, t.c.rim_top, t.c.border_subtle)
+                .box_shadow(Shadow {
+                    x: 0.0,
+                    y: 1.0,
+                    blur: 0.0,
+                    spread: 0.0,
+                    color: t.c.specular_rim,
+                    inset: true,
+                })
+                .shadow(2.0, 6.0, t.c.drop_shadow);
+        } else {
+            item = item
+                .fill(Color::TRANSPARENT)
+                .border(1.0, Color::TRANSPARENT);
+        }
 
         if collapsed {
             item = item
@@ -187,8 +204,17 @@ pub fn sidebar_rail(app: &DesktopApp, t: &StudioTheme) -> El {
                 .px(12.0)
                 .center_y()
                 .gap(10.0)
-                .child(icon(glyph, 15.0).color(icon_color))
-                .child(text(label).font(label_font).color(ink));
+                .child(
+                    icon(glyph, 15.0)
+                        .color(icon_color)
+                        .group_color(t.c.ink_primary),
+                )
+                .child(
+                    text(label)
+                        .font(label_font)
+                        .color(ink)
+                        .group_color(t.c.ink_primary),
+                );
             if screen == Screen::Home && !app.vm.home.pending_approvals.is_empty() {
                 item = item.child(spacer()).child(status_pill(
                     &app.vm.home.pending_approvals.len().to_string(),
@@ -196,6 +222,10 @@ pub fn sidebar_rail(app: &DesktopApp, t: &StudioTheme) -> El {
                     t.c.ask,
                     t,
                 ));
+            } else if active {
+                item = item
+                    .child(spacer())
+                    .child(el().size(5.0, 5.0).radius(3.0).fill(t.c.accent));
             }
         }
         nav = nav.child(item);
@@ -213,7 +243,7 @@ pub fn sidebar_rail(app: &DesktopApp, t: &StudioTheme) -> El {
         .key("sidebar-rail")
         .w(rail_w)
         .h_full()
-        .fill(t.c.rail)
+        .gradient(t.c.rail_top, t.c.rail)
         .pt(20.0)
         .pb(20.0)
         .pl(pad_x)
@@ -289,10 +319,15 @@ pub fn primary_button(
         .role("button")
         .label(label)
         .focusable(true)
+        .cursor(Cursor::Pointer)
+        .continuous_corners()
         .h(34.0)
         .px(14.0)
         .radius(8.0)
         .fill(t.c.action_bg)
+        .press_scale(0.97)
+        .focus_ring(2.0, 2.0, t.c.accent)
+        .shadow(2.0, 8.0, t.c.drop_shadow)
         .center()
         .gap(8.0)
         .child(text(label).font(t.body_strong).color(t.c.action_ink))
@@ -363,177 +398,92 @@ pub fn mode_pill(mode: ModeLevel, t: &StudioTheme) -> El {
     status_pill_with_icon(mode.as_str(), Some(icons::for_mode(mode)), bg, fg, t)
 }
 
-#[must_use]
-pub fn coverage_visual(pct: u8, boundary_count: usize, total: usize, t: &StudioTheme) -> El {
-    let ring_pct = (f32::from(pct.min(100))) / 100.0;
-    let fill_w = (156.0 * ring_pct).max(4.0);
-    let accent = if pct >= 50 { t.c.allow } else { t.c.accent };
-
-    col()
-        .w(212.0)
-        .padding(18.0)
-        .radius(12.0)
-        .fill(t.c.recessed)
-        .border(1.0, t.c.border_subtle)
-        .gap(10.0)
-        .child(
-            row()
-                .w_full()
-                .center_y()
-                .gap(8.0)
-                .child(icon(&icons::SHIELD_CHECK, 16.0).color(accent))
-                .child(
-                    text("Boundary coverage")
-                        .font(t.caption)
-                        .color(t.c.ink_secondary),
-                ),
-        )
-        .child(
-            text(format!("{pct}%"))
-                .font(t.display_headline)
-                .color(t.c.ink_primary),
-        )
-        .child(
-            el().w(156.0)
-                .h(8.0)
-                .radius(4.0)
-                .fill(t.c.border_strong)
-                .child(el().w(fill_w).h(8.0).radius(4.0).fill(accent)),
-        )
-        .child(
-            text(format!("{boundary_count} of {total} sandboxed"))
-                .font(t.caption)
-                .color(t.c.ink_muted),
-        )
+#[derive(Clone, Copy)]
+pub enum ChipSurface {
+    OnCanvas,
+    OnRecessed,
 }
 
 #[must_use]
-pub fn velocity_sparkline(bars: &[(&str, u32, u32, u32)], t: &StudioTheme) -> El {
-    let max_total = bars
-        .iter()
-        .map(|(_, a, b, c)| a.saturating_add(*b).saturating_add(*c))
-        .max()
-        .unwrap_or(1)
-        .max(1) as f32;
-    let total_allow: u32 = bars.iter().map(|(_, a, _, _)| *a).sum();
-    let total_ask: u32 = bars.iter().map(|(_, _, b, _)| *b).sum();
-    let total_block: u32 = bars.iter().map(|(_, _, _, c)| *c).sum();
-    let total_all = total_allow
-        .saturating_add(total_ask)
-        .saturating_add(total_block);
-
-    let mut cols = row().w_full().h(92.0).gap(10.0).items_end();
-    for &(day, allowed, ask, block) in bars {
-        let day_total = allowed.saturating_add(ask).saturating_add(block);
-        let h_allow = ((allowed as f32 / max_total) * 54.0).max(4.0);
-        let h_ask = if ask > 0 {
-            ((ask as f32 / max_total) * 54.0).max(5.0)
-        } else {
-            0.0
-        };
-        let h_block = if block > 0 {
-            ((block as f32 / max_total) * 54.0).max(5.0)
-        } else {
-            0.0
-        };
-
-        let mut stack = col().w(24.0).gap(0.0).items_center();
-        if h_block > 0.0 {
-            stack = stack.child(el().w(18.0).h(h_block).fill(t.c.block));
-        }
-        if h_ask > 0.0 {
-            stack = stack.child(el().w(18.0).h(h_ask).fill(t.c.ask));
-        }
-        if day_total > 0 {
-            stack = stack.child(el().w(18.0).h(h_allow).fill(t.c.border_strong));
-        }
-
-        cols = cols.child(
-            col().grow(1.0).gap(4.0).items_center().child(stack).child(
-                text(format!("{day} ({day_total})"))
-                    .font(t.caption)
-                    .color(t.c.ink_muted),
-            ),
-        );
+pub fn agent_glyph(name: &str) -> &'static rune::Icon {
+    let lower = name.to_ascii_lowercase();
+    if lower.contains("claude") || lower.contains("codex") || lower.contains("gemini") {
+        &icons::TERMINAL
+    } else {
+        &icons::CPU
     }
-
-    col()
-        .w_full()
-        .padding(16.0)
-        .radius(12.0)
-        .fill(t.c.recessed)
-        .border(1.0, t.c.border_subtle)
-        .gap(12.0)
-        .child(
-            row()
-                .w_full()
-                .center_y()
-                .gap(8.0)
-                .child(icon(&icons::ACTIVITY, 15.0).color(t.c.accent))
-                .child(
-                    text(format!("7-day decision velocity ({total_all})"))
-                        .font(t.body_strong)
-                        .color(t.c.ink_primary),
-                )
-                .child(spacer())
-                .child(status_pill(
-                    &format!("Allowed ({total_allow})"),
-                    t.c.canvas,
-                    t.c.ink_secondary,
-                    t,
-                ))
-                .child(status_pill(
-                    &format!("Ask ({total_ask})"),
-                    t.c.ask_bg,
-                    t.c.ask,
-                    t,
-                ))
-                .child(status_pill(
-                    &format!("Blocked ({total_block})"),
-                    t.c.block_bg,
-                    t.c.block,
-                    t,
-                )),
-        )
-        .child(cols)
 }
 
 #[must_use]
-pub fn flow_stage_node(
+pub fn entity_link(
+    key: &'static str,
     glyph: &'static rune::Icon,
-    title: &str,
-    sub: &str,
-    accent: Color,
+    label: &str,
     t: &StudioTheme,
+    on_press: impl Fn(&mut DesktopApp) + 'static,
 ) -> El {
-    col()
-        .grow(1.0)
-        .h_full()
-        .padding(12.0)
-        .radius(10.0)
-        .fill(t.c.recessed)
-        .border(1.0, t.c.border_subtle)
-        .gap(6.0)
+    let link_style = TextStyle {
+        size: 12.5,
+        weight: 500.0,
+        line_height: 17.0,
+        ..t.body
+    };
+    let spans = vec![Span::new(0, label.len()).underline(t.c.border_strong)];
+    row()
+        .key(key)
+        .role("link")
+        .label(label)
+        .focusable(true)
+        .cursor(Cursor::Pointer)
+        .pl(0.0)
+        .pr(4.0)
+        .py(1.0)
+        .radius(4.0)
+        .fill(Color::TRANSPARENT)
+        .hover_group()
+        .hover(t.c.accent_soft)
+        .press(t.c.accent_soft)
+        .press_scale(0.98)
+        .focus_ring(2.0, 2.0, t.c.accent)
+        .center_y()
+        .gap(4.0)
         .child(
-            row()
-                .gap(8.0)
-                .center_y()
-                .child(icon(glyph, 15.0).color(accent))
-                .child(text(title).font(t.body_strong).color(t.c.ink_primary)),
+            icon(glyph, 11.5)
+                .color(t.c.ink_muted)
+                .group_color(t.c.accent),
         )
-        .child(text(sub).font(t.caption).color(t.c.ink_secondary))
+        .child(
+            text(label)
+                .font(link_style)
+                .color(t.c.ink_primary)
+                .group_color(t.c.accent)
+                .spans(spans),
+        )
+        .on_press(on_press)
 }
 
 #[must_use]
-pub fn quoted_chip(raw: &str, t: &StudioTheme) -> El {
+pub fn quoted_chip(raw: &str, surface: ChipSurface, t: &StudioTheme) -> El {
     let safe = sanitize_untrusted_text(raw);
+    let (fill, border) = match surface {
+        ChipSurface::OnCanvas => (t.c.recessed, t.c.border_subtle),
+        ChipSurface::OnRecessed => (t.c.canvas, t.c.border_strong),
+    };
     row()
         .px(8.0)
         .pt(4.0)
         .pb(4.0)
-        .radius(4.0)
-        .fill(t.c.recessed)
-        .border(1.0, t.c.border_subtle)
+        .radius(5.0)
+        .fill(fill)
+        .border(1.0, border)
+        .box_shadow(Shadow {
+            x: 0.0,
+            y: 1.0,
+            blur: 2.0,
+            spread: 0.0,
+            color: t.c.inset_well,
+            inset: true,
+        })
         .child(text(safe).font(t.mono).color(t.c.ink_primary))
 }
 
@@ -555,7 +505,7 @@ pub fn ledger_header(title: &str, right_meta: &str, t: &StudioTheme) -> El {
 
 #[must_use]
 pub fn metric_strip(metrics: &[(&str, &str, &str)], t: &StudioTheme) -> El {
-    let mut strip = row().w_full().pt(20.0).pb(8.0).gap(20.0).items_stretch();
+    let mut strip = row().w_full().pt(12.0).pb(4.0).gap(20.0).items_stretch();
 
     for (idx, &(value, label, note)) in metrics.iter().enumerate() {
         if idx > 0 {

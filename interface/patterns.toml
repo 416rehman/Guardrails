@@ -63,3 +63,11 @@ ui_primitives = ["Badge", "Icon"]
 tokens = ["tone.allow", "tone.watch", "tone.ask", "tone.block"]
 states = ["ready"]
 renderers = ["web"]
+
+[[pattern]]
+id = "entity-link"
+component = "EntityLink"
+ui_primitives = ["GrdrIcon", "HarnessIcon", "Text"]
+tokens = ["accent.primary", "accent.soft", "bg.recessed"]
+states = ["ready"]
+renderers = ["web", "rune"]

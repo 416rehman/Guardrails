@@ -19,18 +19,23 @@ import { TextInput } from "@astryxdesign/core/TextInput";
 import { Tooltip } from "@astryxdesign/core/Tooltip";
 import {
   SiAnthropic,
+  SiApple,
   SiClaude,
   SiClaudecode,
   SiCloudflare,
   SiCursor,
+  SiDebian,
+  SiFedora,
   SiGithubcopilot,
   SiGoogle,
   SiGooglegemini,
   SiKong,
+  SiLinux,
   SiMetaai,
   SiMistralai,
   SiModelcontextprotocol,
   SiOpencode,
+  SiUbuntu,
   SiWindsurf,
 } from "@icons-pack/react-simple-icons";
 import guardrailsMarkPng from "./assets/guardrails-mark.png";
@@ -39,6 +44,7 @@ import {
   AlertCircle,
   AlertOctagon,
   AlertTriangle,
+  ArrowLeft,
   ArrowRight,
   Ban,
   Binoculars,
@@ -55,12 +61,14 @@ import {
   FileJson,
   FileText,
   GitBranch,
+  Globe,
   Hand,
   HardDrive,
   HeartPulse,
   Home,
   KeyRound,
   Layers,
+  LayoutGrid,
   List,
   Lock,
   Moon,
@@ -122,6 +130,7 @@ export type GrdrIconName =
   | "alert-circle"
   | "alert-octagon"
   | "alert-triangle"
+  | "arrow-left"
   | "arrow-right"
   | "ban"
   | "binoculars"
@@ -138,12 +147,14 @@ export type GrdrIconName =
   | "file-json"
   | "file-text"
   | "git-branch"
+  | "globe"
   | "hand"
   | "hard-drive"
   | "heart-pulse"
   | "home"
   | "key-round"
   | "layers"
+  | "layout-grid"
   | "list"
   | "lock"
   | "moon"
@@ -201,6 +212,8 @@ export function GrdrIcon({
       return <AlertOctagon {...props} />;
     case "alert-triangle":
       return <AlertTriangle {...props} />;
+    case "arrow-left":
+      return <ArrowLeft {...props} />;
     case "arrow-right":
       return <ArrowRight {...props} />;
     case "ban":
@@ -233,6 +246,8 @@ export function GrdrIcon({
       return <FileText {...props} />;
     case "git-branch":
       return <GitBranch {...props} />;
+    case "globe":
+      return <Globe {...props} />;
     case "hand":
       return <Hand {...props} />;
     case "hard-drive":
@@ -245,6 +260,8 @@ export function GrdrIcon({
       return <KeyRound {...props} />;
     case "layers":
       return <Layers {...props} />;
+    case "layout-grid":
+      return <LayoutGrid {...props} />;
     case "list":
       return <List {...props} />;
     case "lock":
@@ -459,6 +476,37 @@ export function HarnessIcon({
   }
 
   return <GrdrIcon name="cpu" size={size} />;
+}
+
+export function OsIcon({
+  os,
+  size = 14,
+}: {
+  os: string;
+  size?: number;
+}) {
+  const norm = os.trim().toLowerCase();
+
+  if (norm.includes("darwin") || norm.includes("macos") || norm === "mac") {
+    return <SiApple size={size} color="var(--ink-primary)" aria-hidden="true" />;
+  }
+  if (norm.includes("ubuntu")) {
+    return <SiUbuntu size={size} color="var(--tone-ask)" aria-hidden="true" />;
+  }
+  if (norm.includes("debian")) {
+    return <SiDebian size={size} color="var(--tone-block)" aria-hidden="true" />;
+  }
+  if (norm.includes("fedora")) {
+    return <SiFedora size={size} color="var(--accent-primary)" aria-hidden="true" />;
+  }
+  if (norm.includes("linux")) {
+    return <SiLinux size={size} color="var(--ink-primary)" aria-hidden="true" />;
+  }
+  if (norm.includes("win")) {
+    return <LayoutGrid size={size} color="var(--accent-primary)" aria-hidden="true" />;
+  }
+
+  return <GrdrIcon name="hard-drive" size={size} color="var(--ink-secondary)" />;
 }
 
 export function GrdrSelect({

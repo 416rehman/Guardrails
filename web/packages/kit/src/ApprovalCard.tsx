@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Badge, Button, Card, HStack, Text, VStack } from "@grdr/ui";
+import { EntityLink, type EntityTarget } from "./EntityLink";
 import { Quoted } from "./Quoted";
 import { VerdictBadge } from "./VerdictBadge";
 
@@ -7,26 +8,34 @@ type GrantScope = "once" | "session" | "one_hour";
 
 export function ApprovalCard({
   id,
+  ruleId,
   ruleTitle,
   requiredGrade,
   agentName,
   actionClass,
+  deviceId,
   deviceName,
+  deviceOs,
   target,
   reason,
   onAllow,
   onDeny,
+  onOpenEntity,
 }: {
   id: string;
+  ruleId?: string;
   ruleTitle: string;
   requiredGrade: string;
   agentName: string;
   actionClass: string;
+  deviceId?: string;
   deviceName: string;
+  deviceOs?: string;
   target: string;
   reason: string;
   onAllow: (id: string, scope: GrantScope) => Promise<void>;
   onDeny: (id: string) => Promise<void>;
+  onOpenEntity?: (target: EntityTarget) => void;
 }) {
   const [armingScope, setArmingScope] = useState<GrantScope | null>(null);
   const [armedScope, setArmedScope] = useState<GrantScope | null>(null);
@@ -70,9 +79,26 @@ export function ApprovalCard({
           />
         </HStack>
 
-        <Text type="supporting" color="secondary" size="sm">
-          {`${agentName} (${actionClass}) on ${deviceName}`}
-        </Text>
+        <HStack gap={1} align="center" style={{ flexWrap: "wrap", columnGap: 6, rowGap: 2 }}>
+          <EntityLink kind="agent" label={agentName} compact onSelect={onOpenEntity} />
+          <Text type="supporting" color="secondary" size="sm">
+            {`(${actionClass}) on`}
+          </Text>
+          <EntityLink
+            kind="device"
+            id={deviceId ?? deviceName}
+            label={deviceName}
+            os={deviceOs}
+            compact
+            onSelect={onOpenEntity}
+          />
+          {ruleId && (
+            <>
+              <span style={{ color: "var(--ink-muted)" }} aria-hidden="true">·</span>
+              <EntityLink kind="rule" id={ruleId} label={ruleId} compact onSelect={onOpenEntity} />
+            </>
+          )}
+        </HStack>
         <div>
           <Quoted text={target} />
         </div>

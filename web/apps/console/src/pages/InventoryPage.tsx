@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Device } from "@grdr/api";
 import { formatOsName, pluralize } from "@grdr/i18n";
-import { AssuranceBadge, DeviceAssuranceDrawer, Quoted } from "@grdr/kit";
+import { AssuranceBadge, DeviceAssuranceDrawer, EntityLink, type EntityTarget, OsLabel, Quoted } from "@grdr/kit";
 import {
   Badge,
   Button,
@@ -25,10 +25,16 @@ type InventoryView = "hexmap" | "table";
 export function InventoryPage({
   devices,
   searchQuery,
+  focusedEntity,
+  onClearFocus,
+  onOpenEntity,
   onRefresh,
 }: {
   devices: Device[];
   searchQuery: string;
+  focusedEntity?: EntityTarget | null;
+  onClearFocus?: () => void;
+  onOpenEntity?: (target: EntityTarget) => void;
   onRefresh: () => void;
 }) {
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
@@ -38,6 +44,32 @@ export function InventoryPage({
   const [outliersOnly, setOutliersOnly] = useState(false);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
+
+  useEffect(() => {
+    if (!focusedEntity) return;
+    if (focusedEntity.kind === "device") {
+      const match = devices.find(
+        (d) => d.id === focusedEntity.id || d.hostname === focusedEntity.label,
+      );
+      if (match) {
+        setSelectedDeviceId(match.id);
+        setAgentFilter("all");
+      }
+      onClearFocus?.();
+    } else if (focusedEntity.kind === "agent") {
+      setAgentFilter(focusedEntity.label.toLowerCase());
+      setSelectedDeviceId(null);
+      onClearFocus?.();
+    } else if (focusedEntity.kind === "mcp") {
+      const owner = devices.find((d) =>
+        d.mcp_servers.some((m) => m.name === focusedEntity.id || m.name === focusedEntity.label),
+      );
+      if (owner) {
+        setSelectedDeviceId(owner.id);
+      }
+      onClearFocus?.();
+    }
+  }, [focusedEntity, devices, onClearFocus]);
 
   const query = searchQuery.trim().toLowerCase();
   const filteredDevices = useMemo(
@@ -68,12 +100,18 @@ export function InventoryPage({
       .map((agent) => ({
         deviceId: device.id,
         deviceHostname: device.hostname,
+        deviceOs: device.os,
         agent,
       })),
   );
 
   const mcps = filteredDevices.flatMap((device) =>
-    device.mcp_servers.map((mcp) => ({ deviceHostname: device.hostname, mcp })),
+    device.mcp_servers.map((mcp) => ({
+      deviceId: device.id,
+      deviceHostname: device.hostname,
+      deviceOs: device.os,
+      mcp,
+    })),
   );
 
   const activeDevices = filteredDevices.filter((d) => d.online).length;
@@ -236,7 +274,9 @@ export function InventoryPage({
                           width: `${pct}%`,
                           height: "100%",
                           borderRadius: 99,
-                          background: isSelected ? "var(--accent-primary)" : "var(--ink-secondary)",
+                          background: isSelected
+                            ? "linear-gradient(90deg, var(--viz-allow-end), var(--viz-allow-start))"
+                            : "linear-gradient(90deg, var(--viz-watch-end), var(--viz-watch-start))",
                         }}
                       />
                     </div>
@@ -261,19 +301,19 @@ export function InventoryPage({
             <div
               style={{
                 width: `${(assuranceCounts.al34 / assuranceCounts.total) * 100}%`,
-                background: "var(--tone-allow)",
+                background: "var(--viz-allow-start)",
               }}
             />
             <div
               style={{
                 width: `${(assuranceCounts.al2 / assuranceCounts.total) * 100}%`,
-                background: "var(--tone-watch)",
+                background: "var(--viz-watch-start)",
               }}
             />
             <div
               style={{
                 width: `${(assuranceCounts.al01 / assuranceCounts.total) * 100}%`,
-                background: "var(--tone-ask)",
+                background: "var(--viz-ask-start)",
               }}
             />
           </div>
@@ -413,24 +453,32 @@ export function InventoryPage({
                     onClick={() => setSelectedDeviceId(device.id)}
                   >
                     <td>
-                      <strong>{device.hostname}</strong>
-                      <div className="mono" style={{ color: "var(--ink-muted)" }}>
+                      <EntityLink
+                        kind="device"
+                        id={device.id}
+                        label={device.hostname}
+                        os={device.os}
+                        onSelect={() => setSelectedDeviceId(device.id)}
+                      />
+                      <div className="mono" style={{ color: "var(--ink-muted)", marginTop: 3 }}>
                         {device.id}
                       </div>
                     </td>
                     <td>
-                      {formatOsName(device.os)} / {device.arch}
+                      <OsLabel os={device.os} arch={device.arch} size={14} />
                     </td>
                     <td>
                       <Badge
                         variant="info"
+                        icon={<GrdrIcon name={device.install_profile === "protected" ? "shield-check" : "shield-half"} size={12} />}
                         label={device.install_profile === "protected" ? "Protected" : "User mode"}
                       />
                     </td>
                     <td>
                       <Badge
                         variant={device.hook_effective ? "success" : "warning"}
-                        label={device.hook_effective ? "Hook configured" : "Discovery only"}
+                        icon={<GrdrIcon name={device.hook_effective ? "check-circle" : "alert-triangle"} size={12} />}
+                        label={device.hook_effective ? "Hook active" : "Discovery only"}
                       />
                     </td>
                     <td className="tabular">
@@ -439,6 +487,7 @@ export function InventoryPage({
                     <td>
                       <Badge
                         variant={device.online ? "success" : "neutral"}
+                        icon={<GrdrIcon name={device.online ? "check-circle" : "circle-off"} size={12} />}
                         label={device.online ? "Online" : "Offline"}
                       />
                     </td>
@@ -501,19 +550,31 @@ export function InventoryPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {agents.map(({ deviceId, deviceHostname, agent }) => (
+                  {agents.map(({ deviceId, deviceHostname, deviceOs, agent }) => (
                     <tr
                       key={`${deviceId}-${agent.id}`}
                       className="selectable"
                       onClick={() => setSelectedDeviceId(deviceId)}
                     >
                       <td>
-                        <HStack gap={2} align="center">
-                          <HarnessIcon name={agent.name} size={15} />
-                          <strong>{agent.name}</strong>
-                        </HStack>
+                        <EntityLink
+                          kind="agent"
+                          id={agent.id}
+                          label={agent.name}
+                          compact
+                          onSelect={onOpenEntity}
+                        />
                       </td>
-                      <td>{deviceHostname}</td>
+                      <td>
+                        <EntityLink
+                          kind="device"
+                          id={deviceId}
+                          label={deviceHostname}
+                          os={deviceOs}
+                          compact
+                          onSelect={() => setSelectedDeviceId(deviceId)}
+                        />
+                      </td>
                       <td>
                         <AssuranceBadge
                           level={agent.assurance_level}
@@ -523,6 +584,7 @@ export function InventoryPage({
                       <td>
                         <Badge
                           variant={agent.hook_installed ? "success" : "warning"}
+                          icon={<GrdrIcon name={agent.hook_installed ? "check-circle" : "alert-triangle"} size={12} />}
                           label={agent.hook_installed ? "Installed" : "Not configured"}
                         />
                       </td>
@@ -561,20 +623,44 @@ export function InventoryPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {mcps.map(({ deviceHostname, mcp }, idx) => (
+                  {mcps.map(({ deviceId, deviceHostname, deviceOs, mcp }, idx) => (
                     <tr key={`${deviceHostname}-${mcp.name}-${idx}`}>
                       <td>
-                        <strong>{mcp.name}</strong>
+                        <EntityLink
+                          kind="mcp"
+                          id={mcp.name}
+                          label={mcp.name}
+                          compact
+                          onSelect={onOpenEntity}
+                        />
+                      </td>
+                      <td>
+                        <EntityLink
+                          kind="agent"
+                          label={mcp.source_agent}
+                          compact
+                          onSelect={onOpenEntity}
+                        />
+                      </td>
+                      <td>
+                        <EntityLink
+                          kind="device"
+                          id={deviceId}
+                          label={deviceHostname}
+                          os={deviceOs}
+                          compact
+                          onSelect={onOpenEntity}
+                        />
                       </td>
                       <td>
                         <HStack gap={1} align="center">
-                          <HarnessIcon name={mcp.source_agent} size={13} />
-                          <span>{mcp.source_agent}</span>
+                          <GrdrIcon
+                            name={mcp.transport.toLowerCase() === "stdio" ? "terminal" : "globe"}
+                            size={12}
+                            color="var(--ink-secondary)"
+                          />
+                          <span className="mono">{mcp.transport}</span>
                         </HStack>
-                      </td>
-                      <td>{deviceHostname}</td>
-                      <td>
-                        <span className="mono">{mcp.transport}</span>
                       </td>
                       <td>
                         <Quoted text={mcp.command} />
@@ -582,6 +668,7 @@ export function InventoryPage({
                       <td>
                         <Badge
                           variant={mcp.pinned ? "success" : "warning"}
+                          icon={<GrdrIcon name={mcp.pinned ? "lock" : "alert-triangle"} size={11} />}
                           label={mcp.pinned ? "Pinned" : "Unpinned"}
                         />
                       </td>
@@ -596,6 +683,7 @@ export function InventoryPage({
 
       <DeviceAssuranceDrawer
         device={selectedDevice}
+        onOpenEntity={onOpenEntity}
         onClose={() => setSelectedDeviceId(null)}
       />
     </VStack>

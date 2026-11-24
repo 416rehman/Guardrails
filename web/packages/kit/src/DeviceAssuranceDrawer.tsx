@@ -7,10 +7,12 @@ import {
   GrdrIcon,
   Heading,
   HStack,
+  OsIcon,
   Text,
   UiSdkDrawer,
   VStack,
 } from "@grdr/ui";
+import { EntityLink, type EntityTarget } from "./EntityLink";
 import { AssuranceBadge } from "./VerdictBadge";
 import { Quoted } from "./Quoted";
 
@@ -56,9 +58,11 @@ export interface MatrixDevice {
 
 export function DeviceAssuranceDrawer({
   device,
+  onOpenEntity,
   onClose,
 }: {
   device: MatrixDevice | null;
+  onOpenEntity?: (target: EntityTarget) => void;
   onClose: () => void;
 }) {
   const assetNodes: GrdrFlowNode[] = [];
@@ -123,13 +127,19 @@ export function DeviceAssuranceDrawer({
           <HStack gap={2}>
             <Badge
               variant="info"
+              icon={<GrdrIcon name={device.install_profile === "protected" ? "shield-check" : "shield-half"} size={12} />}
               label={device.install_profile === "protected" ? "Protected" : "User mode"}
             />
             <Badge
               variant={device.hook_effective ? "success" : "warning"}
+              icon={<GrdrIcon name={device.hook_effective ? "check-circle" : "alert-triangle"} size={12} />}
               label={device.hook_effective ? "Hook active" : "Discovery only"}
             />
-            <Badge variant="neutral" label={`${formatOsName(device.os)} / ${device.arch}`} />
+            <Badge
+              variant="neutral"
+              icon={<OsIcon os={device.os} size={12} />}
+              label={`${formatOsName(device.os)} / ${device.arch}`}
+            />
           </HStack>
 
           <VStack gap={1}>
@@ -156,8 +166,8 @@ export function DeviceAssuranceDrawer({
               <div className="table-wrap">
                 <table style={{ tableLayout: "fixed", width: "100%" }}>
                   <colgroup>
-                    <col style={{ width: "19%" }} />
-                    <col style={{ width: "21%" }} />
+                    <col style={{ width: "22%" }} />
+                    <col style={{ width: "18%" }} />
                     <col style={{ width: "26%" }} />
                     <col style={{ width: "34%" }} />
                   </colgroup>
@@ -173,8 +183,14 @@ export function DeviceAssuranceDrawer({
                     {device.agents.map((agent) => (
                       <tr key={agent.id}>
                         <td>
-                          <strong>{agent.name}</strong>
-                          <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>
+                          <EntityLink
+                            kind="agent"
+                            id={agent.id}
+                            label={agent.name}
+                            compact
+                            onSelect={onOpenEntity}
+                          />
+                          <div style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 3 }}>
                             {friendlyTamper(agent.assurance.tamper)}
                           </div>
                         </td>
@@ -189,7 +205,7 @@ export function DeviceAssuranceDrawer({
                             {friendlyVisibility(agent.assurance.visibility, agent.assurance.on_failure)}
                           </div>
                           <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>
-                            {agent.hook_installed ? "Hook configured" : "Hook absent"}
+                            {agent.hook_installed ? "Hook active" : "Hook absent"}
                           </div>
                         </td>
                         <td title={agent.config_path}>
@@ -221,17 +237,31 @@ export function DeviceAssuranceDrawer({
                     {device.mcp_servers.map((mcp, idx) => (
                       <tr key={`${mcp.name}-${idx}`}>
                         <td>
-                          <strong>{mcp.name}</strong>
-                          <div>
+                          <EntityLink
+                            kind="mcp"
+                            id={mcp.name}
+                            label={mcp.name}
+                            compact
+                            onSelect={onOpenEntity}
+                          />
+                          <div style={{ marginTop: 4 }}>
                             <Quoted text={mcp.command} />
                           </div>
                         </td>
                         <td>
-                          <span className="mono">{mcp.transport}</span>
+                          <HStack gap={1} align="center">
+                            <GrdrIcon
+                              name={mcp.transport.toLowerCase() === "stdio" ? "terminal" : "globe"}
+                              size={12}
+                              color="var(--ink-secondary)"
+                            />
+                            <span className="mono">{mcp.transport}</span>
+                          </HStack>
                         </td>
                         <td>
                           <Badge
                             variant={mcp.pinned ? "success" : "warning"}
+                            icon={<GrdrIcon name={mcp.pinned ? "lock" : "alert-triangle"} size={11} />}
                             label={mcp.pinned ? "Pinned" : "Unpinned"}
                           />
                         </td>

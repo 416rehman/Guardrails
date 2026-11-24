@@ -20,8 +20,14 @@ description: Enforce single canonical UI components (Astryx, UI-SDK, rune-kit), 
   - Never use AI cliché framing (`delve`, `effortlessly`, `seamless`, `not just X, but Y`, `elevate your`, `crafted`, `cutting-edge`, `next-gen`).
 - Keep headlines, subtitles, and badges crisp and scannable with zero filler or overexplaining.
 
-## 3. Navigation, Layout & Alignment
+## 3. Navigation, Layout, Responsiveness & Alignment
 - Sidebars in both Web (`Console`, `Operator`) and Desktop MUST provide a collapsible toggle (`IconButton` with `panel-left-close` / `panel-left-open`) so users can reclaim horizontal canvas for complex fleet visualizations and execution graphs.
-- Respect the exponential 4px spacing scale, optical alignment, self-hosted `DM Sans` + `IBM Plex Mono`, and zero raw `#hex` colors or hand-drawn `<svg>` markup.
+- Every Web screen (`Console`, `Operator`) MUST be responsive across mobile (`390px+`), tablet (`768px-1080px`), and desktop (`1280px+`) viewports with zero page-level horizontal overflow (`scrollWidth <= innerWidth`). Multi-column grids MUST collapse cleanly, mobile navigation MUST switch to a compact scrollable top bar so content stays above the fold, and tables MUST stay contained inside `.table-wrap`.
+- Respect the exponential 4px spacing scale, optical alignment, self-hosted `DM Sans` + `IBM Plex Mono`, and zero raw `#hex` colors or hand-drawn SVG markup.
+
+## 4. Standardized Clickable Entity References & Discrete Iconography
+- Never render `device`, `agent`, `session`, `rule`, or `mcp` identifiers as dead plaintext strings in Web Console (`web/apps/`, `web/packages/kit/`) or Desktop (`desktop/grdr-desktop/`).
+- Every mention in summaries, headers, tables, drawers, cards, or findings MUST use rich `EntityLink` (`@grdr/kit`) or `entity_link` (`desktop/grdr-desktop/src/kit.rs`) displaying OS / harness / domain icons so clicking it jumps straight to that resource.
+- Render discrete domain concepts with official brand or Lucide icons (`OsIcon` / `OsLabel` for `macOS`, `Linux`, `Ubuntu`, `Debian`, `Fedora`, `Windows`; transport, profile, pinning, severity, lifecycle, and verdict icons) rather than plain un-iconified text.
 
 Automated enforcement runs via `.claude/hooks/design-check.mjs` across Claude Code and Antigravity.

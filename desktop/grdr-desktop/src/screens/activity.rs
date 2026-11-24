@@ -1,8 +1,11 @@
-use grdr_ui_model::Intent;
-use rune::{El, col, el, icon, row, spacer, text};
+use grdr_ui_model::{Intent, Screen};
+use rune::{Color, El, Shadow, col, el, icon, row, spacer, text};
 
 use crate::icons;
-use crate::kit::{DesktopApp, ledger_header, primary_button, quoted_chip, status_pill_with_icon};
+use crate::kit::{
+    ChipSurface, DesktopApp, agent_glyph, entity_link, ledger_header, primary_button, quoted_chip,
+    status_pill_with_icon,
+};
 use crate::theme::StudioTheme;
 
 #[must_use]
@@ -24,11 +27,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         } else {
             t.c.canvas
         };
-        let agent_glyph = if sess.agent_name.contains("Claude") {
-            &icons::TERMINAL
-        } else {
-            &icons::CPU
-        };
+        let glyph = agent_glyph(&sess.agent_name);
         let verdict_pill = if sess.blocked_count > 0 {
             status_pill_with_icon(
                 &format!("{} blocked", sess.blocked_count),
@@ -64,7 +63,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                         .radius(6.0)
                         .fill(t.c.recessed)
                         .center()
-                        .child(icon(agent_glyph, 14.0).color(t.c.ink_primary)),
+                        .child(icon(glyph, 14.0).color(t.c.ink_primary)),
                 )
                 .child(
                     col()
@@ -96,12 +95,9 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
     let mut card_section = col().w_full().gap(10.0);
     if let Some(sess) = selected_session {
         if let Some(card) = &sess.block_card {
-            let card_el = col()
+            let card_body = col()
                 .w_full()
                 .padding(16.0)
-                .radius(10.0)
-                .fill(t.c.recessed)
-                .border(1.0, t.c.border_subtle)
                 .gap(10.0)
                 .child(
                     row()
@@ -124,11 +120,34 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                         )),
                 )
                 .child(
-                    text(format!("{} · Rule {}", sess.agent_name, card.rule_id))
-                        .font(t.caption)
-                        .color(t.c.ink_secondary),
+                    row()
+                        .gap(5.0)
+                        .center_y()
+                        .child(entity_link(
+                            "act-card-agent",
+                            agent_glyph(&sess.agent_name),
+                            &sess.agent_name,
+                            t,
+                            |s| s.dispatch(Intent::Navigate(Screen::Home)),
+                        ))
+                        .child(text("on").font(t.caption).color(t.c.ink_muted))
+                        .child(entity_link(
+                            "act-card-device",
+                            &icons::HARD_DRIVE,
+                            &sess.device_name,
+                            t,
+                            |s| s.dispatch(Intent::Navigate(Screen::Settings)),
+                        ))
+                        .child(text("·").font(t.caption).color(t.c.ink_muted))
+                        .child(entity_link(
+                            "act-card-rule",
+                            &icons::SHIELD_CHECK,
+                            &card.rule_id,
+                            t,
+                            |s| s.dispatch(Intent::Navigate(Screen::Rules)),
+                        )),
                 )
-                .child(quoted_chip(&card.target_quoted, t))
+                .child(quoted_chip(&card.target_quoted, ChipSurface::OnRecessed, t))
                 .child(
                     text("Blocked by baseline protection to keep agent hooks and local configuration tamper-resistant.")
                         .font(t.caption)
@@ -147,6 +166,29 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                     },
                 )));
 
+            let card_el = col()
+                .w_full()
+                .continuous_corners()
+                .radius(12.0)
+                .clip_rounded(12.0)
+                .gradient(t.c.panel_top, t.c.panel_bottom)
+                .radial_gradient(
+                    [0.08, 0.25],
+                    160.0,
+                    [(0.0, t.c.block.alpha(0.10)), (1.0, Color::TRANSPARENT)],
+                )
+                .border_gradient(1.0, t.c.block.alpha(0.32), t.c.border_subtle)
+                .box_shadow(Shadow {
+                    x: 0.0,
+                    y: 1.0,
+                    blur: 0.0,
+                    spread: 0.0,
+                    color: t.c.specular_rim,
+                    inset: true,
+                })
+                .shadow(5.0, 14.0, t.c.drop_shadow)
+                .child(card_body);
+
             card_section = card_section
                 .child(ledger_header("Latest blocked action", &sess.agent_name, t))
                 .child(card_el);
@@ -154,9 +196,19 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
             let card_el = col()
                 .w_full()
                 .padding(16.0)
-                .radius(10.0)
-                .fill(t.c.recessed)
-                .border(1.0, t.c.border_subtle)
+                .continuous_corners()
+                .radius(12.0)
+                .gradient(t.c.panel_top, t.c.panel_bottom)
+                .border_gradient(1.0, t.c.rim_top, t.c.border_subtle)
+                .box_shadow(Shadow {
+                    x: 0.0,
+                    y: 1.0,
+                    blur: 0.0,
+                    spread: 0.0,
+                    color: t.c.specular_rim,
+                    inset: true,
+                })
+                .shadow(4.0, 12.0, t.c.drop_shadow)
                 .gap(10.0)
                 .child(
                     row()
@@ -171,12 +223,30 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                         ),
                 )
                 .child(
-                    text(format!(
-                        "{} on {} · Zero blocked calls recorded.",
-                        sess.verdict_summary, sess.device_name
-                    ))
-                    .font(t.caption)
-                    .color(t.c.ink_secondary),
+                    row()
+                        .gap(5.0)
+                        .center_y()
+                        .child(entity_link(
+                            "act-detail-agent",
+                            agent_glyph(&sess.agent_name),
+                            &sess.agent_name,
+                            t,
+                            |s| s.dispatch(Intent::Navigate(Screen::Home)),
+                        ))
+                        .child(text("on").font(t.caption).color(t.c.ink_muted))
+                        .child(entity_link(
+                            "act-detail-device",
+                            &icons::HARD_DRIVE,
+                            &sess.device_name,
+                            t,
+                            |s| s.dispatch(Intent::Navigate(Screen::Settings)),
+                        ))
+                        .child(text("·").font(t.caption).color(t.c.ink_muted))
+                        .child(
+                            text(format!("{} (0 blocked)", sess.verdict_summary))
+                                .font(t.caption)
+                                .color(t.c.ink_secondary),
+                        ),
                 )
                 .child(row().child(primary_button(
                     "session-detail-action",
