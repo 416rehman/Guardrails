@@ -339,6 +339,21 @@ export function presentInstallProfile(profile: string): string {
   }
 }
 
+export function presentBrowserDlpClass(cls: string): string {
+  switch (cls) {
+    case "file_upload":
+      return "File upload";
+    case "paste_secret":
+      return "Secret paste";
+    case "source_code":
+      return "Source code";
+    case "customer_pii":
+      return "Customer PII";
+    default:
+      return capitalizeLabel(cls);
+  }
+}
+
 export function presentSessionLabel(
   label: "credential_accessed" | "untrusted_web_fetched" | "repeated_denials" | "tainted_exfil_risk",
 ): { text: string; tone: "warning" | "info" | "danger" } {

@@ -5,6 +5,7 @@ mod auth;
 mod demo;
 mod exports;
 mod routes;
+mod routes_browser;
 mod routes_query;
 mod store;
 
@@ -1316,5 +1317,85 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(blocked_resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn browser_policy_routes_update_and_evaluate_dlp() {
+        let state = AppState::init(None, true).unwrap();
+        let app = routes::build_router(state, None);
+
+        let list_resp = app
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/browser/policies")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(list_resp.status(), StatusCode::OK);
+        let policies: Vec<grdr_model::BrowserAppPolicy> = serde_json::from_slice(
+            &axum::body::to_bytes(list_resp.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(policies.len(), 5);
+
+        let patch_resp = app
+            .clone()
+            .oneshot(
+                Request::patch("/api/v1/browser/policies/gemini")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&grdr_model::UpdateBrowserAppPolicyInput {
+                            mode: Some(grdr_model::Mode::Ask),
+                            block_file_uploads: Some(true),
+                            block_secret_paste: None,
+                            managed_extension_only: Some(true),
+                        })
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(patch_resp.status(), StatusCode::OK);
+        let updated: grdr_model::BrowserAppPolicy = serde_json::from_slice(
+            &axum::body::to_bytes(patch_resp.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(updated.mode, grdr_model::Mode::Ask);
+        assert!(updated.block_file_uploads);
+
+        let eval_resp = app
+            .oneshot(
+                Request::post("/api/v1/browser/evaluate")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&grdr_model::BrowserEvaluateRequest {
+                            app_id: "chatgpt".into(),
+                            domain: "chatgpt.com".into(),
+                            dlp_class: grdr_model::BrowserDlpClass::FileUpload,
+                            file_extension: Some(".env".into()),
+                            has_secret_match: true,
+                        })
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(eval_resp.status(), StatusCode::OK);
+        let eval_res: grdr_model::BrowserEvaluateResponse = serde_json::from_slice(
+            &axum::body::to_bytes(eval_resp.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(eval_res.verdict, grdr_model::Verdict::Deny);
+        assert_eq!(eval_res.rule_id.as_deref(), Some("browser.block.chatgpt"));
     }
 }

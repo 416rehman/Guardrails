@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ApprovalRequest,
   AuditEntry,
+  BrowserAppPolicy,
   ConnectConfigResponse,
   Device,
   Finding,
@@ -428,12 +429,45 @@ function installFetchMock() {
     if (url.includes("/check-readiness")) {
       return mockJsonResponse(connectFixture.integrations[0]);
     }
+    if (url.endsWith("/api/v1/browser/policies")) {
+      return mockJsonResponse(browserPoliciesFixture);
+    }
+    if (url.includes("/api/v1/browser/policies/")) {
+      return mockJsonResponse({
+        ...browserPoliciesFixture[0],
+        mode: "ask",
+      });
+    }
+    if (url.endsWith("/api/v1/browser/evaluate")) {
+      return mockJsonResponse({
+        app_id: "chatgpt",
+        app_name: "ChatGPT",
+        verdict: "deny",
+        rule_id: "browser.block.chatgpt",
+        reason: "ChatGPT triggered block on file upload (.env) for domain chatgpt.com.",
+        dlp_class: "file_upload",
+      });
+    }
     if (url.endsWith("/api/v1/exports/ocsf") || url.endsWith("/api/v1/exports/audit.jsonl")) {
       return new Response("{}", { status: 200 });
     }
     return mockJsonResponse({ code: "NOT_FOUND", message: `Unmocked URL ${url}` }, 404);
   });
 }
+
+const browserPoliciesFixture: BrowserAppPolicy[] = [
+  {
+    id: "chatgpt",
+    name: "ChatGPT",
+    domains: ["chatgpt.com"],
+    mode: "block",
+    block_file_uploads: true,
+    block_secret_paste: true,
+    managed_extension_only: true,
+    events_24h: 142,
+    blocked_24h: 11,
+  },
+];
 
 const connectFixture: ConnectConfigResponse = {
   server_origin: "https://guardrails.internal:8443",
@@ -676,6 +710,20 @@ describe("Console and Operator Plane workflows", () => {
     fireEvent.click(screen.getByRole("button", { name: "Check readiness" }));
     await waitFor(() => {
       expect(screen.getByText("Secret expires in 9 days")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Protect" })[0]);
+    await waitFor(() => {
+      expect(screen.getByRole("radio", { name: "Browser AI" })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("radio", { name: "Browser AI" }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("ChatGPT").length).toBeGreaterThan(0);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run browser check" }));
+    await waitFor(() => {
+      expect(screen.getByText("browser.block.chatgpt")).toBeTruthy();
     });
   });
 });

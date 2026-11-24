@@ -476,6 +476,48 @@ html[data-theme="dark"] .grdr-brand-img {
   gap: 14px;
 }
 
+.fleet-strip-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.policy-toggle-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-canvas);
+  color: var(--ink-secondary);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.policy-toggle-chip:hover {
+  border-color: var(--border-strong);
+  color: var(--ink-primary);
+}
+
+.policy-toggle-chip.active {
+  background-color: var(--accent-soft);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.policy-toggle-chip.blocked {
+  background-color: var(--tone-block-bg);
+  border-color: var(--tone-block-border);
+  color: var(--tone-block);
+  font-weight: 600;
+}
+
 .fleet-card {
   padding: 14px 16px;
   border-radius: var(--radius-md);
@@ -1068,6 +1110,7 @@ tr.selected td {
     font-size: 26px;
   }
   .fleet-strip,
+  .fleet-strip-3,
   .grid-2,
   .grid-4,
   .killswitch-cols,

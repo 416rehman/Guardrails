@@ -245,4 +245,30 @@ export const api = {
       `/api/v1/integrations/${encodeURIComponent(id)}/check-readiness`,
       { method: "POST" },
     ),
+  getBrowserPolicies: () =>
+    requestJson<import("./types").BrowserAppPolicy[]>("/api/v1/browser/policies"),
+  updateBrowserPolicy: (
+    id: string,
+    body: {
+      mode?: Mode;
+      block_file_uploads?: boolean;
+      block_secret_paste?: boolean;
+      managed_extension_only?: boolean;
+    },
+  ) =>
+    requestJson<import("./types").BrowserAppPolicy>(
+      `/api/v1/browser/policies/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify(body) },
+    ),
+  evaluateBrowserAction: (body: {
+    app_id: string;
+    domain: string;
+    dlp_class: import("./types").BrowserDlpClass;
+    file_extension?: string | null;
+    has_secret_match: boolean;
+  }) =>
+    requestJson<import("./types").BrowserEvaluateResponse>("/api/v1/browser/evaluate", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };

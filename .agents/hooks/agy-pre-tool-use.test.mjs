@@ -81,7 +81,18 @@ test("blocks gh pr create from main", (t) => {
   assert.ok(out.some((msg) => msg.includes("must target a work branch")), out.join("\n"));
 });
 
-test("allows gh pr create from feat/ branch without issue links or release notes", (t) => {
+test("allows gh pr create from feat/ branch with an accompanying issue link", (t) => {
+  const dir = initTempRepo("feat/web-console");
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, "pr.md"), "Closes #42\n\nImplements initial Web Console.\n", "utf8");
+  const out = evaluateHookCommand(
+    'gh pr create --base main --head feat/web-console --title "feat(web): implement console" --body-file pr.md',
+    dir,
+  );
+  assert.deepEqual(out, []);
+});
+
+test("blocks gh pr create without an accompanying issue link", (t) => {
   const dir = initTempRepo("feat/web-console");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   writeFileSync(join(dir, "pr.md"), "Implements initial Web Console.\n", "utf8");
@@ -89,7 +100,7 @@ test("allows gh pr create from feat/ branch without issue links or release notes
     'gh pr create --base main --head feat/web-console --title "feat(web): implement console" --body-file pr.md',
     dir,
   );
-  assert.deepEqual(out, []);
+  assert.ok(out.some((msg) => msg.includes("accompanying GitHub issue")), out.join("\n"));
 });
 
 test("stdin/stdout CLI contract outputs valid JSON allow for non-git commands", () => {

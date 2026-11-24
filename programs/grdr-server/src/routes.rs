@@ -34,6 +34,7 @@ use crate::auth::{
     self, ServerSecurityConfig, require_device_or_operator_auth, require_operator_auth,
 };
 use crate::exports::{build_audit_jsonl, build_ocsf_events};
+use crate::routes_browser::{get_browser_policies, patch_browser_policy, post_browser_evaluate};
 use crate::routes_query::{
     get_query_entities, get_query_schema, get_query_user_intent, post_query_sample,
 };
@@ -94,6 +95,9 @@ pub fn build_router_with_security(
         .route("/api/v1/query/entities", get(get_query_entities))
         .route("/api/v1/query/user-intent", get(get_query_user_intent))
         .route("/api/v1/query/sample", post(post_query_sample))
+        .route("/api/v1/browser/policies", get(get_browser_policies))
+        .route("/api/v1/browser/policies/{id}", patch(patch_browser_policy))
+        .route("/api/v1/browser/evaluate", post(post_browser_evaluate))
         .route("/api/v1/sessions", get(list_sessions))
         .route("/api/v1/sessions/{id}", get(get_session))
         .route("/api/v1/decide", post(decide))

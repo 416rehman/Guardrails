@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+mod browser;
 mod connect;
 mod connect_mdm;
 mod overview;
@@ -24,9 +25,9 @@ use grdr_model::error::{CODE_INVALID_INPUT, CODE_NOT_FOUND, CODE_STORE_IO};
 use grdr_model::eval::add_seconds;
 use grdr_model::{
     ActionAttempt, ApprovalRequest, ApprovalState, AuditEntry, BatchEventsInput,
-    BatchEventsResponse, CodedError, DecideInput, DecisionReceipt, DeploymentKey, Device,
-    DeviceCheckinRequest, DeviceCheckinResponse, Finding, Grant, Incident, IntegrationEntry,
-    KillSwitchState, LiveEvent, OrgPrivacyConfig, OtlpFanoutConfig, PolicyPack,
+    BatchEventsResponse, BrowserAppPolicy, CodedError, DecideInput, DecisionReceipt, DeploymentKey,
+    Device, DeviceCheckinRequest, DeviceCheckinResponse, Finding, Grant, Incident,
+    IntegrationEntry, KillSwitchState, LiveEvent, OrgPrivacyConfig, OtlpFanoutConfig, PolicyPack,
     SessionDetailResponse, SessionSummary, SignatureStatus, TrustedKeyInfo, Verdict, slugify_id,
     summarize_session_turns, summarize_sessions,
 };
@@ -52,6 +53,8 @@ pub struct StoreData {
     pub integrations: Vec<IntegrationEntry>,
     #[serde(default)]
     pub otlp_config: OtlpFanoutConfig,
+    #[serde(default)]
+    pub browser_policies: Vec<BrowserAppPolicy>,
     pub devices: Vec<Device>,
     pub attempts: Vec<ActionAttempt>,
     pub receipts: Vec<DecisionReceipt>,
@@ -80,6 +83,7 @@ impl Default for StoreData {
             deployment_keys: Vec::new(),
             integrations: Vec::new(),
             otlp_config: OtlpFanoutConfig::default(),
+            browser_policies: Vec::new(),
             devices: Vec::new(),
             attempts: Vec::new(),
             receipts: Vec::new(),
@@ -139,6 +143,9 @@ impl AppState {
             data.deployment_keys = demo_connect.deployment_keys;
             data.integrations = demo_connect.integrations;
             data.otlp_config = demo_connect.otlp_config;
+        }
+        if demo_seed && data.browser_policies.is_empty() {
+            data.browser_policies = browser::demo_browser_policies();
         }
 
         for pack in &mut data.packs {

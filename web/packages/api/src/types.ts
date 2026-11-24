@@ -524,3 +524,26 @@ export interface ConnectConfigResponse {
   otlp: OtlpFanoutConfig;
   integrations: IntegrationEntry[];
 }
+
+export type BrowserDlpClass = "file_upload" | "paste_secret" | "source_code" | "customer_pii";
+
+export interface BrowserAppPolicy {
+  id: string;
+  name: string;
+  domains: string[];
+  mode: Mode;
+  block_file_uploads: boolean;
+  block_secret_paste: boolean;
+  managed_extension_only: boolean;
+  events_24h: number;
+  blocked_24h: number;
+}
+
+export interface BrowserEvaluateResponse {
+  app_id: string;
+  app_name: string;
+  verdict: Verdict;
+  rule_id: string | null;
+  reason: string;
+  dlp_class: BrowserDlpClass;
+}
