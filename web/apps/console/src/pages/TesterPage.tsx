@@ -47,6 +47,12 @@ const PRESETS: Array<{ label: string; actionClass: ActionClass; target: string; 
   },
 ];
 
+type TestEvalState =
+  | { kind: "idle" }
+  | { kind: "evaluating"; previousReceipt?: DecisionReceipt }
+  | { kind: "resolved"; receipt: DecisionReceipt }
+  | { kind: "failed"; message: string; previousReceipt?: DecisionReceipt };
+
 export function TesterPage({
   onEvaluated,
   onOpenEntity,
@@ -58,13 +64,21 @@ export function TesterPage({
   const [sessionId, setSessionId] = useState("sess-live-eval");
   const [actionClass, setActionClass] = useState<ActionClass>("file.write");
   const [target, setTarget] = useState(".claude/settings.json");
-  const [receipt, setReceipt] = useState<DecisionReceipt | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [evalState, setEvalState] = useState<TestEvalState>({ kind: "idle" });
+
+  const activeReceipt =
+    evalState.kind === "resolved"
+      ? evalState.receipt
+      : evalState.kind === "evaluating" || evalState.kind === "failed"
+        ? evalState.previousReceipt
+        : undefined;
+  const isEvaluating = evalState.kind === "evaluating";
 
   async function evaluateNow(override?: { actionClass: ActionClass; target: string; summary: string }) {
-    setError(null);
-    setSubmitting(true);
+    setEvalState((prev) => ({
+      kind: "evaluating",
+      previousReceipt: prev.kind === "resolved" ? prev.receipt : undefined,
+    }));
     try {
       const res = await api.decideAction({
         session_id: sessionId,
@@ -75,12 +89,14 @@ export function TesterPage({
         target: override?.target ?? target,
         summary: override?.summary ?? "Live policy simulator evaluation",
       });
-      setReceipt(res);
+      setEvalState({ kind: "resolved", receipt: res });
       onEvaluated();
     } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setSubmitting(false);
+      setEvalState((prev) => ({
+        kind: "failed",
+        message: err instanceof Error ? err.message : "Failed evaluating action.",
+        previousReceipt: prev.kind === "evaluating" ? prev.previousReceipt : undefined,
+      }));
     }
   }
 
@@ -95,7 +111,9 @@ export function TesterPage({
         </div>
       </div>
 
-      {error && <Banner status="error" title={error} collapsible={false} />}
+      {evalState.kind === "failed" && (
+        <Banner status="error" title={evalState.message} collapsible={false} />
+      )}
 
       <Card padding={3}>
         <VStack gap={3}>
@@ -103,14 +121,14 @@ export function TesterPage({
             <GrdrIcon name="terminal" size={16} />
             <Heading level={2}>Quick scenarios</Heading>
           </HStack>
-          <HStack gap={2}>
+          <HStack gap={2} style={{ flexWrap: "wrap" }}>
             {PRESETS.map((preset) => (
               <Button
                 key={preset.label}
                 size="sm"
                 label={preset.label}
                 icon={<GrdrIcon name="play" size={12} />}
-                isDisabled={submitting}
+                isDisabled={isEvaluating}
                 onClick={() => {
                   setActionClass(preset.actionClass);
                   setTarget(preset.target);
@@ -159,32 +177,32 @@ export function TesterPage({
               <Button
                 type="submit"
                 variant="primary"
-                label={submitting ? "Evaluating..." : "Evaluate action"}
-                isDisabled={submitting}
+                label={isEvaluating ? "Evaluating..." : "Evaluate action"}
+                isDisabled={isEvaluating}
               />
             </div>
           </form>
         </VStack>
       </Card>
 
-      {receipt && (
+      {activeReceipt && (
         <Card padding={3}>
           <VStack gap={2}>
             <HStack justify="between" align="center">
               <Heading level={2}>Decision receipt</Heading>
-              <VerdictBadge verdict={receipt.verdict} />
+              <VerdictBadge verdict={activeReceipt.verdict} />
             </HStack>
             <div>
               <strong>Target: </strong>
-              <Quoted text={receipt.target} />
+              <Quoted text={activeReceipt.target} />
             </div>
             <HStack gap={2} align="center">
               <strong>Rule:</strong>
-              {receipt.rule_id ? (
+              {activeReceipt.rule_id ? (
                 <EntityLink
                   kind="rule"
-                  id={receipt.rule_id}
-                  label={receipt.rule_id}
+                  id={activeReceipt.rule_id}
+                  label={activeReceipt.rule_id}
                   compact
                   onSelect={onOpenEntity}
                 />
@@ -196,14 +214,14 @@ export function TesterPage({
             </HStack>
             <div>
               <strong>Reason: </strong>
-              <span>{receipt.reason}</span>
+              <span>{activeReceipt.reason}</span>
             </div>
             <div>
               <strong>Next step: </strong>
-              <span>{receipt.next_step}</span>
+              <span>{activeReceipt.next_step}</span>
             </div>
             <div className="mono" style={{ color: "var(--ink-muted)" }}>
-              SHA-256: {receipt.receipt_digest}
+              SHA-256: {activeReceipt.receipt_digest}
             </div>
           </VStack>
         </Card>

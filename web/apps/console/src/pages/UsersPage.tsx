@@ -31,6 +31,17 @@ import {
   UserDetailSection,
 } from "./UserDetailSection";
 
+type UserSelectionState =
+  | { kind: "none" }
+  | { kind: "loading"; userId: string }
+  | { kind: "ready"; userId: string; detail: UserDetailResponse }
+  | { kind: "error"; userId: string; message: string };
+
+type PrivacySaveState =
+  | { kind: "idle" }
+  | { kind: "saving" }
+  | { kind: "failed"; message: string };
+
 export function UsersPage({
   users,
   privacyConfig,
@@ -50,13 +61,15 @@ export function UsersPage({
   onOpenSessionTurn: (sessionId: string, turnIndex: number) => void;
   onPrivacyUpdated: () => void;
 }) {
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(users[0]?.id ?? null);
-  const [detail, setDetail] = useState<UserDetailResponse | null>(null);
+  const [selection, setSelection] = useState<UserSelectionState>(() =>
+    users[0] ? { kind: "loading", userId: users[0].id } : { kind: "none" },
+  );
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
   const [tierFilter, setTierFilter] = useState<string>("all");
   const [localFilter, setLocalFilter] = useState("");
-  const [savingPrivacy, setSavingPrivacy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [privacySave, setPrivacySave] = useState<PrivacySaveState>({ kind: "idle" });
+
+  const selectedUserId = selection.kind === "none" ? null : selection.userId;
 
   useEffect(() => {
     if (focusedEntity?.kind === "user") {
@@ -67,7 +80,7 @@ export function UsersPage({
           u.pseudonym_id === focusedEntity.id,
       );
       if (match) {
-        setSelectedUserId(match.id);
+        setSelection({ kind: "loading", userId: match.id });
       }
       onClearFocus?.();
     }
@@ -98,13 +111,12 @@ export function UsersPage({
   const firstFilteredId = filteredUsers[0]?.id ?? null;
   useEffect(() => {
     if (!selectedUserId && firstFilteredId) {
-      setSelectedUserId(firstFilteredId);
+      setSelection({ kind: "loading", userId: firstFilteredId });
     }
   }, [selectedUserId, firstFilteredId]);
 
   useEffect(() => {
     if (!selectedUserId) {
-      setDetail(null);
       return;
     }
     let cancelled = false;
@@ -112,12 +124,13 @@ export function UsersPage({
       .getUserDetail(selectedUserId)
       .then((res) => {
         if (!cancelled) {
-          setDetail(res);
-          setError(null);
+          setSelection({ kind: "ready", userId: selectedUserId, detail: res });
         }
       })
       .catch((err: Error) => {
-        if (!cancelled) setError(err.message);
+        if (!cancelled) {
+          setSelection({ kind: "error", userId: selectedUserId, message: err.message });
+        }
       });
     return () => {
       cancelled = true;
@@ -125,24 +138,31 @@ export function UsersPage({
   }, [selectedUserId, users, privacyConfig.identity_mode]);
 
   async function handleIdentityModeChange(nextMode: IdentityMode) {
-    setSavingPrivacy(true);
-    setError(null);
+    setPrivacySave({ kind: "saving" });
     try {
       await api.updatePrivacyConfig({
         identity_mode: nextMode,
         user_risk_scoring: nextMode === "named",
         actor: "console-admin",
       });
+      setPrivacySave({ kind: "idle" });
       onPrivacyUpdated();
     } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setSavingPrivacy(false);
+      setPrivacySave({
+        kind: "failed",
+        message: err instanceof Error ? err.message : "Failed updating privacy configuration.",
+      });
     }
   }
 
   const isPseudonymous = privacyConfig.identity_mode === "pseudonymous";
   const highRiskCount = users.filter((u) => u.risk_tier === "critical" || u.risk_tier === "high").length;
+  const errorMessage =
+    privacySave.kind === "failed"
+      ? privacySave.message
+      : selection.kind === "error"
+        ? selection.message
+        : undefined;
 
   return (
     <VStack gap={4}>
@@ -166,7 +186,7 @@ export function UsersPage({
               },
             ]}
             onChange={(mode) => {
-              if (!savingPrivacy && mode !== privacyConfig.identity_mode) {
+              if (privacySave.kind !== "saving" && mode !== privacyConfig.identity_mode) {
                 void handleIdentityModeChange(mode);
               }
             }}
@@ -184,7 +204,7 @@ export function UsersPage({
         </Banner>
       )}
 
-      {error && <Banner status="error" title={error} collapsible={false} />}
+      {errorMessage && <Banner status="error" title={errorMessage} collapsible={false} />}
 
       <div className="metric-strip">
         <div className="metric-cell">
@@ -269,7 +289,7 @@ export function UsersPage({
                     key={u.id}
                     className={`ledger-row selectable ${isSelected ? "selected" : ""} ${highAttention ? "attention-row" : ""}`}
                     style={{ paddingInline: 12, cursor: "pointer" }}
-                    onClick={() => setSelectedUserId(u.id)}
+                    onClick={() => setSelection({ kind: "loading", userId: u.id })}
                   >
                     <div className="ledger-row-main">
                       <VStack gap={1}>
@@ -281,7 +301,7 @@ export function UsersPage({
                             kind="user"
                             id={u.id}
                             label={u.display_name}
-                            onSelect={() => setSelectedUserId(u.id)}
+                            onSelect={() => setSelection({ kind: "loading", userId: u.id })}
                           />
                         </HStack>
                         <Text size="sm" color="secondary">
@@ -319,7 +339,7 @@ export function UsersPage({
         </div>
 
         <UserDetailSection
-          detail={detail}
+          detail={selection.kind === "ready" ? selection.detail : null}
           isPseudonymous={isPseudonymous}
           onOpenEntity={onOpenEntity}
           onOpenSessionTurn={onOpenSessionTurn}

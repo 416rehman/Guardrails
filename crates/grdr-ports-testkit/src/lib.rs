@@ -27,8 +27,8 @@ use grdr_model::{
     LiveEvent, Verdict,
 };
 use grdr_ports::{
-    DecisionEnginePort, EventSinkPort, PORT_SNAPSHOT_VERSION, PortSnapshot, PreparedContainment,
-    SandboxPort, SensorPort, StorePort,
+    ContainmentMode, DecisionEnginePort, EventSinkPort, PORT_SNAPSHOT_VERSION, PortSnapshot,
+    PreparedContainment, SandboxPort, SensorPort, StorePort,
 };
 
 #[derive(Debug, Default)]
@@ -142,8 +142,8 @@ impl SensorPort for MemorySensorAdapter {
 }
 
 impl SandboxPort for StubSandboxAdapter {
-    fn containment_mode(&self) -> &'static str {
-        "advisory"
+    fn containment_mode(&self) -> ContainmentMode {
+        ContainmentMode::Advisory
     }
 
     fn prepare_command(
@@ -159,7 +159,7 @@ impl SandboxPort for StubSandboxAdapter {
             ));
         }
         Ok(PreparedContainment {
-            mode: self.containment_mode().into(),
+            mode: self.containment_mode(),
             binary: binary.into(),
             sanitized_args: args.to_vec(),
             stripped_env_keys: vec!["OPENAI_API_KEY".into()],
@@ -360,15 +360,15 @@ pub fn assert_sensor_port_contract(sensor: &mut impl SensorPort) -> Result<(), S
 }
 
 pub fn assert_sandbox_port_contract(sandbox: &impl SandboxPort) -> Result<(), String> {
-    if sandbox.containment_mode().trim().is_empty() {
-        return Err("containment_mode must be non-empty".into());
-    }
     if sandbox.prepare_command("   ", &[]).is_ok() {
         return Err("empty binary should fail".into());
     }
     let prepared = sandbox
         .prepare_command("echo", &["ok".into()])
         .map_err(|e| format!("prepare_command failed: {e}"))?;
+    if prepared.mode != sandbox.containment_mode() {
+        return Err("prepared containment mode must match sandbox containment_mode".into());
+    }
     if prepared.binary != "echo" {
         return Err("unexpected prepared binary".into());
     }

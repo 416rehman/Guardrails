@@ -1,4 +1,4 @@
-use grdr_ui_model::{Intent, Screen};
+use grdr_ui_model::{ControlMode, Intent, Screen};
 use rune::{El, col, el, icon, row, spacer, text};
 
 use crate::icons;
@@ -15,7 +15,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
     let boundary_count = vm
         .agents
         .iter()
-        .filter(|a| a.control_mode == "Boundary")
+        .filter(|a| a.control_mode == ControlMode::Boundary)
         .count();
     let total_agents = vm.agents.len();
     let pending_str = vm.pending_approvals.len().to_string();
@@ -184,7 +184,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         t,
     ));
     for agent in &vm.agents {
-        let is_boundary = agent.control_mode == "Boundary";
+        let is_boundary = agent.control_mode == ControlMode::Boundary;
         let glyph = agent_glyph(&agent.name);
         agents_col = agents_col.child(
             row()

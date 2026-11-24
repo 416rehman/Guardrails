@@ -24,6 +24,7 @@ const EGRESS_EXFIL_PATTERNS: &[&str] = &[
     "transfer.sh",
 ];
 
+// grdr:allow-s4 orthogonal command signal attributes
 #[derive(Debug, Clone)]
 pub(crate) struct CedarSignals {
     pub(crate) resource_classes: BTreeSet<String>,

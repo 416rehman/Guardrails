@@ -1,5 +1,7 @@
+mod demo;
+
 use grdr_messages::BlockCard;
-use grdr_strings::{Locale, MessageKey, lookup, sanitize_untrusted_text};
+use grdr_strings::{Locale, MessageKey, lookup};
 use serde::{Deserialize, Serialize};
 
 pub const PAGING_MOUNT_CAP: usize = 500;
@@ -63,23 +65,6 @@ pub enum ModeLevel {
     Block = 3,
 }
 
-impl ModeLevel {
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Off => "Off",
-            Self::Watch => "Watch",
-            Self::Ask => "Ask",
-            Self::Block => "Block",
-        }
-    }
-
-    #[must_use]
-    pub fn is_widening(self, target: Self) -> bool {
-        (target as u8) < (self as u8)
-    }
-}
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RulePreset {
@@ -98,56 +83,11 @@ pub struct Preferences {
     pub show_technical_detail: bool,
 }
 
-impl Default for Preferences {
-    fn default() -> Self {
-        Self {
-            theme: ThemeChoice::Light,
-            render_tier: RenderTier::Full,
-            locale: Locale::EnUs,
-            time_zone: "UTC".to_owned(),
-            show_technical_detail: false,
-        }
-    }
-}
-
 /// Paged store capped at 500 mounted rows with 200-row slice reads (`design/28` section 3).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PagingStore<T> {
     items: Vec<T>,
     cursor: usize,
-}
-
-impl<T: Clone> PagingStore<T> {
-    #[must_use]
-    pub fn new(mut items: Vec<T>) -> Self {
-        if items.len() > PAGING_MOUNT_CAP {
-            items.truncate(PAGING_MOUNT_CAP);
-        }
-        Self { items, cursor: 0 }
-    }
-
-    #[must_use]
-    pub fn total(&self) -> usize {
-        self.items.len()
-    }
-
-    #[must_use]
-    pub fn current_page(&self) -> Vec<T> {
-        let end = self
-            .cursor
-            .saturating_add(PAGING_SLICE_SIZE)
-            .min(self.items.len());
-        self.items
-            .get(self.cursor..end)
-            .map_or_else(Vec::new, |slice| slice.to_vec())
-    }
-
-    pub fn next_page(&mut self) {
-        let next = self.cursor.saturating_add(PAGING_SLICE_SIZE);
-        if next < self.items.len() {
-            self.cursor = next;
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -176,13 +116,33 @@ pub struct PendingApprovalVm {
     pub required_grade: String,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ControlMode {
+    Boundary,
+    Request,
+    Observe,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceSurfaceState {
+    Protected,
+    RequestsOnly,
+    ScanOnly,
+    Degraded,
+    SafeMode,
+    Stale,
+    Snoozed,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentStatusVm {
     pub id: String,
     pub name: String,
     pub assurance_level: String,
     pub hook_health: String,
-    pub control_mode: String,
+    pub control_mode: ControlMode,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -261,7 +221,7 @@ pub struct SettingsVm {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TrayVm {
-    pub status_label: String,
+    pub surface_state: DeviceSurfaceState,
     pub pending_count: usize,
     pub install_profile: InstallProfile,
     pub render_tier: RenderTier,
@@ -285,222 +245,6 @@ pub struct AppVm {
     pub rules: RulesVm,
     pub privacy: PrivacyVm,
     pub settings: SettingsVm,
-}
-
-impl AppVm {
-    /// Builds a deterministic populated demo state starting 3 of 6 setup steps ticked.
-    #[must_use]
-    pub fn demo() -> Self {
-        let locale = Locale::EnUs;
-        let notice = grdr_messages::AgentNoticeInput {
-            brand: lookup(locale, MessageKey::BrandName),
-            verb: grdr_messages::AgentVerb::Blocked,
-            action_class: "file.write".to_owned(),
-            status_code: "GRDR-DEC-DENY".to_owned(),
-            rule_id: "essentials.agent-control-files".to_owned(),
-            reference: "8F2KQ-M41TZW".to_owned(),
-            reason: "Agent settings cannot be modified inside an active agent session.".to_owned(),
-            next_step: grdr_messages::NextStepKind::Blocked,
-        };
-        let card = grdr_messages::build_block_card(
-            locale,
-            grdr_messages::AgentVerb::Blocked,
-            "essentials.agent-control-files",
-            "grdr.essentials",
-            ".claude/settings.json",
-            &notice,
-        );
-
-        Self {
-            screen: Screen::Home,
-            agent_caller: false,
-            preferences: Preferences::default(),
-            first_run: FirstRunVm {
-                selected_profile: InstallProfile::Protected,
-                steps: vec![
-                    SetupStepVm {
-                        id: "scan-agents".to_owned(),
-                        label: "Read-only agent scan completed".to_owned(),
-                        detail: "Discovered Claude Code and Cursor".to_owned(),
-                        done: true,
-                    },
-                    SetupStepVm {
-                        id: "baseline-pack".to_owned(),
-                        label: "Essentials policy pack staged".to_owned(),
-                        detail: "Control files and bypass switches locked".to_owned(),
-                        done: true,
-                    },
-                    SetupStepVm {
-                        id: "local-receipts".to_owned(),
-                        label: "Local Ed25519 receipt signing ready".to_owned(),
-                        detail: "Keys stored locally".to_owned(),
-                        done: true,
-                    },
-                    SetupStepVm {
-                        id: "turn-on-protection".to_owned(),
-                        label: "Confirm protection profile".to_owned(),
-                        detail: "Protected is pre-selected with one OS confirmation".to_owned(),
-                        done: false,
-                    },
-                    SetupStepVm {
-                        id: "canary-session".to_owned(),
-                        label: "Prove hook enforcement in next session".to_owned(),
-                        detail: "Upgrades agents to sandboxed protection".to_owned(),
-                        done: false,
-                    },
-                    SetupStepVm {
-                        id: "stepup-grade".to_owned(),
-                        label: "Enable biometric approval".to_owned(),
-                        detail: "Windows Hello / Touch ID / polkit".to_owned(),
-                        done: false,
-                    },
-                ],
-            },
-            home: HomeVm {
-                view_state: ViewState::Ready,
-                install_profile: InstallProfile::Protected,
-                summary_line: "Protected, except Cursor: hook not yet proven.".to_owned(),
-                boundary_pct: 50,
-                pending_approvals: vec![PendingApprovalVm {
-                    id: "apr-demo-01".to_owned(),
-                    rule_id: "essentials.cred-store.read".to_owned(),
-                    rule_title: "Guard credential stores and private keys".to_owned(),
-                    agent_name: "Claude Code".to_owned(),
-                    device_name: "dev-workstation".to_owned(),
-                    target_quoted: sanitize_untrusted_text("~/.ssh/id_ed25519"),
-                    approver_label: lookup(locale, MessageKey::ApproverSelf),
-                    required_grade: "G1".to_owned(),
-                }],
-                agents: vec![
-                    AgentStatusVm {
-                        id: "claude-code".to_owned(),
-                        name: "Claude Code".to_owned(),
-                        assurance_level: "AL3".to_owned(),
-                        hook_health: "Hooks active (Boundary)".to_owned(),
-                        control_mode: "Boundary".to_owned(),
-                    },
-                    AgentStatusVm {
-                        id: "cursor".to_owned(),
-                        name: "Cursor".to_owned(),
-                        assurance_level: "AL1".to_owned(),
-                        hook_health: "Set up, hook not yet proven".to_owned(),
-                        control_mode: "Request".to_owned(),
-                    },
-                ],
-                tiles: vec![
-                    InsightTileVm {
-                        id: "blind-spots".to_owned(),
-                        headline: "Blind spots".to_owned(),
-                        metric: "1 agent".to_owned(),
-                        comparison: "Cursor hooks missing confirmation".to_owned(),
-                        action_label: "Inspect coverage".to_owned(),
-                        target_screen: Screen::Settings,
-                    },
-                    InsightTileVm {
-                        id: "prompt-health".to_owned(),
-                        headline: "Approval prompts".to_owned(),
-                        metric: "2 today".to_owned(),
-                        comparison: "Normal approval volume".to_owned(),
-                        action_label: "Review rules".to_owned(),
-                        target_screen: Screen::Rules,
-                    },
-                ],
-            },
-            activity: ActivityVm {
-                filter: None,
-                selected_session_id: Some("sess-demo-refactor".to_owned()),
-                sessions: PagingStore::new(vec![
-                    SessionRowVm {
-                        id: "sess-demo-refactor".to_owned(),
-                        agent_name: "Claude Code".to_owned(),
-                        device_name: "dev-workstation".to_owned(),
-                        verdict_summary: "4 calls, 1 blocked, 0 asked".to_owned(),
-                        blocked_count: 1,
-                        ask_count: 0,
-                        block_card: Some(card),
-                    },
-                    SessionRowVm {
-                        id: "sess-demo-mcp".to_owned(),
-                        agent_name: "Cursor".to_owned(),
-                        device_name: "dev-workstation".to_owned(),
-                        verdict_summary: "2 calls, 0 blocked, 1 waiting".to_owned(),
-                        blocked_count: 0,
-                        ask_count: 1,
-                        block_card: None,
-                    },
-                ]),
-            },
-            rules: RulesVm {
-                preset: RulePreset::Recommended,
-                pending_widening_rule_id: None,
-                rules: vec![
-                    RuleRowVm {
-                        id: "essentials.agent-control-files".to_owned(),
-                        pack_id: "grdr.essentials".to_owned(),
-                        title: "Protect agent and Guardrails control files".to_owned(),
-                        description:
-                            "Prevent agent writes to hooks, MCP configs, and local policy."
-                                .to_owned(),
-                        target_pattern: ".claude/, .cursor/, .claude.json".to_owned(),
-                        mode: ModeLevel::Block,
-                        locked: true,
-                        effective_note: "Boundary on protected endpoints".to_owned(),
-                    },
-                    RuleRowVm {
-                        id: "essentials.cred-store.read".to_owned(),
-                        pack_id: "grdr.essentials".to_owned(),
-                        title: "Guard credential stores and private keys".to_owned(),
-                        description:
-                            "Require approval before reading ~/.ssh, ~/.aws, or token caches."
-                                .to_owned(),
-                        target_pattern: "~/.ssh/, ~/.aws/, ~/.gnupg/".to_owned(),
-                        mode: ModeLevel::Ask,
-                        locked: false,
-                        effective_note: "Prompts for approval before opening".to_owned(),
-                    },
-                    RuleRowVm {
-                        id: "essentials.secret-exfil-egress".to_owned(),
-                        pack_id: "grdr.essentials".to_owned(),
-                        title: "Observe outbound paste and webhook transfers".to_owned(),
-                        description: "Record curl and webhook invocations before promoting to Ask."
-                            .to_owned(),
-                        target_pattern: "curl, Invoke-WebRequest, pastebin".to_owned(),
-                        mode: ModeLevel::Watch,
-                        locked: false,
-                        effective_note: "Watch mode logs local telemetry".to_owned(),
-                    },
-                ],
-            },
-            privacy: PrivacyVm {
-                disclosure_header: lookup(locale, MessageKey::PrivacyNoticeHeader),
-                capture_scope:
-                    "Tool arguments stay on this device, and targets are normalized locally."
-                        .to_owned(),
-                local_retention_days: 30,
-                telemetry_destination: "Standalone (zero external telemetry)".to_owned(),
-                managed_org: None,
-            },
-            settings: SettingsVm {
-                install_profile: InstallProfile::Protected,
-                organization_name: None,
-                diagnostic_code: None,
-            },
-        }
-    }
-
-    #[must_use]
-    pub fn tray_vm(&self) -> TrayVm {
-        let key = match self.home.install_profile {
-            InstallProfile::Protected => MessageKey::ProfileProtectedStatus,
-            InstallProfile::User => MessageKey::ProfileUserRequestsOnly,
-        };
-        TrayVm {
-            status_label: lookup(self.preferences.locale, key),
-            pending_count: self.home.pending_approvals.len(),
-            install_profile: self.home.install_profile,
-            render_tier: self.preferences.render_tier,
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -545,6 +289,98 @@ pub enum Effect {
     NotifyReadOnly {
         reason: String,
     },
+}
+
+impl ModeLevel {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "Off",
+            Self::Watch => "Watch",
+            Self::Ask => "Ask",
+            Self::Block => "Block",
+        }
+    }
+
+    #[must_use]
+    pub fn is_widening(self, target: Self) -> bool {
+        (target as u8) < (self as u8)
+    }
+}
+
+impl Default for Preferences {
+    fn default() -> Self {
+        Self {
+            theme: ThemeChoice::Light,
+            render_tier: RenderTier::Full,
+            locale: Locale::EnUs,
+            time_zone: "UTC".to_owned(),
+            show_technical_detail: false,
+        }
+    }
+}
+
+impl<T: Clone> PagingStore<T> {
+    #[must_use]
+    pub fn new(mut items: Vec<T>) -> Self {
+        if items.len() > PAGING_MOUNT_CAP {
+            items.truncate(PAGING_MOUNT_CAP);
+        }
+        Self { items, cursor: 0 }
+    }
+
+    #[must_use]
+    pub fn total(&self) -> usize {
+        self.items.len()
+    }
+
+    #[must_use]
+    pub fn current_page(&self) -> Vec<T> {
+        let end = self
+            .cursor
+            .saturating_add(PAGING_SLICE_SIZE)
+            .min(self.items.len());
+        self.items
+            .get(self.cursor..end)
+            .map_or_else(Vec::new, |slice| slice.to_vec())
+    }
+
+    pub fn next_page(&mut self) {
+        let next = self.cursor.saturating_add(PAGING_SLICE_SIZE);
+        if next < self.items.len() {
+            self.cursor = next;
+        }
+    }
+}
+
+impl DeviceSurfaceState {
+    #[must_use]
+    pub fn label(self, locale: Locale) -> String {
+        let key = match self {
+            Self::Protected => MessageKey::ProfileProtectedStatus,
+            Self::RequestsOnly | Self::Degraded | Self::SafeMode | Self::Stale | Self::Snoozed => {
+                MessageKey::ProfileUserRequestsOnly
+            }
+            Self::ScanOnly => MessageKey::ScanOnlyStatus,
+        };
+        lookup(locale, key)
+    }
+}
+
+impl AppVm {
+    #[must_use]
+    pub fn tray_vm(&self) -> TrayVm {
+        let surface_state = match self.home.install_profile {
+            InstallProfile::Protected => DeviceSurfaceState::Protected,
+            InstallProfile::User => DeviceSurfaceState::RequestsOnly,
+        };
+        TrayVm {
+            surface_state,
+            pending_count: self.home.pending_approvals.len(),
+            install_profile: self.home.install_profile,
+            render_tier: self.preferences.render_tier,
+        }
+    }
 }
 
 /// Pure view-model state transition enforcing narrowing-immediate, widening-proposal, and

@@ -29,27 +29,36 @@ const DLP_CLASSES: BrowserDlpClass[] = [
   "customer_pii",
 ];
 
-export function BrowserPoliciesSection() {
-  const [policies, setPolicies] = useState<BrowserAppPolicy[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+type LoadState<T> =
+  | { kind: "loading" }
+  | { kind: "ready"; data: T; actionError?: string }
+  | { kind: "error"; message: string };
 
+type EvalState =
+  | { kind: "idle" }
+  | { kind: "evaluating"; previousResult?: BrowserEvaluateResponse }
+  | { kind: "resolved"; result: BrowserEvaluateResponse }
+  | { kind: "failed"; message: string; previousResult?: BrowserEvaluateResponse };
+
+export function BrowserPoliciesSection() {
+  const [loadState, setLoadState] = useState<LoadState<BrowserAppPolicy[]>>({ kind: "loading" });
   const [testAppId, setTestAppId] = useState<string>("chatgpt");
   const [testDlpClass, setTestDlpClass] = useState<BrowserDlpClass>("file_upload");
   const [testExt, setTestExt] = useState<string>(".env");
-  const [evalResult, setEvalResult] = useState<BrowserEvaluateResponse | null>(null);
-  const [evaluating, setEvaluating] = useState(false);
+  const [evalState, setEvalState] = useState<EvalState>({ kind: "idle" });
 
   async function loadPolicies() {
-    setError(null);
     try {
       const next = await api.getBrowserPolicies();
-      setPolicies(next);
+      setLoadState({ kind: "ready", data: next });
       setTestAppId((prev) => (next.some((p) => p.id === prev) ? prev : (next[0]?.id ?? "chatgpt")));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed loading browser policies.");
-    } finally {
-      setLoading(false);
+      const message = err instanceof Error ? err.message : "Failed loading browser policies.";
+      setLoadState((prev) =>
+        prev.kind === "ready"
+          ? { kind: "ready", data: prev.data, actionError: message }
+          : { kind: "error", message },
+      );
     }
   }
 
@@ -66,20 +75,37 @@ export function BrowserPoliciesSection() {
       managed_extension_only?: boolean;
     },
   ) {
-    setError(null);
+    setLoadState((prev) =>
+      prev.kind === "ready" ? { kind: "ready", data: prev.data } : prev,
+    );
     try {
       const updated = await api.updateBrowserPolicy(id, patch);
-      setPolicies((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      setLoadState((prev) =>
+        prev.kind === "ready"
+          ? {
+              kind: "ready",
+              data: prev.data.map((p) => (p.id === updated.id ? updated : p)),
+            }
+          : prev,
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed updating browser policy.");
+      const message = err instanceof Error ? err.message : "Failed updating browser policy.";
+      setLoadState((prev) =>
+        prev.kind === "ready"
+          ? { kind: "ready", data: prev.data, actionError: message }
+          : { kind: "error", message },
+      );
     }
   }
 
   async function handleEvaluate() {
-    const selected = policies.find((p) => p.id === testAppId);
+    if (loadState.kind !== "ready") return;
+    const selected = loadState.data.find((p) => p.id === testAppId);
     if (!selected) return;
-    setEvaluating(true);
-    setError(null);
+    setEvalState((prev) => ({
+      kind: "evaluating",
+      previousResult: prev.kind === "resolved" ? prev.result : undefined,
+    }));
     try {
       const res = await api.evaluateBrowserAction({
         app_id: selected.id,
@@ -88,16 +114,19 @@ export function BrowserPoliciesSection() {
         file_extension: testDlpClass === "file_upload" ? testExt.trim() || null : null,
         has_secret_match: true,
       });
-      setEvalResult(res);
+      setEvalState({ kind: "resolved", result: res });
       await loadPolicies();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed running browser DLP check.");
-    } finally {
-      setEvaluating(false);
+      const message = err instanceof Error ? err.message : "Failed running browser DLP check.";
+      setEvalState((prev) => ({
+        kind: "failed",
+        message,
+        previousResult: prev.kind === "evaluating" ? prev.previousResult : undefined,
+      }));
     }
   }
 
-  if (loading && policies.length === 0) {
+  if (loadState.kind === "loading") {
     return (
       <Card padding={3}>
         <Text color="secondary">Loading managed browser AI policies...</Text>
@@ -105,13 +134,28 @@ export function BrowserPoliciesSection() {
     );
   }
 
+  if (loadState.kind === "error") {
+    return <Banner status="error" title={loadState.message} collapsible={false} />;
+  }
+
+  const policies = loadState.data;
+  const errorMessage =
+    loadState.actionError ?? (evalState.kind === "failed" ? evalState.message : undefined);
+  const evalResult =
+    evalState.kind === "resolved"
+      ? evalState.result
+      : evalState.kind === "evaluating" || evalState.kind === "failed"
+        ? evalState.previousResult
+        : undefined;
+  const isEvaluating = evalState.kind === "evaluating";
+
   const enforcedApps = policies.filter((p) => p.mode !== "off").length;
   const blocked24h = policies.reduce((acc, p) => acc + p.blocked_24h, 0);
   const managedOnlyCount = policies.filter((p) => p.managed_extension_only).length;
 
   return (
     <VStack gap={4}>
-      {error && <Banner status="error" title={error} collapsible={false} />}
+      {errorMessage && <Banner status="error" title={errorMessage} collapsible={false} />}
 
       <div className="fleet-strip-3" aria-label="Browser AI enforcement summary">
         <div className="fleet-card">
@@ -267,8 +311,8 @@ export function BrowserPoliciesSection() {
               <Button
                 variant="primary"
                 icon={<GrdrIcon name="play" size={13} />}
-                label={evaluating ? "Checking..." : "Run browser check"}
-                isDisabled={evaluating}
+                label={isEvaluating ? "Checking..." : "Run browser check"}
+                isDisabled={isEvaluating}
                 onClick={handleEvaluate}
               />
             </HStack>

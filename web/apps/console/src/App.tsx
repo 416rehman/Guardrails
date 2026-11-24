@@ -5,19 +5,8 @@ import {
   api,
   getApiToken,
   setApiToken,
-  type ActionAttempt,
-  type ApprovalRequest,
-  type Device,
-  type Finding,
   type GrantScope,
-  type Incident,
-  type KillSwitchState,
   type NavRoute,
-  type OverviewResponse,
-  type OrgPrivacyConfig,
-  type PolicyPack,
-  type SessionSummary,
-  type UserProfile,
 } from "@grdr/api";
 import type { InventorySectionId, ProtectSectionId } from "@grdr/i18n";
 import type { EntityTarget } from "@grdr/kit";
@@ -40,6 +29,20 @@ import { Breadcrumbs } from "./components/Breadcrumbs";
 import { buildBreadcrumbs, buildCommandActions } from "./components/navigation";
 import { SidebarNav } from "./components/SidebarNav";
 import { useConsoleStream } from "./components/useConsoleStream";
+import {
+  EMPTY_CONSOLE_SNAPSHOT,
+  fetchConsoleSnapshot,
+  type ConsoleSnapshot,
+  type DevicePick,
+  type FocusTarget,
+  type LoadState,
+  type PaletteState,
+  type PrefillDraft,
+  type SessionPick,
+  type SidebarDisplay,
+  type StreamState,
+  type TokenBarState,
+} from "./consoleState";
 import { CoveragePage } from "./pages/CoveragePage";
 import { HomePage } from "./pages/HomePage";
 import { InventoryPage } from "./pages/InventoryPage";
@@ -54,38 +57,47 @@ export function App() {
 
   const [route, setRoute] = useState<NavRoute>("home");
   const [inventorySection, setInventorySection] = useState<InventorySectionId>("endpoints");
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+  const [devicePick, setDevicePick] = useState<DevicePick>({ kind: "none" });
   const [sessionsView, setSessionsView] = useState<SessionViewMode>("graph");
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [sessionPick, setSessionPick] = useState<SessionPick>({ kind: "auto" });
   const [protectSection, setProtectSection] = useState<ProtectSectionId>("rules");
   const [theme, setTheme] = useState<GrdrThemeMode>("light");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarDisplay, setSidebarDisplay] = useState<SidebarDisplay>("expanded");
   const [searchQuery, setSearchQuery] = useState("");
-  const [paletteOpen, setPaletteOpen] = useState(false);
-  const [streamDisconnected, setStreamDisconnected] = useState(false);
-  const [loadingError, setLoadingError] = useState<string | null>(null);
-  const [showTokenBar, setShowTokenBar] = useState(false);
-  const [apiTokenInput, setApiTokenInput] = useState(() => getApiToken());
+  const [palette, setPalette] = useState<PaletteState>("closed");
+  const [streamState, setStreamState] = useState<StreamState>({ kind: "connected" });
+  const [loadState, setLoadState] = useState<LoadState<ConsoleSnapshot>>({ kind: "loading" });
+  const [tokenBar, setTokenBar] = useState<TokenBarState>({ kind: "hidden" });
   const [streamVersion, setStreamVersion] = useState(0);
-  const [overview, setOverview] = useState<OverviewResponse | null>(null);
-  const [users, setUsers] = useState<UserProfile[]>([]);
-  const [privacyConfig, setPrivacyConfig] = useState<OrgPrivacyConfig>({
-    identity_mode: "named",
-    user_risk_scoring: true,
-  });
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [packs, setPacks] = useState<PolicyPack[]>([]);
-  const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
-  const [findings, setFindings] = useState<Finding[]>([]);
-  const [incidents, setIncidents] = useState<Incident[]>([]);
-  const [killSwitch, setKillSwitch] = useState<KillSwitchState>({ state: "inactive" });
-  const [prefillAttempt, setPrefillAttempt] = useState<ActionAttempt | null>(null);
-  const [focusedEntity, setFocusedEntity] = useState<EntityTarget | null>(null);
-  const [focusedTurn, setFocusedTurn] = useState<number | null>(null);
+  const [prefill, setPrefill] = useState<PrefillDraft>({ kind: "none" });
+  const [focus, setFocus] = useState<FocusTarget>({ kind: "none" });
+
+  const snapshot =
+    loadState.kind === "ready"
+      ? loadState.data
+      : loadState.kind === "error" && loadState.staleData
+        ? loadState.staleData
+        : EMPTY_CONSOLE_SNAPSHOT;
+  const {
+    overview,
+    users,
+    privacyConfig,
+    devices,
+    sessions,
+    packs,
+    approvals,
+    findings,
+    incidents,
+    killSwitch,
+  } = snapshot;
+  const selectedDeviceId = devicePick.kind === "selected" ? devicePick.deviceId : null;
+  const selectedSessionId = sessionPick.kind === "selected" ? sessionPick.sessionId : null;
+  const focusedEntity = focus.kind === "none" ? null : focus.target;
+  const focusedTurn = focus.kind === "sessionTurn" ? focus.turnIndex : null;
+  const prefillAttempt = prefill.kind === "fromAttempt" ? prefill.attempt : null;
 
   const handleOpenEntity = useCallback((target: EntityTarget) => {
-    setFocusedEntity(target);
+    setFocus({ kind: "entity", target });
     switch (target.kind) {
       case "user":
         setRoute("users");
@@ -95,22 +107,22 @@ export function App() {
         setRoute("inventory");
         break;
       case "agent":
-        setSelectedDeviceId(null);
+        setDevicePick({ kind: "none" });
         setInventorySection("agents");
         setRoute("inventory");
         break;
       case "mcp":
-        setSelectedDeviceId(null);
+        setDevicePick({ kind: "none" });
         setInventorySection("mcps");
         setRoute("inventory");
         break;
       case "artifact":
-        setSelectedDeviceId(null);
+        setDevicePick({ kind: "none" });
         setInventorySection("skills");
         setRoute("inventory");
         break;
       case "session":
-        setSelectedSessionId(target.id);
+        setSessionPick({ kind: "selected", sessionId: target.id });
         setRoute("sessions");
         break;
       case "rule":
@@ -121,52 +133,43 @@ export function App() {
   }, []);
 
   const handleOpenSessionTurn = useCallback((sessionId: string, turnIndex: number) => {
-    setFocusedEntity({ kind: "session", id: sessionId, label: sessionId });
-    setSelectedSessionId(sessionId);
+    setFocus({
+      kind: "sessionTurn",
+      target: { kind: "session", id: sessionId, label: sessionId },
+      turnIndex,
+    });
+    setSessionPick({ kind: "selected", sessionId });
     setSessionsView("trace");
-    setFocusedTurn(turnIndex);
     setRoute("sessions");
   }, []);
 
   const loadAll = useCallback(async () => {
     try {
-      const [ov, usr, prv, dev, sess, pk, apr, fnd, inc, ks] = await Promise.all([
-        api.getOverview(),
-        api.getUsers(),
-        api.getPrivacyConfig(),
-        api.getDevices(),
-        api.getSessions(),
-        api.getPacks(),
-        api.getApprovals(),
-        api.getFindings(),
-        api.getIncidents(),
-        api.getKillSwitch(),
-      ]);
-      setOverview(ov);
-      setUsers(usr);
-      setPrivacyConfig(prv);
-      setDevices(dev);
-      setSessions(sess);
-      setPacks(pk);
-      setApprovals(apr);
-      setFindings(fnd);
-      setIncidents(inc);
-      setKillSwitch(ks);
-      setLoadingError(null);
+      const data = await fetchConsoleSnapshot();
+      setLoadState({ kind: "ready", data });
     } catch (err) {
-      setLoadingError((err as Error).message);
+      const message = err instanceof Error ? err.message : "Failed loading console state";
+      setLoadState((prev) => ({
+        kind: "error",
+        message,
+        staleData: prev.kind === "ready" ? prev.data : prev.kind === "error" ? prev.staleData : undefined,
+      }));
     }
   }, []);
 
-  useConsoleStream(streamVersion, loadAll, setStreamDisconnected);
+  const handleDisconnectedChange = useCallback((disconnected: boolean) => {
+    setStreamState(disconnected ? { kind: "reconnecting" } : { kind: "connected" });
+  }, []);
+
+  useConsoleStream(streamVersion, loadAll, handleDisconnectedChange);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setPaletteOpen((prev) => !prev);
+        setPalette((prev) => (prev === "open" ? "closed" : "open"));
       } else if (e.key === "Escape") {
-        setPaletteOpen(false);
+        setPalette("closed");
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -185,7 +188,7 @@ export function App() {
 
   function handleSelectChild(parent: NavRoute, childId: string) {
     if (parent === "inventory") {
-      setSelectedDeviceId(null);
+      setDevicePick({ kind: "none" });
       setInventorySection(childId as InventorySectionId);
     } else if (parent === "sessions") {
       setSessionsView(childId as SessionViewMode);
@@ -223,15 +226,15 @@ export function App() {
         activeSessionId,
         protectSection,
         onGoHome: () => {
-          setSelectedDeviceId(null);
-          setFocusedEntity(null);
+          setDevicePick({ kind: "none" });
+          setFocus({ kind: "none" });
           setRoute("home");
         },
         onSelectInventorySection: (sec) => {
           setInventorySection(sec);
           setRoute("inventory");
         },
-        onClearDevice: () => setSelectedDeviceId(null),
+        onClearDevice: () => setDevicePick({ kind: "none" }),
         onSelectSessionsView: (view) => {
           setSessionsView(view);
           setRoute("sessions");
@@ -251,44 +254,46 @@ export function App() {
     query: searchQuery,
     onSelectRoute: (next) => {
       setRoute(next);
-      setPaletteOpen(false);
+      setPalette("closed");
     },
     onSelectChild: (parent, childId) => {
       handleSelectChild(parent, childId);
-      setPaletteOpen(false);
+      setPalette("closed");
     },
     onToggleTheme: () => {
       setTheme((prev) => (prev === "dark" ? "light" : "dark"));
-      setPaletteOpen(false);
+      setPalette("closed");
     },
     onShowTokenBar: () => {
-      setShowTokenBar(true);
-      setPaletteOpen(false);
+      setTokenBar({ kind: "editing", input: getApiToken() });
+      setPalette("closed");
     },
     onInspectDevice: (dev) => {
       setSearchQuery(dev.hostname);
       setInventorySection("endpoints");
-      setSelectedDeviceId(dev.id);
+      setDevicePick({ kind: "selected", deviceId: dev.id });
       setRoute("inventory");
-      setPaletteOpen(false);
+      setPalette("closed");
     },
   });
 
   return (
     <GrdrThemeProvider mode={theme}>
-      <div className={sidebarCollapsed ? "shell collapsed" : "shell"}>
+      <div className={sidebarDisplay === "collapsed" ? "shell collapsed" : "shell"}>
         <SidebarNav
           route={route}
           activeChildId={activeChildId}
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
+          collapsed={sidebarDisplay === "collapsed"}
+          onToggleCollapse={() =>
+            setSidebarDisplay((prev) => (prev === "collapsed" ? "expanded" : "collapsed"))
+          }
           onSelectRoute={(next) => {
-            if (next === "inventory") setSelectedDeviceId(null);
+            if (next === "inventory") setDevicePick({ kind: "none" });
             setRoute(next);
           }}
           onSelectChild={handleSelectChild}
           pendingApprovals={pendingApprovals}
-          streamDisconnected={streamDisconnected}
+          streamDisconnected={streamState.kind === "reconnecting"}
           deviceCount={devices.length}
           sessionCount={sessions.length}
         />
@@ -299,7 +304,7 @@ export function App() {
             <button
               type="button"
               className="search-trigger"
-              onClick={() => setPaletteOpen(true)}
+              onClick={() => setPalette("open")}
               aria-label="Open command search"
             >
               <span className="nav-item-label">
@@ -322,12 +327,12 @@ export function App() {
             </div>
           </header>
 
-          {showTokenBar && (
+          {tokenBar.kind === "editing" && (
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                setApiToken(apiTokenInput);
-                setShowTokenBar(false);
+                setApiToken(tokenBar.input);
+                setTokenBar({ kind: "hidden" });
                 setStreamVersion((v) => v + 1);
               }}
             >
@@ -338,8 +343,8 @@ export function App() {
                     isLabelHidden
                     type="password"
                     placeholder="Paste --api-token value"
-                    value={apiTokenInput}
-                    onChange={(val) => setApiTokenInput(val)}
+                    value={tokenBar.input}
+                    onChange={(val) => setTokenBar({ kind: "editing", input: val })}
                     width="100%"
                   />
                 </div>
@@ -348,9 +353,8 @@ export function App() {
                   size="sm"
                   label="Clear"
                   onClick={() => {
-                    setApiTokenInput("");
                     setApiToken("");
-                    setShowTokenBar(false);
+                    setTokenBar({ kind: "hidden" });
                     setStreamVersion((v) => v + 1);
                   }}
                 />
@@ -360,10 +364,10 @@ export function App() {
 
           <main className="main-scroll">
             <Breadcrumbs items={breadcrumbs} />
-            {loadingError && (
+            {loadState.kind === "error" && (
               <Banner
                 status="error"
-                title={`API unreachable: ${loadingError}`}
+                title={`API unreachable: ${loadState.message}`}
                 collapsible={false}
                 role="alert"
                 endContent={<Button size="sm" label="Retry" onClick={() => void loadAll()} />}
@@ -388,7 +392,7 @@ export function App() {
                 privacyConfig={privacyConfig}
                 searchQuery={searchQuery}
                 focusedEntity={focusedEntity}
-                onClearFocus={() => setFocusedEntity(null)}
+                onClearFocus={() => setFocus({ kind: "none" })}
                 onOpenEntity={handleOpenEntity}
                 onOpenSessionTurn={handleOpenSessionTurn}
                 onPrivacyUpdated={() => void loadAll()}
@@ -401,9 +405,9 @@ export function App() {
                 section={inventorySection}
                 onSectionChange={setInventorySection}
                 selectedDeviceId={selectedDeviceId}
-                onSelectDevice={setSelectedDeviceId}
+                onSelectDevice={(id) => setDevicePick(id ? { kind: "selected", deviceId: id } : { kind: "none" })}
                 focusedEntity={focusedEntity}
-                onClearFocus={() => setFocusedEntity(null)}
+                onClearFocus={() => setFocus({ kind: "none" })}
                 onOpenEntity={handleOpenEntity}
                 onRefresh={() => void loadAll()}
               />
@@ -416,14 +420,20 @@ export function App() {
                 section={sessionsView}
                 onSectionChange={setSessionsView}
                 selectedSessionId={selectedSessionId}
-                onSelectSessionId={setSelectedSessionId}
+                onSelectSessionId={(id) =>
+                  setSessionPick(id ? { kind: "selected", sessionId: id } : { kind: "auto" })
+                }
                 focusedEntity={focusedEntity}
                 focusedTurn={focusedTurn}
-                onClearFocus={() => setFocusedEntity(null)}
-                onClearFocusedTurn={() => setFocusedTurn(null)}
+                onClearFocus={() => setFocus({ kind: "none" })}
+                onClearFocusedTurn={() =>
+                  setFocus((prev) =>
+                    prev.kind === "sessionTurn" ? { kind: "entity", target: prev.target } : prev,
+                  )
+                }
                 onOpenEntity={handleOpenEntity}
                 onCreateRuleFromAttempt={(attempt) => {
-                  setPrefillAttempt(attempt);
+                  setPrefill({ kind: "fromAttempt", attempt });
                   setProtectSection("rules");
                   setRoute("protect");
                 }}
@@ -437,7 +447,7 @@ export function App() {
                 onSectionChange={setProtectSection}
                 prefillAttempt={prefillAttempt}
                 focusedEntity={focusedEntity}
-                onClearPrefill={() => setPrefillAttempt(null)}
+                onClearPrefill={() => setPrefill({ kind: "none" })}
                 onOpenEntity={handleOpenEntity}
                 onUpdated={() => void loadAll()}
               />
@@ -461,7 +471,14 @@ export function App() {
         </div>
       </div>
 
-      <Dialog isOpen={paletteOpen} onOpenChange={setPaletteOpen} purpose="info" width={560} padding={2} aria-label="Command palette">
+      <Dialog
+        isOpen={palette === "open"}
+        onOpenChange={(open) => setPalette(open ? "open" : "closed")}
+        purpose="info"
+        width={560}
+        padding={2}
+        aria-label="Command palette"
+      >
         <div style={{ padding: "var(--space-1)" }}>
           <TextInput
             label="Filter commands"

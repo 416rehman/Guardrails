@@ -24,7 +24,7 @@ use grdr_model::{
     CreateRuleInput, DecideApprovalInput, DecideInput, DecisionReceipt, DeploymentKey, Device,
     DiscoveredAgent, Finding, HealthResponse, Incident, IntegrationEntry, KillSwitchInput,
     KillSwitchState, McpServerEntry, MdmRenderRequest, MdmRenderResponse, OrgPrivacyConfig,
-    OverviewResponse, PolicyPack, PolicyRule, ReplayRuleInput, ReplaySummary,
+    OverviewResponse, PolicyPack, PolicyRule, ReplayRuleInput, ReplaySummary, ServerHealth,
     SessionDetailResponse, SessionSummary, TrustedKeyInfo, UpdateFindingInput,
     UpdatePrivacyConfigInput, UpdateRuleInput, UpdateRuleModeInput, UserDetailResponse,
     UserProfile,
@@ -163,9 +163,9 @@ fn err_response(err: CodedError) -> (StatusCode, Json<CodedError>) {
 
 async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
     Json(HealthResponse {
-        status: "ok".into(),
+        status: ServerHealth::Ok,
         version: env!("CARGO_PKG_VERSION").into(),
-        storage_mode: state.storage_mode,
+        storage_mode: state.backend.storage_mode(),
         timestamp: Timestamp::now(),
     })
 }

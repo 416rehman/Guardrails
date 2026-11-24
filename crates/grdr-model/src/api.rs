@@ -145,9 +145,25 @@ pub struct SetupStep {
     pub detail: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServerHealth {
+    Ok,
+    Healthy,
+    Degraded,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum StorageMode {
+    Memory,
+    Sqlite { path: String },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OverviewResponse {
-    pub server_status: String,
+    pub server_status: ServerHealth,
     pub total_devices: usize,
     pub online_devices: usize,
     pub total_agents: usize,
@@ -164,9 +180,9 @@ pub struct OverviewResponse {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HealthResponse {
-    pub status: String,
+    pub status: ServerHealth,
     pub version: String,
-    pub storage_mode: String,
+    pub storage_mode: StorageMode,
     pub timestamp: Timestamp,
 }
 
@@ -315,6 +331,15 @@ pub struct LiveEvent {
     pub summary: String,
     pub verdict: Option<Verdict>,
     pub timestamp: Timestamp,
+}
+
+impl StorageMode {
+    pub fn label(&self) -> String {
+        match self {
+            Self::Memory => "embedded:memory".into(),
+            Self::Sqlite { path } => format!("embedded:sqlite:{path}"),
+        }
+    }
 }
 
 impl DecideInput {

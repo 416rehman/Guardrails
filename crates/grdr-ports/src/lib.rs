@@ -55,9 +55,17 @@ pub struct PortSnapshot {
     pub pending_receipts: Vec<DecisionReceipt>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContainmentMode {
+    Advisory,
+    Restricted,
+    Isolated,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PreparedContainment {
-    pub mode: String,
+    pub mode: ContainmentMode,
     pub binary: String,
     pub sanitized_args: Vec<String>,
     pub stripped_env_keys: Vec<String>,
@@ -88,7 +96,7 @@ pub trait SensorPort {
 }
 
 pub trait SandboxPort {
-    fn containment_mode(&self) -> &'static str;
+    fn containment_mode(&self) -> ContainmentMode;
     fn prepare_command(
         &self,
         binary: &str,

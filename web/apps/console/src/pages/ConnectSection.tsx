@@ -26,38 +26,68 @@ import {
 } from "@grdr/ui";
 import { ConnectMdmAndIntegrations } from "./ConnectMdmAndIntegrations";
 
+type ConnectLoadState =
+  | { kind: "loading" }
+  | { kind: "ready"; config: ConnectConfigResponse; actionError?: string }
+  | { kind: "error"; message: string };
+
+type IssueKeyState =
+  | { kind: "idle" }
+  | { kind: "issuing" }
+  | { kind: "issued"; created: CreateDeploymentKeyResponse }
+  | { kind: "failed"; message: string };
+
+type MdmRenderState =
+  | { kind: "idle" }
+  | { kind: "rendering"; previous?: MdmRenderResponse }
+  | { kind: "ready"; payload: MdmRenderResponse }
+  | { kind: "failed"; message: string; previous?: MdmRenderResponse };
+
+type ReadinessCheckState =
+  | { kind: "idle" }
+  | { kind: "checking"; integrationId: string }
+  | { kind: "failed"; message: string };
+
+type CopyState =
+  | { kind: "idle" }
+  | { kind: "copied"; snippetId: string };
+
 export function ConnectSection() {
-  const [config, setConfig] = useState<ConnectConfigResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadState, setLoadState] = useState<ConnectLoadState>({ kind: "loading" });
   const [platform, setPlatform] = useState<string>("macos");
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copyState, setCopyState] = useState<CopyState>({ kind: "idle" });
 
   const [keyLabel, setKeyLabel] = useState("Finance Pilot");
   const [keyWave, setKeyWave] = useState("wave-3");
   const [keyProfile, setKeyProfile] = useState("standard");
   const [keyMaxUses, setKeyMaxUses] = useState("50");
   const [keyTtlDays, setKeyTtlDays] = useState("30");
-  const [createdKey, setCreatedKey] = useState<CreateDeploymentKeyResponse | null>(null);
-  const [issuingKey, setIssuingKey] = useState(false);
+  const [issueState, setIssueState] = useState<IssueKeyState>({ kind: "idle" });
 
   const [mdmFormat, setMdmFormat] = useState<MdmFormat>("intune_win32");
   const [selectedKeyId, setSelectedKeyId] = useState<string>("");
   const [includeBrowser, setIncludeBrowser] = useState<"enabled" | "disabled">("enabled");
   const [updateAuthority, setUpdateAuthority] = useState<"managed" | "self">("managed");
-  const [renderedMdm, setRenderedMdm] = useState<MdmRenderResponse | null>(null);
-  const [checkingId, setCheckingId] = useState<string | null>(null);
+  const [mdmState, setMdmState] = useState<MdmRenderState>({ kind: "idle" });
+  const [readinessState, setReadinessState] = useState<ReadinessCheckState>({ kind: "idle" });
+
+  const loadedConfig = loadState.kind === "ready" ? loadState.config : null;
 
   async function loadConfig() {
-    setError(null);
     try {
       const next = await api.getConnectConfig();
-      setConfig(next);
+      setLoadState({ kind: "ready", config: next });
       setSelectedKeyId((prev) => {
         if (prev && next.deployment_keys.some((k) => k.id === prev)) return prev;
         return next.deployment_keys.find((k) => k.status === "active")?.id ?? "";
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed loading Connect configuration.");
+      const message = err instanceof Error ? err.message : "Failed loading Connect configuration.";
+      setLoadState((prev) =>
+        prev.kind === "ready"
+          ? { kind: "ready", config: prev.config, actionError: message }
+          : { kind: "error", message },
+      );
     }
   }
 
@@ -66,8 +96,12 @@ export function ConnectSection() {
   }, []);
 
   useEffect(() => {
-    if (!config) return;
+    if (!loadedConfig) return;
     let active = true;
+    setMdmState((prev) => ({
+      kind: "rendering",
+      previous: prev.kind === "ready" ? prev.payload : prev.kind === "rendering" ? prev.previous : undefined,
+    }));
     void api
       .renderMdmConfig({
         format: mdmFormat,
@@ -76,29 +110,37 @@ export function ConnectSection() {
         update_authority: updateAuthority,
       })
       .then((res) => {
-        if (active) setRenderedMdm(res);
+        if (active) setMdmState({ kind: "ready", payload: res });
       })
       .catch((err) => {
-        if (active) setError(err instanceof Error ? err.message : "Failed rendering MDM payload.");
+        if (active) {
+          const message = err instanceof Error ? err.message : "Failed rendering MDM payload.";
+          setMdmState((prev) => ({
+            kind: "failed",
+            message,
+            previous: prev.kind === "rendering" ? prev.previous : undefined,
+          }));
+        }
       });
     return () => {
       active = false;
     };
-  }, [config, mdmFormat, selectedKeyId, includeBrowser, updateAuthority]);
+  }, [loadedConfig, mdmFormat, selectedKeyId, includeBrowser, updateAuthority]);
 
   function copySnippet(id: string, value: string) {
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
       void navigator.clipboard.writeText(value);
     }
-    setCopiedId(id);
+    setCopyState({ kind: "copied", snippetId: id });
     setTimeout(() => {
-      setCopiedId((prev) => (prev === id ? null : prev));
+      setCopyState((prev) =>
+        prev.kind === "copied" && prev.snippetId === id ? { kind: "idle" } : prev,
+      );
     }, 1800);
   }
 
   async function handleIssueKey() {
-    setIssuingKey(true);
-    setError(null);
+    setIssueState({ kind: "issuing" });
     try {
       const maxUses = Math.max(1, Number.parseInt(keyMaxUses, 10) || 50);
       const ttlDays = Math.max(1, Number.parseInt(keyTtlDays, 10) || 30);
@@ -109,49 +151,61 @@ export function ConnectSection() {
         max_uses: maxUses,
         ttl_days: ttlDays,
       });
-      setCreatedKey(res);
+      setIssueState({ kind: "issued", created: res });
       setSelectedKeyId(res.key.id);
       await loadConfig();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed issuing deployment key.");
-    } finally {
-      setIssuingKey(false);
+      setIssueState({
+        kind: "failed",
+        message: err instanceof Error ? err.message : "Failed issuing deployment key.",
+      });
     }
   }
 
   async function handleRevokeKey(id: string) {
-    setError(null);
+    setLoadState((prev) =>
+      prev.kind === "ready" ? { kind: "ready", config: prev.config } : prev,
+    );
     try {
       await api.revokeDeploymentKey(id);
       await loadConfig();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed revoking deployment key.");
+      const message = err instanceof Error ? err.message : "Failed revoking deployment key.";
+      setLoadState((prev) =>
+        prev.kind === "ready"
+          ? { kind: "ready", config: prev.config, actionError: message }
+          : { kind: "error", message },
+      );
     }
   }
 
   async function handleCheckReadiness(item: IntegrationEntry) {
-    setCheckingId(item.id);
-    setError(null);
+    setReadinessState({ kind: "checking", integrationId: item.id });
     try {
       const updated = await api.checkIntegrationReadiness(item.id);
-      setConfig((prev) =>
-        prev
+      setLoadState((prev) =>
+        prev.kind === "ready"
           ? {
-              ...prev,
-              integrations: prev.integrations.map((entry) =>
-                entry.id === updated.id ? updated : entry,
-              ),
+              kind: "ready",
+              config: {
+                ...prev.config,
+                integrations: prev.config.integrations.map((entry) =>
+                  entry.id === updated.id ? updated : entry,
+                ),
+              },
             }
           : prev,
       );
+      setReadinessState({ kind: "idle" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed verifying integration readiness.");
-    } finally {
-      setCheckingId(null);
+      setReadinessState({
+        kind: "failed",
+        message: err instanceof Error ? err.message : "Failed verifying integration readiness.",
+      });
     }
   }
 
-  if (!config && !error) {
+  if (loadState.kind === "loading") {
     return (
       <Card padding={3}>
         <Text color="secondary">Loading endpoint onboarding, MDM configs, and identity sync state...</Text>
@@ -159,13 +213,38 @@ export function ConnectSection() {
     );
   }
 
+  if (loadState.kind === "error") {
+    return <Banner status="error" title={loadState.message} collapsible={false} />;
+  }
+
+  const config = loadState.config;
+  const errorMessage =
+    loadState.actionError ??
+    (issueState.kind === "failed"
+      ? issueState.message
+      : mdmState.kind === "failed"
+        ? mdmState.message
+        : readinessState.kind === "failed"
+          ? readinessState.message
+          : undefined);
+  const createdKey = issueState.kind === "issued" ? issueState.created : null;
+  const issuingKey = issueState.kind === "issuing";
+  const copiedId = copyState.kind === "copied" ? copyState.snippetId : null;
+  const checkingId = readinessState.kind === "checking" ? readinessState.integrationId : null;
+  const renderedMdm =
+    mdmState.kind === "ready"
+      ? mdmState.payload
+      : mdmState.kind === "rendering" || mdmState.kind === "failed"
+        ? (mdmState.previous ?? null)
+        : null;
+
   const activeInstaller =
-    config?.installers.find((item) => item.platform === platform) ?? config?.installers[0];
+    config.installers.find((item) => item.platform === platform) ?? config.installers[0];
 
   return (
     <VStack gap={4}>
-      {error && (
-        <Banner status="error" title={error} collapsible={false} />
+      {errorMessage && (
+        <Banner status="error" title={errorMessage} collapsible={false} />
       )}
 
       {createdKey && (

@@ -244,6 +244,18 @@ export function presentFindingTitle(rawTitle: string, agentName?: string): strin
   return clean.trim();
 }
 
+export function presentIncidentSummary(rawSummary: string): string {
+  const cleaned = rawSummary
+    .replace(
+      /\b(?:exec|file\.read|file\.write|file\.delete|net\.connect|net\.request|mcp\.call|cred\.use|elevate|config\.change|data\.flow)\b/g,
+      (token) => formatActionLabel(token).toLowerCase(),
+    )
+    .replace(/\s*;\s*/g, ". ")
+    .trim();
+  if (!cleaned) return cleaned;
+  return /[.!?]$/.test(cleaned) ? cleaned : `${cleaned}.`;
+}
+
 export function capitalizeLabel(value: string): string {
   if (!value) return value;
   return value.charAt(0).toUpperCase() + value.slice(1);

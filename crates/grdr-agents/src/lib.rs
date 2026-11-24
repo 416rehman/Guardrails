@@ -16,7 +16,9 @@ pub use discover::{
     discover_local_agents,
 };
 pub use hook_codec::{HarnessKind, parse_claude_hook_stdin, parse_hook_stdin};
-pub use install::{HookInstallReport, HookTargetKind, install_hook, uninstall_hook};
+pub use install::{
+    HookInstallReport, HookTargetKind, InstallOutcome, install_hook, uninstall_hook,
+};
 pub use windows_discovery::{
     CODE_WIN_SNAPSHOT_UNAVAILABLE, DiscoveryObserverState, ObservedWindowsAgent,
     ProcessInstanceKey, ProcessSnapshotSource, SystemWindowsProcessSource, WindowsDiscoveryEvent,

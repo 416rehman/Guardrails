@@ -213,7 +213,7 @@ export const api = {
   exportOcsf: () => downloadExport("/api/v1/exports/ocsf", "guardrails-ocsf-1.9.json"),
   exportAuditJsonl: () =>
     downloadExport("/api/v1/exports/audit.jsonl", "guardrails-audit.jsonl"),
-  getConnectConfig: () => requestJson<import("./types").ConnectConfigResponse>("/api/v1/connect/config"),
+  getConnectConfig: () => requestJson<import("./types-connect").ConnectConfigResponse>("/api/v1/connect/config"),
   createDeploymentKey: (body: {
     label: string;
     wave: string;
@@ -221,32 +221,32 @@ export const api = {
     max_uses: number;
     ttl_days: number;
   }) =>
-    requestJson<import("./types").CreateDeploymentKeyResponse>("/api/v1/connect/deployment-keys", {
+    requestJson<import("./types-connect").CreateDeploymentKeyResponse>("/api/v1/connect/deployment-keys", {
       method: "POST",
       body: JSON.stringify(body),
     }),
   revokeDeploymentKey: (id: string) =>
-    requestJson<import("./types").DeploymentKey>(
+    requestJson<import("./types-connect").DeploymentKey>(
       `/api/v1/connect/deployment-keys/${encodeURIComponent(id)}/revoke`,
       { method: "POST" },
     ),
   renderMdmConfig: (body: {
-    format: import("./types").MdmFormat;
+    format: import("./types-connect").MdmFormat;
     deployment_key_id?: string | null;
     include_browser_extension: boolean;
     update_authority: string;
   }) =>
-    requestJson<import("./types").MdmRenderResponse>("/api/v1/connect/mdm-render", {
+    requestJson<import("./types-connect").MdmRenderResponse>("/api/v1/connect/mdm-render", {
       method: "POST",
       body: JSON.stringify(body),
     }),
   checkIntegrationReadiness: (id: string) =>
-    requestJson<import("./types").IntegrationEntry>(
+    requestJson<import("./types-connect").IntegrationEntry>(
       `/api/v1/integrations/${encodeURIComponent(id)}/check-readiness`,
       { method: "POST" },
     ),
   getBrowserPolicies: () =>
-    requestJson<import("./types").BrowserAppPolicy[]>("/api/v1/browser/policies"),
+    requestJson<import("./types-connect").BrowserAppPolicy[]>("/api/v1/browser/policies"),
   updateBrowserPolicy: (
     id: string,
     body: {
@@ -256,18 +256,18 @@ export const api = {
       managed_extension_only?: boolean;
     },
   ) =>
-    requestJson<import("./types").BrowserAppPolicy>(
+    requestJson<import("./types-connect").BrowserAppPolicy>(
       `/api/v1/browser/policies/${encodeURIComponent(id)}`,
       { method: "PATCH", body: JSON.stringify(body) },
     ),
   evaluateBrowserAction: (body: {
     app_id: string;
     domain: string;
-    dlp_class: import("./types").BrowserDlpClass;
+    dlp_class: import("./types-connect").BrowserDlpClass;
     file_extension?: string | null;
     has_secret_match: boolean;
   }) =>
-    requestJson<import("./types").BrowserEvaluateResponse>("/api/v1/browser/evaluate", {
+    requestJson<import("./types-connect").BrowserEvaluateResponse>("/api/v1/browser/evaluate", {
       method: "POST",
       body: JSON.stringify(body),
     }),

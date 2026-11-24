@@ -253,7 +253,7 @@ pub fn sidebar_rail(app: &DesktopApp, t: &StudioTheme) -> El {
         (
             &icons::SHIELD_CHECK,
             t.c.allow,
-            app.vm.tray_vm().status_label.to_owned(),
+            app.vm.tray_vm().surface_state.label(app.vm.preferences.locale),
         )
     } else {
         (&icons::LAYERS, t.c.ask, "Setup in progress".to_owned())
