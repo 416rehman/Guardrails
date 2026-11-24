@@ -11,7 +11,7 @@ use clap::Parser;
 use jiff::Timestamp;
 use uuid::Uuid;
 
-use grdr_agents::{detect_hostname, parse_claude_hook_stdin};
+use grdr_agents::{HarnessKind, detect_hostname, parse_hook_stdin};
 use grdr_core::compile::evaluate_compiled_floor;
 use grdr_core::policy::sha256_hex;
 use grdr_crypto::verify_floor_table;
@@ -45,7 +45,7 @@ struct Args {
     #[arg(long)]
     target: Option<String>,
 
-    #[arg(long, default_value = "claude-code")]
+    #[arg(long, default_value = "auto")]
     agent: String,
 
     #[arg(long, default_value = "sess-cli-hook")]
@@ -78,7 +78,7 @@ fn main() -> ExitCode {
         if raw.trim().is_empty() {
             return ExitCode::SUCCESS;
         }
-        match parse_claude_hook_stdin(&raw, &device_name) {
+        match parse_hook_stdin(HarnessKind::from_name(&args.agent), &raw, &device_name) {
             Ok(attempt) => attempt,
             Err(err) => {
                 eprintln!("grdr-hook invalid payload: {err}");
@@ -250,6 +250,7 @@ fn evaluate_failsafe(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use grdr_agents::parse_claude_hook_stdin;
     use grdr_core::compile::compile_floor_table;
     use grdr_crypto::SigningKeypair;
     use grdr_model::{ApprovalGrade, PolicyPack, PolicyRule, RuleMatch};

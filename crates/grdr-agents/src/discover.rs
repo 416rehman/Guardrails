@@ -398,7 +398,7 @@ fn assurance_for_hook(hook_installed: bool, profile: InstallProfile) -> Assuranc
     }
 }
 
-fn detect_home_dir() -> Option<PathBuf> {
+pub fn detect_home_dir() -> Option<PathBuf> {
     env::var_os("HOME")
         .or_else(|| env::var_os("USERPROFILE"))
         .map(PathBuf::from)

@@ -10,5 +10,13 @@ privilege = "privileged"
 surface = "internal"
 renders = "none"
 
+[dependencies]
+grdr-crypto = { workspace = true }
+grdr-model = { workspace = true }
+jiff = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
 [lints]
 workspace = true

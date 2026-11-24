@@ -493,6 +493,7 @@ dependencies = [
  "grdr-core",
  "grdr-crypto",
  "grdr-model",
+ "grdr-store-local",
  "jiff",
  "reqwest",
  "serde",
@@ -603,6 +604,14 @@ dependencies = [
 [[package]]
 name = "grdr-store-local"
 version = "0.1.0"
+dependencies = [
+ "grdr-crypto",
+ "grdr-model",
+ "jiff",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
 
 [[package]]
 name = "grdr-wasm"

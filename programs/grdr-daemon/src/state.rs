@@ -20,6 +20,7 @@ use grdr_model::{
     KillSwitchState, PolicyPack, SessionSummary, SignedFloorBundle, TrustedKeyInfo, slugify_id,
     summarize_sessions,
 };
+use grdr_store_local::{LocalStore, PersistedDaemonSnapshot, SNAPSHOT_SCHEMA_VERSION};
 
 const MAX_LOCAL_HISTORY: usize = 300;
 
@@ -55,6 +56,7 @@ pub struct DaemonData {
     pub trusted_keys: Vec<TrustedKeyInfo>,
     pub signing_key: SigningKeypair,
     pub floor_table_path: Option<PathBuf>,
+    pub local_store: Option<LocalStore>,
     pub kill_switch: KillSwitchState,
     pub attempts: Vec<ActionAttempt>,
     pub receipts: Vec<DecisionReceipt>,
@@ -68,11 +70,12 @@ pub struct DaemonState {
 }
 
 impl DaemonState {
-    pub fn init(
+    pub fn init_with_store(
         profile: InstallProfile,
         device_name: Option<String>,
         server_url: Option<String>,
         floor_table_path: Option<PathBuf>,
+        data_dir: Option<PathBuf>,
     ) -> Result<Self, String> {
         let mut discovery = discover_local_agents(profile);
         if let Some(custom) = device_name
@@ -82,9 +85,26 @@ impl DaemonState {
         }
         let device_id = format!("dev-{}", slugify_id(&discovery.device_name, 40, "local"));
         let hostname = discovery.device_name.clone();
-        let signing_key = SigningKeypair::generate()
-            .map_err(|e| format!("failed generating daemon signing key: {e}"))?;
-        let data = DaemonData {
+
+        let local_store = match data_dir {
+            Some(dir) => Some(LocalStore::open(dir).map_err(|e| e.to_string())?),
+            None => None,
+        };
+
+        let signing_key = match &local_store {
+            Some(store) => store
+                .load_or_create_signing_key()
+                .map_err(|e| e.to_string())?,
+            None => SigningKeypair::generate()
+                .map_err(|e| format!("failed generating daemon signing key: {e}"))?,
+        };
+
+        let restored = match &local_store {
+            Some(store) => store.load_snapshot().map_err(|e| e.to_string())?,
+            None => None,
+        };
+
+        let mut data = DaemonData {
             device_id,
             hostname,
             install_profile: profile,
@@ -98,12 +118,31 @@ impl DaemonState {
             trusted_keys: Vec::new(),
             signing_key,
             floor_table_path,
+            local_store,
             kill_switch: KillSwitchState::Inactive,
             attempts: Vec::new(),
             receipts: Vec::new(),
             pending_attempts: Vec::new(),
             pending_receipts: Vec::new(),
         };
+
+        if let Some(snapshot) = restored {
+            data.device_id = snapshot.device_id;
+            data.hostname = snapshot.hostname;
+            if !snapshot.packs.is_empty() {
+                data.packs = snapshot.packs;
+            }
+            data.grants = snapshot.grants;
+            data.trusted_keys = snapshot.trusted_keys;
+            data.kill_switch = snapshot.kill_switch;
+            data.attempts = snapshot.attempts;
+            data.receipts = snapshot.receipts;
+            data.pending_attempts = snapshot.pending_attempts;
+            data.pending_receipts = snapshot.pending_receipts;
+        } else {
+            let _ = persist_daemon_snapshot(&data);
+        }
+
         let _ = write_signed_floor_bundle(&data, Timestamp::now());
 
         Ok(Self {
@@ -189,6 +228,11 @@ impl DaemonState {
             guard.receipts.drain(..excess);
         }
 
+        if let Some(store) = &guard.local_store {
+            let _ = store.append_receipt_wal(&receipt);
+        }
+        let _ = persist_daemon_snapshot(&guard);
+
         receipt
     }
 
@@ -200,6 +244,26 @@ impl DaemonState {
 
 pub fn default_floor_table_path() -> PathBuf {
     std::env::temp_dir().join("grdr-failsafe-floor.json")
+}
+
+pub(crate) fn persist_daemon_snapshot(data: &DaemonData) -> Result<(), String> {
+    let Some(store) = &data.local_store else {
+        return Ok(());
+    };
+    let snapshot = PersistedDaemonSnapshot {
+        schema_version: SNAPSHOT_SCHEMA_VERSION,
+        device_id: data.device_id.clone(),
+        hostname: data.hostname.clone(),
+        packs: data.packs.clone(),
+        grants: data.grants.clone(),
+        trusted_keys: data.trusted_keys.clone(),
+        kill_switch: data.kill_switch.clone(),
+        attempts: data.attempts.clone(),
+        receipts: data.receipts.clone(),
+        pending_attempts: data.pending_attempts.clone(),
+        pending_receipts: data.pending_receipts.clone(),
+    };
+    store.save_snapshot(&snapshot).map_err(|e| e.to_string())
 }
 
 pub(crate) fn write_signed_floor_bundle(data: &DaemonData, now: Timestamp) -> Result<(), String> {
