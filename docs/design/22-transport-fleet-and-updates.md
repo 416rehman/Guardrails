@@ -230,7 +230,7 @@ Requires the server's `control` target; attestation also requires 22-11's device
 | Method | Credential | Admission | Use |
 |---|---|---|---|
 | Single-use token | 256-bit random, prefix `grdr_et_`, 7-day default expiry | Admitted | `grdr join` by a person |
-| Deployment key | Per organisation or group, multi-use, expiring, revocable | `pending`: organisation packs run in Watch until an admin or rule admits | RMM, MDM, images, VDI |
+| Deployment key | Per organisation or group, multi-use, expiring, revocable, with configurable `max_uses` (`used / limit`) wave quotas for phased rollouts | `pending`: organisation packs run in Watch until an admin or rule admits | RMM, MDM, images, VDI |
 | Attestation | Device key attested by the TPM, or by Apple managed device attestation (prior knowledge, not in a brief; verified by 22-15) | A rule may auto-admit | Zero-touch fleets |
 | Workload federation | Kubernetes projected service-account token, CI OIDC token, cloud instance identity | Federation rule: issuer, audience, subject pattern, group, lifetime | Containers, CI, cloud VMs |
 
