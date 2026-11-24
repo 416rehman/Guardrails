@@ -566,10 +566,22 @@ dependencies = [
 [[package]]
 name = "grdr-ports"
 version = "0.1.0"
+dependencies = [
+ "grdr-model",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "grdr-ports-testkit"
 version = "0.1.0"
+dependencies = [
+ "grdr-core",
+ "grdr-model",
+ "grdr-ports",
+ "jiff",
+ "uuid",
+]
 
 [[package]]
 name = "grdr-proto"
@@ -588,6 +600,11 @@ dependencies = [
 [[package]]
 name = "grdr-schema"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+]
 
 [[package]]
 name = "grdr-sensor-linux"
@@ -622,6 +639,8 @@ version = "0.1.0"
 dependencies = [
  "grdr-crypto",
  "grdr-model",
+ "grdr-ports",
+ "grdr-ports-testkit",
  "jiff",
  "serde",
  "serde_json",
@@ -635,6 +654,14 @@ version = "0.1.0"
 [[package]]
 name = "grdr-wire"
 version = "0.1.0"
+dependencies = [
+ "grdr-crypto",
+ "grdr-model",
+ "jiff",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
 
 [[package]]
 name = "heck"

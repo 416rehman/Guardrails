@@ -10,5 +10,12 @@ privilege = "none"
 surface = "public"
 renders = "none"
 
+[dependencies]
+grdr-model = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
 [lints]
 workspace = true
