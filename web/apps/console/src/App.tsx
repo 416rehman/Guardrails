@@ -1,6 +1,6 @@
 import "./styles.css";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   api,
   getApiToken,
@@ -19,8 +19,8 @@ import {
   type SessionSummary,
   type UserProfile,
 } from "@grdr/api";
-import { CONSOLE_ROUTES, pluralize, t } from "@grdr/i18n";
-import { type EntityTarget } from "@grdr/kit";
+import type { InventorySectionId, ProtectSectionId } from "@grdr/i18n";
+import type { EntityTarget } from "@grdr/kit";
 import {
   Badge,
   Banner,
@@ -28,23 +28,24 @@ import {
   Dialog,
   GrdrIcon,
   GrdrThemeProvider,
-  GuardrailsMark,
   HeroWaveBackdrop,
   HStack,
-  IconButton,
   Kbd,
   TextInput,
   UiSdkInlineBar,
-  iconKeyToName,
   useUiSdkReadOnlyAgentBridge,
   type GrdrThemeMode,
 } from "@grdr/ui";
+import { Breadcrumbs } from "./components/Breadcrumbs";
+import { buildBreadcrumbs, buildCommandActions } from "./components/navigation";
+import { SidebarNav } from "./components/SidebarNav";
+import { useConsoleStream } from "./components/useConsoleStream";
 import { CoveragePage } from "./pages/CoveragePage";
 import { HomePage } from "./pages/HomePage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { ProtectPage } from "./pages/ProtectPage";
 import { RespondPage } from "./pages/RespondPage";
-import { SessionsPage } from "./pages/SessionsPage";
+import { SessionsPage, type SessionViewMode } from "./pages/SessionsPage";
 import { TesterPage } from "./pages/TesterPage";
 import { UsersPage } from "./pages/UsersPage";
 
@@ -52,6 +53,11 @@ export function App() {
   useUiSdkReadOnlyAgentBridge();
 
   const [route, setRoute] = useState<NavRoute>("home");
+  const [inventorySection, setInventorySection] = useState<InventorySectionId>("endpoints");
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+  const [sessionsView, setSessionsView] = useState<SessionViewMode>("graph");
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [protectSection, setProtectSection] = useState<ProtectSectionId>("rules");
   const [theme, setTheme] = useState<GrdrThemeMode>("light");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -61,7 +67,6 @@ export function App() {
   const [showTokenBar, setShowTokenBar] = useState(false);
   const [apiTokenInput, setApiTokenInput] = useState(() => getApiToken());
   const [streamVersion, setStreamVersion] = useState(0);
-
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [privacyConfig, setPrivacyConfig] = useState<OrgPrivacyConfig>({
@@ -78,50 +83,50 @@ export function App() {
   const [prefillAttempt, setPrefillAttempt] = useState<ActionAttempt | null>(null);
   const [focusedEntity, setFocusedEntity] = useState<EntityTarget | null>(null);
   const [focusedTurn, setFocusedTurn] = useState<number | null>(null);
-  const [returnRoute, setReturnRoute] = useState<{ route: NavRoute; label: string } | null>(null);
 
-  function handleOpenEntity(target: EntityTarget) {
-    let dest: NavRoute = route;
+  const handleOpenEntity = useCallback((target: EntityTarget) => {
+    setFocusedEntity(target);
     switch (target.kind) {
       case "user":
-        dest = "users";
+        setRoute("users");
         break;
       case "device":
+        setInventorySection("endpoints");
+        setRoute("inventory");
+        break;
       case "agent":
+        setSelectedDeviceId(null);
+        setInventorySection("agents");
+        setRoute("inventory");
+        break;
       case "mcp":
+        setSelectedDeviceId(null);
+        setInventorySection("mcps");
+        setRoute("inventory");
+        break;
       case "artifact":
-        dest = "inventory";
+        setSelectedDeviceId(null);
+        setInventorySection("skills");
+        setRoute("inventory");
         break;
       case "session":
-        dest = "sessions";
+        setSelectedSessionId(target.id);
+        setRoute("sessions");
         break;
       case "rule":
-        dest = "protect";
+        setProtectSection("rules");
+        setRoute("protect");
         break;
     }
-    if (dest !== route) {
-      const originMeta = CONSOLE_ROUTES.find((r) => r.id === route);
-      setReturnRoute({
-        route,
-        label: originMeta ? t(originMeta.labelKey) : route,
-      });
-    }
-    setFocusedEntity(target);
-    setRoute(dest);
-  }
+  }, []);
 
-  function handleOpenSessionTurn(sessionId: string, turnIndex: number) {
-    const originMeta = CONSOLE_ROUTES.find((r) => r.id === route);
-    if (route !== "sessions") {
-      setReturnRoute({
-        route,
-        label: originMeta ? t(originMeta.labelKey) : route,
-      });
-    }
+  const handleOpenSessionTurn = useCallback((sessionId: string, turnIndex: number) => {
     setFocusedEntity({ kind: "session", id: sessionId, label: sessionId });
+    setSelectedSessionId(sessionId);
+    setSessionsView("trace");
     setFocusedTurn(turnIndex);
     setRoute("sessions");
-  }
+  }, []);
 
   const loadAll = useCallback(async () => {
     try {
@@ -153,31 +158,7 @@ export function App() {
     }
   }, []);
 
-  useEffect(() => {
-    void loadAll();
-    const token = getApiToken();
-    const liveUrl = token
-      ? `/api/v1/live?access_token=${encodeURIComponent(token)}`
-      : "/api/v1/live";
-    const events = new EventSource(liveUrl);
-    const refreshHandler = () => {
-      void loadAll();
-    };
-    events.onopen = () => setStreamDisconnected(false);
-    events.onerror = () => setStreamDisconnected(true);
-    events.addEventListener("session.verdict", refreshHandler);
-    events.addEventListener("approval.decided", refreshHandler);
-    events.addEventListener("policy.changed", refreshHandler);
-    events.addEventListener("inventory.device", refreshHandler);
-    events.addEventListener("uplink.batch", refreshHandler);
-    events.addEventListener("finding.updated", refreshHandler);
-    events.addEventListener("kill_switch.updated", refreshHandler);
-    events.addEventListener("privacy.updated", refreshHandler);
-
-    return () => {
-      events.close();
-    };
-  }, [loadAll, streamVersion]);
+  useConsoleStream(streamVersion, loadAll, setStreamDisconnected);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -202,113 +183,115 @@ export function App() {
     await loadAll();
   }
 
-  const pendingApprovals = approvals.filter((a) => a.state.status === "pending").length;
-  const queryNorm = searchQuery.trim().toLowerCase();
+  function handleSelectChild(parent: NavRoute, childId: string) {
+    if (parent === "inventory") {
+      setSelectedDeviceId(null);
+      setInventorySection(childId as InventorySectionId);
+    } else if (parent === "sessions") {
+      setSessionsView(childId as SessionViewMode);
+    } else if (parent === "protect") {
+      setProtectSection(childId as ProtectSectionId);
+    }
+    setRoute(parent);
+  }
 
-  const commandActions = [
-    ...CONSOLE_ROUTES.map((item) => ({
-      id: `route-${item.id}`,
-      label: `Go to ${t(item.labelKey)}`,
-      hint: "Route",
-      run: () => {
-        setRoute(item.id);
-        setPaletteOpen(false);
-      },
-    })),
-    {
-      id: "toggle-theme",
-      label: theme === "light" ? "Switch to Nocturne Dark theme" : "Switch to Paper Light theme",
-      hint: "Appearance",
-      run: () => {
-        setTheme((prev) => (prev === "dark" ? "light" : "dark"));
-        setPaletteOpen(false);
-      },
+  const pendingApprovals = approvals.filter((a) => a.state.status === "pending").length;
+  const selectedDevice = useMemo(
+    () => devices.find((d) => d.id === selectedDeviceId) ?? null,
+    [devices, selectedDeviceId],
+  );
+  const activeSessionId = selectedSessionId ?? sessions[0]?.id ?? null;
+
+  const activeChildId =
+    route === "inventory"
+      ? inventorySection
+      : route === "sessions"
+        ? sessionsView === "stream"
+          ? "graph"
+          : sessionsView
+        : route === "protect"
+          ? protectSection
+          : null;
+
+  const breadcrumbs = useMemo(
+    () =>
+      buildBreadcrumbs({
+        route,
+        inventorySection,
+        selectedDevice,
+        sessionsView,
+        activeSessionId,
+        protectSection,
+        onGoHome: () => {
+          setSelectedDeviceId(null);
+          setFocusedEntity(null);
+          setRoute("home");
+        },
+        onSelectInventorySection: (sec) => {
+          setInventorySection(sec);
+          setRoute("inventory");
+        },
+        onClearDevice: () => setSelectedDeviceId(null),
+        onSelectSessionsView: (view) => {
+          setSessionsView(view);
+          setRoute("sessions");
+        },
+        onSelectProtectSection: (sec) => {
+          setProtectSection(sec);
+          setRoute("protect");
+        },
+      }),
+    [route, inventorySection, selectedDevice, sessionsView, activeSessionId, protectSection],
+  );
+
+  const commandActions = buildCommandActions({
+    devices,
+    theme,
+    hasToken: Boolean(getApiToken()),
+    query: searchQuery,
+    onSelectRoute: (next) => {
+      setRoute(next);
+      setPaletteOpen(false);
     },
-    {
-      id: "connect-api-token",
-      label: getApiToken() ? "Update local API bearer token" : "Connect local API bearer token",
-      hint: "Connection",
-      run: () => {
-        setShowTokenBar(true);
-        setPaletteOpen(false);
-      },
+    onSelectChild: (parent, childId) => {
+      handleSelectChild(parent, childId);
+      setPaletteOpen(false);
     },
-    ...devices.map((dev) => ({
-      id: `dev-${dev.id}`,
-      label: `Inspect device ${dev.hostname}`,
-      hint: `${dev.os}/${dev.arch}`,
-      run: () => {
-        setSearchQuery(dev.hostname);
-        setRoute("inventory");
-        setPaletteOpen(false);
-      },
-    })),
-  ].filter((cmd) => !queryNorm || cmd.label.toLowerCase().includes(queryNorm));
+    onToggleTheme: () => {
+      setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+      setPaletteOpen(false);
+    },
+    onShowTokenBar: () => {
+      setShowTokenBar(true);
+      setPaletteOpen(false);
+    },
+    onInspectDevice: (dev) => {
+      setSearchQuery(dev.hostname);
+      setInventorySection("endpoints");
+      setSelectedDeviceId(dev.id);
+      setRoute("inventory");
+      setPaletteOpen(false);
+    },
+  });
 
   return (
     <GrdrThemeProvider mode={theme}>
       <div className={sidebarCollapsed ? "shell collapsed" : "shell"}>
-        <aside className={sidebarCollapsed ? "rail collapsed" : "rail"} aria-label="Primary navigation">
-          <div className="brand-header">
-            <div className="brand-mark">
-              <div className="brand-glyph">
-                <GuardrailsMark size={18} />
-              </div>
-              {!sidebarCollapsed && (
-                <div className="brand-title">
-                  <strong>{t("grdr.brand.name")}</strong>
-                  <span>{t("grdr.brand.subtitle")}</span>
-                </div>
-              )}
-            </div>
-            <span className="rail-collapse-btn">
-              <IconButton
-                label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
-                icon={<GrdrIcon name={sidebarCollapsed ? "panel-left-open" : "panel-left-close"} size={15} />}
-                variant="ghost"
-                size="sm"
-                onClick={() => setSidebarCollapsed((c) => !c)}
-              />
-            </span>
-          </div>
-
-          <nav className="rail-nav">
-            {CONSOLE_ROUTES.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                title={t(item.labelKey)}
-                aria-label={t(item.labelKey)}
-                className={`nav-item ${route === item.id ? "active" : ""}`}
-                onClick={() => {
-                  setReturnRoute(null);
-                  setRoute(item.id);
-                }}
-              >
-                <span className="nav-item-label">
-                  <GrdrIcon name={iconKeyToName(item.iconKey)} size={16} />
-                  {!sidebarCollapsed && <span>{t(item.labelKey)}</span>}
-                </span>
-                {!sidebarCollapsed && item.id === "respond" && pendingApprovals > 0 && (
-                  <span className="nav-attention-count tabular" aria-label={`${pendingApprovals} pending`}>
-                    {pendingApprovals}
-                  </span>
-                )}
-              </button>
-            ))}
-          </nav>
-
-          {!sidebarCollapsed && (
-            <div className="rail-footer">
-              {streamDisconnected && (
-                <div style={{ color: "var(--tone-ask)" }}>{t("console.stream.reconnecting")}</div>
-              )}
-              <div className="tabular">
-                {`${pluralize(devices.length, "endpoint")}, ${pluralize(sessions.length, "session")}`}
-              </div>
-            </div>
-          )}
-        </aside>
+        <SidebarNav
+          route={route}
+          activeChildId={activeChildId}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
+          onSelectRoute={(next) => {
+            if (next === "inventory") setSelectedDeviceId(null);
+            setRoute(next);
+          }}
+          onSelectChild={handleSelectChild}
+          pendingApprovals={pendingApprovals}
+          streamDisconnected={streamDisconnected}
+          deviceCount={devices.length}
+          sessionCount={sessions.length}
+        />
 
         <div className={route === "home" ? "workspace workspace-home" : "workspace"}>
           {route === "home" && <HeroWaveBackdrop theme={theme} />}
@@ -323,19 +306,11 @@ export function App() {
                 <GrdrIcon name="search" size={14} color="var(--ink-muted)" />
                 <span>{searchQuery || "Jump to device, rule, or route..."}</span>
               </span>
-              <span className="search-kbd">
-                <Kbd keys="mod+k" />
-              </span>
+              <span className="search-kbd"><Kbd keys="mod+k" /></span>
             </button>
 
             <div className="topbar-actions">
-              <Button
-                label="Sync"
-                variant="secondary"
-                size="sm"
-                icon={<GrdrIcon name="refresh" size={14} />}
-                onClick={() => void loadAll()}
-              />
+              <Button label="Sync" variant="secondary" size="sm" icon={<GrdrIcon name="refresh" size={14} />} onClick={() => void loadAll()} />
               <Button
                 label={theme === "dark" ? "Light" : "Dark"}
                 variant="secondary"
@@ -384,22 +359,7 @@ export function App() {
           )}
 
           <main className="main-scroll">
-            {returnRoute && (
-              <div style={{ marginBottom: 12 }}>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  icon={<GrdrIcon name="arrow-left" size={13} />}
-                  label={`Back to ${returnRoute.label}`}
-                  onClick={() => {
-                    const prev = returnRoute.route;
-                    setReturnRoute(null);
-                    setFocusedEntity(null);
-                    setRoute(prev);
-                  }}
-                />
-              </div>
-            )}
+            <Breadcrumbs items={breadcrumbs} />
             {loadingError && (
               <Banner
                 status="error"
@@ -438,6 +398,10 @@ export function App() {
               <InventoryPage
                 devices={devices}
                 searchQuery={searchQuery}
+                section={inventorySection}
+                onSectionChange={setInventorySection}
+                selectedDeviceId={selectedDeviceId}
+                onSelectDevice={setSelectedDeviceId}
                 focusedEntity={focusedEntity}
                 onClearFocus={() => setFocusedEntity(null)}
                 onOpenEntity={handleOpenEntity}
@@ -449,6 +413,10 @@ export function App() {
                 sessions={sessions}
                 devices={devices}
                 searchQuery={searchQuery}
+                section={sessionsView}
+                onSectionChange={setSessionsView}
+                selectedSessionId={selectedSessionId}
+                onSelectSessionId={setSelectedSessionId}
                 focusedEntity={focusedEntity}
                 focusedTurn={focusedTurn}
                 onClearFocus={() => setFocusedEntity(null)}
@@ -456,6 +424,7 @@ export function App() {
                 onOpenEntity={handleOpenEntity}
                 onCreateRuleFromAttempt={(attempt) => {
                   setPrefillAttempt(attempt);
+                  setProtectSection("rules");
                   setRoute("protect");
                 }}
               />
@@ -464,6 +433,8 @@ export function App() {
               <ProtectPage
                 packs={packs}
                 devices={devices}
+                section={protectSection}
+                onSectionChange={setProtectSection}
                 prefillAttempt={prefillAttempt}
                 focusedEntity={focusedEntity}
                 onClearPrefill={() => setPrefillAttempt(null)}
@@ -484,27 +455,13 @@ export function App() {
                 onUpdated={() => void loadAll()}
               />
             )}
-            {route === "coverage" && (
-              <CoveragePage devices={devices} onOpenEntity={handleOpenEntity} />
-            )}
-            {route === "tester" && (
-              <TesterPage
-                onEvaluated={() => void loadAll()}
-                onOpenEntity={handleOpenEntity}
-              />
-            )}
+            {route === "coverage" && <CoveragePage devices={devices} onOpenEntity={handleOpenEntity} />}
+            {route === "tester" && <TesterPage onEvaluated={() => void loadAll()} onOpenEntity={handleOpenEntity} />}
           </main>
         </div>
       </div>
 
-      <Dialog
-        isOpen={paletteOpen}
-        onOpenChange={setPaletteOpen}
-        purpose="info"
-        width={560}
-        padding={2}
-        aria-label="Command palette"
-      >
+      <Dialog isOpen={paletteOpen} onOpenChange={setPaletteOpen} purpose="info" width={560} padding={2} aria-label="Command palette">
         <div style={{ padding: "var(--space-1)" }}>
           <TextInput
             label="Filter commands"
@@ -518,16 +475,9 @@ export function App() {
         </div>
         <div className="command-list">
           {commandActions.map((cmd) => (
-            <button
-              key={cmd.id}
-              type="button"
-              className="command-item"
-              onClick={cmd.run}
-            >
+            <button key={cmd.id} type="button" className="command-item" onClick={cmd.run}>
               <span>{cmd.label}</span>
-              <HStack gap={1} align="center">
-                <Badge variant="neutral" label={cmd.hint} />
-              </HStack>
+              <HStack gap={1} align="center"><Badge variant="neutral" label={cmd.hint} /></HStack>
             </button>
           ))}
         </div>

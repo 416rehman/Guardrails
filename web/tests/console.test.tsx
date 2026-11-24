@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ApprovalRequest,
@@ -647,11 +647,14 @@ describe("Console and Operator Plane workflows", () => {
     fireEvent.click(hostLinks[0]);
     await waitFor(() => {
       expect(screen.getByText("Device assurance matrix")).toBeTruthy();
-      expect(screen.getByRole("button", { name: "Back to Home" })).toBeTruthy();
+      const breadcrumbNav = screen.getByRole("navigation", { name: "Breadcrumb" });
+      expect(within(breadcrumbNav).getByRole("button", { name: "Home" })).toBeTruthy();
+      expect(within(breadcrumbNav).getByText("devbox.local")).toBeTruthy();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Close Device assurance matrix" }));
-    fireEvent.click(screen.getByRole("button", { name: "Back to Home" }));
+    const breadcrumbNav = screen.getByRole("navigation", { name: "Breadcrumb" });
+    fireEvent.click(within(breadcrumbNav).getByRole("button", { name: "Home" }));
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "rule-1" })).toBeTruthy();
     });
@@ -682,7 +685,7 @@ describe("Console and Operator Plane workflows", () => {
     });
   });
 
-  it("renders Inventory Connect & Integrations, issues wave key, renders MDM payload, and checks readiness", async () => {
+  it("renders Inventory Connect & MDM, issues wave key, renders MDM payload, and checks readiness", async () => {
     installFetchMock();
     render(<App />);
 
@@ -692,9 +695,9 @@ describe("Console and Operator Plane workflows", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Inventory" })[0]);
 
     await waitFor(() => {
-      expect(screen.getByRole("radio", { name: "Connect & Integrations" })).toBeTruthy();
+      expect(screen.getByRole("radio", { name: "Connect & MDM" })).toBeTruthy();
     });
-    fireEvent.click(screen.getByRole("radio", { name: "Connect & Integrations" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Connect & MDM" }));
 
     await waitFor(() => {
       expect(screen.getAllByText("Pilot Wave 1").length).toBeGreaterThan(0);
@@ -712,11 +715,12 @@ describe("Console and Operator Plane workflows", () => {
       expect(screen.getByText("Secret expires in 9 days")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Protect" })[0]);
+    const sidebar = screen.getByRole("navigation", { name: "Console sections" });
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Protect" }));
     await waitFor(() => {
-      expect(screen.getByRole("radio", { name: "Browser AI" })).toBeTruthy();
+      expect(within(sidebar).getByRole("button", { name: "Browser AI" })).toBeTruthy();
     });
-    fireEvent.click(screen.getByRole("radio", { name: "Browser AI" }));
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Browser AI" }));
 
     await waitFor(() => {
       expect(screen.getAllByText("ChatGPT").length).toBeGreaterThan(0);
@@ -724,6 +728,154 @@ describe("Console and Operator Plane workflows", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run browser check" }));
     await waitFor(() => {
       expect(screen.getByText("browser.block.chatgpt")).toBeTruthy();
+    });
+  });
+
+  it("supports 3-group categorized sidebar sub-nav and interactive breadcrumbs", async () => {
+    installFetchMock();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Overview")).toBeTruthy();
+      expect(screen.getByText("Fleet & Activity")).toBeTruthy();
+      expect(screen.getByText("Protection & Response")).toBeTruthy();
+    });
+
+    const sidebar = screen.getByRole("navigation", { name: "Console sections" });
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Agents" }));
+    await waitFor(() => {
+      expect(screen.getByText("Discovered AI agents (1)")).toBeTruthy();
+      const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+      expect(within(crumbs).getByText("Agents")).toBeTruthy();
+    });
+
+    fireEvent.click(within(sidebar).getByRole("button", { name: "MCP servers" }));
+    await waitFor(() => {
+      expect(screen.getAllByText("MCP servers (1)").length).toBeGreaterThan(0);
+      const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+      expect(within(crumbs).getByText("MCP servers")).toBeTruthy();
+    });
+
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Skills & rules" }));
+    await waitFor(() => {
+      expect(screen.getByText("Skills, rules & plugins (1)")).toBeTruthy();
+      const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+      expect(within(crumbs).getByText("Skills & rules")).toBeTruthy();
+    });
+
+    const crumbsAfterSkills = screen.getByRole("navigation", { name: "Breadcrumb" });
+    fireEvent.click(within(crumbsAfterSkills).getByRole("button", { name: "Inventory" }));
+    await waitFor(() => {
+      expect(screen.getByText("Enrolled devices (1)")).toBeTruthy();
+      expect(within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByText("Endpoints")).toBeTruthy();
+    });
+
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Protect" }));
+    await waitFor(() => {
+      expect(within(sidebar).getByRole("button", { name: "Browser AI" })).toBeTruthy();
+    });
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Browser AI" }));
+    await waitFor(() => {
+      expect(within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByText("Browser AI")).toBeTruthy();
+    });
+
+    fireEvent.click(
+      within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("button", {
+        name: "Protect",
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Protect SSH keys")).toBeTruthy();
+    });
+
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Sessions" }));
+    await waitFor(() => {
+      expect(within(sidebar).getByRole("button", { name: "Trace waterfall" })).toBeTruthy();
+    });
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Trace waterfall" }));
+    await waitFor(() => {
+      expect(screen.getByText(/Decomposed shell actions/)).toBeTruthy();
+      expect(
+        within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByText("Trace waterfall"),
+      ).toBeTruthy();
+    });
+  });
+
+  it("paginates Inventory sub-views at scale (25/50/100 rows)", async () => {
+    const manyDevices: Device[] = Array.from({ length: 60 }, (_, idx) => ({
+      ...devicesFixture[0],
+      id: `dev-${idx + 1}`,
+      hostname: `host-${idx + 1}.acme.local`,
+      agents: [
+        {
+          ...devicesFixture[0].agents[0],
+          id: `agent-${idx + 1}`,
+          name: idx % 2 === 0 ? "claude-code" : "cursor",
+        },
+      ],
+      mcp_servers: [
+        {
+          ...devicesFixture[0].mcp_servers[0],
+          name: `mcp-${idx + 1}`,
+        },
+      ],
+      artifacts: [
+        {
+          ...(devicesFixture[0].artifacts?.[0] ?? {
+            id: "art-0",
+            name: "skill-0",
+            kind: "skill",
+            scope: "user",
+            source_agent: "claude-code",
+            path: "~/.claude/skills/skill-0",
+            content_digest: "9b71d224",
+            file_count: 1,
+            total_bytes: 512,
+            usage_count: 1,
+            pinned: false,
+            risk_flags: [],
+            device_id: "dev-1",
+            device_name: "host-1.acme.local",
+            detected_at: "2026-11-23T11:30:00Z",
+          }),
+          id: `art-${idx + 1}`,
+          name: `skill-${idx + 1}`,
+          device_id: `dev-${idx + 1}`,
+          device_name: `host-${idx + 1}.acme.local`,
+        },
+      ],
+    }));
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.endsWith("/api/v1/devices")) return mockJsonResponse(manyDevices);
+      if (url.endsWith("/api/v1/overview")) return mockJsonResponse(overviewFixture);
+      if (url.endsWith("/api/v1/users")) return mockJsonResponse(usersFixture);
+      if (url.endsWith("/api/v1/privacy/config")) return mockJsonResponse(privacyConfigFixture);
+      if (url.endsWith("/api/v1/sessions")) return mockJsonResponse(sessionsFixture);
+      if (url.endsWith("/api/v1/sessions/sess-1")) return mockJsonResponse(sessionDetailFixture);
+      if (url.endsWith("/api/v1/policies/packs")) return mockJsonResponse(packsFixture);
+      if (url.endsWith("/api/v1/approvals")) return mockJsonResponse(approvalsFixture);
+      if (url.endsWith("/api/v1/findings")) return mockJsonResponse(findingsFixture);
+      if (url.endsWith("/api/v1/incidents")) return mockJsonResponse(incidentsFixture);
+      if (url.endsWith("/api/v1/kill-switch")) return mockJsonResponse({ state: "inactive" });
+      return mockJsonResponse({});
+    });
+
+    render(<App />);
+    const sidebar = await screen.findByRole("navigation", { name: "Console sections" });
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Agents" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Discovered AI agents (60)")).toBeTruthy();
+      expect(screen.getAllByText("Showing 1-25 of 60").length).toBeGreaterThan(0);
+    });
+
+    const pagination = screen.getByRole("navigation", { name: "Agents pagination" });
+    fireEvent.click(within(pagination).getByRole("button", { name: /next/i }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Showing 26-50 of 60").length).toBeGreaterThan(0);
     });
   });
 });

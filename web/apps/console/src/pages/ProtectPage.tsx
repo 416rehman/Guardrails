@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   api,
   type ActionAttempt,
@@ -9,43 +9,29 @@ import {
   type PolicyRule,
   type ReplaySummary,
 } from "@grdr/api";
-import { pluralize } from "@grdr/i18n";
-import { EntityLink, type EntityTarget, ModeBadge, ModeControl, Quoted, VerdictBadge } from "@grdr/kit";
-import { BrowserPoliciesSection } from "./BrowserPoliciesSection";
+import { pluralize, type ProtectSectionId } from "@grdr/i18n";
+import { type EntityTarget, ModeControl, Quoted } from "@grdr/kit";
 import {
   Badge,
   Banner,
   Button,
-  Card,
   GrdrIcon,
-  GrdrSelect,
   Heading,
   HStack,
   Text,
-  TextInput,
   UiSdkSegmentedControl,
   VStack,
 } from "@grdr/ui";
+import { BrowserPoliciesSection } from "./BrowserPoliciesSection";
+import { ReplayImpactCard, RuleEditorCard } from "./ProtectRuleViews";
 
-type EditorViewMode = "simple" | "advanced" | "code" | "browser";
-
-const ACTION_CLASSES: ActionClass[] = [
-  "exec",
-  "file.read",
-  "file.write",
-  "file.delete",
-  "net.connect",
-  "net.request",
-  "mcp.call",
-  "cred.use",
-  "elevate",
-  "config.change",
-  "data.flow",
-];
+type EditorViewMode = "simple" | "advanced" | "code";
 
 export function ProtectPage({
   packs,
   devices,
+  section = "rules",
+  onSectionChange,
   prefillAttempt,
   focusedEntity,
   onClearPrefill,
@@ -54,6 +40,8 @@ export function ProtectPage({
 }: {
   packs: PolicyPack[];
   devices: Device[];
+  section?: ProtectSectionId;
+  onSectionChange?: (next: ProtectSectionId) => void;
   prefillAttempt: ActionAttempt | null;
   focusedEntity?: EntityTarget | null;
   onClearPrefill: () => void;
@@ -72,10 +60,13 @@ export function ProtectPage({
   const [actionClass, setActionClass] = useState<ActionClass>("file.write");
   const [containsPattern, setContainsPattern] = useState(".env");
   const [mode, setMode] = useState<Mode>("ask");
-  const [reason, setReason] = useState("Modifying environment secret files requires operator approval.");
+  const [reason, setReason] = useState(
+    "Modifying environment secret files requires operator approval.",
+  );
 
   useEffect(() => {
     if (prefillAttempt) {
+      onSectionChange?.("rules");
       setShowNewForm(true);
       setTitle(`Govern ${prefillAttempt.action_class} on ${prefillAttempt.agent_name}`);
       setActionClass(prefillAttempt.action_class);
@@ -83,12 +74,13 @@ export function ProtectPage({
       setMode("ask");
       setReason(`Rule created from observed ${prefillAttempt.action_class} attempt.`);
     }
-  }, [prefillAttempt]);
+  }, [prefillAttempt, onSectionChange]);
 
   const boundaryDevices = devices.filter((d) => d.install_profile === "protected").length;
   const appHookAgents = devices
     .flatMap((d) => d.agents)
     .filter((a) => !a.assurance.control.includes("boundary")).length;
+  const isBrowserSection = section === "browser";
 
   async function handleModeChange(ruleId: string, currentMode: Mode, nextMode: Mode) {
     setError(null);
@@ -121,7 +113,7 @@ export function ProtectPage({
     }
   }
 
-  async function handleSaveRule(e: React.FormEvent) {
+  async function handleSaveRule(e: FormEvent) {
     e.preventDefault();
     setError(null);
     const matcher = {
@@ -190,40 +182,35 @@ export function ProtectPage({
         <div>
           <Heading level={1}>Protect</Heading>
           <Text color="secondary">
-            {editorMode === "browser"
+            {isBrowserSection
               ? "Govern file uploads, pasted secrets, and extension locks across hosted browser AI apps."
               : `Control what agents can run locally in Watch, Ask, or Block mode (${pluralize(boundaryDevices, "sandboxed endpoint")}, ${pluralize(appHookAgents, "app-hook agent")}).`}
           </Text>
         </div>
-        <HStack gap={2} align="center" style={{ flexWrap: "wrap" }}>
-          <UiSdkSegmentedControl<EditorViewMode>
-            ariaLabel="Policy representation view"
-            value={editorMode}
-            options={[
-              {
-                value: "simple",
-                label: "Simple",
-                icon: <GrdrIcon name="list" size={13} />,
-              },
-              {
-                value: "advanced",
-                label: "Advanced",
-                icon: <GrdrIcon name="shield" size={13} />,
-              },
-              {
-                value: "code",
-                label: "Code",
-                icon: <GrdrIcon name="code" size={13} />,
-              },
-              {
-                value: "browser",
-                label: "Browser AI",
-                icon: <GrdrIcon name="globe" size={13} />,
-              },
-            ]}
-            onChange={setEditorMode}
-          />
-          {editorMode !== "browser" && (
+        {!isBrowserSection && (
+          <HStack gap={2} align="center" style={{ flexWrap: "wrap" }}>
+            <UiSdkSegmentedControl<EditorViewMode>
+              ariaLabel="Policy representation view"
+              value={editorMode}
+              options={[
+                {
+                  value: "simple",
+                  label: "Simple",
+                  icon: <GrdrIcon name="list" size={13} />,
+                },
+                {
+                  value: "advanced",
+                  label: "Advanced",
+                  icon: <GrdrIcon name="shield" size={13} />,
+                },
+                {
+                  value: "code",
+                  label: "Code",
+                  icon: <GrdrIcon name="code" size={13} />,
+                },
+              ]}
+              onChange={setEditorMode}
+            />
             <Button
               variant="primary"
               label={showNewForm ? "Close rule builder" : "New rule"}
@@ -233,334 +220,217 @@ export function ProtectPage({
                 setShowNewForm((prev) => !prev);
               }}
             />
-          )}
-        </HStack>
+          </HStack>
+        )}
       </div>
 
       {error && <Banner status="error" title={error} collapsible={false} />}
 
-      {editorMode === "browser" ? (
+      {isBrowserSection ? (
         <BrowserPoliciesSection />
       ) : (
         <>
-
-      {editorMode === "advanced" && (
-        <section className="visual-panel" aria-label="Structured policy sentence builder">
-          <HStack justify="between" align="center">
-            <HStack gap={2} align="center">
-              <GrdrIcon name="shield" size={16} color="var(--accent-primary)" />
-              <Heading level={2}>Rule sentence builder</Heading>
-            </HStack>
-            <Badge variant="info" label="Compiles to Cedar & fastpath" />
-          </HStack>
-          <Text>
-            {`When any enrolled agent executes `}
-            <strong className="mono">{actionClass}</strong>
-            {` matching `}
-            <strong className="mono">{containsPattern || "*"}</strong>
-            {`, enforce `}
-            <strong>{mode.toUpperCase()}</strong>
-            {` on boundary devices.`}
-          </Text>
-          <HStack gap={2}>
-            <Button
-              size="sm"
-              variant="secondary"
-              label="Customize & save rule"
-              icon={<GrdrIcon name="pencil" size={13} />}
-              onClick={() => setShowNewForm(true)}
-            />
-          </HStack>
-        </section>
-      )}
-
-      {editorMode === "code" && (
-        <section className="visual-panel" aria-label="Compiled Cedar policy projection">
-          <HStack justify="between" align="center">
-            <HStack gap={2} align="center">
-              <GrdrIcon name="code" size={16} color="var(--accent-primary)" />
-              <Heading level={2}>Read-only Cedar projection</Heading>
-            </HStack>
-            <Badge
-              variant="info"
-              icon={<GrdrIcon name="lock" size={11} />}
-              label={pluralize(packs.reduce((n, p) => n + p.rules.length, 0), "rule")}
-            />
-          </HStack>
-          <pre className="cedar-code">
-            {packs
-              .flatMap((pack) =>
-                pack.rules.map((rule) => {
-                  const actionExpr = rule.matcher.action_classes
-                    .map((a) => `Action::"${a}"`)
-                    .join(", ");
-                  const pat = rule.matcher.target_contains[0] ?? "*";
-                  return `// ${rule.id} (${pack.id}, mode=${rule.mode}, locked=${rule.locked})\nforbid(\n  principal in Agent::"*" ,\n  action in [${actionExpr}],\n  resource\n) when {\n  context.mode == "${rule.mode}" &&\n  context.target like "*${pat}*"\n};`;
-                }),
-              )
-              .join("\n\n")}
-          </pre>
-        </section>
-      )}
-
-      {showNewForm && (
-        <Card padding={3}>
-          <VStack gap={3}>
-            <Heading level={2}>
-              {editingRuleId ? `Edit rule (${editingRuleId})` : "Create policy rule"}
-            </Heading>
-            <form onSubmit={handleSaveRule} className="form-grid">
-              <TextInput
-                label="Rule title"
-                value={title}
-                onChange={(val) => setTitle(val)}
-                isRequired
-              />
-              <GrdrSelect
-                label="Action class"
-                value={actionClass}
-                options={ACTION_CLASSES.map((ac) => ({ value: ac, label: ac }))}
-                onChange={(val) => setActionClass(val as ActionClass)}
-                width="100%"
-              />
-              <TextInput
-                label="Target contains pattern"
-                value={containsPattern}
-                onChange={(val) => setContainsPattern(val)}
-                isRequired
-              />
-              <div className="field">
-                <label htmlFor="rule-mode">Initial mode</label>
-                <ModeControl value={mode} onChange={setMode} />
-              </div>
-              <div className="field full">
-                <TextInput
-                  label="Reason shown on block or approval"
-                  value={reason}
-                  onChange={(val) => setReason(val)}
-                  isRequired
-                  width="100%"
-                />
-              </div>
-              <div className="field full" style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
-                <Button
-                  label="Cancel"
-                  onClick={() => {
-                    setEditingRuleId(null);
-                    setShowNewForm(false);
-                    onClearPrefill();
-                  }}
-                />
-                <Button
-                  type="submit"
-                  variant="primary"
-                  label={editingRuleId ? "Update rule" : "Save rule"}
-                />
-              </div>
-            </form>
-          </VStack>
-        </Card>
-      )}
-
-      {replay && (
-        <Card padding={3}>
-          <VStack gap={3}>
-            <HStack justify="between" align="center">
-              <VStack gap={1}>
+          {editorMode === "advanced" && (
+            <section className="visual-panel" aria-label="Structured policy sentence builder">
+              <HStack justify="between" align="center">
                 <HStack gap={2} align="center">
-                  <GrdrIcon name="play" size={15} />
-                  <Heading level={2}>{`Replay impact before promoting ${replay.ruleId}`}</Heading>
+                  <GrdrIcon name="shield" size={16} color="var(--accent-primary)" />
+                  <Heading level={2}>Rule sentence builder</Heading>
                 </HStack>
-                <Text color="secondary">
-                  Promoting a Watch rule requires reviewing historical matches over the selected window.
-                </Text>
-              </VStack>
-              <ModeBadge mode={replay.summary.candidate_mode} />
-            </HStack>
+                <Badge variant="info" label="Compiles to Cedar & fastpath" />
+              </HStack>
+              <Text>
+                {`When any enrolled agent executes `}
+                <strong className="mono">{actionClass}</strong>
+                {` matching `}
+                <strong className="mono">{containsPattern || "*"}</strong>
+                {`, enforce `}
+                <strong>{mode.toUpperCase()}</strong>
+                {` on boundary devices.`}
+              </Text>
+              <HStack gap={2}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  label="Customize & save rule"
+                  icon={<GrdrIcon name="pencil" size={13} />}
+                  onClick={() => setShowNewForm(true)}
+                />
+              </HStack>
+            </section>
+          )}
 
-            <HStack gap={2}>
-              <Badge
-                variant="success"
-                icon={<GrdrIcon name="check-circle" size={12} />}
-                label={`Window chosen: ${replay.summary.window_label}`}
-              />
-              <Badge variant="info" label={`Scanned: ${replay.summary.total_scanned}`} />
-              <Badge variant="warning" label={`Matched: ${replay.summary.matched}`} />
-              <Badge variant="warning" label={`Would ask: ${replay.summary.would_ask}`} />
-              <Badge variant="error" label={`Would block: ${replay.summary.would_block}`} />
-            </HStack>
+          {editorMode === "code" && (
+            <section className="visual-panel" aria-label="Compiled Cedar policy projection">
+              <HStack justify="between" align="center">
+                <HStack gap={2} align="center">
+                  <GrdrIcon name="code" size={16} color="var(--accent-primary)" />
+                  <Heading level={2}>Read-only Cedar projection</Heading>
+                </HStack>
+                <Badge
+                  variant="info"
+                  icon={<GrdrIcon name="lock" size={11} />}
+                  label={pluralize(packs.reduce((n, p) => n + p.rules.length, 0), "rule")}
+                />
+              </HStack>
+              <pre className="cedar-code">
+                {packs
+                  .flatMap((pack) =>
+                    pack.rules.map((rule) => {
+                      const actionExpr = rule.matcher.action_classes
+                        .map((a) => `Action::"${a}"`)
+                        .join(", ");
+                      const pat = rule.matcher.target_contains[0] ?? "*";
+                      return `// ${rule.id} (${pack.id}, mode=${rule.mode}, locked=${rule.locked})\nforbid(\n  principal in Agent::"*" ,\n  action in [${actionExpr}],\n  resource\n) when {\n  context.mode == "${rule.mode}" &&\n  context.target like "*${pat}*"\n};`;
+                    }),
+                  )
+                  .join("\n\n")}
+              </pre>
+            </section>
+          )}
 
-            {replay.summary.samples.length > 0 && (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Session</th>
-                      <th>Agent</th>
-                      <th>Target</th>
-                      <th>Current</th>
-                      <th>After promotion</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {replay.summary.samples.map((sample) => (
-                      <tr key={sample.attempt_id}>
-                        <td>
-                          <EntityLink
-                            kind="session"
-                            id={sample.session_id}
-                            label={sample.session_id}
-                            compact
-                            onSelect={onOpenEntity}
-                          />
-                        </td>
-                        <td>
-                          <EntityLink
-                            kind="agent"
-                            label={sample.agent_name}
-                            compact
-                            onSelect={onOpenEntity}
-                          />
-                        </td>
-                        <td>
-                          <Quoted text={sample.target} />
-                        </td>
-                        <td>
-                          <VerdictBadge verdict={sample.current_verdict} />
-                        </td>
-                        <td>
-                          <VerdictBadge verdict={sample.candidate_verdict} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            <HStack justify="end" gap={2}>
-              <Button label="Keep in Watch" onClick={() => setReplay(null)} />
-              <Button
-                variant="primary"
-                label={`Confirm promotion to ${replay.summary.candidate_mode}`}
-                onClick={() => void confirmReplayPromotion()}
-              />
-            </HStack>
-          </VStack>
-        </Card>
-      )}
-
-      {packs.map((pack) => (
-        <section key={pack.id} className="ledger-section">
-          <div className="ledger-header">
-            <div>
-              <h2 className="ledger-title">{`${pack.name} (${pack.version})`}</h2>
-              <Text color="secondary">{pack.description}</Text>
-            </div>
-            <Badge
-              variant="info"
-              label={pack.channel === "schema-policy" ? "Built-in pack" : pack.channel}
+          {showNewForm && (
+            <RuleEditorCard
+              editingRuleId={editingRuleId}
+              title={title}
+              actionClass={actionClass}
+              containsPattern={containsPattern}
+              mode={mode}
+              reason={reason}
+              onTitleChange={setTitle}
+              onActionClassChange={setActionClass}
+              onContainsPatternChange={setContainsPattern}
+              onModeChange={setMode}
+              onReasonChange={setReason}
+              onSubmit={handleSaveRule}
+              onCancel={() => {
+                setEditingRuleId(null);
+                setShowNewForm(false);
+                onClearPrefill();
+              }}
             />
-          </div>
+          )}
 
-          <div className="ledger-list">
-            {pack.rules.map((rule) => (
-              <div
-                key={rule.id}
-                className={`ledger-row ${focusedRuleId === rule.id ? "selected" : ""} ${rule.locked ? "floor-locked" : ""}`.trim()}
-              >
-                <div className="ledger-row-main">
-                  <VStack gap={1} style={{ flex: 1, minWidth: 260 }}>
-                    <HStack gap={2} align="center" style={{ flexWrap: "wrap" }}>
-                      <strong>{rule.title}</strong>
-                      {rule.locked && (
-                        <span style={{ flexShrink: 0, display: "inline-flex" }}>
-                          <Badge
-                            variant="error"
-                            icon={<GrdrIcon name="lock" size={11} />}
-                            label="Floor"
-                          />
-                        </span>
-                      )}
-                      {rule.hits > 0 && (
-                        <Text size="sm" color="secondary" className="tabular">
-                          {`· ${pluralize(rule.hits, "hit")}`}
-                        </Text>
-                      )}
-                    </HStack>
-                    <Text type="supporting" color="secondary" size="sm">
-                      {rule.description}
-                    </Text>
-                    <HStack gap={2} align="center" style={{ flexWrap: "wrap", marginTop: 4 }}>
-                      {editorMode !== "simple" && (
-                        <span className="mono" style={{ color: "var(--ink-muted)" }}>
-                          {rule.matcher.action_classes.join(", ")}
-                        </span>
-                      )}
-                      {rule.matcher.target_contains.slice(0, 3).map((pat) => (
-                        <Quoted key={pat} text={pat} />
-                      ))}
-                    </HStack>
-                  </VStack>
+          {replay && (
+            <ReplayImpactCard
+              replay={replay}
+              onOpenEntity={onOpenEntity}
+              onDismiss={() => setReplay(null)}
+              onConfirm={() => void confirmReplayPromotion()}
+            />
+          )}
 
-                  <HStack gap={3} align="center" style={{ flexWrap: "wrap" }}>
-                    <ModeControl
-                      value={rule.mode}
-                      locked={rule.locked}
-                      boundaryDevices={boundaryDevices}
-                      requestDevices={appHookAgents}
-                      onChange={(next) => void handleModeChange(rule.id, rule.mode, next)}
-                    />
-
-                    {rule.locked ? (
-                      <div style={{ minWidth: 164, display: "flex", justifyContent: "flex-end" }}>
-                        <Text color="secondary" size="sm">
-                          Floor locked
-                        </Text>
-                      </div>
-                    ) : confirmDeleteId === rule.id ? (
-                      <div style={{ minWidth: 164, display: "flex", justifyContent: "flex-end" }}>
-                        <HStack gap={1}>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            label="Confirm delete"
-                            onClick={() => void handleDeleteRule(rule.id)}
-                          />
-                          <Button
-                            size="sm"
-                            label="Cancel"
-                            onClick={() => setConfirmDeleteId(null)}
-                          />
-                        </HStack>
-                      </div>
-                    ) : (
-                      <div style={{ minWidth: 164, display: "flex", justifyContent: "flex-end" }}>
-                        <HStack gap={1}>
-                          <Button
-                            size="sm"
-                            label="Edit"
-                            aria-label={`Edit rule ${rule.title}`}
-                            icon={<GrdrIcon name="pencil" size={13} />}
-                            onClick={() => startEditRule(rule)}
-                          />
-                          <Button
-                            size="sm"
-                            label="Delete"
-                            aria-label={`Delete rule ${rule.title}`}
-                            icon={<GrdrIcon name="trash" size={13} />}
-                            onClick={() => setConfirmDeleteId(rule.id)}
-                          />
-                        </HStack>
-                      </div>
-                    )}
-                  </HStack>
+          {packs.map((pack) => (
+            <section key={pack.id} className="ledger-section">
+              <div className="ledger-header">
+                <div>
+                  <h2 className="ledger-title">{`${pack.name} (${pack.version})`}</h2>
+                  <Text color="secondary">{pack.description}</Text>
                 </div>
+                <Badge
+                  variant="info"
+                  label={pack.channel === "schema-policy" ? "Built-in pack" : pack.channel}
+                />
               </div>
-            ))}
-          </div>
-        </section>
-      ))}
+
+              <div className="ledger-list">
+                {pack.rules.map((rule) => (
+                  <div
+                    key={rule.id}
+                    className={`ledger-row ${focusedRuleId === rule.id ? "selected" : ""} ${rule.locked ? "floor-locked" : ""}`.trim()}
+                  >
+                    <div className="ledger-row-main">
+                      <VStack gap={1} style={{ flex: 1, minWidth: 260 }}>
+                        <HStack gap={2} align="center" style={{ flexWrap: "wrap" }}>
+                          <strong>{rule.title}</strong>
+                          {rule.locked && (
+                            <span style={{ flexShrink: 0, display: "inline-flex" }}>
+                              <Badge
+                                variant="error"
+                                icon={<GrdrIcon name="lock" size={11} />}
+                                label="Floor"
+                              />
+                            </span>
+                          )}
+                          {rule.hits > 0 && (
+                            <Text size="sm" color="secondary" className="tabular">
+                              {`· ${pluralize(rule.hits, "hit")}`}
+                            </Text>
+                          )}
+                        </HStack>
+                        <Text type="supporting" color="secondary" size="sm">
+                          {rule.description}
+                        </Text>
+                        <HStack gap={2} align="center" style={{ flexWrap: "wrap", marginTop: 4 }}>
+                          {editorMode !== "simple" && (
+                            <span className="mono" style={{ color: "var(--ink-muted)" }}>
+                              {rule.matcher.action_classes.join(", ")}
+                            </span>
+                          )}
+                          {rule.matcher.target_contains.slice(0, 3).map((pat) => (
+                            <Quoted key={pat} text={pat} />
+                          ))}
+                        </HStack>
+                      </VStack>
+
+                      <HStack gap={3} align="center" style={{ flexWrap: "wrap" }}>
+                        <ModeControl
+                          value={rule.mode}
+                          locked={rule.locked}
+                          boundaryDevices={boundaryDevices}
+                          requestDevices={appHookAgents}
+                          onChange={(next) => void handleModeChange(rule.id, rule.mode, next)}
+                        />
+
+                        {rule.locked ? (
+                          <div style={{ minWidth: 164, display: "flex", justifyContent: "flex-end" }}>
+                            <Text color="secondary" size="sm">
+                              Floor locked
+                            </Text>
+                          </div>
+                        ) : confirmDeleteId === rule.id ? (
+                          <div style={{ minWidth: 164, display: "flex", justifyContent: "flex-end" }}>
+                            <HStack gap={1}>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                label="Confirm delete"
+                                onClick={() => void handleDeleteRule(rule.id)}
+                              />
+                              <Button
+                                size="sm"
+                                label="Cancel"
+                                onClick={() => setConfirmDeleteId(null)}
+                              />
+                            </HStack>
+                          </div>
+                        ) : (
+                          <div style={{ minWidth: 164, display: "flex", justifyContent: "flex-end" }}>
+                            <HStack gap={1}>
+                              <Button
+                                size="sm"
+                                label="Edit"
+                                aria-label={`Edit rule ${rule.title}`}
+                                icon={<GrdrIcon name="pencil" size={13} />}
+                                onClick={() => startEditRule(rule)}
+                              />
+                              <Button
+                                size="sm"
+                                label="Delete"
+                                aria-label={`Delete rule ${rule.title}`}
+                                icon={<GrdrIcon name="trash" size={13} />}
+                                onClick={() => setConfirmDeleteId(rule.id)}
+                              />
+                            </HStack>
+                          </div>
+                        )}
+                      </HStack>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
         </>
       )}
     </VStack>
