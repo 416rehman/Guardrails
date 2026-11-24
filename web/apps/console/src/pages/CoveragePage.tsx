@@ -3,6 +3,9 @@ import { t } from "@grdr/i18n";
 import { AssuranceBadge, ViewStateFrame } from "@grdr/kit";
 import { Badge, Card, GrdrIcon, Heading, HStack, Text, VStack } from "@grdr/ui";
 
+const MATRIX_AGENTS = ["Claude Code", "Cursor", "Codex", "Gemini CLI"] as const;
+const MATRIX_OS = ["macos", "linux", "windows"] as const;
+
 export function CoveragePage({ devices }: { devices: Device[] }) {
   const allAgents = devices.flatMap((d) => d.agents.map((a) => ({ device: d, agent: a })));
   const protectedCount = allAgents.filter((x) =>
@@ -35,7 +38,67 @@ export function CoveragePage({ devices }: { devices: Device[] }) {
           description="Install or start grdr-daemon on an endpoint to measure hook canary health and assurance levels."
         />
       ) : (
-        <div className="grid-2">
+        <VStack gap={4}>
+          <section className="visual-panel" aria-label="Agent by OS assurance matrix">
+            <HStack justify="between" align="center">
+              <HStack gap={2} align="center">
+                <GrdrIcon name="layers" size={16} color="var(--accent-primary)" />
+                <Heading level={2}>Agent x OS assurance heatmap</Heading>
+              </HStack>
+              <Text size="sm" color="secondary">
+                D-50 assurance level observed per harness across platforms
+              </Text>
+            </HStack>
+            <div className="table-wrap">
+              <table className="heatmap-grid">
+                <thead>
+                  <tr>
+                    <th>Agent harness</th>
+                    <th>macOS</th>
+                    <th>Linux</th>
+                    <th>Windows</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {MATRIX_AGENTS.map((agentName) => (
+                    <tr key={agentName}>
+                      <td>
+                        <HStack gap={2} align="center">
+                          <GrdrIcon
+                            name={agentName === "Claude Code" ? "terminal" : "cpu"}
+                            size={14}
+                            color="var(--ink-secondary)"
+                          />
+                          <strong>{agentName}</strong>
+                        </HStack>
+                      </td>
+                      {MATRIX_OS.map((osKey) => {
+                        const match = allAgents.find(
+                          (item) =>
+                            item.device.os.toLowerCase().includes(osKey) &&
+                            item.agent.name.toLowerCase().includes(agentName.split(" ")[0].toLowerCase()),
+                        );
+                        return (
+                          <td key={`${agentName}-${osKey}`}>
+                            {match ? (
+                              <AssuranceBadge
+                                level={match.agent.assurance_level}
+                                control={match.agent.assurance.control}
+                              />
+                            ) : (
+                              <span className="heatmap-cell-empty">Not observed</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <div className="grid-2">
           <Card padding={3}>
             <VStack gap={3}>
               <Heading level={2}>{`Assurance matrix by endpoint (${allAgents.length})`}</Heading>
@@ -108,7 +171,8 @@ export function CoveragePage({ devices }: { devices: Device[] }) {
               )}
             </VStack>
           </Card>
-        </div>
+          </div>
+        </VStack>
       )}
     </VStack>
   );

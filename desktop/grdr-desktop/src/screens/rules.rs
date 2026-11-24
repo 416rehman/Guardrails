@@ -1,8 +1,11 @@
 use grdr_ui_model::{Intent, RulePreset};
-use rune::{El, Tx, col, row, spacer, text};
+use rune::{El, Tx, col, el, icon, row, spacer, text};
 use rune_kit::SegmentedControl;
 
-use crate::kit::{DesktopApp, ledger_header, mode_segmented, quoted_chip, status_pill};
+use crate::icons;
+use crate::kit::{
+    DesktopApp, ledger_header, mode_pill, mode_segmented, quoted_chip, status_pill_with_icon,
+};
 use crate::theme::StudioTheme;
 
 #[must_use]
@@ -37,9 +40,16 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         let mut title_row = row()
             .gap(8.0)
             .center_y()
+            .child(mode_pill(rule.mode, t))
             .child(text(&rule.title).font(t.body_strong).color(t.c.ink_primary));
         if rule.locked {
-            title_row = title_row.child(status_pill("Floor", t.c.block_bg, t.c.block, t));
+            title_row = title_row.child(status_pill_with_icon(
+                "Floor",
+                Some(&icons::LOCK),
+                t.c.block_bg,
+                t.c.block,
+                t,
+            ));
         }
 
         rules_col = rules_col.child(
@@ -67,6 +77,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                                 .gap(8.0)
                                 .center_y()
                                 .child(quoted_chip(&rule.target_pattern, t))
+                                .child(icon(&icons::SHIELD_CHECK, 12.0).color(t.c.ink_muted))
                                 .child(
                                     text(&rule.effective_note)
                                         .font(t.caption)
@@ -83,7 +94,19 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         .key("screen-rules")
         .w_full()
         .gap(24.0)
-        .child(text("Rules").font(t.display_headline).color(t.c.ink_primary))
+        .child(
+            row()
+                .gap(12.0)
+                .center_y()
+                .child(
+                    el().size(36.0, 36.0)
+                        .radius(9.0)
+                        .fill(t.c.accent_soft)
+                        .center()
+                        .child(icon(&icons::SHIELD, 18.0).color(t.c.accent)),
+                )
+                .child(text("Rules").font(t.display_headline).color(t.c.ink_primary)),
+        )
         .child(
             text("Tightening a rule applies locally right away. Lowering protection emits a step-up proposal to grdr-approve.")
                 .font(t.body)

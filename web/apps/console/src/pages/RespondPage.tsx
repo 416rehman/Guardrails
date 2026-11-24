@@ -16,12 +16,17 @@ import {
   Button,
   Card,
   GrdrIcon,
+  HarnessIcon,
   Heading,
   HStack,
   Text,
   TextInput,
   VStack,
 } from "@grdr/ui";
+
+const MATRIX_ENDPOINTS = ["Claude", "Claude Code", "Cursor", "Codex", "Gemini", "GitHub Copilot", "OpenCode", "Windsurf"];
+const MATRIX_MODELS = ["Anthropic", "OpenAI", "Google", "AWS Bedrock", "Meta Llama", "Mistral"];
+const MATRIX_GATEWAYS = ["MCP Broker", "Guardrails Proxy", "LiteLLM", "Kong", "Azure AI Foundry", "Portkey"];
 
 export function RespondPage({
   approvals,
@@ -45,6 +50,12 @@ export function RespondPage({
   const [targetId, setTargetId] = useState(defaultSessionId || "sess-demo-refactor");
   const [killReason, setKillReason] = useState("Containment triggered by operator during triage");
   const [confirmKill, setConfirmKill] = useState(false);
+  const [killModalOpen, setKillModalOpen] = useState(false);
+  const [matrixQuery, setMatrixQuery] = useState("");
+  const [matrixConfirmPhrase, setMatrixConfirmPhrase] = useState("");
+  const [blockedAgents, setBlockedAgents] = useState<string[]>(MATRIX_ENDPOINTS);
+  const [blockedModels, setBlockedModels] = useState<string[]>(MATRIX_MODELS);
+  const [blockedGateways, setBlockedGateways] = useState<string[]>(MATRIX_GATEWAYS);
 
   const pending = approvals.filter((a) => a.state.status === "pending");
 
@@ -100,6 +111,50 @@ export function RespondPage({
           <Text color="secondary">
             Approve or deny pending step-up requests (1-second armed delay prevents misclicks), review findings, export telemetry, and engage containment.
           </Text>
+        </div>
+        <Button
+          variant="destructive"
+          label="Open kill switch matrix"
+          icon={<GrdrIcon name="alert-octagon" size={14} />}
+          onClick={() => setKillModalOpen(true)}
+        />
+      </div>
+
+      <div className="metric-strip" style={{ marginBlockStart: 0, paddingBlockStart: 0, borderBlockStart: "none" }}>
+        <div className="metric-cell">
+          <div className="metric-value tabular">{pending.length}</div>
+          <div className="metric-label">Waiting approvals</div>
+          <div className="kpi-bar">
+            <div style={{ width: `${Math.min(100, pending.length * 25 + 15)}%`, background: "var(--tone-ask)" }} />
+          </div>
+        </div>
+        <div className="metric-cell">
+          <div className="metric-value tabular">{findings.length}</div>
+          <div className="metric-label">Open findings</div>
+          <div className="kpi-bar">
+            <div style={{ width: "30%", background: "var(--tone-block)" }} />
+            <div style={{ width: "45%", background: "var(--tone-ask)" }} />
+            <div style={{ width: "25%", background: "var(--tone-watch)" }} />
+          </div>
+        </div>
+        <div className="metric-cell">
+          <div className="metric-value tabular">{incidents.length}</div>
+          <div className="metric-label">Correlated incidents</div>
+          <div className="kpi-bar">
+            <div style={{ width: "65%", background: "var(--tone-block)" }} />
+          </div>
+        </div>
+        <div className="metric-cell">
+          <div className="metric-value tabular">{killSwitch.state}</div>
+          <div className="metric-label">Kill switch status</div>
+          <div className="kpi-bar">
+            <div
+              style={{
+                width: "100%",
+                background: killSwitch.state === "inactive" ? "var(--tone-allow)" : "var(--tone-block)",
+              }}
+            />
+          </div>
         </div>
       </div>
 
@@ -383,6 +438,11 @@ export function RespondPage({
                   data-agent-confirm="Confirm stopping all matching agent sessions immediately"
                   onClick={() => void handleKillSwitch("kill")}
                 />
+                <Button
+                  variant="secondary"
+                  label="3-column matrix"
+                  onClick={() => setKillModalOpen(true)}
+                />
                 {killSwitch.state !== "inactive" && (
                   <Button
                     variant="primary"
@@ -395,6 +455,117 @@ export function RespondPage({
           </VStack>
         </Card>
       </div>
+
+      {killModalOpen && (
+        <div className="killswitch-backdrop" role="dialog" aria-modal="true" aria-label="Scoped Kill Switch Matrix">
+          <div className="killswitch-dialog">
+            <HStack justify="between" align="center">
+              <HStack gap={2} align="center">
+                <GrdrIcon name="shield-off" size={18} color="var(--tone-block)" />
+                <Heading level={2}>Scoped Kill Switch</Heading>
+              </HStack>
+              <Button size="sm" label="Close" icon={<GrdrIcon name="x" size={14} />} onClick={() => setKillModalOpen(false)} />
+            </HStack>
+
+            <Banner
+              status="error"
+              title="Terminate and block AI on the endpoint and at the gateway"
+              collapsible={false}
+            />
+
+            <TextInput
+              label="Filter endpoints, model providers, or gateways"
+              value={matrixQuery}
+              onChange={setMatrixQuery}
+              width="100%"
+            />
+
+            <div className="killswitch-cols">
+              <div className="killswitch-col">
+                <strong>{`Endpoint (${blockedAgents.length}/${MATRIX_ENDPOINTS.length})`}</strong>
+                {MATRIX_ENDPOINTS.filter((a) => a.toLowerCase().includes(matrixQuery.toLowerCase())).map((ag) => (
+                  <label key={ag} className="killswitch-check">
+                    <input
+                      type="checkbox"
+                      checked={blockedAgents.includes(ag)}
+                      onChange={(e) =>
+                        setBlockedAgents((prev) =>
+                          e.target.checked ? [...prev, ag] : prev.filter((x) => x !== ag),
+                        )
+                      }
+                    />
+                    <HarnessIcon name={ag} size={14} />
+                    <span>{ag}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div className="killswitch-col">
+                <strong>{`Model providers (${blockedModels.length}/${MATRIX_MODELS.length})`}</strong>
+                {MATRIX_MODELS.filter((m) => m.toLowerCase().includes(matrixQuery.toLowerCase())).map((m) => (
+                  <label key={m} className="killswitch-check">
+                    <input
+                      type="checkbox"
+                      checked={blockedModels.includes(m)}
+                      onChange={(e) =>
+                        setBlockedModels((prev) =>
+                          e.target.checked ? [...prev, m] : prev.filter((x) => x !== m),
+                        )
+                      }
+                    />
+                    <HarnessIcon name={m} size={14} />
+                    <span>{m}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div className="killswitch-col">
+                <strong>{`Gateways (${blockedGateways.length}/${MATRIX_GATEWAYS.length})`}</strong>
+                {MATRIX_GATEWAYS.filter((g) => g.toLowerCase().includes(matrixQuery.toLowerCase())).map((g) => (
+                  <label key={g} className="killswitch-check">
+                    <input
+                      type="checkbox"
+                      checked={blockedGateways.includes(g)}
+                      onChange={(e) =>
+                        setBlockedGateways((prev) =>
+                          e.target.checked ? [...prev, g] : prev.filter((x) => x !== g),
+                        )
+                      }
+                    />
+                    <GrdrIcon name="server" size={14} />
+                    <span>{g}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <HStack justify="between" align="end" style={{ gap: 12, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 260 }}>
+                <TextInput
+                  label="Enter target scope confirmation (type: fleet-kill)"
+                  value={matrixConfirmPhrase}
+                  onChange={setMatrixConfirmPhrase}
+                  width="100%"
+                />
+              </div>
+              <HStack gap={2}>
+                <Button label="Cancel" onClick={() => setKillModalOpen(false)} />
+                <Button
+                  variant="destructive"
+                  icon={<GrdrIcon name="alert-octagon" size={14} />}
+                  label={`Activate kill switch (${blockedAgents.length + blockedModels.length + blockedGateways.length})`}
+                  isDisabled={matrixConfirmPhrase.trim().toLowerCase() !== "fleet-kill"}
+                  data-agent-confirm="Confirm fleet-wide kill switch"
+                  onClick={async () => {
+                    await handleKillSwitch("kill");
+                    setKillModalOpen(false);
+                  }}
+                />
+              </HStack>
+            </HStack>
+          </div>
+        </div>
+      )}
     </VStack>
   );
 }

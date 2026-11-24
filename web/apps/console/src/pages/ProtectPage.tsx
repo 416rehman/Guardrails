@@ -20,8 +20,11 @@ import {
   HStack,
   Text,
   TextInput,
+  UiSdkSegmentedControl,
   VStack,
 } from "@grdr/ui";
+
+type EditorViewMode = "simple" | "advanced" | "code";
 
 const ACTION_CLASSES: ActionClass[] = [
   "exec",
@@ -52,6 +55,7 @@ export function ProtectPage({
 }) {
   const [replay, setReplay] = useState<{ ruleId: string; summary: ReplaySummary } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [editorMode, setEditorMode] = useState<EditorViewMode>("simple");
   const [showNewForm, setShowNewForm] = useState<boolean>(prefillAttempt !== null);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -179,18 +183,101 @@ export function ProtectPage({
             {`Rules execute locally in Off, Watch, Ask, or Block mode. Protected endpoints enforce via boundary; User endpoints enforce as requests (${boundaryDevices} boundary, ${requestDevices} request device(s)).`}
           </Text>
         </div>
-        <Button
-          variant="primary"
-          label={showNewForm ? "Close rule builder" : "New rule"}
-          icon={<GrdrIcon name="plus" size={14} />}
-          onClick={() => {
-            setEditingRuleId(null);
-            setShowNewForm((prev) => !prev);
-          }}
-        />
+        <HStack gap={2} align="center" style={{ flexWrap: "wrap" }}>
+          <UiSdkSegmentedControl<EditorViewMode>
+            ariaLabel="Policy representation view"
+            value={editorMode}
+            options={[
+              {
+                value: "simple",
+                label: "Simple",
+                icon: <GrdrIcon name="list" size={13} />,
+              },
+              {
+                value: "advanced",
+                label: "Advanced",
+                icon: <GrdrIcon name="shield" size={13} />,
+              },
+              {
+                value: "code",
+                label: "Code",
+                icon: <GrdrIcon name="code" size={13} />,
+              },
+            ]}
+            onChange={setEditorMode}
+          />
+          <Button
+            variant="primary"
+            label={showNewForm ? "Close rule builder" : "New rule"}
+            icon={<GrdrIcon name="plus" size={14} />}
+            onClick={() => {
+              setEditingRuleId(null);
+              setShowNewForm((prev) => !prev);
+            }}
+          />
+        </HStack>
       </div>
 
       {error && <Banner status="error" title={error} collapsible={false} />}
+
+      {editorMode === "advanced" && (
+        <section className="visual-panel" aria-label="Structured policy sentence builder">
+          <HStack justify="between" align="center">
+            <HStack gap={2} align="center">
+              <GrdrIcon name="shield" size={16} color="var(--accent-primary)" />
+              <Heading level={2}>Rule sentence builder</Heading>
+            </HStack>
+            <Badge variant="info" label="Compiles to Cedar & fastpath" />
+          </HStack>
+          <Text>
+            {`When any enrolled agent executes `}
+            <strong className="mono">{actionClass}</strong>
+            {` matching `}
+            <strong className="mono">{containsPattern || "*"}</strong>
+            {`, enforce `}
+            <strong>{mode.toUpperCase()}</strong>
+            {` on boundary devices.`}
+          </Text>
+          <HStack gap={2}>
+            <Button
+              size="sm"
+              variant="secondary"
+              label="Customize & save rule"
+              icon={<GrdrIcon name="pencil" size={13} />}
+              onClick={() => setShowNewForm(true)}
+            />
+          </HStack>
+        </section>
+      )}
+
+      {editorMode === "code" && (
+        <section className="visual-panel" aria-label="Compiled Cedar policy projection">
+          <HStack justify="between" align="center">
+            <HStack gap={2} align="center">
+              <GrdrIcon name="code" size={16} color="var(--accent-primary)" />
+              <Heading level={2}>Read-only Cedar projection</Heading>
+            </HStack>
+            <Badge
+              variant="info"
+              icon={<GrdrIcon name="lock" size={11} />}
+              label={`${packs.reduce((n, p) => n + p.rules.length, 0)} rule(s)`}
+            />
+          </HStack>
+          <pre className="cedar-code">
+            {packs
+              .flatMap((pack) =>
+                pack.rules.map((rule) => {
+                  const actionExpr = rule.matcher.action_classes
+                    .map((a) => `Action::"${a}"`)
+                    .join(", ");
+                  const pat = rule.matcher.target_contains[0] ?? "*";
+                  return `// ${rule.id} (${pack.id}, mode=${rule.mode}, locked=${rule.locked})\nforbid(\n  principal in Agent::"*" ,\n  action in [${actionExpr}],\n  resource\n) when {\n  context.mode == "${rule.mode}" &&\n  context.target like "*${pat}*"\n};`;
+                }),
+              )
+              .join("\n\n")}
+          </pre>
+        </section>
+      )}
 
       {showNewForm && (
         <Card padding={3}>

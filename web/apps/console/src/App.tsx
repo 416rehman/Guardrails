@@ -24,6 +24,7 @@ import {
   Button,
   GrdrIcon,
   GrdrThemeProvider,
+  GuardrailsMark,
   HStack,
   TextInput,
   UiSdkInlineBar,
@@ -176,7 +177,7 @@ export function App() {
         <aside className="rail" aria-label="Primary navigation">
           <div className="brand-mark">
             <div className="brand-glyph">
-              <GrdrIcon name="shield" size={16} />
+              <GuardrailsMark size={18} />
             </div>
             <div className="brand-title">
               <strong>{t("grdr.brand.name")}</strong>

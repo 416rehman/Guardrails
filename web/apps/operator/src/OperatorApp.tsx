@@ -17,6 +17,7 @@ import {
   EmptyState,
   GrdrIcon,
   GrdrThemeProvider,
+  GuardrailsMark,
   Heading,
   HStack,
   Text,
@@ -91,7 +92,7 @@ export function OperatorApp() {
         <aside className="rail" aria-label="Operator navigation">
           <div className="brand-mark">
             <div className="brand-glyph">
-              <GrdrIcon name="lock" size={16} />
+              <GuardrailsMark size={18} />
             </div>
             <div className="brand-title">
               <strong>{t("grdr.brand.name")}</strong>
@@ -217,9 +218,73 @@ export function OperatorApp() {
                         <div className="quiet-split">
                           <section className="ledger-section">
                             <div className="ledger-header">
-                              <h2 className="ledger-title">Deployment boundary</h2>
-                              <Badge variant="success" label="P8 isolated" />
+                              <HStack gap={2} align="center">
+                                <GrdrIcon name="shield-check" size={16} color="var(--tone-allow)" />
+                                <h2 className="ledger-title">Deployment boundary</h2>
+                              </HStack>
+                              <Badge variant="success" icon={<GrdrIcon name="lock" size={11} />} label="P8 isolated" />
                             </div>
+                            <svg
+                              width="100%"
+                              height="118"
+                              viewBox="0 0 540 118"
+                              role="img"
+                              aria-label="P8 Deployment isolation boundary diagram"
+                            >
+                              <rect
+                                x="6"
+                                y="10"
+                                width="224"
+                                height="96"
+                                rx="8"
+                                fill="var(--bg-recessed)"
+                                stroke="var(--accent-primary)"
+                                strokeWidth="1.5"
+                              />
+                              <text x="20" y="34" fontSize="12" fontWeight="700" fill="var(--ink-primary)">
+                                Operator control realm
+                              </text>
+                              <text x="20" y="54" fontSize="11" fill="var(--ink-secondary)">
+                                Health, Ed25519 keys, OCSF exports
+                              </text>
+                              <text x="20" y="74" fontSize="11" fill="var(--tone-allow)">
+                                {`${snapshot.keys.length} trusted key(s), ${snapshot.audit.length} audit entry`}
+                              </text>
+
+                              <line
+                                x1="258"
+                                y1="12"
+                                x2="258"
+                                y2="106"
+                                stroke="var(--tone-block)"
+                                strokeWidth="2"
+                                strokeDasharray="5 4"
+                              />
+                              <text x="270" y="64" fontSize="11" fontWeight="700" fill="var(--tone-block)">
+                                0 routes
+                              </text>
+
+                              <rect
+                                x="330"
+                                y="10"
+                                width="204"
+                                height="96"
+                                rx="8"
+                                fill="var(--bg-recessed)"
+                                stroke="var(--border-strong)"
+                                strokeWidth="1.2"
+                                strokeDasharray="4 3"
+                              />
+                              <text x="344" y="34" fontSize="12" fontWeight="700" fill="var(--ink-muted)">
+                                Tenant prompts &amp; payloads
+                              </text>
+                              <text x="344" y="54" fontSize="11" fill="var(--ink-muted)">
+                                Unmounted (0) on operator origin
+                              </text>
+                              <text x="344" y="74" fontSize="11" fill="var(--ink-muted)">
+                                Enforced by P8 isolation rule
+                              </text>
+                            </svg>
                             <div className="kv-row">
                               <Text color="secondary">Tenant prompt & payload routes</Text>
                               <Text className="mono">Unmounted (0)</Text>

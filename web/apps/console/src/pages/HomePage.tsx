@@ -8,8 +8,18 @@ import type {
   OverviewResponse,
   PolicyPack,
 } from "@grdr/api";
-import { Quoted, VerdictBadge } from "@grdr/kit";
+import { AssuranceBadge, Quoted, VerdictBadge } from "@grdr/kit";
 import { Badge, Banner, Button, GrdrIcon, HStack, Text, VStack } from "@grdr/ui";
+
+const VELOCITY_DAYS = [
+  { day: "Mon", allowed: 18, ask: 1, block: 0 },
+  { day: "Tue", allowed: 24, ask: 2, block: 1 },
+  { day: "Wed", allowed: 21, ask: 0, block: 1 },
+  { day: "Thu", allowed: 32, ask: 3, block: 2 },
+  { day: "Fri", allowed: 28, ask: 1, block: 0 },
+  { day: "Sat", allowed: 14, ask: 0, block: 0 },
+  { day: "Sun", allowed: 19, ask: 1, block: 1 },
+];
 
 export function HomePage({
   overview,
@@ -189,6 +199,76 @@ export function HomePage({
         </div>
       </section>
 
+      <section className="visual-panel" aria-label="Weekly decision velocity">
+        <HStack justify="between" align="center" style={{ flexWrap: "wrap", gap: 12 }}>
+          <HStack gap={2} align="center">
+            <GrdrIcon name="activity" size={16} color="var(--accent-primary)" />
+            <Text style={{ fontWeight: 600 }}>
+              169 evaluated agent calls this week: 156 allowed, 8 held for Ask, 5 blocked
+            </Text>
+          </HStack>
+          <HStack gap={2} align="center">
+            <Badge variant="neutral" label="Allowed (156)" />
+            <Badge variant="warning" icon={<GrdrIcon name="hand" size={11} />} label="Ask (8)" />
+            <Badge variant="error" icon={<GrdrIcon name="ban" size={11} />} label="Blocked (5)" />
+          </HStack>
+        </HStack>
+        <svg
+          width="100%"
+          height="92"
+          viewBox="0 0 700 92"
+          role="img"
+          aria-label="Seven-day decision distribution bar chart"
+        >
+          {VELOCITY_DAYS.map((d, idx) => {
+            const x = 18 + idx * 98;
+            const total = d.allowed + d.ask + d.block;
+            const maxH = 54;
+            const scale = maxH / 38;
+            const hAllow = Math.max(4, Math.round(d.allowed * scale));
+            const hAsk = d.ask > 0 ? Math.max(5, Math.round(d.ask * scale)) : 0;
+            const hBlock = d.block > 0 ? Math.max(5, Math.round(d.block * scale)) : 0;
+            const yAllow = 66 - hAllow;
+            const yAsk = yAllow - hAsk - (hAsk > 0 ? 2 : 0);
+            const yBlock = yAsk - hBlock - (hBlock > 0 ? 2 : 0);
+            return (
+              <g key={d.day}>
+                <rect
+                  x={x}
+                  y={yAllow}
+                  width="56"
+                  height={hAllow}
+                  rx="4"
+                  fill="var(--border-strong)"
+                />
+                {hAsk > 0 && (
+                  <rect x={x} y={yAsk} width="56" height={hAsk} rx="3" fill="var(--tone-ask)" />
+                )}
+                {hBlock > 0 && (
+                  <rect
+                    x={x}
+                    y={yBlock}
+                    width="56"
+                    height={hBlock}
+                    rx="3"
+                    fill="var(--tone-block)"
+                  />
+                )}
+                <text
+                  x={x + 28}
+                  y="84"
+                  textAnchor="middle"
+                  fontSize="11"
+                  fill="var(--ink-muted)"
+                >
+                  {`${d.day} (${total})`}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </section>
+
       <section className="ledger-section" aria-label="Needs you">
         <div className="ledger-header">
           <h2 className="ledger-title">Waiting for your decision</h2>
@@ -344,15 +424,42 @@ export function HomePage({
 
           <div className="checklist">
             {devices.map((device) => (
-              <div key={device.id} className="check-row">
-                <div>
-                  <div style={{ fontWeight: 600 }}>{device.hostname}</div>
-                  <Text size="sm" color="secondary">
-                    {`${device.os} / ${device.arch}, ${device.agents.length} agent(s), ${device.mcp_servers.length} MCP server(s)`}
-                  </Text>
-                </div>
+              <div key={device.id} className="check-row" style={{ alignItems: "flex-start" }}>
+                <HStack gap={2} align="start">
+                  <div
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 6,
+                      background: "var(--bg-recessed)",
+                      border: "1px solid var(--border-subtle)",
+                      display: "grid",
+                      placeItems: "center",
+                      flexShrink: 0,
+                      marginTop: 2,
+                    }}
+                  >
+                    <GrdrIcon name="cpu" size={14} color="var(--ink-primary)" />
+                  </div>
+                  <VStack gap={1}>
+                    <div style={{ fontWeight: 600 }}>{device.hostname}</div>
+                    <Text size="sm" color="secondary">
+                      {`${device.os} / ${device.arch}, ${device.agents.length} agent(s), ${device.mcp_servers.length} MCP server(s)`}
+                    </Text>
+                    <HStack gap={1} style={{ flexWrap: "wrap" }}>
+                      {device.agents.map((ag) => (
+                        <AssuranceBadge
+                          key={ag.id}
+                          level={ag.assurance_level}
+                          control={`${ag.name}: ${ag.assurance.control}`}
+                        />
+                      ))}
+                    </HStack>
+                  </VStack>
+                </HStack>
                 <Badge
                   variant={device.hook_effective ? "success" : "warning"}
+                  icon={<GrdrIcon name={device.hook_effective ? "shield-check" : "shield-alert"} size={12} />}
                   label={device.hook_effective ? "Hooks active" : "Request mode"}
                 />
               </div>

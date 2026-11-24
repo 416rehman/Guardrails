@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod icons;
 mod kit;
 mod screens;
 mod theme;

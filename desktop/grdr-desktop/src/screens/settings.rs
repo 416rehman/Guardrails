@@ -1,6 +1,7 @@
 use grdr_ui_model::{InstallProfile, Intent, RenderTier, ThemeChoice};
-use rune::{El, col, row, spacer, text};
+use rune::{El, col, el, icon, row, spacer, text};
 
+use crate::icons;
 use crate::kit::{DesktopApp, ledger_header, primary_button, status_pill};
 use crate::theme::StudioTheme;
 
@@ -29,11 +30,15 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
             .gap(4.0)
             .child(ledger_header("Runtime & preferences", "Local config", t));
 
-    for (k, v) in [
-        ("Install profile", profile_text.to_owned()),
-        ("Render tier", tier_text.to_owned()),
-        ("Appearance theme", theme_text.to_owned()),
-        ("UI locale", prefs.locale.code().to_owned()),
+    for (k, v, glyph) in [
+        (
+            "Install profile",
+            profile_text.to_owned(),
+            &icons::SHIELD_CHECK,
+        ),
+        ("Render tier", tier_text.to_owned(), &icons::CPU),
+        ("Appearance theme", theme_text.to_owned(), &icons::SUN),
+        ("UI locale", prefs.locale.code().to_owned(), &icons::GLOBE),
     ] {
         rows = rows.child(
             row()
@@ -41,6 +46,8 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                 .pt(12.0)
                 .pb(12.0)
                 .center_y()
+                .gap(10.0)
+                .child(icon(glyph, 15.0).color(t.c.ink_muted))
                 .child(text(k).font(t.body_strong).color(t.c.ink_primary))
                 .child(spacer())
                 .child(status_pill(&v, t.c.recessed, t.c.ink_secondary, t)),
@@ -52,9 +59,21 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         .w_full()
         .gap(24.0)
         .child(
-            text("Settings")
-                .font(t.display_headline)
-                .color(t.c.ink_primary),
+            row()
+                .gap(12.0)
+                .center_y()
+                .child(
+                    el().size(36.0, 36.0)
+                        .radius(9.0)
+                        .fill(t.c.accent_soft)
+                        .center()
+                        .child(icon(&icons::SLIDERS, 18.0).color(t.c.accent)),
+                )
+                .child(
+                    text("Settings")
+                        .font(t.display_headline)
+                        .color(t.c.ink_primary),
+                ),
         )
         .child(
             text("Manage render tier, appearance, locale, and local web console bridge.")
