@@ -437,7 +437,9 @@ dependencies = [
  "clap",
  "grdr-agents",
  "grdr-core",
+ "grdr-llm-proto",
  "grdr-model",
+ "grdr-sandbox-engine",
  "jiff",
  "reqwest",
  "serde_json",
@@ -539,6 +541,13 @@ dependencies = [
 [[package]]
 name = "grdr-llm-proto"
 version = "0.1.0"
+dependencies = [
+ "grdr-model",
+ "jiff",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
 
 [[package]]
 name = "grdr-model"
@@ -569,6 +578,12 @@ version = "0.1.0"
 [[package]]
 name = "grdr-sandbox-engine"
 version = "0.1.0"
+dependencies = [
+ "grdr-model",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
 
 [[package]]
 name = "grdr-schema"

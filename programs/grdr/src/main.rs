@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+mod mcp_proxy;
+mod runner;
+
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Duration;
 
@@ -11,11 +15,7 @@ use uuid::Uuid;
 use grdr_agents::{
     HookTargetKind, detect_home_dir, discover_local_agents, install_hook, uninstall_hook,
 };
-use grdr_core::policy;
-use grdr_model::{
-    ActionAttempt, ActionClass, ControlPoint, DecideInput, DecisionReceipt, InstallProfile,
-    KillSwitchState, Verdict,
-};
+use grdr_model::{ActionAttempt, ActionClass, ControlPoint, InstallProfile, Verdict};
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum ProfileArg {
@@ -75,6 +75,46 @@ enum Command {
         #[arg(long, default_value = "claude-code")]
         agent: String,
     },
+    /// Wrap a stdio MCP server and enforce policy on JSON-RPC tools/call requests.
+    McpProxy {
+        #[arg(long, default_value = "default")]
+        server_name: String,
+
+        #[arg(long, default_value = "claude-code")]
+        agent: String,
+
+        #[arg(long, default_value = "sess-mcp-proxy")]
+        session_id: String,
+
+        #[arg(long, env = "GRDR_DAEMON_URL", default_value = "http://127.0.0.1:8788")]
+        daemon: String,
+
+        #[arg(trailing_var_arg = true, required = true)]
+        command: Vec<String>,
+    },
+    /// Launch a command with policy enforcement and environment secret stripping.
+    Run {
+        #[arg(long, default_value_t = true)]
+        contain: bool,
+
+        #[arg(long)]
+        workdir: Option<PathBuf>,
+
+        #[arg(long, default_value = "claude-code")]
+        agent: String,
+
+        #[arg(long, default_value = "sess-sandbox-run")]
+        session_id: String,
+
+        #[arg(long, env = "GRDR_DAEMON_URL", default_value = "http://127.0.0.1:8788")]
+        daemon: String,
+
+        #[arg(long = "allow-env")]
+        allow_env: Vec<String>,
+
+        #[arg(trailing_var_arg = true, required = true)]
+        command: Vec<String>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -94,6 +134,30 @@ fn main() -> ExitCode {
             apply,
         } => run_install_hook(&agent, &command, apply),
         Command::UninstallHook { agent } => run_uninstall_hook(&agent),
+        Command::McpProxy {
+            server_name,
+            agent,
+            session_id,
+            daemon,
+            command,
+        } => mcp_proxy::run_mcp_proxy(&server_name, &agent, &session_id, &daemon, &command),
+        Command::Run {
+            contain,
+            workdir,
+            agent,
+            session_id,
+            daemon,
+            allow_env,
+            command,
+        } => runner::run_contained_command(
+            contain,
+            workdir,
+            &agent,
+            &session_id,
+            &daemon,
+            &allow_env,
+            &command,
+        ),
     }
 }
 
@@ -175,48 +239,20 @@ fn run_status(daemon: &str) -> ExitCode {
 }
 
 fn run_check(action: &str, target: &str, agent: &str, daemon: &str) -> ExitCode {
-    let url = format!("{}/local/v1/decide", daemon.trim_end_matches('/'));
-    let payload = DecideInput {
-        session_id: Some("sess-cli-check".into()),
-        device_id: None,
-        device_name: None,
+    let now = Timestamp::now();
+    let attempt = ActionAttempt {
+        id: format!("att_{}", Uuid::now_v7().simple()),
+        session_id: "sess-cli-check".into(),
+        device_id: "dev-offline".into(),
+        device_name: "local".into(),
         agent_name: agent.into(),
         action_class: ActionClass::from_name(action),
-        control_point: Some(ControlPoint::Hook),
+        control_point: ControlPoint::Hook,
         target: target.into(),
-        summary: Some(format!("grdr check {action}")),
+        summary: format!("grdr check {action}"),
+        timestamp: now,
     };
-
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build();
-
-    let (receipt, source) = if let Ok(client) = client
-        && let Ok(resp) = client.post(&url).json(&payload).send()
-        && resp.status().is_success()
-        && let Ok(parsed) = resp.json::<DecisionReceipt>()
-    {
-        (parsed, "daemon")
-    } else {
-        let now = Timestamp::now();
-        let attempt = ActionAttempt {
-            id: format!("att_{}", Uuid::now_v7().simple()),
-            session_id: "sess-cli-check".into(),
-            device_id: "dev-offline".into(),
-            device_name: "local".into(),
-            agent_name: agent.into(),
-            action_class: ActionClass::from_name(action),
-            control_point: ControlPoint::Hook,
-            target: target.into(),
-            summary: "grdr check offline fallback".into(),
-            timestamp: now,
-        };
-        let packs = vec![policy::essentials_pack()];
-        (
-            policy::evaluate(&attempt, &packs, &[], &KillSwitchState::Inactive, now),
-            "offline-essentials",
-        )
-    };
+    let (receipt, source) = mcp_proxy::evaluate_via_daemon_or_offline(&attempt, daemon);
 
     println!(
         "Verdict: {:?} | Rule: {} | Source: {}\nReason: {}\nNext step: {}\nReceipt: {}",
