@@ -24,3 +24,16 @@ condition = "AND"
 regexTarget = "secret"
 regexes = ['''^RW[QRST][A-Za-z0-9+/]{53}$''']
 paths = ['''^supply-chain/build-tools\.toml$''']
+
+# Demo seed and Vitest fixtures use synthetic grdr_wk_* wave deployment key previews/stubs.
+[[allowlists]]
+description = "synthetic wave deployment key previews in demo seed and test fixtures"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^grdr_wk_(?:pilot_9f1a|mac_48c2|old_03b7|pilot9f1a|fin12345|fin123456789abcdef)$''']
+paths = [
+  '''^crates/grdr-model/src/connect\.rs$''',
+  '''^programs/grdr-server/src/store/connect_mdm\.rs$''',
+  '''^web/tests/console\.test\.tsx$''',
+]
