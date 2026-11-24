@@ -50,7 +50,7 @@ The Guardrails ADR column (GR) names the design document that specifies the capa
 
 Shipping, closed source; sensor v1.12.5 (2026-09-30). Prelude Security until 2026-07-27.
 
-- **Mechanics.** The sensor points each agent's native OpenTelemetry exporter at a loopback collector (port 4318), adds application hooks, reads transcripts (needs Full Disk Access), polls provider compliance APIs (Anthropic, Microsoft 365 Copilot; OpenAI in preview), runs a browser extension for five chat sites, and reads OS telemetry (macOS Endpoint Security client, Windows user-mode ETW). The Light sensor (2026-06-12) intercepts nothing; the Full sensor keeps on-wire capture.
+- **Mechanics.** The sensor points each agent's native OpenTelemetry exporter at a loopback collector (port 4318, colliding if a developer runs their own collector without fan-out), adds application hooks, reads transcripts (needs Full Disk Access), polls provider compliance APIs (Anthropic, Microsoft 365 Copilot Interaction Export, Perplexity Enterprise webhook; OpenAI in preview) and IdP directories via Pull Sync (Okta secretless dynamic JWKS, Entra 1-click consent + Intune serial correlation, Google Workspace DWD), runs a browser extension with `FormData` file-upload inspection and per-site modes, inventories skills/rules (`SKILL.md`, `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`), offers console SQL exploration with schema-hidden column gating and progressive MCP schema tools, renders turn-indexed trace waterfalls with multi-action bash decomposition, supports fleet wave tokens (`max_uses`) plus Tanium/Hexnode/Chrome Enterprise MDM templates, and reads OS telemetry (macOS Endpoint Security client, Windows user-mode ETW). The Light sensor (2026-06-12) intercepts nothing; the Full sensor keeps on-wire capture, and offers a covert "hide tray icon" option and console-pushed executable skills.
 - **Covers.** macOS 13+, Windows 10/11, Server 2022+. No Linux, container or Kubernetes sensor; Claude Code in WSL is the only Linux coverage. Capture is per application (Claude Code, Cowork, Codex, ChatGPT Desktop, Copilot CLI, Cursor); inventory is wider.
 - **Discovery and attribution.** Tools, extensions, MCP servers, skills, local runtimes and inference-library loads. A bespoke agent appears only as process or library evidence. Process starts and file activity are tied to an agent session.
 - **Enforcement.** None inline is documented. "Enforce" means configuration push plus a finding when its settings are displaced. "Active response" appears only on the pricing page.
@@ -58,7 +58,7 @@ Shipping, closed source; sensor v1.12.5 (2026-09-30). Prelude Security until 202
 - **Deployment, API, price.** Hosted in the US by default, with EU and Australian regions; regional hosting and self-hosting are Enterprise options. A read-only MCP server; no SIEM export or REST API documented. Eight fixed roles, prompt text behind its own permission. Free one-seat tier, per-endpoint paid tiers, no figures published.
 - **Strengths.** Published investigations that double as a detection backlog; evidence-checked review; a one-command free tier.
 - **Weak points.** It trusts the watched process: its own research shows 27 executions with no telemetry record in one run (26 were harness housekeeping) and telemetry falsified by patching the binary. A port collision silently stops capture. Full prompts sit in a multi-tenant store with three third-party model sub-processors.
-- **Our answer.** Cross-check claims against OS observation (P3, D-13); enforce Essentials from first protection (D-53); Linux as the reference platform (D-19); default upload `metadata` (D-51); an export contract (D-54). We keep its two ratings and three buckets (spine section 3, D-44) and rebuild its published detection ideas as open content.
+- **Our answer.** Cross-check claims against OS observation (P3, D-13); enforce Essentials from first protection (D-53); Linux as the reference platform (D-19); org-configurable `named` user risk/activity views or `works-council` pseudonymous compliance with default upload `metadata` (D-51); mandatory transparent tray disclosure (never covert) and no remote executable script push (P7); non-colliding OTLP loopback pass-through fan-out; and an export contract (D-54). We keep its two ratings and three buckets (spine section 3, D-44) and rebuild its published detection ideas as open content.
 
 #### 2.2 BeyondTrust AI Agent Security
 
@@ -189,7 +189,7 @@ Columns: OR Origin; BT BeyondTrust; MS Microsoft; CS Falcon Guardian; SK Sidekic
 |Prompt and response DLP or redaction|g|-|G|G|c|G|c|c|-|g|-|-|-|-|16|
 |Session labels with sink gating|-|-|-|-|-|-|-|-|-|-|-|-|-|-|16|
 |Tenant pinning: AI accounts, cloud accounts|-|G|g|-|c|-|-|-|-|-|-|-|-|-|17; 16|
-|Metadata by default, pseudonymous people|-|-|-|g|-|-|-|-|c|-|g|g|g|-|29; 04|
+|Metadata by default, org-configurable identity mode (`named` default / `works-council` pseudonymous)|-|-|-|g|-|-|-|-|c|-|g|g|g|-|29; 04|
 |**Detection**||||||||||||||||
 |Deterministic detections on agent behaviour|G|g|g|G|-|G|c|c|G|G|g|G|G|-|13|
 |Detection content open and portable|-|-|-|-|-|-|-|-|-|G|G|G|G|-|13; 26|
@@ -238,7 +238,7 @@ Reading notes. "Scoped" and "mandatory" are the spine's control grades; Windows 
 |W9|Open, mandatory kernel enforcement on Linux, with WSL2, containers and CI in one graph|Palo Alto lists Linux with no mechanism; Falcon Guardian Linux is pre-beta; OpenShell confines only what it launches|D-19; 10; mandatory enforcement requires S-12 and trust-core review with a free external audit or a qualified volunteer reviewer|
 |W10|A fully open multi-tenant console with a provider tier|Open projects paywall fleet, identity and console (08)|D-33, D-35; 20, 21, 27|
 |W11|Published efficacy on agent-action scenarios|No lab has tool-call or MCP scenarios|D-45; requires the core and the replay model endpoint|
-|W12|Private by schema|No rival documents pseudonymous principals or a ban on per-person scoring|D-51; 29|
+|W12|Private capture + configurable identity|No rival combines default metadata-only capture, dual `named` / `works-council` pseudonymous profiles, and mandatory non-covert tray transparency|D-51; 29|
 |W13|Engine and content an EDR vendor can embed|Elastic proved content over foreign telemetry under a licence nobody can embed|D-41; 26; L2 to L6 require an embedding partner|
 |W14|Endpoint-level, cross-vendor agent telemetry an MDR can run|MDR for agents exists only on Claude audit logs (eSentire, Daylight)|D-44; 18; requires the provider tier|
 |W15|Signed receipts per decision|AARM R5 asks for it; no endpoint rival documents it|D-39; 04; the local chain needs no server|

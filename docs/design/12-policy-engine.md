@@ -64,16 +64,17 @@ Namespace `Grdr`, Cedar 4.14.x (language 4.6) pinned; an upgrade is a trust-core
 
 | Entity | Parents | Attributes |
 |---|---|---|
-| `Organisation`, `Group` | `Group` in `Group` or `Organisation` | none |
-| `Device` | `Group` | `os`, `profile` (`user`, `protected`) |
+| `Group` / `Organisation` | `Group` in `Group` or `Organisation` | none |
+| `User` | `Group` | `department: String`, `risk_tier: String` (populated only when `privacy.identity_mode = "named"`, neutral `""` in `works-council`) |
+| `Device` | `Group`, `User` (optional) | `os`, `profile` (`user`, `protected`) |
 | `Agent` | none | `tier` (A, B, C, bespoke), `classes` |
-| `AgentInstance` | `Agent`, `Device`, `Group` | none |
+| `AgentInstance` | `Agent`, `Device`, `Group`, `User` (optional) | none |
 | `Session` | parent `Session`, `AgentInstance` | `depth: Long`, `contained: Bool`, `containment`, `classes` |
 | `Process` | `Device` | `actor_kind` (`human`, `undetermined`, `system`), `agent_capable_host: Bool`, `classes` |
 
-The six principal-side-only entities (`Organisation`, `Group`, `Device`, `AgentInstance`, `Session`, `Process`) and `Agent` (shared between `AgentInstance`'s parent chain and `agent.spawn`'s resource) make 18 entity types together with the eleven other resource types below. No entity carries a human pseudonym, so a rule cannot target a person (P8, D-51).
+The principal-side entities (`Organisation`, `Group`, `User`, `Device`, `AgentInstance`, `Session`, `Process`) and `Agent` (shared between `AgentInstance`'s parent chain and `agent.spawn`'s resource) combine with the resource types below (`Skill` / `Artifact`, `Executable`, `Path`, `Endpoint`, `ModelEndpoint`, `McpServer`, `McpTool`, `Credential`, `ConfigTarget`, `ElevationRoute`, `UiTarget`, `Sink`). When `privacy.identity_mode = "pseudonymous"` (`works-council`), `User` is omitted from requests and policies targeting `User` fail lint (D-51).
 
-**Actions and resources.** Action ids are the spine's action classes verbatim, for example `Grdr::Action::"file.write"`, with groups `"file"`, `"net"`, `"mcp"`, `"any"` (groups omit `appliesTo`, so no request can invoke a group directly). Every one of the twelve resource types (`Agent`, `Executable`, `Path`, `Endpoint`, `ModelEndpoint`, `McpServer`, `McpTool`, `Credential`, `ConfigTarget`, `ElevationRoute`, `UiTarget`, `Sink`) has `classes: Set<String>`. The thirteen operational actions (`exec`, `file.read`, `file.write`, `file.delete`, `net.connect`, `net.request`, `llm.request`, `mcp.connect`, `mcp.call`, `cred.use`, `config.change`, `elevate`, `ui.act`) admit `[Session, Process]` as `principal`, whereas `agent.spawn` and `data.flow` admit `[Session]` only (RFC 0013).
+**Actions and resources.** Action ids are the spine's action classes verbatim, for example `Grdr::Action::"file.write"`, with groups `"file"`, `"net"`, `"mcp"`, `"any"` (groups omit `appliesTo`, so no request can invoke a group directly). Every one of the thirteen resource types (`Agent`, `Skill`, `Executable`, `Path`, `Endpoint`, `ModelEndpoint`, `McpServer`, `McpTool`, `Credential`, `ConfigTarget`, `ElevationRoute`, `UiTarget`, `Sink`) has `classes: Set<String>`. `Skill` (representing all `ArtifactKind` items: skills, rules, plugins, commands, subagents) additionally carries `kind: String`, `digest_pinned: Bool`, `has_scripts: Bool`, `requests_broad_tools: Bool`, `bidi_obfuscation: Bool`. The thirteen operational actions (`exec`, `file.read`, `file.write`, `file.delete`, `net.connect`, `net.request`, `llm.request`, `mcp.connect`, `mcp.call`, `cred.use`, `config.change`, `elevate`, `ui.act`) admit `[Session, Process]` as `principal`, whereas `agent.spawn` and `data.flow` admit `[Session]` only (RFC 0013).
 
 | Action | Resource | Extra attributes and context |
 |---|---|---|

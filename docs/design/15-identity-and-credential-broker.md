@@ -98,7 +98,7 @@ The token service accepts an attestation as `attested` evidence only when four c
 
 Local states need only the sensor; the full state machine, sponsor groups and SCIM-driven transitions require the server.
 
-The sponsor is a principal reference: a human pseudonym or an IdP group. It is never a name string. It defaults to the instance's principal on a personal device. For workloads and CI it defaults to the owner group named in the declared manifest or in the triage decision (05). A sponsor is required to leave `discovered`. An instance of a catalogue tier A or B agent on a personal device leaves `discovered` at first sighting with that default sponsor; bespoke and tier C instances wait for triage.
+The sponsor is a principal reference: a named `User` (`usr_`) or IdP group in `standard` mode (or a pseudonym in `works-council` mode). It defaults to the instance's user or principal on a personal device. For workloads and CI it defaults to the owner group named in the declared manifest or in the triage decision (05). A sponsor is required to leave `discovered`. An instance of a catalogue tier A or B agent on a personal device leaves `discovered` at first sighting with that default sponsor; bespoke and tier C instances wait for triage.
 
 ```mermaid
 stateDiagram-v2
@@ -308,6 +308,13 @@ Requires the server, except local AuthZEN callers, which need only the daemon.
 Propagation target: 60 s at p99, matching policy propagation (D-56). Agent-specific event types (agent quarantined, tool definition changed, delegation revoked) are part of the transmitter. They go in our own event namespace behind an adapter, offered upstream to the working group.
 
 **SCIM.** 21 section 6 owns the inbound SCIM 2.0 server. This document adds three consequences: names go only to the identity vault, groups can be sponsor groups, and deprovisioning a sponsor triggers the orphan check (section 3). Export as the SCIM Agent resource (`draft-wzdk-scim-agent-resource-00`) is an adapter.
+
+**Pull IdP Directory Sync.** A modular `DirectorySyncProvider` trait populates first-class `User` (`usr_`), group membership, department, and device-owner edges alongside SCIM:
+- **Okta:** secretless OAuth 2.0 `private_key_jwt` API Services application backed by a dynamic per-tenant JWKS endpoint and domain/org-ownership verification.
+- **Microsoft Entra ID:** 1-click multi-tenant consent or manual custom App Registration, plus optional Intune hardware serial-number correlation mapping `Device` records to directory users.
+- **Google Workspace:** Domain-Wide Delegation (DWD) service account scoped read-only to Directory users and groups.
+
+All synced user directories pass through `privacy.identity_mode` at query time (`named` in `standard`, pseudonymized in `works-council`).
 
 ### 11. Correlation with Entra, Okta, AWS and Google agent objects
 

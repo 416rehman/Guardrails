@@ -62,7 +62,7 @@ Names follow AIP-122. Every organisation-scoped resource sits under `organisatio
 | Organisation | `organisations/{o}` | Get, List, Create (provider; the operator creates through section 15), Update; `Suspend`, `Export` (LRO, D-67), `Delete` (LRO, crypto-shred) | 21 |
 | Delegation | `organisations/{o}/delegations/{d}` | Create, Get, List; `Approve`, `Revoke`, `Extend` | 21 |
 | Group | `.../groups/{g}` | Std; `Move` | 21 |
-| User (console account) | `.../users/{u}` | Get, List; written by SCIM or sign-on | this |
+| User (directory & monitored principal) | `.../users/{u}` | Get, List, `GetUserActivity`, `GetUserRisk`; written by SCIM, Pull IdP Sync, or sign-on; respects `privacy.identity_mode` | this, 15, 29 |
 | Service account, key | `.../serviceAccounts/{sa}`, `.../keys/{k}` | Std; `RotateKey` | this |
 | Federated identity | `.../federatedIdentities/{f}` | Std | this |
 | Identity provider | `.../identityProviders/{i}` | Std; `Test` | this |
@@ -79,10 +79,10 @@ Names follow AIP-122. Every organisation-scoped resource sits under `organisatio
 | Credential | `.../credentials/{c}` (id is the `crd_` pseudonym; never secret bytes) | Get, List; `Adopt` (`grdr cred adopt`) | 15 |
 | Lease | `.../leases/{l}` | Get, List; `Revoke` (dispatched as D-30's revoke-leases action; leases live only on the device or a customer-run gateway, so the server holds only `lease_id` and `crd_`) | 15, 18 |
 | Outward receipt | `.../outwardReceipts/{r}` | Get, List (filter on `external_id`) | 15 |
-| MCP server, skill, plugin | `.../mcpServers/{m}`, `.../skills/{s}`, `.../plugins/{p}` | Get, List | 05 |
+| MCP server, skill, rule, plugin | `.../mcpServers/{m}`, `.../artifacts/{a}` (`skills`, `rules`, `plugins`, `commands`, `subagents`) | Get, List | 05 |
 | Triage item | `.../triageItems/{t}` | Get, List; `Decide` | 05 |
 | Agent declaration | `.../agentDeclarations/{d}` | Std | 05 |
-| Session | `.../sessions/{s}` | Get, List; `GetTimeline`, `GetTree`, `ReadContent` (content grant) | 04, 06 |
+| Session | `.../sessions/{s}` | Get, List; `GetTimeline`, `GetTree`, `GetTrace`, `ReadContent` (content grant) | 04, 06 |
 | Event | `.../events/{e}` | Get; `SearchEvents`; `TailEvents` (server stream) | 04, 20 |
 | Hunt | `.../hunts/{h}` | Create (LRO), Get, List, `Cancel` | 20, 13 |
 | Pack, pack version | `packs/{p}/versions/{v}` (catalogue), `.../packs/{p}/versions/{v}` | Get, List; versions created only by a policy change | 12 |
@@ -106,7 +106,7 @@ Names follow AIP-122. Every organisation-scoped resource sits under `organisatio
 
 Custom methods use one verb per meaning across resources (`Approve` and `Deny` for anything a person decides, `Revoke`, `RotateKey`, `Cancel`), listed in `proto/grdr/api/verbs.txt`; a CI check rejects an unlisted verb.
 
-**Console users are not monitored principals.** A `User` is a named sign-in account. Monitored humans appear only as pseudonyms in activity resources (P8). A user's link to their own pseudonym, used for "My activity", lives in the identity vault (21) and is never returned by the API.
+**Identity visibility per organisation profile.** In the default `standard` profile (`privacy.identity_mode = "named"`), `.../users/{u}` unifies console/directory accounts and monitored endpoint humans, exposing per-user activity feeds, assigned devices/agents/skills, and transparent additive risk rankings. Under the opt-in `works-council` profile (`privacy.identity_mode = "pseudonymous"`), monitored humans appear only as pseudonyms `prn_` across activity resources, risk scoring is disabled, and vault mapping is gated by dual-approver plus co-approver re-identification (P8, 21, 29).
 
 The API never creates a pack version, layer or grant directly: the first two come only from an applied policy change, grants only from the approval flow of 18. Response actions above device scope are executed only after `AttachSignature` supplies the approvers' hardware-key signatures over the command (D-30); the API never signs on an approver's behalf.
 
@@ -257,9 +257,11 @@ The `api` target serves `/mcp` as stateless Streamable HTTP against MCP 2026-07-
 
 | Tool | Scope | Returns |
 |---|---|---|
+| `describe_schema`, `describe_entities`, `user_intent`, `sample` | `mcp:read` | Progressive-disclosure lake schema, entity definitions, user attribution intent (`named` vs `works-council`), and metadata-safe sample rows with schema-hidden sensitive columns stripped pre-plan |
 | `search_findings`, `get_finding`, `get_incident` | `mcp:read` | Metadata, rule id and title, evidence references |
-| `list_sessions`, `get_session_timeline`, `get_session_tree` | `mcp:read` | Metadata; content only via `content:read` plus a live grant |
-| `search_inventory` | `mcp:read` | Agents, instances, MCP servers, skills, plugins |
+| `list_users`, `get_user_activity`, `get_user_risk` | `mcp:read` | User directory, risk breakdown, and activity feed (respects `privacy.identity_mode`) |
+| `list_sessions`, `get_session_timeline`, `get_session_trace`, `get_session_tree` | `mcp:read` | Metadata and trace waterfall spans; content only via `content:read` plus a live grant |
+| `search_inventory` | `mcp:read` | Agents, instances, MCP servers, skills, rules, commands, subagents, plugins |
 | `get_coverage` | `mcp:read` | Assurance records and levels, degraded devices |
 | `run_saved_hunt` | `mcp:read` | Results of hunts saved by people, within limits |
 | `propose_policy_change`, `propose_suppression`, `propose_triage_decision` | `mcp:propose` | A proposal id and its server-rendered diff |

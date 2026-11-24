@@ -30,8 +30,8 @@ Key choices:
 | R5 | Retention defaults: content 30 days, structural 184 days, receipts 13 months; presets extend them only with a recorded legal basis | D-51, l07 F5 |
 | R6 | Holds are catalogue pins checked by every delete path; erasure deletes the mapping and destroys content keys | D-57, 20 section 5.7 |
 | R7 | Subject access, erasure and a record of processing (GDPR Arts. 15, 17, 30) | brief 34 matrix, l07 F5 |
-| R8 | Pseudonymous principals; re-identification needs a purpose, an incident reference and two approvers, and is shown to the subject | D-51, SR-49 |
-| R9 | No grouping by principal; health metrics reported per rule and per group of five or more | D-51, P8, l07 F3 |
+| R8 | Org-configurable identity visibility: named `User` attribution in `standard` mode or two-layer pseudonyms (`works-council`) with two-approver re-identification | D-51, SR-49 |
+| R9 | Under `works-council` mode, no per-person grouping or risk scoring; under `standard` mode, transparent additive risk rankings and group-aware metrics | D-51, P8, l07 F3 |
 | R10 | No covert mode; the disclosure surface cannot be hidden in any shape; conformance marks require the floor | D-51, l07 F10 |
 | R11 | Privacy settings can only be narrowed by provider and operator layers; widening needs the organisation's signature in hosted and provider deployments | D-11, SR-26 |
 | R12 | A works-council-ready configuration (BetrVG s.87(1) no.6, s.80(3)) | brief 34, l07 |
@@ -138,7 +138,7 @@ All four are rendered from the same JSON model (`grdr.comply.v1alpha1`) to HTML 
 
 | Document | Content | Audience |
 |---|---|---|
-| **Monitoring catalogue** | For each enabled pack and rule: the rule sentence, fields read with data classes (from the pack manifest, P7), outputs (verdict, label, finding), who can read the result (roles), retention; dated diff history; a fixed list of evaluations the product never performs (per-person scores, productivity, keystrokes, screen, clipboard, emotion inference) | Works council, DPO, monitored people |
+| **Monitoring catalogue** | For each enabled pack and rule: the rule sentence, fields read with data classes (from the pack manifest, P7), outputs (verdict, label, finding), who can read the result (roles), retention; dated diff history; lists telemetry never collected (keystrokes, screen, clipboard, emotion inference) and notes whether per-user risk scoring is enabled (`standard`) or disabled (`works-council`) | Works council, DPO, monitored people |
 | **Worker notice** | Plain-language summary: what is collected at the current capture level, what never is, who can read content and on what condition, retention, exclusions, the contact, how to contest a block and how to request access | Every monitored person; shown at enrolment (D-48) and in the Privacy screen |
 | **Impact-assessment pack** | GDPR Art. 35(7) structure. The description, data flows, recipients and measures are generated. Necessity and proportionality are prompted questions for the controller. Risks are prefilled from 02's privacy threats (ADV-10). A FRIA appendix (AI Act Art. 27) applies only to deployers the article names [K] | DPO, controller |
 | **Works-agreement annex** | German and English. Purposes, the monitoring catalogue by reference, the prohibited evaluations, the re-identification procedure, the co-approver role, retention, the notice periods of section 8, the s.80(3) expert's access to the source and configuration | Works council (BetrVG s.87(1) no.6) |
@@ -175,17 +175,19 @@ Privacy settings form one typed schema (`grdr.config` privacy section, owned her
 
 | Setting | `standard` | `works-council` |
 |---|---|---|
+| Identity visibility (`privacy.identity_mode`) | `named` (first-class `User` entities across devices, agents, skills, and sessions) | `pseudonymous` (two-layer `prn_` pseudonyms mapped only in the vault) |
+| Per-user activity feeds & risk rankings | `enabled` (transparent bounded additive risk score from deterministic findings and verdicts) | `disabled` (grouping and scoring per person rejected by pack validator) |
 | Upload capture level | `metadata`; raising it needs privacy officer plus organisation owner | `metadata`; raising it needs privacy officer, organisation owner and a member of `co_approver_group` |
 | Notice before a raise takes effect | 7 days, shown on every affected device | 14 days |
-| Re-identification approvers | Two (21) | Two plus a member of `co_approver_group` |
+| Re-identification approvers | N/A in `named` mode (two if pseudonymized overrides enabled) | Two plus a member of `co_approver_group` |
 | Activity retention ceiling | None (section 4) | 90 days |
 | Privacy-relevant pack promotion | Privacy officer acknowledges | Privacy officer and co-approver |
 | Model review tiers (D-29) | Off until chosen | Off until chosen and co-signed |
 | Git notes (D-26) | Off by default | Off and locked |
 | Drill-down below group level | Any role with `session.metadata.read` | Requires an open incident reference or an assigned finding; every drill-down writes `audit.access` |
-| Device display names | MDM asset id if configured | Asset id only; hostnames and serials are vaulted |
+| Device display names | MDM asset id or hostname | Asset id only; hostnames and serials are vaulted |
 
-Both profiles keep every element of the floor: pseudonyms, `redacted arguments` leaving the device only as evidence or under a ContentGrant, no input hooks and no screen or clipboard capture, the disclosure surface, no grouping by principal, and history from before enrolment staying local unless the user back-fills it (D-48). "Works-council mode" in earlier documents means this profile. It is not a Mode.
+Both profiles enforce the privacy floor: `redacted arguments` leave the device only as evidence or under a ContentGrant, no input hooks and no screen or clipboard capture, mandatory tray/local disclosure surface (never covert), and history from before enrolment staying local unless the user back-fills it (D-48). "Works-council mode" in earlier documents means this profile. It is not a Mode.
 
 **Principal pseudonyms in two layers** (D-51, R-18; answers 21's open item and 04 R2; owner question 9 can move issuance entirely to the server). The organisation-wide HMAC key in 04 section 3 is on every enrolled device and readable by any local administrator, and by the user in the User profile. Human principal ids are HMACs over enumerable inputs (SIDs, uids, IdP subjects, all listable from the directory). Anyone who copies the key from one device and holds metadata access could therefore map every `prn_` in the organisation and bypass the two-approver re-identification without leaving an `audit.access` record. That would defeat D-51's re-identification quorum, so in server deployments:
 
