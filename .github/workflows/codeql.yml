@@ -29,6 +29,7 @@ jobs:
       contents: read
     outputs:
       public: ${{ steps.plan.outputs.public }}
+      has_languages: ${{ steps.plan.outputs.has_languages }}
       languages: ${{ steps.plan.outputs.languages }}
     steps:
       - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
@@ -50,21 +51,47 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           visibility=$(gh api "repos/$REPOSITORY" --jq .visibility)
-          # CodeQL fails a language it finds no source for, so Rust joins once a crate lands.
-          languages='["actions"'
-          if [ -n "$(git ls-files '*.rs')" ]; then languages="$languages, \"rust\""; fi
-          if [ -f pnpm-workspace.yaml ]; then languages="$languages, \"javascript-typescript\""; fi
-          languages="$languages]"
+          scan_actions=false
+          scan_rust=false
+          scan_js=false
+          has_rust_files=$([ -n "$(git ls-files '*.rs')" ] && echo true || echo false)
+          has_js_files=$([ -f pnpm-workspace.yaml ] && echo true || echo false)
+
+          if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$BASE_SHA" ] && git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null; then
+            changed=$(git diff --name-only "$BASE_SHA" HEAD)
+            if echo "$changed" | grep -qE '^\.github/'; then scan_actions=true; fi
+            if [ "$has_rust_files" = true ] && echo "$changed" | grep -qE '(\.rs$|Cargo\.toml$|Cargo\.lock$|deny\.toml$)'; then
+              scan_rust=true
+            fi
+            if [ "$has_js_files" = true ] && echo "$changed" | grep -qE '(\.ts$|\.tsx$|\.js$|\.jsx$|\.mjs$|\.cjs$|pnpm-workspace\.yaml$|package\.json$)'; then
+              scan_js=true
+            fi
+          else
+            scan_actions=true
+            scan_rust=$has_rust_files
+            scan_js=$has_js_files
+          fi
+
+          languages=""
+          if [ "$scan_actions" = true ]; then languages='"actions"'; fi
+          if [ "$scan_rust" = true ]; then languages="${languages:+${languages}, }\"rust\""; fi
+          if [ "$scan_js" = true ]; then languages="${languages:+${languages}, }\"javascript-typescript\""; fi
+          has_languages=$([ -n "$languages" ] && echo true || echo false)
+          languages="[${languages}]"
+
           {
             echo "public=$([ "$visibility" = public ] && echo true || echo false)"
+            echo "has_languages=$has_languages"
             echo "languages=$languages"
           } >> "$GITHUB_OUTPUT"
 
   analyze:
     needs: repository
-    if: needs.repository.outputs.public == 'true'
+    if: needs.repository.outputs.public == 'true' && needs.repository.outputs.has_languages == 'true'
     name: CodeQL ${{ matrix.language }}
     strategy:
       fail-fast: false
