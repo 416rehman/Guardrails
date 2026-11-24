@@ -6,16 +6,21 @@
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "types": ["vitest/globals"]
+    "baseUrl": ".",
+    "paths": {
+      "@grdr/tokens/tokens.css": ["./packages/tokens/src/tokens.css"],
+      "@grdr/i18n": ["./packages/i18n/src/index.ts"],
+      "@grdr/api": ["./packages/api/src/index.ts"],
+      "@grdr/ui": ["./packages/ui/src/index.ts"],
+      "@grdr/kit": ["./packages/kit/src/index.ts"],
+      "@grdr/console": ["./apps/console/src/App.tsx"],
+      "@grdr/operator": ["./apps/operator/src/OperatorApp.tsx"]
+    }
   },
-  "include": ["src"]
+  "include": ["packages", "apps", "tests"]
 }

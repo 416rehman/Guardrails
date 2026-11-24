@@ -1,0 +1,10 @@
+# Registered UI exceptions outside @astryxdesign/core (design/27 section 11).
+
+[[exception]]
+id = "ui-sdk-primitives"
+packages = ["@ui-sdk/core", "@ui-sdk/react"]
+need = "Headless agent-controllable segmented control, drawer state, popover positioning, tabs, and createAgent runtime hooks per owner direction and ui-sdk.dev"
+gap = "Astryx 0.7.17 provides visual surface components without @ui-sdk/react createAgent programmatic state introspection or headless segmented-control primitives"
+wrapper = "web/packages/ui/src/primitives.tsx"
+exit_condition = "Review when Astryx ships native agent-bridge primitives or keep paired via @grdr/ui facade"
+owner = "interfaces"

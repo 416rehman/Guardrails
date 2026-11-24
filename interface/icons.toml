@@ -1,0 +1,138 @@
+# Lucide icon meaning registry (design/27 section 10).
+
+[[icon]]
+key = "mode.off"
+lucide = "circle-off"
+mirror = false
+
+[[icon]]
+key = "mode.watch"
+lucide = "eye"
+mirror = false
+
+[[icon]]
+key = "mode.ask"
+lucide = "hand"
+mirror = false
+
+[[icon]]
+key = "mode.block"
+lucide = "ban"
+mirror = false
+
+[[icon]]
+key = "verdict.allow"
+lucide = "check"
+mirror = false
+
+[[icon]]
+key = "verdict.deny"
+lucide = "ban"
+mirror = false
+same_as = "mode.block"
+
+[[icon]]
+key = "verdict.step_up"
+lucide = "hand"
+mirror = false
+same_as = "mode.ask"
+
+[[icon]]
+key = "verdict.modify"
+lucide = "pencil"
+mirror = false
+
+[[icon]]
+key = "verdict.defer"
+lucide = "clock"
+mirror = false
+
+[[icon]]
+key = "assurance.al0"
+lucide = "list"
+mirror = false
+
+[[icon]]
+key = "assurance.al1"
+lucide = "binoculars"
+mirror = false
+
+[[icon]]
+key = "assurance.al2"
+lucide = "route"
+mirror = false
+
+[[icon]]
+key = "assurance.al3"
+lucide = "box"
+mirror = false
+
+[[icon]]
+key = "assurance.al4"
+lucide = "shield-check"
+mirror = false
+
+[[icon]]
+key = "security.lock"
+lucide = "lock"
+mirror = false
+
+[[icon]]
+key = "security.alert"
+lucide = "shield-alert"
+mirror = false
+
+[[icon]]
+key = "nav.home"
+lucide = "home"
+mirror = false
+
+[[icon]]
+key = "nav.inventory"
+lucide = "cpu"
+mirror = false
+
+[[icon]]
+key = "nav.sessions"
+lucide = "activity"
+mirror = false
+
+[[icon]]
+key = "nav.protect"
+lucide = "shield"
+mirror = false
+
+[[icon]]
+key = "nav.respond"
+lucide = "shield-alert"
+mirror = false
+
+[[icon]]
+key = "nav.coverage"
+lucide = "shield-check"
+mirror = false
+
+[[icon]]
+key = "nav.tester"
+lucide = "terminal"
+mirror = false
+
+[[icon]]
+key = "nav.operator_overview"
+lucide = "server"
+mirror = false
+
+[[icon]]
+key = "nav.operator_health"
+lucide = "heart-pulse"
+mirror = false
+
+[[icon]]
+key = "nav.operator_settings"
+lucide = "settings"
+mirror = false
+
+[[icon]]
+key = "nav.operator_audit"
+lucide = "file-text"
+mirror = false

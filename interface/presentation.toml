@@ -1,0 +1,131 @@
+# Enum-to-presentation mappings (design/27 section 10).
+
+[[entry]]
+enum = "Mode"
+value = "off"
+label = "mode.off.label"
+description = "mode.off.desc"
+icon = "mode.off"
+tone = "neutral"
+
+[[entry]]
+enum = "Mode"
+value = "watch"
+label = "mode.watch.label"
+description = "mode.watch.desc"
+icon = "mode.watch"
+tone = "info"
+
+[[entry]]
+enum = "Mode"
+value = "ask"
+label = "mode.ask.label"
+description = "mode.ask.desc"
+icon = "mode.ask"
+tone = "warning"
+
+[[entry]]
+enum = "Mode"
+value = "block"
+label = "mode.block.label"
+description = "mode.block.desc"
+icon = "mode.block"
+tone = "danger"
+
+[[entry]]
+enum = "Verdict"
+value = "allow"
+label = "verdict.allow"
+icon = "verdict.allow"
+tone = "success"
+
+[[entry]]
+enum = "Verdict"
+value = "modify"
+label = "verdict.modify"
+icon = "verdict.modify"
+tone = "info"
+
+[[entry]]
+enum = "Verdict"
+value = "step_up"
+label = "verdict.step_up"
+icon = "verdict.step_up"
+tone = "warning"
+
+[[entry]]
+enum = "Verdict"
+value = "defer"
+label = "verdict.defer"
+icon = "verdict.defer"
+tone = "neutral"
+
+[[entry]]
+enum = "Verdict"
+value = "deny"
+label = "verdict.deny"
+icon = "verdict.deny"
+tone = "danger"
+
+[[entry]]
+enum = "AssuranceLevel"
+value = "AL0"
+label = "assurance.al0"
+icon = "assurance.al0"
+tone = "neutral"
+
+[[entry]]
+enum = "AssuranceLevel"
+value = "AL1"
+label = "assurance.al1"
+icon = "assurance.al1"
+tone = "neutral"
+
+[[entry]]
+enum = "AssuranceLevel"
+value = "AL2"
+label = "assurance.al2"
+icon = "assurance.al2"
+tone = "warning"
+
+[[entry]]
+enum = "AssuranceLevel"
+value = "AL3"
+label = "assurance.al3"
+icon = "assurance.al3"
+tone = "success"
+
+[[entry]]
+enum = "AssuranceLevel"
+value = "AL4"
+label = "assurance.al4"
+icon = "assurance.al4"
+tone = "success"
+
+[[entry]]
+enum = "SessionLabel"
+value = "credential_accessed"
+label = "session_label.credential_accessed"
+icon = "security.lock"
+tone = "warning"
+
+[[entry]]
+enum = "SessionLabel"
+value = "untrusted_web_fetched"
+label = "session_label.untrusted_web_fetched"
+icon = "security.alert"
+tone = "warning"
+
+[[entry]]
+enum = "SessionLabel"
+value = "repeated_denials"
+label = "session_label.repeated_denials"
+icon = "mode.block"
+tone = "danger"
+
+[[entry]]
+enum = "SessionLabel"
+value = "tainted_exfil_risk"
+label = "session_label.tainted_exfil_risk"
+icon = "security.alert"
+tone = "danger"

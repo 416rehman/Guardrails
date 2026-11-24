@@ -3,7 +3,8 @@
 .claude/worktrees/
 **/__pycache__/
 target/
-web/node_modules/
+**/node_modules/
 web/dist/
+web/dist-operator/
 web/.vite/
 grdr-data/

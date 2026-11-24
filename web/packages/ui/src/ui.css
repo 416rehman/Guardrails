@@ -1,0 +1,110 @@
+.grdr-ui-segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  padding: 2px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-canvas);
+}
+
+.grdr-ui-seg-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 28px;
+  padding-inline: 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.grdr-ui-seg-item[aria-disabled="true"],
+.grdr-ui-seg-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.grdr-ui-seg-item[data-checked][data-tone="off"] {
+  background-color: var(--tone-neutral-bg);
+  color: var(--ink-primary);
+}
+
+.grdr-ui-seg-item[data-checked][data-tone="watch"] {
+  background-color: var(--tone-watch-bg);
+  color: var(--tone-watch);
+}
+
+.grdr-ui-seg-item[data-checked][data-tone="ask"] {
+  background-color: var(--tone-ask-bg);
+  color: var(--tone-ask);
+}
+
+.grdr-ui-seg-item[data-checked][data-tone="block"] {
+  background-color: var(--tone-block-bg);
+  color: var(--tone-block);
+}
+
+.grdr-ui-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background-color: rgba(8, 11, 16, 0.62);
+}
+
+.grdr-ui-drawer-content {
+  position: fixed;
+  inset-block: 0;
+  inset-inline-end: 0;
+  z-index: 45;
+  width: min(640px, 100vw);
+  overflow-y: auto;
+  background-color: var(--bg-surface);
+  color: var(--ink-primary);
+  border-inline-start: 1px solid var(--border-strong);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.grdr-ui-drawer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-block-end: var(--space-3);
+  border-block-end: 1px solid var(--border-subtle);
+}
+
+.grdr-ui-quoted {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding-inline: 6px;
+  padding-block: 2px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.grdr-ui-arm-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.grdr-ui-arm-fill {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  background-color: rgba(255, 255, 255, 0.22);
+  pointer-events: none;
+  transition: width 1s linear;
+}
