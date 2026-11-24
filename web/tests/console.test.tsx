@@ -327,15 +327,26 @@ describe("Astryx and UI SDK components", () => {
 });
 
 describe("Console and Operator Plane workflows", () => {
-  it("renders Console routes and opens the UI SDK Device Assurance drawer", async () => {
+  it("renders Home focal stage, opens inline approval review and command palette, and navigates", async () => {
     installFetchMock();
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("Blocked risky actions")).toBeTruthy();
+      expect(screen.getByText("1 action waiting for your decision")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Inventory" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Approve once" })).toBeTruthy();
+    });
+
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Command palette" })).toBeTruthy();
+    });
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Inventory" })[0]);
     await waitFor(() => {
       expect(screen.getAllByText("devbox.local").length).toBeGreaterThan(0);
     });

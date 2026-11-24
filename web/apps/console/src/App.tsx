@@ -9,6 +9,7 @@ import {
   type ApprovalRequest,
   type Device,
   type Finding,
+  type GrantScope,
   type Incident,
   type KillSwitchState,
   type NavRoute,
@@ -28,6 +29,7 @@ import {
   UiSdkInlineBar,
   iconKeyToName,
   useUiSdkReadOnlyAgentBridge,
+  type GrdrThemeMode,
 } from "@grdr/ui";
 import { CoveragePage } from "./pages/CoveragePage";
 import { HomePage } from "./pages/HomePage";
@@ -41,9 +43,10 @@ export function App() {
   useUiSdkReadOnlyAgentBridge();
 
   const [route, setRoute] = useState<NavRoute>("home");
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [theme, setTheme] = useState<GrdrThemeMode>("light");
   const [searchQuery, setSearchQuery] = useState("");
-  const [liveConnected, setLiveConnected] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [streamDisconnected, setStreamDisconnected] = useState(false);
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [showTokenBar, setShowTokenBar] = useState(false);
   const [apiTokenInput, setApiTokenInput] = useState(() => getApiToken());
@@ -95,8 +98,8 @@ export function App() {
     const refreshHandler = () => {
       void loadAll();
     };
-    events.onopen = () => setLiveConnected(true);
-    events.onerror = () => setLiveConnected(false);
+    events.onopen = () => setStreamDisconnected(false);
+    events.onerror = () => setStreamDisconnected(true);
     events.addEventListener("session.verdict", refreshHandler);
     events.addEventListener("approval.decided", refreshHandler);
     events.addEventListener("policy.changed", refreshHandler);
@@ -110,7 +113,62 @@ export function App() {
     };
   }, [loadAll, streamVersion]);
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((prev) => !prev);
+      } else if (e.key === "Escape") {
+        setPaletteOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  async function handleDecideApproval(id: string, approve: boolean, scope: GrantScope) {
+    await api.decideApproval(
+      id,
+      approve,
+      scope,
+      approve ? `Approved (${scope}) from Console Home` : "Denied from Console Home",
+    );
+    await loadAll();
+  }
+
   const pendingApprovals = approvals.filter((a) => a.state.status === "pending").length;
+  const queryNorm = searchQuery.trim().toLowerCase();
+
+  const commandActions = [
+    ...CONSOLE_ROUTES.map((item) => ({
+      id: `route-${item.id}`,
+      label: `Go to ${t(item.labelKey)}`,
+      hint: "Route",
+      run: () => {
+        setRoute(item.id);
+        setPaletteOpen(false);
+      },
+    })),
+    {
+      id: "toggle-theme",
+      label: theme === "light" ? "Switch to Nocturne Dark theme" : "Switch to Paper Light theme",
+      hint: "Appearance",
+      run: () => {
+        setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+        setPaletteOpen(false);
+      },
+    },
+    ...devices.map((dev) => ({
+      id: `dev-${dev.id}`,
+      label: `Inspect device ${dev.hostname}`,
+      hint: `${dev.os}/${dev.arch}`,
+      run: () => {
+        setSearchQuery(dev.hostname);
+        setRoute("inventory");
+        setPaletteOpen(false);
+      },
+    })),
+  ].filter((cmd) => !queryNorm || cmd.label.toLowerCase().includes(queryNorm));
 
   return (
     <GrdrThemeProvider mode={theme}>
@@ -118,7 +176,7 @@ export function App() {
         <aside className="rail" aria-label="Primary navigation">
           <div className="brand-mark">
             <div className="brand-glyph">
-              <GrdrIcon name="shield" size={18} />
+              <GrdrIcon name="shield" size={16} />
             </div>
             <div className="brand-title">
               <strong>{t("grdr.brand.name")}</strong>
@@ -146,34 +204,29 @@ export function App() {
           </nav>
 
           <div className="rail-footer">
-            <HStack gap={1} align="center">
-              <GrdrIcon
-                name="radio"
-                size={13}
-                color={liveConnected ? "var(--tone-allow)" : "var(--ink-muted)"}
-              />
-              <span>{liveConnected ? t("console.stream.connected") : t("console.stream.reconnecting")}</span>
-            </HStack>
+            {streamDisconnected && (
+              <div style={{ color: "var(--tone-ask)" }}>{t("console.stream.reconnecting")}</div>
+            )}
             <div className="tabular">
-              {devices.length} endpoint(s) · {sessions.length} session(s)
+              {devices.length} endpoint(s), {sessions.length} session(s)
             </div>
           </div>
         </aside>
 
         <div className="workspace">
           <header className="topbar">
-            <div style={{ flex: 1, maxWidth: 420 }}>
-              <TextInput
-                label="Filter devices, agents, sessions"
-                isLabelHidden
-                type="search"
-                placeholder="Filter devices, agents, sessions..."
-                startIcon={<GrdrIcon name="search" size={14} color="var(--ink-muted)" />}
-                value={searchQuery}
-                onChange={(val) => setSearchQuery(val)}
-                width="100%"
-              />
-            </div>
+            <button
+              type="button"
+              className="search-trigger"
+              onClick={() => setPaletteOpen(true)}
+              aria-label="Open command search"
+            >
+              <span className="nav-item-label">
+                <GrdrIcon name="search" size={14} color="var(--ink-muted)" />
+                <span>{searchQuery || "Jump to device, rule, or route..."}</span>
+              </span>
+              <span className="kbd-hint">Ctrl K</span>
+            </button>
 
             <div className="topbar-actions">
               <Button
@@ -245,9 +298,12 @@ export function App() {
             {route === "home" && (
               <HomePage
                 overview={overview}
+                devices={devices}
+                packs={packs}
                 approvals={approvals}
                 findings={findings}
                 onNavigate={setRoute}
+                onDecideApproval={handleDecideApproval}
               />
             )}
             {route === "inventory" && (
@@ -291,6 +347,45 @@ export function App() {
           </main>
         </div>
       </div>
+
+      {paletteOpen && (
+        <div
+          className="command-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Command palette"
+          onClick={() => setPaletteOpen(false)}
+        >
+          <div className="command-dialog" onClick={(e) => e.stopPropagation()}>
+            <div style={{ padding: "var(--space-2)" }}>
+              <TextInput
+                label="Filter commands"
+                isLabelHidden
+                placeholder="Type a screen, device hostname, or action..."
+                startIcon={<GrdrIcon name="search" size={14} color="var(--ink-muted)" />}
+                value={searchQuery}
+                onChange={(val) => setSearchQuery(val)}
+                width="100%"
+              />
+            </div>
+            <div className="command-list">
+              {commandActions.map((cmd) => (
+                <button
+                  key={cmd.id}
+                  type="button"
+                  className="command-item"
+                  onClick={cmd.run}
+                >
+                  <span>{cmd.label}</span>
+                  <HStack gap={1} align="center">
+                    <Badge variant="neutral" label={cmd.hint} />
+                  </HStack>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </GrdrThemeProvider>
   );
 }

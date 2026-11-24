@@ -9,12 +9,11 @@ import {
   type TrustedKeyInfo,
 } from "@grdr/api";
 import { OPERATOR_ROUTES, type OperatorRouteId, t } from "@grdr/i18n";
-import { InsightTile, ViewStateFrame } from "@grdr/kit";
+import { ViewStateFrame } from "@grdr/kit";
 import {
   Badge,
   Banner,
   Button,
-  Card,
   EmptyState,
   GrdrIcon,
   GrdrThemeProvider,
@@ -35,7 +34,7 @@ interface OperatorSnapshot {
 
 export function OperatorApp() {
   const [route, setRoute] = useState<OperatorRouteId>("op-overview");
-  const [themeMode, setThemeMode] = useState<GrdrThemeMode>("dark");
+  const [themeMode, setThemeMode] = useState<GrdrThemeMode>("light");
   const [snapshot, setSnapshot] = useState<OperatorSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -92,7 +91,7 @@ export function OperatorApp() {
         <aside className="rail" aria-label="Operator navigation">
           <div className="brand-mark">
             <div className="brand-glyph">
-              <GrdrIcon name="lock" size={18} />
+              <GrdrIcon name="lock" size={16} />
             </div>
             <div className="brand-title">
               <strong>{t("grdr.brand.name")}</strong>
@@ -131,7 +130,7 @@ export function OperatorApp() {
           <header className="topbar operator-context">
             <HStack gap={2} align="center">
               <Badge variant="warning" label="Operator realm" icon={<GrdrIcon name="lock" size={12} />} />
-              <Text size="sm">{t("operator.context.banner")}</Text>
+              <span style={{ fontSize: 13 }}>{t("operator.context.banner")}</span>
             </HStack>
             <Button
               label="Refresh"
@@ -146,7 +145,9 @@ export function OperatorApp() {
             <VStack gap={4}>
               <div className="page-header">
                 <div>
-                  <Heading level={1}>{t(activeRoute.labelKey)}</Heading>
+                  <h1 className="hero-headline" style={{ fontSize: 30 }}>
+                    {t(activeRoute.labelKey)}
+                  </h1>
                   <Text color="secondary">
                     Deployment telemetry, Ed25519 trust keys, and compliance audit ledger.
                   </Text>
@@ -190,208 +191,194 @@ export function OperatorApp() {
                   <VStack gap={4}>
                     {route === "op-overview" ? (
                       <>
-                        <div className="grid-4">
-                          <InsightTile
-                            headline="Service health"
-                            metric={snapshot.health.status}
-                            comparison={`Version ${snapshot.health.version} (${snapshot.health.storage_mode})`}
-                            actionLabel="Inspect health"
-                            onAction={() => setRoute("op-health")}
-                          />
-                          <InsightTile
-                            headline="Devices online"
-                            metric={String(snapshot.overview.online_devices)}
-                            comparison={`${snapshot.overview.total_agents} discovered agents`}
-                            actionLabel="Review audit"
-                            onAction={() => setRoute("op-audit")}
-                          />
-                          <InsightTile
-                            headline="Trusted keys"
-                            metric={String(snapshot.keys.length)}
-                            comparison="Ed25519 receipt signers"
-                            actionLabel="Manage keys & exports"
-                            onAction={() => setRoute("op-settings")}
-                          />
-                          <InsightTile
-                            headline="Audit entries"
-                            metric={String(snapshot.audit.length)}
-                            comparison="Tamper-evident control ledger"
-                            actionLabel="Open audit log"
-                            onAction={() => setRoute("op-audit")}
-                          />
+                        <div className="metric-strip" style={{ borderBlockEnd: "1px solid var(--border-subtle)", paddingBlockEnd: 24, marginBlockStart: 0 }}>
+                          <div className="metric-cell">
+                            <div className="metric-value tabular">{snapshot.health.status}</div>
+                            <div className="metric-label">Service health</div>
+                            <div className="metric-note">{`Version ${snapshot.health.version} (${snapshot.health.storage_mode})`}</div>
+                          </div>
+                          <div className="metric-cell">
+                            <div className="metric-value tabular">{snapshot.overview.online_devices}</div>
+                            <div className="metric-label">Devices online</div>
+                            <div className="metric-note">{`${snapshot.overview.total_agents} discovered agents`}</div>
+                          </div>
+                          <div className="metric-cell">
+                            <div className="metric-value tabular">{snapshot.keys.length}</div>
+                            <div className="metric-label">Trusted signers</div>
+                            <div className="metric-note">Ed25519 receipt keys</div>
+                          </div>
+                          <div className="metric-cell">
+                            <div className="metric-value tabular">{snapshot.audit.length}</div>
+                            <div className="metric-label">Audit entries</div>
+                            <div className="metric-note">Hash-chained control ledger</div>
+                          </div>
                         </div>
 
-                        <div className="grid-2">
-                          <Card padding={4}>
-                            <VStack gap={3}>
-                              <HStack justify="between" align="center">
-                                <Heading level={3}>Deployment boundary</Heading>
-                                <Badge variant="success" label="P8 isolated" />
-                              </HStack>
-                              <div className="kv-row">
-                                <Text color="secondary">Tenant prompt & payload routes</Text>
-                                <Text className="mono">Unmounted (0)</Text>
-                              </div>
-                              <div className="kv-row">
-                                <Text color="secondary">Storage engine</Text>
-                                <Text className="mono">{snapshot.health.storage_mode}</Text>
-                              </div>
-                              <div className="kv-row">
-                                <Text color="secondary">Kill switch state</Text>
-                                <Badge
-                                  variant={snapshot.overview.kill_switch.state === "inactive" ? "success" : "error"}
-                                  label={snapshot.overview.kill_switch.state}
-                                />
-                              </div>
-                              <div className="kv-row">
-                                <Text color="secondary">Pending operator approvals</Text>
-                                <Text hasTabularNumbers>{snapshot.overview.pending_approvals}</Text>
-                              </div>
-                            </VStack>
-                          </Card>
+                        <div className="quiet-split">
+                          <section className="ledger-section">
+                            <div className="ledger-header">
+                              <h2 className="ledger-title">Deployment boundary</h2>
+                              <Badge variant="success" label="P8 isolated" />
+                            </div>
+                            <div className="kv-row">
+                              <Text color="secondary">Tenant prompt & payload routes</Text>
+                              <Text className="mono">Unmounted (0)</Text>
+                            </div>
+                            <div className="kv-row">
+                              <Text color="secondary">Storage engine</Text>
+                              <Text className="mono">{snapshot.health.storage_mode}</Text>
+                            </div>
+                            <div className="kv-row">
+                              <Text color="secondary">Kill switch state</Text>
+                              <Badge
+                                variant={snapshot.overview.kill_switch.state === "inactive" ? "success" : "error"}
+                                label={snapshot.overview.kill_switch.state}
+                              />
+                            </div>
+                            <div className="kv-row">
+                              <Text color="secondary">Pending operator approvals</Text>
+                              <Text hasTabularNumbers>{snapshot.overview.pending_approvals}</Text>
+                            </div>
+                          </section>
 
-                          <Card padding={4}>
-                            <VStack gap={3}>
-                              <HStack justify="between" align="center">
-                                <Heading level={3}>Recent control audit</Heading>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  label="Full ledger"
-                                  endContent={<GrdrIcon name="arrow-right" size={13} />}
-                                  onClick={() => setRoute("op-audit")}
-                                />
-                              </HStack>
-                              {snapshot.audit.length === 0 ? (
-                                <EmptyState
-                                  title="No audit events yet"
-                                  description="Control-plane changes are appended here automatically."
-                                  icon={<GrdrIcon name="file-text" size={20} />}
-                                />
-                              ) : (
-                                <table className="table">
-                                  <thead>
-                                    <tr>
-                                      <th>Kind</th>
-                                      <th>Actor</th>
-                                      <th>Summary</th>
+                          <section className="ledger-section">
+                            <div className="ledger-header">
+                              <h2 className="ledger-title">Recent control audit</h2>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                label="Full ledger"
+                                endContent={<GrdrIcon name="arrow-right" size={13} />}
+                                onClick={() => setRoute("op-audit")}
+                              />
+                            </div>
+                            {snapshot.audit.length === 0 ? (
+                              <EmptyState
+                                title="No audit events yet"
+                                description="Control-plane changes appear here automatically."
+                                icon={<GrdrIcon name="file-text" size={20} />}
+                              />
+                            ) : (
+                              <table className="table">
+                                <thead>
+                                  <tr>
+                                    <th>Kind</th>
+                                    <th>Actor</th>
+                                    <th>Summary</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {snapshot.audit.slice(0, 5).map((entry) => (
+                                    <tr key={entry.id}>
+                                      <td className="mono">{entry.kind}</td>
+                                      <td>{entry.actor}</td>
+                                      <td>{entry.summary}</td>
                                     </tr>
-                                  </thead>
-                                  <tbody>
-                                    {snapshot.audit.slice(0, 5).map((entry) => (
-                                      <tr key={entry.id}>
-                                        <td className="mono">{entry.kind}</td>
-                                        <td>{entry.actor}</td>
-                                        <td>{entry.summary}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              )}
-                            </VStack>
-                          </Card>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </section>
                         </div>
                       </>
                     ) : null}
 
                     {route === "op-health" ? (
-                      <Card padding={4}>
-                        <VStack gap={3}>
-                          <HStack justify="between" align="center">
-                            <Heading level={3}>Control-plane liveness</Heading>
-                            <Badge
-                              label={snapshot.health.status}
-                              variant={snapshot.health.status === "ok" ? "success" : "warning"}
-                            />
-                          </HStack>
-                          <div className="kv-row">
-                            <Text color="secondary">Daemon version</Text>
-                            <Text className="mono">{snapshot.health.version}</Text>
-                          </div>
-                          <div className="kv-row">
-                            <Text color="secondary">Storage mode</Text>
-                            <Text className="mono">{snapshot.health.storage_mode}</Text>
-                          </div>
-                          <div className="kv-row">
-                            <Text color="secondary">Active kill switch</Text>
-                            <Text>{snapshot.overview.kill_switch.state}</Text>
-                          </div>
-                          <div className="kv-row">
-                            <Text color="secondary">Open findings</Text>
-                            <Text hasTabularNumbers>{snapshot.overview.open_findings}</Text>
-                          </div>
-                        </VStack>
-                      </Card>
+                      <section className="ledger-section">
+                        <div className="ledger-header">
+                          <Heading level={3}>Control-plane liveness</Heading>
+                          <Badge
+                            label={snapshot.health.status}
+                            variant={snapshot.health.status === "ok" ? "success" : "warning"}
+                          />
+                        </div>
+                        <div className="kv-row">
+                          <Text color="secondary">Daemon version</Text>
+                          <Text className="mono">{snapshot.health.version}</Text>
+                        </div>
+                        <div className="kv-row">
+                          <Text color="secondary">Storage mode</Text>
+                          <Text className="mono">{snapshot.health.storage_mode}</Text>
+                        </div>
+                        <div className="kv-row">
+                          <Text color="secondary">Active kill switch</Text>
+                          <Text>{snapshot.overview.kill_switch.state}</Text>
+                        </div>
+                        <div className="kv-row">
+                          <Text color="secondary">Open findings</Text>
+                          <Text hasTabularNumbers>{snapshot.overview.open_findings}</Text>
+                        </div>
+                      </section>
                     ) : null}
 
                     {route === "op-settings" ? (
-                      <Card padding={4}>
-                        <VStack gap={3}>
+                      <section className="ledger-section">
+                        <div className="ledger-header">
                           <Heading level={3}>Receipt signing keys</Heading>
-                          {snapshot.keys.length === 0 ? (
-                            <EmptyState
-                              title="No signing keys registered"
-                              description="Configure receipt signing keys via grdr keygen."
-                              icon={<GrdrIcon name="key-round" size={24} />}
-                            />
-                          ) : (
-                            <table className="table">
-                              <thead>
-                                <tr>
-                                  <th>Key ID</th>
-                                  <th>Public key (Base64)</th>
+                        </div>
+                        {snapshot.keys.length === 0 ? (
+                          <EmptyState
+                            title="No signing keys registered"
+                            description="Configure receipt signing keys via grdr keygen."
+                            icon={<GrdrIcon name="key-round" size={24} />}
+                          />
+                        ) : (
+                          <table className="table">
+                            <thead>
+                              <tr>
+                                <th>Key ID</th>
+                                <th>Public key (Base64)</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {snapshot.keys.map((key) => (
+                                <tr key={key.key_id}>
+                                  <td className="mono">{key.key_id}</td>
+                                  <td className="mono">{key.public_key_b64.slice(0, 32)}...</td>
                                 </tr>
-                              </thead>
-                              <tbody>
-                                {snapshot.keys.map((key) => (
-                                  <tr key={key.key_id}>
-                                    <td className="mono">{key.key_id}</td>
-                                    <td className="mono">{key.public_key_b64.slice(0, 32)}...</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          )}
-                        </VStack>
-                      </Card>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </section>
                     ) : null}
 
                     {route === "op-audit" ? (
-                      <Card padding={4}>
-                        <VStack gap={3}>
+                      <section className="ledger-section">
+                        <div className="ledger-header">
                           <Heading level={3}>Operator audit stream</Heading>
-                          {snapshot.audit.length === 0 ? (
-                            <EmptyState
-                              title="No audit entries yet"
-                              description="Control-plane changes appear here cleanly."
-                              icon={<GrdrIcon name="file-text" size={24} />}
-                            />
-                          ) : (
-                            <table className="table">
-                              <thead>
-                                <tr>
-                                  <th>Timestamp</th>
-                                  <th>Kind</th>
-                                  <th>Actor</th>
-                                  <th>Target</th>
-                                  <th>Summary</th>
+                        </div>
+                        {snapshot.audit.length === 0 ? (
+                          <EmptyState
+                            title="No audit entries yet"
+                            description="Control-plane changes appear here cleanly."
+                            icon={<GrdrIcon name="file-text" size={24} />}
+                          />
+                        ) : (
+                          <table className="table">
+                            <thead>
+                              <tr>
+                                <th>Timestamp</th>
+                                <th>Kind</th>
+                                <th>Actor</th>
+                                <th>Target</th>
+                                <th>Summary</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {snapshot.audit.map((entry) => (
+                                <tr key={entry.id}>
+                                  <td className="mono">{entry.timestamp}</td>
+                                  <td className="mono">{entry.kind}</td>
+                                  <td>{entry.actor}</td>
+                                  <td className="mono">{entry.target}</td>
+                                  <td>{entry.summary}</td>
                                 </tr>
-                              </thead>
-                              <tbody>
-                                {snapshot.audit.map((entry) => (
-                                  <tr key={entry.id}>
-                                    <td className="mono">{entry.timestamp}</td>
-                                    <td className="mono">{entry.kind}</td>
-                                    <td>{entry.actor}</td>
-                                    <td className="mono">{entry.target}</td>
-                                    <td>{entry.summary}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          )}
-                        </VStack>
-                      </Card>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </section>
                     ) : null}
                   </VStack>
                 ) : null}

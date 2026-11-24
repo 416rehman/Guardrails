@@ -113,3 +113,19 @@ test("stdin/stdout CLI contract outputs JSON deny for pushing to main", () => {
   assert.equal(parsed.decision, "deny");
   assert.match(parsed.reason, /direct push to main is refused/);
 });
+
+test("denies write_file introducing AI design tells into web UI", () => {
+  const payload = JSON.stringify({
+    toolCall: {
+      name: "write_file",
+      args: {
+        Path: "D:/repo/web/apps/console/src/Demo.tsx",
+        Content: 'export const Demo = () => <div style={{ color: "#6366F1" }}>Seamless UI</div>;',
+      },
+    },
+    cwd: "D:/repo",
+  });
+  const out = handleHookPayload(payload);
+  assert.equal(out.decision, "deny");
+  assert.match(out.reason, /design-check/);
+});
