@@ -153,6 +153,18 @@ class RootsConfigTest(unittest.TestCase):
             self.assertNotIn(snapshot.normalize_for_match(str(app_support / "com.apple.wallpaper"), host_os), norm_keys)
             self.assertNotIn(snapshot.normalize_for_match(str(apple_dir / "Index.plist"), host_os), norm_keys)
 
+    def test_virtual_registry_expand_and_ignore_boundary(self) -> None:
+        raw = "reg://HKCU/Software/Classes/Local Settings/MuiCache"
+        expanded = snapshot.expand_path(raw, snapshot.OsName.WINDOWS, {})
+        self.assertEqual(expanded, raw)
+        ignored = [snapshot.normalize_for_match(expanded, snapshot.OsName.WINDOWS)]
+        self.assertTrue(snapshot._is_ignored("reg://hkcu/software/classes/local settings/muicache", ignored, snapshot.OsName.WINDOWS))
+        self.assertTrue(snapshot._is_ignored("reg://hkcu/software/classes/local settings/muicache/sub", ignored, snapshot.OsName.WINDOWS))
+        self.assertTrue(snapshot._is_ignored("reg://hkcu/software/classes/local settings/muicache::entry", ignored, snapshot.OsName.WINDOWS))
+        self.assertFalse(snapshot._is_ignored("reg://hkcu/software/classes/local settings/muicache-other", ignored, snapshot.OsName.WINDOWS))
+        self.assertFalse(snapshot._is_ignored("reg://hkcu/software/grdr", ignored, snapshot.OsName.WINDOWS))
+        self.assertFalse(snapshot._is_ignored("reg://hkcu/software/grdr::version", ignored, snapshot.OsName.WINDOWS))
+
     def test_windows_non_symlink_reparse_point_records_unreadable(self) -> None:
         fake_stat = unittest.mock.Mock(
             st_mode=0o100666,

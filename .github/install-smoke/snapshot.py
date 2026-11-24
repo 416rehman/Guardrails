@@ -151,6 +151,8 @@ def _home_dir(os_name: OsName, env: Mapping[str, str]) -> str:
 def expand_path(raw: str, os_name: OsName, env: Mapping[str, str] | None = None) -> str:
     source = os.environ if env is None else env
     text = raw
+    if text.startswith(VIRTUAL_PREFIXES):
+        return text
     if text == "~" or text.startswith(("~/", "~\\")):
         text = _home_dir(os_name, source) + text[1:]
     if os_name == OsName.WINDOWS:
@@ -314,11 +316,14 @@ def _ancestor_prefixes(norm_path: str, sep: str) -> list[str]:
 
 
 def _is_ignored(norm_path: str, ignored: list[str], os_name: OsName) -> bool:
-    sep = "\\" if os_name == OsName.WINDOWS else "/"
+    is_virtual = norm_path.startswith(VIRTUAL_PREFIXES)
+    sep = "/" if is_virtual else ("\\" if os_name == OsName.WINDOWS else "/")
     path_cmp = norm_path.lower() if os_name == OsName.WINDOWS else norm_path
     prefixes: list[str] | None = None
     for item in ignored:
         item_cmp = item.lower() if os_name == OsName.WINDOWS else item
+        if item_cmp.startswith(VIRTUAL_PREFIXES) != is_virtual:
+            continue
         if "*" in item_cmp:
             if prefixes is None:
                 prefixes = _ancestor_prefixes(path_cmp, sep)
@@ -326,7 +331,11 @@ def _is_ignored(norm_path: str, ignored: list[str], os_name: OsName) -> bool:
                 fnmatch.fnmatchcase(prefix, item_cmp) for prefix in prefixes
             ):
                 return True
-        elif path_cmp == item_cmp or path_cmp.startswith(item_cmp.rstrip(sep) + sep):
+        elif (
+            path_cmp == item_cmp
+            or path_cmp.startswith(item_cmp.rstrip(sep) + sep)
+            or (is_virtual and path_cmp.startswith(item_cmp.rstrip(sep) + "::"))
+        ):
             return True
     return False
 
@@ -531,7 +540,11 @@ def _run_ps_json(script: str) -> Any:
     return parsed if isinstance(parsed, list) else [parsed]
 
 
-def _scan_windows_registry(hives: list[str], records: dict[str, SnapshotEntry]) -> None:
+def _scan_windows_registry(
+    hives: list[str],
+    records: dict[str, SnapshotEntry],
+    ignored: list[str] | None = None,
+) -> None:
     if winreg is None:
         return
     hive_map = {"HKCU": winreg.HKEY_CURRENT_USER, "HKLM": winreg.HKEY_LOCAL_MACHINE}
@@ -540,14 +553,22 @@ def _scan_windows_registry(hives: list[str], records: dict[str, SnapshotEntry]) 
         hive = hive_map.get(prefix.upper())
         if hive is None:
             raise OracleError(ERR_CONFIG, f"unknown registry hive in {spec}")
-        _walk_registry_key(hive, prefix.upper(), subkey, records)
+        _walk_registry_key(hive, prefix.upper(), subkey, records, ignored)
 
 
-def _walk_registry_key(hive: int, hive_label: str, subkey: str, records: dict[str, SnapshotEntry]) -> None:
+def _walk_registry_key(
+    hive: int,
+    hive_label: str,
+    subkey: str,
+    records: dict[str, SnapshotEntry],
+    ignored: list[str] | None = None,
+) -> None:
     stack = [subkey]
     while stack:
         current = stack.pop()
         key_uri = f"reg://{hive_label}/{current.replace(chr(92), '/')}"
+        if ignored and _is_ignored(normalize_for_match(key_uri, OsName.WINDOWS), ignored, OsName.WINDOWS):
+            continue
         try:
             with winreg.OpenKey(hive, current, 0, winreg.KEY_READ) as handle:
                 nkeys, nvals, _ = winreg.QueryInfoKey(handle)
@@ -629,7 +650,7 @@ def capture_snapshot(
         hives = list(os_cfg.get("windows_registry", []))
         if system_stat_only and profile == Profile.USER:
             hives = [h for h in hives if not h.upper().startswith("HKLM\\")]
-        _scan_windows_registry(hives, records)
+        _scan_windows_registry(hives, records, ignored)
         if os_cfg.get("windows_tasks"):
             _scan_windows_tasks(records)
         if os_cfg.get("windows_services"):

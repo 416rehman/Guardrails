@@ -200,6 +200,11 @@ grdr_search_paths = [
 # %TEMP% sits under %LOCALAPPDATA%\Temp and holds transient process scratch files.
 ignore_paths = [
   "%LOCALAPPDATA%\\Temp",
+  "%LOCALAPPDATA%\\Microsoft\\Windows",
+  "%LOCALAPPDATA%\\Mozilla",
+  "%APPDATA%\\Mozilla",
+  "reg://HKCU/Software/Classes/Local Settings/MuiCache",
+  "reg://HKCU/Software/Classes/Local Settings/Software/Microsoft/Windows/Shell/MuiCache",
 ]
 windows_registry = [
   "HKCU\\Software",
