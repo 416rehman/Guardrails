@@ -7,7 +7,7 @@ exclude = ["bpf/grdr-sensor-linux-bpf", "desktop/grdr-desktop"]
 axum = { version = "0.8", features = ["json", "macros"] }
 base64 = "0.23"
 cedar-policy = "4.15"
-chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
+chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc"] }
 clap = { version = "4.5", features = ["derive", "env"] }
 ed25519-dalek = { version = "3.0", default-features = false, features = ["fast"] }
 futures-util = "0.3"
@@ -58,7 +58,7 @@ grdr-update = { version = "0.1.0", path = "crates/grdr-update" }
 grdr-wasm = { version = "0.1.0", path = "crates/grdr-wasm" }
 grdr-wire = { version = "0.1.0", path = "crates/grdr-wire" }
 jiff = { version = "1.0", features = ["serde"] }
-prost = { version = "0.13", default-features = false, features = ["derive", "std"] }
+prost = { version = "0.14", default-features = false, features = ["derive", "std"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "charset"] }
 rusqlite = { version = "0.43", default-features = false, features = ["bundled"] }
 serde = { version = "1.0", features = ["derive"] }
