@@ -754,4 +754,22 @@ async fn http_rejects_malformed_or_duplicate_host_and_evicts_sessions_fifo() {
             .verify_headers(Some(&newest.session_id), Some("2025-11-25"))
             .is_ok()
     );
+
+    // Oversize HTTP MCP payloads > MAX_HTTP_MCP_BODY_BYTES fail closed with 413 PAYLOAD_TOO_LARGE.
+    let huge_body = format!(
+        "{{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"initialize\",\"params\":{{\"pad\":\"{}\"}}}}",
+        "a".repeat(grdr_mcp::revisions::MAX_HTTP_MCP_BODY_BYTES + 64)
+    );
+    let huge_resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/mcp")
+                .header("host", "127.0.0.1:18090")
+                .body(Body::from(huge_body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(huge_resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }

@@ -7,7 +7,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use axum::Router;
-use axum::extract::State;
+use axum::body::{Body, to_bytes};
+use axum::extract::{DefaultBodyLimit, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
@@ -27,9 +28,9 @@ use crate::McpBrokerError;
 use crate::decision::{AsyncDecisionSource, mediate_mcp_request, synthetic_floor_receipt};
 use crate::pinning::PinRegistry;
 use crate::revisions::{
-    MCP_HEADER_PROTOCOL_VERSION, MCP_HEADER_SESSION_ID, McpProtocolRevision, McpSessionStore,
-    format_mediated_tool_response, has_loopback_host_header, header_mismatch_rpc_error,
-    verify_revision_consistency_headers,
+    MAX_HTTP_MCP_BODY_BYTES, MCP_HEADER_PROTOCOL_VERSION, MCP_HEADER_SESSION_ID,
+    McpProtocolRevision, McpSessionStore, format_mediated_tool_response, has_loopback_host_header,
+    header_mismatch_rpc_error, parse_http_mcp_request, verify_revision_consistency_headers,
 };
 
 pub const MAX_STDIO_LINE_BYTES: usize = 1_048_576;
@@ -101,6 +102,14 @@ impl<S: AsyncDecisionSource> McpBrokerService<S> {
     ) -> Result<Option<McpResponse>, McpBrokerError> {
         let req =
             parse_mcp_request(raw_line).map_err(|e| McpBrokerError::Transport(e.to_string()))?;
+        self.handle_parsed_request(&req, revision).await
+    }
+
+    pub async fn handle_parsed_request(
+        &mut self,
+        req: &McpRequest,
+        revision: McpProtocolRevision,
+    ) -> Result<Option<McpResponse>, McpBrokerError> {
         let ctx = McpAttemptContext {
             attempt_id: format!("att_{}", Uuid::now_v7().simple()),
             session_id: self.session_id.clone(),
@@ -119,14 +128,14 @@ impl<S: AsyncDecisionSource> McpBrokerService<S> {
             .as_ref()
             .map(|(table, keys)| (table, keys.as_slice()));
 
-        match mediate_mcp_request(&self.source, &self.pins, &req, desc, &ctx, floor_ref).await {
+        match mediate_mcp_request(&self.source, &self.pins, req, desc, &ctx, floor_ref).await {
             Ok(res) => {
                 self.degraded = res.degraded;
                 match res.outcome {
                     BrokerOutcome::Forward => Ok(None),
                     BrokerOutcome::Ask { receipt, .. } | BrokerOutcome::Block { receipt, .. } => {
                         Ok(Some(format_mediated_tool_response(
-                            req.id,
+                            req.id.clone(),
                             revision,
                             &receipt,
                             res.manifest_pinned,
@@ -136,7 +145,7 @@ impl<S: AsyncDecisionSource> McpBrokerService<S> {
                 }
             }
             Err(err) => {
-                let attempt = grdr_mcp_proto::mcp_call_to_attempt(&req, &ctx)
+                let attempt = grdr_mcp_proto::mcp_call_to_attempt(req, &ctx)
                     .map_err(|e| McpBrokerError::Transport(e.to_string()))?;
                 let receipt = synthetic_floor_receipt(
                     &attempt,
@@ -145,7 +154,7 @@ impl<S: AsyncDecisionSource> McpBrokerService<S> {
                     &err.to_string(),
                 );
                 Ok(Some(format_mediated_tool_response(
-                    req.id,
+                    req.id.clone(),
                     revision,
                     &receipt,
                     self.pins.is_manifest_pinned(&self.server_name),
@@ -328,13 +337,14 @@ pub fn build_http_router<S: AsyncDecisionSource + 'static>(
 ) -> Router {
     Router::new()
         .route("/mcp", post(handle_http_mcp_post::<S>))
+        .layer(DefaultBodyLimit::max(MAX_HTTP_MCP_BODY_BYTES))
         .with_state(service)
 }
 
 async fn handle_http_mcp_post<S: AsyncDecisionSource + 'static>(
     State(service): State<Arc<Mutex<McpBrokerService<S>>>>,
     headers: HeaderMap,
-    body: String,
+    body: Body,
 ) -> Response {
     if headers.contains_key("origin") {
         return (
@@ -356,7 +366,36 @@ async fn handle_http_mcp_post<S: AsyncDecisionSource + 'static>(
             .into_response();
     }
 
-    let req: McpRequest = match parse_mcp_request(&body) {
+    let raw_bytes = match to_bytes(body, MAX_HTTP_MCP_BODY_BYTES).await {
+        Ok(b) => b,
+        Err(_) => {
+            return (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                axum::Json(serde_json::json!({
+                    "error": "GRDR-MCP-0005: HTTP MCP request exceeds bounded body limit"
+                })),
+            )
+                .into_response();
+        }
+    };
+    if raw_bytes.len() > MAX_HTTP_MCP_BODY_BYTES {
+        return (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            axum::Json(serde_json::json!({
+                "error": "GRDR-MCP-0005: HTTP MCP request exceeds bounded body limit"
+            })),
+        )
+            .into_response();
+    }
+    let Ok(body_str) = std::str::from_utf8(&raw_bytes) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            axum::Json(serde_json::json!({ "error": "GRDR-MCP-0001: request must be UTF-8" })),
+        )
+            .into_response();
+    };
+
+    let req: McpRequest = match parse_http_mcp_request(body_str) {
         Ok(r) => r,
         Err(e) => {
             return (
@@ -442,7 +481,7 @@ async fn handle_http_mcp_post<S: AsyncDecisionSource + 'static>(
             .into_response();
     }
 
-    match guard.handle_jsonrpc_request(&body, bound_rev).await {
+    match guard.handle_parsed_request(&req, bound_rev).await {
         Ok(Some(blocked)) => (StatusCode::OK, axum::Json(blocked)).into_response(),
         Ok(None) => (
             StatusCode::OK,

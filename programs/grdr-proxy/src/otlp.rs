@@ -70,6 +70,13 @@ pub struct SanitizedOtlpEvent {
     pub sanitized_bytes: usize,
 }
 
+#[derive(Debug, Deserialize)]
+struct RawOtlpPayload {
+    session_id: Option<String>,
+    agent_name: Option<String>,
+    summary: Option<String>,
+}
+
 pub fn ingest_otlp_payload(
     headers: &HeaderMap,
     signal: OtlpSignalKind,
@@ -160,25 +167,28 @@ impl OtlpWireFormat {
 fn parse_otlp_json_summary(
     body: &[u8],
 ) -> Result<(OtlpWireFormat, String, String, String), ProxyError> {
-    let val: serde_json::Value = serde_json::from_slice(body)
+    let payload: RawOtlpPayload = serde_json::from_slice(body)
         .map_err(|e| ProxyError::Sr39Rejected(format!("invalid OTLP JSON: {e}")))?;
-    let session = val
-        .get("session_id")
-        .and_then(serde_json::Value::as_str)
-        .filter(|s| !s.trim().is_empty())
+    let session = payload
+        .session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
         .unwrap_or("sess-otlp")
         .to_owned();
-    let agent = val
-        .get("agent_name")
-        .and_then(serde_json::Value::as_str)
-        .filter(|s| !s.trim().is_empty())
+    let agent = payload
+        .agent_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
         .unwrap_or("otlp-agent")
         .to_owned();
-    let mut summary_text = val
-        .get("summary")
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_owned)
-        .unwrap_or_else(|| val.to_string());
+    let mut summary_text = match payload.summary {
+        Some(s) => s,
+        None => std::str::from_utf8(body)
+            .map_err(|_| ProxyError::Sr39Rejected("OTLP JSON must be valid UTF-8".into()))?
+            .to_owned(),
+    };
     if summary_text.len() > MAX_OTLP_SUMMARY_BYTES {
         summary_text = summary_text.chars().take(MAX_OTLP_SUMMARY_BYTES).collect();
     }

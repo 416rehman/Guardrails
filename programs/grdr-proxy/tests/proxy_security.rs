@@ -899,4 +899,22 @@ async fn blocking_round_1_ssrf_traversal_chained_407_and_otlp_redactions() {
             .unwrap()
             .starts_with("HTTP/1.1 403")
     );
+
+    // Oversize OTLP payload (> MAX_OTLP_BODY_BYTES) rejected fail-closed with 403.
+    let huge_otlp = format!(
+        "{{\"session_id\":\"s\",\"agent_name\":\"a\",\"summary\":\"{}\"}}",
+        "x".repeat(grdr_proxy::otlp::MAX_OTLP_BODY_BYTES + 64)
+    );
+    let otlp_huge_resp = build_proxy_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/logs")
+                .header("content-type", "application/json")
+                .body(Body::from(huge_otlp))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(otlp_huge_resp.status(), StatusCode::FORBIDDEN);
 }

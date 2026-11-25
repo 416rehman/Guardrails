@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
-use axum::body::Bytes;
+use axum::body::{Body, Bytes, to_bytes};
 use axum::extract::{DefaultBodyLimit, Path, State};
 use axum::http::{HeaderMap, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -24,7 +24,7 @@ use grdr_strings::sanitize_untrusted_text;
 
 use crate::cred_inject::ProxyCredentialManager;
 use crate::egress::{EgressGuardConfig, resolve_and_vet_chained_proxy, resolve_and_vet_target};
-use crate::otlp::{OtlpSignalKind, SanitizedOtlpEvent, ingest_otlp_payload};
+use crate::otlp::{MAX_OTLP_BODY_BYTES, OtlpSignalKind, SanitizedOtlpEvent, ingest_otlp_payload};
 use crate::router_http::{
     bad_gateway_response, build_upstream_url, copy_safe_outbound_headers, denial_403,
     read_bounded_response,
@@ -162,7 +162,7 @@ pub fn build_proxy_router<C: ProxyDecisionClient + 'static>(
 async fn handle_otlp_traces<C: ProxyDecisionClient + 'static>(
     State(state): State<Arc<ProxyGatewayState<C>>>,
     headers: HeaderMap,
-    body: Bytes,
+    body: Body,
 ) -> Response {
     handle_otlp(state, headers, OtlpSignalKind::Traces, body).await
 }
@@ -170,7 +170,7 @@ async fn handle_otlp_traces<C: ProxyDecisionClient + 'static>(
 async fn handle_otlp_logs<C: ProxyDecisionClient + 'static>(
     State(state): State<Arc<ProxyGatewayState<C>>>,
     headers: HeaderMap,
-    body: Bytes,
+    body: Body,
 ) -> Response {
     handle_otlp(state, headers, OtlpSignalKind::Logs, body).await
 }
@@ -178,7 +178,7 @@ async fn handle_otlp_logs<C: ProxyDecisionClient + 'static>(
 async fn handle_otlp_metrics<C: ProxyDecisionClient + 'static>(
     State(state): State<Arc<ProxyGatewayState<C>>>,
     headers: HeaderMap,
-    body: Bytes,
+    body: Body,
 ) -> Response {
     handle_otlp(state, headers, OtlpSignalKind::Metrics, body).await
 }
@@ -187,9 +187,22 @@ async fn handle_otlp<C: ProxyDecisionClient + 'static>(
     state: Arc<ProxyGatewayState<C>>,
     headers: HeaderMap,
     signal: OtlpSignalKind,
-    body: Bytes,
+    body: Body,
 ) -> Response {
-    let event = match ingest_otlp_payload(&headers, signal, &body) {
+    let raw_bytes = match to_bytes(body, MAX_OTLP_BODY_BYTES).await {
+        Ok(b) => b,
+        Err(_) => {
+            return denial_403(&ProxyError::Sr39Rejected(
+                "OTLP payload exceeds bounded limit or failed to read".into(),
+            ));
+        }
+    };
+    if raw_bytes.is_empty() || raw_bytes.len() > MAX_OTLP_BODY_BYTES {
+        return denial_403(&ProxyError::Sr39Rejected(
+            "OTLP body length out of allowed bounds".into(),
+        ));
+    }
+    let event = match ingest_otlp_payload(&headers, signal, &raw_bytes) {
         Ok(ev) => ev,
         Err(err) => return denial_403(&err),
     };

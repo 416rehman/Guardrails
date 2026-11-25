@@ -25,6 +25,7 @@ pub const MCP_HEADER_SESSION_ID: &str = "mcp-session-id";
 pub const MCP_HEADER_METHOD: &str = "mcp-method";
 pub const MCP_HEADER_NAME: &str = "mcp-name";
 pub const MAX_MCP_SESSIONS: usize = 1_024;
+pub const MAX_HTTP_MCP_BODY_BYTES: usize = 1_048_576;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum McpProtocolRevision {
@@ -43,6 +44,39 @@ pub struct SessionBindingState {
 pub struct McpSessionStore {
     sessions: BTreeMap<String, SessionBindingState>,
     order: VecDeque<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum RawRpcId {
+    Int(i64),
+    Str(String),
+}
+
+#[derive(Debug, Deserialize)]
+struct RawToolArgsHint {
+    path: Option<String>,
+    file_path: Option<String>,
+    uri: Option<String>,
+    url: Option<String>,
+    command: Option<String>,
+    repo: Option<String>,
+    sql: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawHttpMcpParams {
+    name: Option<String>,
+    uri: Option<String>,
+    arguments: Option<RawToolArgsHint>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawHttpMcpFrame {
+    jsonrpc: String,
+    id: Option<RawRpcId>,
+    method: String,
+    params: Option<RawHttpMcpParams>,
 }
 
 impl McpProtocolRevision {
@@ -362,4 +396,86 @@ pub fn has_loopback_host_header(headers: &HeaderMap, expected_port: Option<u16>)
         },
         None => true,
     }
+}
+
+pub fn parse_http_mcp_request(raw: &str) -> Result<McpRequest, McpBrokerError> {
+    if raw.len() > MAX_HTTP_MCP_BODY_BYTES {
+        return Err(McpBrokerError::Transport(format!(
+            "HTTP MCP payload exceeds {MAX_HTTP_MCP_BODY_BYTES} byte limit"
+        )));
+    }
+    let frame: RawHttpMcpFrame = serde_json::from_str(raw).map_err(|e| {
+        McpBrokerError::Transport(format!("GRDR-MCP-0001: invalid JSON-RPC frame: {e}"))
+    })?;
+    if frame.jsonrpc != "2.0" {
+        return Err(McpBrokerError::Transport(format!(
+            "GRDR-MCP-0001: expected jsonrpc 2.0, got {}",
+            frame.jsonrpc
+        )));
+    }
+    let raw_method = frame.method.trim();
+    if raw_method.is_empty() {
+        return Err(McpBrokerError::Transport(
+            "GRDR-MCP-0002: missing method name".into(),
+        ));
+    }
+    let method = McpMethod::from_wire(raw_method);
+    let id = frame.id.map(|raw_id| match raw_id {
+        RawRpcId::Int(n) => Value::from(n),
+        RawRpcId::Str(s) => Value::String(s),
+    });
+
+    let (tool_name, target_hint) = match method {
+        McpMethod::ToolsCall => {
+            let params = frame.params.ok_or_else(|| {
+                McpBrokerError::Transport("GRDR-MCP-0001: tools/call requires params object".into())
+            })?;
+            let name = params
+                .name
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| {
+                    McpBrokerError::Transport(
+                        "GRDR-MCP-0003: tool call missing target tool name".into(),
+                    )
+                })?
+                .to_owned();
+            let hint = params.arguments.and_then(|args| {
+                [
+                    args.path,
+                    args.file_path,
+                    args.uri,
+                    args.url,
+                    args.command,
+                    args.repo,
+                    args.sql,
+                ]
+                .into_iter()
+                .flatten()
+                .map(|v| v.trim().to_owned())
+                .find(|v| !v.is_empty())
+            });
+            (Some(name), hint)
+        }
+        McpMethod::ResourcesRead => {
+            let uri = frame
+                .params
+                .and_then(|p| p.uri)
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned);
+            (None, uri)
+        }
+        _ => (None, None),
+    };
+
+    Ok(McpRequest {
+        id,
+        method,
+        tool_name,
+        arguments: Value::Object(serde_json::Map::new()),
+        target_hint,
+    })
 }
