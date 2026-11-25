@@ -19,6 +19,13 @@ import {
   recordSecurityAudit,
   resolveSecurityAuditRecordPath,
 } from "./security-audit-check.mjs";
+import {
+  GIT_MAX_BUFFER_BYTES,
+  parseCatFileBatchZ,
+  readBatchBytesForSource,
+  readBytesForSource,
+  readCleanAuditBytes,
+} from "./security-audit-git.mjs";
 import { globSpecToMatcher } from "./security-audit-glob.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -1592,4 +1599,280 @@ test("blocks Round 12 bypasses (dq-param nested quote, PS paren state, eval/iex 
   ]) {
     assert.deepEqual(evaluateSecurityAuditToolPayload({ tool_input: { command: safeCmd } }, cleanOther), [], safeCmd);
   }
+});
+
+test("readBatchBytesForSource, collectNonUiFileHashes, and evaluateSecurityAuditFiles match legacy semantics across all sources and rejections", (t) => {
+  const dir = makeTempRepo(t);
+  const outside = mkdtempSync(join(tmpdir(), "grdr-saudit-batch-out-"));
+  t.after(() => rmSync(outside, { recursive: true, force: true }));
+
+  const binRel = "crates/grdr-core/src/bin_data.rs";
+  const emptyRel = "crates/grdr-core/src/empty.rs";
+  const spacedRel = "crates/grdr-core/src/with space.rs";
+  const dirtyMatchHeadRel = "crates/grdr-core/src/dirty_head.rs";
+  const crlfCleanRel = "crates/grdr-core/src/crlf_clean.rs";
+  const deletedRel = "crates/grdr-core/src/deleted.rs";
+  const untrackedRel = "crates/grdr-core/src/untracked.rs";
+  const missingRel = "crates/grdr-core/src/missing.rs";
+
+  const binV1 = Buffer.from([0x70, 0x75, 0x62, 0x00, 0xff, 0x0a]);
+  const binV2 = Buffer.from("pub fn staged_bin() {}\n", "utf8");
+  const binV3 = Buffer.from("pub fn disk_bin() {}\n", "utf8");
+
+  writeFileSync(join(dir, binRel), binV1);
+  writeFileSync(join(dir, emptyRel), Buffer.alloc(0));
+  writeFileSync(join(dir, spacedRel), Buffer.from("pub fn spaced() {}\n", "utf8"));
+  writeFileSync(join(dir, dirtyMatchHeadRel), Buffer.from("pub fn h1() {}\n", "utf8"));
+  writeFileSync(join(dir, crlfCleanRel), Buffer.from("pub fn crlf() {}\n", "utf8"));
+  writeFileSync(join(dir, deletedRel), Buffer.from("pub fn del() {}\n", "utf8"));
+  spawnSync("git", ["add", "."], { cwd: dir });
+  spawnSync("git", ["commit", "-m", "feat(core): batch parity base"], { cwd: dir });
+
+  spawnSync("git", ["config", "core.autocrlf", "true"], { cwd: dir });
+  writeFileSync(join(dir, binRel), binV2);
+  writeFileSync(join(dir, dirtyMatchHeadRel), Buffer.from("pub fn s2() {}\n", "utf8"));
+  spawnSync("git", ["add", binRel, dirtyMatchHeadRel], { cwd: dir });
+  spawnSync("git", ["rm", deletedRel], { cwd: dir });
+
+  writeFileSync(join(dir, binRel), binV3);
+  writeFileSync(join(dir, dirtyMatchHeadRel), Buffer.from("pub fn h1() {}\n", "utf8"));
+  writeFileSync(join(dir, crlfCleanRel), Buffer.from("pub fn crlf() {}\r\n", "utf8"));
+  writeFileSync(join(dir, untrackedRel), Buffer.from("pub fn untracked() {}\n", "utf8"));
+
+  // Directory junction escaping outside root must be rejected alongside unsafe paths.
+  writeFileSync(join(outside, "leak.rs"), "pub fn secret() {}\n", "utf8");
+  const juncDirRel = "crates/grdr-core/escaped_dir";
+  symlinkSync(outside, join(dir, juncDirRel), process.platform === "win32" ? "junction" : "dir");
+  const juncFileRel = `${juncDirRel}/leak.rs`;
+
+  // Extra chunked files (> 64) to exercise multi-batch git cat-file --batch -Z execution.
+  const chunkPaths = [];
+  for (let i = 0; i < 70; i += 1) {
+    const p = `crates/grdr-core/src/chunk_${String(i).padStart(3, "0")}.rs`;
+    chunkPaths.push(p);
+    writeFileSync(join(dir, p), `pub const CHUNK_${i}: u32 = ${i};\n`, "utf8");
+  }
+  spawnSync("git", ["add", ...chunkPaths], { cwd: dir });
+
+  const edgePaths = [
+    binRel,
+    emptyRel,
+    spacedRel,
+    dirtyMatchHeadRel,
+    crlfCleanRel,
+    deletedRel,
+    untrackedRel,
+    missingRel,
+    juncFileRel,
+    "../outside.rs",
+    "crates/grdr-core/src/nul\0path.rs",
+    "crates/grdr-core/src/lf\npath.rs",
+    "crates/grdr-core/src/cr\rpath.rs",
+  ];
+  const probePaths = [...edgePaths, ...chunkPaths];
+
+  const sha = (buf) => createHash("sha256").update(buf).digest("hex");
+  for (const [source, canonicalClean] of [
+    ["head", false],
+    ["staged", false],
+    ["disk", false],
+    ["disk", true],
+  ]) {
+    const batchMap = readBatchBytesForSource(dir, probePaths, { source, headRef: "HEAD", canonicalClean });
+    for (const relPath of edgePaths) {
+      const legacyBuf = canonicalClean && source === "disk"
+        ? readCleanAuditBytes(dir, relPath)
+        : readBytesForSource(dir, relPath, source, "HEAD");
+      const batchBuf = batchMap.get(relPath);
+      if (legacyBuf === undefined) {
+        assert.equal(batchBuf, undefined, `${source}(clean=${canonicalClean}) expected omitted for ${relPath}`);
+      } else {
+        assert.ok(Buffer.isBuffer(batchBuf), `${source}(clean=${canonicalClean}) expected Buffer for ${relPath}`);
+        assert.equal(sha(batchBuf), sha(legacyBuf), `${source}(clean=${canonicalClean}) mismatch for ${relPath}`);
+      }
+    }
+    for (let i = 0; i < chunkPaths.length; i += 1) {
+      const batchBuf = batchMap.get(chunkPaths[i]);
+      if (source === "head") {
+        assert.equal(batchBuf, undefined, `head expected omitted for newly staged ${chunkPaths[i]}`);
+      } else {
+        assert.deepEqual(batchBuf, Buffer.from(`pub const CHUNK_${i}: u32 = ${i};\n`, "utf8"));
+      }
+    }
+  }
+
+  const deletedSet = new Set([deletedRel]);
+  const hashed = collectNonUiFileHashes(dir, probePaths, { source: "disk", deletedFiles: deletedSet, canonicalClean: true });
+  assert.equal(hashed[deletedRel], "DELETED");
+  assert.equal(hashed[crlfCleanRel], sha(Buffer.from("pub fn crlf() {}\n", "utf8")));
+  assert.equal(hashed[dirtyMatchHeadRel], sha(Buffer.from("pub fn h1() {}\n", "utf8")));
+  assert.equal(hashed[emptyRel], sha(Buffer.alloc(0)));
+  assert.equal(Object.hasOwn(hashed, missingRel), false);
+  assert.equal(Object.hasOwn(hashed, juncFileRel), false);
+
+  const rec = recordSecurityAudit({ cwd: dir, reviewer: "parity-judge", summary: "Parity check" });
+  assert.equal(rec.fileHashes[deletedRel], "DELETED");
+  assert.deepEqual(
+    evaluateSecurityAuditFiles(
+      [binRel, emptyRel, spacedRel, dirtyMatchHeadRel, crlfCleanRel, deletedRel, ...chunkPaths],
+      dir,
+      { source: "disk", deletedFiles: deletedSet, canonicalClean: true },
+    ),
+    [],
+  );
+
+  // Tampering one file, non-canonical paths, or invalid source/headRef fail closed cleanly.
+  writeFileSync(join(dir, spacedRel), "pub fn tampered() {}\n", "utf8");
+  const stale = evaluateSecurityAuditFiles([spacedRel], dir, { source: "disk", canonicalClean: true });
+  assert.ok(stale.some((m) => m.includes("updated or unaudited") && m.includes(spacedRel)));
+  assert.throws(() => readBatchBytesForSource(dir, [binRel], { source: "invalid" }), /GRDR-HOOK-0001/);
+  assert.equal(readBatchBytesForSource(dir, [binRel], { source: "head", headRef: "-badref" }).size, 0);
+  assert.equal(
+    readBatchBytesForSource(
+      dir,
+      [`./${crlfCleanRel}`, crlfCleanRel.replace(/\//g, "\\"), "crates/grdr-core/src/../src/crlf_clean.rs"],
+      { source: "disk", canonicalClean: true },
+    ).size,
+    0,
+  );
+});
+
+test("parseCatFileBatchZ and cat-file --batch -Z reject malformed frames and non-blob objects fail-closed", (t) => {
+  const oid40 = "a".repeat(40);
+  const oid64 = "b".repeat(64);
+  const payload = Buffer.from("hi\0\nthere", "utf8");
+  const validStream = Buffer.concat([
+    Buffer.from(`${oid64} blob ${payload.length}\0`, "utf8"),
+    payload,
+    Buffer.from("\0", "utf8"),
+    Buffer.from(":crates/my file.rs missing\0", "utf8"),
+    Buffer.from(`${oid40} blob 0\0\0`, "utf8"),
+  ]);
+  const validParsed = parseCatFileBatchZ(validStream, [
+    { relPath: "crates/a.rs", spec: ":crates/a.rs" },
+    { relPath: "crates/my file.rs", spec: ":crates/my file.rs" },
+    { relPath: "crates/empty.rs", spec: ":crates/empty.rs" },
+  ]);
+  assert.deepEqual(validParsed.get("crates/a.rs"), payload);
+  assert.equal(validParsed.has("crates/my file.rs"), false);
+  assert.deepEqual(validParsed.get("crates/empty.rs"), Buffer.alloc(0));
+
+  // Non-blob git objects (tree, commit, tag, submodule) are never accepted as file blobs.
+  for (const objType of ["tree", "commit", "tag"]) {
+    const nonBlobBuf = Buffer.concat([
+      Buffer.from(`${oid40} ${objType} 4\0tree\0`, "utf8"),
+      Buffer.from(`${oid40} blob 2\0ok\0`, "utf8"),
+    ]);
+    const parsed = parseCatFileBatchZ(nonBlobBuf, [
+      { relPath: "crates", spec: "HEAD:crates" },
+      { relPath: "crates/ok.rs", spec: "HEAD:crates/ok.rs" },
+    ]);
+    assert.equal(parsed.has("crates"), false, `${objType} must not be accepted`);
+    assert.deepEqual(parsed.get("crates/ok.rs"), Buffer.from("ok", "utf8"));
+  }
+  for (const subOid of [oid40, oid64]) {
+    const subBuf = Buffer.concat([
+      Buffer.from(`${subOid} submodule\0`, "utf8"),
+      Buffer.from(`${oid40} blob 2\0ok\0`, "utf8"),
+    ]);
+    const parsed = parseCatFileBatchZ(subBuf, [
+      { relPath: "crates/sub", spec: ":crates/sub" },
+      { relPath: "crates/ok.rs", spec: ":crates/ok.rs" },
+    ]);
+    assert.equal(parsed.has("crates/sub"), false, "submodule gitlink must not be accepted");
+    assert.deepEqual(parsed.get("crates/ok.rs"), Buffer.from("ok", "utf8"));
+  }
+
+  const malformedCases = [
+    ["empty relPath query", Buffer.from(":a missing\0"), [{ relPath: "", spec: ":a" }]],
+    ["missing header NUL", Buffer.from(`${oid40} blob 2`), [{ relPath: "a", spec: ":a" }]],
+    ["truncated payload", Buffer.from(`${oid40} blob 10\0abc\0`), [{ relPath: "a", spec: ":a" }]],
+    ["missing trailing NUL", Buffer.from(`${oid40} blob 3\0abcX`), [{ relPath: "a", spec: ":a" }]],
+    ["negative size", Buffer.from(`${oid40} blob -1\0\0`), [{ relPath: "a", spec: ":a" }]],
+    ["leading zero size", Buffer.from(`${oid40} blob 01\0a\0`), [{ relPath: "a", spec: ":a" }]],
+    ["non-numeric size", Buffer.from(`${oid40} blob NaN\0\0`), [{ relPath: "a", spec: ":a" }]],
+    ["oversized blob", Buffer.from(`${oid40} blob ${GIT_MAX_BUFFER_BYTES + 1}\0\0`), [{ relPath: "a", spec: ":a" }]],
+    ["invalid oid", Buffer.from("abcd blob 1\0x\0"), [{ relPath: "a", spec: ":a" }]],
+    ["invalid submodule oid", Buffer.from("abcd submodule\0"), [{ relPath: "sub", spec: ":sub" }]],
+    ["submodule with size", Buffer.from(`${oid40} submodule 0\0\0`), [{ relPath: "sub", spec: ":sub" }]],
+    ["submodule trailing nul", Buffer.from(`${oid40} submodule\0\0`), [{ relPath: "sub", spec: ":sub" }]],
+    ["unknown type", Buffer.from(`${oid40} unknown 1\0x\0`), [{ relPath: "a", spec: ":a" }]],
+    ["spec mismatch missing", Buffer.from(":other missing\0"), [{ relPath: "a", spec: ":a" }]],
+    ["ambiguous status", Buffer.from(":a ambiguous\0"), [{ relPath: "a", spec: ":a" }]],
+    ["excluded status", Buffer.from(":a excluded\0"), [{ relPath: "a", spec: ":a" }]],
+    ["truncated record count", Buffer.from(":a missing\0"), [{ relPath: "a", spec: ":a" }, { relPath: "b", spec: ":b" }]],
+    ["trailing bytes", Buffer.from(":a missing\0extra"), [{ relPath: "a", spec: ":a" }]],
+    ["truncated tree payload", Buffer.from(`${oid40} tree 8\0short\0`), [{ relPath: "crates", spec: "HEAD:crates" }]],
+  ];
+  for (const [label, buf, queries] of malformedCases) {
+    assert.throws(() => parseCatFileBatchZ(buf, queries), /GRDR-HOOK-0001/, `expected throw for ${label}`);
+  }
+  assert.throws(
+    () => parseCatFileBatchZ(Buffer.from(`${oid40} blob 5\0hello\0`), [{ relPath: "a", spec: ":a" }], 4),
+    /GRDR-HOOK-0001/,
+  );
+
+  // End-to-end real repo tree and 160000 submodule gitlink queries alongside real blobs omit non-blobs cleanly.
+  const dir = makeTempRepo(t);
+  writeFileSync(join(dir, "crates/grdr-core/src/lib.rs"), "pub fn ok() {}\n", "utf8");
+  spawnSync("git", ["add", "crates/grdr-core/src/lib.rs"], { cwd: dir });
+  spawnSync("git", ["update-index", "--add", "--cacheinfo", `160000,${"1".repeat(40)},crates/grdr-core/submod`], { cwd: dir });
+  const stagedSubMap = readBatchBytesForSource(dir, ["crates/grdr-core/submod", "crates/grdr-core/src/lib.rs"], { source: "staged" });
+  assert.equal(stagedSubMap.has("crates/grdr-core/submod"), false);
+  assert.deepEqual(stagedSubMap.get("crates/grdr-core/src/lib.rs"), Buffer.from("pub fn ok() {}\n", "utf8"));
+  spawnSync("git", ["commit", "-m", "feat(core): tree and submodule test"], { cwd: dir });
+  const liveMap = readBatchBytesForSource(dir, ["crates", "crates/grdr-core/submod", "crates/grdr-core/src/lib.rs"], { source: "head" });
+  assert.equal(liveMap.has("crates"), false);
+  assert.equal(liveMap.has("crates/grdr-core/submod"), false);
+  assert.deepEqual(liveMap.get("crates/grdr-core/src/lib.rs"), Buffer.from("pub fn ok() {}\n", "utf8"));
+});
+
+test("evaluates 250-file staged commit and gh pr create cleanly well under 5 seconds", (t) => {
+  const dir = makeTempRepo(t);
+  const nonUiFiles = [];
+  for (let i = 0; i < 250; i += 1) {
+    const rel = `crates/grdr-core/src/mod_${String(i).padStart(3, "0")}.rs`;
+    nonUiFiles.push(rel);
+    writeFileSync(join(dir, rel), `pub fn f_${i}() -> u32 { ${i} }\n`, "utf8");
+  }
+  for (let i = 0; i < 20; i += 1) {
+    writeFileSync(join(dir, `web/apps/console/src/view_${i}.tsx`), `export const V${i} = ${i};\n`, "utf8");
+  }
+  spawnSync("git", ["add", "."], { cwd: dir });
+
+  const deniedUnstamped = evaluateSecurityAuditToolPayload(
+    { tool_input: { command: 'git commit -m "feat(core): add 250 modules"' } },
+    dir,
+  );
+  assert.ok(deniedUnstamped.some((m) => m.includes("security-audit:")));
+
+  const startMs = Date.now();
+  const rec = recordSecurityAudit({ cwd: dir, reviewer: "bench-judge", summary: "250 non-UI files" });
+  assert.equal(Object.keys(rec.fileHashes).length, 250);
+
+  assert.deepEqual(
+    evaluateSecurityAuditToolPayload({ tool_input: { command: 'git commit -m "feat(core): add 250 modules"' } }, dir),
+    [],
+  );
+  spawnSync("git", ["commit", "-m", "feat(core): add 250 modules"], { cwd: dir });
+
+  assert.deepEqual(
+    evaluateSecurityAuditToolPayload(
+      { tool_input: { command: 'gh pr create --base main --head feat/test-audit --body "Closes #102 per D-62"' } },
+      dir,
+    ),
+    [],
+  );
+  const elapsedMs = Date.now() - startMs;
+  assert.ok(elapsedMs < 5000, `250-file record + commit + PR evaluation took ${elapsedMs}ms (budget < 5000ms)`);
+
+  // Mutating 1 of 250 files after stamping must still fail closed cleanly.
+  writeFileSync(join(dir, nonUiFiles[137]), "pub fn tampered() -> u32 { 999 }\n", "utf8");
+  spawnSync("git", ["add", nonUiFiles[137]], { cwd: dir });
+  spawnSync("git", ["commit", "-m", "fix(core): tamper 137"], { cwd: dir });
+  const deniedPrTamper = evaluateSecurityAuditToolPayload(
+    { tool_input: { command: 'gh pr create --base main --head feat/test-audit --body "Closes #102 per D-62"' } },
+    dir,
+  );
+  assert.ok(deniedPrTamper.some((m) => m.includes("updated or unaudited") && m.includes(nonUiFiles[137])));
 });
