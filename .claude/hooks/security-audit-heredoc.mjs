@@ -223,7 +223,11 @@ export function readBalancedParen(text, openIdx, dialect) {
         cmdPrefix = "";
       } else {
         canStartCmd = CMD_CONT_WORDS.has(wordBuf);
-        cmdPrefix = wordBuf === "time" || wordBuf === "coproc" ? wordBuf : "";
+        if (wordBuf === "time" || wordBuf === "coproc") {
+          cmdPrefix = wordBuf;
+        } else {
+          cmdPrefix = "";
+        }
       }
     } else {
       canStartCmd = false;

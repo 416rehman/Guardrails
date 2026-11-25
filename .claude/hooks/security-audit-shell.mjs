@@ -22,7 +22,20 @@ export { tokenizeDialect, tokenizeSegmentMeta };
 
 const MAX_SHELL_DEPTH = 6;
 const PS_CONDITIONAL_KEYWORDS = new Set(["if", "elseif", "while", "for", "foreach", "switch", "catch", "until"]);
-const BASH_BRACE_PREFIX_RE = /^(?:(?:!\s+|time(?:\s+-p)?\s+)*(?:!|time(?:\s+-p)?))$/;
+
+function isBashBracePrefixWords(trimmed) {
+  if (!trimmed) return false;
+  const words = trimmed.split(/\s+/);
+  for (let i = 0; i < words.length; i += 1) {
+    if (words[i] === "!") continue;
+    if (words[i] === "time") {
+      if (words[i + 1] === "-p") i += 1;
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
 
 function isPsBackgroundAmpersand(text, idx) {
   let j = idx + 1;
@@ -380,7 +393,7 @@ export function extractShellSegments(command, dialect, depth = 0) {
     }
     const trimmedForBrace = cur.trim();
     const isCoprocHeader = dialect === "bash" && /^coproc(?:\s+[A-Za-z_][A-Za-z0-9_]*)?$/.test(trimmedForBrace);
-    const isBashBracePrefix = dialect === "bash" && BASH_BRACE_PREFIX_RE.test(trimmedForBrace);
+    const isBashBracePrefix = dialect === "bash" && isBashBracePrefixWords(trimmedForBrace);
     const isFuncBrace = /^function\b/i.test(trimmedForBrace);
     if (ch === "{" && (dialect === "powershell" || isCoprocHeader || isBashBracePrefix || isFuncBrace || (trimmedForBrace.length === 0 && (next === "" || /[\s\r\n]/.test(next))))) {
       lastClosedBraceRange = null;

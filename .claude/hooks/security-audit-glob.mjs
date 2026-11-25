@@ -3,8 +3,6 @@
 // Repo-relative path normalization and linear-time ASCII-icase glob matcher for security-audit-check.mjs.
 import { posix, isAbsolute, relative, resolve } from "node:path";
 
-const MAX_REGEX_STAR_SEGMENTS = 1;
-
 export function normalizeRepoRelPath(filePath, cwd) {
   if (typeof filePath !== "string" || !filePath) return "";
   const slash = filePath.replace(/\\/g, "/").trim();
@@ -27,11 +25,6 @@ export function isSafeRepoRelative(relPath, cwd) {
 
 function asciiLower(text) {
   return text.replace(/[A-Z]/g, (ch) => ch.toLowerCase());
-}
-
-function asciiCaseInsensitiveChar(ch) {
-  if (/^[A-Za-z]$/.test(ch)) return `[${ch.toUpperCase()}${ch.toLowerCase()}]`;
-  return /[.*+?^${}()|[\]\\]/.test(ch) ? `\\${ch}` : ch;
 }
 
 function matchWildcardSegment(pattern, text) {
@@ -80,35 +73,35 @@ function matchGlobSegments(patternSegs, pathSegs) {
 }
 
 export function globSpecToMatcher(spec) {
-  let clean = spec.trim().replace(/\\/g, "/").replace(/^\/+/, "");
+  const clean = spec.trim().replace(/\\/g, "/").replace(/^\/+/, "");
   if (!clean) return undefined;
-  while (/(?:^|\/)\*\*\/\*\*(?=$|\/)/.test(clean)) {
-    clean = clean.replace(/(^|\/)\*\*\/\*\*(?=$|\/)/g, "$1**");
-  }
-  if (clean === "**") return /^.*$/;
+  if (clean.endsWith("/")) return { source: clean, test: () => false };
 
-  const starDirCount = (clean.match(/\*\*\//g) ?? []).length;
-  const multiStarSeg = clean.split("/").some((seg) => seg !== "**" && (seg.match(/\*/g) ?? []).length > 1);
-  if (starDirCount > MAX_REGEX_STAR_SEGMENTS || multiStarSeg || /\*\*[^/]/.test(clean) || /[^/]\*\*/.test(clean)) {
-    const segs = clean.replace(/\/\*\*$/, "").split("/").filter(Boolean);
-    const matchFolderSelf = clean.endsWith("/**");
+  const segs = [];
+  for (const part of clean.split("/").filter(Boolean)) {
+    if (part !== "**" || segs[segs.length - 1] !== "**") segs.push(part);
+  }
+  if (segs.length === 1 && segs[0] === "**") {
     return {
-      source: clean,
+      source: "**",
       test(candidate) {
-        const norm = asciiLower(normalizeRepoRelPath(candidate));
-        if (!norm) return false;
-        const pSegs = norm.split("/");
-        return matchGlobSegments(segs, pSegs) || (matchFolderSelf && matchGlobSegments([...segs, "**"], pSegs));
+        return Boolean(normalizeRepoRelPath(candidate));
       },
     };
   }
 
-  let body = "";
-  for (let i = 0; i < clean.length; i += 1) {
-    if (clean.slice(i) === "/**") { body += "(?:/.*)?"; break; }
-    if (clean.startsWith("**/", i)) { body += "(?:[^/]+/)*"; i += 2; continue; }
-    const ch = clean[i];
-    body += ch === "*" ? "[^/]*" : ch === "?" ? "[^/]" : asciiCaseInsensitiveChar(ch);
+  let matchFolderSelf = false;
+  if (segs.length > 1 && segs[segs.length - 1] === "**") {
+    matchFolderSelf = true;
+    segs.pop();
   }
-  return new RegExp(`^${body}$`);
+  return {
+    source: clean,
+    test(candidate) {
+      const norm = asciiLower(normalizeRepoRelPath(candidate));
+      if (!norm) return false;
+      const pSegs = norm.split("/");
+      return matchGlobSegments(segs, pSegs) || (matchFolderSelf && matchGlobSegments([...segs, "**"], pSegs));
+    },
+  };
 }

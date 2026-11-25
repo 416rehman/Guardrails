@@ -254,8 +254,13 @@ export function evaluateSecurityAuditFiles(
   try {
     recordStat = lstatSync(recordPath);
   } catch {
+    const fileList = nonUiFiles.map((f) => printableText(f, 80)).join(", ");
     return [
-      `security-audit: non-UI changes detected (${nonUiFiles.map((f) => printableText(f, 80)).join(", ")}) without a security judge audit record.${trustCoreNote} Run grdr-security-audit and record with: node .claude/hooks/security-audit-check.mjs --record --verdict pass --unresolved 0 --unresolved-hardening 0 --reviewer "<judge-id>" --summary "<summary>"`,
+      "security-audit: non-UI changes detected (" +
+        fileList +
+        ") without a security judge audit record." +
+        trustCoreNote +
+        ' Run grdr-security-audit and record with: node .claude/hooks/security-audit-check.mjs --record --verdict pass --unresolved 0 --unresolved-hardening 0 --reviewer "<judge-id>" --summary "<summary>"',
     ];
   }
   if (recordStat.isSymbolicLink() || !recordStat.isFile()) {

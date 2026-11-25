@@ -104,13 +104,37 @@ export function isDynamicPath(value) {
   return typeof value !== "string" || !value || /[$`()%~]/.test(value) || value === "-" || value.includes("__dyn_herestring__");
 }
 
+function isCmdVarNameChar(ch) {
+  return /[A-Za-z0-9_()]/.test(ch);
+}
+
+function hasCmdPercentVar(value) {
+  for (let i = 0; i < value.length; i += 1) {
+    if (value[i] !== "%") continue;
+    let j = i + 1;
+    if (j >= value.length || !/[A-Za-z_]/.test(value[j])) continue;
+    j += 1;
+    while (j < value.length && isCmdVarNameChar(value[j])) j += 1;
+    while (j + 1 < value.length && value[j] === "-" && isCmdVarNameChar(value[j + 1])) {
+      j += 2;
+      while (j < value.length && isCmdVarNameChar(value[j])) j += 1;
+    }
+    if (value[j] === ":") {
+      j += 1;
+      while (j < value.length && value[j] !== "%" && value[j] !== "\r" && value[j] !== "\n") j += 1;
+    }
+    if (j < value.length && value[j] === "%") return true;
+  }
+  return false;
+}
+
 export function isDynamicShellExpr(value) {
   return (
     typeof value === "string" &&
     (value.includes("__dyn_herestring__") ||
       /(?:^|[^\\])(?:\\\\)*\$(?:[A-Za-z0-9_{(@*?!$-])/.test(value) ||
       /(?:^|\s)@[A-Za-z_][A-Za-z0-9_:]*(?:\s|$)/.test(value) ||
-      /%[A-Za-z_][A-Za-z0-9_()]*(?:-[A-Za-z0-9_()]+)*(?::[^%\r\n]*)?%/.test(value) ||
+      hasCmdPercentVar(value) ||
       /(?:^|[^\\])(?:\\\\)*`/.test(value))
   );
 }
