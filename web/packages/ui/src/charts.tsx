@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as echarts from "echarts";
 
-function readToken(name: string, fallback: string): string {
+export function readToken(name: string, fallback: string): string {
   if (typeof window === "undefined" || typeof document === "undefined") return fallback;
   const val = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return val || fallback;
 }
 
-function useThemeTick(): string {
+export function useThemeTick(): string {
   const [themeAttr, setThemeAttr] = useState(() =>
     typeof document !== "undefined"
       ? document.documentElement.getAttribute("data-theme") ?? "light"
@@ -38,15 +38,6 @@ function canUseCanvas2d(): boolean {
   } catch {
     return false;
   }
-}
-
-export interface FleetHexCell {
-  key: string;
-  col: number;
-  row: number;
-  deviceId: string | null;
-  status: "boundary" | "partial" | "blind" | "empty";
-  label: string;
 }
 
 export function GrdrChart({
@@ -434,147 +425,4 @@ export function GrdrSparkline({
   }, [values, themeTick]);
 
   return <GrdrChart option={option} width={width} height={height} ariaLabel={ariaLabel} />;
-}
-
-export function GrdrFleetHexMap({
-  cells,
-  selectedDeviceId,
-  onSelectDevice,
-  height = 204,
-}: {
-  cells: ReadonlyArray<FleetHexCell>;
-  selectedDeviceId: string | null;
-  onSelectDevice: (deviceId: string) => void;
-  height?: number;
-}) {
-  const themeTick = useThemeTick();
-
-  const displayCells = useMemo<FleetHexCell[]>(() => [...cells], [cells]);
-  const maxCol = Math.max(0, ...displayCells.map((c) => c.col));
-  const maxRow = Math.max(0, ...displayCells.map((c) => c.row));
-
-  const option = useMemo<echarts.EChartsOption>(() => {
-    const allowEdge = readToken("--tone-allow", "rgb(21, 128, 61)");
-    const allowFill = readToken("--tone-allow-bg", "rgba(21, 128, 61, 0.12)");
-    const askEdge = readToken("--tone-ask", "rgb(161, 98, 7)");
-    const askFill = readToken("--tone-ask-bg", "rgba(250, 204, 21, 0.16)");
-    const blockEdge = readToken("--tone-block", "rgb(185, 28, 28)");
-    const blockFill = readToken("--tone-block-bg", "rgba(185, 28, 28, 0.12)");
-
-    const borderStrong = readToken("--border-strong", "rgb(209, 213, 219)");
-    const inkPrimary = readToken("--ink-primary", "rgb(15, 23, 42)");
-    const bgCanvas = readToken("--bg-canvas", "rgb(255, 255, 255)");
-    const sansFont = readToken("--font-sans", "DM Sans, sans-serif");
-
-    const hexColors = (status: FleetHexCell["status"]) => {
-      if (status === "boundary") return { fill: allowFill, edge: allowEdge };
-      if (status === "partial") return { fill: askFill, edge: askEdge };
-      return { fill: blockFill, edge: blockEdge };
-    };
-
-    const hexPolygon = (cx: number, cy: number, r: number): number[][] => {
-      const pts: number[][] = [];
-      for (let i = 0; i < 6; i += 1) {
-        const angle = (Math.PI / 180) * (60 * i - 30);
-        pts.push([cx + r * Math.cos(angle), cy + r * Math.sin(angle)]);
-      }
-      return pts;
-    };
-
-    return {
-      animation: false,
-      tooltip: {
-        trigger: "item",
-        backgroundColor: bgCanvas,
-        borderColor: borderStrong,
-        textStyle: { color: inkPrimary, fontSize: 12, fontFamily: sansFont },
-        formatter: (params) => {
-          const item = params as { dataIndex?: number };
-          const cell = typeof item.dataIndex === "number" ? displayCells[item.dataIndex] : undefined;
-          return cell && cell.label ? cell.label : "";
-        },
-      },
-      grid: { left: 20, right: 20, top: 8, bottom: 8 },
-      xAxis: {
-        type: "value",
-        min: maxCol === 0 ? -1 : -0.6,
-        max: maxCol === 0 ? 1 : maxCol + 0.6,
-        show: false,
-      },
-      yAxis: {
-        type: "value",
-        min: maxRow === 0 ? -0.6 : -0.5,
-        max: maxRow === 0 ? 0.8 : maxRow + 0.8,
-        inverse: true,
-        show: false,
-      },
-      series: [
-        {
-          type: "custom",
-          renderItem: (params, api) => {
-            const cell = displayCells[params.dataIndex];
-            if (!cell || cell.status === "empty") return null;
-            const center = api.coord([cell.col, cell.row]);
-            const radius = 26;
-            const outerPts = hexPolygon(center[0], center[1] - 6, radius);
-            const palette = hexColors(cell.status);
-            const isSelected = Boolean(cell.deviceId && cell.deviceId === selectedDeviceId);
-            const shortLabel = cell.label.split("·")[0]?.trim() ?? cell.label;
-
-            type CustomChild = NonNullable<echarts.CustomSeriesRenderItemReturn>;
-            const children: CustomChild[] = [
-              {
-                type: "polygon",
-                shape: { points: outerPts },
-                style: {
-                  fill: palette.fill,
-                  stroke: isSelected ? inkPrimary : palette.edge,
-                  lineWidth: isSelected ? 2 : 1.5,
-                },
-              },
-              {
-                type: "circle",
-                silent: true,
-                shape: { cx: center[0], cy: center[1] - 6, r: 4 },
-                style: { fill: palette.edge },
-              },
-              {
-                type: "text",
-                silent: true,
-                style: {
-                  text: shortLabel,
-                  x: center[0],
-                  y: center[1] + radius + 6,
-                  align: "center",
-                  fill: inkPrimary,
-                  fontSize: 12,
-                  fontWeight: isSelected ? 600 : 500,
-                  fontFamily: sansFont,
-                },
-              },
-            ];
-
-            return {
-              type: "group",
-              children,
-            };
-          },
-          data: displayCells.map((c, idx) => [c.col, c.row, idx]),
-        },
-      ],
-    };
-  }, [displayCells, maxCol, maxRow, selectedDeviceId, themeTick]);
-
-  return (
-    <GrdrChart
-      option={option}
-      width="100%"
-      height={height}
-      ariaLabel="Interactive honeycomb hexbin map of fleet endpoints"
-      onPointClick={(idx) => {
-        const cell = displayCells[idx];
-        if (cell?.deviceId) onSelectDevice(cell.deviceId);
-      }}
-    />
-  );
 }

@@ -119,12 +119,16 @@ impl AppState {
             },
         ];
 
+        let storage_label = match self.backend.storage_mode() {
+            grdr_model::StorageMode::Sqlite { .. } => "Encrypted local SQLite storage active",
+            grdr_model::StorageMode::Memory => "In-memory ephemeral store active",
+        };
         let setup_steps = vec![
             SetupStep {
                 id: "step-server".into(),
                 label: "API server started".into(),
                 done: true,
-                detail: format!("Storage backend: {}", self.backend.storage_mode().label()),
+                detail: storage_label.to_owned(),
             },
             SetupStep {
                 id: "step-essentials".into(),

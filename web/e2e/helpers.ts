@@ -1,6 +1,34 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { expect, type APIRequestContext, type Page } from "@playwright/test";
+import { test as baseTest, expect, type APIRequestContext, type Page } from "@playwright/test";
+
+export { expect };
+
+export const test = baseTest.extend({
+  page: async ({ page }, use) => {
+    const consoleUrl = process.env.GRDR_E2E_BASE_URL?.trim() ?? "";
+    const consoleTok = process.env.GRDR_E2E_CONSOLE_TOKEN?.trim() ?? "";
+    const operatorUrl = process.env.GRDR_E2E_OPERATOR_BASE_URL?.trim() ?? "";
+    const operatorTok = process.env.GRDR_E2E_OPERATOR_TOKEN?.trim() ?? "";
+    await page.addInitScript(
+      ({ cOrigin, cTok, oOrigin, oTok }) => {
+        const here = window.location.origin;
+        if (cOrigin && cTok && here === cOrigin) {
+          window.sessionStorage.setItem("grdr_api_token", cTok);
+        } else if (oOrigin && oTok && here === oOrigin) {
+          window.sessionStorage.setItem("grdr_api_token", oTok);
+        }
+      },
+      {
+        cOrigin: consoleUrl ? new URL(consoleUrl).origin : "",
+        cTok: consoleTok,
+        oOrigin: operatorUrl ? new URL(operatorUrl).origin : "",
+        oTok: operatorTok,
+      },
+    );
+    await use(page);
+  },
+});
 
 export interface PageDiagnostics {
   pageErrors: string[];
@@ -93,6 +121,7 @@ export async function captureVerifiedScreenshot(
   await page.screenshot({
     path: join(dir, `${name}${suffix}.png`),
     fullPage: true,
+    animations: "disabled",
   });
 }
 
@@ -101,10 +130,15 @@ export async function rpcPost(
   methodPath: string,
   body: Record<string, unknown> = {},
 ): Promise<Record<string, unknown>> {
+  const token = process.env.GRDR_E2E_CONSOLE_TOKEN?.trim() ?? "";
+  const stepUp = process.env.GRDR_E2E_STEP_UP_TOKEN?.trim() ?? "";
   const resp = await request.post(`${getBaseUrl()}${methodPath}`, {
     headers: {
       "Content-Type": "application/json",
       "Connect-Protocol-Version": "1",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      "X-Grdr-Confirm": "confirmed",
+      ...(stepUp ? { "X-Grdr-Step-Up": stepUp } : {}),
     },
     data: body,
   });

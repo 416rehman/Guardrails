@@ -197,6 +197,41 @@ export function deriveConsoleLocation(pathname: string): {
         sessionsView: "graph",
         protectSection: "rules",
       };
+    case "first-run":
+      return {
+        route: "first-run",
+        inventorySection: "endpoints",
+        sessionsView: "graph",
+        protectSection: "rules",
+      };
+    case "review":
+      return {
+        route: "review",
+        inventorySection: "endpoints",
+        sessionsView: "graph",
+        protectSection: "rules",
+      };
+    case "compliance":
+      return {
+        route: "compliance",
+        inventorySection: "endpoints",
+        sessionsView: "graph",
+        protectSection: "rules",
+      };
+    case "settings":
+      return {
+        route: "settings",
+        inventorySection: "endpoints",
+        sessionsView: "graph",
+        protectSection: "rules",
+      };
+    case "provider":
+      return {
+        route: "provider",
+        inventorySection: "endpoints",
+        sessionsView: "graph",
+        protectSection: "rules",
+      };
     case "coverage":
       return {
         route: "coverage",
@@ -228,6 +263,8 @@ export function pathForConsoleRoute(
   switch (route) {
     case "home":
       return "/";
+    case "first-run":
+      return "/first-run";
     case "users":
       return "/users";
     case "inventory":
@@ -236,8 +273,16 @@ export function pathForConsoleRoute(
       return `/sessions/${normalizeSessionView(childId)}`;
     case "protect":
       return `/protect/${normalizeProtectSection(childId)}`;
+    case "review":
+      return "/review";
     case "respond":
       return "/respond";
+    case "compliance":
+      return "/compliance";
+    case "settings":
+      return "/settings";
+    case "provider":
+      return "/provider";
     case "coverage":
       return "/coverage";
     case "tester":

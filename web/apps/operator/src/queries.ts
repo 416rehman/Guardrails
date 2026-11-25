@@ -3,6 +3,7 @@ import {
   api,
   type AuditEntry,
   type HealthResponse,
+  type OperatorStateResponse,
   type OverviewResponse,
   type TrustedKeyInfo,
 } from "@grdr/api";
@@ -16,6 +17,7 @@ export const operatorQueryKeys = {
   keys: () => [OPERATOR_SCOPE, "keys", {}] as const,
   audit: (params: Record<string, unknown> = {}) =>
     [OPERATOR_SCOPE, "audit", params] as const,
+  operatorState: () => [OPERATOR_SCOPE, "operatorState", {}] as const,
 };
 
 export interface OperatorSnapshot {
@@ -23,6 +25,7 @@ export interface OperatorSnapshot {
   overview: OverviewResponse;
   keys: TrustedKeyInfo[];
   audit: AuditEntry[];
+  operatorState: OperatorStateResponse;
 }
 
 export type OperatorLoadPhase =
@@ -65,6 +68,10 @@ export function useOperatorSnapshotQueries(): {
         queryKey: operatorQueryKeys.audit({ pageSize: 200 }),
         queryFn: (): Promise<AuditEntry[]> => api.getAudit(),
       },
+      {
+        queryKey: operatorQueryKeys.operatorState(),
+        queryFn: (): Promise<OperatorStateResponse> => api.getOperatorState(),
+      },
     ],
   });
 
@@ -73,10 +80,11 @@ export function useOperatorSnapshotQueries(): {
   const overview = results[1].data;
   const keys = results[2].data;
   const audit = results[3].data;
+  const operatorState = results[4].data;
 
   const data: OperatorSnapshot | undefined =
-    health && overview && keys && audit
-      ? { health, overview, keys, audit }
+    health && overview && keys && audit && operatorState
+      ? { health, overview, keys, audit, operatorState }
       : undefined;
 
   let phase: OperatorLoadPhase;

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   createBrowserHistory,
   createRootRoute,
@@ -11,12 +12,17 @@ import {
 import type { InventorySectionId, ProtectSectionId } from "@grdr/i18n";
 import { ConsoleShell } from "./ConsoleShell";
 import { useConsoleWorkspace } from "./ConsoleContext";
+import { CompliancePage } from "./pages/CompliancePage";
 import { CoveragePage } from "./pages/CoveragePage";
+import { FirstRunPage } from "./pages/FirstRunPage";
 import { HomePage } from "./pages/HomePage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { ProtectPage } from "./pages/ProtectPage";
+import { ProviderWorkbenchPage } from "./pages/ProviderWorkbenchPage";
 import { RespondPage } from "./pages/RespondPage";
+import { ReviewQueuePage } from "./pages/ReviewQueuePage";
 import { SessionsPage, type SessionViewMode } from "./pages/SessionsPage";
+import { SettingsPrivacyPage } from "./pages/SettingsPrivacyPage";
 import { TesterPage } from "./pages/TesterPage";
 import { UsersPage } from "./pages/UsersPage";
 import {
@@ -33,6 +39,7 @@ function HomeRouteView() {
     onNavigateRoute,
     onOpenEntity,
     onDecideApproval,
+    onExplainReceipt,
   } = useConsoleWorkspace();
 
   return (
@@ -45,6 +52,7 @@ function HomeRouteView() {
       onNavigate={(next) => onNavigateRoute(next)}
       onOpenEntity={onOpenEntity}
       onDecideApproval={onDecideApproval}
+      onExplainReceipt={onExplainReceipt}
     />
   );
 }
@@ -120,6 +128,7 @@ function SessionsRouteView({ viewOverride }: { viewOverride?: SessionViewMode })
     onOpenEntity,
     onUpdateSearch,
     onCreateRuleFromAttempt,
+    onExplainReceipt,
   } = useConsoleWorkspace();
 
   const section = viewOverride ?? normalizeSessionView(params.view);
@@ -151,6 +160,7 @@ function SessionsRouteView({ viewOverride }: { viewOverride?: SessionViewMode })
       }
       onOpenEntity={onOpenEntity}
       onCreateRuleFromAttempt={onCreateRuleFromAttempt}
+      onExplainReceipt={onExplainReceipt}
     />
   );
 }
@@ -199,6 +209,7 @@ function RespondRouteView() {
     snapshot,
     onOpenEntity,
     onOpenSessionTurn,
+    onExplainReceipt,
     onUpdateSearch,
     invalidateAll,
   } = useConsoleWorkspace();
@@ -215,9 +226,64 @@ function RespondRouteView() {
       onUpdateSearch={onUpdateSearch}
       onOpenEntity={onOpenEntity}
       onOpenSessionTurn={onOpenSessionTurn}
+      onExplainReceipt={onExplainReceipt}
       onUpdated={() => void invalidateAll()}
     />
   );
+}
+
+function FirstRunRouteView() {
+  const { snapshot, onOpenEntity, onNavigateRoute, invalidateAll } =
+    useConsoleWorkspace();
+  return (
+    <FirstRunPage
+      devices={snapshot.devices}
+      onOpenEntity={onOpenEntity}
+      onNavigateCompliance={() => onNavigateRoute("compliance")}
+      onChanged={invalidateAll}
+    />
+  );
+}
+
+function ReviewRouteView() {
+  const { snapshot, onOpenEntity, onExplainReceipt, invalidateAll } =
+    useConsoleWorkspace();
+  return (
+    <ReviewQueuePage
+      devices={snapshot.devices}
+      onOpenEntity={onOpenEntity}
+      onExplainReceipt={onExplainReceipt}
+      onChanged={invalidateAll}
+    />
+  );
+}
+
+function ComplianceRouteView() {
+  const { invalidateAll } = useConsoleWorkspace();
+  return <CompliancePage onChanged={invalidateAll} />;
+}
+
+function SettingsRouteView() {
+  const { invalidateAll } = useConsoleWorkspace();
+  return <SettingsPrivacyPage onChanged={invalidateAll} />;
+}
+
+function ProviderRouteView() {
+  const { invalidateAll } = useConsoleWorkspace();
+  return <ProviderWorkbenchPage onChanged={invalidateAll} />;
+}
+
+function WhyRedirectView() {
+  const params = useParams({ strict: false }) as { reference?: string };
+  const { onExplainReceipt } = useConsoleWorkspace();
+
+  useEffect(() => {
+    if (params.reference) {
+      onExplainReceipt(params.reference);
+    }
+  }, [params.reference, onExplainReceipt]);
+
+  return <HomeRouteView />;
 }
 
 function CoverageRouteView() {
@@ -325,9 +391,52 @@ const testerRoute = createRoute({
   component: TesterRouteView,
 });
 
+const firstRunRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/first-run",
+  validateSearch: validateConsoleSearch,
+  component: FirstRunRouteView,
+});
+
+const reviewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/review",
+  validateSearch: validateConsoleSearch,
+  component: ReviewRouteView,
+});
+
+const complianceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/compliance",
+  validateSearch: validateConsoleSearch,
+  component: ComplianceRouteView,
+});
+
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings",
+  validateSearch: validateConsoleSearch,
+  component: SettingsRouteView,
+});
+
+const providerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/provider",
+  validateSearch: validateConsoleSearch,
+  component: ProviderRouteView,
+});
+
+const whyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/why/$reference",
+  validateSearch: validateConsoleSearch,
+  component: WhyRedirectView,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   homeRoute,
+  firstRunRoute,
   usersRoute,
   inventoryIndexRoute,
   inventorySectionRoute,
@@ -335,9 +444,14 @@ const routeTree = rootRoute.addChildren([
   sessionsViewRoute,
   protectIndexRoute,
   protectSectionRoute,
+  reviewRoute,
   respondRoute,
+  complianceRoute,
+  settingsRoute,
+  providerRoute,
   coverageRoute,
   testerRoute,
+  whyRoute,
 ]);
 
 export function createConsoleRouter(history?: RouterHistory) {

@@ -9,8 +9,8 @@ import {
   useRouterState,
   type RouterHistory,
 } from "@tanstack/react-router";
-import { api } from "@grdr/api";
-import { OPERATOR_ROUTES, type OperatorRouteId, t } from "@grdr/i18n";
+import { api, getApiToken, setApiToken } from "@grdr/api";
+import { OPERATOR_ROUTES, routeLabel, t, type OperatorRouteId } from "@grdr/i18n";
 import { ViewStateFrame } from "@grdr/kit";
 import {
   Badge,
@@ -22,11 +22,14 @@ import {
   HStack,
   IconButton,
   Text,
+  TextInput,
   VStack,
   iconKeyToName,
   type GrdrThemeMode,
 } from "@grdr/ui";
 import { Breadcrumbs } from "../../console/src/components/Breadcrumbs";
+import { OperatorBackupsView } from "./OperatorBackupsView";
+import { OperatorUpgradesView } from "./OperatorUpgradesView";
 import {
   OperatorAuditView,
   OperatorHealthView,
@@ -48,6 +51,7 @@ type ExportState =
 interface OperatorContextValue {
   snapshot: OperatorSnapshot;
   navigateRoute: (route: OperatorRouteId) => void;
+  invalidateAll: () => Promise<void>;
 }
 
 const OperatorContext = createContext<OperatorContextValue | null>(null);
@@ -67,6 +71,10 @@ function deriveOperatorRoute(pathname: string): OperatorRouteId {
       return "op-health";
     case "settings":
       return "op-settings";
+    case "upgrades":
+      return "op-upgrades";
+    case "backups":
+      return "op-backups";
     case "audit":
       return "op-audit";
     default:
@@ -82,10 +90,23 @@ function pathForOperatorRoute(route: OperatorRouteId): string {
       return "/health";
     case "op-settings":
       return "/settings";
+    case "op-upgrades":
+      return "/upgrades";
+    case "op-backups":
+      return "/backups";
     case "op-audit":
       return "/audit";
   }
 }
+
+const OPERATOR_SUBTITLES: Record<OperatorRouteId, string> = {
+  "op-overview": "Deployment isolation status, Ed25519 trust keys, and control audit overview.",
+  "op-health": "Daemon liveness, persistence mode, and active containment status.",
+  "op-settings": "Registered Ed25519 receipt verification keys and operator realm boundary.",
+  "op-upgrades": "Staged runtime configuration revisions, diffs, rollback, and compatibility preflight.",
+  "op-backups": "Delivery target circuit breakers and signed SQLite WAL backup or restore drills.",
+  "op-audit": "Tamper-evident operator audit ledger with OCSF 1.9 and JSONL exports.",
+};
 
 function OperatorShell() {
   const navigate = useNavigate();
@@ -95,6 +116,7 @@ function OperatorShell() {
   const [themeMode, setThemeMode] = useState<GrdrThemeMode>("light");
   const [sidebarDisplay, setSidebarDisplay] = useState<SidebarDisplay>("expanded");
   const [exportState, setExportState] = useState<ExportState>({ kind: "idle" });
+  const [tokenInput, setTokenInput] = useState(() => getApiToken());
 
   const { phase, invalidateAll } = useOperatorSnapshotQueries();
 
@@ -154,7 +176,7 @@ function OperatorShell() {
         label: t("operator.nav.overview"),
         onClick: () => navigateRoute("op-overview"),
       },
-      { id: route, label: t(activeRoute.labelKey) },
+      { id: route, label: routeLabel(activeRoute.labelKey) },
     ];
   }, [route, activeRoute]);
 
@@ -192,14 +214,14 @@ function OperatorShell() {
               <button
                 key={item.id}
                 type="button"
-                title={t(item.labelKey)}
-                aria-label={t(item.labelKey)}
+                title={routeLabel(item.labelKey)}
+                aria-label={routeLabel(item.labelKey)}
                 className={item.id === route ? "nav-item active" : "nav-item"}
                 onClick={() => navigateRoute(item.id)}
               >
                 <span className="nav-item-label">
                   <GrdrIcon name={iconKeyToName(item.iconKey)} size={16} />
-                  {!sidebarCollapsed && <span>{t(item.labelKey)}</span>}
+                  {!sidebarCollapsed && <span>{routeLabel(item.labelKey)}</span>}
                 </span>
               </button>
             ))}
@@ -245,28 +267,30 @@ function OperatorShell() {
               <div className="page-header">
                 <div>
                   <h1 className="hero-headline" style={{ fontSize: 30 }}>
-                    {t(activeRoute.labelKey)}
+                    {routeLabel(activeRoute.labelKey)}
                   </h1>
                   <Text color="secondary">
-                    Deployment telemetry, Ed25519 trust keys, and compliance audit ledger.
+                    {OPERATOR_SUBTITLES[route]}
                   </Text>
                 </div>
-                <HStack gap={2}>
-                  <Button
-                    label="Export OCSF 1.9"
-                    variant="secondary"
-                    size="sm"
-                    icon={<GrdrIcon name="file-json" size={14} />}
-                    onClick={() => void handleExportOcsf()}
-                  />
-                  <Button
-                    label="Export audit JSONL"
-                    variant="secondary"
-                    size="sm"
-                    icon={<GrdrIcon name="download" size={14} />}
-                    onClick={() => void handleExportAuditJsonl()}
-                  />
-                </HStack>
+                {route === "op-audit" && (
+                  <HStack gap={2}>
+                    <Button
+                      label="Export OCSF 1.9"
+                      variant="secondary"
+                      size="sm"
+                      icon={<GrdrIcon name="file-json" size={14} />}
+                      onClick={() => void handleExportOcsf()}
+                    />
+                    <Button
+                      label="Export audit JSONL"
+                      variant="secondary"
+                      size="sm"
+                      icon={<GrdrIcon name="download" size={14} />}
+                      onClick={() => void handleExportAuditJsonl()}
+                    />
+                  </HStack>
+                )}
               </div>
 
               {exportState.kind === "exported" ? (
@@ -277,23 +301,41 @@ function OperatorShell() {
 
               <ViewStateFrame
                 state={viewState}
-                title={phase.kind === "error" ? "Operator endpoint unavailable" : "Loading operator plane"}
+                title={phase.kind === "error" ? "Operator authentication or endpoint error" : "Loading operator plane"}
                 description={
                   phase.kind === "error"
                     ? phase.message
                     : "Connecting to Guardrails control-plane health and audit APIs."
                 }
                 actions={
-                  <Button
-                    label="Retry"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => void invalidateAll()}
-                  />
+                  <HStack gap={2} align="end" style={{ flexWrap: "wrap" }}>
+                    <TextInput
+                      label="Operator token"
+                      placeholder="Paste dedicated --operator-token"
+                      value={tokenInput}
+                      onChange={setTokenInput}
+                      width={260}
+                    />
+                    <Button
+                      label="Apply token"
+                      variant="primary"
+                      size="sm"
+                      onClick={() => {
+                        setApiToken(tokenInput);
+                        void invalidateAll();
+                      }}
+                    />
+                    <Button
+                      label="Retry"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => void invalidateAll()}
+                    />
+                  </HStack>
                 }
               >
                 {snapshot ? (
-                  <OperatorContext.Provider value={{ snapshot, navigateRoute }}>
+                  <OperatorContext.Provider value={{ snapshot, navigateRoute, invalidateAll }}>
                     <VStack gap={4}>
                       <Outlet />
                     </VStack>
@@ -328,6 +370,16 @@ function AuditRoute() {
   return <OperatorAuditView snapshot={snapshot} />;
 }
 
+function UpgradesRoute() {
+  const { snapshot, invalidateAll } = useOperatorSnapshot();
+  return <OperatorUpgradesView snapshot={snapshot} onMutated={invalidateAll} />;
+}
+
+function BackupsRoute() {
+  const { snapshot, invalidateAll } = useOperatorSnapshot();
+  return <OperatorBackupsView snapshot={snapshot} onMutated={invalidateAll} />;
+}
+
 const rootRoute = createRootRoute({
   component: OperatorShell,
   notFoundComponent: OverviewRoute,
@@ -357,6 +409,18 @@ const settingsRoute = createRoute({
   component: SettingsRoute,
 });
 
+const upgradesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/upgrades",
+  component: UpgradesRoute,
+});
+
+const backupsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/backups",
+  component: BackupsRoute,
+});
+
 const auditRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/audit",
@@ -368,6 +432,8 @@ const operatorTree = rootRoute.addChildren([
   overviewRoute,
   healthRoute,
   settingsRoute,
+  upgradesRoute,
+  backupsRoute,
   auditRoute,
 ]);
 

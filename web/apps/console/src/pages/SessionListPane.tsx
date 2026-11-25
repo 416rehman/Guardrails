@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type Device, type SessionSummary } from "@grdr/api";
 import { pluralize } from "@grdr/i18n";
 import { EntityLink, type EntityTarget, SessionLabelBadge } from "@grdr/kit";
-import { Badge, Banner, GrdrIcon, HStack, Text, TextInput, VStack } from "@grdr/ui";
+import { Badge, Banner, Button, GrdrIcon, HStack, Text, TextInput, VStack } from "@grdr/ui";
 import { CursorPagerBar } from "../components/PagerBar";
 import { aipQuote, useServerPage } from "../components/useServerPage";
 import type { ConsoleSearchParams } from "../searchSchema";
@@ -110,6 +110,24 @@ export function SessionListPane({
       </div>
 
       <div className="ledger-list">
+        {localQuery.trim().length > 0 &&
+          firstSessionId !== null &&
+          selectedId !== null &&
+          !displayedSessions.some((s) => s.id === selectedId) && (
+            <Banner
+              status="info"
+              title="Selected session sits outside the current filter."
+              collapsible={false}
+              endContent={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  label="Select first match"
+                  onClick={() => onSelectSession(firstSessionId)}
+                />
+              }
+            />
+          )}
         {displayedSessions.length === 0 ? (
           <Text color="secondary">
             {sessionsPage.loading ? "Loading sessions..." : "No sessions match the active filters."}

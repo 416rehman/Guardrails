@@ -4,7 +4,7 @@ use rune::{El, col, el, icon, row, spacer, text};
 use crate::icons;
 use crate::kit::{
     ChipSurface, DesktopApp, agent_glyph, assurance_pill, entity_link, ledger_header, metric_strip,
-    primary_button, quoted_chip, status_pill, status_pill_with_icon,
+    primary_button, quoted_chip, secondary_button, status_pill, status_pill_with_icon,
 };
 use crate::theme::StudioTheme;
 use crate::viz::{attention_card, coverage_visual, velocity_sparkline};
@@ -114,6 +114,7 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
     } else {
         for apr in &vm.pending_approvals {
             let req_id = apr.id.clone();
+            let why_ref = apr.id.clone();
             let card_row = row()
                 .w_full()
                 .padding(14.0)
@@ -167,11 +168,22 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                         )
                         .child(quoted_chip(&apr.target_quoted, ChipSurface::OnRecessed, t)),
                 )
-                .child(primary_button("review-apr", "Review", t, move |s| {
-                    s.dispatch(Intent::OpenApproval {
-                        request_id: req_id.clone(),
-                    });
-                }));
+                .child(
+                    row()
+                        .gap(8.0)
+                        .center_y()
+                        .child(secondary_button("home-why-btn", "Why?", t, move |s| {
+                            s.dispatch(Intent::InspectReceipt {
+                                reference: why_ref.clone(),
+                            });
+                            s.dispatch(Intent::Navigate(Screen::MyActivity));
+                        }))
+                        .child(primary_button("review-apr", "Review", t, move |s| {
+                            s.dispatch(Intent::OpenApproval {
+                                request_id: req_id.clone(),
+                            });
+                        })),
+                );
 
             approvals_col =
                 approvals_col.child(attention_card(apr.id.as_str(), 12.0, t, card_row).w_full());

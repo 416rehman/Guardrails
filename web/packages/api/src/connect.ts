@@ -1,4 +1,5 @@
 const TOKEN_STORAGE_KEY = "grdr_api_token";
+const STEP_UP_STORAGE_KEY = "grdr_step_up_token";
 
 export const CONNECT_PATHS = {
   getHealth: "/grdr.api.overview.v1alpha1.OverviewService/GetHealth",
@@ -40,6 +41,29 @@ export const CONNECT_PATHS = {
   getKillSwitch: "/grdr.api.response.v1alpha1.ResponseService/GetKillSwitch",
   setKillSwitch: "/grdr.api.response.v1alpha1.ResponseService/SetKillSwitch",
   listAuditEvents: "/grdr.api.response.v1alpha1.ResponseService/ListAuditEvents",
+  issueLiveTicket: "/grdr.api.overview.v1alpha1.OverviewService/IssueLiveTicket",
+  explainReceipt: "/grdr.api.surfaces.v1alpha1.SurfaceService/ExplainReceipt",
+  listReviewQueue: "/grdr.api.surfaces.v1alpha1.SurfaceService/ListReviewQueue",
+  decideReviewCluster: "/grdr.api.surfaces.v1alpha1.SurfaceService/DecideReviewCluster",
+  getComplianceWorkspace: "/grdr.api.surfaces.v1alpha1.SurfaceService/GetComplianceWorkspace",
+  updateCompliancePolicy: "/grdr.api.surfaces.v1alpha1.SurfaceService/UpdateCompliancePolicy",
+  createLegalHold: "/grdr.api.surfaces.v1alpha1.SurfaceService/CreateLegalHold",
+  approveLegalHold: "/grdr.api.surfaces.v1alpha1.SurfaceService/ApproveLegalHold",
+  exportComplianceArtifact: "/grdr.api.surfaces.v1alpha1.SurfaceService/ExportComplianceArtifact",
+  pushGrcEvidence: "/grdr.api.surfaces.v1alpha1.SurfaceService/PushGrcEvidence",
+  requestReidentification: "/grdr.api.surfaces.v1alpha1.SurfaceService/RequestReidentification",
+  approveReidentification: "/grdr.api.surfaces.v1alpha1.SurfaceService/ApproveReidentification",
+  completeFirstRun: "/grdr.api.surfaces.v1alpha1.SurfaceService/CompleteFirstRun",
+  getProviderWorkspace: "/grdr.api.surfaces.v1alpha1.SurfaceService/GetProviderWorkspace",
+  switchProviderOrg: "/grdr.api.surfaces.v1alpha1.SurfaceService/SwitchProviderOrg",
+  advanceProviderRing: "/grdr.api.surfaces.v1alpha1.SurfaceService/AdvanceProviderRing",
+  getOperatorState: "/grdr.api.operator.v1alpha1.OperatorService/GetOperatorState",
+  stageConfigRevision: "/grdr.api.operator.v1alpha1.OperatorService/StageConfigRevision",
+  applyConfigRevision: "/grdr.api.operator.v1alpha1.OperatorService/ApplyConfigRevision",
+  rollbackConfigRevision: "/grdr.api.operator.v1alpha1.OperatorService/RollbackConfigRevision",
+  runUpgradePreflight: "/grdr.api.operator.v1alpha1.OperatorService/RunUpgradePreflight",
+  resetTargetBreaker: "/grdr.api.operator.v1alpha1.OperatorService/ResetTargetBreaker",
+  runBackupDrill: "/grdr.api.operator.v1alpha1.OperatorService/RunBackupDrill",
 } as const;
 
 export interface ConnectErrorDetailEnvelope {
@@ -97,10 +121,40 @@ export function setApiToken(token: string): void {
   }
 }
 
+export function getStepUpToken(): string {
+  try {
+    return window.sessionStorage.getItem(STEP_UP_STORAGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function setStepUpToken(token: string): void {
+  try {
+    const trimmed = token.trim();
+    if (trimmed) {
+      window.sessionStorage.setItem(STEP_UP_STORAGE_KEY, trimmed);
+    } else {
+      window.sessionStorage.removeItem(STEP_UP_STORAGE_KEY);
+    }
+  } catch {
+    // ignore storage errors in non-browser tests
+  }
+}
+
+export type ConfirmAssertion = "confirmed" | "step-up";
+
 export function connectLiveUrl(): string {
-  const token = getApiToken();
-  return token
-    ? `${CONNECT_PATHS.liveEvents}?access_token=${encodeURIComponent(token)}`
+  return CONNECT_PATHS.liveEvents;
+}
+
+export async function fetchLiveEventsUrl(): Promise<string> {
+  if (!getApiToken()) {
+    return CONNECT_PATHS.liveEvents;
+  }
+  const res = await connectPost<{ ticket?: string }>(CONNECT_PATHS.issueLiveTicket, {});
+  return res.ticket
+    ? `${CONNECT_PATHS.liveEvents}?ticket=${encodeURIComponent(res.ticket)}`
     : CONNECT_PATHS.liveEvents;
 }
 
@@ -136,13 +190,18 @@ async function parseError(resp: Response): Promise<ConnectApiError> {
   return new ConnectApiError({ code, reason, grdrCode, message, requestId: reqId });
 }
 
-export async function connectPost<T>(path: string, body: unknown = {}): Promise<T> {
+export async function connectPost<T>(
+  path: string,
+  body: unknown = {},
+  extraHeaders: Record<string, string> = {},
+): Promise<T> {
   const resp = await fetch(path, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Connect-Protocol-Version": "1",
       ...authHeaders(),
+      ...extraHeaders,
     },
     body: JSON.stringify(body),
   });
@@ -150,6 +209,24 @@ export async function connectPost<T>(path: string, body: unknown = {}): Promise<
     throw await parseError(resp);
   }
   return (await resp.json()) as T;
+}
+
+export async function connectConfirmedPost<T>(
+  path: string,
+  body: unknown = {},
+  confirm: ConfirmAssertion = "confirmed",
+  stepUpToken?: string,
+): Promise<T> {
+  const headers: Record<string, string> = {
+    "X-Grdr-Confirm": confirm === "step-up" ? "confirmed" : confirm,
+  };
+  if (confirm === "step-up") {
+    const resolved = stepUpToken?.trim() || getStepUpToken();
+    if (resolved) {
+      headers["X-Grdr-Step-Up"] = resolved;
+    }
+  }
+  return connectPost<T>(path, body, headers);
 }
 
 export async function connectGet<T>(path: string, message?: unknown): Promise<T> {

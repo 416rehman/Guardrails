@@ -57,6 +57,7 @@ export function SessionsPage({
   onClearFocusedTurn,
   onOpenEntity,
   onCreateRuleFromAttempt,
+  onExplainReceipt,
 }: {
   sessions: SessionSummary[];
   devices?: Device[];
@@ -73,6 +74,7 @@ export function SessionsPage({
   onClearFocusedTurn?: () => void;
   onOpenEntity?: (target: EntityTarget) => void;
   onCreateRuleFromAttempt: (attempt: ActionAttempt) => void;
+  onExplainReceipt?: (reference: string) => void;
 }) {
   const [internalSelection, setInternalSelection] = useState<SessionSelection>(() =>
     sessions[0] ? { kind: "selected", sessionId: sessions[0].id } : { kind: "none" },
@@ -342,6 +344,7 @@ export function SessionsPage({
                   receipt={focusedReceipt}
                   onOpenEntity={onOpenEntity}
                   onCreateRuleFromAttempt={onCreateRuleFromAttempt}
+                  onExplainReceipt={onExplainReceipt}
                 />
               )}
             </>

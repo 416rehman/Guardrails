@@ -1,4 +1,7 @@
 mod demo;
+mod reduce;
+
+pub use reduce::reduce;
 
 use grdr_messages::BlockCard;
 use grdr_strings::{Locale, MessageKey, lookup};
@@ -178,10 +181,24 @@ pub struct SessionRowVm {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReviewClusterVm {
+    pub id: String,
+    pub rule_id: String,
+    pub rule_title: String,
+    pub bucket_label: String,
+    pub occurrence_count: u32,
+    pub target_preview: String,
+    pub receipt_ref: String,
+    pub decided: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActivityVm {
     pub filter: Option<String>,
     pub sessions: PagingStore<SessionRowVm>,
     pub selected_session_id: Option<String>,
+    pub inspected_receipt_ref: Option<String>,
+    pub review_clusters: Vec<ReviewClusterVm>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -210,6 +227,9 @@ pub struct PrivacyVm {
     pub local_retention_days: u16,
     pub telemetry_destination: String,
     pub managed_org: Option<String>,
+    pub privacy_profile_label: String,
+    pub legal_hold_count: usize,
+    pub quarterly_disclosures: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -267,6 +287,14 @@ pub enum Intent {
     OpenWebConsole {
         route: String,
     },
+    InspectReceipt {
+        reference: String,
+    },
+    DismissWhyCard,
+    TriageReviewCluster {
+        cluster_id: String,
+        action: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -285,6 +313,13 @@ pub enum Effect {
     },
     OpenWebConsole {
         route: String,
+    },
+    InspectWhyCard {
+        reference: String,
+    },
+    ApplyReviewDecision {
+        cluster_id: String,
+        action: String,
     },
     NotifyReadOnly {
         reason: String,
@@ -380,175 +415,5 @@ impl AppVm {
             install_profile: self.home.install_profile,
             render_tier: self.preferences.render_tier,
         }
-    }
-}
-
-/// Pure view-model state transition enforcing narrowing-immediate, widening-proposal, and
-/// agent-caller refusal (`design/28` requirements R4 and R5).
-pub fn reduce(app: &mut AppVm, intent: Intent) -> Vec<Effect> {
-    match intent {
-        Intent::Navigate(screen) => {
-            app.screen = screen;
-            Vec::new()
-        }
-        Intent::ToggleTheme => {
-            app.preferences.theme = match app.preferences.theme {
-                ThemeChoice::Light => ThemeChoice::Dark,
-                ThemeChoice::Dark => ThemeChoice::Light,
-            };
-            Vec::new()
-        }
-        Intent::SelectSession(session_id) => {
-            app.activity.selected_session_id = Some(session_id);
-            Vec::new()
-        }
-        Intent::FilterActivity(filter) => {
-            app.activity.filter = filter;
-            Vec::new()
-        }
-        Intent::OpenWebConsole { route } => vec![Effect::OpenWebConsole { route }],
-        Intent::SelectInstallProfile(profile) => {
-            if app.agent_caller {
-                return vec![Effect::NotifyReadOnly {
-                    reason: "Agent callers cannot modify install profile.".to_owned(),
-                }];
-            }
-            app.first_run.selected_profile = profile;
-            app.home.install_profile = profile;
-            app.settings.install_profile = profile;
-            Vec::new()
-        }
-        Intent::ConfirmProtection => {
-            if app.agent_caller {
-                return vec![Effect::NotifyReadOnly {
-                    reason: "Agent callers cannot confirm protection settings.".to_owned(),
-                }];
-            }
-            let profile = app.first_run.selected_profile;
-            app.home.install_profile = profile;
-            app.settings.install_profile = profile;
-            if let Some(step) = app
-                .first_run
-                .steps
-                .iter_mut()
-                .find(|s| s.id == "turn-on-protection")
-            {
-                step.done = true;
-            }
-            Vec::new()
-        }
-        Intent::OpenApproval { request_id } => {
-            if app.agent_caller {
-                return vec![Effect::NotifyReadOnly {
-                    reason: "Agent callers cannot approve requests.".to_owned(),
-                }];
-            }
-            vec![Effect::LaunchApprove { request_id }]
-        }
-        Intent::SelectRulePreset(preset) => {
-            if app.agent_caller {
-                return vec![Effect::NotifyReadOnly {
-                    reason: "Agent callers cannot alter policy presets.".to_owned(),
-                }];
-            }
-            if matches!(preset, RulePreset::WatchOnly) {
-                return vec![Effect::ProposeWidening {
-                    rule_id: "preset.watch_only".to_owned(),
-                    target_mode: ModeLevel::Watch,
-                }];
-            }
-            app.rules.preset = preset;
-            Vec::new()
-        }
-        Intent::SetRuleMode { rule_id, next_mode } => {
-            if app.agent_caller {
-                return vec![Effect::NotifyReadOnly {
-                    reason: "Agent callers cannot modify rule enforcement modes.".to_owned(),
-                }];
-            }
-            let Some(rule) = app.rules.rules.iter_mut().find(|r| r.id == rule_id) else {
-                return Vec::new();
-            };
-            if rule.locked && rule.mode.is_widening(next_mode) {
-                app.rules.pending_widening_rule_id = Some(rule_id.clone());
-                return vec![Effect::ProposeWidening {
-                    rule_id,
-                    target_mode: next_mode,
-                }];
-            }
-            if rule.mode.is_widening(next_mode) {
-                app.rules.pending_widening_rule_id = Some(rule_id.clone());
-                vec![Effect::ProposeWidening {
-                    rule_id,
-                    target_mode: next_mode,
-                }]
-            } else {
-                rule.mode = next_mode;
-                app.rules.pending_widening_rule_id = None;
-                vec![Effect::ApplyLocalRuleMode {
-                    rule_id,
-                    mode: next_mode,
-                }]
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn first_run_opens_with_three_of_six_steps_ticked() {
-        let vm = AppVm::demo();
-        assert_eq!(vm.first_run.steps.len(), 6);
-        assert_eq!(vm.first_run.steps.iter().filter(|s| s.done).count(), 3);
-    }
-
-    #[test]
-    fn narrowing_applies_immediately_while_widening_emits_proposal() {
-        let mut vm = AppVm::demo();
-        let narrow = reduce(
-            &mut vm,
-            Intent::SetRuleMode {
-                rule_id: "essentials.secret-exfil-egress".to_owned(),
-                next_mode: ModeLevel::Ask,
-            },
-        );
-        assert_eq!(
-            narrow,
-            vec![Effect::ApplyLocalRuleMode {
-                rule_id: "essentials.secret-exfil-egress".to_owned(),
-                mode: ModeLevel::Ask,
-            }]
-        );
-
-        let widen = reduce(
-            &mut vm,
-            Intent::SetRuleMode {
-                rule_id: "essentials.cred-store.read".to_owned(),
-                next_mode: ModeLevel::Watch,
-            },
-        );
-        assert_eq!(
-            widen,
-            vec![Effect::ProposeWidening {
-                rule_id: "essentials.cred-store.read".to_owned(),
-                target_mode: ModeLevel::Watch,
-            }]
-        );
-    }
-
-    #[test]
-    fn agent_caller_refuses_all_mutations() {
-        let mut vm = AppVm::demo();
-        vm.agent_caller = true;
-        let out = reduce(
-            &mut vm,
-            Intent::OpenApproval {
-                request_id: "apr-1".to_owned(),
-            },
-        );
-        assert!(matches!(out.as_slice(), [Effect::NotifyReadOnly { .. }]));
     }
 }

@@ -1,0 +1,380 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Why Card explanations, Review Queue clusters, Compliance & Privacy governance, First Run, and Provider Workbench.
+syntax = "proto3";
+
+package grdr.api.surfaces.v1alpha1;
+
+import "grdr/api/overview/v1alpha1/overview.proto";
+import "grdr/common/v1alpha1/types.proto";
+
+message ExplainReceiptRequest {
+  string reference = 1;
+}
+
+message WhyExplanation {
+  string reference = 1;
+  string receipt_id = 2;
+  string attempt_id = 3;
+  string heading = 4;
+  string verdict = 5;
+  string status_code = 6;
+  string component = 7;
+  string action_class = 8;
+  string rule_id = 9;
+  string rule_title = 10;
+  string pack_id = 11;
+  string agent_name = 12;
+  string device_id = 13;
+  string device_name = 14;
+  string session_id = 15;
+  string target_quoted = 16;
+  string reason = 17;
+  string agent_told = 18;
+  string timestamp = 19;
+  optional string key_id = 20;
+  string signature_status = 21;
+  string primary_action_label = 22;
+  string primary_action_route = 23;
+  optional string approval_id = 24;
+  optional string approver_label = 25;
+}
+
+message ExplainReceiptResponse {
+  WhyExplanation explanation = 1;
+}
+
+message ReviewCluster {
+  string id = 1;
+  string bucket = 2;
+  uint32 score = 3;
+  string rule_id = 4;
+  string rule_title = 5;
+  string observable_digest = 6;
+  string agent_name = 7;
+  string device_id = 8;
+  string device_name = 9;
+  string session_id = 10;
+  string receipt_ref = 11;
+  uint32 occurrence_count = 12;
+  string latest_timestamp = 13;
+  string target_preview = 14;
+  string current_mode = 15;
+  string suggested_mode = 16;
+  string risk_label = 17;
+  string status = 18;
+  string reason = 19;
+  string note = 20;
+}
+
+message ListReviewQueueRequest {
+  string bucket = 1;
+  string search = 2;
+}
+
+message ListReviewQueueResponse {
+  repeated ReviewCluster clusters = 1;
+  uint32 worth_a_look_count = 2;
+  uint32 routine_count = 3;
+  uint32 noise_count = 4;
+  grdr.common.v1alpha1.RevisionMeta revision = 5;
+}
+
+message DecideReviewClusterRequest {
+  string id = 1;
+  string decision = 2;
+  optional string target_mode = 3;
+  optional string note = 4;
+  optional string actor = 5;
+}
+
+message DecideReviewClusterResponse {
+  ReviewCluster cluster = 1;
+}
+
+message FrameworkCoverageSummary {
+  string framework_id = 1;
+  string display_title = 2;
+  uint32 total_controls = 3;
+  uint32 addressed_controls = 4;
+  uint32 coverage_percent = 5;
+}
+
+message ComplianceEvidenceEntry {
+  string id = 1;
+  string capability = 2;
+  string statement = 3;
+  string result = 4;
+  string responsibility = 5;
+  repeated string control_refs = 6;
+  repeated string sample_ids = 7;
+  string period_end = 8;
+  string signature_status = 9;
+}
+
+message RetentionStateSummary {
+  string organisation = 1;
+  string privacy_profile = 2;
+  repeated string presets = 3;
+  uint32 content_days = 4;
+  uint32 activity_days = 5;
+  uint32 decision_days = 6;
+  uint32 audit_days = 7;
+  uint32 hot_days = 8;
+  uint32 backup_days_max = 9;
+  repeated string legal_basis = 10;
+  string conflict_note = 11;
+}
+
+message LegalHoldEntry {
+  string hold_id = 1;
+  string matter_ref = 2;
+  string reason = 3;
+  string lifecycle = 4;
+  string created_by = 5;
+  repeated string approvers = 6;
+  string created_at = 7;
+  string review_by = 8;
+  string notice_mode = 9;
+  string scope_summary = 10;
+}
+
+message SubjectRequestEntry {
+  string request_id = 1;
+  string kind = 2;
+  string subject_ref = 3;
+  string status = 4;
+  repeated string hold_ids = 5;
+  string requested_at = 6;
+  string detail = 7;
+}
+
+message ComplianceConnectorEntry {
+  string id = 1;
+  string name = 2;
+  string kind = 3;
+  string stability = 4;
+  string circuit_state = 5;
+  uint32 queued_items = 6;
+  uint32 delivered_items = 7;
+  string capture_ceiling = 8;
+  string assurance_label = 9;
+  optional string last_delivery_at = 10;
+  string summary = 11;
+}
+
+message ReidentificationRequestEntry {
+  string request_id = 1;
+  string pseudonym_id = 2;
+  string requester = 3;
+  string reason = 4;
+  string legal_basis = 5;
+  string status = 6;
+  repeated string approvers = 7;
+  uint32 required_approvals = 8;
+  optional string resolved_identity = 9;
+  string created_at = 10;
+  optional string resolved_at = 11;
+}
+
+message DisclosureLedgerEntry {
+  string id = 1;
+  string kind = 2;
+  string actor = 3;
+  string target_ref = 4;
+  string legal_basis = 5;
+  string timestamp = 6;
+  string quarter = 7;
+  string summary = 8;
+}
+
+message DisclosureMetrics {
+  string quarter = 1;
+  uint32 total_reidentifications = 2;
+  uint32 total_holds = 3;
+  uint32 total_erasures = 4;
+  uint32 total_exports = 5;
+}
+
+message FirstRunState {
+  string selected_profile = 1;
+  bool confirmed = 2;
+  bool step_up_enabled = 3;
+  repeated grdr.api.overview.v1alpha1.SetupStep steps = 4;
+}
+
+message GetComplianceWorkspaceRequest {}
+
+message GetComplianceWorkspaceResponse {
+  repeated FrameworkCoverageSummary frameworks = 1;
+  repeated ComplianceEvidenceEntry evidence_items = 2;
+  RetentionStateSummary retention = 3;
+  repeated LegalHoldEntry legal_holds = 4;
+  repeated SubjectRequestEntry subject_requests = 5;
+  repeated ComplianceConnectorEntry connectors = 6;
+  repeated ReidentificationRequestEntry reid_requests = 7;
+  repeated DisclosureLedgerEntry disclosures = 8;
+  DisclosureMetrics disclosure_metrics = 9;
+  FirstRunState first_run = 10;
+  grdr.common.v1alpha1.RevisionMeta revision = 11;
+}
+
+message UpdateCompliancePolicyRequest {
+  string privacy_profile = 1;
+  repeated string presets = 2;
+  optional string override_legal_basis = 3;
+  optional string capture_level = 4;
+}
+
+message UpdateCompliancePolicyResponse {
+  RetentionStateSummary retention = 1;
+}
+
+message CreateLegalHoldRequest {
+  string matter_ref = 1;
+  string reason = 2;
+  string pseudonym_or_session = 3;
+}
+
+message CreateLegalHoldResponse {
+  LegalHoldEntry hold = 1;
+}
+
+message ApproveLegalHoldRequest {
+  string hold_id = 1;
+  optional string note = 2;
+}
+
+message ApproveLegalHoldResponse {
+  LegalHoldEntry hold = 1;
+}
+
+message ExportComplianceArtifactRequest {
+  string format = 1;
+  optional string framework_id = 2;
+}
+
+message ExportComplianceArtifactResponse {
+  string format = 1;
+  string filename = 2;
+  string content_type = 3;
+  string payload = 4;
+  string oscal_version = 5;
+  string digest = 6;
+}
+
+message PushGrcEvidenceRequest {
+  string target = 1;
+}
+
+message PushGrcEvidenceResponse {
+  string target = 1;
+  string envelope_id = 2;
+  string outbox_state = 3;
+  string circuit_state = 4;
+  string summary = 5;
+  string payload_preview = 6;
+}
+
+message RequestReidentificationRequest {
+  string pseudonym_id = 1;
+  string reason = 2;
+  string legal_basis = 3;
+}
+
+message RequestReidentificationResponse {
+  ReidentificationRequestEntry request = 1;
+}
+
+message ApproveReidentificationRequest {
+  string request_id = 1;
+  optional string note = 2;
+}
+
+message ApproveReidentificationResponse {
+  ReidentificationRequestEntry request = 1;
+}
+
+message CompleteFirstRunRequest {
+  string profile = 1;
+  bool confirm_protection = 2;
+  bool step_up_enabled = 3;
+}
+
+message CompleteFirstRunResponse {
+  FirstRunState first_run = 1;
+}
+
+message ProviderOrgEntry {
+  string org_id = 1;
+  string name = 2;
+  string org_set = 3;
+  string ring = 4;
+  uint32 devices_count = 5;
+  uint32 open_findings = 6;
+  uint32 pending_approvals = 7;
+  uint32 coverage_pct = 8;
+  string floor_version = 9;
+  uint32 delegated_overrides = 10;
+  string status = 11;
+}
+
+message ProviderRingSummary {
+  string ring = 1;
+  uint32 org_count = 2;
+  string target_version = 3;
+  string health_state = 4;
+  uint32 soak_hours = 5;
+}
+
+message GetProviderWorkspaceRequest {
+  optional string org_set = 1;
+}
+
+message GetProviderWorkspaceResponse {
+  optional string acting_as_org_id = 1;
+  optional string acting_as_org_name = 2;
+  optional string acting_as_reason = 3;
+  repeated ProviderOrgEntry orgs = 4;
+  repeated ProviderRingSummary rings = 5;
+  grdr.common.v1alpha1.RevisionMeta revision = 6;
+}
+
+message SwitchProviderOrgRequest {
+  optional string org_id = 1;
+  optional string reason = 2;
+}
+
+message SwitchProviderOrgResponse {
+  optional string acting_as_org_id = 1;
+  optional string acting_as_org_name = 2;
+  optional string acting_as_reason = 3;
+}
+
+message AdvanceProviderRingRequest {
+  string ring = 1;
+  string target_version = 2;
+}
+
+message AdvanceProviderRingResponse {
+  ProviderRingSummary ring = 1;
+}
+
+service SurfaceService {
+  rpc ExplainReceipt(ExplainReceiptRequest) returns (ExplainReceiptResponse);
+  rpc ListReviewQueue(ListReviewQueueRequest) returns (ListReviewQueueResponse);
+  rpc DecideReviewCluster(DecideReviewClusterRequest) returns (DecideReviewClusterResponse);
+  rpc GetComplianceWorkspace(GetComplianceWorkspaceRequest) returns (GetComplianceWorkspaceResponse);
+  rpc UpdateCompliancePolicy(UpdateCompliancePolicyRequest) returns (UpdateCompliancePolicyResponse);
+  rpc CreateLegalHold(CreateLegalHoldRequest) returns (CreateLegalHoldResponse);
+  rpc ApproveLegalHold(ApproveLegalHoldRequest) returns (ApproveLegalHoldResponse);
+  rpc ExportComplianceArtifact(ExportComplianceArtifactRequest) returns (ExportComplianceArtifactResponse);
+  rpc PushGrcEvidence(PushGrcEvidenceRequest) returns (PushGrcEvidenceResponse);
+  rpc RequestReidentification(RequestReidentificationRequest) returns (RequestReidentificationResponse);
+  rpc ApproveReidentification(ApproveReidentificationRequest) returns (ApproveReidentificationResponse);
+  rpc CompleteFirstRun(CompleteFirstRunRequest) returns (CompleteFirstRunResponse);
+  rpc GetProviderWorkspace(GetProviderWorkspaceRequest) returns (GetProviderWorkspaceResponse);
+  rpc SwitchProviderOrg(SwitchProviderOrgRequest) returns (SwitchProviderOrgResponse);
+  rpc AdvanceProviderRing(AdvanceProviderRingRequest) returns (AdvanceProviderRingResponse);
+}

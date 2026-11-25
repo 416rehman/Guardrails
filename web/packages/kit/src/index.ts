@@ -6,3 +6,4 @@ export * from "./InsightTile";
 export * from "./DeviceAssuranceDrawer";
 export * from "./ApprovalCard";
 export * from "./ViewStateFrame";
+export * from "./WhyCardDrawer";

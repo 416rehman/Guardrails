@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Badge, Button, HStack, Text, VStack } from "@grdr/ui";
+import { Badge, Button, GrdrIcon, HStack, Text, VStack } from "@grdr/ui";
 import { EntityLink, type EntityTarget } from "./EntityLink";
 import { Quoted } from "./Quoted";
 import { VerdictBadge } from "./VerdictBadge";
@@ -21,6 +21,7 @@ export function ApprovalCard({
   onAllow,
   onDeny,
   onOpenEntity,
+  onWhy,
 }: {
   id: string;
   ruleId?: string;
@@ -36,6 +37,7 @@ export function ApprovalCard({
   onAllow: (id: string, scope: GrantScope) => Promise<void>;
   onDeny: (id: string) => Promise<void>;
   onOpenEntity?: (target: EntityTarget) => void;
+  onWhy?: (approvalId: string) => void;
 }) {
   const [armingScope, setArmingScope] = useState<GrantScope | null>(null);
   const [armedScope, setArmedScope] = useState<GrantScope | null>(null);
@@ -104,13 +106,22 @@ export function ApprovalCard({
         </div>
         <Text>{reason}</Text>
 
-        <HStack gap={2}>
+        <HStack gap={2} style={{ flexWrap: "wrap" }}>
           <Button
             variant="destructive"
             size="sm"
             label="Deny"
             onClick={() => void onDeny(id)}
           />
+          {onWhy && (
+            <Button
+              variant="ghost"
+              size="sm"
+              label="Why?"
+              endContent={<GrdrIcon name="arrow-right" size={12} />}
+              onClick={() => onWhy(id)}
+            />
+          )}
           {(["once", "session", "one_hour"] as const).map((scope) => {
             const armed = armedScope === scope;
             const arming = armingScope === scope;

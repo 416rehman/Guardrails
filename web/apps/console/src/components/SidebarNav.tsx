@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CONSOLE_NAV_GROUPS, pluralize, t, type ConsoleRouteId } from "@grdr/i18n";
+import { CONSOLE_NAV_GROUPS, pluralize, routeLabel, t, type ConsoleRouteId } from "@grdr/i18n";
 import {
   GrdrIcon,
   GuardrailsMark,
@@ -39,24 +39,33 @@ export function SidebarNav({
     sessions: false,
     protect: false,
   });
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
     const activeItem = CONSOLE_NAV_GROUPS.flatMap((g) => g.items).find((item) => item.id === route);
     if (activeItem?.children?.length) {
       setExpandedRoutes((prev) => (prev[route] ? prev : { ...prev, [route]: true }));
     }
+    setMobileNavOpen(false);
   }, [route]);
 
-  const activeParentWithChildren = CONSOLE_NAV_GROUPS.flatMap((g) => g.items).find(
-    (item) => item.id === route && item.children && item.children.length > 0,
+  const activeRouteItem = CONSOLE_NAV_GROUPS.flatMap((g) => g.items).find(
+    (item) => item.id === route,
   );
+  const activeParentWithChildren =
+    activeRouteItem && activeRouteItem.children && activeRouteItem.children.length > 0
+      ? activeRouteItem
+      : undefined;
 
   function toggleExpanded(itemId: ConsoleRouteId) {
     setExpandedRoutes((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
   }
 
   return (
-    <aside className={collapsed ? "rail collapsed" : "rail"} aria-label="Primary navigation">
+    <aside
+      className={`${collapsed ? "rail collapsed" : "rail"}${mobileNavOpen ? " mobile-open" : ""}`}
+      aria-label="Primary navigation"
+    >
       <div className="brand-header">
         <div className="brand-mark">
           <div className="brand-glyph">
@@ -69,6 +78,16 @@ export function SidebarNav({
             </div>
           )}
         </div>
+        <button
+          type="button"
+          className="rail-mobile-toggle"
+          aria-label="Toggle navigation menu"
+          aria-expanded={mobileNavOpen}
+          onClick={() => setMobileNavOpen((prev) => !prev)}
+        >
+          <GrdrIcon name={mobileNavOpen ? "x" : "list"} size={14} />
+          <span>{mobileNavOpen ? "Close" : routeLabel(activeRouteItem?.labelKey ?? "console.nav.home")}</span>
+        </button>
         <span className="rail-collapse-btn">
           <IconButton
             label={collapsed ? "Expand navigation" : "Collapse navigation"}
@@ -85,13 +104,17 @@ export function SidebarNav({
         </span>
       </div>
 
-      <nav className="rail-nav" aria-label="Console sections">
+      <nav
+        className="rail-nav"
+        aria-label="Console sections"
+        data-mobile-collapsible="true"
+      >
         {CONSOLE_NAV_GROUPS.map((group) => (
           <div key={group.id} className="rail-group">
             {!collapsed && <div className="rail-group-label">{t(group.labelKey)}</div>}
             <div className="rail-group-items">
               {group.items.map((item) => {
-                const label = t(item.labelKey);
+                const label = routeLabel(item.labelKey);
                 const hasChildren = Boolean(item.children && item.children.length > 0);
                 const isExpanded = Boolean(expandedRoutes[item.id]);
                 const isRouteActive = route === item.id;
@@ -107,6 +130,7 @@ export function SidebarNav({
                       if (hasChildren) {
                         setExpandedRoutes((prev) => ({ ...prev, [item.id]: true }));
                       }
+                      setMobileNavOpen(false);
                       onSelectRoute(item.id);
                     }}
                   >
@@ -154,7 +178,7 @@ export function SidebarNav({
                     {!collapsed && hasChildren && isExpanded && item.children && (
                       <div className="nav-sublist" role="group" aria-label={`${label} views`}>
                         {item.children.map((child) => {
-                          const childLabel = t(child.labelKey);
+                          const childLabel = routeLabel(child.labelKey);
                           const isChildActive = isRouteActive && activeChildId === child.id;
                           return (
                             <button
@@ -186,10 +210,10 @@ export function SidebarNav({
         <div
           className="mobile-subnav"
           role="group"
-          aria-label={`${t(activeParentWithChildren.labelKey)} views`}
+          aria-label={`${routeLabel(activeParentWithChildren.labelKey)} views`}
         >
           {activeParentWithChildren.children.map((child) => {
-            const childLabel = t(child.labelKey);
+            const childLabel = routeLabel(child.labelKey);
             const isChildActive = activeChildId === child.id;
             return (
               <button

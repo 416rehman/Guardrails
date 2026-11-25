@@ -2,8 +2,9 @@ use grdr_strings::{Locale, MessageKey, lookup, sanitize_untrusted_text};
 
 use crate::{
     ActivityVm, AgentStatusVm, AppVm, ControlMode, FirstRunVm, HomeVm, InsightTileVm,
-    InstallProfile, ModeLevel, PagingStore, PendingApprovalVm, Preferences, PrivacyVm, RulePreset,
-    RuleRowVm, RulesVm, Screen, SessionRowVm, SettingsVm, SetupStepVm, ViewState,
+    InstallProfile, ModeLevel, PagingStore, PendingApprovalVm, Preferences, PrivacyVm,
+    ReviewClusterVm, RulePreset, RuleRowVm, RulesVm, Screen, SessionRowVm, SettingsVm, SetupStepVm,
+    ViewState,
 };
 
 impl AppVm {
@@ -128,6 +129,29 @@ impl AppVm {
             activity: ActivityVm {
                 filter: None,
                 selected_session_id: Some("sess-demo-refactor".to_owned()),
+                inspected_receipt_ref: None,
+                review_clusters: vec![
+                    ReviewClusterVm {
+                        id: "rev-01".to_owned(),
+                        rule_id: "essentials.agent-control-files".to_owned(),
+                        rule_title: "Protect agent and Guardrails control files".to_owned(),
+                        bucket_label: "Worth a look".to_owned(),
+                        occurrence_count: 1,
+                        target_preview: sanitize_untrusted_text(".claude/settings.json"),
+                        receipt_ref: "8F2KQ-M41TZW".to_owned(),
+                        decided: false,
+                    },
+                    ReviewClusterVm {
+                        id: "rev-02".to_owned(),
+                        rule_id: "essentials.cred-store.read".to_owned(),
+                        rule_title: "Guard credential stores and private keys".to_owned(),
+                        bucket_label: "Routine".to_owned(),
+                        occurrence_count: 2,
+                        target_preview: sanitize_untrusted_text("~/.ssh/id_ed25519"),
+                        receipt_ref: "7Q2MK-X4D9PJ".to_owned(),
+                        decided: false,
+                    },
+                ],
                 sessions: PagingStore::new(vec![
                     SessionRowVm {
                         id: "sess-demo-refactor".to_owned(),
@@ -198,6 +222,14 @@ impl AppVm {
                 local_retention_days: 30,
                 telemetry_destination: "Standalone (zero external telemetry)".to_owned(),
                 managed_org: None,
+                privacy_profile_label: "Standard (individual receipts retained)".to_owned(),
+                legal_hold_count: 1,
+                quarterly_disclosures: vec![
+                    "Q4 2026: 1 legal hold active, 0 re-identifications approved, 1 erasure completed"
+                        .to_owned(),
+                    "Retention bounds: 30 days activity, 365 days immutable audit trail"
+                        .to_owned(),
+                ],
             },
             settings: SettingsVm {
                 install_profile: InstallProfile::Protected,

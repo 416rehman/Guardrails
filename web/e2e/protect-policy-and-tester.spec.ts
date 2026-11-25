@@ -1,8 +1,9 @@
-import { expect, test } from "@playwright/test";
 import {
   assertNoHorizontalOverflow,
   attachDiagnostics,
   captureVerifiedScreenshot,
+  expect,
+  test,
 } from "./helpers";
 
 test.describe("Protect Policy Authoring, Replay Promotion, and Live Tester", () => {

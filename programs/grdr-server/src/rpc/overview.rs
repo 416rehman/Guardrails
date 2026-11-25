@@ -20,12 +20,13 @@ use grdr_model::proto_conv::{
 use grdr_model::{HealthResponse, ServerHealth};
 use grdr_proto::api::overview::{
     ExportAuditJsonlRequest, ExportAuditJsonlResponse, ExportOcsfRequest, ExportOcsfResponse,
-    GetHealthRequest, GetOverviewRequest, ListKeysRequest, ListKeysResponse,
+    GetHealthRequest, GetOverviewRequest, IssueLiveTicketRequest, IssueLiveTicketResponse,
+    ListKeysRequest, ListKeysResponse,
 };
 use grdr_proto::common::CollectionKind;
 
 use crate::exports::{build_audit_jsonl, build_ocsf_events};
-use crate::rpc::{revision_for, run_rpc};
+use crate::rpc::{revision_for, run_rpc, run_rpc_ctx};
 use crate::store::AppState;
 
 pub async fn get_health(State(state): State<AppState>, request: Request<Body>) -> Response {
@@ -117,6 +118,25 @@ pub async fn export_audit_jsonl(State(state): State<AppState>, request: Request<
                     filename: "guardrails-audit.jsonl".into(),
                     content_type: "application/x-ndjson".into(),
                     payload,
+                },
+                None,
+            ))
+        },
+    )
+    .await
+}
+
+pub async fn issue_live_ticket(State(state): State<AppState>, request: Request<Body>) -> Response {
+    run_rpc_ctx(
+        "/grdr.api.overview.v1alpha1.OverviewService/IssueLiveTicket",
+        state,
+        request,
+        |state, auth, _req: IssueLiveTicketRequest| async move {
+            let ticket = state.issue_live_ticket(auth)?;
+            Ok((
+                IssueLiveTicketResponse {
+                    ticket,
+                    expires_in_seconds: 30,
                 },
                 None,
             ))

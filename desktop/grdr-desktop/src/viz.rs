@@ -179,7 +179,6 @@ pub fn velocity_sparkline(bars: &[(&str, u32, u32, u32)], t: &StudioTheme) -> El
 
     let mut cols = row().w_full().h(102.0).gap(10.0).items_end();
     for &(day, allowed, ask, block) in bars {
-        let day_total = allowed.saturating_add(ask).saturating_add(block);
         let h_allow = if allowed > 0 {
             ((allowed as f32 / max_total) * scale_h).max(4.0)
         } else {
@@ -215,7 +214,7 @@ pub fn velocity_sparkline(bars: &[(&str, u32, u32, u32)], t: &StudioTheme) -> El
 
         cols = cols.child(
             col().grow(1.0).gap(6.0).items_center().child(stack).child(
-                text(format!("{day} {day_total}"))
+                text(day)
                     .font(t.caption)
                     .color(t.c.ink_muted),
             ),

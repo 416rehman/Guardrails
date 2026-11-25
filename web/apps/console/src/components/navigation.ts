@@ -2,6 +2,7 @@ import type { Device, UserProfile } from "@grdr/api";
 import {
   CONSOLE_NAV_GROUPS,
   CONSOLE_ROUTES,
+  routeLabel,
   t,
   type ConsoleRouteId,
   type InventorySectionId,
@@ -73,7 +74,7 @@ export function buildBreadcrumbs(params: {
   if (route === "inventory") {
     const invItem = CONSOLE_NAV_GROUPS.flatMap((g) => g.items).find((i) => i.id === "inventory");
     const childMeta = invItem?.children?.find((c) => c.id === inventorySection);
-    const childLabel = childMeta ? t(childMeta.labelKey) : t("console.nav.inventory.endpoints");
+    const childLabel = childMeta ? routeLabel(childMeta.labelKey) : t("console.nav.inventory.endpoints");
 
     items.push({
       id: "inventory",
@@ -101,7 +102,7 @@ export function buildBreadcrumbs(params: {
       sessionsView === "stream"
         ? "Stream"
         : childMeta
-          ? t(childMeta.labelKey)
+          ? routeLabel(childMeta.labelKey)
           : t("console.nav.sessions.graph");
 
     const sessionsLabel = t("console.nav.sessions");
@@ -126,7 +127,7 @@ export function buildBreadcrumbs(params: {
   if (route === "protect") {
     const protectItem = CONSOLE_NAV_GROUPS.flatMap((g) => g.items).find((i) => i.id === "protect");
     const childMeta = protectItem?.children?.find((c) => c.id === protectSection);
-    const childLabel = childMeta ? t(childMeta.labelKey) : t("console.nav.protect.rules");
+    const childLabel = childMeta ? routeLabel(childMeta.labelKey) : t("console.nav.protect.rules");
 
     items.push({
       id: "protect",
@@ -145,7 +146,7 @@ export function buildBreadcrumbs(params: {
   }
 
   const routeMeta = CONSOLE_ROUTES.find((r) => r.id === route);
-  items.push({ id: route, label: routeMeta ? t(routeMeta.labelKey) : route });
+  items.push({ id: route, label: routeMeta ? routeLabel(routeMeta.labelKey) : route });
   return items;
 }
 
@@ -176,7 +177,7 @@ export function buildCommandActions(params: {
   return [
     ...CONSOLE_ROUTES.map((item) => ({
       id: `route-${item.id}`,
-      label: `Go to ${t(item.labelKey)}`,
+      label: `Go to ${routeLabel(item.labelKey)}`,
       hint: "Route",
       run: () => onSelectRoute(item.id),
     })),
@@ -185,7 +186,7 @@ export function buildCommandActions(params: {
       .flatMap((item) =>
         (item.children ?? []).map((child) => ({
           id: `sub-${item.id}-${child.id}`,
-          label: `${t(item.labelKey)}: ${t(child.labelKey)}`,
+          label: `${routeLabel(item.labelKey)}: ${routeLabel(child.labelKey)}`,
           hint: "Section",
           run: () => onSelectChild(item.id, child.id),
         })),

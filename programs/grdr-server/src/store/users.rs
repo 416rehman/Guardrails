@@ -362,9 +362,10 @@ impl AppState {
         guard.privacy.clone()
     }
 
-    pub async fn update_privacy_config(
+    pub async fn update_privacy_config_with_auth(
         &self,
         input: UpdatePrivacyConfigInput,
+        step_up_confirmed: bool,
     ) -> Result<OrgPrivacyConfig, CodedError> {
         let now = Timestamp::now();
         let mut guard = self.inner.write().await;
@@ -373,10 +374,20 @@ impl AppState {
             .as_deref()
             .map(str::trim)
             .filter(|s| !s.is_empty())
-            .unwrap_or("operator")
+            .unwrap_or("console-admin")
             .to_string();
 
         if let Some(mode) = input.identity_mode {
+            if guard.privacy.identity_mode == IdentityMode::Pseudonymous
+                && mode == IdentityMode::Named
+                && !step_up_confirmed
+            {
+                return Err(CodedError::new(
+                    CODE_INVALID_INPUT,
+                    "Downgrading privacy mode from works-council pseudonymous to named requires step-up authorization.",
+                    "Confirm step-up verification with a valid X-Grdr-Step-Up credential before switching to named mode.",
+                ));
+            }
             guard.privacy.identity_mode = mode;
             if mode == IdentityMode::Pseudonymous {
                 guard.privacy.user_risk_scoring = false;

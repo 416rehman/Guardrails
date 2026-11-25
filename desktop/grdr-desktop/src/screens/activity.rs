@@ -3,8 +3,8 @@ use rune::{El, col, el, icon, row, spacer, text};
 
 use crate::icons;
 use crate::kit::{
-    ChipSurface, DesktopApp, agent_glyph, entity_link, ledger_header, primary_button, quoted_chip,
-    status_pill_with_icon,
+    ChipSurface, DesktopApp, agent_glyph, entity_link, ledger_header, primary_button, quoted_box,
+    quoted_chip, secondary_button, status_pill, status_pill_with_icon,
 };
 use crate::theme::StudioTheme;
 use crate::viz::{attention_card, elevated_card};
@@ -51,8 +51,8 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
             row()
                 .key(sess.id.as_str())
                 .w_full()
-                .pt(10.0)
-                .pb(10.0)
+                .pt(8.0)
+                .pb(8.0)
                 .px(12.0)
                 .radius(8.0)
                 .fill(bg)
@@ -94,7 +94,11 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         .or_else(|| rows.first());
 
     let mut card_section = col().w_full().gap(10.0);
-    if let Some(sess) = selected_session {
+    if let Some(ref_code) = &vm.inspected_receipt_ref {
+        card_section = card_section
+            .child(ledger_header("Why explanation", ref_code, t))
+            .child(super::why_card::render_why_panel(ref_code, vm, selected_session, t));
+    } else if let Some(sess) = selected_session {
         if let Some(card) = &sess.block_card {
             let card_body = col()
                 .w_full()
@@ -150,27 +154,61 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
                 )
                 .child(quoted_chip(&card.target_quoted, ChipSurface::OnRecessed, t))
                 .child(
-                    text("Blocked by baseline protection to keep agent hooks and local configuration tamper-resistant.")
-                        .font(t.caption)
-                        .color(t.c.ink_secondary)
+                    text(&card.reason)
+                        .font(t.body)
+                        .color(t.c.ink_primary)
                         .wrap()
                         .w_full(),
                 )
-                .child(row().child(primary_button(
-                    "block-card-action",
-                    &card.primary_action_label,
-                    t,
-                    |s| {
-                        s.dispatch(Intent::OpenWebConsole {
-                            route: "sessions".to_owned(),
-                        });
-                    },
-                )));
+                .child(
+                    col()
+                        .w_full()
+                        .gap(4.0)
+                        .child(
+                            text("What the agent was told (max 600 chars)")
+                                .font(t.caption)
+                                .color(t.c.ink_secondary),
+                        )
+                        .child(quoted_box(&card.agent_told, ChipSurface::OnCanvas, t)),
+                )
+                .child(
+                    row()
+                        .w_full()
+                        .center_y()
+                        .gap(8.0)
+                        .child(
+                            text(format!("{} · Pack {}", card.component, card.pack_id))
+                                .font(t.caption)
+                                .color(t.c.ink_muted),
+                        )
+                        .child(spacer())
+                        .child(if vm.inspected_receipt_ref.is_some() {
+                            secondary_button("why-close-btn", "Close Why", t, |s| {
+                                s.dispatch(Intent::DismissWhyCard);
+                            })
+                        } else {
+                            secondary_button("why-open-btn", "Why?", t, |s| {
+                                s.dispatch(Intent::InspectReceipt {
+                                    reference: "8F2KQ-M41TZW".to_owned(),
+                                });
+                            })
+                        })
+                        .child(primary_button(
+                            "block-card-action",
+                            &card.primary_action_label,
+                            t,
+                            |s| {
+                                s.dispatch(Intent::OpenWebConsole {
+                                    route: "sessions".to_owned(),
+                                });
+                            },
+                        )),
+                );
 
             let card_el = attention_card("act-block-card", 12.0, t, card_body).w_full();
 
             card_section = card_section
-                .child(ledger_header("Latest blocked action", &sess.agent_name, t))
+                .child(ledger_header("Latest blocked action", "", t))
                 .child(card_el);
         } else {
             let detail_body = col()
@@ -232,10 +270,79 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         }
     }
 
+    let open_clusters = vm.review_clusters.iter().filter(|c| !c.decided).count();
+    let mut review_col = col().w_full().gap(8.0).child(ledger_header(
+        "Review queue clusters",
+        &format!("{open_clusters} open"),
+        t,
+    ));
+    for cluster in &vm.review_clusters {
+        let cluster_id = cluster.id.clone();
+        let why_ref = cluster.receipt_ref.clone();
+        let (pill_bg, pill_fg) = if cluster.bucket_label == "Worth a look" {
+            (t.c.ask_bg, t.c.ask)
+        } else {
+            (t.c.recessed, t.c.ink_secondary)
+        };
+        review_col = review_col.child(
+            row()
+                .w_full()
+                .pt(8.0)
+                .pb(8.0)
+                .px(12.0)
+                .radius(8.0)
+                .fill(t.c.canvas)
+                .border(1.0, t.c.border_subtle)
+                .center_y()
+                .gap(10.0)
+                .child(status_pill(&cluster.bucket_label, pill_bg, pill_fg, t))
+                .child(
+                    col()
+                        .grow(1.0)
+                        .gap(3.0)
+                        .child(
+                            text(&cluster.rule_title)
+                                .font(t.body_strong)
+                                .color(t.c.ink_primary),
+                        )
+                        .child(
+                            row()
+                                .gap(6.0)
+                                .center_y()
+                                .child(quoted_chip(&cluster.target_preview, ChipSurface::OnCanvas, t))
+                                .child(
+                                    text(if cluster.occurrence_count == 1 {
+                                        "1 hit".to_owned()
+                                    } else {
+                                        format!("{} hits", cluster.occurrence_count)
+                                    })
+                                    .font(t.caption)
+                                    .color(t.c.ink_secondary),
+                                ),
+                        ),
+                )
+                .child(secondary_button("cluster-why-btn", "Why?", t, move |s| {
+                    s.dispatch(Intent::InspectReceipt {
+                        reference: why_ref.clone(),
+                    });
+                }))
+                .child(if cluster.decided {
+                    status_pill("Triaged", t.c.allow_bg, t.c.allow, t)
+                } else {
+                    secondary_button("cluster-suppress-btn", "Suppress", t, move |s| {
+                        s.dispatch(Intent::TriageReviewCluster {
+                            cluster_id: cluster_id.clone(),
+                            action: "suppress".to_owned(),
+                        });
+                    })
+                }),
+        );
+    }
+
     col()
         .key("screen-activity")
         .w_full()
-        .gap(24.0)
+        .gap(14.0)
         .child(
             text("My activity")
                 .font(t.display_headline)
@@ -248,4 +355,5 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         )
         .child(sessions_col)
         .child(card_section)
+        .child(review_col)
 }

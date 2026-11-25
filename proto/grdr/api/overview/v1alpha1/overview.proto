@@ -147,8 +147,23 @@ message LiveEvent {
   string timestamp = 5;
 }
 
+message IssueLiveTicketRequest {}
+
+message IssueLiveTicketResponse {
+  string ticket = 1;
+  uint32 expires_in_seconds = 2;
+}
+
 // Control-plane overview, health, key distribution, and export operations.
 service OverviewService {
+  // Issues a short-lived single-use SSE stream ticket bound to authenticated caller.
+  rpc IssueLiveTicket(IssueLiveTicketRequest) returns (IssueLiveTicketResponse) {
+    option idempotency_level = IDEMPOTENCY_UNSPECIFIED;
+    option (grdr.common.v1alpha1.scope) = "overview:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_STANDARD;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+  }
   // Returns server health, version, and storage mode.
   rpc GetHealth(GetHealthRequest) returns (GetHealthResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;

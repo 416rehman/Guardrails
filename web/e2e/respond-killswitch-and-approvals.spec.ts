@@ -1,9 +1,10 @@
-import { expect, test } from "@playwright/test";
 import {
   assertNoHorizontalOverflow,
   attachDiagnostics,
   captureVerifiedScreenshot,
+  expect,
   rpcPost,
+  test,
 } from "./helpers";
 
 test.describe("Respond Kill Switch, Single-Use Approvals, Findings, and Live SSE", () => {
@@ -107,7 +108,7 @@ test.describe("Respond Kill Switch, Single-Use Approvals, Findings, and Live SSE
       }
       await expect(page.getByRole("heading", { name: /Correlated incidents/ })).toBeVisible();
 
-      await page.getByRole("button", { name: "Open kill switch matrix" }).click();
+      await page.getByRole("button", { name: "Emergency controls" }).click();
       const modal = page.getByRole("dialog", { name: "Scoped Kill Switch Matrix" });
       await expect(modal).toBeVisible();
       await assertNoHorizontalOverflow(page, "Kill switch modal open");

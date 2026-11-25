@@ -14,6 +14,7 @@ import type {
   Mode,
   PageInfo,
   ProvenanceSource,
+  RiskTier,
   SessionDetailResponse,
   SessionLabel,
   SessionSummary,
@@ -21,12 +22,39 @@ import type {
   TrustedKeyInfo,
   TurnSummary,
   UserProfile,
-  RiskTier,
+  UserRiskFactor,
   Verdict,
 } from "./types";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type RawRecord = Record<string, any>;
+export type RawRecord = Record<string, unknown>;
+
+export function rec(v: unknown): RawRecord {
+  return v !== null && typeof v === "object" && !Array.isArray(v) ? (v as RawRecord) : {};
+}
+
+export function recArr(v: unknown): RawRecord[] {
+  return Array.isArray(v) ? v.map(rec) : [];
+}
+
+export function str(v: unknown, fallback = ""): string {
+  return typeof v === "string" ? v : fallback;
+}
+
+export function optStr(v: unknown): string | null {
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+export function strArr(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+
+export function num(v: unknown, fallback = 0): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+}
+
+export function boolOpt(v: unknown): boolean | null {
+  return typeof v === "boolean" ? v : null;
+}
 
 export function stripEnum(raw: unknown, prefix: string, fallback: string): string {
   if (typeof raw !== "string" || !raw) return fallback;
@@ -90,31 +118,32 @@ export function normAssurance(v: unknown): AssuranceLevel {
   return "AL0";
 }
 
-export function normPageInfo(raw: RawRecord | undefined): PageInfo {
+export function normPageInfo(raw: unknown): PageInfo {
+  const r = rec(raw);
   return {
-    next_page_token: raw?.nextPageToken ?? raw?.next_page_token ?? "",
-    prev_page_token: raw?.prevPageToken ?? raw?.prev_page_token ?? "",
-    total_size_estimate: Number(raw?.totalSizeEstimate ?? raw?.total_size_estimate ?? 0),
-    has_more: Boolean(raw?.hasMore ?? raw?.has_more ?? false),
+    next_page_token: str(r.nextPageToken ?? r.next_page_token),
+    prev_page_token: str(r.prevPageToken ?? r.prev_page_token),
+    total_size_estimate: num(r.totalSizeEstimate ?? r.total_size_estimate),
+    has_more: Boolean(r.hasMore ?? r.has_more ?? false),
   };
 }
 
 export function normTrustedKey(raw: RawRecord): TrustedKeyInfo {
   return {
-    key_id: raw.keyId ?? raw.key_id ?? "",
-    public_key_b64: raw.publicKeyB64 ?? raw.public_key_b64 ?? "",
+    key_id: str(raw.keyId ?? raw.key_id),
+    public_key_b64: str(raw.publicKeyB64 ?? raw.public_key_b64),
   };
 }
 
 export function normAgent(raw: RawRecord): DiscoveredAgent {
-  const a = raw.assurance ?? {};
+  const a = rec(raw.assurance);
   return {
-    id: raw.id ?? "",
-    name: raw.name ?? "",
-    kind: raw.kind ?? "",
-    config_path: raw.configPath ?? raw.config_path ?? "",
+    id: str(raw.id),
+    name: str(raw.name),
+    kind: str(raw.kind),
+    config_path: str(raw.configPath ?? raw.config_path),
     hook_installed: Boolean(raw.hookInstalled ?? raw.hook_installed),
-    mcp_count: Number(raw.mcpCount ?? raw.mcp_count ?? 0),
+    mcp_count: num(raw.mcpCount ?? raw.mcp_count),
     assurance: {
       visibility: stripEnum(a.visibility, "VISIBILITY_", "none"),
       control: stripEnum(a.control, "CONTROL_STRENGTH_", "none").replace(/_/g, "-"),
@@ -122,18 +151,18 @@ export function normAgent(raw: RawRecord): DiscoveredAgent {
       tamper: stripEnum(a.tamper, "TAMPER_GRADE_", "user"),
     },
     assurance_level: normAssurance(raw.assuranceLevel ?? raw.assurance_level),
-    sponsor: raw.sponsor ?? null,
-    detected_at: raw.detectedAt ?? raw.detected_at ?? "",
+    sponsor: optStr(raw.sponsor),
+    detected_at: str(raw.detectedAt ?? raw.detected_at),
   };
 }
 
 export function normMcpServer(raw: RawRecord): McpServerEntry {
   return {
-    name: raw.name ?? "",
-    transport: raw.transport ?? "",
-    command: raw.command ?? "",
-    source_agent: raw.sourceAgent ?? raw.source_agent ?? "",
-    config_path: raw.configPath ?? raw.config_path ?? "",
+    name: str(raw.name),
+    transport: str(raw.transport),
+    command: str(raw.command),
+    source_agent: str(raw.sourceAgent ?? raw.source_agent),
+    config_path: str(raw.configPath ?? raw.config_path),
     pinned: Boolean(raw.pinned),
   };
 }
@@ -141,95 +170,99 @@ export function normMcpServer(raw: RawRecord): McpServerEntry {
 export function normArtifact(raw: RawRecord): ArtifactEntry {
   const kind = stripEnum(raw.kind, "ARTIFACT_KIND_", "skill") as ArtifactKind;
   const scope = stripEnum(raw.scope, "ARTIFACT_SCOPE_", "user") as ArtifactScope;
-  const flags = (raw.riskFlags ?? raw.risk_flags ?? []).map((f: unknown) =>
+  const rawFlags = raw.riskFlags ?? raw.risk_flags;
+  const flags = (Array.isArray(rawFlags) ? rawFlags : []).map((f: unknown) =>
     stripEnum(f, "ARTIFACT_RISK_FLAG_", "unpinned-digest").replace(/_/g, "-"),
   ) as ArtifactRiskFlag[];
   return {
-    id: raw.id ?? "",
-    name: raw.name ?? "",
+    id: str(raw.id),
+    name: str(raw.name),
     kind,
     scope,
-    source_agent: raw.sourceAgent ?? raw.source_agent ?? "",
-    path: raw.path ?? "",
-    content_digest: raw.contentDigest ?? raw.content_digest ?? "",
-    file_count: Number(raw.fileCount ?? raw.file_count ?? 0),
-    total_bytes: Number(raw.totalBytes ?? raw.total_bytes ?? 0),
-    usage_count: Number(raw.usageCount ?? raw.usage_count ?? 0),
+    source_agent: str(raw.sourceAgent ?? raw.source_agent),
+    path: str(raw.path),
+    content_digest: str(raw.contentDigest ?? raw.content_digest),
+    file_count: num(raw.fileCount ?? raw.file_count),
+    total_bytes: num(raw.totalBytes ?? raw.total_bytes),
+    usage_count: num(raw.usageCount ?? raw.usage_count),
     pinned: Boolean(raw.pinned),
     risk_flags: flags,
-    device_id: raw.deviceId ?? raw.device_id ?? "",
-    device_name: raw.deviceName ?? raw.device_name ?? "",
-    user_id: raw.userId ?? raw.user_id ?? null,
-    detected_at: raw.detectedAt ?? raw.detected_at ?? "",
+    device_id: str(raw.deviceId ?? raw.device_id),
+    device_name: str(raw.deviceName ?? raw.device_name),
+    user_id: optStr(raw.userId ?? raw.user_id),
+    detected_at: str(raw.detectedAt ?? raw.detected_at),
   };
 }
 
 export function normDevice(raw: RawRecord): Device {
   return {
-    id: raw.id ?? "",
-    hostname: raw.hostname ?? "",
-    os: raw.os ?? "",
-    arch: raw.arch ?? "",
+    id: str(raw.id),
+    hostname: str(raw.hostname),
+    os: str(raw.os),
+    arch: str(raw.arch),
     install_profile: stripEnum(raw.installProfile ?? raw.install_profile, "INSTALL_PROFILE_", "user") as InstallProfile,
-    daemon_version: raw.daemonVersion ?? raw.daemon_version ?? "",
+    daemon_version: str(raw.daemonVersion ?? raw.daemon_version),
     online: Boolean(raw.online),
     hook_effective: Boolean(raw.hookEffective ?? raw.hook_effective),
-    agents: (raw.agents ?? []).map(normAgent),
-    mcp_servers: (raw.mcpServers ?? raw.mcp_servers ?? []).map(normMcpServer),
-    artifacts: (raw.artifacts ?? []).map(normArtifact),
-    user_id: raw.userId ?? raw.user_id ?? null,
-    user_display: raw.userDisplay ?? raw.user_display ?? null,
-    last_seen: raw.lastSeen ?? raw.last_seen ?? "",
+    agents: recArr(raw.agents).map(normAgent),
+    mcp_servers: recArr(raw.mcpServers ?? raw.mcp_servers).map(normMcpServer),
+    artifacts: recArr(raw.artifacts).map(normArtifact),
+    user_id: optStr(raw.userId ?? raw.user_id),
+    user_display: optStr(raw.userDisplay ?? raw.user_display),
+    last_seen: str(raw.lastSeen ?? raw.last_seen),
   };
 }
 
 export function normSession(raw: RawRecord): SessionSummary {
+  const rawLabels = raw.labels;
   return {
-    id: raw.id ?? "",
-    device_id: raw.deviceId ?? raw.device_id ?? "",
-    device_name: raw.deviceName ?? raw.device_name ?? "",
-    agent_name: raw.agentName ?? raw.agent_name ?? "",
-    user_id: raw.userId ?? raw.user_id ?? null,
-    user_display: raw.userDisplay ?? raw.user_display ?? null,
-    turn_count: Number(raw.turnCount ?? raw.turn_count ?? 1),
-    parent_session_id: raw.parentSessionId ?? raw.parent_session_id ?? null,
-    started_at: raw.startedAt ?? raw.started_at ?? "",
-    last_activity: raw.lastActivity ?? raw.last_activity ?? "",
-    total_actions: Number(raw.totalActions ?? raw.total_actions ?? 0),
-    blocked_count: Number(raw.blockedCount ?? raw.blocked_count ?? 0),
-    step_up_count: Number(raw.stepUpCount ?? raw.step_up_count ?? 0),
-    watch_hits: Number(raw.watchHits ?? raw.watch_hits ?? 0),
+    id: str(raw.id),
+    device_id: str(raw.deviceId ?? raw.device_id),
+    device_name: str(raw.deviceName ?? raw.device_name),
+    agent_name: str(raw.agentName ?? raw.agent_name),
+    user_id: optStr(raw.userId ?? raw.user_id),
+    user_display: optStr(raw.userDisplay ?? raw.user_display),
+    turn_count: num(raw.turnCount ?? raw.turn_count, 1),
+    parent_session_id: optStr(raw.parentSessionId ?? raw.parent_session_id),
+    started_at: str(raw.startedAt ?? raw.started_at),
+    last_activity: str(raw.lastActivity ?? raw.last_activity),
+    total_actions: num(raw.totalActions ?? raw.total_actions),
+    blocked_count: num(raw.blockedCount ?? raw.blocked_count),
+    step_up_count: num(raw.stepUpCount ?? raw.step_up_count),
+    watch_hits: num(raw.watchHits ?? raw.watch_hits),
     assurance_level: normAssurance(raw.assuranceLevel ?? raw.assurance_level),
-    labels: (raw.labels ?? []).map((l: unknown) => stripEnum(l, "SESSION_LABEL_", "credential_accessed") as SessionLabel),
+    labels: (Array.isArray(rawLabels) ? rawLabels : []).map(
+      (l: unknown) => stripEnum(l, "SESSION_LABEL_", "credential_accessed") as SessionLabel,
+    ),
   };
 }
 
 export function normAttempt(raw: RawRecord): ActionAttempt {
   return {
-    id: raw.id ?? "",
-    session_id: raw.sessionId ?? raw.session_id ?? "",
-    device_id: raw.deviceId ?? raw.device_id ?? "",
-    device_name: raw.deviceName ?? raw.device_name ?? "",
-    agent_name: raw.agentName ?? raw.agent_name ?? "",
+    id: str(raw.id),
+    session_id: str(raw.sessionId ?? raw.session_id),
+    device_id: str(raw.deviceId ?? raw.device_id),
+    device_name: str(raw.deviceName ?? raw.device_name),
+    agent_name: str(raw.agentName ?? raw.agent_name),
     action_class: normActionClass(raw.actionClass ?? raw.action_class),
     control_point: stripEnum(raw.controlPoint ?? raw.control_point, "CONTROL_POINT_", "hook").replace(/_/g, "-"),
-    target: raw.target ?? "",
-    summary: raw.summary ?? "",
-    timestamp: raw.timestamp ?? "",
-    user_id: raw.userId ?? raw.user_id ?? null,
-    user_display: raw.userDisplay ?? raw.user_display ?? null,
-    turn_index: Number(raw.turnIndex ?? raw.turn_index ?? 1),
-    span_id: raw.spanId ?? raw.span_id ?? null,
-    parent_span_id: raw.parentSpanId ?? raw.parent_span_id ?? null,
+    target: str(raw.target),
+    summary: str(raw.summary),
+    timestamp: str(raw.timestamp),
+    user_id: optStr(raw.userId ?? raw.user_id),
+    user_display: optStr(raw.userDisplay ?? raw.user_display),
+    turn_index: num(raw.turnIndex ?? raw.turn_index, 1),
+    span_id: optStr(raw.spanId ?? raw.span_id),
+    parent_span_id: optStr(raw.parentSpanId ?? raw.parent_span_id),
     span_kind: stripEnum(raw.spanKind ?? raw.span_kind, "SPAN_KIND_", "execute_tool") as SpanKind,
-    duration_ms: Number(raw.durationMs ?? raw.duration_ms ?? 0),
+    duration_ms: num(raw.durationMs ?? raw.duration_ms),
     provenance: stripEnum(raw.provenance, "PROVENANCE_SOURCE_", "observed") as ProvenanceSource,
-    secondary_actions: (raw.secondaryActions ?? raw.secondary_actions ?? []).map((s: RawRecord) => ({
-      command: s.command ?? "",
+    secondary_actions: recArr(raw.secondaryActions ?? raw.secondary_actions).map((s) => ({
+      command: str(s.command),
       action_class: normActionClass(s.actionClass ?? s.action_class),
-      target: s.target ?? "",
+      target: str(s.target),
     })),
-    skill_used: raw.skillUsed ?? raw.skill_used ?? null,
+    skill_used: optStr(raw.skillUsed ?? raw.skill_used),
     compaction: Boolean(raw.compaction),
   };
 }
@@ -238,74 +271,81 @@ export function normReceipt(raw: RawRecord): DecisionReceipt {
   const wb = raw.wouldBe ?? raw.would_be;
   const ma = raw.modeApplied ?? raw.mode_applied;
   return {
-    receipt_id: raw.receiptId ?? raw.receipt_id ?? "",
-    attempt_id: raw.attemptId ?? raw.attempt_id ?? "",
-    session_id: raw.sessionId ?? raw.session_id ?? "",
-    device_id: raw.deviceId ?? raw.device_id ?? "",
-    agent_name: raw.agentName ?? raw.agent_name ?? "",
+    receipt_id: str(raw.receiptId ?? raw.receipt_id),
+    attempt_id: str(raw.attemptId ?? raw.attempt_id),
+    session_id: str(raw.sessionId ?? raw.session_id),
+    device_id: str(raw.deviceId ?? raw.device_id),
+    agent_name: str(raw.agentName ?? raw.agent_name),
     action_class: normActionClass(raw.actionClass ?? raw.action_class),
     control_point: stripEnum(raw.controlPoint ?? raw.control_point, "CONTROL_POINT_", "hook").replace(/_/g, "-"),
-    target: raw.target ?? "",
+    target: str(raw.target),
     verdict: normVerdict(raw.verdict),
     would_be: wb ? normVerdict(wb) : null,
-    rule_id: raw.ruleId ?? raw.rule_id ?? null,
-    pack_id: raw.packId ?? raw.pack_id ?? null,
+    rule_id: optStr(raw.ruleId ?? raw.rule_id),
+    pack_id: optStr(raw.packId ?? raw.pack_id),
     mode_applied: ma ? normMode(ma) : null,
-    grant_id: raw.grantId ?? raw.grant_id ?? null,
-    reason: raw.reason ?? "",
-    next_step: raw.nextStep ?? raw.next_step ?? "",
-    receipt_digest: raw.receiptDigest ?? raw.receipt_digest ?? "",
-    decided_at: raw.decidedAt ?? raw.decided_at ?? "",
-    key_id: raw.keyId ?? raw.key_id ?? null,
-    signature: raw.signature ?? null,
-    signature_verified: raw.signatureVerified ?? raw.signature_verified ?? null,
+    grant_id: optStr(raw.grantId ?? raw.grant_id),
+    reason: str(raw.reason),
+    next_step: str(raw.nextStep ?? raw.next_step),
+    receipt_digest: str(raw.receiptDigest ?? raw.receipt_digest),
+    decided_at: str(raw.decidedAt ?? raw.decided_at),
+    key_id: optStr(raw.keyId ?? raw.key_id),
+    signature: optStr(raw.signature),
+    signature_verified: boolOpt(raw.signatureVerified ?? raw.signature_verified),
   };
 }
 
 export function normTurn(raw: RawRecord): TurnSummary {
   return {
-    turn_index: Number(raw.turnIndex ?? raw.turn_index ?? 1),
-    trace_id: raw.traceId ?? raw.trace_id ?? "",
-    span_count: Number(raw.spanCount ?? raw.span_count ?? 0),
-    duration_ms: Number(raw.durationMs ?? raw.duration_ms ?? 0),
-    blocked_count: Number(raw.blockedCount ?? raw.blocked_count ?? 0),
-    asked_count: Number(raw.askedCount ?? raw.asked_count ?? 0),
+    turn_index: num(raw.turnIndex ?? raw.turn_index, 1),
+    trace_id: str(raw.traceId ?? raw.trace_id),
+    span_count: num(raw.spanCount ?? raw.span_count),
+    duration_ms: num(raw.durationMs ?? raw.duration_ms),
+    blocked_count: num(raw.blockedCount ?? raw.blocked_count),
+    asked_count: num(raw.askedCount ?? raw.asked_count),
     has_compaction: Boolean(raw.hasCompaction ?? raw.has_compaction),
     has_subagent_handoff: Boolean(raw.hasSubagentHandoff ?? raw.has_subagent_handoff),
-    started_at: raw.startedAt ?? raw.started_at ?? "",
+    started_at: str(raw.startedAt ?? raw.started_at),
   };
 }
 
 export function normUser(raw: RawRecord): UserProfile {
   return {
-    id: raw.id ?? "",
-    display_name: raw.displayName ?? raw.display_name ?? "",
-    email: raw.email ?? "",
-    department: raw.department ?? "",
-    idp_source: raw.idpSource ?? raw.idp_source ?? "",
-    pseudonym_id: raw.pseudonymId ?? raw.pseudonym_id ?? "",
-    device_ids: raw.deviceIds ?? raw.device_ids ?? [],
-    agent_names: raw.agentNames ?? raw.agent_names ?? [],
-    artifact_count: Number(raw.artifactCount ?? raw.artifact_count ?? 0),
-    session_count: Number(raw.sessionCount ?? raw.session_count ?? 0),
-    blocked_count: Number(raw.blockedCount ?? raw.blocked_count ?? 0),
-    asked_count: Number(raw.askedCount ?? raw.asked_count ?? 0),
-    watch_count: Number(raw.watchCount ?? raw.watch_count ?? 0),
-    finding_count: Number(raw.findingCount ?? raw.finding_count ?? 0),
-    risk_score: Number(raw.riskScore ?? raw.risk_score ?? 0),
+    id: str(raw.id),
+    display_name: str(raw.displayName ?? raw.display_name),
+    email: str(raw.email),
+    department: str(raw.department),
+    idp_source: str(raw.idpSource ?? raw.idp_source),
+    pseudonym_id: str(raw.pseudonymId ?? raw.pseudonym_id),
+    device_ids: strArr(raw.deviceIds ?? raw.device_ids),
+    agent_names: strArr(raw.agentNames ?? raw.agent_names),
+    artifact_count: num(raw.artifactCount ?? raw.artifact_count),
+    session_count: num(raw.sessionCount ?? raw.session_count),
+    blocked_count: num(raw.blockedCount ?? raw.blocked_count),
+    asked_count: num(raw.askedCount ?? raw.asked_count),
+    watch_count: num(raw.watchCount ?? raw.watch_count),
+    finding_count: num(raw.findingCount ?? raw.finding_count),
+    risk_score: num(raw.riskScore ?? raw.risk_score),
     risk_tier: stripEnum(raw.riskTier ?? raw.risk_tier, "RISK_TIER_", "low") as RiskTier,
-    risk_factors: raw.riskFactors ?? raw.risk_factors ?? [],
-    last_active: raw.lastActive ?? raw.last_active ?? "",
+    risk_factors: recArr(raw.riskFactors ?? raw.risk_factors).map(
+      (f): UserRiskFactor => ({
+        code: str(f.code),
+        label: str(f.label),
+        points: num(f.points),
+        count: num(f.count),
+      }),
+    ),
+    last_active: str(raw.lastActive ?? raw.last_active),
   };
 }
 
 export function normSessionDetail(raw: RawRecord): SessionDetailResponse {
   return {
-    session: normSession(raw.session ?? {}),
-    attempts: (raw.attempts ?? []).map(normAttempt),
-    receipts: (raw.receipts ?? []).map(normReceipt),
-    turns: (raw.turns ?? []).map(normTurn),
-    user: raw.user ? normUser(raw.user) : null,
+    session: normSession(rec(raw.session)),
+    attempts: recArr(raw.attempts).map(normAttempt),
+    receipts: recArr(raw.receipts).map(normReceipt),
+    turns: recArr(raw.turns).map(normTurn),
+    user: raw.user ? normUser(rec(raw.user)) : null,
   };
 }
 

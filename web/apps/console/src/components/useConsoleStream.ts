@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { connectLiveUrl } from "@grdr/api";
+import { fetchLiveEventsUrl } from "@grdr/api";
 import {
   consoleQueryKeys,
   invalidateConsoleStreamEvent,
@@ -28,23 +28,36 @@ export function useConsoleStream(
     if (streamVersion > 0) {
       void queryClient.invalidateQueries({ queryKey: consoleQueryKeys.all });
     }
-    const events = new EventSource(connectLiveUrl());
-    events.onopen = () => onDisconnectedChange(false);
-    events.onerror = () => onDisconnectedChange(true);
+    let active = true;
+    let events: EventSource | null = null;
+    const listeners: Array<{ eventName: ConsoleStreamEventName; handler: () => void }> = [];
 
-    const listeners = STREAM_EVENTS.map((eventName) => {
-      const handler = () => {
-        void invalidateConsoleStreamEvent(queryClient, eventName);
-      };
-      events.addEventListener(eventName, handler);
-      return { eventName, handler };
-    });
+    void fetchLiveEventsUrl()
+      .then((url) => {
+        if (!active) return;
+        events = new EventSource(url);
+        events.onopen = () => onDisconnectedChange(false);
+        events.onerror = () => onDisconnectedChange(true);
+        for (const eventName of STREAM_EVENTS) {
+          const handler = () => {
+            void invalidateConsoleStreamEvent(queryClient, eventName);
+          };
+          events.addEventListener(eventName, handler);
+          listeners.push({ eventName, handler });
+        }
+      })
+      .catch(() => {
+        if (active) onDisconnectedChange(true);
+      });
 
     return () => {
-      for (const { eventName, handler } of listeners) {
-        events.removeEventListener?.(eventName, handler);
+      active = false;
+      if (events) {
+        for (const { eventName, handler } of listeners) {
+          events.removeEventListener?.(eventName, handler);
+        }
+        events.close();
       }
-      events.close();
     };
   }, [queryClient, onDisconnectedChange, streamVersion]);
 }

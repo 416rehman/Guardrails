@@ -50,6 +50,13 @@ export const consoleQueryKeys = {
   killSwitch: () => [CONSOLE_SCOPE, "killSwitch", {}] as const,
   connectConfig: () => [CONSOLE_SCOPE, "connectConfig", {}] as const,
   browserPolicies: () => [CONSOLE_SCOPE, "browserPolicies", {}] as const,
+  reviewQueue: (params: Record<string, unknown> = {}) =>
+    [CONSOLE_SCOPE, "reviewQueue", params] as const,
+  complianceWorkspace: () => [CONSOLE_SCOPE, "complianceWorkspace", {}] as const,
+  providerWorkspace: (orgSet?: string) =>
+    [CONSOLE_SCOPE, "providerWorkspace", { orgSet }] as const,
+  whyExplanation: (reference: string) =>
+    [CONSOLE_SCOPE, "whyExplanation", { reference }] as const,
 };
 
 export type ConsoleStreamEventName =

@@ -6,7 +6,7 @@ import {
   type GrantScope,
   type Incident,
 } from "@grdr/api";
-import { capitalizeLabel, presentIncidentSummary } from "@grdr/i18n";
+import { capitalizeLabel, presentIncidentSummary, presentIncidentTitle } from "@grdr/i18n";
 import { ApprovalCard, EntityLink, type EntityTarget, SessionLabelBadge } from "@grdr/kit";
 import {
   Badge,
@@ -17,6 +17,7 @@ import {
   GrdrSelect,
   Heading,
   HStack,
+  StatusInline,
   Text,
   VStack,
 } from "@grdr/ui";
@@ -36,6 +37,7 @@ export function PendingApprovalsSection({
   onAllow,
   onDeny,
   onOpenEntity,
+  onExplainReceipt,
 }: {
   devices: Device[];
   refreshKey: number;
@@ -44,6 +46,7 @@ export function PendingApprovalsSection({
   onAllow: (id: string, scope: GrantScope) => Promise<void>;
   onDeny: (id: string) => Promise<void>;
   onOpenEntity?: (target: EntityTarget) => void;
+  onExplainReceipt?: (reference: string) => void;
 }) {
   const approvalsPage = useServerPage<ApprovalRequest>(
     api.listApprovalsPage,
@@ -114,6 +117,7 @@ export function PendingApprovalsSection({
                 onAllow={onAllow}
                 onDeny={onDeny}
                 onOpenEntity={onOpenEntity}
+                onWhy={onExplainReceipt}
               />
             ))}
           </VStack>
@@ -250,7 +254,7 @@ export function CorrelatedIncidentsSection({
           </Text>
         ) : (
           <div className="table-wrap">
-            <table>
+            <table className="responsive-table">
               <thead>
                 <tr>
                   <th>Incident</th>
@@ -261,17 +265,19 @@ export function CorrelatedIncidentsSection({
                 </tr>
               </thead>
               <tbody>
-                {incidents.map((inc) => (
+                {incidents.map((inc) => {
+                  const incidentTitle = presentIncidentTitle(inc.title);
+                  return (
                   <tr key={inc.id}>
-                    <td>
+                    <td data-label="Incident">
                       <VStack gap={1}>
-                        <strong>{inc.title}</strong>
+                        <strong>{incidentTitle}</strong>
                         <Text type="supporting" color="secondary" size="sm">
                           {presentIncidentSummary(inc.summary)}
                         </Text>
                       </VStack>
                     </td>
-                    <td>
+                    <td data-label="Session & device">
                       <VStack gap={1}>
                         <EntityLink
                           kind="session"
@@ -294,7 +300,7 @@ export function CorrelatedIncidentsSection({
                         </HStack>
                       </VStack>
                     </td>
-                    <td>
+                    <td data-label="Labels">
                       {inc.labels.length === 0 ? (
                         <Text color="secondary" size="sm">
                           None
@@ -307,38 +313,23 @@ export function CorrelatedIncidentsSection({
                         </HStack>
                       )}
                     </td>
-                    <td>
-                      <Badge
-                        variant={inc.severity === "critical" || inc.severity === "high" ? "error" : "warning"}
-                        icon={
-                          <GrdrIcon
-                            name={
-                              inc.severity === "critical"
-                                ? "alert-octagon"
-                                : inc.severity === "high"
-                                  ? "alert-triangle"
-                                  : "alert-circle"
-                            }
-                            size={11}
-                          />
-                        }
+                    <td data-label="Severity">
+                      <StatusInline
+                        tone={inc.severity === "critical" || inc.severity === "high" ? "block" : "ask"}
+                        dot
                         label={capitalizeLabel(inc.severity)}
                       />
                     </td>
-                    <td>
-                      <Badge
-                        variant={inc.lifecycle === "resolved" ? "success" : "info"}
-                        icon={
-                          <GrdrIcon
-                            name={inc.lifecycle === "resolved" ? "check-circle" : "circle"}
-                            size={11}
-                          />
-                        }
+                    <td data-label="Lifecycle">
+                      <StatusInline
+                        tone={inc.lifecycle === "resolved" ? "allow" : "neutral"}
+                        dot
                         label={capitalizeLabel(inc.lifecycle)}
                       />
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

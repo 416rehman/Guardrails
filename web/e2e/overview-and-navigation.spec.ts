@@ -1,8 +1,9 @@
-import { expect, test } from "@playwright/test";
 import {
   assertNoHorizontalOverflow,
   attachDiagnostics,
   captureVerifiedScreenshot,
+  expect,
+  test,
 } from "./helpers";
 
 test.describe("Overview, Navigation, Breadcrumbs, and Deep-Link Routing", () => {
@@ -48,6 +49,7 @@ test.describe("Overview, Navigation, Breadcrumbs, and Deep-Link Routing", () => 
         .getByRole("button", { name: "Agents" })
         .click();
     } else {
+      await page.getByRole("button", { name: "Toggle navigation menu" }).click();
       await sidebar.getByRole("button", { name: "Inventory" }).click();
       await expect(page).toHaveURL(/\/inventory\/endpoints/);
       await assertNoHorizontalOverflow(page, "Mobile Inventory endpoints");
@@ -82,10 +84,16 @@ test.describe("Overview, Navigation, Breadcrumbs, and Deep-Link Routing", () => 
     await breadcrumbs.getByRole("button", { name: "Home" }).click();
     await expect(page).toHaveURL(/\/$/);
 
+    if (isMobile) {
+      await page.getByRole("button", { name: "Toggle navigation menu" }).click();
+    }
     await sidebar.getByRole("button", { name: "Protect", exact: true }).click();
     await expect(page).toHaveURL(/\/protect\/rules/);
     await assertNoHorizontalOverflow(page, "Protect rules");
 
+    if (isMobile) {
+      await page.getByRole("button", { name: "Toggle navigation menu" }).click();
+    }
     await sidebar.getByRole("button", { name: "Live Tester", exact: true }).click();
     await expect(page).toHaveURL(/\/tester/);
     await assertNoHorizontalOverflow(page, "Live Tester");

@@ -11,8 +11,15 @@ import {
   type PolicyPack,
   type SessionSummary,
   type UserProfile,
+  type WhyExplanation,
 } from "@grdr/api";
 import type { EntityTarget } from "@grdr/kit";
+
+export type WhyDrawerState =
+  | { kind: "closed" }
+  | { kind: "loading"; reference: string }
+  | { kind: "ready"; explanation: WhyExplanation }
+  | { kind: "error"; message: string };
 
 export type SidebarDisplay = "expanded" | "collapsed";
 export type PaletteState = "closed" | "open";

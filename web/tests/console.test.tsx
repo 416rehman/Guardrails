@@ -538,6 +538,30 @@ function installFetchMock(opts?: {
         payload: "{}",
       });
     }
+    if (path === CONNECT_PATHS.getOperatorState) {
+      return mockJsonResponse({
+        runtime_config: {
+          revision_id: "rev-0001",
+          version: 1,
+          capture_level: "metadata-only",
+          privacy_profile: "standard",
+          retention_preset: "default",
+          hot_days: 30,
+          activity_days: 184,
+          decision_days: 396,
+          audit_days: 396,
+          otlp_enabled: false,
+          release_channel: "stable",
+          summary: "Baseline production profile",
+        },
+        revisions: [],
+        preflight_matrix: [],
+        target_version: "1.3.0",
+        overall_compatible: true,
+        targets: [],
+        drills: [],
+      });
+    }
     return mockJsonResponse({ code: "not_found", message: `Unmocked RPC ${path}` }, 404);
   });
 }

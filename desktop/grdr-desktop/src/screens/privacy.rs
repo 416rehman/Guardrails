@@ -9,11 +9,17 @@ use crate::viz::{elevated_card, flow_connector, flow_stage_node};
 pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
     let vm = &app.vm.privacy;
     let rows = [
+        ("Privacy regime", vm.privacy_profile_label.clone(), &icons::SHIELD_CHECK),
         ("Capture level", vm.capture_scope.clone(), &icons::EYE),
         (
             "Local retention",
             format!("{} days on this endpoint", vm.local_retention_days),
             &icons::HARD_DRIVE,
+        ),
+        (
+            "Active legal holds",
+            format!("{} active (two-approver quorum)", vm.legal_hold_count),
+            &icons::LOCK,
         ),
         (
             "Telemetry egress",
@@ -94,10 +100,21 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         );
     }
 
+    let mut disclosure_card_body = col().w_full().padding(14.0).gap(6.0);
+    for line in &vm.quarterly_disclosures {
+        disclosure_card_body = disclosure_card_body.child(
+            row()
+                .gap(8.0)
+                .center_y()
+                .child(icon(&icons::LIST, 13.0).color(t.c.accent))
+                .child(text(line).font(t.caption).color(t.c.ink_primary)),
+        );
+    }
+
     col()
         .key("screen-privacy")
         .w_full()
-        .gap(24.0)
+        .gap(20.0)
         .child(
             text(&vm.disclosure_header)
                 .font(t.display_headline)
@@ -129,4 +146,10 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         ))
         .child(data_flow)
         .child(table)
+        .child(ledger_header(
+            "Quarterly disclosure",
+            "Dual-approver legal holds and unmasks",
+            t,
+        ))
+        .child(elevated_card("privacy-disclosure-card", 10.0, t, disclosure_card_body).w_full())
 }
