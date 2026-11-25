@@ -1,0 +1,47 @@
+# syntax=docker/dockerfile:1.7
+# Optional glibc keys-pkcs11 worker image (docs/design/24 section 6, design/20 section 17).
+# Built against GNU libc (distroless cc-debian12) so customer-mounted vendor PKCS#11 .so libraries load cleanly.
+# Built exclusively from the dedicated grdr-keys-pkcs11 workspace package when enabled.
+
+ARG RUST_IMAGE=docker.io/library/rust:1.99.1-bookworm@sha256:e6f2cff35d0f309acf8433b4f05878ed77092602c5065cc81801177da0bb3a9c
+ARG DISTROLESS_CC=gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f
+
+FROM ${RUST_IMAGE} AS rust-builder
+ARG KEYS_PACKAGE=grdr-keys-pkcs11
+WORKDIR /src
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY crates ./crates
+COPY programs ./programs
+COPY proto ./proto
+COPY brand ./brand
+COPY interface ./interface
+COPY schema ./schema
+COPY bpf ./bpf
+
+RUN cargo build --release --locked -p "${KEYS_PACKAGE}" \
+    && mkdir -p /rootfs/usr/local/bin /rootfs/usr/lib/grdr/pkcs11 /rootfs/run/grdr/keys /rootfs/tmp \
+    && install -m 0755 "target/release/${KEYS_PACKAGE}" /rootfs/usr/local/bin/grdr-keys-pkcs11 \
+    && chown -R 65532:65532 /rootfs/run/grdr/keys \
+    && chmod 0750 /rootfs/run/grdr/keys \
+    && chmod 1777 /rootfs/tmp
+
+FROM ${DISTROLESS_CC} AS runtime
+LABEL org.opencontainers.image.title="grdr-keys-pkcs11" \
+      org.opencontainers.image.description="Guardrails ADR glibc PKCS#11 HSM key custody sidecar" \
+      org.opencontainers.image.vendor="Loonaro" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.source="https://github.com/416rehman/Guardrails"
+
+COPY --from=rust-builder /rootfs/usr/local/bin/grdr-keys-pkcs11 /usr/local/bin/grdr-keys-pkcs11
+COPY --from=rust-builder /rootfs/usr/lib/grdr/pkcs11 /usr/lib/grdr/pkcs11
+COPY --from=rust-builder --chown=65532:65532 /rootfs/run/grdr/keys /run/grdr/keys
+
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/grdr-keys-pkcs11"]
+CMD ["--socket", "/run/grdr/keys/pkcs11.sock"]

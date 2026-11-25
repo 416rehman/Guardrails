@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PayloadContent</key>
+  <array>
+    <dict>
+      <key>PayloadDisplayName</key>
+      <string>Guardrails ADR Managed Preferences</string>
+      <key>PayloadIdentifier</key>
+      <string>com.guardrailshq.grdr.preferences</string>
+      <key>PayloadType</key>
+      <string>com.guardrailshq.grdr</string>
+      <key>PayloadUUID</key>
+      <string>11E4F9D2-72B4-4E53-9A41-68B8A201E901</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+      <key>UpdateAuthority</key>
+      <string>managed</string>
+      <key>EnrolServerUrl</key>
+      <string>https://grdr.example.invalid</string>
+    </dict>
+    <dict>
+      <key>PayloadDisplayName</key>
+      <string>Guardrails ADR Background Service Management</string>
+      <key>PayloadIdentifier</key>
+      <string>com.guardrailshq.grdr.btm</string>
+      <key>PayloadType</key>
+      <string>com.apple.servicemanagement</string>
+      <key>PayloadUUID</key>
+      <string>11E4F9D2-72B4-4E53-9A41-68B8A201E902</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+      <key>Rules</key>
+      <array>
+        <dict>
+          <key>RuleType</key>
+          <string>LabelPrefix</string>
+          <key>RuleValue</key>
+          <string>com.guardrailshq.grdr</string>
+        </dict>
+      </array>
+    </dict>
+  </array>
+  <key>PayloadDisplayName</key>
+  <string>Guardrails ADR Endpoint Configuration</string>
+  <key>PayloadIdentifier</key>
+  <string>com.guardrailshq.grdr.profile</string>
+  <key>PayloadScope</key>
+  <string>System</string>
+  <key>PayloadType</key>
+  <string>Configuration</string>
+  <key>PayloadUUID</key>
+  <string>11E4F9D2-72B4-4E53-9A41-68B8A201E900</string>
+  <key>PayloadVersion</key>
+  <integer>1</integer>
+</dict>
+</plist>

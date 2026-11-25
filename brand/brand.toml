@@ -1,0 +1,96 @@
+# Guardrails ADR Brand Manifest (P14, D-03, D-66, docs/design/26, docs/design/36)
+# Class A: protocol and binary namespace (must stay constant across white-label builds).
+# Class B: domain-bound identities (value when on_domain = true inherits under identity.domain).
+# Class C: replaceable display strings, tokens, links, and logos.
+schema = "grdr.brand.v1alpha1"
+
+[identity]
+namespace = "grdr"
+product_name = "Guardrails ADR"
+short_name = "Guardrails"
+publisher = "Loonaro"
+domain = "guardrailshq.com"
+description = "Open-source agent detection and response platform"
+
+[repository]
+github_owner = "416rehman"
+github_repo = "Guardrails"
+full = "416rehman/Guardrails"
+content_repo = "416rehman/Guardrails-packs"
+contrib_repo = "416rehman/Guardrails-contrib"
+container_registry = "ghcr.io/416rehman"
+
+[hosts]
+product = { value = "guardrailshq.com", on_domain = true }
+updates = { value = "updates.guardrailshq.com", on_domain = true }
+releases = { value = "github.com/416rehman/Guardrails/releases", on_domain = false }
+pages = { value = "416rehman.github.io/Guardrails", on_domain = false }
+enrol = { value = "enrol.guardrailshq.com", on_domain = true }
+docs = { value = "docs.guardrailshq.com", on_domain = true }
+status = { value = "status.guardrailshq.com", on_domain = true }
+console_default = { value = "app.guardrailshq.com", on_domain = true }
+
+[addresses]
+security = { value = "security@guardrailshq.com", on_domain = true }
+conduct = { value = "conduct@guardrailshq.com", on_domain = true }
+privacy = { value = "privacy@guardrailshq.com", on_domain = true }
+support = { value = "support@guardrailshq.com", on_domain = true }
+legal = { value = "legal@guardrailshq.com", on_domain = true }
+
+[os_identity]
+app_bundle_name = "Guardrails ADR.app"
+macos_bundle_id = "com.guardrailshq.grdr"
+macos_daemon_label = "com.guardrailshq.grdr.daemon"
+macos_agent_label = "com.guardrailshq.grdr.agent"
+macos_server_label = "com.guardrailshq.grdr.server"
+macos_netext_bundle_id = "com.guardrailshq.grdr.netext"
+macos_esext_bundle_id = "com.guardrailshq.grdr.esext"
+windows_service_prefix = "grdr"
+windows_daemon_service = "grdr-daemon"
+windows_engine_service = "grdr-engine"
+windows_uplink_service = "grdr-uplink"
+windows_proxy_service = "grdr-proxy"
+windows_program_dir = "Guardrails ADR"
+windows_data_dir = "grdr"
+windows_msi_upgrade_code = "7E9B4C2A-31F5-4D88-9E12-6A4B8C0D5101"
+linux_systemd_unit_prefix = "grdr"
+linux_service_user = "grdr"
+linux_engine_user = "grdr-engine"
+unix_uid = 65532
+unix_gid = 65532
+
+[display]
+name = "Guardrails ADR"
+tagline = "Agent detection and response for autonomous software engineering"
+vendor = "Loonaro"
+privacy_notice_title = "Agent Activity Protection Active"
+
+[links]
+homepage = "https://guardrailshq.com"
+docs = "https://docs.guardrailshq.com"
+status = "https://status.guardrailshq.com"
+security_policy = "https://github.com/416rehman/Guardrails/blob/main/SECURITY.md"
+source = "https://github.com/416rehman/Guardrails"
+
+[assets]
+logo_light = "web/apps/console/public/brand-light.svg"
+logo_dark = "web/apps/console/public/brand-dark.svg"
+icon_desktop_png = "desktop/grdr-desktop/assets/icon.png"
+icon_desktop_icns = "desktop/grdr-desktop/assets/icon.icns"
+icon_desktop_ico = "desktop/grdr-desktop/assets/icon.ico"
+
+[tokens]
+palette_light = "porcelain"
+palette_dark = "carbon-obsidian"
+accent = "#1D4ED8"
+accent_dark = "#60A5FA"
+surface_light = "#FAF8F5"
+surface_dark = "#111318"
+font_sans = "Inter, system-ui, sans-serif"
+font_mono = "JetBrains Mono, ui-monospace, monospace"
+
+[legal]
+copyright_holder = "The Guardrails ADR Authors"
+licence = "Apache-2.0"
+entity = "Loonaro"
+attribution_required = true

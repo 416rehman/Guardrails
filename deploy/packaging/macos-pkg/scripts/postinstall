@@ -1,0 +1,16 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: The Guardrails ADR Authors
+set -eu
+
+PLIST="/Library/LaunchDaemons/com.guardrailshq.grdr.daemon.plist"
+mkdir -p "/Library/Application Support/grdr/run" "/Library/Logs/grdr"
+chmod 0750 "/Library/Application Support/grdr" "/Library/Logs/grdr"
+
+if [ -f "${PLIST}" ]; then
+  chmod 0644 "${PLIST}"
+  chown root:wheel "${PLIST}"
+  /bin/launchctl bootout system/com.guardrailshq.grdr.daemon >/dev/null 2>&1 || true
+  /bin/launchctl bootstrap system "${PLIST}"
+fi
+exit 0

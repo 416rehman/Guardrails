@@ -1,0 +1,57 @@
+{
+  "schema": "grdr.windows.services.v1alpha1",
+  "program_dir": "%ProgramFiles%\\Guardrails ADR",
+  "data_dir": "C:\\ProgramData\\grdr",
+  "user_data_dir": "%LOCALAPPDATA%\\grdr",
+  "pipes": {
+    "decide": "\\\\.\\pipe\\grdr-decide",
+    "local": "\\\\.\\pipe\\grdr-local"
+  },
+  "wsl_plugin": {
+    "name": "grdr-wsl",
+    "dll_name": "grdr-wsl.dll",
+    "registry_key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Lxss\\Plugins\\GuardrailsADR"
+  },
+  "services": [
+    {
+      "name": "grdr-daemon",
+      "display_name": "Guardrails ADR Daemon",
+      "binary": "grdr-daemon.exe",
+      "args": ["--profile", "protected", "--service"],
+      "account": "LocalSystem",
+      "start_type": "auto",
+      "sid_type": "unrestricted",
+      "outbound_network": false
+    },
+    {
+      "name": "grdr-engine",
+      "display_name": "Guardrails ADR Rule Engine",
+      "binary": "grdr-engine.exe",
+      "args": ["--sandboxed"],
+      "account": "NT SERVICE\\grdr-engine",
+      "start_type": "demand",
+      "sid_type": "restricted",
+      "outbound_network": false
+    },
+    {
+      "name": "grdr-uplink",
+      "display_name": "Guardrails ADR Fleet Uplink",
+      "binary": "grdr-uplink.exe",
+      "args": [],
+      "account": "NT SERVICE\\grdr-uplink",
+      "start_type": "demand",
+      "sid_type": "restricted",
+      "outbound_network": true
+    },
+    {
+      "name": "grdr-proxy",
+      "display_name": "Guardrails ADR Local Proxy",
+      "binary": "grdr-proxy.exe",
+      "args": [],
+      "account": "NT SERVICE\\grdr-proxy",
+      "start_type": "demand",
+      "sid_type": "restricted",
+      "outbound_network": true
+    }
+  ]
+}

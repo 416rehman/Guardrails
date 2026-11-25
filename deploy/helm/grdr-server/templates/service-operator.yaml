@@ -1,0 +1,24 @@
+{{- if .Values.operator.enabled }}
+# D-70: Operator plane exposes its own isolated Service and Ingress, never shared with tenant API.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "grdr-server.fullname" . }}-operator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "grdr-server.labels" . | nindent 4 }}
+    grdr.internal/plane: operator
+  {{- with .Values.operator.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.operator.service.type }}
+  selector:
+    {{- include "grdr-server.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: operator
+      port: {{ .Values.operator.service.port }}
+      targetPort: operator
+      protocol: TCP
+{{- end }}

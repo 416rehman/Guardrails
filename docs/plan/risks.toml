@@ -1,0 +1,302 @@
+# Guardrails ADR Risk Register (docs/design/33 sections 8-9, design/00 section 9)
+schema = "grdr.plan.risks.v1alpha1"
+
+[[risk]]
+id = "R-01"
+title = "Hook latency or Defender ASR false positive blocks agent start"
+category = "endpoint"
+trigger = "Hook p99 exceeds limits.toml ceiling or Defender ASR blocks unsigned/low-prevalence shim."
+response = "Bake binaries in internal Defender-ASR ring; fail-safe table only sets vendor flags after self-test; yield hook latency."
+owner_role = "sensor-lead"
+status = "mitigated-by-design"
+design_refs = ["D-14", "D-50", "S-04"]
+
+[[risk]]
+id = "R-02"
+title = "Agent upgrades break hook interface or schema"
+category = "ecosystem"
+trigger = "Canary adapter check fails within 24 hours of upstream coding agent release."
+response = "Adapter manifest update through TUF content lane without core binary release; OS control point continues enforcing."
+owner_role = "agent-adapters"
+status = "active"
+design_refs = ["D-13", "D-49"]
+
+[[risk]]
+id = "R-03"
+title = "Incumbent EDR conflict or slot collision"
+category = "endpoint"
+trigger = "Slot broker detects conflicting minifilter/WFP sublayer/ES client or alerts rise in coexistence lab."
+response = "Yield non-exclusive slot, switch to ingest/observe mode, publish coexistence exclusions."
+owner_role = "sensor-lead"
+status = "active"
+design_refs = ["D-23", "S-04"]
+
+[[risk]]
+id = "R-04"
+title = "Silent fail-open under daemon crash or pipe stall"
+category = "security"
+trigger = "Shim hangs past 2 s or exits permissively when daemon IPC drops."
+response = "Enforce 2 s deadline to device-signed fail-safe floor table, log tamper/gap marker, alert Degraded within 60 s."
+owner_role = "trust-core"
+status = "mitigated-by-design"
+design_refs = ["P1", "D-14", "S-06"]
+
+[[risk]]
+id = "R-05"
+title = "Linux eBPF kernel incompatibility or verifier rejection"
+category = "endpoint"
+trigger = "eBPF program fails CO-RE load or triggers kernel panic on matrix target."
+response = "Hold unverified eBPF in internal ring, fall back to seccomp-notify or unprivileged userns containment."
+owner_role = "sensor-lead"
+status = "active"
+design_refs = ["D-19", "S-12", "S-13"]
+
+[[risk]]
+id = "R-06"
+title = "Same-user agent forges local approval grant or widens mode"
+category = "security"
+trigger = "Any positive trial in S-16/S-17 red-team harness."
+response = "Require step-up presence proof on Protected profile, lock config ACLs to service/root, bind grant tokens to pipe PID/session."
+owner_role = "trust-core"
+status = "active"
+design_refs = ["D-31", "D-48", "S-16", "S-17"]
+
+[[risk]]
+id = "R-07"
+title = "Containment breaks legitimate developer builds or inner sandboxes"
+category = "usability"
+trigger = "Build overhead exceeds 3% or developer-workload corpus fails in S-10/S-11."
+response = "Bind workspace-scoped WrapTools or Delegate mode; cache compiled policy tables."
+owner_role = "containment-lead"
+status = "active"
+design_refs = ["D-21", "S-10", "S-11"]
+
+[[risk]]
+id = "R-08"
+title = "Prompt fatigue causes developers to bypass or uninstall"
+category = "usability"
+trigger = "Prompts exceed median 3 or p95 8 per developer-day or opaque commands > 2%."
+response = "Tune Essentials/sink normaliser in S-14 and allow workspace grants with bounded TTL."
+owner_role = "policy-lead"
+status = "active"
+design_refs = ["D-10", "D-28", "S-14"]
+
+[[risk]]
+id = "R-09"
+title = "DuckLake alpha maturity or compaction failure"
+category = "storage"
+trigger = "S-02 fails commit latency, PUT budget, or snapshot expiry on 50k org simulation."
+response = "Promote Iceberg or SQL/Postgres sidecar catalogue adapter behind QueryIr port."
+owner_role = "server-storage"
+status = "active"
+design_refs = ["D-34", "S-02"]
+
+[[risk]]
+id = "R-10"
+title = "PostgreSQL 18 bus saturates below HA target ceiling"
+category = "scalability"
+trigger = "S-03 failover loses acks or WAL exceeds 1.5 KB/event under 50k endpoint simulation."
+response = "Lower published HA endpoint ceiling to measured 70% threshold and route larger tenants to NATS distributed profile."
+owner_role = "server-storage"
+status = "active"
+design_refs = ["D-34", "D-58", "S-03"]
+
+[[risk]]
+id = "R-11"
+title = "Object store lacks reliable noncurrent-version expiry or conditional puts"
+category = "storage"
+trigger = "S-02 / preflight probe fails on SeaweedFS or Ceph RGW."
+response = "Enable blobs.lifecycle = server GC worker; preflight blocks unversioned buckets at startup."
+owner_role = "server-storage"
+status = "active"
+design_refs = ["P16", "D-58"]
+
+[[risk]]
+id = "R-12"
+title = "Unencrypted or cross-tenant lake leak"
+category = "security"
+trigger = "Tenant-context matrix test returns foreign row or AEAD AAD check bypassed."
+response = "Enforce TenantCtx type, forced Postgres RLS, and TenantPath AEAD AAD binding as CI trust-core gate."
+owner_role = "trust-core"
+status = "mitigated-by-design"
+design_refs = ["P8", "D-35"]
+
+[[risk]]
+id = "R-13"
+title = "Fleet reconnect herd overwhelms cell after outage"
+category = "scalability"
+trigger = "S-23/S-24 reconnect arrival exceeds 2x steady rate or 2,000 TLS handshakes/s/cell."
+response = "Enforce spread jitter (reconnect_spread_ms), admission classes, and server Schedule throttle."
+owner_role = "fleet-lead"
+status = "active"
+design_refs = ["P15", "S-23", "S-24"]
+
+[[risk]]
+id = "R-14"
+title = "Free TUF origins (GitHub Pages/jsDelivr) rate-limit or serve laggy cache"
+category = "distribution"
+trigger = "S-26 hits 429s or CDN lag causes tamper false positives."
+response = "Require mirror fallback list in dist.toml, treat 24h CDN timestamp lag non-fatally, keep enrolled fleets on local mirror/server."
+owner_role = "release-eng"
+status = "active"
+design_refs = ["D-37", "P14", "S-26"]
+
+[[risk]]
+id = "R-15"
+title = "Inspecting TLS proxy breaks ConnectRPC HTTP/2 streams"
+category = "networking"
+trigger = "S-18 fails kill delivery or check-in behind Kerberos/TLS-inspecting Squid proxy."
+response = "Step down network ladder automatically to HTTP/1.1 long-poll rung within 60 s kill SLA."
+owner_role = "fleet-lead"
+status = "active"
+design_refs = ["D-36", "S-18"]
+
+[[risk]]
+id = "R-16"
+title = "Platform signing suspension (Apple Developer ID or Microsoft Authenticode)"
+category = "release"
+trigger = "Vendor account suspended, expired, or initially unpaid."
+response = "Continue keyless Sigstore provenance/signatures tagged not-platform-signed; buddy second-admin recovery path."
+owner_role = "release-eng"
+status = "active"
+design_refs = ["D-59", "D-61"]
+
+[[risk]]
+id = "R-17"
+title = "CVE in bundled NATS or OpenBao dependency"
+category = "security"
+trigger = "Advisory published against NATS or OpenBao bundled versions."
+response = "Disable unused NATS listeners (leafnode/MQTT/WebSocket), isolate to cell network, adhere to 7-day patch SLO."
+owner_role = "security-lead"
+status = "active"
+design_refs = ["D-62", "S-31"]
+
+[[risk]]
+id = "R-18"
+title = "Evaluator queue saturation or missed trust-core flaw"
+category = "governance"
+trigger = "Review queue > 20 items or > 48 h old, or post-merge flaw found in trust core."
+response = "Cap concurrent writers to 3; convert any missed flaw into a permanent audit prompt and escalate gate tier."
+owner_role = "coordinator"
+status = "active"
+design_refs = ["D-62", "D-63"]
+
+[[risk]]
+id = "R-19"
+title = "Evaluator test-fitting inflates pass rate on visible harness"
+category = "quality"
+trigger = "Held-out evaluation score diverges > 5 points from in-repo tests."
+response = "Block release until held-out generalization gap returns <= 5 points."
+owner_role = "eval-lead"
+status = "active"
+design_refs = ["D-45", "D-63"]
+
+[[risk]]
+id = "R-20"
+title = "Subscription usage cap halts autonomous coding wave"
+category = "operations"
+trigger = "Session quota exhausted or cost per item exceeds 2x S-20 baseline."
+response = "Pause non-security feature waves, prioritize trust-core/release items, resume cleanly via git/GitHub issue state."
+owner_role = "coordinator"
+status = "active"
+design_refs = ["D-47"]
+
+[[risk]]
+id = "R-21"
+title = "Untrusted prompt injection attacks AI coding or review agents"
+category = "security"
+trigger = "External PR content attempts tool abuse in CI/review agents."
+response = "Isolate PR evaluators read-only; never execute untrusted working trees with privileged maintainer creds."
+owner_role = "security-lead"
+status = "mitigated-by-design"
+design_refs = ["D-62"]
+
+[[risk]]
+id = "R-22"
+title = "Rune desktop library instability delays native UI"
+category = "ui"
+trigger = "Two consecutive 48h soak runs fail in S-19."
+response = "Ship Web Console via platform browser wrapper until upstream Rune stabilizes."
+owner_role = "ui-lead"
+status = "active"
+design_refs = ["D-43", "S-19"]
+
+[[risk]]
+id = "R-23"
+title = "Operator plane leaks or shares session authority with tenant console"
+category = "security"
+trigger = "Operator cookie accepted by tenant API, or operator endpoint queries tenant content tables."
+response = "Enforce separate D-70 Service/Ingress/origin, separate DB role, and CI lint operator-no-content."
+owner_role = "trust-core"
+status = "mitigated-by-design"
+design_refs = ["D-70"]
+
+[[risk]]
+id = "R-24"
+title = "Enrolment burst from VDI pools or CI runners exhausts DB/KMS"
+category = "scalability"
+trigger = "S-30 enrolment storm pushes control CPU > 70% or causes KMS sign/unwrap throttling."
+response = "Reject excess credential buckets prior to signature verify; tombstone stale VDI IDs."
+owner_role = "fleet-lead"
+status = "active"
+design_refs = ["D-36", "S-29", "S-30"]
+
+[[risk]]
+id = "R-25"
+title = "Clock skew invalidates TUF freshness or lease fencing in air-gap"
+category = "reliability"
+trigger = "Preflight detects > 1 s PostgreSQL skew or > 60 s HTTP Date skew."
+response = "Refuse unsafe startup on clock skew > 1 s; never use public NTP in air-gap; halt lease renewal on monotonic rollback."
+owner_role = "server-ops"
+status = "active"
+design_refs = ["P16", "S-31"]
+
+[[risk]]
+id = "R-26"
+title = "Compromised server pushes poisoned binary or policy to fleet"
+category = "security"
+trigger = "Deployment root attempts to sign binary target or erase quorum requirement."
+response = "Devices enforce dual project-root TUF pinning for binaries and WebAuthn roster quorum for destructive fleet commands."
+owner_role = "trust-core"
+status = "mitigated-by-design"
+design_refs = ["D-37", "P7"]
+
+[[risk]]
+id = "R-27"
+title = "KMS outage leaves customer-managed orgs locked"
+category = "availability"
+trigger = "External KMS fails unwrap past 60 minutes in S-29."
+response = "Cache wrapped DEKs safely in memory within TTL, transition affected mode-2 orgs to key-unavailable cleanly without crashing cell."
+owner_role = "security-lead"
+status = "active"
+design_refs = ["D-35", "S-29"]
+
+[[risk]]
+id = "R-28"
+title = "Single point of failure in 2-of-2 project root ceremony"
+category = "governance"
+trigger = "Loss of one GitHub Actions environment secret blocks root rotation."
+response = "Architect decides 2-of-3 offline recovery key threshold before GA release ceremony."
+owner_role = "release-eng"
+status = "active"
+design_refs = ["D-59", "D-61"]
+
+[[risk]]
+id = "R-29"
+title = "Hosted on-call burnout exceeds two-person capacity"
+category = "operations"
+trigger = "Operations hours exceed weekly budget for two consecutive weeks or rollbacks > 15%."
+response = "Trigger circuit breaker: pause new hosted orgs, require human approval on ops-runbook actions, mandate 72h canary bake."
+owner_role = "coordinator"
+status = "active"
+design_refs = ["D-63"]
+
+[[risk]]
+id = "R-30"
+title = "Air-gap bundle omits transitive chart image or breaks offline restore"
+category = "deployment"
+trigger = "S-31 captures external DNS/packet egress or restore --verify fails without network."
+response = "Block release if any container/Helm ref lacks immutable sha256 digest or fails airgap-s31 suite."
+owner_role = "deploy-lead"
+status = "active"
+design_refs = ["P16", "D-58", "S-31"]

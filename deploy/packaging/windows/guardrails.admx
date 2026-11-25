@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<policyDefinitions xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" revision="1.0" schemaVersion="1.0" xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
+  <policyNamespaces>
+    <target prefix="guardrails" namespace="Loonaro.Policies.GuardrailsADR" />
+    <using prefix="windows" namespace="Microsoft.Policies.Windows" />
+  </policyNamespaces>
+  <resources minRequiredRevision="1.0" />
+  <categories>
+    <category name="Cat_GuardrailsADR" displayName="$(string.Cat_GuardrailsADR)" />
+  </categories>
+  <policies>
+    <policy name="Pol_UpdateAuthority" class="Machine" displayName="$(string.Pol_UpdateAuthority)" explainText="$(string.Pol_UpdateAuthority_Help)" key="SOFTWARE\Policies\GuardrailsADR" presentation="$(presentation.Pres_UpdateAuthority)">
+      <parentCategory ref="Cat_GuardrailsADR" />
+      <supportedOn ref="windows:SUPPORTED_Windows_11_0" />
+      <elements>
+        <enum id="Elem_UpdateAuthority" valueName="UpdateAuthority" required="true">
+          <item displayName="$(string.Authority_Self)">
+            <value><string>self</string></value>
+          </item>
+          <item displayName="$(string.Authority_Managed)">
+            <value><string>managed</string></value>
+          </item>
+          <item displayName="$(string.Authority_Image)">
+            <value><string>image</string></value>
+          </item>
+        </enum>
+      </elements>
+    </policy>
+    <policy name="Pol_DefaultMode" class="Machine" displayName="$(string.Pol_DefaultMode)" explainText="$(string.Pol_DefaultMode_Help)" key="SOFTWARE\Policies\GuardrailsADR" presentation="$(presentation.Pres_DefaultMode)">
+      <parentCategory ref="Cat_GuardrailsADR" />
+      <supportedOn ref="windows:SUPPORTED_Windows_11_0" />
+      <elements>
+        <enum id="Elem_DefaultMode" valueName="DefaultMode" required="true">
+          <item displayName="$(string.Mode_Watch)">
+            <value><string>watch</string></value>
+          </item>
+          <item displayName="$(string.Mode_Ask)">
+            <value><string>ask</string></value>
+          </item>
+          <item displayName="$(string.Mode_Block)">
+            <value><string>block</string></value>
+          </item>
+        </enum>
+      </elements>
+    </policy>
+  </policies>
+</policyDefinitions>

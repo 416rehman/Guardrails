@@ -1,0 +1,36 @@
+{{- if eq .Values.profile "embedded" }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "grdr-server.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "grdr-server.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "grdr-server.fullname" . }}
+  replicas: 1
+  updateStrategy:
+    type: {{ ternary "OnDelete" "RollingUpdate" (eq .Values.upgrade.strategy "Recreate") }}
+  selector:
+    matchLabels:
+      {{- include "grdr-server.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "grdr-server.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- include "grdr-server.podSpec" . | nindent 6 }}
+  {{- if .Values.storage.embedded.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [{{ .Values.storage.embedded.persistence.accessMode | quote }}]
+        {{- if .Values.storage.embedded.persistence.storageClassName }}
+        storageClassName: {{ .Values.storage.embedded.persistence.storageClassName | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.storage.embedded.persistence.size }}
+  {{- end }}
+{{- end }}

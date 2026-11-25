@@ -1,0 +1,63 @@
+# syntax=docker/dockerfile:1.7
+# Multi-arch Kubernetes and container node sensor image (docs/design/10, 24).
+# Static musl binaries on distroless static; DaemonSet grants BPF/PERFMON/SYS_RESOURCE,
+# while container sidecar mode stays unprivileged as UID 65532.
+
+ARG RUST_IMAGE=docker.io/library/rust:1.99.1-bookworm@sha256:e6f2cff35d0f309acf8433b4f05878ed77092602c5065cc81801177da0bb3a9c
+ARG DISTROLESS_STATIC=gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+
+FROM ${RUST_IMAGE} AS rust-builder
+ARG TARGETARCH
+WORKDIR /src
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      musl-tools \
+      pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY crates ./crates
+COPY programs ./programs
+COPY proto ./proto
+COPY brand ./brand
+COPY interface ./interface
+COPY schema ./schema
+COPY bpf ./bpf
+
+RUN case "${TARGETARCH}" in \
+      amd64) MUSL_TARGET="x86_64-unknown-linux-musl" ;; \
+      arm64) MUSL_TARGET="aarch64-unknown-linux-musl" ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && rustup target add "${MUSL_TARGET}" \
+    && cargo build --release --locked --target "${MUSL_TARGET}" -p grdr-daemon -p grdr-engine -p grdr-hook -p grdr \
+    && cargo check --manifest-path bpf/grdr-sensor-linux-bpf/Cargo.toml --locked \
+    && mkdir -p \
+         /rootfs/usr/local/bin \
+         /rootfs/var/lib/grdr \
+         /rootfs/run/grdr \
+         /rootfs/tmp \
+    && install -m 0755 "target/${MUSL_TARGET}/release/grdr-daemon" /rootfs/usr/local/bin/grdr-daemon \
+    && install -m 0755 "target/${MUSL_TARGET}/release/grdr-engine" /rootfs/usr/local/bin/grdr-engine \
+    && install -m 0755 "target/${MUSL_TARGET}/release/grdr-hook" /rootfs/usr/local/bin/grdr-hook \
+    && install -m 0755 "target/${MUSL_TARGET}/release/grdr" /rootfs/usr/local/bin/grdr \
+    && chown -R 65532:65532 /rootfs/var/lib/grdr /rootfs/run/grdr \
+    && chmod 0750 /rootfs/var/lib/grdr /rootfs/run/grdr \
+    && chmod 1777 /rootfs/tmp
+
+FROM ${DISTROLESS_STATIC} AS runtime
+LABEL org.opencontainers.image.title="grdr-node-sensor" \
+      org.opencontainers.image.description="Guardrails ADR Linux Kubernetes node sensor and sidecar agent" \
+      org.opencontainers.image.vendor="Loonaro" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.source="https://github.com/416rehman/Guardrails"
+
+COPY --from=rust-builder /rootfs/usr/local/bin /usr/local/bin
+COPY --from=rust-builder --chown=65532:65532 /rootfs/var/lib/grdr /var/lib/grdr
+COPY --from=rust-builder --chown=65532:65532 /rootfs/run/grdr /run/grdr
+
+USER 65532:65532
+ENV GRDR_DAEMON_DATA_DIR=/var/lib/grdr
+
+ENTRYPOINT ["/usr/local/bin/grdr-daemon"]

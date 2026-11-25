@@ -1,0 +1,33 @@
+[Unit]
+Description=Guardrails ADR Self-Hosted Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=grdr
+Group=grdr
+# Absolute binary invoked via /usr/bin/env (no PATH search) so offline systemd-analyze verify passes.
+ExecStart=/usr/bin/env /usr/bin/grdr-server --profile embedded --data-dir /var/lib/grdr --bind 127.0.0.1:8787 --web-dir /usr/share/grdr/web
+Restart=on-failure
+RestartSec=5s
+StateDirectory=grdr
+RuntimeDirectory=grdr-server
+ConfigurationDirectory=grdr
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+RestrictNamespaces=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<policyDefinitionResources xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" revision="1.0" schemaVersion="1.0" xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
+  <displayName>Guardrails ADR Administrative Templates</displayName>
+  <description>Endpoint policy configuration keys for Guardrails ADR</description>
+  <resources>
+    <stringTable>
+      <string id="Cat_GuardrailsADR">Guardrails ADR</string>
+      <string id="Pol_UpdateAuthority">Software Update Authority</string>
+      <string id="Pol_UpdateAuthority_Help">Select whether binaries update via Guardrails TUF (self), MDM packages (managed), or golden OS images (image).</string>
+      <string id="Authority_Self">Self-managed TUF updates (self)</string>
+      <string id="Authority_Managed">External MDM or software deployment (managed)</string>
+      <string id="Authority_Image">Immutable golden image (image)</string>
+      <string id="Pol_DefaultMode">Minimum Policy Floor Mode</string>
+      <string id="Pol_DefaultMode_Help">Sets the floor Guardrails Mode enforced on the endpoint (Watch, Ask, or Block).</string>
+      <string id="Mode_Watch">Watch</string>
+      <string id="Mode_Ask">Ask</string>
+      <string id="Mode_Block">Block</string>
+    </stringTable>
+    <presentationTable>
+      <presentation id="Pres_UpdateAuthority">
+        <dropdownList refId="Elem_UpdateAuthority" defaultItem="0" noSort="true">Update Authority</dropdownList>
+      </presentation>
+      <presentation id="Pres_DefaultMode">
+        <dropdownList refId="Elem_DefaultMode" defaultItem="2" noSort="true">Floor Mode</dropdownList>
+      </presentation>
+    </presentationTable>
+  </resources>
+</policyDefinitionResources>

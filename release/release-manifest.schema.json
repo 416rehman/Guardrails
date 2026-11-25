@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:grdr:schema:release-manifest:v1",
+  "title": "Guardrails ADR Release Manifest",
+  "description": "Signed bundle manifest schema for TUF release metadata, air-gap bundles, and compatibility resolution (D-59, D-71).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "bundle_version",
+    "commit",
+    "released_at",
+    "channel",
+    "avoid",
+    "platform_signed",
+    "wire_major",
+    "schema_rev",
+    "trusted_root",
+    "compat",
+    "components",
+    "artefacts"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "grdr.release-manifest.v1"
+    },
+    "bundle_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "released_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "channel": {
+      "type": "string",
+      "enum": ["nightly", "canary", "beta", "broad", "lts"]
+    },
+    "avoid": {
+      "type": "boolean"
+    },
+    "avoid_reason": {
+      "type": "string"
+    },
+    "platform_signed": {
+      "type": "boolean"
+    },
+    "wire_major": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "schema_rev": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "fips_module": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["name", "certificate", "platforms"],
+      "properties": {
+        "name": { "type": "string" },
+        "certificate": { "type": "string" },
+        "platforms": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["linux", "windows"]
+          }
+        }
+      }
+    },
+    "trusted_root": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tuf_root_version", "tuf_root_sha256", "sigstore_trusted_root_sha256"],
+      "properties": {
+        "tuf_root_version": { "type": "integer", "minimum": 1 },
+        "tuf_root_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "sigstore_trusted_root_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "compat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contracts",
+        "min_upgrade_from",
+        "required_stops",
+        "postgresql_major",
+        "kubernetes_min",
+        "helm_min"
+      ],
+      "properties": {
+        "contracts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["min", "max"],
+            "properties": {
+              "min": { "type": "string" },
+              "max": { "type": "string" }
+            }
+          }
+        },
+        "min_upgrade_from": { "type": "string" },
+        "required_stops": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "postgresql_major": { "type": "integer", "minimum": 18 },
+        "kubernetes_min": { "type": "string" },
+        "helm_min": { "type": "string" }
+      }
+    },
+    "components": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["version", "sha256", "signed"],
+        "properties": {
+          "version": { "type": "string" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "oci_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+          "sbom_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "provenance_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "signed": { "type": "boolean" }
+        }
+      }
+    },
+    "artefacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "kind", "os", "arch", "uri", "sha256", "size_bytes", "platform_signature_present"],
+        "properties": {
+          "name": { "type": "string" },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "binary-tarball",
+              "deb",
+              "rpm",
+              "macos-pkg",
+              "windows-msi",
+              "container-image",
+              "helm-chart",
+              "pack-bundle",
+              "airgap-bundle",
+              "sbom",
+              "provenance"
+            ]
+          },
+          "os": { "type": "string", "enum": ["linux", "macos", "windows", "any"] },
+          "arch": { "type": "string", "enum": ["x86_64", "aarch64", "multi", "noarch"] },
+          "uri": { "type": "string" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "size_bytes": { "type": "integer", "minimum": 1 },
+          "sigstore_bundle": { "type": "string" },
+          "platform_signature_present": { "type": "boolean" }
+        }
+      }
+    },
+    "upgrade_paths": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from_version", "to_version", "hops", "rollback_supported"],
+        "properties": {
+          "from_version": { "type": "string" },
+          "to_version": { "type": "string" },
+          "hops": { "type": "array", "items": { "type": "string" } },
+          "rollback_supported": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

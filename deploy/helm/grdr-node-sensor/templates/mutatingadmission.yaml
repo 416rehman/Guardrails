@@ -1,0 +1,39 @@
+{{- if and .Values.sidecar.enabled .Values.sidecar.mutatingWebhook.enabled }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ include "grdr-node-sensor.fullname" . }}-sidecar
+  labels:
+    {{- include "grdr-node-sensor.labels" . | nindent 4 }}
+  {{- if .Values.sidecar.mutatingWebhook.certManagerInjectCAFrom }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Values.sidecar.mutatingWebhook.certManagerInjectCAFrom | quote }}
+  {{- end }}
+webhooks:
+  - name: sidecar.grdr.internal
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ .Values.sidecar.mutatingWebhook.failurePolicy }}
+    timeoutSeconds: {{ .Values.sidecar.mutatingWebhook.timeoutSeconds }}
+    namespaceSelector:
+      matchLabels:
+        {{ .Values.sidecar.sandboxTemplateConfigMap.agentNamespaceLabelKey }}: "enabled"
+    objectSelector:
+      matchLabels:
+        {{ .Values.sidecar.sandboxTemplateConfigMap.agentSandboxLabelKey }}: "true"
+    rules:
+      - operations: ["CREATE"]
+        apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+        scope: "Namespaced"
+    clientConfig:
+      {{- if .Values.sidecar.mutatingWebhook.caBundle }}
+      caBundle: {{ .Values.sidecar.mutatingWebhook.caBundle | quote }}
+      {{- end }}
+      service:
+        name: {{ default (printf "%s-webhook" (include "grdr-node-sensor.fullname" .)) .Values.sidecar.mutatingWebhook.serviceName }}
+        namespace: {{ default .Release.Namespace .Values.sidecar.mutatingWebhook.serviceNamespace }}
+        path: /mutate-v1-pod
+        port: {{ .Values.sidecar.mutatingWebhook.servicePort }}
+{{- end }}

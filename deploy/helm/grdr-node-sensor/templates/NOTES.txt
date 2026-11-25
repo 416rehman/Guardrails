@@ -1,0 +1,9 @@
+Guardrails ADR Node Sensor ({{ .Values.mode }} mode) deployed in namespace {{ .Release.Namespace }}.
+
+Dedicated namespace recommendation: deploy grdr-node-sensor in its own namespace (for example grdr-sensor), separate from grdr-server.
+{{- if and .Values.daemonset.enabled (or (eq .Values.mode "daemonset") (eq .Values.mode "hybrid")) }}
+- DaemonSet active on Linux nodes with hostPID and scoped capabilities (BPF, PERFMON, SYS_RESOURCE, SYS_PTRACE).
+{{- end }}
+{{- if .Values.sidecar.enabled }}
+- Sidecar template ConfigMap: {{ include "grdr-node-sensor.fullname" . }}-sandbox-template
+{{- end }}

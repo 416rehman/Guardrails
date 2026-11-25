@@ -1,0 +1,10 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: The Guardrails ADR Authors
+set -eu
+
+PLIST="/Library/LaunchDaemons/com.guardrailshq.grdr.daemon.plist"
+if [ -f "${PLIST}" ]; then
+  /bin/launchctl bootout system/com.guardrailshq.grdr.daemon >/dev/null 2>&1 || true
+fi
+exit 0

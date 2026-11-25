@@ -1,0 +1,15 @@
+[Unit]
+Description=Guardrails ADR Local Hook Decision Socket
+PartOf=grdr-daemon.service
+
+[Socket]
+# Scoped to grdr service group; daemon additionally authenticates peers via SO_PEERCRED.
+ListenStream=/run/grdr/decide.sock
+SocketUser=grdr
+SocketGroup=grdr
+SocketMode=0660
+DirectoryMode=0750
+Service=grdr-daemon.service
+
+[Install]
+WantedBy=sockets.target

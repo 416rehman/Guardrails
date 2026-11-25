@@ -1,0 +1,45 @@
+{{- if and .Values.sidecar.enabled .Values.sidecar.sandboxTemplateConfigMap.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "grdr-node-sensor.fullname" . }}-sandbox-template
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "grdr-node-sensor.labels" . | nindent 4 }}
+data:
+  sandbox-pod-overlay.yaml: |
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      labels:
+        {{ .Values.sidecar.sandboxTemplateConfigMap.agentSandboxLabelKey }}: "true"
+    spec:
+      runtimeClassName: {{ .Values.sidecar.sandboxTemplateConfigMap.runtimeClassName | quote }}
+      automountServiceAccountToken: false
+      containers:
+        - name: grdr-node-sensor
+          image: {{ include "grdr-node-sensor.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["--profile", "user", "--data-dir", "/var/lib/grdr"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            {{- toYaml .Values.sidecar.resources | nindent 12 }}
+          volumeMounts:
+            - name: grdr-tmp
+              mountPath: /tmp
+            - name: grdr-state
+              mountPath: /var/lib/grdr
+      volumes:
+        - name: grdr-tmp
+          emptyDir: {}
+        - name: grdr-state
+          emptyDir: {}
+{{- end }}

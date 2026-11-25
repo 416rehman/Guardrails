@@ -1,0 +1,50 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "grdr-node-sensor.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "grdr-node-sensor.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "grdr-node-sensor.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+      to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+    {{- if or .Values.networkPolicy.serverNamespace .Values.networkPolicy.allowEgressCidrs }}
+    - ports:
+        - port: 443
+          protocol: TCP
+        - port: 8443
+          protocol: TCP
+      to:
+        {{- if .Values.networkPolicy.serverNamespace }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.serverNamespace | quote }}
+        {{- end }}
+        {{- range .Values.networkPolicy.allowEgressCidrs }}
+        {{- if . }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+            {{- if eq . "169.0.0.0/8" }}
+            except:
+              - "169.254.0.0/16"
+            {{- end }}
+        {{- end }}
+        {{- end }}
+    {{- end }}
+{{- end }}

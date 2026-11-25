@@ -1,0 +1,18 @@
+apiVersion: v2
+name: grdr-node-sensor
+description: Guardrails ADR Kubernetes Linux node sensor DaemonSet and unprivileged agent sidecar templates
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.31.0-0"
+keywords:
+  - guardrails
+  - sensor
+  - ebpf
+  - kubernetes
+home: https://github.com/416rehman/Guardrails
+sources:
+  - https://github.com/416rehman/Guardrails
+annotations:
+  grdr.internal/supported-k8s: "1.35 - 1.37"
+  grdr.internal/separate-namespace-recommended: "grdr-sensor"

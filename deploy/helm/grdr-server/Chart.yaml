@@ -1,0 +1,18 @@
+apiVersion: v2
+name: grdr-server
+description: Guardrails ADR control plane, ingest, encrypted lake, and isolated operator plane
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.31.0-0"
+keywords:
+  - guardrails
+  - agent-security
+  - adr
+  - cedar
+home: https://github.com/416rehman/Guardrails
+sources:
+  - https://github.com/416rehman/Guardrails
+annotations:
+  grdr.internal/supported-k8s: "1.35 - 1.37"
+  grdr.internal/pod-security-standard: "restricted"

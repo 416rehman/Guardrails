@@ -1,0 +1,179 @@
+{{- if and .Values.daemonset.enabled (or (eq .Values.mode "daemonset") (eq .Values.mode "hybrid")) }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "grdr-node-sensor.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "grdr-node-sensor.labels" . | nindent 4 }}
+spec:
+  updateStrategy:
+    type: {{ .Values.daemonset.updateStrategy.type }}
+    {{- if eq .Values.daemonset.updateStrategy.type "RollingUpdate" }}
+    rollingUpdate:
+      maxUnavailable: {{ .Values.daemonset.updateStrategy.maxUnavailable }}
+    {{- end }}
+  selector:
+    matchLabels:
+      {{- include "grdr-node-sensor.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "grdr-node-sensor.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "grdr-node-sensor.serviceAccountName" . }}
+      automountServiceAccountToken: true
+      hostPID: {{ .Values.daemonset.hostPID }}
+      hostNetwork: false
+      {{- if .Values.daemonset.priorityClassName }}
+      priorityClassName: {{ .Values.daemonset.priorityClassName | quote }}
+      {{- end }}
+      {{- with .Values.daemonset.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.daemonset.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: grdr-node-sensor
+          image: {{ include "grdr-node-sensor.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "--profile"
+            - "protected"
+            - "--data-dir"
+            - "/var/lib/grdr"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: false
+            runAsUser: 0
+            capabilities:
+              drop: ["ALL"]
+              add:
+                - BPF
+                - PERFMON
+                - SYS_RESOURCE
+                {{- if .Values.daemonset.allowPtrace }}
+                - SYS_PTRACE
+                {{- end }}
+                {{- if .Values.daemonset.allowSysAdminFallback }}
+                - SYS_ADMIN
+                {{- end }}
+          env:
+            - name: GRDR_DAEMON_DATA_DIR
+              value: "/var/lib/grdr"
+            {{- if .Values.server.endpoint }}
+            - name: GRDR_SERVER_URL
+              value: {{ .Values.server.endpoint | quote }}
+            {{- end }}
+            - name: GRDR_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            {{- if .Values.server.enrollExistingSecret }}
+            - name: GRDR_ENROLL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.server.enrollExistingSecret }}
+                  key: enroll-token
+            {{- end }}
+            {{- if .Values.server.caConfigMap }}
+            - name: SSL_CERT_FILE
+              value: "/etc/grdr/certs/ca.crt"
+            {{- end }}
+          resources:
+            {{- toYaml .Values.daemonset.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/grdr/sensor.toml
+              subPath: sensor.toml
+              readOnly: true
+            - name: sys-kernel-btf
+              mountPath: /sys/kernel/btf
+              readOnly: true
+            - name: sys-kernel-security
+              mountPath: /sys/kernel/security
+              readOnly: true
+            {{- if .Values.daemonset.pinBpfMaps }}
+            - name: sys-fs-bpf
+              mountPath: /sys/fs/bpf/grdr
+            {{- else }}
+            - name: sys-fs-bpf
+              mountPath: /sys/fs/bpf
+              readOnly: true
+            {{- end }}
+            {{- if .Values.daemonset.hostPID }}
+            - name: host-proc
+              mountPath: /host/proc
+              readOnly: true
+            {{- end }}
+            {{- if .Values.daemonset.mountCriSocket }}
+            - name: cri-socket
+              mountPath: /run/containerd/containerd.sock
+              readOnly: true
+            {{- end }}
+            - name: state
+              mountPath: /var/lib/grdr
+            - name: run
+              mountPath: /run/grdr
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.server.caConfigMap }}
+            - name: server-ca
+              mountPath: /etc/grdr/certs
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "grdr-node-sensor.fullname" . }}-config
+        - name: sys-kernel-btf
+          hostPath:
+            path: /sys/kernel/btf
+            type: Directory
+        - name: sys-kernel-security
+          hostPath:
+            path: /sys/kernel/security
+            type: Directory
+        {{- if .Values.daemonset.pinBpfMaps }}
+        - name: sys-fs-bpf
+          hostPath:
+            path: /sys/fs/bpf/grdr
+            type: Directory
+        {{- else }}
+        - name: sys-fs-bpf
+          hostPath:
+            path: /sys/fs/bpf
+            type: Directory
+        {{- end }}
+        {{- if .Values.daemonset.hostPID }}
+        - name: host-proc
+          hostPath:
+            path: /proc
+            type: Directory
+        {{- end }}
+        {{- if .Values.daemonset.mountCriSocket }}
+        - name: cri-socket
+          hostPath:
+            path: {{ .Values.daemonset.criSocketPath }}
+            type: Socket
+        {{- end }}
+        - name: state
+          emptyDir: {}
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.server.caConfigMap }}
+        - name: server-ca
+          configMap:
+            name: {{ .Values.server.caConfigMap }}
+        {{- end }}
+{{- end }}
