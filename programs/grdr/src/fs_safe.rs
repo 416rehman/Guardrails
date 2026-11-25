@@ -39,6 +39,9 @@ pub fn reject_symlinks_on_existing_prefixes(path: &Path) -> Result<(), FsSafeErr
                     }
                     return Err(FsSafeError::SymlinkForbidden(acc.display().to_string()));
                 }
+                if comps.peek().is_some() && !meta.is_dir() {
+                    return Err(FsSafeError::SymlinkForbidden(acc.display().to_string()));
+                }
             }
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => break,
             Err(err) => return Err(io_err(&acc, &err.to_string())),
