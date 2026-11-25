@@ -3,20 +3,27 @@
 #![deny(clippy::arithmetic_side_effects)]
 
 pub mod contract_blob_jobs;
+pub mod contract_events;
 pub mod contract_rel_bus;
 pub mod mem_blob;
 pub mod mem_bus;
 pub mod mem_jobs;
+pub mod mem_lake;
+pub mod mem_lake_ops;
 pub mod mem_relational;
+pub mod query_eval;
 
 use std::collections::VecDeque;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub use contract_blob_jobs::{assert_blob_port_contract, assert_job_port_contract};
+pub use contract_events::assert_events_port_contract;
 pub use contract_rel_bus::{assert_bus_port_contract, assert_relational_store_contract};
 pub use mem_blob::MemoryBlobStore;
 pub use mem_bus::MemoryLogBus;
 pub use mem_jobs::MemoryJobJournal;
+pub use mem_lake::MemoryEventLake;
 pub use mem_relational::MemoryRelationalStore;
 
 use jiff::Timestamp;
@@ -27,9 +34,15 @@ use grdr_model::{
     LiveEvent, Verdict,
 };
 use grdr_ports::{
-    ContainmentMode, DecisionEnginePort, EventSinkPort, PORT_SNAPSHOT_VERSION, PortSnapshot,
+    Clock, ContainmentMode, DecisionEnginePort, EventSinkPort, PORT_SNAPSHOT_VERSION, PortSnapshot,
     PreparedContainment, SandboxPort, SensorPort, StorePort,
 };
+
+#[derive(Debug)]
+pub struct FixedClock {
+    timestamp_ms: AtomicU64,
+    monotonic_ms: AtomicU64,
+}
 
 #[derive(Debug, Default)]
 struct MemoryStoreInner {
@@ -54,6 +67,32 @@ pub struct MemorySensorAdapter {
 
 #[derive(Debug, Clone, Default)]
 pub struct StubSandboxAdapter;
+
+impl FixedClock {
+    pub fn new(timestamp: Timestamp, monotonic_ms: u64) -> Self {
+        let ts_ms = u64::try_from(timestamp.as_millisecond()).unwrap_or(0);
+        Self {
+            timestamp_ms: AtomicU64::new(ts_ms),
+            monotonic_ms: AtomicU64::new(monotonic_ms),
+        }
+    }
+
+    pub fn advance_ms(&self, delta_ms: u64) {
+        self.timestamp_ms.fetch_add(delta_ms, Ordering::SeqCst);
+        self.monotonic_ms.fetch_add(delta_ms, Ordering::SeqCst);
+    }
+}
+
+impl Clock for FixedClock {
+    fn now_timestamp(&self) -> Timestamp {
+        let ms = i64::try_from(self.timestamp_ms.load(Ordering::SeqCst)).unwrap_or(i64::MAX);
+        Timestamp::from_millisecond(ms).unwrap_or(Timestamp::UNIX_EPOCH)
+    }
+
+    fn monotonic_ms(&self) -> u64 {
+        self.monotonic_ms.load(Ordering::SeqCst)
+    }
+}
 
 impl StorePort for MemoryStoreAdapter {
     fn save_snapshot(&self, snapshot: &PortSnapshot) -> Result<(), CodedError> {
@@ -454,5 +493,12 @@ mod tests {
 
         let jobs = MemoryJobJournal::default();
         assert!(assert_job_port_contract(&jobs).is_ok());
+
+        let lake = MemoryEventLake::default();
+        assert_events_port_contract(&lake).unwrap();
+
+        let clock = FixedClock::new(sample_timestamp(), 100);
+        clock.advance_ms(250);
+        assert_eq!(clock.monotonic_ms(), 350);
     }
 }

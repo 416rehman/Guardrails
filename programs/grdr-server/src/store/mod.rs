@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+mod adapters;
 mod browser;
 mod connect;
 mod connect_mdm;
+mod lake_ops;
 mod overview;
 mod persistence;
 mod policy_ops;
+pub mod profile;
 mod query_ir;
 mod response_ops;
 mod session_ops;
@@ -29,19 +32,25 @@ use grdr_model::{
     OrgPrivacyConfig, OtlpFanoutConfig, PolicyPack, StorageMode, Verdict,
 };
 use grdr_ports::ProfileKind;
+#[cfg(test)]
+use grdr_ports::{
+    ErasureReceipt, LakeCompactionResult, LakeFlushResult, LakeManifest, LakeQueryIr,
+    LakeQueryResult,
+};
 use grdr_proto::common::CollectionKind;
 
 use crate::aip::revision::RevisionTable;
 use crate::demo;
 use persistence::EmbeddedStorage;
+use profile::resolve_ha_dirs;
+#[cfg(test)]
+pub use profile::{
+    BlobAdapterKind, BusAdapterKind, LakeAdapterKind, ProfileAdapterSet, RelationalAdapterKind,
+    validate_profile_adapters,
+};
+pub use profile::{CODE_STORE_PROFILE_MISMATCH, StorageBackend, validate_backend_endpoints};
 
 pub(crate) const MAX_RETAINED_EVENTS: usize = 500;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StorageBackend {
-    Memory,
-    Disk(PathBuf),
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoreData {
@@ -91,11 +100,102 @@ impl StorageBackend {
         }
     }
 
+    pub fn from_profile_flags(
+        profile: ProfileKind,
+        memory: bool,
+        data_dir: Option<PathBuf>,
+        postgres_dsn: Option<String>,
+        nats_url: Option<String>,
+        object_store_dir: Option<PathBuf>,
+    ) -> Result<Self, CodedError> {
+        match profile {
+            ProfileKind::Embedded => {
+                if postgres_dsn.is_some() || nats_url.is_some() || object_store_dir.is_some() {
+                    return Err(CodedError::new(
+                        CODE_STORE_PROFILE_MISMATCH,
+                        "Embedded profile does not accept --postgres-dsn, --nats-url, or --object-store-dir.",
+                        "Use --profile ha or --profile distributed for external adapters.",
+                    ));
+                }
+                if memory && data_dir.is_some() {
+                    return Err(CodedError::new(
+                        CODE_STORE_PROFILE_MISMATCH,
+                        "Embedded --memory mode cannot be combined with --data-dir.",
+                        "Omit --data-dir for ephemeral memory or omit --memory for disk storage.",
+                    ));
+                }
+                Ok(Self::from_flags(memory, data_dir))
+            }
+            ProfileKind::Ha => {
+                if memory || nats_url.is_some() {
+                    return Err(CodedError::new(
+                        CODE_STORE_PROFILE_MISMATCH,
+                        "HA profile cannot be combined with --memory or --nats-url.",
+                        "Omit --memory/--nats-url or switch to --profile distributed.",
+                    ));
+                }
+                let dsn = postgres_dsn.ok_or_else(|| {
+                    CodedError::new(
+                        CODE_STORE_PROFILE_MISMATCH,
+                        "HA profile requires --postgres-dsn (GRDR_POSTGRES_DSN).",
+                        "Pass --postgres-dsn postgres://... or use --profile embedded.",
+                    )
+                })?;
+                let (object_store_dir, state_dir) =
+                    resolve_ha_dirs(data_dir, object_store_dir, "HA")?;
+                Ok(Self::Ha {
+                    postgres_dsn: dsn,
+                    object_store_dir,
+                    state_dir,
+                })
+            }
+            ProfileKind::Distributed => {
+                if memory {
+                    return Err(CodedError::new(
+                        CODE_STORE_PROFILE_MISMATCH,
+                        "Distributed profile cannot be combined with --memory.",
+                        "Omit --memory for Distributed mode.",
+                    ));
+                }
+                let dsn = postgres_dsn.ok_or_else(|| {
+                    CodedError::new(
+                        CODE_STORE_PROFILE_MISMATCH,
+                        "Distributed profile requires --postgres-dsn (GRDR_POSTGRES_DSN).",
+                        "Pass --postgres-dsn postgres://... or use --profile embedded.",
+                    )
+                })?;
+                let nats = nats_url.ok_or_else(|| {
+                    CodedError::new(
+                        CODE_STORE_PROFILE_MISMATCH,
+                        "Distributed profile requires --nats-url (GRDR_NATS_URL).",
+                        "Pass --nats-url nats://... or use --profile ha.",
+                    )
+                })?;
+                let (object_store_dir, state_dir) =
+                    resolve_ha_dirs(data_dir, object_store_dir, "Distributed")?;
+                Ok(Self::Distributed {
+                    postgres_dsn: dsn,
+                    nats_url: nats,
+                    object_store_dir,
+                    state_dir,
+                })
+            }
+        }
+    }
+
     pub fn storage_mode(&self) -> StorageMode {
         match self {
             Self::Memory => StorageMode::Memory,
             Self::Disk(dir) => StorageMode::Sqlite {
                 path: dir.display().to_string(),
+            },
+            Self::Ha {
+                object_store_dir, ..
+            }
+            | Self::Distributed {
+                object_store_dir, ..
+            } => StorageMode::Sqlite {
+                path: object_store_dir.display().to_string(),
             },
         }
     }
@@ -134,16 +234,7 @@ impl AppState {
         backend: StorageBackend,
         demo_seed: bool,
     ) -> Result<Self, CodedError> {
-        if profile != ProfileKind::Embedded {
-            return Err(CodedError::new(
-                CODE_STORE_IO,
-                format!(
-                    "Storage profile `{}` adapters are not available in this server binary.",
-                    profile.as_str()
-                ),
-                "Start grdr-server with --profile embedded.",
-            ));
-        }
+        validate_backend_endpoints(profile, &backend)?;
 
         let now = Timestamp::now();
         let signing_key = match &backend {
@@ -153,6 +244,16 @@ impl AppState {
                         CODE_STORE_IO,
                         format!("Failed initializing server signing key: {e}"),
                         "Verify write permissions in --data-dir.",
+                    )
+                })?
+            }
+            StorageBackend::Ha { state_dir, .. }
+            | StorageBackend::Distributed { state_dir, .. } => {
+                load_or_create_keypair(&state_dir.join("signing.key")).map_err(|e| {
+                    CodedError::new(
+                        CODE_STORE_IO,
+                        format!("Failed initializing server signing key: {e}"),
+                        "Verify write permissions in state directory.",
                     )
                 })?
             }
@@ -168,6 +269,26 @@ impl AppState {
         let storage = match &backend {
             StorageBackend::Disk(dir) => Some(Arc::new(EmbeddedStorage::open(dir)?)),
             StorageBackend::Memory => None,
+            StorageBackend::Ha {
+                postgres_dsn,
+                object_store_dir,
+                state_dir,
+            } => Some(Arc::new(EmbeddedStorage::open_ha(
+                state_dir,
+                object_store_dir,
+                postgres_dsn,
+            )?)),
+            StorageBackend::Distributed {
+                postgres_dsn,
+                nats_url,
+                object_store_dir,
+                state_dir,
+            } => Some(Arc::new(EmbeddedStorage::open_distributed(
+                state_dir,
+                object_store_dir,
+                postgres_dsn,
+                nats_url,
+            )?)),
         };
 
         let mut data = match &storage {
@@ -243,5 +364,70 @@ impl AppState {
             verdict,
             timestamp: Timestamp::now(),
         });
+    }
+
+    #[cfg(test)]
+    pub(crate) fn flush_lake(&self, now_ms: i64) -> Result<LakeFlushResult, CodedError> {
+        let Some(store) = &self.storage else {
+            return Err(CodedError::new(
+                CODE_STORE_IO,
+                "Lake flush requires disk-backed EmbeddedStorage.",
+                "Initialize server with StorageBackend::Disk.",
+            ));
+        };
+        store.flush_lake(now_ms)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn compact_lake(&self, now_ms: i64) -> Result<LakeCompactionResult, CodedError> {
+        let Some(store) = &self.storage else {
+            return Err(CodedError::new(
+                CODE_STORE_IO,
+                "Lake compaction requires disk-backed EmbeddedStorage.",
+                "Initialize server with StorageBackend::Disk.",
+            ));
+        };
+        store.compact_lake(now_ms)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn query_lake(&self, query: &LakeQueryIr) -> Result<LakeQueryResult, CodedError> {
+        let Some(store) = &self.storage else {
+            return Err(CodedError::new(
+                CODE_STORE_IO,
+                "Lake query requires disk-backed EmbeddedStorage.",
+                "Initialize server with StorageBackend::Disk.",
+            ));
+        };
+        store.query_lake(query)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn erase_lake_session(
+        &self,
+        root_session_id: &str,
+        reason: &str,
+        now_ms: i64,
+    ) -> Result<ErasureReceipt, CodedError> {
+        let Some(store) = &self.storage else {
+            return Err(CodedError::new(
+                CODE_STORE_IO,
+                "Lake session erasure requires disk-backed EmbeddedStorage.",
+                "Initialize server with StorageBackend::Disk.",
+            ));
+        };
+        store.erase_lake_session(root_session_id, reason, now_ms)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn lake_manifest(&self) -> Result<Option<LakeManifest>, CodedError> {
+        let Some(store) = &self.storage else {
+            return Err(CodedError::new(
+                CODE_STORE_IO,
+                "Lake manifest requires disk-backed EmbeddedStorage.",
+                "Initialize server with StorageBackend::Disk.",
+            ));
+        };
+        store.lake_manifest()
     }
 }

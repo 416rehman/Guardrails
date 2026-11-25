@@ -17,12 +17,15 @@ clap = { workspace = true }
 futures-util = { workspace = true }
 grdr-blob = { workspace = true }
 grdr-bus-log = { workspace = true }
+grdr-bus-nats = { workspace = true }
 grdr-core = { workspace = true }
 grdr-crypto = { workspace = true }
 grdr-jobs = { workspace = true }
+grdr-lake = { workspace = true }
 grdr-model = { workspace = true }
 grdr-ports = { workspace = true }
 grdr-proto = { workspace = true }
+grdr-rel-postgres = { workspace = true }
 grdr-rel-sqlite = { workspace = true }
 jiff = { workspace = true }
 prost = { workspace = true }

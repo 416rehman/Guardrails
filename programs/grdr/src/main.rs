@@ -6,6 +6,9 @@ mod doctor;
 mod hook;
 mod mcp_proxy;
 mod runner;
+mod server_cmd;
+mod server_migrate;
+mod server_preflight;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -177,6 +180,11 @@ enum Command {
         #[arg(long, default_value_t = false)]
         strict: bool,
     },
+    /// Server storage preflight checks and profile migrations.
+    Server {
+        #[command(subcommand)]
+        action: server_cmd::ServerCommand,
+    },
 }
 
 fn main() -> ExitCode {
@@ -243,6 +251,7 @@ fn main() -> ExitCode {
             };
             doctor::run_doctor(json, install_profile, strict)
         }
+        Command::Server { action } => server_cmd::handle_server_command(action),
     }
 }
 

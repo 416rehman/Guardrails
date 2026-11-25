@@ -849,3 +849,198 @@ async fn connect_inventory_query_browser_policy_and_sqlite_persistence() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[tokio::test]
+async fn profile_validation_and_embedded_lake_pipeline_work() {
+    use crate::store::{
+        BlobAdapterKind, BusAdapterKind, CODE_STORE_PROFILE_MISMATCH, LakeAdapterKind,
+        ProfileAdapterSet, RelationalAdapterKind, validate_profile_adapters,
+    };
+    use grdr_ports::{LakeAggOp, LakeAggSpec, LakeQueryIr, RetentionClass};
+
+    assert!(
+        validate_profile_adapters(
+            ProfileKind::Embedded,
+            &ProfileAdapterSet::expected_for_profile(ProfileKind::Embedded),
+        )
+        .is_ok()
+    );
+    let bad_ha = ProfileAdapterSet {
+        relational: RelationalAdapterKind::Sqlite,
+        bus: BusAdapterKind::Log,
+        blobs: BlobAdapterKind::ObjectStore,
+        lake: LakeAdapterKind::ObjectStorage,
+    };
+    let err = validate_profile_adapters(ProfileKind::Ha, &bad_ha).unwrap_err();
+    assert_eq!(err.code, CODE_STORE_PROFILE_MISMATCH);
+
+    let bad_dist = ProfileAdapterSet {
+        relational: RelationalAdapterKind::Postgres,
+        bus: BusAdapterKind::Log,
+        blobs: BlobAdapterKind::ObjectStore,
+        lake: LakeAdapterKind::ObjectStorage,
+    };
+    let err = validate_profile_adapters(ProfileKind::Distributed, &bad_dist).unwrap_err();
+    assert_eq!(err.code, CODE_STORE_PROFILE_MISMATCH);
+
+    let dir = std::env::temp_dir().join(format!(
+        "grdr-server-lake-e2e-{}",
+        uuid::Uuid::now_v7().simple()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    let state = AppState::init(StorageBackend::Disk(dir.clone()), false).unwrap();
+    let app = routes::build_router(state.clone(), None);
+
+    let (st, _): (_, EvaluateResponse) = rpc_post_json(
+        &app,
+        "/grdr.api.verdict.v1alpha1.VerdictService/Evaluate",
+        &EvaluateRequest {
+            session_id: Some("sess-lake-e2e".into()),
+            device_id: Some("dev-lake-1".into()),
+            device_name: Some("lake-host".into()),
+            agent_name: "claude-code".into(),
+            action_class: ActionClass::FileRead as i32,
+            target: "~/.ssh/id_rsa".into(),
+            summary: Some("Read ssh key".into()),
+            control_point: Some(grdr_proto::common::ControlPoint::Hook as i32),
+        },
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+
+    let future_ms = jiff::Timestamp::now()
+        .as_millisecond()
+        .saturating_add(60_000);
+    let flushed = state.flush_lake(future_ms).unwrap();
+    assert!(flushed.rows_flushed >= 1);
+    assert!(state.lake_manifest().unwrap().is_some());
+
+    let timeline = state
+        .query_lake(&LakeQueryIr::Timeline {
+            root_session_id: "sess-lake-e2e".into(),
+            include_content: false,
+            limit: 10,
+        })
+        .unwrap();
+    assert_eq!(timeline.rows.len(), 1);
+
+    let agg = state
+        .query_lake(&LakeQueryIr::Aggregate {
+            retention_class: RetentionClass::Decision,
+            group_by: vec!["device_id".into()],
+            aggregations: vec![LakeAggSpec {
+                alias: "total".into(),
+                op: LakeAggOp::Count,
+                field: None,
+            }],
+            predicates: vec![],
+        })
+        .unwrap();
+    assert_eq!(agg.rows.len(), 1);
+
+    let compacted = state.compact_lake(future_ms).unwrap();
+    assert!(compacted.segments_compacted >= 1);
+
+    let receipt = state
+        .erase_lake_session("sess-lake-e2e", "retention_drill", future_ms)
+        .unwrap();
+    assert_eq!(receipt.archive_segments_reduced, 1);
+
+    // Ensure raw unencrypted ingest/events/offset-*.json copies are never written.
+    assert!(
+        !dir.join("blobs")
+            .join("org=org-embedded")
+            .join("ingest")
+            .exists()
+    );
+
+    // Profile mismatch flag validation (P6/D-33)
+    assert_eq!(
+        StorageBackend::from_profile_flags(
+            ProfileKind::Embedded,
+            false,
+            None,
+            Some("postgres://grdr@localhost:5432/grdr".into()),
+            None,
+            None,
+        )
+        .unwrap_err()
+        .code,
+        CODE_STORE_PROFILE_MISMATCH
+    );
+    assert_eq!(
+        StorageBackend::from_profile_flags(
+            ProfileKind::Ha,
+            true,
+            None,
+            Some("postgres://grdr@localhost:5432/grdr".into()),
+            None,
+            Some(dir.join("bucket")),
+        )
+        .unwrap_err()
+        .code,
+        CODE_STORE_PROFILE_MISMATCH
+    );
+    assert_eq!(
+        StorageBackend::from_profile_flags(
+            ProfileKind::Ha,
+            false,
+            Some(dir.join("bucket")),
+            Some("postgres://grdr@localhost:5432/grdr".into()),
+            None,
+            Some(dir.join("bucket")),
+        )
+        .unwrap_err()
+        .code,
+        CODE_STORE_PROFILE_MISMATCH
+    );
+    assert_eq!(
+        StorageBackend::from_profile_flags(
+            ProfileKind::Ha,
+            false,
+            Some(dir.join("other").join("..").join("bucket")),
+            Some("postgres://grdr@localhost:5432/grdr".into()),
+            None,
+            Some(dir.join("bucket")),
+        )
+        .unwrap_err()
+        .code,
+        CODE_STORE_PROFILE_MISMATCH
+    );
+    let existing_bucket = dir.join("existing-bucket");
+    std::fs::create_dir_all(&existing_bucket).unwrap();
+    assert_eq!(
+        StorageBackend::from_profile_flags(
+            ProfileKind::Ha,
+            false,
+            Some(existing_bucket.join("nested-nonexistent-state")),
+            Some("postgres://grdr@localhost:5432/grdr".into()),
+            None,
+            Some(existing_bucket),
+        )
+        .unwrap_err()
+        .code,
+        CODE_STORE_PROFILE_MISMATCH
+    );
+    let ha_backend = StorageBackend::from_profile_flags(
+        ProfileKind::Ha,
+        false,
+        None,
+        Some("postgres://grdr@localhost:5432/grdr".into()),
+        None,
+        Some(dir.join("ha-bucket")),
+    )
+    .unwrap();
+    match &ha_backend {
+        StorageBackend::Ha {
+            object_store_dir,
+            state_dir,
+            ..
+        } => {
+            assert!(!state_dir.starts_with(object_store_dir));
+        }
+        other => panic!("expected Ha backend, got {other:?}"),
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

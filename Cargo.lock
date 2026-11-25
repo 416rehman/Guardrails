@@ -840,12 +840,19 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "grdr-agents",
+ "grdr-blob",
+ "grdr-bus-log",
+ "grdr-bus-nats",
  "grdr-core",
  "grdr-llm-proto",
  "grdr-model",
+ "grdr-ports",
+ "grdr-rel-postgres",
+ "grdr-rel-sqlite",
  "grdr-sandbox-engine",
  "jiff 1.0.2",
  "reqwest",
+ "rusqlite",
  "serde",
  "serde_json",
  "uuid",
@@ -913,6 +920,19 @@ dependencies = [
  "grdr-ports-testkit",
  "rusqlite",
  "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "grdr-bus-nats"
+version = "0.1.0"
+dependencies = [
+ "grdr-model",
+ "grdr-ports",
+ "grdr-ports-testkit",
+ "serde",
+ "serde_json",
+ "sha2",
  "thiserror",
 ]
 
@@ -1141,6 +1161,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "grdr-lake"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "grdr-blob",
+ "grdr-crypto",
+ "grdr-model",
+ "grdr-ports",
+ "grdr-ports-testkit",
+ "jiff 1.0.2",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
 name = "grdr-llm-proto"
 version = "0.1.0"
 dependencies = [
@@ -1203,6 +1243,7 @@ name = "grdr-ports"
 version = "0.1.0"
 dependencies = [
  "grdr-model",
+ "jiff 1.0.2",
  "serde",
  "serde_json",
 ]
@@ -1226,6 +1267,22 @@ dependencies = [
  "prost",
  "serde",
  "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "grdr-rel-postgres"
+version = "0.1.0"
+dependencies = [
+ "grdr-crypto",
+ "grdr-model",
+ "grdr-ports",
+ "grdr-ports-testkit",
+ "jiff 1.0.2",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
  "thiserror",
 ]
 
@@ -1306,12 +1363,15 @@ dependencies = [
  "futures-util",
  "grdr-blob",
  "grdr-bus-log",
+ "grdr-bus-nats",
  "grdr-core",
  "grdr-crypto",
  "grdr-jobs",
+ "grdr-lake",
  "grdr-model",
  "grdr-ports",
  "grdr-proto",
+ "grdr-rel-postgres",
  "grdr-rel-sqlite",
  "jiff 1.0.2",
  "prost",

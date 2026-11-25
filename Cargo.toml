@@ -16,6 +16,7 @@ grdr-agents = { version = "0.1.0", path = "crates/grdr-agents" }
 grdr-blob = { version = "0.1.0", path = "crates/grdr-blob" }
 grdr-broker = { version = "0.1.0", path = "crates/grdr-broker" }
 grdr-bus-log = { version = "0.1.0", path = "crates/grdr-bus-log" }
+grdr-bus-nats = { version = "0.1.0", path = "crates/grdr-bus-nats" }
 grdr-compat = { version = "0.1.0", path = "crates/grdr-compat" }
 grdr-comply = { version = "0.1.0", path = "crates/grdr-comply" }
 grdr-conformance = { version = "0.1.0", path = "crates/grdr-conformance" }
@@ -28,6 +29,7 @@ grdr-ffi = { version = "0.1.0", path = "crates/grdr-ffi" }
 grdr-identity = { version = "0.1.0", path = "crates/grdr-identity" }
 grdr-integrations = { version = "0.1.0", path = "crates/grdr-integrations" }
 grdr-jobs = { version = "0.1.0", path = "crates/grdr-jobs" }
+grdr-lake = { version = "0.1.0", path = "crates/grdr-lake" }
 grdr-llm-proto = { version = "0.1.0", path = "crates/grdr-llm-proto" }
 grdr-mcp-proto = { version = "0.1.0", path = "crates/grdr-mcp-proto" }
 grdr-messages = { version = "0.1.0", path = "crates/grdr-messages" }
@@ -36,6 +38,7 @@ grdr-policy-ref = { version = "0.1.0", path = "crates/grdr-policy-ref" }
 grdr-ports = { version = "0.1.0", path = "crates/grdr-ports" }
 grdr-ports-testkit = { version = "0.1.0", path = "crates/grdr-ports-testkit" }
 grdr-proto = { version = "0.1.0", path = "crates/grdr-proto" }
+grdr-rel-postgres = { version = "0.1.0", path = "crates/grdr-rel-postgres" }
 grdr-rel-sqlite = { version = "0.1.0", path = "crates/grdr-rel-sqlite" }
 grdr-review = { version = "0.1.0", path = "crates/grdr-review" }
 grdr-sandbox-engine = { version = "0.1.0", path = "crates/grdr-sandbox-engine" }
@@ -63,6 +66,7 @@ tower-http = { version = "0.7", features = ["cors", "fs"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1.11", features = ["v7", "serde"] }
+zeroize = { version = "1.9", default-features = false, features = ["alloc"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

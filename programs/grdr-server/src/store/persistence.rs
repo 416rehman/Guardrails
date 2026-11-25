@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
 use std::collections::BTreeMap;
+use std::fs;
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -12,8 +13,11 @@ use uuid::Uuid;
 
 use grdr_blob::FilesystemBlobStore;
 use grdr_bus_log::SqliteLogBus;
+use grdr_bus_nats::{NatsConfig, NatsJetStreamBus};
 use grdr_core::detect;
+use grdr_crypto::load_or_create_keypair;
 use grdr_jobs::SqliteJobJournal;
+use grdr_lake::LakeStore;
 use grdr_model::error::{CODE_STORE_CORRUPT, CODE_STORE_IO};
 use grdr_model::eval::add_seconds;
 use grdr_model::{
@@ -21,12 +25,19 @@ use grdr_model::{
     PolicyPack, Verdict, summarize_sessions,
 };
 use grdr_ports::{
-    BlobPort, BusAppendMessage, BusPort, DeviceRepo, FencingToken, FindingRepo, JobPort,
-    KvSnapshotRepo, LeaseAcquireOutcome, LeaseState, OrgId, PolicyRepo, SessionSummaryRepo,
-    SingleCtx, TenantCtx, TenantPath, TenantUserRecord, UserRepo,
+    BusAppendMessage, FencingToken, JobPort, LeaseAcquireOutcome, LeaseState, OrgId, SingleCtx,
+    TenantCtx, TenantUserRecord,
 };
+#[cfg(test)]
+use grdr_ports::{
+    ErasureReceipt, EventsPort, LakeCompactionResult, LakeFlushResult, LakeManifest, LakeQueryIr,
+    LakeQueryResult,
+};
+use grdr_rel_postgres::{PostgresConfig, PostgresRelationalStore};
 use grdr_rel_sqlite::SqliteRelationalStore;
 
+use super::adapters::{ServerBus, ServerRelational};
+use super::lake_ops::append_event_to_lake;
 use super::users::DirectoryUserRecord;
 use super::{MAX_RETAINED_EVENTS, StoreData};
 
@@ -40,22 +51,88 @@ const LEASE_TTL_MS: i64 = 60_000;
 
 pub(crate) struct EmbeddedStorage {
     org_ctx: SingleCtx,
-    relational: SqliteRelationalStore,
-    bus: SqliteLogBus,
-    blobs: FilesystemBlobStore,
+    relational: ServerRelational,
+    bus: ServerBus,
     jobs: SqliteJobJournal,
+    lake: LakeStore<FilesystemBlobStore>,
     bus_fence: Mutex<FencingToken>,
 }
 
 impl EmbeddedStorage {
     pub(crate) fn open(dir: &Path) -> Result<Self, CodedError> {
+        let relational = ServerRelational::Sqlite(SqliteRelationalStore::open(
+            &dir.join("relational.sqlite3"),
+        )?);
+        let bus = ServerBus::Log(SqliteLogBus::open(&dir.join("bus.sqlite3"))?);
+        Self::open_with_adapters(dir, &dir.join("blobs"), relational, bus)
+    }
+
+    pub(crate) fn open_ha(
+        state_dir: &Path,
+        object_store_dir: &Path,
+        postgres_dsn: &str,
+    ) -> Result<Self, CodedError> {
+        fs::create_dir_all(state_dir).map_err(|e| {
+            CodedError::new(
+                CODE_STORE_IO,
+                format!("Failed creating HA state dir {}: {e}", state_dir.display()),
+                "Verify write permissions in state directory.",
+            )
+        })?;
+        let pg_cfg = PostgresConfig::parse_dsn(postgres_dsn)?;
+        let relational = ServerRelational::Postgres(PostgresRelationalStore::connect(pg_cfg)?);
+        let bus = ServerBus::Log(SqliteLogBus::open(&state_dir.join("bus.sqlite3"))?);
+        Self::open_with_adapters(state_dir, object_store_dir, relational, bus)
+    }
+
+    pub(crate) fn open_distributed(
+        state_dir: &Path,
+        object_store_dir: &Path,
+        postgres_dsn: &str,
+        nats_url: &str,
+    ) -> Result<Self, CodedError> {
+        fs::create_dir_all(state_dir).map_err(|e| {
+            CodedError::new(
+                CODE_STORE_IO,
+                format!(
+                    "Failed creating Distributed state dir {}: {e}",
+                    state_dir.display()
+                ),
+                "Verify write permissions in state directory.",
+            )
+        })?;
+        let pg_cfg = PostgresConfig::parse_dsn(postgres_dsn)?;
+        let relational = ServerRelational::Postgres(PostgresRelationalStore::connect(pg_cfg)?);
+        let nats_cfg = NatsConfig::parse_url(nats_url)?;
+        let bus = ServerBus::Nats(NatsJetStreamBus::connect(nats_cfg)?);
+        Self::open_with_adapters(state_dir, object_store_dir, relational, bus)
+    }
+
+    fn open_with_adapters(
+        state_dir: &Path,
+        blobs_dir: &Path,
+        relational: ServerRelational,
+        bus: ServerBus,
+    ) -> Result<Self, CodedError> {
         let org = OrgId::new(EMBEDDED_ORG_ID)?;
         let org_ctx = SingleCtx::new(org);
 
-        let relational = SqliteRelationalStore::open(&dir.join("relational.sqlite3"))?;
-        let bus = SqliteLogBus::open(&dir.join("bus.sqlite3"))?;
-        let blobs = FilesystemBlobStore::open(&dir.join("blobs"))?;
-        let jobs = SqliteJobJournal::open(&dir.join("jobs.sqlite3"))?;
+        let jobs = SqliteJobJournal::open(&state_dir.join("jobs.sqlite3"))?;
+        let lake_kek = load_or_create_keypair(&state_dir.join("lake.kek"))
+            .map_err(|e| {
+                CodedError::new(
+                    CODE_STORE_IO,
+                    format!("Failed initializing lake KEK: {e}"),
+                    "Verify write permissions in state directory.",
+                )
+            })?
+            .derive_aead_key("lake.kek.v1");
+        let lake_blobs = FilesystemBlobStore::open(blobs_dir)?;
+        let lake = LakeStore::open(
+            &state_dir.join("lake-catalogue.sqlite3"),
+            lake_blobs,
+            lake_kek,
+        )?;
 
         let now_ms = Timestamp::now().as_millisecond();
         let fence =
@@ -79,8 +156,8 @@ impl EmbeddedStorage {
             org_ctx,
             relational,
             bus,
-            blobs,
             jobs,
+            lake,
             bus_fence: Mutex::new(sub.fence),
         })
     }
@@ -276,17 +353,68 @@ impl EmbeddedStorage {
             None,
             *fence,
         )?;
-        let blob_path = TenantPath::parse(
+        let _ = append_event_to_lake(
+            &self.lake,
             &self.org_ctx,
-            &format!("ingest/events/offset-{}.json", range.last_offset),
+            *fence,
+            range.last_offset,
+            device_id,
+            payload_bytes,
+            now_ms,
         )?;
-        self.blobs.put(&self.org_ctx, &blob_path, payload_bytes)?;
         Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn flush_lake(&self, now_ms: i64) -> Result<LakeFlushResult, CodedError> {
+        let fence = *self.bus_fence.lock().map_err(|_| {
+            CodedError::new(
+                CODE_STORE_IO,
+                "Embedded bus fence mutex poisoned.",
+                "Restart server.",
+            )
+        })?;
+        self.lake.flush(&self.org_ctx, fence, now_ms, now_ms)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn compact_lake(&self, now_ms: i64) -> Result<LakeCompactionResult, CodedError> {
+        let fence = *self.bus_fence.lock().map_err(|_| {
+            CodedError::new(
+                CODE_STORE_IO,
+                "Embedded bus fence mutex poisoned.",
+                "Restart server.",
+            )
+        })?;
+        self.lake.compact_and_retain(&self.org_ctx, fence, now_ms)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn query_lake(&self, query: &LakeQueryIr) -> Result<LakeQueryResult, CodedError> {
+        let read_ctx = TenantCtx::Single(self.org_ctx.clone());
+        self.lake.execute_query_ir(&read_ctx, query)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn erase_lake_session(
+        &self,
+        root_session_id: &str,
+        reason: &str,
+        now_ms: i64,
+    ) -> Result<ErasureReceipt, CodedError> {
+        self.lake
+            .erase_session(&self.org_ctx, root_session_id, reason, now_ms)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn lake_manifest(&self) -> Result<Option<LakeManifest>, CodedError> {
+        let read_ctx = TenantCtx::Single(self.org_ctx.clone());
+        self.lake.manifest(&read_ctx)
     }
 }
 
 fn load_kv_json<T: DeserializeOwned>(
-    store: &SqliteRelationalStore,
+    store: &ServerRelational,
     ctx: &TenantCtx,
     key: &str,
 ) -> Result<Option<T>, CodedError> {
@@ -297,14 +425,14 @@ fn load_kv_json<T: DeserializeOwned>(
         CodedError::new(
             CODE_STORE_CORRUPT,
             format!("Corrupt relational KV payload for `{key}`: {e}"),
-            "Inspect embedded SQLite database state.",
+            "Inspect relational database state.",
         )
     })?;
     Ok(Some(parsed))
 }
 
 fn put_kv_json<T: Serialize>(
-    store: &SqliteRelationalStore,
+    store: &ServerRelational,
     ctx: &SingleCtx,
     key: &str,
     value: &T,

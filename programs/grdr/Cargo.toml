@@ -13,12 +13,19 @@ renders = "person"
 [dependencies]
 clap = { workspace = true }
 grdr-agents = { workspace = true }
+grdr-blob = { workspace = true }
+grdr-bus-log = { workspace = true }
+grdr-bus-nats = { workspace = true }
 grdr-core = { workspace = true }
 grdr-llm-proto = { workspace = true }
 grdr-model = { workspace = true }
+grdr-ports = { workspace = true }
+grdr-rel-postgres = { workspace = true }
+grdr-rel-sqlite = { workspace = true }
 grdr-sandbox-engine = { workspace = true }
 jiff = { workspace = true }
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "charset"] }
+rusqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
