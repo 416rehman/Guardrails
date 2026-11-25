@@ -1,4 +1,5 @@
-import { CONNECT_PATHS, connectGet, connectPost } from "./connect";
+import { CONNECT_PATHS, connectConfirmedPost, connectGet, connectPost } from "./connect";
+import { surfaceApi } from "./client-surfaces";
 import {
   normAgent,
   normApproval,
@@ -29,6 +30,11 @@ import {
   normTrustedKey,
   normUser,
   normUserDetail,
+  optStr,
+  rec,
+  recArr,
+  str,
+  type RawRecord,
 } from "./normalize";
 import type {
   ActionClass,
@@ -76,8 +82,7 @@ import type {
   MdmRenderResponse,
 } from "./types-connect";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Raw = Record<string, any>;
+type Raw = RawRecord;
 
 function pageReqBody(query?: PageQuery): Record<string, unknown> {
   return {
@@ -109,28 +114,33 @@ export const api = {
 
   getPrivacyConfig: async (): Promise<OrgPrivacyConfig> => {
     const res = await connectGet<Raw>(CONNECT_PATHS.getPrivacyConfig);
-    return normPrivacyConfig(res.config ?? res);
+    return normPrivacyConfig(rec(res.config ?? res));
   },
 
   updatePrivacyConfig: async (body: {
     identity_mode?: IdentityMode;
     user_risk_scoring?: boolean;
-    actor?: string;
+    step_up?: boolean;
+    step_up_token?: string;
   }): Promise<OrgPrivacyConfig> => {
-    const res = await connectPost<Raw>(CONNECT_PATHS.updatePrivacyConfig, {
-      identityMode: body.identity_mode,
-      userRiskScoring: body.user_risk_scoring,
-      actor: body.actor,
-    });
-    return normPrivacyConfig(res.config ?? res);
+    const res = await connectConfirmedPost<Raw>(
+      CONNECT_PATHS.updatePrivacyConfig,
+      {
+        identityMode: body.identity_mode,
+        userRiskScoring: body.user_risk_scoring,
+      },
+      body.step_up ? "step-up" : "confirmed",
+      body.step_up_token,
+    );
+    return normPrivacyConfig(rec(res.config ?? res));
   },
 
   listUsersPage: async (query?: PageQuery): Promise<PagedResult<UserProfile>> => {
     const res = await connectPost<Raw>(CONNECT_PATHS.listUsers, pageReqBody(query));
     return {
-      items: (res.users ?? []).map(normUser),
+      items: recArr(res.users).map(normUser),
       page_info: normPageInfo(res.pageInfo ?? res.page_info),
-      etag: res.revision?.etag,
+      etag: optStr(rec(res.revision).etag) ?? undefined,
     };
   },
 
@@ -143,9 +153,9 @@ export const api = {
   listDevicesPage: async (query?: PageQuery): Promise<PagedResult<Device>> => {
     const res = await connectPost<Raw>(CONNECT_PATHS.listDevices, pageReqBody(query));
     return {
-      items: (res.devices ?? []).map(normDevice),
+      items: recArr(res.devices).map(normDevice),
       page_info: normPageInfo(res.pageInfo ?? res.page_info),
-      etag: res.revision?.etag,
+      etag: optStr(rec(res.revision).etag) ?? undefined,
     };
   },
 
@@ -155,13 +165,13 @@ export const api = {
   listAgentsPage: async (query?: PageQuery): Promise<PagedResult<AgentInventoryItem>> => {
     const res = await connectPost<Raw>(CONNECT_PATHS.listAgents, pageReqBody(query));
     return {
-      items: (res.items ?? []).map((it: Raw) => ({
-        device_id: it.deviceId ?? it.device_id ?? "",
-        device_name: it.deviceName ?? it.device_name ?? "",
-        agent: normAgent(it.agent ?? {}),
+      items: recArr(res.items).map((it) => ({
+        device_id: str(it.deviceId ?? it.device_id),
+        device_name: str(it.deviceName ?? it.device_name),
+        agent: normAgent(rec(it.agent)),
       })),
       page_info: normPageInfo(res.pageInfo ?? res.page_info),
-      etag: res.revision?.etag,
+      etag: optStr(rec(res.revision).etag) ?? undefined,
     };
   },
 
@@ -171,13 +181,13 @@ export const api = {
   listMcpServersPage: async (query?: PageQuery): Promise<PagedResult<McpInventoryItem>> => {
     const res = await connectPost<Raw>(CONNECT_PATHS.listMcpServers, pageReqBody(query));
     return {
-      items: (res.items ?? []).map((it: Raw) => ({
-        device_id: it.deviceId ?? it.device_id ?? "",
-        device_name: it.deviceName ?? it.device_name ?? "",
-        server: normMcpServer(it.server ?? {}),
+      items: recArr(res.items).map((it) => ({
+        device_id: str(it.deviceId ?? it.device_id),
+        device_name: str(it.deviceName ?? it.device_name),
+        server: normMcpServer(rec(it.server)),
       })),
       page_info: normPageInfo(res.pageInfo ?? res.page_info),
-      etag: res.revision?.etag,
+      etag: optStr(rec(res.revision).etag) ?? undefined,
     };
   },
 
@@ -187,9 +197,9 @@ export const api = {
   listArtifactsPage: async (query?: PageQuery): Promise<PagedResult<ArtifactEntry>> => {
     const res = await connectPost<Raw>(CONNECT_PATHS.listArtifacts, pageReqBody(query));
     return {
-      items: (res.artifacts ?? []).map(normArtifact),
+      items: recArr(res.artifacts).map(normArtifact),
       page_info: normPageInfo(res.pageInfo ?? res.page_info),
-      etag: res.revision?.etag,
+      etag: optStr(rec(res.revision).etag) ?? undefined,
     };
   },
 
@@ -199,9 +209,9 @@ export const api = {
   listSessionsPage: async (query?: PageQuery): Promise<PagedResult<SessionSummary>> => {
     const res = await connectPost<Raw>(CONNECT_PATHS.listSessions, pageReqBody(query));
     return {
-      items: (res.sessions ?? []).map(normSession),
+      items: recArr(res.sessions).map(normSession),
       page_info: normPageInfo(res.pageInfo ?? res.page_info),
-      etag: res.revision?.etag,
+      etag: optStr(rec(res.revision).etag) ?? undefined,
     };
   },
 
@@ -213,7 +223,7 @@ export const api = {
 
   getPacks: async (): Promise<PolicyPack[]> => {
     const res = await connectGet<Raw>(CONNECT_PATHS.listPacks);
-    return (res.packs ?? []).map(normPack);
+    return recArr(res.packs).map(normPack);
   },
 
   createRule: async (body: {
@@ -228,7 +238,7 @@ export const api = {
     };
     reason_template: string;
   }): Promise<PolicyRule> => {
-    const res = await connectPost<Raw>(CONNECT_PATHS.createRule, {
+    const res = await connectConfirmedPost<Raw>(CONNECT_PATHS.createRule, {
       title: body.title,
       description: body.description,
       mode: body.mode,
@@ -240,7 +250,7 @@ export const api = {
       },
       reasonTemplate: body.reason_template,
     });
-    return normRule(res.rule ?? res);
+    return normRule(rec(res.rule ?? res));
   },
 
   updateRule: async (
@@ -258,7 +268,7 @@ export const api = {
       reason_template?: string;
     },
   ): Promise<PolicyRule> => {
-    const res = await connectPost<Raw>(CONNECT_PATHS.updateRule, {
+    const res = await connectConfirmedPost<Raw>(CONNECT_PATHS.updateRule, {
       id,
       title: body.title,
       description: body.description,
@@ -273,20 +283,20 @@ export const api = {
         : undefined,
       reasonTemplate: body.reason_template,
     });
-    return normRule(res.rule ?? res);
+    return normRule(rec(res.rule ?? res));
   },
 
   deleteRule: async (id: string): Promise<void> => {
-    await connectPost<Raw>(CONNECT_PATHS.deleteRule, { id });
+    await connectConfirmedPost<Raw>(CONNECT_PATHS.deleteRule, { id });
   },
 
   updateRuleMode: async (id: string, mode: Mode, replayConfirmed = false): Promise<PolicyRule> => {
-    const res = await connectPost<Raw>(CONNECT_PATHS.updateRuleMode, {
+    const res = await connectConfirmedPost<Raw>(CONNECT_PATHS.updateRuleMode, {
       id,
       mode,
       replayConfirmed,
     });
-    return normRule(res.rule ?? res);
+    return normRule(rec(res.rule ?? res));
   },
 
   replayRule: async (id: string, candidateMode: Mode): Promise<ReplaySummary> => {
@@ -294,15 +304,15 @@ export const api = {
       id,
       candidateMode,
     });
-    return normReplay(res.summary ?? res);
+    return normReplay(rec(res.summary ?? res));
   },
 
   listApprovalsPage: async (query?: PageQuery): Promise<PagedResult<ApprovalRequest>> => {
     const res = await connectPost<Raw>(CONNECT_PATHS.listApprovals, pageReqBody(query));
     return {
-      items: (res.approvals ?? []).map(normApproval),
+      items: recArr(res.approvals).map(normApproval),
       page_info: normPageInfo(res.pageInfo ?? res.page_info),
-      etag: res.revision?.etag,
+      etag: optStr(rec(res.revision).etag) ?? undefined,
     };
   },
 
@@ -315,21 +325,21 @@ export const api = {
     scope: GrantScope,
     note: string,
   ): Promise<ApprovalRequest> => {
-    const res = await connectPost<Raw>(CONNECT_PATHS.decideApproval, {
+    const res = await connectConfirmedPost<Raw>(CONNECT_PATHS.decideApproval, {
       id,
       approve,
       scope,
       note,
     });
-    return normApproval(res.approval ?? res);
+    return normApproval(rec(res.approval ?? res));
   },
 
   listFindingsPage: async (query?: PageQuery): Promise<PagedResult<Finding>> => {
     const res = await connectPost<Raw>(CONNECT_PATHS.listFindings, pageReqBody(query));
     return {
-      items: (res.findings ?? []).map(normFinding),
+      items: recArr(res.findings).map(normFinding),
       page_info: normPageInfo(res.pageInfo ?? res.page_info),
-      etag: res.revision?.etag,
+      etag: optStr(rec(res.revision).etag) ?? undefined,
     };
   },
 
@@ -339,9 +349,9 @@ export const api = {
   listIncidentsPage: async (query?: PageQuery): Promise<PagedResult<Incident>> => {
     const res = await connectPost<Raw>(CONNECT_PATHS.listIncidents, pageReqBody(query));
     return {
-      items: (res.incidents ?? []).map(normIncident),
+      items: recArr(res.incidents).map(normIncident),
       page_info: normPageInfo(res.pageInfo ?? res.page_info),
-      etag: res.revision?.etag,
+      etag: optStr(rec(res.revision).etag) ?? undefined,
     };
   },
 
@@ -349,13 +359,13 @@ export const api = {
     (await api.listIncidentsPage({ page_size: 200 })).items,
 
   updateFinding: async (id: string, lifecycle: FindingLifecycle): Promise<Finding> => {
-    const res = await connectPost<Raw>(CONNECT_PATHS.updateFinding, { id, lifecycle });
-    return normFinding(res.finding ?? res);
+    const res = await connectConfirmedPost<Raw>(CONNECT_PATHS.updateFinding, { id, lifecycle });
+    return normFinding(rec(res.finding ?? res));
   },
 
   getKillSwitch: async (): Promise<KillSwitchState> => {
     const res = await connectGet<Raw>(CONNECT_PATHS.getKillSwitch);
-    return normKillSwitch(res.killSwitch ?? res.kill_switch ?? res);
+    return normKillSwitch(rec(res.killSwitch ?? res.kill_switch ?? res));
   },
 
   setKillSwitch: async (body: {
@@ -365,22 +375,26 @@ export const api = {
     reason: string;
     duration_minutes?: number;
   }): Promise<KillSwitchState> => {
-    const res = await connectPost<Raw>(CONNECT_PATHS.setKillSwitch, {
-      action: body.action,
-      scope: body.scope,
-      targetId: body.target_id,
-      reason: body.reason,
-      durationMinutes: body.duration_minutes,
-    });
-    return normKillSwitch(res.killSwitch ?? res.kill_switch ?? res);
+    const res = await connectConfirmedPost<Raw>(
+      CONNECT_PATHS.setKillSwitch,
+      {
+        action: body.action,
+        scope: body.scope,
+        targetId: body.target_id,
+        reason: body.reason,
+        durationMinutes: body.duration_minutes,
+      },
+      "confirmed",
+    );
+    return normKillSwitch(rec(res.killSwitch ?? res.kill_switch ?? res));
   },
 
   listAuditEventsPage: async (query?: PageQuery): Promise<PagedResult<AuditEntry>> => {
     const res = await connectPost<Raw>(CONNECT_PATHS.listAuditEvents, pageReqBody(query));
     return {
-      items: (res.entries ?? []).map(normAudit),
+      items: recArr(res.entries).map(normAudit),
       page_info: normPageInfo(res.pageInfo ?? res.page_info),
-      etag: res.revision?.etag,
+      etag: optStr(rec(res.revision).etag) ?? undefined,
     };
   },
 
@@ -389,7 +403,7 @@ export const api = {
 
   getKeys: async (): Promise<TrustedKeyInfo[]> => {
     const res = await connectGet<Raw>(CONNECT_PATHS.listKeys);
-    return (res.keys ?? []).map(normTrustedKey);
+    return recArr(res.keys).map(normTrustedKey);
   },
 
   decideAction: async (body: {
@@ -410,24 +424,24 @@ export const api = {
       target: body.target,
       summary: body.summary,
     });
-    return normReceipt(res.receipt ?? res);
+    return normReceipt(rec(res.receipt ?? res));
   },
 
   exportOcsf: async (): Promise<void> => {
     const res = await connectGet<Raw>(CONNECT_PATHS.exportOcsf);
     triggerDownload(
-      res.filename ?? "guardrails-ocsf-1.9.json",
-      res.contentType ?? "application/json",
-      res.payload ?? "[]",
+      str(res.filename, "guardrails-ocsf-1.9.json"),
+      str(res.contentType, "application/json"),
+      str(res.payload, "[]"),
     );
   },
 
   exportAuditJsonl: async (): Promise<void> => {
     const res = await connectGet<Raw>(CONNECT_PATHS.exportAuditJsonl);
     triggerDownload(
-      res.filename ?? "guardrails-audit.jsonl",
-      res.contentType ?? "application/x-ndjson",
-      res.payload ?? "",
+      str(res.filename, "guardrails-audit.jsonl"),
+      str(res.contentType, "application/x-ndjson"),
+      str(res.payload),
     );
   },
 
@@ -442,7 +456,7 @@ export const api = {
     ttl_days: number;
   }): Promise<CreateDeploymentKeyResponse> =>
     normCreateDeploymentKey(
-      await connectPost<Raw>(CONNECT_PATHS.createDeploymentKey, {
+      await connectConfirmedPost<Raw>(CONNECT_PATHS.createDeploymentKey, {
         label: body.label,
         wave: body.wave,
         installProfile: body.install_profile,
@@ -452,8 +466,8 @@ export const api = {
     ),
 
   revokeDeploymentKey: async (id: string): Promise<DeploymentKey> => {
-    const res = await connectPost<Raw>(CONNECT_PATHS.revokeDeploymentKey, { id });
-    return normDeploymentKey(res.key ?? res);
+    const res = await connectConfirmedPost<Raw>(CONNECT_PATHS.revokeDeploymentKey, { id });
+    return normDeploymentKey(rec(res.key ?? res));
   },
 
   renderMdmConfig: async (body: {
@@ -473,12 +487,12 @@ export const api = {
 
   checkIntegrationReadiness: async (id: string): Promise<IntegrationEntry> => {
     const res = await connectPost<Raw>(CONNECT_PATHS.checkIntegrationReadiness, { id });
-    return normIntegration(res.integration ?? res);
+    return normIntegration(rec(res.integration ?? res));
   },
 
   getBrowserPolicies: async (): Promise<BrowserAppPolicy[]> => {
     const res = await connectGet<Raw>(CONNECT_PATHS.listBrowserPolicies);
-    return (res.policies ?? []).map(normBrowserPolicy);
+    return recArr(res.policies).map(normBrowserPolicy);
   },
 
   updateBrowserPolicy: async (
@@ -490,14 +504,14 @@ export const api = {
       managed_extension_only?: boolean;
     },
   ): Promise<BrowserAppPolicy> => {
-    const res = await connectPost<Raw>(CONNECT_PATHS.updateBrowserPolicy, {
+    const res = await connectConfirmedPost<Raw>(CONNECT_PATHS.updateBrowserPolicy, {
       id,
       mode: body.mode,
       blockFileUploads: body.block_file_uploads,
       blockSecretPaste: body.block_secret_paste,
       managedExtensionOnly: body.managed_extension_only,
     });
-    return normBrowserPolicy(res.policy ?? res);
+    return normBrowserPolicy(rec(res.policy ?? res));
   },
 
   evaluateBrowserAction: async (body: {
@@ -516,4 +530,5 @@ export const api = {
         hasSecretMatch: body.has_secret_match,
       }),
     ),
+  ...surfaceApi,
 };

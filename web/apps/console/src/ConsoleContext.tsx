@@ -25,6 +25,7 @@ export interface ConsoleWorkspaceContextValue {
   onCreateRuleFromAttempt: (attempt: ActionAttempt) => void;
   onOpenEntity: (target: EntityTarget) => void;
   onOpenSessionTurn: (sessionId: string, turnIndex: number) => void;
+  onExplainReceipt: (reference: string) => void;
   onNavigateRoute: (route: ConsoleRouteId, childId?: string) => void;
   onUpdateSearch: (patch: Partial<ConsoleSearchParams>) => void;
   onDecideApproval: (

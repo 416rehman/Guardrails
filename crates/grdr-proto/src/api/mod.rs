@@ -3,9 +3,12 @@
 
 pub mod activity;
 pub mod inventory;
+pub mod operator;
 pub mod overview;
 pub mod policy;
 pub mod response;
+pub mod surfaces;
+pub mod surfaces_comply;
 pub mod tenancy;
 pub mod verdict;
 
@@ -103,7 +106,10 @@ mod tests {
     #[test]
     fn method_descriptors_enforce_scope_audit_rate_and_mcp_policy_boundary() {
         assert!(!ALL_METHODS.is_empty());
-        for method in ALL_METHODS {
+        for method in ALL_METHODS
+            .iter()
+            .chain(crate::common::SURFACES_AND_OPERATOR_METHODS.iter())
+        {
             assert!(!method.scope.is_empty());
             assert!(method.path.starts_with('/'));
             assert_ne!(method.rate_class, RateClass::Unspecified);

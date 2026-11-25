@@ -65,6 +65,8 @@ async fn rpc_post_json<Req: Serialize, Resp: DeserializeOwned>(
         .clone()
         .oneshot(
             Request::post(path)
+                .header(header::AUTHORIZATION, "Bearer test-console-token")
+                .header("x-grdr-confirm", "confirmed")
                 .header(header::CONTENT_TYPE, "application/json")
                 .header("connect-protocol-version", "1")
                 .body(Body::from(serde_json::to_vec(req).unwrap()))
@@ -94,6 +96,8 @@ async fn rpc_post_raw<Req: Serialize>(
         .clone()
         .oneshot(
             Request::post(path)
+                .header(header::AUTHORIZATION, "Bearer test-console-token")
+                .header("x-grdr-confirm", "confirmed")
                 .header(header::CONTENT_TYPE, "application/json")
                 .header("connect-protocol-version", "1")
                 .body(Body::from(serde_json::to_vec(req).unwrap()))
@@ -138,6 +142,7 @@ async fn connect_unary_json_proto_get_etag_and_error_envelope() {
         .clone()
         .oneshot(
             Request::get("/grdr.api.overview.v1alpha1.OverviewService/GetOverview?encoding=json")
+                .header(header::AUTHORIZATION, "Bearer test-console-token")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -161,6 +166,7 @@ async fn connect_unary_json_proto_get_etag_and_error_envelope() {
         .clone()
         .oneshot(
             Request::get("/grdr.api.overview.v1alpha1.OverviewService/GetOverview?encoding=json")
+                .header(header::AUTHORIZATION, "Bearer test-console-token")
                 .header(header::IF_NONE_MATCH, &etag)
                 .body(Body::empty())
                 .unwrap(),
@@ -180,6 +186,7 @@ async fn connect_unary_json_proto_get_etag_and_error_envelope() {
         .clone()
         .oneshot(
             Request::post("/grdr.api.inventory.v1alpha1.InventoryService/ListDevices")
+                .header(header::AUTHORIZATION, "Bearer test-console-token")
                 .header(header::CONTENT_TYPE, "application/proto")
                 .header("connect-protocol-version", "1")
                 .body(Body::from(list_req.encode_to_vec()))
@@ -459,9 +466,9 @@ async fn connect_auth_rules_exports_keys_and_privacy_modes() {
         None,
         ServerSecurityConfig {
             api_token: Some("op-secret".into()),
+            operator_token: Some("dedicated-op-secret".into()),
             enroll_token: Some("enroll-secret".into()),
-            cors_origins: Vec::new(),
-            max_body_bytes: 1024 * 1024,
+            ..Default::default()
         },
     );
 

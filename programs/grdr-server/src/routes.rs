@@ -10,22 +10,45 @@ use axum::routing::{get, post};
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::auth::{
-    self, ServerSecurityConfig, require_device_or_operator_auth, require_operator_auth,
+    self, AuthLayerState, ServerSecurityConfig, require_console_auth,
+    require_dedicated_operator_auth, require_device_or_console_auth,
 };
 use crate::rpc;
 use crate::store::AppState;
 
 #[cfg(test)]
 pub fn build_router(state: AppState, web_dir: Option<PathBuf>) -> Router {
-    build_router_with_security(state, web_dir, ServerSecurityConfig::default())
+    build_console_router_with_security(
+        state,
+        web_dir,
+        ServerSecurityConfig {
+            api_token: Some("test-console-token".into()),
+            operator_token: Some("test-operator-token".into()),
+            enroll_token: Some("test-enroll-token".into()),
+            ..Default::default()
+        },
+    )
 }
 
+#[cfg(test)]
 pub fn build_router_with_security(
     state: AppState,
     web_dir: Option<PathBuf>,
     security: ServerSecurityConfig,
 ) -> Router {
+    build_console_router_with_security(state, web_dir, security)
+}
+
+pub fn build_console_router_with_security(
+    state: AppState,
+    web_dir: Option<PathBuf>,
+    security: ServerSecurityConfig,
+) -> Router {
     let cors = auth::build_cors_layer(&security);
+    let auth_state = AuthLayerState {
+        security: security.clone(),
+        app: state.clone(),
+    };
 
     let public_routes = Router::new().route(
         "/grdr.api.overview.v1alpha1.OverviewService/GetHealth",
@@ -42,11 +65,11 @@ pub fn build_router_with_security(
             post(rpc::verdict::ingest_batch),
         )
         .layer(middleware::from_fn_with_state(
-            security.clone(),
-            require_device_or_operator_auth,
+            auth_state.clone(),
+            require_device_or_console_auth,
         ));
 
-    let operator_routes = Router::new()
+    let console_routes = Router::new()
         .route(
             "/grdr.api.overview.v1alpha1.OverviewService/GetOverview",
             get(rpc::overview::get_overview).post(rpc::overview::get_overview),
@@ -62,6 +85,10 @@ pub fn build_router_with_security(
         .route(
             "/grdr.api.overview.v1alpha1.OverviewService/ExportAuditJsonl",
             get(rpc::overview::export_audit_jsonl).post(rpc::overview::export_audit_jsonl),
+        )
+        .route(
+            "/grdr.api.overview.v1alpha1.OverviewService/IssueLiveTicket",
+            post(rpc::overview::issue_live_ticket),
         )
         .route(
             "/grdr.api.overview.v1alpha1.OverviewService/LiveEvents",
@@ -219,25 +246,169 @@ pub fn build_router_with_security(
             "/grdr.api.response.v1alpha1.ResponseService/ListAuditEvents",
             get(rpc::response::list_audit_events).post(rpc::response::list_audit_events),
         )
+        .route(
+            "/grdr.api.surfaces.v1alpha1.SurfaceService/ExplainReceipt",
+            get(rpc::surfaces::explain_receipt).post(rpc::surfaces::explain_receipt),
+        )
+        .route(
+            "/grdr.api.surfaces.v1alpha1.SurfaceService/ListReviewQueue",
+            get(rpc::surfaces::list_review_queue).post(rpc::surfaces::list_review_queue),
+        )
+        .route(
+            "/grdr.api.surfaces.v1alpha1.SurfaceService/DecideReviewCluster",
+            post(rpc::surfaces::decide_review_cluster),
+        )
+        .route(
+            "/grdr.api.surfaces.v1alpha1.SurfaceService/GetComplianceWorkspace",
+            get(rpc::surfaces::get_compliance_workspace)
+                .post(rpc::surfaces::get_compliance_workspace),
+        )
+        .route(
+            "/grdr.api.surfaces.v1alpha1.SurfaceService/UpdateCompliancePolicy",
+            post(rpc::surfaces::update_compliance_policy),
+        )
+        .route(
+            "/grdr.api.surfaces.v1alpha1.SurfaceService/CreateLegalHold",
+            post(rpc::surfaces::create_legal_hold),
+        )
+        .route(
+            "/grdr.api.surfaces.v1alpha1.SurfaceService/ApproveLegalHold",
+            post(rpc::surfaces::approve_legal_hold),
+        )
+        .route(
+            "/grdr.api.surfaces.v1alpha1.SurfaceService/ExportComplianceArtifact",
+            post(rpc::surfaces::export_compliance_artifact),
+        )
+        .route(
+            "/grdr.api.surfaces.v1alpha1.SurfaceService/PushGrcEvidence",
+            post(rpc::surfaces::push_grc_evidence),
+        )
+        .route(
+            "/grdr.api.surfaces.v1alpha1.SurfaceService/RequestReidentification",
+            post(rpc::surfaces::request_reidentification),
+        )
+        .route(
+            "/grdr.api.surfaces.v1alpha1.SurfaceService/ApproveReidentification",
+            post(rpc::surfaces::approve_reidentification),
+        )
+        .route(
+            "/grdr.api.surfaces.v1alpha1.SurfaceService/CompleteFirstRun",
+            post(rpc::surfaces::complete_first_run),
+        )
+        .route(
+            "/grdr.api.surfaces.v1alpha1.SurfaceService/GetProviderWorkspace",
+            get(rpc::surfaces::get_provider_workspace).post(rpc::surfaces::get_provider_workspace),
+        )
+        .route(
+            "/grdr.api.surfaces.v1alpha1.SurfaceService/SwitchProviderOrg",
+            post(rpc::surfaces::switch_provider_org),
+        )
+        .route(
+            "/grdr.api.surfaces.v1alpha1.SurfaceService/AdvanceProviderRing",
+            post(rpc::surfaces::advance_provider_ring),
+        )
         .layer(middleware::from_fn_with_state(
-            security.clone(),
-            require_operator_auth,
+            auth_state,
+            require_console_auth,
         ));
 
     let api = Router::new()
         .merge(public_routes)
         .merge(device_routes)
+        .merge(console_routes)
+        .with_state(state)
+        .layer(DefaultBodyLimit::max(security.max_body_bytes))
+        .layer(cors);
+
+    attach_static_dir(api, web_dir)
+}
+
+pub fn build_operator_router_with_security(
+    state: AppState,
+    operator_web_dir: Option<PathBuf>,
+    security: ServerSecurityConfig,
+) -> Router {
+    let cors = auth::build_operator_cors_layer(&security);
+    let auth_state = AuthLayerState {
+        security: security.clone(),
+        app: state.clone(),
+    };
+
+    let public_routes = Router::new().route(
+        "/grdr.api.overview.v1alpha1.OverviewService/GetHealth",
+        get(rpc::overview::get_health).post(rpc::overview::get_health),
+    );
+
+    let operator_routes = Router::new()
+        .route(
+            "/grdr.api.overview.v1alpha1.OverviewService/GetOverview",
+            get(rpc::overview::get_overview).post(rpc::overview::get_overview),
+        )
+        .route(
+            "/grdr.api.overview.v1alpha1.OverviewService/ListKeys",
+            get(rpc::overview::list_keys).post(rpc::overview::list_keys),
+        )
+        .route(
+            "/grdr.api.overview.v1alpha1.OverviewService/ExportOcsf",
+            get(rpc::overview::export_ocsf).post(rpc::overview::export_ocsf),
+        )
+        .route(
+            "/grdr.api.overview.v1alpha1.OverviewService/ExportAuditJsonl",
+            get(rpc::overview::export_audit_jsonl).post(rpc::overview::export_audit_jsonl),
+        )
+        .route(
+            "/grdr.api.response.v1alpha1.ResponseService/ListAuditEvents",
+            get(rpc::response::list_audit_events).post(rpc::response::list_audit_events),
+        )
+        .route(
+            "/grdr.api.operator.v1alpha1.OperatorService/GetOperatorState",
+            get(rpc::operator::get_operator_state).post(rpc::operator::get_operator_state),
+        )
+        .route(
+            "/grdr.api.operator.v1alpha1.OperatorService/StageConfigRevision",
+            post(rpc::operator::stage_config_revision),
+        )
+        .route(
+            "/grdr.api.operator.v1alpha1.OperatorService/ApplyConfigRevision",
+            post(rpc::operator::apply_config_revision),
+        )
+        .route(
+            "/grdr.api.operator.v1alpha1.OperatorService/RollbackConfigRevision",
+            post(rpc::operator::rollback_config_revision),
+        )
+        .route(
+            "/grdr.api.operator.v1alpha1.OperatorService/RunUpgradePreflight",
+            post(rpc::operator::run_upgrade_preflight),
+        )
+        .route(
+            "/grdr.api.operator.v1alpha1.OperatorService/ResetTargetBreaker",
+            post(rpc::operator::reset_target_breaker),
+        )
+        .route(
+            "/grdr.api.operator.v1alpha1.OperatorService/RunBackupDrill",
+            post(rpc::operator::run_backup_drill),
+        )
+        .layer(middleware::from_fn_with_state(
+            auth_state,
+            require_dedicated_operator_auth,
+        ));
+
+    let api = Router::new()
+        .merge(public_routes)
         .merge(operator_routes)
         .with_state(state)
         .layer(DefaultBodyLimit::max(security.max_body_bytes))
         .layer(cors);
 
+    attach_static_dir(api, operator_web_dir)
+}
+
+fn attach_static_dir(router: Router, web_dir: Option<PathBuf>) -> Router {
     if let Some(dir) = web_dir
         && dir.join("index.html").is_file()
     {
         let serve = ServeDir::new(&dir).fallback(ServeFile::new(dir.join("index.html")));
-        return api.fallback_service(serve);
+        return router.fallback_service(serve);
     }
-
-    api
+    router
 }

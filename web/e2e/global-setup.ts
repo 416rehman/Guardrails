@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -95,12 +96,17 @@ async function rpcJson(
   baseUrl: string,
   methodPath: string,
   body: Record<string, unknown>,
+  token: string,
 ): Promise<Record<string, unknown>> {
+  const stepUp = process.env.GRDR_E2E_STEP_UP_TOKEN?.trim();
   const resp = await fetch(`${baseUrl}${methodPath}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Connect-Protocol-Version": "1",
+      Authorization: `Bearer ${token}`,
+      "X-Grdr-Confirm": "confirmed",
+      ...(stepUp ? { "X-Grdr-Step-Up": stepUp } : {}),
     },
     body: JSON.stringify(body),
   });
@@ -114,8 +120,8 @@ async function rpcJson(
   return Object.fromEntries(Object.entries(parsed));
 }
 
-async function ensureMinimumSeedData(baseUrl: string): Promise<void> {
-  const listRes = await rpcJson(baseUrl, LIST_DEVICES_PATH, { pageSize: 10 });
+async function ensureMinimumSeedData(baseUrl: string, token: string): Promise<void> {
+  const listRes = await rpcJson(baseUrl, LIST_DEVICES_PATH, { pageSize: 10 }, token);
   const existingDevices = Array.isArray(listRes.devices) ? listRes.devices : [];
   if (existingDevices.length >= 3) {
     return;
@@ -288,24 +294,34 @@ async function ensureMinimumSeedData(baseUrl: string): Promise<void> {
   ];
 
   for (const dev of seedDevices) {
-    await rpcJson(baseUrl, DEVICE_CHECKIN_PATH, dev);
+    await rpcJson(baseUrl, DEVICE_CHECKIN_PATH, dev, token);
   }
 
-  const approvalsRes = await rpcJson(baseUrl, LIST_APPROVALS_PATH, {
-    pageSize: 10,
-    filter: 'status = "pending"',
-  });
+  const approvalsRes = await rpcJson(
+    baseUrl,
+    LIST_APPROVALS_PATH,
+    {
+      pageSize: 10,
+      filter: 'status = "pending"',
+    },
+    token,
+  );
   const pending = Array.isArray(approvalsRes.approvals) ? approvalsRes.approvals : [];
   if (pending.length === 0) {
-    await rpcJson(baseUrl, EVALUATE_PATH, {
-      sessionId: "sess-qa-seed-ask",
-      deviceId: "dev-qa-01",
-      deviceName: "dev-macbook-pro",
-      agentName: "Claude Code",
-      actionClass: "ACTION_CLASS_FILE_READ",
-      target: "~/.ssh/id_rsa",
-      summary: "Seed pending approval for QA",
-    });
+    await rpcJson(
+      baseUrl,
+      EVALUATE_PATH,
+      {
+        sessionId: "sess-qa-seed-ask",
+        deviceId: "dev-qa-01",
+        deviceName: "dev-macbook-pro",
+        agentName: "Claude Code",
+        actionClass: "ACTION_CLASS_FILE_READ",
+        target: "~/.ssh/id_rsa",
+        summary: "Seed pending approval for QA",
+      },
+      token,
+    );
   }
 }
 
@@ -342,52 +358,63 @@ async function stopServerAndCleanup(
   rmSync(dataDir, { recursive: true, force: true });
 }
 
-export default async function globalSetup(): Promise<() => Promise<void>> {
-  const externalUrl = process.env.GRDR_E2E_BASE_URL?.trim();
-  if (externalUrl) {
-    await waitForServerReady(externalUrl, null, []);
-    await ensureMinimumSeedData(externalUrl);
-    return async () => {};
-  }
-
-  const webRoot = resolve(__dirname, "..");
-  const repoRoot = resolve(webRoot, "..");
-  const webDistDir = join(webRoot, "dist");
-  if (!existsSync(join(webDistDir, "index.html"))) {
-    throw new Error(
-      `Static Web Console bundle not found at ${webDistDir}. Run "pnpm --dir web run build" first.`,
-    );
-  }
-
-  const serverBin = resolveServerBinary(repoRoot);
-  const port = await reserveEphemeralPort();
-  const bindAddr = `127.0.0.1:${port}`;
+async function startEphemeralServer(
+  serverBin: string,
+  repoRoot: string,
+  webDistDir: string,
+  operatorWebDistDir: string | null,
+): Promise<{
+  baseUrl: string;
+  operatorBaseUrl: string;
+  consoleToken: string;
+  operatorToken: string;
+  stepUpToken: string;
+  child: ChildProcess;
+  dataDir: string;
+}> {
+  const consolePort = await reserveEphemeralPort();
+  const operatorPort = await reserveEphemeralPort();
+  const bindAddr = `127.0.0.1:${consolePort}`;
+  const operatorBindAddr = `127.0.0.1:${operatorPort}`;
   const baseUrl = `http://${bindAddr}`;
+  const operatorBaseUrl = `http://${operatorBindAddr}`;
+  const consoleToken = `e2e-console-${randomBytes(16).toString("hex")}`;
+  const operatorToken = `e2e-operator-${randomBytes(16).toString("hex")}`;
+  const stepUpToken = `e2e-stepup-${randomBytes(16).toString("hex")}`;
   const dataDir = mkdtempSync(join(tmpdir(), "grdr-e2e-"));
   const stderrTail: string[] = [];
 
-  const child = spawn(
-    serverBin,
-    [
-      "--bind",
-      bindAddr,
-      "--profile",
-      "embedded",
-      "--data-dir",
-      dataDir,
-      "--web-dir",
-      webDistDir,
-      "--demo-seed",
-    ],
-    {
-      cwd: repoRoot,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        RUST_LOG: process.env.RUST_LOG ?? "grdr_server=warn,tower_http=warn",
-      },
+  const cliArgs = [
+    "--bind",
+    bindAddr,
+    "--operator-bind",
+    operatorBindAddr,
+    "--profile",
+    "embedded",
+    "--data-dir",
+    dataDir,
+    "--web-dir",
+    webDistDir,
+    "--api-token",
+    consoleToken,
+    "--operator-token",
+    operatorToken,
+    "--step-up-token",
+    stepUpToken,
+    "--demo-seed",
+  ];
+  if (operatorWebDistDir) {
+    cliArgs.push("--operator-web-dir", operatorWebDistDir);
+  }
+
+  const child = spawn(serverBin, cliArgs, {
+    cwd: repoRoot,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      RUST_LOG: process.env.RUST_LOG ?? "grdr_server=warn,tower_http=warn",
     },
-  );
+  });
 
   const pushLog = (chunk: Buffer) => {
     stderrTail.push(chunk.toString("utf8"));
@@ -400,15 +427,54 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
 
   try {
     await waitForServerReady(baseUrl, child, stderrTail);
-    await ensureMinimumSeedData(baseUrl);
+    if (operatorWebDistDir) {
+      await waitForServerReady(operatorBaseUrl, child, stderrTail);
+    }
+    await ensureMinimumSeedData(baseUrl, consoleToken);
   } catch (err) {
     await stopServerAndCleanup(child, dataDir);
     throw err;
   }
 
-  process.env.GRDR_E2E_BASE_URL = baseUrl;
+  return { baseUrl, operatorBaseUrl, consoleToken, operatorToken, stepUpToken, child, dataDir };
+}
+
+export default async function globalSetup(): Promise<() => Promise<void>> {
+  const externalUrl = process.env.GRDR_E2E_BASE_URL?.trim();
+  const externalToken = process.env.GRDR_E2E_CONSOLE_TOKEN?.trim() ?? "";
+  if (externalUrl) {
+    await waitForServerReady(externalUrl, null, []);
+    await ensureMinimumSeedData(externalUrl, externalToken);
+    return async () => {};
+  }
+
+  const webRoot = resolve(__dirname, "..");
+  const repoRoot = resolve(webRoot, "..");
+  const webDistDir = join(webRoot, "dist");
+  if (!existsSync(join(webDistDir, "index.html"))) {
+    throw new Error(
+      `Static Web Console bundle not found at ${webDistDir}. Run "pnpm --dir web run build" first.`,
+    );
+  }
+
+  const webDistOperator = join(webRoot, "dist-operator");
+  const hasOperatorDist = existsSync(join(webDistOperator, "index.html"));
+  const serverBin = resolveServerBinary(repoRoot);
+  const srv = await startEphemeralServer(
+    serverBin,
+    repoRoot,
+    webDistDir,
+    hasOperatorDist ? webDistOperator : null,
+  );
+  process.env.GRDR_E2E_BASE_URL = srv.baseUrl;
+  process.env.GRDR_E2E_CONSOLE_TOKEN = srv.consoleToken;
+  process.env.GRDR_E2E_STEP_UP_TOKEN = srv.stepUpToken;
+  if (hasOperatorDist) {
+    process.env.GRDR_E2E_OPERATOR_BASE_URL = srv.operatorBaseUrl;
+    process.env.GRDR_E2E_OPERATOR_TOKEN = srv.operatorToken;
+  }
 
   return async () => {
-    await stopServerAndCleanup(child, dataDir);
+    await stopServerAndCleanup(srv.child, srv.dataDir);
   };
 }

@@ -1,13 +1,14 @@
-use grdr_strings::sanitize_untrusted_text;
 use grdr_ui_model::{AppVm, Intent, ModeLevel, Screen, ThemeChoice, reduce};
-use rune::{Color, Cursor, El, Shadow, TextStyle, Tx, col, el, icon, row, spacer, text};
-use rune_kit::{
-    Button, ButtonVariant, ControlSize, Divider, IconButton, IconButtonVariant, Progress,
-    SegmentedControl, State,
-};
+use rune::{Color, Cursor, El, TextStyle, col, el, icon, row, spacer, text};
+use rune_kit::{Button, ButtonVariant, ControlSize, Divider, IconButton, IconButtonVariant};
 
 use crate::icons;
 use crate::theme::StudioTheme;
+
+pub use crate::kit_widgets::{
+    ledger_header, metric_strip, mode_segmented, quoted_box, quoted_chip, secondary_button,
+    setup_progress,
+};
 
 const BRAND_MARK_PNG: &[u8] = include_bytes!("../assets/guardrails-mark.png");
 const HERO_WAVE_LIGHT_PNG: &[u8] = include_bytes!("../assets/hero-wave-light.png");
@@ -61,6 +62,12 @@ impl DesktopApp {
                 }
                 grdr_ui_model::Effect::OpenWebConsole { route } => {
                     format!("Opening local console route /{route}")
+                }
+                grdr_ui_model::Effect::InspectWhyCard { reference } => {
+                    format!("Inspecting Why Card for {reference}")
+                }
+                grdr_ui_model::Effect::ApplyReviewDecision { cluster_id, action } => {
+                    format!("Applied review action '{action}' to {cluster_id}")
                 }
                 grdr_ui_model::Effect::NotifyReadOnly { reason } => reason,
             });
@@ -505,107 +512,4 @@ pub fn entity_link(
                 .group_color(t.c.accent),
         )
         .on_press(on_press)
-}
-
-#[must_use]
-pub fn quoted_chip(raw: &str, surface: ChipSurface, t: &StudioTheme) -> El {
-    let safe = sanitize_untrusted_text(raw);
-    let (fill, border) = match surface {
-        ChipSurface::OnCanvas => (t.c.recessed, t.c.border_subtle),
-        ChipSurface::OnRecessed => (t.c.canvas, t.c.border_strong),
-    };
-    row()
-        .px(8.0)
-        .pt(4.0)
-        .pb(4.0)
-        .radius(5.0)
-        .fill(fill)
-        .border(1.0, border)
-        .box_shadow(Shadow {
-            x: 0.0,
-            y: 1.0,
-            blur: 2.0,
-            spread: 0.0,
-            color: t.c.inset_well,
-            inset: true,
-        })
-        .child(text(safe).font(t.mono).color(t.c.ink_primary))
-}
-
-#[must_use]
-pub fn ledger_header(title: &str, right_meta: &str, t: &StudioTheme) -> El {
-    col()
-        .w_full()
-        .gap(8.0)
-        .child(
-            row()
-                .w_full()
-                .center_y()
-                .child(text(title).font(t.section_title).color(t.c.ink_primary))
-                .child(spacer())
-                .child(text(right_meta).font(t.caption).color(t.c.ink_secondary)),
-        )
-        .child(Divider::horizontal().build(&t.kit))
-}
-
-#[must_use]
-pub fn metric_strip(metrics: &[(&str, &str, &str)], t: &StudioTheme) -> El {
-    let mut strip = row().w_full().pt(12.0).pb(4.0).gap(20.0).items_stretch();
-
-    for (idx, &(value, label, note)) in metrics.iter().enumerate() {
-        if idx > 0 {
-            strip = strip.child(el().w(1.0).h(52.0).fill(t.c.border_subtle));
-        }
-        strip = strip.child(
-            col()
-                .grow(1.0)
-                .gap(2.0)
-                .child(text(value).font(t.metric_num).color(t.c.ink_primary))
-                .child(text(label).font(t.caption).color(t.c.ink_secondary))
-                .child(text(note).font(t.caption).color(t.c.ink_muted)),
-        );
-    }
-    strip
-}
-
-#[must_use]
-pub fn mode_segmented(rule_id: String, current: ModeLevel, locked: bool, t: &StudioTheme) -> El {
-    let selected = Some(current as usize);
-    let mut control = SegmentedControl::new(&["Off", "Watch", "Ask", "Block"], selected)
-        .label(format!("Enforcement mode for {rule_id}"))
-        .fit()
-        .on_pick(move |s: &mut DesktopApp, idx: usize, _: &mut Tx| {
-            let next_mode = match idx {
-                0 => ModeLevel::Off,
-                1 => ModeLevel::Watch,
-                2 => ModeLevel::Ask,
-                _ => ModeLevel::Block,
-            };
-            s.dispatch(Intent::SetRuleMode {
-                rule_id: rule_id.clone(),
-                next_mode,
-            });
-        });
-
-    if locked {
-        for idx in 0..3 {
-            if idx != current as usize {
-                control = control.segment_state(idx, State::Disabled);
-            }
-        }
-    }
-    control.build(&t.kit)
-}
-
-#[must_use]
-pub fn setup_progress(done: usize, total: usize, t: &StudioTheme) -> El {
-    let pct = if total == 0 {
-        0.0
-    } else {
-        (done as f32) / (total as f32)
-    };
-    Progress::new(Some(pct))
-        .label(format!("{done} of {total} setup steps complete"))
-        .show_value()
-        .build(&t.kit)
 }

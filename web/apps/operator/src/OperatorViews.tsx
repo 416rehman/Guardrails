@@ -1,5 +1,5 @@
 import { formatStorageMode } from "@grdr/api";
-import { pluralize, type OperatorRouteId } from "@grdr/i18n";
+import { formatTimestamp, pluralize, type OperatorRouteId } from "@grdr/i18n";
 import {
   Badge,
   Button,
@@ -154,24 +154,26 @@ export function OperatorOverviewView({
               icon={<GrdrIcon name="file-text" size={20} />}
             />
           ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Event</th>
-                  <th>Actor</th>
-                  <th>Summary</th>
-                </tr>
-              </thead>
-              <tbody>
-                {snapshot.audit.slice(0, 5).map((entry) => (
-                  <tr key={entry.id}>
-                    <td>{formatAuditKind(entry.kind)}</td>
-                    <td>{entry.actor}</td>
-                    <td>{entry.summary}</td>
+            <div className="table-wrap">
+              <table className="table responsive-table">
+                <thead>
+                  <tr>
+                    <th>Event</th>
+                    <th>Actor</th>
+                    <th>Summary</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {snapshot.audit.slice(0, 5).map((entry) => (
+                    <tr key={entry.id}>
+                      <td data-label="Event">{formatAuditKind(entry.kind)}</td>
+                      <td data-label="Actor">{entry.actor}</td>
+                      <td data-label="Summary">{entry.summary}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </section>
       </div>
@@ -222,22 +224,24 @@ export function OperatorSettingsView({ snapshot }: { snapshot: OperatorSnapshot 
           icon={<GrdrIcon name="key-round" size={24} />}
         />
       ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Key ID</th>
-              <th>Public key (Base64)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {snapshot.keys.map((key) => (
-              <tr key={key.key_id}>
-                <td className="mono">{key.key_id}</td>
-                <td className="mono">{key.public_key_b64.slice(0, 32)}...</td>
+        <div className="table-wrap">
+          <table className="table responsive-table">
+            <thead>
+              <tr>
+                <th>Key ID</th>
+                <th>Public key (Base64)</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {snapshot.keys.map((key) => (
+                <tr key={key.key_id}>
+                  <td data-label="Key ID" className="mono">{key.key_id}</td>
+                  <td data-label="Public key (Base64)" className="mono">{key.public_key_b64.slice(0, 32)}...</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );
@@ -256,28 +260,30 @@ export function OperatorAuditView({ snapshot }: { snapshot: OperatorSnapshot }) 
           icon={<GrdrIcon name="file-text" size={24} />}
         />
       ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Timestamp</th>
-              <th>Kind</th>
-              <th>Actor</th>
-              <th>Target</th>
-              <th>Summary</th>
-            </tr>
-          </thead>
-          <tbody>
-            {snapshot.audit.map((entry) => (
-              <tr key={entry.id}>
-                <td className="mono">{entry.timestamp}</td>
-                <td className="mono">{entry.kind}</td>
-                <td>{entry.actor}</td>
-                <td className="mono">{entry.target}</td>
-                <td>{entry.summary}</td>
+        <div className="table-wrap">
+          <table className="table responsive-table">
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Kind</th>
+                <th>Actor</th>
+                <th>Target</th>
+                <th>Summary</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {snapshot.audit.map((entry) => (
+                <tr key={entry.id}>
+                  <td data-label="Timestamp" className="tabular">{formatTimestamp(entry.timestamp)}</td>
+                  <td data-label="Kind" className="mono">{entry.kind}</td>
+                  <td data-label="Actor">{entry.actor}</td>
+                  <td data-label="Target" className="mono">{entry.target}</td>
+                  <td data-label="Summary">{entry.summary}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );

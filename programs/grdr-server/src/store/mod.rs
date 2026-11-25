@@ -13,10 +13,23 @@ pub mod profile;
 mod query_ir;
 mod response_ops;
 mod session_ops;
+mod surfaces_comply;
+mod surfaces_comply_helpers;
+mod surfaces_comply_seed;
+mod surfaces_exports;
+mod surfaces_holds;
+mod surfaces_operator;
+mod surfaces_operator_helpers;
+mod surfaces_operator_ops;
+mod surfaces_provider;
+mod surfaces_review;
+mod surfaces_types;
+mod surfaces_why;
 pub(crate) mod users;
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
@@ -75,6 +88,14 @@ pub struct StoreData {
     pub findings: Vec<Finding>,
     pub kill_switch: KillSwitchState,
     pub audit: Vec<AuditEntry>,
+    #[serde(default)]
+    pub surfaces: surfaces_types::SurfacesGovernanceState,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct LiveStreamTicket {
+    pub ctx: crate::auth::AuthContext,
+    pub expires_at: Timestamp,
 }
 
 #[derive(Clone)]
@@ -86,6 +107,7 @@ pub struct AppState {
     pub signing_key: SigningKeypair,
     pub page_key: AeadKey,
     pub revisions: Arc<RevisionTable>,
+    pub(crate) live_tickets: Arc<Mutex<BTreeMap<String, LiveStreamTicket>>>,
 }
 
 impl StorageBackend {
@@ -219,6 +241,7 @@ impl Default for StoreData {
             findings: Vec::new(),
             kill_switch: KillSwitchState::Inactive,
             audit: Vec::new(),
+            surfaces: surfaces_types::SurfacesGovernanceState::default(),
         }
     }
 }
@@ -342,7 +365,45 @@ impl AppState {
             signing_key,
             page_key,
             revisions: Arc::new(RevisionTable::new()),
+            live_tickets: Arc::new(Mutex::new(BTreeMap::new())),
         })
+    }
+
+    pub(crate) fn issue_live_ticket(
+        &self,
+        ctx: crate::auth::AuthContext,
+    ) -> Result<String, CodedError> {
+        let now = Timestamp::now();
+        let expires_at = Timestamp::from_second(now.as_second().saturating_add(30)).unwrap_or(now);
+        let ticket =
+            crate::auth::random_csprng_hex("grdr.live.ticket.v1", ctx.principal_id.as_bytes())
+                .ok_or_else(|| {
+                    CodedError::new(
+                        CODE_STORE_IO,
+                        "OS CSPRNG entropy failure generating live stream ticket.",
+                        "Check system entropy source and retry.",
+                    )
+                })?;
+        if let Ok(mut guard) = self.live_tickets.lock() {
+            guard.retain(|_, v| v.expires_at > now);
+            if guard.len() >= 1024
+                && let Some(first) = guard.keys().next().cloned()
+            {
+                guard.remove(&first);
+            }
+            guard.insert(ticket.clone(), LiveStreamTicket { ctx, expires_at });
+        }
+        Ok(ticket)
+    }
+
+    pub(crate) fn consume_live_ticket(&self, ticket: &str) -> Option<crate::auth::AuthContext> {
+        let now = Timestamp::now();
+        let mut guard = self.live_tickets.lock().ok()?;
+        guard.retain(|_, v| v.expires_at > now);
+        guard
+            .remove(ticket)
+            .filter(|entry| entry.expires_at > now)
+            .map(|entry| entry.ctx)
     }
 
     pub(crate) fn bump_revision(&self, collection: CollectionKind) -> u64 {

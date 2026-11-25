@@ -13,7 +13,8 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import { graphlib, layout } from "@dagrejs/dagre";
-import { GrdrIcon, type GrdrIconName, HarnessIcon } from "./components";
+import { GrdrIcon, type GrdrIconName } from "./components";
+import { HarnessIcon } from "./brand-icons";
 
 export type GrdrFlowTone = "accent" | "allow" | "watch" | "ask" | "block" | "neutral";
 

@@ -4,7 +4,7 @@ function hasBidiOrControl(text: string): boolean {
   for (let i = 0; i < text.length; i += 1) {
     const code = text.charCodeAt(i);
     if (
-      code < 0x20 ||
+      (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) ||
       (code >= 0x202a && code <= 0x202e) ||
       (code >= 0x2066 && code <= 0x2069)
     ) {

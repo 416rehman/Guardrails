@@ -1,8 +1,10 @@
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import {
   assertNoHorizontalOverflow,
   attachDiagnostics,
   captureVerifiedScreenshot,
+  expect,
+  test,
 } from "./helpers";
 
 async function verifyKeysetPaginationRoundTrip(

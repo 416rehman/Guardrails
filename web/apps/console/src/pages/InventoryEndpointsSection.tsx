@@ -351,7 +351,7 @@ export function InventoryEndpointsSection({
             </Text>
           </HStack>
           <div className="table-wrap">
-            <table>
+            <table className="responsive-table">
               <thead>
                 <tr>
                   <th>Hostname</th>
@@ -370,28 +370,28 @@ export function InventoryEndpointsSection({
                     className={`selectable ${selectedDeviceId === device.id ? "selected" : ""}`}
                     onClick={() => onSelectDevice(device.id)}
                   >
-                    <td>
+                    <td data-label="Hostname">
                       <EntityLink kind="device" id={device.id} label={device.hostname} os={device.os} onSelect={() => onSelectDevice(device.id)} />
                       <div className="mono" style={{ color: "var(--ink-muted)", marginTop: 3 }}>{device.id}</div>
                     </td>
-                    <td><OsLabel os={device.os} arch={device.arch} size={14} /></td>
-                    <td>
+                    <td data-label="Platform"><OsLabel os={device.os} arch={device.arch} size={14} /></td>
+                    <td data-label="Profile">
                       <StatusInline
                         tone={device.install_profile === "protected" ? "watch" : "neutral"}
                         icon={<GrdrIcon name={device.install_profile === "protected" ? "shield-check" : "shield-half"} size={13} />}
                         label={device.install_profile === "protected" ? "Protected" : "User mode"}
                       />
                     </td>
-                    <td>
+                    <td data-label="Hook status">
                       <StatusInline
                         tone={device.hook_effective ? "allow" : "ask"}
                         icon={<GrdrIcon name={device.hook_effective ? "check-circle" : "alert-triangle"} size={13} />}
                         label={device.hook_effective ? "Hook active" : "Discovery only"}
                       />
                     </td>
-                    <td className="tabular">{device.agents.length} / {device.mcp_servers.length}</td>
-                    <td><StatusInline tone={device.online ? "allow" : "neutral"} dot label={device.online ? "Online" : "Offline"} /></td>
-                    <td>
+                    <td data-label="Agents / MCPs" className="tabular">{device.agents.length} / {device.mcp_servers.length}</td>
+                    <td data-label="Status"><StatusInline tone={device.online ? "allow" : "neutral"} dot label={device.online ? "Online" : "Offline"} /></td>
+                    <td data-label="Assurance matrix">
                       <Button
                         size="sm"
                         label="Inspect matrix"

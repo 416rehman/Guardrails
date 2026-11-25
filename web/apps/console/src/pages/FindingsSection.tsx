@@ -8,7 +8,6 @@ import {
 import { capitalizeLabel, presentFindingTitle } from "@grdr/i18n";
 import { EntityLink, type EntityTarget, Quoted } from "@grdr/kit";
 import {
-  Badge,
   Banner,
   Button,
   Card,
@@ -16,6 +15,7 @@ import {
   GrdrSelect,
   Heading,
   HStack,
+  StatusInline,
   Text,
   VStack,
 } from "@grdr/ui";
@@ -35,6 +35,7 @@ export function FindingsSection({
   onUpdateLifecycle,
   onOpenEntity,
   onOpenSessionTurn,
+  onExplainReceipt,
 }: {
   devices: Device[];
   refreshKey: number;
@@ -43,6 +44,7 @@ export function FindingsSection({
   onUpdateLifecycle: (id: string, lifecycle: FindingLifecycle) => Promise<void>;
   onOpenEntity?: (target: EntityTarget) => void;
   onOpenSessionTurn?: (sessionId: string, turnIndex: number) => void;
+  onExplainReceipt?: (reference: string) => void;
 }) {
   const [fallbackSeverity, setFallbackSeverity] = useState("all");
   const [fallbackLifecycle, setFallbackLifecycle] = useState("all");
@@ -152,7 +154,7 @@ export function FindingsSection({
           </Text>
         ) : (
           <div className="table-wrap">
-            <table>
+            <table className="responsive-table">
               <thead>
                 <tr>
                   <th>Finding</th>
@@ -166,68 +168,61 @@ export function FindingsSection({
                   const titleText = presentFindingTitle(f.title, f.agent_name);
                   return (
                     <tr key={f.id}>
-                      <td>
-                        <strong>{titleText}</strong>
-                        <HStack gap={1} align="center" style={{ flexWrap: "wrap", columnGap: 6, rowGap: 2, marginTop: 4 }}>
-                          <EntityLink kind="agent" label={f.agent_name} compact onSelect={onOpenEntity} />
-                          <span style={{ color: "var(--ink-muted)" }}>on</span>
-                          <EntityLink
-                            kind="device"
-                            id={f.device_id}
-                            label={f.device_name}
-                            os={deviceOsFor(devices, f.device_id, f.device_name)}
-                            compact
-                            onSelect={onOpenEntity}
-                          />
-                          {f.rule_id && (
-                            <>
-                              <span style={{ color: "var(--ink-muted)" }} aria-hidden="true">·</span>
-                              <EntityLink
-                                kind="rule"
-                                id={f.rule_id}
-                                label={f.rule_id}
-                                compact
-                                onSelect={onOpenEntity}
-                              />
-                            </>
-                          )}
-                        </HStack>
-                        <div style={{ marginTop: 4 }}>
-                          <Quoted text={f.target} />
-                        </div>
-                      </td>
-                      <td>
-                        <Badge
-                          variant={f.severity === "critical" || f.severity === "high" ? "error" : "warning"}
-                          icon={
-                            <GrdrIcon
-                              name={
-                                f.severity === "critical"
-                                  ? "alert-octagon"
-                                  : f.severity === "high"
-                                    ? "alert-triangle"
-                                    : "alert-circle"
-                              }
-                              size={11}
+                      <td data-label="Finding">
+                        <VStack gap={1}>
+                          <strong>{titleText}</strong>
+                          <HStack gap={1} align="center" style={{ flexWrap: "wrap", columnGap: 6, rowGap: 2 }}>
+                            <EntityLink kind="agent" label={f.agent_name} compact onSelect={onOpenEntity} />
+                            <span style={{ color: "var(--ink-muted)" }}>on</span>
+                            <EntityLink
+                              kind="device"
+                              id={f.device_id}
+                              label={f.device_name}
+                              os={deviceOsFor(devices, f.device_id, f.device_name)}
+                              compact
+                              onSelect={onOpenEntity}
                             />
-                          }
+                            {f.rule_id && (
+                              <>
+                                <span style={{ color: "var(--ink-muted)" }} aria-hidden="true">·</span>
+                                <EntityLink
+                                  kind="rule"
+                                  id={f.rule_id}
+                                  label={f.rule_id}
+                                  compact
+                                  onSelect={onOpenEntity}
+                                />
+                              </>
+                            )}
+                          </HStack>
+                          <Quoted text={f.target} />
+                        </VStack>
+                      </td>
+                      <td data-label="Severity">
+                        <StatusInline
+                          tone={f.severity === "critical" || f.severity === "high" ? "block" : "ask"}
+                          dot
                           label={capitalizeLabel(f.severity)}
                         />
                       </td>
-                      <td>
-                        <Badge
-                          variant={f.lifecycle === "resolved" ? "success" : "info"}
-                          icon={
-                            <GrdrIcon
-                              name={f.lifecycle === "resolved" ? "check-circle" : "circle"}
-                              size={11}
-                            />
-                          }
+                      <td data-label="Status">
+                        <StatusInline
+                          tone={f.lifecycle === "resolved" ? "allow" : "neutral"}
+                          dot
                           label={capitalizeLabel(f.lifecycle)}
                         />
                       </td>
-                      <td>
+                      <td data-label="Transition">
                         <HStack gap={1} style={{ flexWrap: "wrap" }}>
+                          {onExplainReceipt && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              icon={<GrdrIcon name="info" size={12} />}
+                              label="Why?"
+                              onClick={() => onExplainReceipt(f.id)}
+                            />
+                          )}
                           {onOpenSessionTurn && (
                             <Button
                               size="sm"

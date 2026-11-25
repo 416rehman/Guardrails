@@ -6,6 +6,10 @@ export function formatRangeLabel(startIdx: number, pageSize: number, total: numb
   return `Showing ${startIdx + 1}-${Math.min(startIdx + pageSize, total)} of ${total}`;
 }
 
+function buildPageSizeOptions(pageSize: number): number[] {
+  return Array.from(new Set([pageSize, 25, 50, 100])).sort((a, b) => a - b);
+}
+
 export function PagerBar({
   page,
   pageSize,
@@ -34,7 +38,7 @@ export function PagerBar({
         onChange={(p) => onPageChange(Math.max(0, p - 1))}
         totalItems={totalItems}
         pageSize={pageSize}
-        pageSizeOptions={[25, 50, 100]}
+        pageSizeOptions={buildPageSizeOptions(pageSize)}
         onPageSizeChange={(sz) => onPageSizeChange(sz)}
         variant="count"
         size="sm"
@@ -85,7 +89,7 @@ export function CursorPagerBar({
         }}
         totalItems={effectiveTotal}
         pageSize={pageSize}
-        pageSizeOptions={[25, 50, 100]}
+        pageSizeOptions={buildPageSizeOptions(pageSize)}
         onPageSizeChange={(sz) => onPageSizeChange(sz)}
         variant="count"
         size="sm"

@@ -173,7 +173,7 @@ export function KillSwitchSection({
               />
               <Button
                 variant="secondary"
-                label="3-column matrix"
+                label="Lock down controls"
                 onClick={openModal}
               />
               {killSwitch.state !== "inactive" && (

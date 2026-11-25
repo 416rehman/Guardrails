@@ -18,7 +18,10 @@ pub fn render(app: &DesktopApp, t: &StudioTheme) -> El {
         InstallProfile::User => Some(1),
     };
 
-    let profile_picker = SegmentedControl::new(&["Protected (boundary)", "User mode"], selected)
+    let profile_picker = SegmentedControl::new(
+        &["Protected boundary", "User mode (requests only)"],
+        selected,
+    )
         .label("Protection install profile")
         .fit()
         .on_pick(|s: &mut DesktopApp, idx: usize, _: &mut Tx| {

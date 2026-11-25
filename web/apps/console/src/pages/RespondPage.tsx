@@ -37,6 +37,7 @@ export function RespondPage({
   onUpdateSearch,
   onOpenEntity,
   onOpenSessionTurn,
+  onExplainReceipt,
   onUpdated,
 }: {
   approvals: ApprovalRequest[];
@@ -49,6 +50,7 @@ export function RespondPage({
   onUpdateSearch?: (patch: Partial<ConsoleSearchParams>) => void;
   onOpenEntity?: (target: EntityTarget) => void;
   onOpenSessionTurn?: (sessionId: string, turnIndex: number) => void;
+  onExplainReceipt?: (reference: string) => void;
   onUpdated: () => void;
 }) {
   const [feedback, setFeedback] = useState<RespondFeedback>({ kind: "idle" });
@@ -140,7 +142,7 @@ export function RespondPage({
         </div>
         <Button
           variant="destructive"
-          label="Open kill switch matrix"
+          label="Emergency controls"
           icon={<GrdrIcon name="alert-octagon" size={14} />}
           onClick={() =>
             setKillFlow({
@@ -204,6 +206,7 @@ export function RespondPage({
         onAllow={handleAllow}
         onDeny={handleDeny}
         onOpenEntity={onOpenEntity}
+        onExplainReceipt={onExplainReceipt}
       />
 
       <CorrelatedIncidentsSection
@@ -225,6 +228,7 @@ export function RespondPage({
         onUpdateLifecycle={handleFindingStatus}
         onOpenEntity={onOpenEntity}
         onOpenSessionTurn={onOpenSessionTurn}
+        onExplainReceipt={onExplainReceipt}
       />
 
       <KillSwitchSection

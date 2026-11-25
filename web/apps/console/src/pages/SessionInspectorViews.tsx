@@ -265,11 +265,13 @@ export function SessionAttemptDrawer({
   receipt,
   onOpenEntity,
   onCreateRuleFromAttempt,
+  onExplainReceipt,
 }: {
   attempt: ActionAttempt;
   receipt?: DecisionReceipt;
   onOpenEntity?: (target: EntityTarget) => void;
   onCreateRuleFromAttempt: (attempt: ActionAttempt) => void;
+  onExplainReceipt?: (reference: string) => void;
 }) {
   return (
     <div className="ledger-row-drawer">
@@ -305,17 +307,28 @@ export function SessionAttemptDrawer({
       <Text size="sm" color="secondary">
         {receipt?.reason ?? attempt.summary}
       </Text>
-      <HStack justify="between" align="center">
+      <HStack justify="between" align="center" style={{ flexWrap: "wrap", gap: 8 }}>
         <span className="mono" style={{ color: "var(--ink-muted)" }}>
           {receipt ? `Receipt ${receipt.receipt_digest.slice(0, 12)}` : ""}
         </span>
-        <Button
-          size="sm"
-          variant="primary"
-          label="Create rule"
-          icon={<GrdrIcon name="plus-circle" size={13} />}
-          onClick={() => onCreateRuleFromAttempt(attempt)}
-        />
+        <HStack gap={2} align="center">
+          {onExplainReceipt && (
+            <Button
+              size="sm"
+              variant="secondary"
+              label="Why?"
+              icon={<GrdrIcon name="info" size={13} />}
+              onClick={() => onExplainReceipt(receipt?.receipt_id ?? attempt.id)}
+            />
+          )}
+          <Button
+            size="sm"
+            variant="primary"
+            label="Create rule"
+            icon={<GrdrIcon name="plus-circle" size={13} />}
+            onClick={() => onCreateRuleFromAttempt(attempt)}
+          />
+        </HStack>
       </HStack>
     </div>
   );

@@ -17,18 +17,21 @@ use grdr_proto::api::tenancy::{
 use grdr_proto::common::CollectionKind;
 
 use crate::aip::collections::{USER_DEFAULT_ORDER, USER_FILTERS, USER_SORT};
-use crate::rpc::{CollectionPageSpec, PageParams, page_collection, revision_for, run_rpc};
+use crate::rpc::{
+    CollectionPageSpec, PageParams, page_collection_ctx, revision_for_ctx, run_rpc_ctx,
+};
 use crate::store::AppState;
 
 pub async fn list_users(State(state): State<AppState>, request: Request<Body>) -> Response {
-    run_rpc(
+    run_rpc_ctx(
         "/grdr.api.tenancy.v1alpha1.UserService/ListUsers",
         state,
         request,
-        |state, req: ListUsersRequest| async move {
+        |state, auth, req: ListUsersRequest| async move {
             let users = state.users().await;
-            let (paged, rev) = page_collection(
+            let (paged, rev) = page_collection_ctx(
                 &state,
+                &auth,
                 users,
                 PageParams {
                     page_size: req.page_size,
@@ -58,12 +61,17 @@ pub async fn list_users(State(state): State<AppState>, request: Request<Body>) -
 }
 
 pub async fn get_user(State(state): State<AppState>, request: Request<Body>) -> Response {
-    run_rpc(
+    run_rpc_ctx(
         "/grdr.api.tenancy.v1alpha1.UserService/GetUser",
         state,
         request,
-        |state, req: GetUserRequest| async move {
-            let rev = revision_for(&state, CollectionKind::Users, &format!("user={}", req.id));
+        |state, auth, req: GetUserRequest| async move {
+            let rev = revision_for_ctx(
+                &state,
+                &auth,
+                CollectionKind::Users,
+                &format!("user={}", req.id),
+            );
             let detail = state.user_detail(&req.id).await?;
             Ok((user_detail_to_proto(&detail, Some(rev.clone())), Some(rev)))
         },
@@ -72,12 +80,12 @@ pub async fn get_user(State(state): State<AppState>, request: Request<Body>) -> 
 }
 
 pub async fn get_privacy_config(State(state): State<AppState>, request: Request<Body>) -> Response {
-    run_rpc(
+    run_rpc_ctx(
         "/grdr.api.tenancy.v1alpha1.UserService/GetPrivacyConfig",
         state,
         request,
-        |state, _req: GetPrivacyConfigRequest| async move {
-            let rev = revision_for(&state, CollectionKind::PrivacyConfig, "privacy");
+        |state, auth, _req: GetPrivacyConfigRequest| async move {
+            let rev = revision_for_ctx(&state, &auth, CollectionKind::PrivacyConfig, "privacy");
             let cfg = state.privacy_config().await;
             Ok((
                 GetPrivacyConfigResponse {
@@ -95,17 +103,20 @@ pub async fn update_privacy_config(
     State(state): State<AppState>,
     request: Request<Body>,
 ) -> Response {
-    run_rpc(
+    run_rpc_ctx(
         "/grdr.api.tenancy.v1alpha1.UserService/UpdatePrivacyConfig",
         state,
         request,
-        |state, req: UpdatePrivacyConfigRequest| async move {
+        |state, auth, req: UpdatePrivacyConfigRequest| async move {
             let updated = state
-                .update_privacy_config(UpdatePrivacyConfigInput {
-                    identity_mode: req.identity_mode.and_then(proto_to_identity_mode),
-                    user_risk_scoring: req.user_risk_scoring,
-                    actor: req.actor,
-                })
+                .update_privacy_config_with_auth(
+                    UpdatePrivacyConfigInput {
+                        identity_mode: req.identity_mode.and_then(proto_to_identity_mode),
+                        user_risk_scoring: req.user_risk_scoring,
+                        actor: Some(auth.principal_id.clone()),
+                    },
+                    auth.confirmation.is_step_up(),
+                )
                 .await?;
             state.bump_revision(CollectionKind::PrivacyConfig);
             state.bump_revision(CollectionKind::Users);

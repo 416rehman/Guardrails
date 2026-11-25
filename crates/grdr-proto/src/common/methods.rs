@@ -1,42 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
-use super::types::{AuditClass, ConfirmClass, RateClass};
+use super::types::{AuditClass, CollectionKind, ConfirmClass, RateClass};
 
 const OVERVIEW_SVC: &str = "grdr.api.overview.v1alpha1.OverviewService";
 const VERDICT_SVC: &str = "grdr.api.verdict.v1alpha1.VerdictService";
 const POLICY_SVC: &str = "grdr.api.policy.v1alpha1.PolicyService";
 const INVENTORY_SVC: &str = "grdr.api.inventory.v1alpha1.InventoryService";
 const SESSION_SVC: &str = "grdr.api.activity.v1alpha1.SessionService";
-const USER_SVC: &str = "grdr.api.tenancy.v1alpha1.UserService";
-const RESPONSE_SVC: &str = "grdr.api.response.v1alpha1.ResponseService";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IdempotencyLevel {
     Unknown,
     NoSideEffects,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CollectionKind {
-    Overview,
-    Keys,
-    Packs,
-    BrowserPolicies,
-    Devices,
-    Agents,
-    McpServers,
-    Artifacts,
-    ConnectConfig,
-    Integrations,
-    Sessions,
-    Users,
-    PrivacyConfig,
-    Approvals,
-    Findings,
-    Incidents,
-    KillSwitch,
-    AuditEvents,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -127,6 +103,18 @@ pub const ALL_METHODS: &[MethodDescriptor] = &[
         "audit:export",
         AuditClass::SensitiveRead,
         RateClass::Bulk,
+        ConfirmClass::None,
+        false,
+        None
+    ),
+    rpc!(
+        OVERVIEW_SVC,
+        "IssueLiveTicket",
+        "/grdr.api.overview.v1alpha1.OverviewService/IssueLiveTicket",
+        IdempotencyLevel::Unknown,
+        "overview:read",
+        AuditClass::Read,
+        RateClass::Standard,
         ConfirmClass::None,
         false,
         None
@@ -467,152 +455,4 @@ pub const ALL_METHODS: &[MethodDescriptor] = &[
         false,
         None
     ),
-    rpc!(
-        USER_SVC,
-        "ListUsers",
-        "/grdr.api.tenancy.v1alpha1.UserService/ListUsers",
-        IdempotencyLevel::NoSideEffects,
-        "users:read",
-        AuditClass::SensitiveRead,
-        RateClass::Standard,
-        ConfirmClass::None,
-        true,
-        Some(CollectionKind::Users)
-    ),
-    rpc!(
-        USER_SVC,
-        "GetUser",
-        "/grdr.api.tenancy.v1alpha1.UserService/GetUser",
-        IdempotencyLevel::NoSideEffects,
-        "users:read",
-        AuditClass::SensitiveRead,
-        RateClass::Interactive,
-        ConfirmClass::None,
-        false,
-        Some(CollectionKind::Users)
-    ),
-    rpc!(
-        USER_SVC,
-        "GetPrivacyConfig",
-        "/grdr.api.tenancy.v1alpha1.UserService/GetPrivacyConfig",
-        IdempotencyLevel::NoSideEffects,
-        "privacy:read",
-        AuditClass::Read,
-        RateClass::Standard,
-        ConfirmClass::None,
-        false,
-        Some(CollectionKind::PrivacyConfig)
-    ),
-    rpc!(
-        USER_SVC,
-        "UpdatePrivacyConfig",
-        "/grdr.api.tenancy.v1alpha1.UserService/UpdatePrivacyConfig",
-        IdempotencyLevel::Unknown,
-        "privacy:write",
-        AuditClass::CriticalMutation,
-        RateClass::Critical,
-        ConfirmClass::Consequence,
-        false,
-        None
-    ),
-    rpc!(
-        RESPONSE_SVC,
-        "ListApprovals",
-        "/grdr.api.response.v1alpha1.ResponseService/ListApprovals",
-        IdempotencyLevel::NoSideEffects,
-        "response:read",
-        AuditClass::Read,
-        RateClass::Standard,
-        ConfirmClass::None,
-        false,
-        Some(CollectionKind::Approvals)
-    ),
-    rpc!(
-        RESPONSE_SVC,
-        "DecideApproval",
-        "/grdr.api.response.v1alpha1.ResponseService/DecideApproval",
-        IdempotencyLevel::Unknown,
-        "response:approve",
-        AuditClass::CriticalMutation,
-        RateClass::Critical,
-        ConfirmClass::Consequence,
-        false,
-        None
-    ),
-    rpc!(
-        RESPONSE_SVC,
-        "ListFindings",
-        "/grdr.api.response.v1alpha1.ResponseService/ListFindings",
-        IdempotencyLevel::NoSideEffects,
-        "response:read",
-        AuditClass::Read,
-        RateClass::Standard,
-        ConfirmClass::None,
-        true,
-        Some(CollectionKind::Findings)
-    ),
-    rpc!(
-        RESPONSE_SVC,
-        "UpdateFinding",
-        "/grdr.api.response.v1alpha1.ResponseService/UpdateFinding",
-        IdempotencyLevel::Unknown,
-        "response:write",
-        AuditClass::Mutation,
-        RateClass::Interactive,
-        ConfirmClass::None,
-        false,
-        None
-    ),
-    rpc!(
-        RESPONSE_SVC,
-        "ListIncidents",
-        "/grdr.api.response.v1alpha1.ResponseService/ListIncidents",
-        IdempotencyLevel::NoSideEffects,
-        "response:read",
-        AuditClass::Read,
-        RateClass::Standard,
-        ConfirmClass::None,
-        true,
-        Some(CollectionKind::Incidents)
-    ),
-    rpc!(
-        RESPONSE_SVC,
-        "GetKillSwitch",
-        "/grdr.api.response.v1alpha1.ResponseService/GetKillSwitch",
-        IdempotencyLevel::NoSideEffects,
-        "response:read",
-        AuditClass::Read,
-        RateClass::Standard,
-        ConfirmClass::None,
-        false,
-        Some(CollectionKind::KillSwitch)
-    ),
-    rpc!(
-        RESPONSE_SVC,
-        "SetKillSwitch",
-        "/grdr.api.response.v1alpha1.ResponseService/SetKillSwitch",
-        IdempotencyLevel::Unknown,
-        "response:kill",
-        AuditClass::CriticalMutation,
-        RateClass::Critical,
-        ConfirmClass::Typed,
-        false,
-        None
-    ),
-    rpc!(
-        RESPONSE_SVC,
-        "ListAuditEvents",
-        "/grdr.api.response.v1alpha1.ResponseService/ListAuditEvents",
-        IdempotencyLevel::NoSideEffects,
-        "audit:read",
-        AuditClass::Read,
-        RateClass::Standard,
-        ConfirmClass::None,
-        false,
-        Some(CollectionKind::AuditEvents)
-    ),
 ];
-
-pub fn find_method(path: &str) -> Option<&'static MethodDescriptor> {
-    ALL_METHODS.iter().find(|entry| entry.path == path)
-}

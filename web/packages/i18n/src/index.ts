@@ -30,11 +30,16 @@ export {
 
 export type ConsoleRouteId =
   | "home"
+  | "first-run"
   | "users"
   | "inventory"
   | "sessions"
   | "protect"
+  | "review"
   | "respond"
+  | "compliance"
+  | "settings"
+  | "provider"
   | "coverage"
   | "tester";
 
@@ -42,6 +47,8 @@ export type OperatorRouteId =
   | "op-overview"
   | "op-health"
   | "op-settings"
+  | "op-upgrades"
+  | "op-backups"
   | "op-audit";
 
 export type InventorySectionId =
@@ -57,13 +64,13 @@ export type ProtectSectionId = "rules" | "browser";
 
 export interface ConsoleNavChild {
   id: string;
-  labelKey: MessageKey;
+  labelKey: MessageKey | string;
   iconKey: string;
 }
 
 export interface ConsoleNavItem {
   id: ConsoleRouteId;
-  labelKey: MessageKey;
+  labelKey: MessageKey | string;
   iconKey: string;
   children?: ReadonlyArray<ConsoleNavChild>;
 }
@@ -74,15 +81,39 @@ export interface ConsoleNavGroup {
   items: ReadonlyArray<ConsoleNavItem>;
 }
 
+const EXTRA_ROUTE_LABELS: Record<string, string> = {
+  "console.nav.first_run": "First run",
+  "console.nav.review": "Review queue",
+  "console.nav.compliance": "Compliance",
+  "console.nav.settings": "Settings & privacy",
+  "console.nav.provider": "Provider",
+  "operator.nav.upgrades": "Upgrades",
+  "operator.nav.backups": "Backups",
+};
+
+export function routeLabel(key: MessageKey | string): string {
+  if (key in MESSAGES) {
+    return t(key as MessageKey);
+  }
+  return EXTRA_ROUTE_LABELS[key] ?? key;
+}
+
 export const CONSOLE_ROUTES: ReadonlyArray<{
   id: ConsoleRouteId;
-  labelKey: MessageKey;
+  labelKey: MessageKey | string;
   iconKey: string;
-}> = INTERFACE_ROUTES.filter((r) => r.area === "console").map((r) => ({
-  id: r.id as ConsoleRouteId,
-  labelKey: r.titleKey,
-  iconKey: r.iconKey,
-}));
+}> = [
+  ...INTERFACE_ROUTES.filter((r) => r.area === "console").map((r) => ({
+    id: r.id as ConsoleRouteId,
+    labelKey: r.titleKey,
+    iconKey: r.iconKey,
+  })),
+  { id: "first-run", labelKey: "console.nav.first_run", iconKey: "nav.first_run" },
+  { id: "review", labelKey: "console.nav.review", iconKey: "nav.review" },
+  { id: "compliance", labelKey: "console.nav.compliance", iconKey: "nav.compliance" },
+  { id: "settings", labelKey: "console.nav.settings", iconKey: "nav.settings" },
+  { id: "provider", labelKey: "console.nav.provider", iconKey: "nav.provider" },
+];
 
 export const CONSOLE_NAV_GROUPS: ReadonlyArray<ConsoleNavGroup> = [
   {
@@ -90,6 +121,7 @@ export const CONSOLE_NAV_GROUPS: ReadonlyArray<ConsoleNavGroup> = [
     labelKey: "console.nav.group.overview",
     items: [
       { id: "home", labelKey: "console.nav.home", iconKey: "nav.home" },
+      { id: "first-run", labelKey: "console.nav.first_run", iconKey: "nav.first_run" },
       { id: "coverage", labelKey: "console.nav.coverage", iconKey: "nav.coverage" },
     ],
   },
@@ -120,6 +152,7 @@ export const CONSOLE_NAV_GROUPS: ReadonlyArray<ConsoleNavGroup> = [
           { id: "timeline", labelKey: "console.nav.sessions.timeline", iconKey: "list" },
         ],
       },
+      { id: "provider", labelKey: "console.nav.provider", iconKey: "nav.provider" },
     ],
   },
   {
@@ -135,7 +168,10 @@ export const CONSOLE_NAV_GROUPS: ReadonlyArray<ConsoleNavGroup> = [
           { id: "browser", labelKey: "console.nav.protect.browser", iconKey: "globe" },
         ],
       },
+      { id: "review", labelKey: "console.nav.review", iconKey: "nav.review" },
       { id: "respond", labelKey: "console.nav.respond", iconKey: "nav.respond" },
+      { id: "compliance", labelKey: "console.nav.compliance", iconKey: "nav.compliance" },
+      { id: "settings", labelKey: "console.nav.settings", iconKey: "nav.settings" },
       { id: "tester", labelKey: "console.nav.tester", iconKey: "nav.tester" },
     ],
   },
@@ -143,13 +179,24 @@ export const CONSOLE_NAV_GROUPS: ReadonlyArray<ConsoleNavGroup> = [
 
 export const OPERATOR_ROUTES: ReadonlyArray<{
   id: OperatorRouteId;
-  labelKey: MessageKey;
+  labelKey: MessageKey | string;
   iconKey: string;
-}> = INTERFACE_ROUTES.filter((r) => r.area === "operator").map((r) => ({
-  id: r.id as OperatorRouteId,
-  labelKey: r.titleKey,
-  iconKey: r.iconKey,
-}));
+}> = [
+  ...INTERFACE_ROUTES.filter((r) => r.area === "operator")
+    .filter((r) => r.id !== "op-audit")
+    .map((r) => ({
+      id: r.id as OperatorRouteId,
+      labelKey: r.titleKey,
+      iconKey: r.iconKey,
+    })),
+  { id: "op-upgrades", labelKey: "operator.nav.upgrades", iconKey: "nav.operator_upgrades" },
+  { id: "op-backups", labelKey: "operator.nav.backups", iconKey: "nav.operator_backups" },
+  ...INTERFACE_ROUTES.filter((r) => r.id === "op-audit").map((r) => ({
+    id: r.id as OperatorRouteId,
+    labelKey: r.titleKey,
+    iconKey: r.iconKey,
+  })),
+];
 
 export function pluralize(count: number, singular: string, plural?: string): string {
   const form = count === 1 ? singular : (plural ?? `${singular}s`);
@@ -164,116 +211,8 @@ export function formatOsName(os: string): string {
   return os;
 }
 
-export function formatActionLabel(actionClass: string): string {
-  switch (actionClass) {
-    case "exec":
-      return "Command run";
-    case "file.read":
-      return "File read";
-    case "file.write":
-      return "File write";
-    case "file.delete":
-      return "File delete";
-    case "net.connect":
-      return "Network connect";
-    case "net.request":
-      return "Network request";
-    case "mcp.call":
-      return "Tool call";
-    case "cred.use":
-      return "Credential access";
-    case "elevate":
-      return "Privilege elevation";
-    case "config.change":
-      return "Config change";
-    case "data.flow":
-      return "Data transfer";
-    default:
-      return actionClass;
-  }
-}
-
-export function presentFindingTitle(rawTitle: string, agentName?: string): string {
-  let clean = rawTitle.replace(
-    /\b(?:exec|file\.read|file\.write|file\.delete|net\.connect|net\.request|mcp\.call|cred\.use|elevate|config\.change|data\.flow)\b/g,
-    (token) => formatActionLabel(token),
-  );
-  if (agentName) {
-    const target = agentName.trim().toLowerCase();
-    const trimmed = clean.trim();
-    const lower = trimmed.toLowerCase();
-    const onSuffix = ` on ${target}`;
-    const parenSuffix = `(${target})`;
-    if (target && lower.endsWith(onSuffix)) {
-      clean = trimmed.slice(0, trimmed.length - onSuffix.length);
-    } else if (target && lower.endsWith(parenSuffix)) {
-      clean = trimmed.slice(0, trimmed.length - parenSuffix.length);
-    }
-  }
-  return clean.trim();
-}
-
-export function presentIncidentSummary(rawSummary: string): string {
-  const cleaned = rawSummary
-    .replace(
-      /\b(?:exec|file\.read|file\.write|file\.delete|net\.connect|net\.request|mcp\.call|cred\.use|elevate|config\.change|data\.flow)\b/g,
-      (token) => formatActionLabel(token).toLowerCase(),
-    )
-    .replace(/\s*;\s*/g, ". ")
-    .trim();
-  if (!cleaned) return cleaned;
-  return /[.!?]$/.test(cleaned) ? cleaned : `${cleaned}.`;
-}
-
-export function capitalizeLabel(value: string): string {
-  if (!value) return value;
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-export function presentArtifactKind(kind: string): string {
-  switch (kind) {
-    case "skill":
-      return "Skill";
-    case "rule":
-      return "Rule";
-    case "plugin":
-      return "Plugin";
-    case "command":
-      return "Command";
-    case "subagent":
-      return "Subagent";
-    default:
-      return capitalizeLabel(kind);
-  }
-}
-
-export function presentArtifactScope(scope: string): string {
-  switch (scope) {
-    case "user":
-      return "User";
-    case "workspace":
-      return "Workspace";
-    case "managed":
-      return "Managed";
-    default:
-      return capitalizeLabel(scope);
-  }
-}
-
-export function presentArtifactRiskFlag(flag: string): string {
-  switch (flag) {
-    case "has-scripts":
-      return "Has scripts";
-    case "requests-broad-tools":
-      return "Broad tools";
-    case "bidi-obfuscation":
-      return "Bidi obfuscation";
-    case "unpinned-digest":
-      return "Unpinned digest";
-    default:
-      return capitalizeLabel(flag.replace(/-/g, " "));
-  }
-}
+export * from "./present";
+import { capitalizeLabel } from "./present";
 
 export function presentMode(mode: "off" | "watch" | "ask" | "block"): {
   label: string;
@@ -448,4 +387,17 @@ export function presentSessionLabel(
     case "tainted_exfil_risk":
       return { text: MESSAGES["console.session_label.tainted_exfil_risk"], tone: "danger" };
   }
+}
+
+export function formatTimestamp(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const parsed = new Date(iso);
+  if (!Number.isFinite(parsed.getTime())) return iso;
+  return parsed.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }

@@ -1,4 +1,4 @@
-import { formatOsName } from "@grdr/i18n";
+import { formatOsName, presentAgentName } from "@grdr/i18n";
 import { GrdrIcon, HarnessIcon, HStack, OsIcon } from "@grdr/ui";
 
 export type EntityKind =
@@ -34,6 +34,11 @@ export function OsLabel({
   );
 }
 
+function formatEntityLabel(kind: EntityKind, label: string): string {
+  if (kind !== "agent") return label;
+  return presentAgentName(label);
+}
+
 export function EntityLink({
   kind,
   id,
@@ -50,6 +55,7 @@ export function EntityLink({
   onSelect?: (target: EntityTarget) => void;
 }) {
   const targetId = id ?? label;
+  const displayLabel = formatEntityLabel(kind, label);
   const iconSize = compact ? 12 : 14;
   const icon =
     kind === "agent" ? (
@@ -80,14 +86,14 @@ export function EntityLink({
       type="button"
       className={compact ? "grdr-entity-link compact" : "grdr-entity-link"}
       data-entity-kind={kind}
-      title={`Open ${kind}: ${label}`}
+      title={`Open ${kind}: ${displayLabel}`}
       onClick={(e) => {
         e.stopPropagation();
-        onSelect?.({ kind, id: targetId, label });
+        onSelect?.({ kind, id: targetId, label: displayLabel });
       }}
     >
       {icon}
-      <span>{label}</span>
+      <span>{displayLabel}</span>
     </button>
   );
 }

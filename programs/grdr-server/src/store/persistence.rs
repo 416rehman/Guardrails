@@ -25,13 +25,12 @@ use grdr_model::{
     PolicyPack, Verdict, summarize_sessions,
 };
 use grdr_ports::{
-    BusAppendMessage, FencingToken, JobPort, LeaseAcquireOutcome, LeaseState, OrgId, SingleCtx,
-    TenantCtx, TenantUserRecord,
+    BusAppendMessage, EventsPort, FencingToken, JobPort, LakeManifest, LeaseAcquireOutcome,
+    LeaseState, OrgId, SingleCtx, TenantCtx, TenantUserRecord,
 };
 #[cfg(test)]
 use grdr_ports::{
-    ErasureReceipt, EventsPort, LakeCompactionResult, LakeFlushResult, LakeManifest, LakeQueryIr,
-    LakeQueryResult,
+    ErasureReceipt, LakeCompactionResult, LakeFlushResult, LakeQueryIr, LakeQueryResult,
 };
 use grdr_rel_postgres::{PostgresConfig, PostgresRelationalStore};
 use grdr_rel_sqlite::SqliteRelationalStore;
@@ -224,6 +223,9 @@ impl EmbeddedStorage {
         if let Some(v) = load_kv_json(&self.relational, &read_ctx, "receipts")? {
             data.receipts = v;
         }
+        if let Some(v) = load_kv_json(&self.relational, &read_ctx, "surfaces")? {
+            data.surfaces = v;
+        }
         Ok(data)
     }
 
@@ -296,6 +298,7 @@ impl EmbeddedStorage {
         put_kv_json(&self.relational, &self.org_ctx, "audit", &data.audit)?;
         put_kv_json(&self.relational, &self.org_ctx, "attempts", &data.attempts)?;
         put_kv_json(&self.relational, &self.org_ctx, "receipts", &data.receipts)?;
+        put_kv_json(&self.relational, &self.org_ctx, "surfaces", &data.surfaces)?;
         self.relational
             .put_kv(&self.org_ctx, KV_NAMESPACE_STATE, "initialized", "true")?;
         Ok(())
@@ -406,7 +409,6 @@ impl EmbeddedStorage {
             .erase_session(&self.org_ctx, root_session_id, reason, now_ms)
     }
 
-    #[cfg(test)]
     pub(crate) fn lake_manifest(&self) -> Result<Option<LakeManifest>, CodedError> {
         let read_ctx = TenantCtx::Single(self.org_ctx.clone());
         self.lake.manifest(&read_ctx)

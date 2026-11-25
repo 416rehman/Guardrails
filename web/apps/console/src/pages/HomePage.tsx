@@ -43,6 +43,7 @@ export function HomePage({
   onNavigate,
   onOpenEntity,
   onDecideApproval,
+  onExplainReceipt,
 }: {
   overview: OverviewResponse | null;
   devices: Device[];
@@ -52,12 +53,25 @@ export function HomePage({
   onNavigate: (route: NavRoute) => void;
   onOpenEntity: (target: EntityTarget) => void;
   onDecideApproval: (id: string, approve: boolean, scope: GrantScope) => Promise<void>;
+  onExplainReceipt?: (reference: string) => void;
 }) {
   const [expandedApprovalId, setExpandedApprovalId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const pending = approvals.filter((a) => a.state.status === "pending");
-  const openFindings = findings.filter((f) => f.lifecycle !== "resolved");
+  const openFindings = findings.filter((f) => {
+    if (f.lifecycle === "resolved") return false;
+    const isAskDuplicate = pending.some(
+      (p) =>
+        p.agent_name === f.agent_name &&
+        p.target === f.target &&
+        p.session_id === f.session_id &&
+        (f.severity === "medium" ||
+          f.title.toLowerCase().includes("approval") ||
+          f.title === p.rule_title),
+    );
+    return !isAskDuplicate;
+  });
   const completedSteps = overview?.setup_steps.filter((s) => s.done).length ?? 0;
   const totalSteps = overview?.setup_steps.length ?? 0;
   const readinessPct = totalSteps === 0 ? 0 : Math.round((completedSteps / totalSteps) * 100);
@@ -297,6 +311,15 @@ export function HomePage({
                           label="Deny"
                           onClick={() => void decide(item.id, false, "once")}
                         />
+                        {onExplainReceipt && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon={<GrdrIcon name="info" size={12} />}
+                            label="Why?"
+                            onClick={() => onExplainReceipt(item.id)}
+                          />
+                        )}
                       </HStack>
                     </div>
                   )}
@@ -306,17 +329,29 @@ export function HomePage({
 
             {openFindings.slice(0, 2).map((finding) => {
               const displayTitle = presentFindingTitle(finding.title, finding.agent_name);
+              const lowerTitle = finding.title.toLowerCase();
               const isWatchFinding =
-                finding.severity === "low" || finding.title.toLowerCase().startsWith("watch");
+                finding.severity === "low" || lowerTitle.startsWith("watch");
+              const isAskFinding =
+                !isWatchFinding &&
+                (finding.severity === "medium" ||
+                  lowerTitle.includes("approval") ||
+                  finding.class.includes("approval"));
+              const findingIcon = isWatchFinding ? "eye" : isAskFinding ? "hand" : "ban";
+              const findingColor = isWatchFinding
+                ? "var(--tone-watch)"
+                : isAskFinding
+                  ? "var(--tone-ask)"
+                  : "var(--tone-block)";
               return (
                 <div key={finding.id} className="ledger-row">
                   <div className="ledger-row-main">
                     <VStack gap={1}>
                       <HStack gap={2} align="center" style={{ flexWrap: "wrap", columnGap: 6, rowGap: 2 }}>
                         <GrdrIcon
-                          name={isWatchFinding ? "eye" : "ban"}
+                          name={findingIcon}
                           size={14}
-                          color={isWatchFinding ? "var(--tone-watch)" : "var(--tone-block)"}
+                          color={findingColor}
                         />
                         <strong>{displayTitle}</strong>
                         <span style={{ color: "var(--ink-muted)" }} aria-hidden="true">·</span>
@@ -353,12 +388,23 @@ export function HomePage({
                       <Quoted text={finding.target} />
                     </VStack>
 
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      label="Inspect"
-                      onClick={() => onNavigate("respond")}
-                    />
+                    <HStack gap={1} align="center">
+                      {onExplainReceipt && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          icon={<GrdrIcon name="info" size={12} />}
+                          label="Why?"
+                          onClick={() => onExplainReceipt(finding.id)}
+                        />
+                      )}
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        label="Inspect"
+                        onClick={() => onNavigate("respond")}
+                      />
+                    </HStack>
                   </div>
                 </div>
               );

@@ -27,7 +27,8 @@ export default defineConfig({
       name: "desktop",
       use: {
         ...devices["Desktop Chrome"],
-        viewport: { width: 1280, height: 800 },
+        viewport: { width: 1440, height: 900 },
+        deviceScaleFactor: 2,
       },
     },
     {
@@ -35,6 +36,7 @@ export default defineConfig({
       use: {
         ...devices["Pixel 7"],
         viewport: { width: 390, height: 844 },
+        deviceScaleFactor: 2,
       },
     },
   ],

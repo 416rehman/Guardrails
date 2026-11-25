@@ -40,6 +40,10 @@ impl RevisionTable {
             "incidents",
             "kill_switch",
             "audit_events",
+            "review_queue",
+            "compliance_workspace",
+            "provider_workspace",
+            "operator_state",
         ] {
             entries.insert(key, AtomicU64::new(1));
         }
@@ -120,5 +124,9 @@ fn collection_key(kind: CollectionKind) -> &'static str {
         CollectionKind::Incidents => "incidents",
         CollectionKind::KillSwitch => "kill_switch",
         CollectionKind::AuditEvents => "audit_events",
+        CollectionKind::ReviewQueue => "review_queue",
+        CollectionKind::ComplianceWorkspace => "compliance_workspace",
+        CollectionKind::ProviderWorkspace => "provider_workspace",
+        CollectionKind::OperatorState => "operator_state",
     }
 }

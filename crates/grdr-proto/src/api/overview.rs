@@ -164,6 +164,20 @@ pub struct ExportAuditJsonlResponse {
 
 #[derive(Clone, PartialEq, Eq, prost::Message, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
+pub struct IssueLiveTicketRequest {}
+
+#[derive(Clone, PartialEq, Eq, prost::Message, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct IssueLiveTicketResponse {
+    #[prost(string, tag = "1")]
+    pub ticket: String,
+    #[prost(uint32, tag = "2")]
+    #[serde(alias = "expires_in_seconds")]
+    pub expires_in_seconds: u32,
+}
+
+#[derive(Clone, PartialEq, Eq, prost::Message, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
 pub struct LiveEvent {
     #[prost(string, tag = "1")]
     pub id: String,

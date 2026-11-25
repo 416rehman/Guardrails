@@ -12,12 +12,10 @@ import type {
   InventorySectionId,
   ProtectSectionId,
 } from "@grdr/i18n";
-import type { EntityTarget } from "@grdr/kit";
+import { WhyCardDrawer, type EntityTarget } from "@grdr/kit";
 import {
-  Badge,
   Banner,
   Button,
-  Dialog,
   GrdrIcon,
   GrdrThemeProvider,
   HeroWaveBackdrop,
@@ -29,6 +27,7 @@ import {
   type GrdrThemeMode,
 } from "@grdr/ui";
 import { Breadcrumbs } from "./components/Breadcrumbs";
+import { CommandPaletteDialog } from "./components/CommandPaletteDialog";
 import { buildBreadcrumbs, buildCommandActions } from "./components/navigation";
 import { SidebarNav } from "./components/SidebarNav";
 import { useConsoleStream } from "./components/useConsoleStream";
@@ -38,6 +37,7 @@ import {
   type SidebarDisplay,
   type StreamState,
   type TokenBarState,
+  type WhyDrawerState,
 } from "./consoleState";
 import { ConsoleWorkspaceContext } from "./ConsoleContext";
 import type { SessionViewMode } from "./pages/SessionsPage";
@@ -74,6 +74,7 @@ export function ConsoleShell() {
   const [tokenBar, setTokenBar] = useState<TokenBarState>({ kind: "hidden" });
   const [streamVersion, setStreamVersion] = useState(0);
   const [prefill, setPrefill] = useState<PrefillDraft>({ kind: "none" });
+  const [whyState, setWhyState] = useState<WhyDrawerState>({ kind: "closed" });
 
   const { snapshot, isLoading, errorMessage, invalidateAll } =
     useConsoleSnapshotQueries(streamVersion);
@@ -92,6 +93,7 @@ export function ConsoleShell() {
         setPalette((prev) => (prev === "open" ? "closed" : "open"));
       } else if (e.key === "Escape") {
         setPalette("closed");
+        setWhyState({ kind: "closed" });
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -216,6 +218,18 @@ export function ConsoleShell() {
     [navigate],
   );
 
+  const handleExplainReceipt = useCallback((reference: string) => {
+    setWhyState({ kind: "loading", reference });
+    void api.explainReceipt(reference).then(
+      (explanation) => setWhyState({ kind: "ready", explanation }),
+      (err) =>
+        setWhyState({
+          kind: "error",
+          message: err instanceof Error ? err.message : "Failed to load receipt explanation",
+        }),
+    );
+  }, []);
+
   const selectedDevice = useMemo(
     () => devices.find((d) => d.id === urlSearch.device) ?? null,
     [devices, urlSearch.device],
@@ -337,6 +351,7 @@ export function ConsoleShell() {
         onCreateRuleFromAttempt: handleCreateRuleFromAttempt,
         onOpenEntity: handleOpenEntity,
         onOpenSessionTurn: handleOpenSessionTurn,
+        onExplainReceipt: handleExplainReceipt,
         onNavigateRoute: navigateRoute,
         onUpdateSearch: updateSearch,
         onDecideApproval: handleDecideApproval,
@@ -461,36 +476,22 @@ export function ConsoleShell() {
           </div>
         </div>
 
-        <Dialog
-          isOpen={palette === "open"}
+        <CommandPaletteDialog
+          open={palette === "open"}
+          searchQuery={searchQuery}
+          commands={commandActions}
           onOpenChange={(open) => setPalette(open ? "open" : "closed")}
-          purpose="info"
-          width={560}
-          padding={2}
-          aria-label="Command palette"
-        >
-          <div style={{ padding: "var(--space-1)" }}>
-            <TextInput
-              label="Filter commands"
-              isLabelHidden
-              placeholder="Type a screen, device hostname, or action..."
-              startIcon={<GrdrIcon name="search" size={14} color="var(--ink-muted)" />}
-              value={searchQuery}
-              onChange={(val) => setSearchQuery(val)}
-              width="100%"
-            />
-          </div>
-          <div className="command-list">
-            {commandActions.map((cmd) => (
-              <button key={cmd.id} type="button" className="command-item" onClick={cmd.run}>
-                <span>{cmd.label}</span>
-                <HStack gap={1} align="center">
-                  <Badge variant="neutral" label={cmd.hint} />
-                </HStack>
-              </button>
-            ))}
-          </div>
-        </Dialog>
+          onSearchQueryChange={setSearchQuery}
+        />
+
+        <WhyCardDrawer
+          explanation={whyState.kind === "ready" ? whyState.explanation : null}
+          loading={whyState.kind === "loading"}
+          errorMessage={whyState.kind === "error" ? whyState.message : null}
+          onClose={() => setWhyState({ kind: "closed" })}
+          onOpenEntity={handleOpenEntity}
+          onNavigateAction={(routePath) => void navigate({ to: routePath as never })}
+        />
       </GrdrThemeProvider>
     </ConsoleWorkspaceContext.Provider>
   );

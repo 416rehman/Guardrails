@@ -185,7 +185,6 @@ export function UsersPage({
       await api.updatePrivacyConfig({
         identity_mode: nextMode,
         user_risk_scoring: nextMode === "named",
-        actor: "console-admin",
       });
       setPrivacySave({ kind: "idle" });
       onPrivacyUpdated();

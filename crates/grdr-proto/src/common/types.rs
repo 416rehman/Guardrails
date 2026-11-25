@@ -165,6 +165,32 @@ pub struct PageInfo {
     pub has_more: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CollectionKind {
+    Overview,
+    Keys,
+    Packs,
+    BrowserPolicies,
+    Devices,
+    Agents,
+    McpServers,
+    Artifacts,
+    ConnectConfig,
+    Integrations,
+    Sessions,
+    Users,
+    PrivacyConfig,
+    Approvals,
+    Findings,
+    Incidents,
+    KillSwitch,
+    AuditEvents,
+    ReviewQueue,
+    ComplianceWorkspace,
+    ProviderWorkspace,
+    OperatorState,
+}
+
 #[derive(Clone, PartialEq, Eq, prost::Message, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct RevisionMeta {

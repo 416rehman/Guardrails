@@ -2,6 +2,7 @@
 
 mod icons;
 mod kit;
+mod kit_widgets;
 mod screens;
 mod theme;
 mod viz;
@@ -28,6 +29,11 @@ const SCENES: &[SceneSpec] = &[
     ("activity", |s| {
         s.vm.screen = Screen::MyActivity;
         s.vm.preferences.theme = ThemeChoice::Light;
+    }),
+    ("why-card", |s| {
+        s.vm.screen = Screen::MyActivity;
+        s.vm.preferences.theme = ThemeChoice::Light;
+        s.vm.activity.inspected_receipt_ref = Some("8F2KQ-M41TZW".to_owned());
     }),
     ("rules", |s| {
         s.vm.screen = Screen::Rules;
