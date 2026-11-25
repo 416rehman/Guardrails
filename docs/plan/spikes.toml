@@ -1,0 +1,312 @@
+# Guardrails ADR Decision Spikes Registry (docs/design/33 section 7, design/00 section 8)
+schema = "grdr.plan.spikes.v1alpha1"
+
+[[spike]]
+id = "S-01"
+name = "Volume capture"
+question = "What does an agent-heavy endpoint emit in two weeks, and in which batches?"
+pass = "Measured p95 day replaces assumed figures per class group and lane with replayable batch-size distribution."
+decisions_at_stake = ["D-52", "D-34"]
+requires = ["slice-3"]
+hardware_tier = "tier-b"
+status = "pending"
+
+[[spike]]
+id = "S-02"
+name = "Storage lake and catalogue"
+question = "Does the lake meet latency and PUT targets, with DuckLake, Iceberg, or sidecar catalogue?"
+pass = "Meets timeline/agg latency, max 9 objects and 200 PUTs per small org-day, zero dangling refs on restore, commit p99 under 100 ms."
+decisions_at_stake = ["D-34"]
+requires = ["S-01"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-03"
+name = "Bus durability on PostgreSQL and NATS"
+question = "Can a log on PostgreSQL 18 carry ha, and how does NATS JetStream carry a distributed cell?"
+pass = "Ack p99 under 200 ms, detection lag under 5 s, zero loss across failover, WAL <= 1.5 KB/event, NATS streams <= 50% ceiling at 4x peak."
+decisions_at_stake = ["D-34"]
+requires = ["slice-5"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-04"
+name = "Hook transport and latency"
+question = "Command shim or HTTP hook beside Defender and Falcon?"
+pass = "Meets hook latency p50/p99 targets with zero alerts from incumbent EDR."
+decisions_at_stake = ["D-14", "D-50"]
+requires = ["slice-1"]
+hardware_tier = "tier-b"
+status = "pending"
+
+[[spike]]
+id = "S-05"
+name = "Hook delivery prediction"
+question = "Does probe predict hook precedence under first-wins config and other vendor hooks?"
+pass = "Correct in every cell; no Guardrails config prevents an agent from starting."
+decisions_at_stake = ["D-49"]
+requires = ["slice-2"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-06"
+name = "Shim failure handling"
+question = "What happens when daemon fails or pipe stalls during a hook storm?"
+pass = "No hang over 2 s; fail-safe table denies only its classes; Degraded visible within 60 s."
+decisions_at_stake = ["D-14", "D-15"]
+requires = ["slice-1"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-07"
+name = "Cross-check base rate"
+question = "How noisy is hook-against-OS reconciliation after housekeeping profiles?"
+pass = "Under 1 unexplained execution per 100 sessions; injected process caught 20 of 20."
+decisions_at_stake = ["D-13", "P3"]
+requires = ["slice-3"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-08"
+name = "Shared-host attribution"
+question = "Can per-action attribution distinguish agents inside IDE hosts?"
+pass = "Per-action precision 99% with at most 5% undetermined, or instance-level fallback enforced."
+decisions_at_stake = ["D-25"]
+requires = ["slice-3"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-09"
+name = "Content-free discovery"
+question = "Does loop evidence without plaintext separate autonomous agents from standard LLM clients?"
+pass = "Precision 95% against non-agents and recall 85% on bespoke generated agents."
+decisions_at_stake = ["D-24"]
+requires = ["slice-3"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-10"
+name = "Windows containment routes"
+question = "Which coding agents run cleanly inside AppContainer / MXC / local user sandboxes with WFP fencing?"
+pass = "Three of four agents finish scripted tasks with outbound network fence holding."
+decisions_at_stake = ["D-17", "D-21"]
+requires = ["slice-4"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-11"
+name = "Sandbox composition"
+question = "Do agent native sandboxes survive inside Guardrails launch containment?"
+pass = "Inner sandbox remains active or delegates cleanly to explicit Delegate route."
+decisions_at_stake = ["D-21"]
+requires = ["S-10"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-12"
+name = "Linux no-reboot deny"
+question = "Is synchronous deny viable on stock Ubuntu without kernel reboot or listener deadlock?"
+pass = "Synchronous on x86_64 and aarch64 with no deadlock if listener terminates."
+decisions_at_stake = ["D-19"]
+requires = ["slice-3"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-13"
+name = "Agent-written eBPF safety"
+question = "Can agent-authored eBPF passes matrix/soak and dual-model review safely?"
+pass = "Loads across kernel matrix, zero model mismatches, passes two distinct-model evaluators."
+decisions_at_stake = ["D-19", "D-63"]
+requires = ["S-12"]
+hardware_tier = "tier-b"
+status = "pending"
+
+[[spike]]
+id = "S-14"
+name = "Command opacity and prompt budget"
+question = "How often are real developer commands opaque, and how noisy are default sink rules?"
+pass = "Under 2% opaque commands; median <= 3 and p95 <= 8 prompts per developer-day."
+decisions_at_stake = ["D-10", "D-28"]
+requires = ["slice-1"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-15"
+name = "Cedar evaluation on endpoint"
+question = "Is local Cedar evaluation under 1 ms p99 at 1,000 active policies?"
+pass = "p99 under 1 ms on all Tier 1 platforms."
+decisions_at_stake = ["D-08"]
+requires = ["slice-1"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-16"
+name = "Approval forgery resistance"
+question = "Can a same-user agent forge G1 or G2 approval grants?"
+pass = "Zero forgeries across 1,000 attempts per OS platform."
+decisions_at_stake = ["D-31"]
+requires = ["slice-2"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-17"
+name = "Local privilege widening resistance"
+question = "Can a same-user agent widen mode via CLI, tray, console, or loopback?"
+pass = "Zero widening without presence proof in Protected profile."
+decisions_at_stake = ["D-31", "D-48"]
+requires = ["slice-2"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-18"
+name = "Uplink through enterprise proxies"
+question = "Does device auth survive TLS inspection, Kerberos proxies, and middleboxes?"
+pass = "Enrol, upload, policy rollout, and kill succeed within 60 s across all rung topologies."
+decisions_at_stake = ["D-36"]
+requires = ["slice-5"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-19"
+name = "Rune desktop soak"
+question = "Can Rune sustain the six-screen desktop interface without GPU glitches or leaks?"
+pass = "Idle CPU under 1% of one core, flat RSS over 48 h, clean software fallback."
+decisions_at_stake = ["D-43"]
+requires = ["slice-10"]
+hardware_tier = "tier-b"
+status = "pending"
+
+[[spike]]
+id = "S-20"
+name = "Agent team calibration"
+question = "Does one accepted issue stay inside subscription budget with under 5% held-out gap?"
+pass = "Zero owner intervention per item; held-out gap under 5 points."
+decisions_at_stake = ["D-47", "D-63"]
+requires = ["slice-0"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-21"
+name = "Embed fast-path and foreign telemetry"
+question = "Can grdr-fastpath embed inside protected host processes with 90% verdict parity?"
+pass = "Cached evaluation under 100 us and 90% process/file/network verdict match."
+decisions_at_stake = ["D-41", "D-60"]
+requires = ["slice-10"]
+hardware_tier = "tier-b"
+status = "pending"
+
+[[spike]]
+id = "S-22"
+name = "Outsider stable-Rust build"
+question = "Can a clean external contributor build and merge a core fix using only stable Rust?"
+pass = "All workspace gates green from clean clone in under 15 minutes with zero private tooling."
+decisions_at_stake = ["P11"]
+requires = ["slice-0"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-23"
+name = "Fleet herd simulation"
+question = "Does uplink scheduling prevent thundering herds across 10M simulated endpoints?"
+pass = "No request class > 2x steady rate, new TLS < 2000/s/cell, kill on 99% within 10 s, egress <= 15 Gbps."
+decisions_at_stake = ["P15", "D-36", "D-37", "D-56"]
+requires = ["slice-5"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-24"
+name = "Cell load test with uplink-sim"
+question = "What is one distributed cell's capacity vector under 50k real TLS uplinks?"
+pass = "Decision ack p99 < 2 s, 0 refusals, backfill within 6 h / 24 h, capacity published at 70% failing point."
+decisions_at_stake = ["D-33", "D-35", "D-58"]
+requires = ["slice-9"]
+hardware_tier = "tier-b"
+status = "pending"
+
+[[spike]]
+id = "S-25"
+name = "Wire bytes, batching, and dictionaries"
+question = "What spine interval and dictionary setup keeps framing <= 30% of upload bytes?"
+pass = "Replay chooses shortest spine <= 30 s within framing budget; dictionary adopted only if > 30% savings."
+decisions_at_stake = ["D-36", "D-52"]
+requires = ["S-01"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-26"
+name = "Free origins and TUF through CDNs"
+question = "Can GitHub Releases/Pages and jsDelivr carry 10M endpoints under TUF without stale errors?"
+pass = ">= 99% cache hit on immutable paths, zero tamper false positives from CDN lag, <= 300 s timestamp skew."
+decisions_at_stake = ["D-37"]
+requires = ["slice-7"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-27"
+name = "Binary deltas and intel log compactness"
+question = "Do bsdiff/zstd binary deltas and segmented intel logs fit within bandwidth caps?"
+pass = "Patch deltas <= 30% full, intel base <= 24 MB at 500k keys, mean daily segment <= 100 KB."
+decisions_at_stake = ["D-37"]
+requires = ["slice-7"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-28"
+name = "Organisation shards across cells"
+question = "Can one organisation span multiple cells without losing detections, commands, or order?"
+pass = "Shard splits 2->4 keep zero event loss, stage-2 lag < 2 min, kill across cells < 10 s p95."
+decisions_at_stake = ["D-35", "D-58"]
+requires = ["slice-9"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-29"
+name = "Key service caching at scale"
+question = "Do response keys and KEK unwrap caching keep KMS off the hot request path?"
+pass = "Zero KMS sign calls on request path; mode-2 orgs enter key-unavailable within 60 min on KMS loss."
+decisions_at_stake = ["D-35"]
+requires = ["slice-8"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-30"
+name = "Enrolment storms"
+question = "Does credential-budget admission absorb MDM, VDI, and ephemeral CI enrolment bursts?"
+pass = "100k arrivals in 60 s and 20k VDI boots/30 m enrol without over-enrolment or CPU > 70%."
+decisions_at_stake = ["D-36"]
+requires = ["slice-5"]
+hardware_tier = "tier-a"
+status = "pending"
+
+[[spike]]
+id = "S-31"
+name = "Air-gap conformance"
+question = "Do embedded and ha shapes install, enrol, update, detect, respond, upgrade, and restore with zero external egress?"
+pass = "Full offline bundle acceptance run green for embedded and ha with zero frames or DNS outside the lab zone."
+decisions_at_stake = ["P16", "D-37", "D-58", "D-59"]
+requires = ["slice-7"]
+hardware_tier = "tier-a"
+status = "pending"

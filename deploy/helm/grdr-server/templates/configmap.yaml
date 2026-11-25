@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "grdr-server.fullname" . }}-boot
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "grdr-server.labels" . | nindent 4 }}
+data:
+  server.toml: |
+    profile = {{ .Values.profile | quote }}
+
+    [server.api]
+    listen = "0.0.0.0:{{ .Values.service.targetPort }}"
+
+    {{- if .Values.operator.enabled }}
+    [server.operator]
+    listen = "0.0.0.0:{{ .Values.operator.listenPort }}"
+    {{- end }}
+
+    [storage.database]
+    ssl_mode = {{ .Values.storage.database.sslMode | quote }}
+
+    [storage.object_store]
+    provider = {{ .Values.storage.objectStore.provider | quote }}
+    dir = {{ .Values.storage.objectStore.dir | quote }}
+    endpoint = {{ .Values.storage.objectStore.endpoint | quote }}
+    bucket = {{ .Values.storage.objectStore.bucket | quote }}
+    backup_bucket = {{ .Values.storage.objectStore.backupBucket | quote }}
+    region = {{ .Values.storage.objectStore.region | quote }}
+    path_style = {{ .Values.storage.objectStore.pathStyle }}

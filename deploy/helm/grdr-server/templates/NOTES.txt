@@ -1,0 +1,10 @@
+Guardrails ADR Server ({{ .Values.profile }} profile) deployed in namespace {{ .Release.Namespace }}.
+
+1. API / Fleet / Console Service:
+   {{ include "grdr-server.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
+2. Health endpoint:
+   {{ .Values.probes.path }} on port {{ .Values.service.targetPort }}
+{{- if .Values.operator.enabled }}
+3. Isolated Operator Plane Service (D-70):
+   {{ include "grdr-server.fullname" . }}-operator.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.operator.service.port }}
+{{- end }}

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.guardrailshq.grdr.server</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/grdr-server</string>
+    <string>--profile</string>
+    <string>embedded</string>
+    <string>--bind</string>
+    <string>127.0.0.1:8787</string>
+    <string>--data-dir</string>
+    <string>/var/lib/grdr-server</string>
+  </array>
+  <key>UserName</key>
+  <string>_grdr-server</string>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Library/Logs/grdr/server.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Library/Logs/grdr/server.err.log</string>
+</dict>
+</plist>

@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="Guardrails ADR"
+    Manufacturer="Loonaro"
+    Version="$(var.ProductVersion)"
+    UpgradeCode="7E9B4C2A-31F5-4D88-9E12-6A4B8C0D5101"
+    Scope="perMachine">
+
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of Guardrails ADR is already installed."
+      Schedule="afterInstallInitialize" />
+
+    <Launch
+      Condition="NOT (TerminalServer AND NOT RemoteAdminTS)"
+      Message="Guardrails ADR Windows sensor does not support multi-session Terminal Server or AVD images." />
+
+    <Property Id="GRDR_INSTALL_FILE" Hidden="yes" />
+    <Property Id="GRDR_UPDATE_AUTHORITY" Value="self" Hidden="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLDIR" Name="Guardrails ADR">
+        <Directory Id="BinDir" Name="bin" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DataDir" Name="grdr" />
+    </StandardDirectory>
+
+    <ComponentGroup Id="CoreComponents" Directory="BinDir">
+      <Component Id="DataDirSecurity" Guid="C81B09B3-A1E2-4F4B-9C4D-102938475600" Directory="DataDir">
+        <CreateFolder>
+          <Permission User="Administrators" GenericAll="yes" />
+          <Permission User="SYSTEM" GenericAll="yes" />
+          <Permission User="NT SERVICE\grdr-engine" GenericRead="yes" GenericExecute="yes" />
+          <Permission User="NT SERVICE\grdr-uplink" GenericRead="yes" GenericExecute="yes" />
+        </CreateFolder>
+        <RegistryKey Root="HKLM" Key="SOFTWARE\GuardrailsADR">
+          <RegistryValue Name="DataDir" Type="string" Value="[DataDir]" />
+          <RegistryValue Name="UpdateAuthority" Type="string" Value="[GRDR_UPDATE_AUTHORITY]" />
+        </RegistryKey>
+      </Component>
+
+      <Component Id="CoreDaemon" Guid="C81B09B3-A1E2-4F4B-9C4D-102938475601">
+        <File Id="GrdrDaemonExe" Source="$(var.BinDir)\grdr-daemon.exe" KeyPath="yes" />
+        <ServiceInstall
+          Id="GrdrDaemonSvc"
+          Name="grdr-daemon"
+          DisplayName="Guardrails ADR Daemon"
+          Description="Core endpoint decision broker and sensor coordinator."
+          Type="ownProcess"
+          Start="auto"
+          Account="LocalSystem"
+          Arguments="--profile protected --data-dir &quot;[DataDir]&quot;"
+          ErrorControl="normal" />
+        <ServiceControl
+          Id="GrdrDaemonCtrl"
+          Name="grdr-daemon"
+          Start="install"
+          Stop="both"
+          Remove="uninstall"
+          Wait="yes" />
+      </Component>
+
+      <Component Id="CoreEngine" Guid="C81B09B3-A1E2-4F4B-9C4D-102938475602">
+        <File Id="GrdrEngineExe" Source="$(var.BinDir)\grdr-engine.exe" KeyPath="yes" />
+        <ServiceInstall
+          Id="GrdrEngineSvc"
+          Name="grdr-engine"
+          DisplayName="Guardrails ADR Rule Engine"
+          Type="ownProcess"
+          Start="demand"
+          Account="NT SERVICE\grdr-engine"
+          ErrorControl="normal" />
+        <ServiceControl Id="GrdrEngineCtrl" Name="grdr-engine" Stop="both" Remove="uninstall" Wait="yes" />
+      </Component>
+
+      <Component Id="CoreUplink" Guid="C81B09B3-A1E2-4F4B-9C4D-102938475603">
+        <File Id="GrdrUplinkExe" Source="$(var.BinDir)\grdr-uplink.exe" KeyPath="yes" />
+        <ServiceInstall
+          Id="GrdrUplinkSvc"
+          Name="grdr-uplink"
+          DisplayName="Guardrails ADR Fleet Uplink"
+          Type="ownProcess"
+          Start="demand"
+          Account="NT SERVICE\grdr-uplink"
+          ErrorControl="normal" />
+        <ServiceControl Id="GrdrUplinkCtrl" Name="grdr-uplink" Stop="both" Remove="uninstall" Wait="yes" />
+      </Component>
+
+      <Component Id="CoreCliAndHook" Guid="C81B09B3-A1E2-4F4B-9C4D-102938475604">
+        <File Id="GrdrCliExe" Source="$(var.BinDir)\grdr.exe" KeyPath="yes" />
+        <File Id="GrdrHookExe" Source="$(var.BinDir)\grdr-hook.exe" />
+        <File Id="GrdrWslDll" Source="$(var.BinDir)\grdr-wsl.dll" />
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Lxss\Plugins\GuardrailsADR">
+          <RegistryValue Type="string" Value="[BinDir]grdr-wsl.dll" />
+        </RegistryKey>
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="ProxyComponents" Directory="BinDir">
+      <Component Id="ProxyService" Guid="C81B09B3-A1E2-4F4B-9C4D-102938475605">
+        <File Id="GrdrProxyExe" Source="$(var.BinDir)\grdr-proxy.exe" KeyPath="yes" />
+        <ServiceInstall
+          Id="GrdrProxySvc"
+          Name="grdr-proxy"
+          DisplayName="Guardrails ADR Local Proxy"
+          Type="ownProcess"
+          Start="demand"
+          Account="NT SERVICE\grdr-proxy"
+          ErrorControl="normal" />
+        <ServiceControl Id="GrdrProxyCtrl" Name="grdr-proxy" Stop="both" Remove="uninstall" Wait="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="TrayComponents" Directory="BinDir">
+      <Component Id="TrayBinary" Guid="C81B09B3-A1E2-4F4B-9C4D-102938475606">
+        <File Id="GrdrTrayExe" Source="$(var.BinDir)\grdr-tray.exe" KeyPath="yes" />
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Run">
+          <RegistryValue Name="GuardrailsADRTray" Type="string" Value="&quot;[BinDir]grdr-tray.exe&quot;" />
+        </RegistryKey>
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="DesktopComponents" Directory="BinDir">
+      <Component Id="DesktopBinary" Guid="C81B09B3-A1E2-4F4B-9C4D-102938475607">
+        <File Id="GrdrDesktopExe" Source="$(var.BinDir)\grdr-desktop.exe" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Core" Title="Core Sensor and Daemon" Level="1" AllowAbsent="no">
+      <ComponentGroupRef Id="CoreComponents" />
+    </Feature>
+    <Feature Id="Proxy" Title="Explicit Local LLM and MCP Proxy" Level="1">
+      <ComponentGroupRef Id="ProxyComponents" />
+    </Feature>
+    <Feature Id="Tray" Title="System Tray Indicator" Level="1">
+      <ComponentGroupRef Id="TrayComponents" />
+    </Feature>
+    <Feature Id="Desktop" Title="Guardrails Studio Desktop App" Level="1">
+      <ComponentGroupRef Id="DesktopComponents" />
+    </Feature>
+  </Package>
+</Wix>

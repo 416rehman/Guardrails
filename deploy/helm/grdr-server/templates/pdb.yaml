@@ -1,0 +1,14 @@
+{{- if and .Values.podDisruptionBudget.enabled (ne .Values.profile "embedded") }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "grdr-server.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "grdr-server.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "grdr-server.selectorLabels" . | nindent 6 }}
+{{- end }}

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.guardrailshq.grdr.daemon</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Library/Application Support/grdr/bin/grdr-daemon</string>
+    <string>--profile</string>
+    <string>protected</string>
+    <string>--data-dir</string>
+    <string>/Library/Application Support/grdr</string>
+    <string>--bind</string>
+    <string>127.0.0.1:8788</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>WorkingDirectory</key>
+  <string>/Library/Application Support/grdr</string>
+  <key>StandardOutPath</key>
+  <string>/Library/Logs/grdr/daemon.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Library/Logs/grdr/daemon.err.log</string>
+  <key>ProcessType</key>
+  <string>Adaptive</string>
+</dict>
+</plist>

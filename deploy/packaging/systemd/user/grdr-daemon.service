@@ -1,0 +1,16 @@
+[Unit]
+Description=Guardrails ADR User-Profile Endpoint Daemon
+After=default.target
+
+[Service]
+Type=simple
+# Absolute binary invoked via /usr/bin/env (no PATH search) so offline systemd-analyze verify passes.
+ExecStart=/usr/bin/env /usr/bin/grdr-daemon --profile user
+Restart=on-failure
+RestartSec=2s
+NoNewPrivileges=true
+MemoryHigh=40M
+MemoryMax=80M
+
+[Install]
+WantedBy=default.target

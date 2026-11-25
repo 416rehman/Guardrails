@@ -1,0 +1,44 @@
+{{- if and .Values.operator.enabled .Values.operator.ingress.enabled }}
+# D-70: Operator plane requires a separate hostname, L3/L4 NetworkPolicy CIDRs, controller source-range annotations, and optional mTLS.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "grdr-server.fullname" . }}-operator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "grdr-server.labels" . | nindent 4 }}
+    grdr.internal/plane: operator
+  annotations:
+    {{- if .Values.operator.ingress.allowCidrs }}
+    nginx.ingress.kubernetes.io/whitelist-source-range: {{ join "," .Values.operator.ingress.allowCidrs | quote }}
+    haproxy.org/allow-list: {{ join "," .Values.operator.ingress.allowCidrs | quote }}
+    {{- end }}
+    {{- if .Values.operator.clientCA.existingSecret }}
+    nginx.ingress.kubernetes.io/auth-tls-secret: {{ printf "%s/%s" .Release.Namespace .Values.operator.clientCA.existingSecret | quote }}
+    nginx.ingress.kubernetes.io/auth-tls-verify-client: "on"
+    {{- end }}
+    {{- with .Values.operator.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- if .Values.operator.ingress.className }}
+  ingressClassName: {{ .Values.operator.ingress.className }}
+  {{- end }}
+  {{- if and .Values.operator.ingress.tls.enabled .Values.operator.ingress.tls.secretName }}
+  tls:
+    - hosts:
+        - {{ .Values.operator.ingress.host | quote }}
+      secretName: {{ .Values.operator.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.operator.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "grdr-server.fullname" . }}-operator
+                port:
+                  name: operator
+{{- end }}

@@ -1,0 +1,16 @@
+.git
+.github
+.claude
+.agents
+target
+node_modules
+web/node_modules
+web/apps/*/dist*
+web/packages/*/dist*
+deploy/terraform
+deploy/helm
+deploy/packaging
+deploy/compose
+docs
+*.log
+*.png

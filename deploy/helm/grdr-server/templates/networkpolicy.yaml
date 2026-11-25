@@ -1,0 +1,79 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "grdr-server.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "grdr-server.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "grdr-server.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - port: {{ .Values.service.targetPort }}
+          protocol: TCP
+      from:
+        - podSelector: {}
+        {{- range .Values.networkPolicy.allowIngressFromNamespaces }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . | quote }}
+        {{- end }}
+    {{- if .Values.operator.enabled }}
+    # D-70: Operator port does not inherit tenant ingress namespace rules.
+    - ports:
+        - port: {{ .Values.operator.listenPort }}
+          protocol: TCP
+      from:
+        {{- range .Values.operator.ingress.allowCidrs }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+        {{- range .Values.operator.ingress.allowNamespaces }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . | quote }}
+        {{- end }}
+    {{- end }}
+  egress:
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+      to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+    - ports:
+        - port: 5432
+          protocol: TCP
+        - port: 4222
+          protocol: TCP
+        - port: 443
+          protocol: TCP
+        - port: 8333
+          protocol: TCP
+      to:
+        - podSelector: {}
+        {{- range .Values.networkPolicy.allowEgressNamespaces }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . | quote }}
+        {{- end }}
+        {{- range .Values.networkPolicy.allowEgressCidrs }}
+        {{- if . }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+            {{- if eq . "169.0.0.0/8" }}
+            except:
+              - "169.254.0.0/16"
+            {{- end }}
+        {{- end }}
+        {{- end }}
+{{- end }}

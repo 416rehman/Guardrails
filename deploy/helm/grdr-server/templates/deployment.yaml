@@ -1,0 +1,29 @@
+{{- if ne .Values.profile "embedded" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "grdr-server.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "grdr-server.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  strategy:
+    type: {{ .Values.upgrade.strategy }}
+    {{- if eq .Values.upgrade.strategy "RollingUpdate" }}
+    rollingUpdate:
+      maxSurge: {{ .Values.upgrade.maxSurge }}
+      maxUnavailable: {{ .Values.upgrade.maxUnavailable }}
+    {{- end }}
+  selector:
+    matchLabels:
+      {{- include "grdr-server.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "grdr-server.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- include "grdr-server.podSpec" . | nindent 6 }}
+{{- end }}

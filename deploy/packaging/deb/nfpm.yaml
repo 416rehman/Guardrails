@@ -1,0 +1,70 @@
+name: "grdr"
+arch: "${NFPM_ARCH}"
+platform: "linux"
+version: "${GRDR_VERSION}"
+section: "security"
+priority: "optional"
+maintainer: "${GRDR_MAINTAINER:-Guardrails ADR Packagers <packaging@localhost>}"
+description: |
+  Guardrails ADR endpoint sensor, hook shim, policy engine, and CLI.
+vendor: "${GRDR_VENDOR:-Loonaro}"
+homepage: "${GRDR_HOMEPAGE:-https://github.com/416rehman/Guardrails}"
+license: "Apache-2.0"
+
+recommends:
+  - bubblewrap
+  - socat
+
+contents:
+  - src: "${GRDR_BIN_DIR}/grdr"
+    dst: "/usr/bin/grdr"
+    file_info:
+      mode: 0755
+  - src: "${GRDR_BIN_DIR}/grdr-daemon"
+    dst: "/usr/bin/grdr-daemon"
+    file_info:
+      mode: 0755
+  - src: "${GRDR_BIN_DIR}/grdr-engine"
+    dst: "/usr/libexec/grdr/grdr-engine"
+    file_info:
+      mode: 0755
+  - src: "${GRDR_BIN_DIR}/grdr-hook"
+    dst: "/usr/bin/grdr-hook"
+    file_info:
+      mode: 0755
+  - src: "deploy/packaging/systemd/grdr-daemon.service"
+    dst: "/usr/lib/systemd/system/grdr-daemon.service"
+    file_info:
+      mode: 0644
+  - src: "deploy/packaging/systemd/grdr-decide.socket"
+    dst: "/usr/lib/systemd/system/grdr-decide.socket"
+    file_info:
+      mode: 0644
+  - src: "deploy/packaging/systemd/grdr-local.socket"
+    dst: "/usr/lib/systemd/system/grdr-local.socket"
+    file_info:
+      mode: 0644
+  - src: "deploy/packaging/systemd/user/grdr-daemon.service"
+    dst: "/usr/lib/systemd/user/grdr-daemon.service"
+    file_info:
+      mode: 0644
+  - src: "deploy/packaging/systemd/sysusers.d/grdr.conf"
+    dst: "/usr/lib/sysusers.d/grdr.conf"
+    file_info:
+      mode: 0644
+  - dst: "/etc/grdr"
+    type: dir
+    file_info:
+      owner: grdr
+      group: grdr
+      mode: 0750
+  - dst: "/var/lib/grdr"
+    type: dir
+    file_info:
+      owner: grdr
+      group: grdr
+      mode: 0750
+
+scripts:
+  postinstall: "deploy/packaging/deb/scripts/postinstall.sh"
+  preremove: "deploy/packaging/deb/scripts/preremove.sh"

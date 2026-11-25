@@ -1,0 +1,162 @@
+# Default values for grdr-server (docs/design/24 section 6, D-70).
+# Supply a non-zero immutable image.digest from release-manifest.json at install/render time.
+
+global:
+  imageRegistry: "ghcr.io/416rehman"
+
+image:
+  repository: "grdr-server"
+  digest: ""
+  pullPolicy: "IfNotPresent"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Deployment profile: embedded | ha | distributed
+profile: "ha"
+replicaCount: 2
+
+upgrade:
+  strategy: "RollingUpdate"
+  maxSurge: 1
+  maxUnavailable: 0
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automountServiceAccountToken: true
+
+preflight:
+  enabled: true
+
+pkcs11Sidecar:
+  enabled: false
+  image:
+    repository: "grdr-keys-pkcs11"
+    digest: ""
+    pullPolicy: "IfNotPresent"
+  modulePath: "/usr/lib/grdr/pkcs11/libpkcs11.so"
+  moduleVolumeClaimName: ""
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "250m"
+      memory: "256Mi"
+
+security:
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+
+service:
+  type: "ClusterIP"
+  port: 8443
+  targetPort: 8787
+  annotations: {}
+
+probes:
+  path: "/grdr.api.overview.v1alpha1.OverviewService/GetHealth?encoding=json"
+  initialDelaySeconds: 10
+  periodSeconds: 15
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  annotations: {}
+  tls:
+    enabled: true
+    secretName: ""
+
+# D-70: Operator plane is a separate realm with its own Service, Ingress, hostname, and allow-lists.
+operator:
+  enabled: true
+  listenPort: 44444
+  service:
+    type: "ClusterIP"
+    port: 44444
+    annotations: {}
+  ingress:
+    enabled: false
+    className: ""
+    host: ""
+    allowCidrs:
+      - "10.0.0.0/8"
+      - "172.16.0.0/12"
+      - "192.168.0.0/16"
+    allowNamespaces: []
+    annotations: {}
+    tls:
+      enabled: true
+      secretName: ""
+  clientCA:
+    existingSecret: ""
+  existingSecret: ""
+
+storage:
+  embedded:
+    persistence:
+      enabled: true
+      size: "50Gi"
+      storageClassName: ""
+      accessMode: "ReadWriteOnce"
+  database:
+    existingSecret: ""
+    urlKey: "database-url"
+    sslMode: "verify-full"
+  objectStore:
+    provider: "s3"
+    dir: "/var/lib/grdr/objects"
+    endpoint: ""
+    bucket: ""
+    backupBucket: ""
+    region: ""
+    pathStyle: false
+    existingSecret: ""
+  nats:
+    url: ""
+    existingSecret: ""
+
+secrets:
+  bootstrapExistingSecret: ""
+  tlsExistingSecret: ""
+  privateCAConfigMap: ""
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+networkPolicy:
+  enabled: true
+  allowIngressFromNamespaces: []
+  allowEgressNamespaces: []
+  allowEgressCidrs:
+    - "10.0.0.0/8"
+    - "172.16.0.0/12"
+    - "192.168.0.0/16"
+
+resources:
+  requests:
+    cpu: "250m"
+    memory: "512Mi"
+  limits:
+    cpu: "2000m"
+    memory: "2Gi"
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+extraEnv: []

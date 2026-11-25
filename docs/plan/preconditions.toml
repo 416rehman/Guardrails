@@ -1,0 +1,82 @@
+# Guardrails ADR External Preconditions Registry (docs/design/33 section 6, design/00 section 7)
+schema = "grdr.plan.preconditions.v1alpha1"
+
+[[precondition]]
+id = "pre-apple-dev"
+area = "macOS Tier 2 Network Extension and notarised pkg/app"
+requires_internal = ["slice-3", "cap-2.2"]
+external_owner = "Loonaro / Apple Developer Program"
+status = "unmet"
+fallback_while_unmet = "Ship macOS Tier 1 userspace sensor and ad-hoc/Sigstore-signed tarballs; label notarisation unavailable."
+
+[[precondition]]
+id = "pre-apple-es"
+area = "macOS Tier 3 Endpoint Security system extension"
+requires_internal = ["pre-apple-dev"]
+external_owner = "Apple Endpoint Security entitlement approval"
+status = "unmet"
+fallback_while_unmet = "macOS operates at AL2/AL3 via hooks and Network Extension or partner embedding."
+
+[[precondition]]
+id = "pre-win-authenticode"
+area = "Windows Authenticode signing for MSI and services"
+requires_internal = ["slice-7"]
+external_owner = "Free open-source code signing programme (SignPath / Azure Trusted Signing)"
+status = "unmet"
+fallback_while_unmet = "Distribute keyless Sigstore-signed MSI and ZIP archives marked not-platform-signed."
+
+[[precondition]]
+id = "pre-win-driver"
+area = "Optional Windows kernel minifilter driver (W2/AL4)"
+requires_internal = ["slice-3"]
+external_owner = "Sponsor EV certificate, Partner Center dual-admin account, Microsoft WHCP / filter altitude"
+status = "unmet"
+fallback_while_unmet = "Windows operates driverless using ETW, WFP, and AppContainer/MXC containment."
+
+[[precondition]]
+id = "pre-win-wesp"
+area = "Windows Endpoint Security Platform (WESP) adapter"
+requires_internal = ["pre-win-driver"]
+external_owner = "Antivirus partner providing WESP embedding interface"
+status = "unmet"
+fallback_while_unmet = "Run coexistence slot broker in observe/ingest/user-mode WFP modes."
+
+[[precondition]]
+id = "pre-incumbent-licences"
+area = "Coexistence testing against commercial EDRs (Falcon, SentinelOne, Cortex)"
+requires_internal = ["slice-3"]
+external_owner = "Design partners or free vendor NFR programmes"
+status = "unmet"
+fallback_while_unmet = "Test against Windows Defender and open-source Linux sensors; mark commercial matrix cells untested."
+
+[[precondition]]
+id = "pre-hosted-capacity"
+area = "Hosted SaaS cells and full-scale 50k/10M hardware tests (S-24)"
+requires_internal = ["slice-9", "cap-2.6"]
+external_owner = "Revenue, sponsorship, or donated cloud/bare-metal credits"
+status = "unmet"
+fallback_while_unmet = "Self-hosted embedded and ha shapes remain default; cell ceiling stays capped at 50k / measured runner tier."
+
+[[precondition]]
+id = "pre-external-audit"
+area = "Independent external security audit of trust core"
+requires_internal = ["slice-7", "slice-8"]
+external_owner = "Foundation or sponsored external security audit grant"
+status = "unmet"
+fallback_while_unmet = "Dual distinct-model autonomous security evaluators plus differential fuzzing gate all trust-core merges."
+
+[[precondition]]
+id = "pre-cra-counsel"
+area = "Legal counsel opinion on EU Cyber Resilience Act classification before paid offers"
+requires_internal = ["cap-2.7"]
+external_owner = "Pro-bono foundation or commercial legal counsel"
+status = "unmet"
+fallback_while_unmet = "Open-source Apache-2.0 distribution only with public CRA technical file; delay paid commercial offers."
+
+[[precondition]]
+id = "pre-foundation-transfer"
+area = "Governance transfer of trademark, domains, and GitHub organisation to foundation"
+requires_internal = ["slice-10"]
+external_owner = "Target open-source foundation acceptance"
+status = "unmet"
+fallback_while_unmet = "Repository and brand covenant stay published under Loonaro and maintainer continuity rules."

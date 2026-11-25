@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+  <title>Guardrails ADR</title>
+  <organization>com.guardrailshq</organization>
+  <options customize="allow" require-scripts="false" rootVolumeOnly="true" hostArchitectures="arm64,x86_64" />
+  <domains enable_localSystem="true" />
+  <os-version min="15.0" />
+  <choices-outline>
+    <line choice="choice_core" />
+    <line choice="choice_desktop" />
+  </choices-outline>
+  <choice id="choice_core" title="Guardrails ADR Endpoint Sensor and Daemon" description="Installs CLI, hook shim, policy engine, and LaunchDaemon service." selected="true" enabled="false">
+    <pkg-ref id="com.guardrailshq.grdr.core" />
+  </choice>
+  <choice id="choice_desktop" title="Guardrails ADR Menu Bar and Desktop Console" description="Installs Guardrails ADR.app into /Applications." selected="true">
+    <pkg-ref id="com.guardrailshq.grdr.desktop" />
+  </choice>
+  <pkg-ref id="com.guardrailshq.grdr.core" version="0.1.0" auth="Root">#grdr-core.pkg</pkg-ref>
+  <pkg-ref id="com.guardrailshq.grdr.desktop" version="0.1.0" auth="Root">#grdr-desktop.pkg</pkg-ref>
+</installer-gui-script>

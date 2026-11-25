@@ -1,0 +1,27 @@
+{{- if and .Values.serviceAccount.create .Values.daemonset.enabled (or (eq .Values.mode "daemonset") (eq .Values.mode "hybrid")) }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "grdr-node-sensor.fullname" . }}-reader
+  labels:
+    {{- include "grdr-node-sensor.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "namespaces", "pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "grdr-node-sensor.fullname" . }}-reader
+  labels:
+    {{- include "grdr-node-sensor.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "grdr-node-sensor.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "grdr-node-sensor.fullname" . }}-reader
+{{- end }}

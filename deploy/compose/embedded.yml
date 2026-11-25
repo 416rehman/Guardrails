@@ -1,0 +1,45 @@
+# Single-node embedded deployment profile for Docker Compose (docs/design/24 section 6).
+# Uses bundled SQLite storage, read-only rootfs, dropped capabilities, and non-root UID 65532.
+
+services:
+  grdr-server:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Containerfile.server
+    image: ${GRDR_SERVER_IMAGE:-grdr-server:embedded-local}
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      GRDR_SERVER_PROFILE: embedded
+      GRDR_SERVER_BIND: "0.0.0.0:8787"
+      GRDR_DATA_DIR: /var/lib/grdr
+      GRDR_WEB_DIR: /usr/share/grdr/web
+      GRDR_API_TOKEN: ${GRDR_API_TOKEN:?set GRDR_API_TOKEN before starting compose}
+      GRDR_ENROLL_TOKEN: ${GRDR_ENROLL_TOKEN:?set GRDR_ENROLL_TOKEN before starting compose}
+      SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - grdr_embedded_data:/var/lib/grdr
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grdr", "server", "preflight", "--profile", "embedded", "--data-dir", "/var/lib/grdr"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - grdr_embedded
+
+volumes:
+  grdr_embedded_data:
+
+networks:
+  grdr_embedded:
+    driver: bridge

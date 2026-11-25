@@ -1,0 +1,121 @@
+# Guardrails ADR Build Order Plan (ADR-0029, docs/design/33 sections 1-3)
+schema = "grdr.plan.build-order.v1alpha1"
+
+[[slice]]
+id = "slice-0"
+order = 0
+name = "Walking skeleton"
+requires = []
+accept = "Clean clone builds with stable Rust; daemon, shim, policy evaluator, local store, and console render one end-to-end decision receipt on Windows, macOS, and Linux."
+
+[[slice]]
+id = "slice-1"
+order = 1
+name = "Tier 1 hook broker and standalone daemon"
+requires = ["slice-0"]
+accept = "Hook shim, named-pipe/Unix IPC, fail-safe table, and Essentials pack enforce in User and Protected profiles across Claude Code, Codex, Cursor, and Copilot CLI."
+
+[[slice]]
+id = "slice-2"
+order = 2
+name = "Native settings compile-down and daemon local UI"
+requires = ["slice-1"]
+accept = "Managed native config merging with transaction rollback, tray menu, approve prompt, and local web console subset passing UI visual and keyboard gates."
+
+[[slice]]
+id = "slice-3"
+order = 3
+name = "OS sensors and hook reconciliation"
+requires = ["slice-1"]
+accept = "Linux, macOS, and Windows sensors ingest process and file activity without conflicting with incumbent EDRs and reconcile unhooked agent child executions."
+
+[[slice]]
+id = "slice-4"
+order = 4
+name = "Containment, proxy, and MCP broker"
+requires = ["slice-1", "slice-3"]
+accept = "Workspace-scoped launch containment fences network and out-of-workspace writes; explicit LLM HTTP proxy and stdio/HTTP MCP broker inspect calls within latency targets."
+
+[[slice]]
+id = "slice-5"
+order = 5
+name = "Embedded and HA server with fleet uplink"
+requires = ["slice-1", "slice-2"]
+accept = "grdr-server starts in embedded (SQLite) and ha (PostgreSQL 18 + S3-compatible object store) profiles, completes device enrolment, policy rollout, and zero-loss ingest."
+
+[[slice]]
+id = "slice-6"
+order = 6
+name = "Lake queries, detection pipeline, and review queue"
+requires = ["slice-5"]
+accept = "DataFusion lake partitions under encryption, Sigma detections emit findings, and web/desktop consoles display timelines and analyst review verdicts under tenant isolation."
+
+[[slice]]
+id = "slice-7"
+order = 7
+name = "Operator plane, updates, and packaging"
+requires = ["slice-5", "slice-6"]
+accept = "Separate D-70 operator plane, TUF update verification, Helm/Terraform/OS installers, S-31 air-gap conformance, and disaster-recovery restore drills pass."
+
+[[slice]]
+id = "slice-8"
+order = 8
+name = "Identity, credential broker, and compliance"
+requires = ["slice-5", "slice-6"]
+accept = "Short-lived credential broker, workload identity federation, OSCAL compliance evidence exports, retention holds, and subject erasure pass audit tests."
+
+[[slice]]
+id = "slice-9"
+order = 9
+name = "Distributed cells and organisation shards"
+requires = ["slice-7", "slice-8"]
+accept = "NATS JetStream distributed profile, multi-cell router, shard splitting (S-28), and cell load benchmarks (S-24) pass at target capacity."
+
+[[slice]]
+id = "slice-10"
+order = 10
+name = "Ecosystem, Rune desktop, and embedding SDK"
+requires = ["slice-4", "slice-7"]
+accept = "Rune desktop 6-screen app soak (S-19), L0-L6 embedding contracts, and third-party port adapters verified against testkit."
+
+[[capability]]
+id = "cap-2.1"
+slice = "slice-1"
+name = "Policy and Essentials floor"
+external_precondition = "none"
+
+[[capability]]
+id = "cap-2.2"
+slice = "slice-3"
+name = "Cross-platform sensors"
+external_precondition = "pre-apple-dev"
+
+[[capability]]
+id = "cap-2.3"
+slice = "slice-4"
+name = "Workspace containment and brokers"
+external_precondition = "none"
+
+[[capability]]
+id = "cap-2.4"
+slice = "slice-5"
+name = "Fleet transport and uplink"
+external_precondition = "none"
+
+[[capability]]
+id = "cap-2.5"
+slice = "slice-6"
+name = "Encrypted DataFusion lake and detections"
+external_precondition = "none"
+
+[[capability]]
+id = "cap-2.6"
+slice = "slice-7"
+name = "Packaging, Helm, Terraform, and S-31 air-gap"
+external_precondition = "none"
+
+[[capability]]
+id = "cap-2.7"
+slice = "slice-8"
+name = "Compliance, governance, and CRA technical file"
+external_precondition = "pre-cra-counsel"

@@ -1,0 +1,88 @@
+# Default values for grdr-node-sensor (docs/design/10, docs/design/24 section 6).
+# Deploy in its own dedicated namespace (e.g. grdr-sensor) with a non-zero immutable image.digest.
+
+global:
+  imageRegistry: "ghcr.io/416rehman"
+
+image:
+  repository: "grdr-node-sensor"
+  digest: ""
+  pullPolicy: "IfNotPresent"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# mode: daemonset | sidecar | hybrid
+mode: "daemonset"
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+server:
+  endpoint: ""
+  caConfigMap: ""
+  enrollExistingSecret: ""
+  sslInsecureSkipVerify: false
+
+daemonset:
+  enabled: true
+  hostPID: false
+  criSocketPath: "/run/containerd/containerd.sock"
+  mountCriSocket: false
+  allowPtrace: false
+  allowSysAdminFallback: false
+  pinBpfMaps: false
+  priorityClassName: "system-node-critical"
+  updateStrategy:
+    type: "RollingUpdate"
+    maxUnavailable: "10%"
+  nodeSelector:
+    kubernetes.io/os: "linux"
+  tolerations:
+    - operator: "Exists"
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+
+sidecar:
+  enabled: false
+  sandboxTemplateConfigMap:
+    enabled: true
+    runtimeClassName: "gvisor"
+    agentNamespaceLabelKey: "grdr.internal/sidecar-inject"
+    agentSandboxLabelKey: "grdr.internal/agent-sandbox"
+  validatingPolicy:
+    enabled: false
+    validationActions:
+      - "Deny"
+  mutatingWebhook:
+    enabled: false
+    failurePolicy: "Ignore"
+    timeoutSeconds: 2
+    serviceName: ""
+    serviceNamespace: ""
+    servicePort: 9443
+    caBundle: ""
+    certManagerInjectCAFrom: ""
+  resources:
+    requests:
+      cpu: "25m"
+      memory: "48Mi"
+    limits:
+      cpu: "250m"
+      memory: "160Mi"
+
+networkPolicy:
+  enabled: true
+  serverNamespace: "grdr-system"
+  allowEgressCidrs:
+    - "10.0.0.0/8"
+    - "172.16.0.0/12"
+    - "192.168.0.0/16"

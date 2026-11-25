@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "grdr-node-sensor Helm values schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "global",
+    "image",
+    "mode",
+    "serviceAccount",
+    "server",
+    "daemonset",
+    "sidecar",
+    "networkPolicy"
+  ],
+  "properties": {
+    "global": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["imageRegistry"],
+      "properties": {
+        "imageRegistry": { "type": "string", "minLength": 1 }
+      }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "digest", "pullPolicy"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "not": {
+            "const": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        },
+        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": { "name": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+    "mode": { "type": "string", "enum": ["daemonset", "sidecar", "hybrid"] },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["create", "name", "annotations"],
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" },
+        "annotations": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "server": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["endpoint", "caConfigMap", "enrollExistingSecret", "sslInsecureSkipVerify"],
+      "properties": {
+        "endpoint": { "type": "string" },
+        "caConfigMap": { "type": "string" },
+        "enrollExistingSecret": { "type": "string" },
+        "sslInsecureSkipVerify": { "type": "boolean", "const": false }
+      }
+    },
+    "daemonset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "hostPID",
+        "criSocketPath",
+        "mountCriSocket",
+        "allowPtrace",
+        "allowSysAdminFallback",
+        "pinBpfMaps",
+        "priorityClassName",
+        "updateStrategy",
+        "nodeSelector",
+        "tolerations",
+        "resources"
+      ],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "hostPID": { "type": "boolean" },
+        "criSocketPath": { "type": "string" },
+        "mountCriSocket": { "type": "boolean" },
+        "allowPtrace": { "type": "boolean" },
+        "allowSysAdminFallback": { "type": "boolean" },
+        "pinBpfMaps": { "type": "boolean" },
+        "priorityClassName": { "type": "string" },
+        "updateStrategy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "maxUnavailable"],
+          "properties": {
+            "type": { "type": "string", "enum": ["RollingUpdate", "OnDelete"] },
+            "maxUnavailable": { "type": ["integer", "string"] }
+          }
+        },
+        "nodeSelector": { "type": "object", "additionalProperties": { "type": "string" } },
+        "tolerations": { "type": "array" },
+        "resources": { "type": "object" }
+      }
+    },
+    "sidecar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "sandboxTemplateConfigMap", "validatingPolicy", "mutatingWebhook", "resources"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "sandboxTemplateConfigMap": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "runtimeClassName", "agentNamespaceLabelKey", "agentSandboxLabelKey"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "runtimeClassName": { "type": "string" },
+            "agentNamespaceLabelKey": { "type": "string", "minLength": 1 },
+            "agentSandboxLabelKey": { "type": "string", "minLength": 1 }
+          }
+        },
+        "validatingPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "validationActions"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "validationActions": {
+              "type": "array",
+              "items": { "type": "string", "enum": ["Deny", "Warn", "Audit"] }
+            }
+          }
+        },
+        "mutatingWebhook": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "failurePolicy",
+            "timeoutSeconds",
+            "serviceName",
+            "serviceNamespace",
+            "servicePort",
+            "caBundle",
+            "certManagerInjectCAFrom"
+          ],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "failurePolicy": { "type": "string", "enum": ["Ignore"] },
+            "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 5 },
+            "serviceName": { "type": "string" },
+            "serviceNamespace": { "type": "string" },
+            "servicePort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "caBundle": { "type": "string" },
+            "certManagerInjectCAFrom": { "type": "string" }
+          }
+        },
+        "resources": { "type": "object" }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "serverNamespace", "allowEgressCidrs"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "serverNamespace": { "type": "string" },
+        "allowEgressCidrs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 7,
+            "pattern": "^(?:(?:[0-9]{1,3}\\.){3}[0-9]{1,3}/(?:3[0-2]|[12]?[0-9])|[0-9A-Fa-f:]+/(?:12[0-8]|1[01][0-9]|[1-9]?[0-9]))$",
+            "not": {
+              "pattern": "^(?:0\\.0\\.0\\.0/[0-7]$|128\\.0\\.0\\.0/1$|169\\.254\\.|::/[0-7]$|[fF][eE][89aAbB][0-9a-fA-F]:)"
+            }
+          }
+        }
+      }
+    }
+  }
+}

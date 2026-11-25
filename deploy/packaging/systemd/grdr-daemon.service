@@ -1,0 +1,40 @@
+[Unit]
+Description=Guardrails ADR Endpoint Daemon (Protected Profile)
+After=network-online.target grdr-decide.socket grdr-local.socket
+Wants=network-online.target
+Requires=grdr-decide.socket grdr-local.socket
+
+[Service]
+Type=simple
+User=grdr
+Group=grdr
+# Absolute binary invoked via /usr/bin/env (no PATH search) so offline systemd-analyze verify passes.
+ExecStart=/usr/bin/env /usr/bin/grdr-daemon --profile protected --data-dir /var/lib/grdr --bind 127.0.0.1:8788
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=10s
+StateDirectory=grdr
+RuntimeDirectory=grdr
+RuntimeDirectoryMode=0750
+ConfigurationDirectory=grdr
+NoNewPrivileges=true
+CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_SYS_RESOURCE
+AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_RESOURCE
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+ReadWritePaths=/var/lib/grdr /run/grdr
+PrivateTmp=true
+LimitNOFILE=65536
+MemoryHigh=40M
+MemoryMax=80M
+
+[Install]
+WantedBy=multi-user.target
