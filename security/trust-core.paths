@@ -1,5 +1,5 @@
 # Trust-core paths (D-63, ADR-0043): strictly runtime security boundaries and core security/CI policy gates.
-# Routine dependency/tool pins (Cargo.toml, Cargo.lock, rust-toolchain.toml, supply-chain/build-tools.toml),
+# Routine dependency/tool pins (Cargo.toml, Cargo.lock, rust-toolchain.toml, security/supply-chain/build-tools.toml),
 # lint/format configs, release manifests, and agent/doc markdown sit outside trust-core so CI verifies them cleanly.
 # Each line is a git :(glob,icase) pathspec from the root, so ASCII case does not matter; `**/`
 # matches zero or more folders, and a folder line `x/**` also matches `x` itself.
@@ -48,7 +48,7 @@ crates/grdr-rel-sqlite/src/tenant.rs
 crates/grdr-rel-sqlite/src/tenant/**
 crates/grdr-rel-sqlite/src/jobs.rs
 crates/grdr-rel-sqlite/src/jobs/**
-schema/tenancy/lifecycle.toml
+contracts/tenancy/lifecycle.toml
 programs/grdr-server/src/compose.rs
 programs/grdr-server/src/compose/**
 programs/grdr-server/src/api/authn.rs
@@ -69,13 +69,13 @@ crates/grdr-ffi/**
 crates/grdr-fastpath-ffi/**
 
 # Core security bounds, CI workflow definitions, and dependency licence/ban policies
-limits.toml
+contracts/limits.toml
 security/trust-core.paths
 security/breakers.toml
 security/scorecard.toml
 .github/workflows/**
-supply-chain/licences.toml
-supply-chain/do-not-read.toml
+security/supply-chain/licences.toml
+security/supply-chain/do-not-read.toml
 **/.cargo/**
 **/.gitattributes
 **/.gitmodules

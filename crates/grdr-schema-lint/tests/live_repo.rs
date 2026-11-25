@@ -89,7 +89,12 @@ message ActionAttempt {
 
 #[test]
 fn vocabulary_lint_and_cedar_whitespace_user_check_hold() {
-    let raw_res = std::fs::read_to_string(repo_root().join("interface").join("vocabulary.toml"));
+    let raw_res = std::fs::read_to_string(
+        repo_root()
+            .join("contracts")
+            .join("interface")
+            .join("vocabulary.toml"),
+    );
     assert!(raw_res.is_ok(), "read vocabulary.toml: {raw_res:?}");
     if let Ok(raw) = raw_res {
         let reg_res = parse_vocabulary_toml(&raw);

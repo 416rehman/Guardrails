@@ -10,7 +10,7 @@
   {"query": "Add an Elastic ingest dialect for their endpoint alerts index.", "should_trigger": true},
   {"query": "Wire up Vanta evidence push as the second first-party member of the GRC family.", "should_trigger": true},
   {"query": "Implement the PostgreSQL 18 relational adapter behind the Relational port.", "should_trigger": false},
-  {"query": "Write the OCSF 1.9 mapping file for the decision stream in schema/mappings.", "should_trigger": false},
+  {"query": "Write the OCSF 1.9 mapping file for the decision stream in contracts/mappings.", "should_trigger": false},
   {"query": "Fix the CEF header escaping bug in grdr-export's syslog codec, kind:bug.", "should_trigger": false},
   {"query": "Write a detection for agent sessions posting data to paste sites.", "should_trigger": false},
   {"query": "Threat-model the grants of the WebAssembly integrations host.", "should_trigger": false},

@@ -39,7 +39,7 @@ agents.
   commands and their lockfiles are refused in review. The npm registry is only where packages are fetched from and
   published to.
 - Do not copy, translate or paraphrase code or rule logic from sources
-  listed in supply-chain/do-not-read.toml (for example Elastic detection
+  listed in security/supply-chain/do-not-read.toml (for example Elastic detection
   rules under the Elastic License, SigmaHQ rules under the DRL, AGPL or GPL
   engines). Reading them to understand a technique is fine; reproducing
   them is not.
@@ -94,7 +94,7 @@ adapters).
    the workspace Cargo.toml and is checked by CI) and run the gates:
    `cargo fmt --all -- --check`,
    `cargo clippy --workspace --locked --all-targets -- -D warnings`,
-   `cargo test --workspace --locked` and `cargo deny check`. CI runs the same
+   `cargo test --workspace --locked` and `cargo deny --config security/deny.toml check`. CI runs the same
    commands. A clean clone should be green in under 15 minutes
    on Windows, macOS or Linux, with no kernel, Swift, Node or GPU
    toolchain. If it is not, that is a bug; please report it.
@@ -109,8 +109,8 @@ adapters).
    tests, matrix and soak runs); a trust-core maintainer's review adds
    evidence. Talk to a maintainer before starting.
 7. New dependencies need a licence on the allow-list in
-   supply-chain/licences.toml and pass the licence review. Adding a
-   licence to that list changes supply-chain/, a trust-core path, and is a
+   security/supply-chain/licences.toml and pass the licence review. Adding a
+   licence to that list changes security/supply-chain/, a trust-core path, and is a
    change of its own.
 
 ### Contrib adapters

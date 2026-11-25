@@ -87,13 +87,14 @@ impl LintReport {
 pub fn lint_repo_root(root: &Path) -> Result<LintReport, LintError> {
     let mut findings = Vec::new();
 
-    let proto_dir = root.join("proto");
+    let contracts_dir = root.join("contracts");
+    let proto_dir = contracts_dir.join("proto");
     let proto_files_checked = lint_proto_dir(&proto_dir, &mut findings)?;
 
-    let cedar_dir = root.join("schema").join("cedar");
+    let cedar_dir = contracts_dir.join("cedar");
     let cedar_files_checked = lint_cedar_dir(&cedar_dir, &mut findings)?;
 
-    let vocab_path = root.join("interface").join("vocabulary.toml");
+    let vocab_path = contracts_dir.join("interface").join("vocabulary.toml");
     let vocab_terms_checked = lint_vocabulary_toml(&vocab_path, &mut findings)?;
 
     Ok(LintReport {

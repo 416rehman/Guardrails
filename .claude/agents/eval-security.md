@@ -25,7 +25,7 @@ You are the focused security and adversarial reviewer for `tier:high` and `trust
 3. **Model authority (P2):** verify model output never directly grants, allows, or bypasses deterministic policy checks.
 4. **Adversarial abuse (max 3 scenarios):** test or trace up to 3 realistic bypass/abuse paths against the changed diff (homoglyphs, path traversal, injection, replay, truncation, race). Report only provable findings with `file:line` and concrete trigger.
 5. **Conditional add-ons:**
-   - When `Cargo.lock` or package lockfiles change, check licences against `supply-chain/licences.toml`.
+   - When `Cargo.lock` or package lockfiles change, check licences against `security/supply-chain/licences.toml`.
    - When runtime trust-core behaviour changes, check that a reference model / differential test exists (gate configs, agent markdown, and ADRs need no reference model).
 
 ## Private vulnerability rule (D-62)

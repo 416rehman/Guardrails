@@ -30,7 +30,7 @@ Who uses it: a lead while specifying a high-tier or trust-core item (before it i
 
 For each crossing, answer with path and line:
 
-1. **Untrusted input.** What enters, from whom, where it is validated, and the bound on its size and depth (`limits.toml`).
+1. **Untrusted input.** What enters, from whom, where it is validated, and the bound on its size and depth (`contracts/limits.toml`).
 2. **Data that becomes instructions.** Any input that reaches a shell, a policy, a configuration writer, a model prompt or a log another tool parses.
 3. **Parsed twice.** Any value two components parse separately. Two parsers can disagree, and the gap is a bypass: name the differential test that holds them together (SD-04).
 4. **Where it is parsed.** No content parser in a privileged program or `grdr-hook` (ARCH-004); untrusted content is parsed in the sandboxed engine or the unprivileged proxy (SR-05).

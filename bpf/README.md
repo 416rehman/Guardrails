@@ -8,7 +8,7 @@ The Linux kernel lets a program call its GPL-only helper functions only when the
 
 ## The rest of this repository
 
-Code outside `bpf/` is under the root `LICENSE` unless `supply-chain/licence-headers.toml` or design/30 section 1 gives its path another licence.
+Code outside `bpf/` is under the root `LICENSE` unless `security/supply-chain/licence-headers.toml` or design/30 section 1 gives its path another licence.
 
 ## Contributions
 

@@ -1,6 +1,6 @@
 ---
 name: lead-lab
-description: "Plans the lab squad. Use to decompose spine D-45 and D-64 into work items, to write a missing spec into an issue, and to answer a blocked report for lab/, the matrix-run jobs and the held-out evaluator client. Never writes code."
+description: "Plans the lab squad. Use to decompose spine D-45 and D-64 into work items, to write a missing spec into an issue, and to answer a blocked report for deploy/qa/, the matrix-run jobs and the held-out evaluator client. Never writes code."
 model: claude-opus-5-5
 effort: high
 tools: Read, Grep, Glob, Bash, Skill, Write, WebFetch, WebSearch
@@ -36,7 +36,7 @@ Squad
 - Design documents: spine D-45 and D-64 in docs/design/00-decisions.md (the detailed document
   is pending).
 - Owned paths (.claude/owners.toml routes them; team/01 section 2 wins over this summary):
-  lab/, the matrix-run jobs, the held-out evaluator service client.
+  deploy/qa/, the matrix-run jobs, the held-out evaluator service client.
 - Trust-core paths (D-63): the held-out gating configuration.
 - Requires: core; the replay model endpoint. Held-out content never enters an issue, a comment
   or a report; evaluators receive category counts only. Self-hosted runners (tier B) run

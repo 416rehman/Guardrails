@@ -12,7 +12,7 @@ cannot run is `not run` with its reason and blocks the release.
 
 | Gate | Requirement | Evidence |
 |---|---|---|
-| Tier 1 matrix | Every Tier 1 cell of `support.toml` green (D-50) | The matrix runner on the Tier 1 cells at the candidate commit (skill `grdr-matrix-run`) |
+| Tier 1 matrix | Every Tier 1 cell of `contracts/support.toml` green (D-50) | The matrix runner on the Tier 1 cells at the candidate commit (skill `grdr-matrix-run`) |
 | Conformance suites | Every conformance suite for the shipped components passes (design/24 section 10, step 7) | The conformance jobs' check runs on the candidate |
 | Release audit set | team/04 section 9's release row: M01 to M05, B02, B04, B05, B07, B08, B09, C05, D02, D04, F01, F02, F04, F05, F07, F08, G04, H02, I04, J02, K04, on the candidate, diffed against the previous release | Skill `grdr-audit`, then the diff against the previous release's results. Blocks on any severity 1 result from S1 to S5, or severity 1 or 2 from F04 or F08, in `upheld`, `triage`, `proven` or `regressed`; a result still `open` blocks until its verification finishes |
 | Harness thin slice | Thin-slice scenarios pass (Linux x64, Claude Code and one scripted bespoke agent); the held-out evaluator returns category counts | `scorecard/<version>.json`, signed with its run manifest |
@@ -32,7 +32,7 @@ cannot run is `not run` with its reason and blocks the release.
 | Air-gap conformance run (24-28, spike S-31) | Green for `embedded` and `ha` (and `distributed` once its load test passes) from the bundle alone: every step's oracle met, zero frames outside the lab, zero DNS queries outside its zone. Required for every server release and for any release that changes the uplink, updater, importer, `Dialer`, Keys, notify or backup (P16) | The conformance run's check run |
 | Air-gap bundle contents | The bundle and its delta carry every artefact and third-party component every profile needs, with `THIRD-PARTY-NOTICES`, the CycloneDX SBOM and `sources/` for each copyleft component; a component whose terms forbid redistribution is absent and optional (owner instruction 20) | The bundle manifest and the licence gate's report |
 | Fleet scale (P15) | The herd simulation of spike S-23 passes at 10 million devices; a fixed `retry_after_ms` or an unjittered timer fails it | Simulation job check run |
-| Compatibility matrix | Every supported sensor line against the server (N-2 to N+1), every pack against every supported engine line, the driver and eBPF interface ranges and the upgrade path's hops, generated from `support.toml` (D-71) | Matrix job check run |
+| Compatibility matrix | Every supported sensor line against the server (N-2 to N+1), every pack against every supported engine line, the driver and eBPF interface ranges and the upgrade path's hops, generated from `contracts/support.toml` (D-71) | Matrix job check run |
 | Shipped locales | Every token of every `shipped` locale translated with a current `source_hash` and an `equivalent` or `minor` verdict; a locale that fails is demoted to `preview` for the release and the notes say so (D-69) | The interface check's output (skill `grdr-interface`) |
 
 Statistical rule (team/05 section 16): a zero-tolerance target is met only by zero failures in at least

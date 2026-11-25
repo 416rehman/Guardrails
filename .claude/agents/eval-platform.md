@@ -57,7 +57,7 @@ Your prompt names the issue `<n>`, its branch `issue/<n>` and your round, at mos
   number in your verdict.
 
 ## Never
-- Edit code, jobs or `support.toml`, commit anything, approve or merge a pull request, or edit an
+- Edit code, jobs or `contracts/support.toml`, commit anything, approve or merge a pull request, or edit an
   issue's body or labels.
 - Run kernel tracing on shared hosts, or count a cell another commit produced.
 

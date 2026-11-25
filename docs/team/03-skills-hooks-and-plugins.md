@@ -43,7 +43,7 @@ Each installed skill has one lane. Agent names are `team/02`'s.
 | `code-review` | Built in | Inside `eval-diff`'s review | `eval-diff`, in a clean context |
 | `security-review` | Built in | Trust-core paths, parsers, IPC, pack verification, the shim, CI or agent files; every high-tier change | `eval-security` |
 | `autopilot`, `auto-dev-via-github-issues` | Owner's own skills | Only when the owner runs a loop, under `docs/AUTOPILOT.md`, which takes item choice through "work the next issue" of `grdr-work-issue` and keeps one writer per issue | The owner |
-| `ui-architect` | Owner's own skill | Before the first UI decision on any interface path (`web/`, `site/`, `interface/`, `desktop/`, the CLI, tray and approval programs, installers, translations), and always before `grdr-interface` (the owner's global rule, which also binds subagents) | `impl-web`, `impl-docs`, `eval-ux`, `eval-a11y`, `lead-interfaces`, the persona seats that review screens |
+| `ui-architect` | Owner's own skill | Before the first UI decision on any interface path (`web/`, `site/`, `contracts/interface/`, `desktop/`, the CLI, tray and approval programs, installers, translations), and always before `grdr-interface` (the owner's global rule, which also binds subagents) | `impl-web`, `impl-docs`, `eval-ux`, `eval-a11y`, `lead-interfaces`, the persona seats that review screens |
 | `frontend-design` | `claude-plugins-official`, user scope, Apache-2.0 | After `ui-architect`, for new screens (owner instruction 18); output composes Astryx components through `@grdr/ui` and `@grdr/kit` and uses the DTCG tokens (D-42, owner instruction 21) | `impl-web` |
 | `write-like-a-normal-staff-senior-developer` | Account skill | Any prose written into the repository: docs, ADRs, RFCs, pull request bodies, commit subjects, skill files | Every agent |
 | `skill-creator` | Account skill (Anthropic) | Creating or changing any project skill, with its trigger evals | `impl-docs`, `lead-agent-kit` |
@@ -59,7 +59,7 @@ Format: one directory per skill under `.claude/skills/`, frontmatter `name`, `de
 | `grdr-work-issue` | The orchestration: "fix, work or implement issue #n" and "work the next issue". The session reads the issue, spawns a lead for a missing spec, the implementer in a worktree and the evaluators by tier in parallel, and runs at most three rounds. It opens a draft pull request with `Refs #<n>` when `issue/<n>` is first pushed; at landing it edits the body to `Closes #<n>`, marks it ready, waits for CI and squash-merges, then deletes the remote branch and confirms it is gone. It holds one issue, one branch `issue/<n>`, one pull request, checked by `.claude/hooks/branch-check.mjs` |
 | `grdr-build` | "Build the product", "keep building", and `/loop`: builds in end-to-end slices defined as `epic` and `slice:N` issues: when a slice starts, the lead of every layer its epic names files that layer's issues; each iteration first runs the branch check and repairs its findings, then works the highest-priority workable issue of the lowest open slice through `grdr-work-issue` (up to three in parallel, at most one slice ahead), closes the epic only after an end-to-end `eval-acceptance` pass on all three systems, and stops when no epic is open, something fails, or the branch check could not look or finds what only the owner can repair |
 | `grdr-start-item` | How an implementer begins: the branch `issue/<n>`, what to read in which order, the write set, the baseline gates, search before writing, failing test first |
-| `grdr-verify` | The gates: `cargo fmt --all -- --check`, `cargo clippy --workspace --locked --all-targets -- -D warnings`, `cargo test --workspace --locked`, `cargo deny check`; reading the output; never editing a gate to pass it; the `impossible` route |
+| `grdr-verify` | The gates: `cargo fmt --all -- --check`, `cargo clippy --workspace --locked --all-targets -- -D warnings`, `cargo test --workspace --locked`, `cargo deny --config security/deny.toml check`; reading the output; never editing a gate to pass it; the `impossible` route |
 | `grdr-handoff` | How every agent finishes: status, definition of done, the one-line commit, the push, the report returned to the session (`references/format.md`), escalation, new work as issues |
 | `grdr-evaluate` | How an evaluator judges a change: clean context on the branch, instructions from `main`, expectations before each action, driving the artefact, proofs re-run, structure, findings with proof, three rounds, the verdict |
 | `grdr-structure` | The owner's seven rules for code (owner instructions 4, 9, 15 and 26): structures before implementations; files of at most 500 code lines, split by responsibility; no implicit state machines; comments only for a reason the code cannot show; fix the core problem; readable code; find the mechanism first (P14). Checks S1 to S7 and their fixes, and which data source holds each kind of value |
@@ -68,7 +68,7 @@ Format: one directory per skill under `.claude/skills/`, frontmatter `name`, `de
 | `grdr-fix-bug` | Reproduce first; three-arm proof (fails on the parent, passes with the change, fails on revert); regression hunt through callers |
 | `grdr-remove-code` | A survival test that fails while the target remains; no guard instead of a delete (29% of passing patches do this, h09); callers updated |
 | `grdr-write-spec` | The spec, plan and acceptance sections of a work-item issue, decision records and RFCs; acceptance criteria with a named oracle; the mechanism the feature extends (P14); the RFC route |
-| `grdr-scaffold-crate` | A new crate: `[package.metadata.grdr]`, workspace lints, error register entry, `limits.toml` entries, test layout, the split rule |
+| `grdr-scaffold-crate` | A new crate: `[package.metadata.grdr]`, workspace lints, error register entry, `contracts/limits.toml` entries, test layout, the split rule |
 | `grdr-add-agent-adapter` | The steps of design/03 "Add an agent adapter"; tested version range; canary proof that the product's control point fired (D-49) |
 | `grdr-author-detection` | Session rule versus Sigma detection (D-09); attack fixture and benign corpus; starts in Watch |
 | `grdr-author-policy` | Pack anatomy; semantic diff; widening needs an approver; Essentials entry rule (D-53) |
@@ -84,7 +84,7 @@ Format: one directory per skill under `.claude/skills/`, frontmatter `name`, `de
 | Paths | Skills, in order |
 |---|---|
 | `web/**`, `site/**` | `ui-architect`, `frontend-design:frontend-design`, `grdr-interface` |
-| `interface/**`, `desktop/**`, `programs/grdr/**`, `programs/grdr-tray/**`, `programs/grdr-approve/**`, `platform/*/installer/**`, `interface/strings/tr/**`, `docs/i18n/**` | `ui-architect`, `grdr-interface` |
+| `contracts/interface/**`, `desktop/**`, `programs/grdr/**`, `programs/grdr-tray/**`, `programs/grdr-approve/**`, `platform/*/installer/**`, `contracts/interface/strings/tr/**`, `docs/i18n/**` | `ui-architect`, `grdr-interface` |
 | `crates/**`, `programs/**`, `**/*.rs`, `**/*.ts`, `**/*.tsx` | `grdr-structure`, `cleanup:cleanup` |
 | `docs/**` | `write-like-a-normal-staff-senior-developer` |
 

@@ -14,7 +14,7 @@
   {"query": "Write the Cedar policy that denies credential store reads in Essentials.", "should_trigger": false},
   {"query": "Review the Dependabot pull request that bumps the Astryx packages and check the changelog for breaking changes.", "should_trigger": false},
   {"query": "Run audit A01 on the diff of pull request 77.", "should_trigger": false},
-  {"query": "Add a limits.toml entry for the maximum batch size of the uplink.", "should_trigger": false},
+  {"query": "Add a contracts/limits.toml entry for the maximum batch size of the uplink.", "should_trigger": false},
   {"query": "Write the report for #91 and push the branch.", "should_trigger": false},
   {"query": "What do the reference vendors show on their approval screens? Research it for the spec of #240.", "should_trigger": false},
   {"query": "Scaffold a new layer 2 crate for the retry policies.", "should_trigger": false},

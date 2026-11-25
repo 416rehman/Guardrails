@@ -2,14 +2,14 @@
 # SPDX-FileCopyrightText: The Guardrails ADR Authors
 """Tests for install_tool.py and minisign.py: python3 -I .github/actions/install-tool/test_install_tool.py [-k <name>]
 
-Signature: the golden buf release files in supply-chain/fixtures/install-tool/buf-<version>/, made by
+Signature: the golden buf release files in security/supply-chain/fixtures/install-tool/buf-<version>/, made by
 minisign with Buf's release key, and seeded mutations of them; a case that needs a valid signature over
 other content uses a key the test makes with OpenSSL. Installer: seeded pins built from the real
-supply-chain/build-tools.toml and served by a local fake opener. InstallerRealArchive: the pinned
+security/supply-chain/build-tools.toml and served by a local fake opener. InstallerRealArchive: the pinned
 archives, fetched over https through the installer's own checks, read against the system tar; the
 only class that opens a connection. ProxyName: names built at run time from [install], and the host's
 own command resolvers. NoBuildFetch: the tracked tree (git ls-files) and the seeded copies in
-supply-chain/fixtures/install-tool/no-build-fetch.toml. CheckRelease: a fake gh runner.
+security/supply-chain/fixtures/install-tool/no-build-fetch.toml. CheckRelease: a fake gh runner.
 """
 
 import ast
@@ -48,8 +48,8 @@ import install_tool
 import minisign
 
 ROOT = HERE.parents[2]
-PINS = ROOT / "supply-chain" / "build-tools.toml"
-FIXTURES = ROOT / "supply-chain" / "fixtures" / "install-tool"
+PINS = ROOT / "security" / "supply-chain" / "build-tools.toml"
+FIXTURES = ROOT / "security" / "supply-chain" / "fixtures" / "install-tool"
 REAL = tomllib.loads(PINS.read_text(encoding="utf-8"))
 INSTALL = REAL["install"]
 BUF = REAL["tool"]["buf"]

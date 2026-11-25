@@ -29,7 +29,7 @@ Layer 0. Same-layer edges in architecture.toml: `grdr-model`.
 Reads: none yet. Writes: none yet (first content #238). Logs: LogSafe only.
 
 ## Limits
-Bounds in limits.toml: none yet (limits.toml arrives with #279).
+Bounds in contracts/limits.toml: none yet (contracts/limits.toml arrives with #279).
 
 ## Do not
 - Link into a privileged program or `grdr-hook`: it is a content parser (ARCH-004).

@@ -55,7 +55,7 @@ land: report `blocked` and name the missing repository. Creating it is the owner
    endpoint (fixed tool calls, no model usage) and proves a canary tool call fires: the session-start
    event and the first tool call's hook event matched to an OS observation.
 7. Finish with the adapter at Tier 3. Promotion needs a named maintainer and 30 consecutive green days (design/03
-   section 12) and a `support.toml` entry. `support.toml` is gate data outside your write set: ask for
+   section 12) and a `contracts/support.toml` entry. `contracts/support.toml` is gate data outside your write set: ask for
    the entry as a new issue and name it in your report.
 
 ## Support a new release of a catalogued agent

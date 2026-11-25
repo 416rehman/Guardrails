@@ -45,7 +45,7 @@ variable "postgresql_version" {
 
   validation {
     condition     = tonumber(var.postgresql_version) >= 18
-    error_message = "postgresql_version must be 18 or newer per support.toml."
+    error_message = "postgresql_version must be 18 or newer per contracts/support.toml."
   }
 }
 

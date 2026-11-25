@@ -5,7 +5,7 @@
 Usage: python3 -I .github/actions/install-tool/install_tool.py <tool> --dest <dir>
        python3 -I .github/actions/install-tool/install_tool.py <tool> --check-release
 
-The first form reads [tool.<tool>] and [install] from supply-chain/build-tools.toml, fetches the
+The first form reads [tool.<tool>] and [install] from security/supply-chain/build-tools.toml, fetches the
 checksum file, its minisign signature when one is pinned, and this host's asset from the addresses
 [install] release_url gives, checks every size and digest and the signature, takes the binary out
 of an archive row by name, writes it to <dir> and runs it with version_flag. It prints
@@ -47,7 +47,7 @@ sys.path[:0] = [str(HERE), str(HERE.parent / "pins")]
 import minisign
 import read_pins
 
-PINS = HERE.parents[2] / "supply-chain" / "build-tools.toml"
+PINS = HERE.parents[2] / "security" / "supply-chain" / "build-tools.toml"
 MALFORMED = "GRDR-SUPPLY-0002"
 MISSING = "GRDR-SUPPLY-0003"
 UNREADABLE = "GRDR-SUPPLY-0004"

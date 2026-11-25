@@ -69,8 +69,8 @@ A squad owns paths and a design-document set. Its lead is spawned when one of it
 
 | Id | Alias | Owns (crates, paths) | Design docs | Requires |
 |---|---|---|---|---|
-| `core` | SQ-01 | `proto/`, `schema/`, `crates/grdr-{proto,schema,model,core,fastpath,ffi,wasm,ports,ports-testkit,wire}` (except modules owned below), `crates/grdr-llm-proto` while `gateway` is not active, `architecture.toml`, `limits.toml`, `surfaces.toml`, `support.toml`, `supply-chain/`, `third_party/`, the Cargo workspace files | 03, 04, 12 | Nothing |
-| `security` | SQ-18 | `crates/grdr-crypto`, `programs/grdr-approve`, the peer-authentication module of `grdr-wire`, `security/`, `governance/`, `SECURITY.md`, `GOVERNANCE.md`, `AI_POLICY.md`, `COVENANT.md`, `MAINTAINERS.md` | 02, 35 | Nothing |
+| `core` | SQ-01 | `contracts/proto/`, `contracts/cedar/`, `crates/grdr-{proto,schema,model,core,fastpath,ffi,wasm,ports,ports-testkit,wire}` (except modules owned below), `crates/grdr-llm-proto` while `gateway` is not active, `architecture.toml`, `contracts/limits.toml`, `surfaces.toml`, `contracts/support.toml`, `security/supply-chain/`, `third_party/`, the Cargo workspace files | 03, 04, 12 | Nothing |
+| `security` | SQ-18 | `crates/grdr-crypto`, `programs/grdr-approve`, the peer-authentication module of `grdr-wire`, `security/`, `governance/`, `SECURITY.md`, `GOVERNANCE.md`, `AI_POLICY.md`, `COVENANT.md`, `docs/governance/MAINTAINERS.md` | 02, 35 | Nothing |
 | `discovery` | SQ-02 | `discover` and `session` modules of `grdr-core`, attribution probes, content-repository `catalogue/` | 05, 06 | Core |
 | `adapters` | SQ-03 | `crates/grdr-agents`, `crates/grdr-broker`, `programs/grdr-hook`, `grdr-conformance`, content-repository `agents/` | 07 | Core |
 | `endpoint` | SQ-07 | `programs/grdr-{daemon,engine,run}`, `programs/grdr`, `crates/grdr-store-local`, `crates/grdr-sandbox-*` | 11 | Core |
@@ -82,10 +82,10 @@ A squad owns paths and a design-document set. Its lead is spawned when one of it
 | `content` | SQ-08, SQ-09 | `detect` module of `grdr-core`, content-repository `packs/` and `rules/`, intelligence mirror, `crates/grdr-judge-*` | 13, 14, 19 | Core; a sensor for L0 content; the judge back-end trait (D-29) |
 | `fleet` | SQ-12 | `crates/grdr-update`, `programs/grdr-{uplink,updater}` | 22 | Daemon |
 | `server` | SQ-13 | `programs/grdr-server`, `crates/grdr-{rel-*,lake,bus-*,blob}`, API SDKs in `sdk/` | 18, 20, 21, 23, 32 | Core; wire; S-02 and S-03 (D-33, D-34) |
-| `interfaces` | SQ-14 | `interface/` (D-69), `web/` including `web/extension/` (R-55), `site/`, `desktop/`, `programs/grdr-{tray,desktop}` | 27, 28 | Daemon local API; view-model crate and S-19 for the Rune desktop app; server for the full web console |
-| `ecosystem` | SQ-15 | `crates/grdr-{export,integrations}`, `spec/`, `conformance/` | 25, 26 | Core (`grdr-ffi` seams); S-21 and an embedding partner for L3 to L6 (D-41, D-60) |
-| `release` | SQ-16 (release part) | `deploy/`, `brand/`, `deny.toml`, `dist.toml`, `release-please-config.json`, `.release-please-manifest.json`, `release/`, `.github/workflows/release-please.yml` | 24 | Nothing |
-| `lab` | SQ-16 (lab part) | `lab/`, matrix jobs, the held-out evaluator client | Spine D-45, D-64 | Core; replay model endpoint |
+| `interfaces` | SQ-14 | `contracts/interface/` (D-69), `web/` including `web/extension/` (R-55), `site/`, `desktop/`, `programs/grdr-{tray,desktop}` | 27, 28 | Daemon local API; view-model crate and S-19 for the Rune desktop app; server for the full web console |
+| `ecosystem` | SQ-15 | `crates/grdr-{export,integrations}`, `docs/spec/`, `conformance/` | 25, 26 | Core (`grdr-ffi` seams); S-21 and an embedding partner for L3 to L6 (D-41, D-60) |
+| `release` | SQ-16 (release part) | `deploy/`, `contracts/interface/brand/`, `security/deny.toml`, `deploy/release/dist.toml`, `deploy/release/release-please-config.json`, `deploy/release/.release-please-manifest.json`, `deploy/release/`, `.github/workflows/release-please.yml` | 24 | Nothing |
+| `lab` | SQ-16 (lab part) | `deploy/qa/`, matrix jobs, the held-out evaluator client | Spine D-45, D-64 | Core; replay model endpoint |
 | `agent-kit` | SQ-17 | `AGENTS.md`, `CLAUDE.md`, `.claude/`, `.github/` except `release-please.yml`, `audits/`, `docs/team/` | team 01 to 06 | Nothing |
 
 Design documents 01, 29, 30, 33, 34 and 36 belong to the Direction group (`team/02` section 3).
@@ -103,9 +103,9 @@ A path has exactly one owning squad in `.claude/owners.toml`. An issue whose wri
 | High | Medium's set plus `eval-adversarial`, and `eval-diff` a second time on the other of Opus and Sonnet |
 | Trust core | High's set; passing evaluators on two models (owner instruction 7). Before the component leaves the internal ring, the review route D-62 names, run by evaluators plus any free external audit that arrives |
 
-The `[kinds]` row of the issue's kind, the `[interface]` paths (`eval-ux`, `eval-a11y`) and the triggers the diff shows add specialists. Until the incident eval set (`lab/reviewer-evals/`) holds 50 cases, low tier is limited to docs and additive changes behind a flag (h09).
+The `[kinds]` row of the issue's kind, the `[interface]` paths (`eval-ux`, `eval-a11y`) and the triggers the diff shows add specialists. Until the incident eval set (`deploy/qa/reviewer-evals/`) holds 50 cases, low tier is limited to docs and additive changes behind a flag (h09).
 
-Gate configuration (`.claude/settings.json`, `.github/`, lint and deny configuration, `security/`, `supply-chain/`) changes only in an issue whose write set names it, worked by `lead-agent-kit` or the chief architect. No session permission enforces this: the evaluators fail a diff that writes one outside its write set, and CI judges it (ADR-0035).
+Gate configuration (`.claude/settings.json`, `.github/`, lint and deny configuration, `security/`) changes only in an issue whose write set names it, worked by `lead-agent-kit` or the chief architect. No session permission enforces this: the evaluators fail a diff that writes one outside its write set, and CI judges it (ADR-0035).
 
 **Who holds the duties a person held.** Owner instruction 7 replaced every human gate: evaluators on two models replace owner and buddy review of high-tier and trust-core changes; the chief architect decides RFCs after the persona council and `eval-architecture` review them, with no waiting period; release-please and keyless signing replace signed tags; escalations go to the issue's lead and then the chief architect.
 

@@ -39,7 +39,7 @@ Squad
 - Owned paths (.claude/owners.toml routes them; team/01 section 2 wins over this summary):
   programs/grdr-server, crates/grdr-{rel-*,lake,bus-*,blob}, the API SDKs in sdk/.
 - Trust-core paths (D-63): tenancy (tenant context and row-level security).
-- Requires: core; the wire contracts (grdr-wire, proto/); S-02 and S-03 (D-33, D-34). You also
+- Requires: core; the wire contracts (grdr-wire, contracts/proto/); S-02 and S-03 (D-33, D-34). You also
   plan the operations agents of team/02 section 7.1; they require the hosted service, and so
   revenue, sponsorship or donated cloud credits (D-63), and wait until then.
 

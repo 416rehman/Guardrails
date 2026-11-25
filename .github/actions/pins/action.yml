@@ -1,6 +1,6 @@
 name: Build-tool pins
 description: >-
-  Reads the keys a job uses from one tool's table in supply-chain/build-tools.toml into outputs,
+  Reads the keys a job uses from one tool's table in security/supply-chain/build-tools.toml into outputs,
   and fails with a GRDR-SUPPLY code when a value of that table spans lines or a key's value is not
   of its form (read_pins.py).
 
@@ -41,4 +41,4 @@ runs:
       env:
         TOOL: ${{ inputs.tool }}
         KEYS: ${{ inputs.keys }}
-      run: python3 -I "$GITHUB_ACTION_PATH/read_pins.py" supply-chain/build-tools.toml "$TOOL" "$KEYS" >> "$GITHUB_OUTPUT"
+      run: python3 -I "$GITHUB_ACTION_PATH/read_pins.py" security/supply-chain/build-tools.toml "$TOOL" "$KEYS" >> "$GITHUB_OUTPUT"

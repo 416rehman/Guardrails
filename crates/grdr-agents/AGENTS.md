@@ -27,7 +27,7 @@ Layers 0 to 2. Same-layer edges in architecture.toml: none (ARCH-002). Its first
 Reads: none yet. Writes: none yet (first content #376). Logs: LogSafe only.
 
 ## Limits
-Bounds in limits.toml: none yet (limits.toml arrives with #279).
+Bounds in contracts/limits.toml: none yet (contracts/limits.toml arrives with #279).
 
 ## Do not
 - Link into a privileged program: its translators parse content, so the engine and the CLI link it (ARCH-004).

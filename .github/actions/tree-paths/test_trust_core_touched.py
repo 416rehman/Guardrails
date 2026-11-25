@@ -187,11 +187,11 @@ class DifferentialTest(unittest.TestCase):
 class PathsModeTest(unittest.TestCase):
     def test_prints_each_matching_path_once_in_order(self):
         paths = [
-            "docs/a.md", "LIMITS.TOML", "Cargo.toml", "crates/grdr-core/src/lib.rs",
-            "LIMITS.TOML", "crates/x/BUILD.RS", "Cargo.lock", "crates/grdr-model/src/lib.rs",
+            "docs/a.md", "CONTRACTS/LIMITS.TOML", "Cargo.toml", "crates/grdr-core/src/lib.rs",
+            "CONTRACTS/LIMITS.TOML", "crates/x/BUILD.RS", "Cargo.lock", "crates/grdr-model/src/lib.rs",
         ]
         result = run_matcher("--list", str(TRUST_CORE), "--paths", *paths)
-        self.assertEqual((result.returncode, result.stdout), (1, "LIMITS.TOML\ncrates/x/BUILD.RS\n"))
+        self.assertEqual((result.returncode, result.stdout), (1, "CONTRACTS/LIMITS.TOML\ncrates/x/BUILD.RS\n"))
 
     def test_prints_nothing_when_no_path_matches(self):
         paths = [
@@ -202,8 +202,8 @@ class PathsModeTest(unittest.TestCase):
         self.assertEqual((result.returncode, result.stdout), (0, ""))
 
     def test_a_path_and_a_path_below_it_are_both_matched(self):
-        result = run_matcher("--list", str(TRUST_CORE), "--paths", "limits.toml", "limits.toml/x")
-        self.assertEqual((result.returncode, result.stdout), (1, "limits.toml\nlimits.toml/x\n"))
+        result = run_matcher("--list", str(TRUST_CORE), "--paths", "contracts/limits.toml", "contracts/limits.toml/x")
+        self.assertEqual((result.returncode, result.stdout), (1, "contracts/limits.toml\ncontracts/limits.toml/x\n"))
 
     def test_a_folder_line_matches_the_folder_itself(self):
         folders = [".cargo", "crates/x/.cargo", "platform/macos", "crates/grdr-crypto", ".github/workflows"]
@@ -250,12 +250,12 @@ class FromRevTest(unittest.TestCase):
         self.assertIn("GRDR-GATE-0005", result.stderr)
 
     def test_list_mode_without_the_tree_check_beside_it_exits_2(self):
-        result = self.run_alone("--list", str(TRUST_CORE), "--paths", "limits.toml")
+        result = self.run_alone("--list", str(TRUST_CORE), "--paths", "contracts/limits.toml")
         self.assertEqual((result.returncode, result.stdout), (2, ""))
 
     def test_git_missing_exits_2(self):
         result = run_matcher(
-            "--list", str(TRUST_CORE), "--paths", "limits.toml",
+            "--list", str(TRUST_CORE), "--paths", "contracts/limits.toml",
             cwd=ROOT, env=clean_git_env({"PATH": ""}),
         )
         self.assertEqual((result.returncode, result.stdout), (2, ""))
@@ -334,9 +334,9 @@ class StepFourTest(unittest.TestCase):
         assert_planted_git_ignored(
             self, pathlib.Path(self.repo.root) / ".git", MATCHER,
             lambda script, work, env: run_matcher(
-                "--list", str(TRUST_CORE), "--paths", "limits.toml", cwd=work, env=env, script=script,
+                "--list", str(TRUST_CORE), "--paths", "contracts/limits.toml", cwd=work, env=env, script=script,
             ),
-            (1, "limits.toml\n"),
+            (1, "contracts/limits.toml\n"),
             extra_files={"check_tree.py": CHECK_TREE.read_bytes()},
         )
 

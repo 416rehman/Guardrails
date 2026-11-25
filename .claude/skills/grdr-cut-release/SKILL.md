@@ -75,7 +75,7 @@ For each:
    `BEGIN_COMMIT_OVERRIDE` block in the merged pull request's body, and release-please rewrites the
    release pull request on its next run. Never edit the release pull request: a hand edit is
    overwritten on that run and hides the cause.
-4. Read `release-please-config.json` and `.release-please-manifest.json`. Every component of section 1
+4. Read `deploy/release/release-please-config.json` and `deploy/release/.release-please-manifest.json`. Every component of section 1
    has its own entry and version, and `skip-github-release` is not set, so release-please creates the
    GitHub releases. A `linked-versions` group joins only crates the configuration ships as one
    component (a port crate and its test kit, a crate and its FFI wrapper); one that ties two
@@ -121,7 +121,7 @@ Draft these as text in your report, for the release notes the release workflow p
 - the air-gap bundle and its delta: what they carry, the source they carry for copyleft components,
   and any component left optional because its terms forbid redistribution (owner instruction 20);
 - incumbents untested for want of a licence, marked untested in the ceiling matrix (D-23, D-64);
-- the support matrix generated from `support.toml` (design/24 24-26), never edited by hand;
+- the support matrix generated from `contracts/support.toml` (design/24 24-26), never edited by hand;
 - for a server release, the `upgrade-path.json` stops and the tested dependency versions.
 
 ## 6. Report

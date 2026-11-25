@@ -30,7 +30,7 @@ Nothing below layer 0. Same-layer edges in architecture.toml: none.
 Reads: none yet. Writes: none yet (first content #353). Logs: LogSafe only.
 
 ## Limits
-Bounds in limits.toml: none yet (limits.toml arrives with #279).
+Bounds in contracts/limits.toml: none yet (contracts/limits.toml arrives with #279).
 
 ## Do not
 - Hand-edit generated code; change the `.proto` source and regenerate.

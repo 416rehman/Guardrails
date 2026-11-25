@@ -45,8 +45,8 @@ The root manifest's `members = ["crates/*", "programs/*"]` already picks up the 
 - One error enum with stable codes `GRDR-<AREA>-<NNNN>`, each registered in `grdr-schema`, each with a class: `input`, `policy`, `retryable`, `fatal`, `internal`. No dynamic error type below layer 4.
 - Layers 0 and 1: no I/O, async runtime, clock or randomness. Take `now` and `entropy` as arguments, or return an `Effect`. Layer 1 builds for `wasm32-unknown-unknown`.
 - Layers 0 to 2 and privileged crates: no `unwrap`, `expect`, unchecked indexing or unchecked arithmetic.
-- Every queue, map, cache, body size and recursion depth has a named bound in `limits.toml`.
-- Log macros take `LogSafe` values only. No brand string outside `brand/`.
+- Every queue, map, cache, body size and recursion depth has a named bound in `contracts/limits.toml`.
+- Log macros take `LogSafe` values only. No brand string outside `contracts/interface/brand/`.
 - No new dependency in this item. A dependency is its own high-tier item, and an implementer never runs `cargo add`.
 - Every file follows skill `grdr-structure` from its first line: declaration order, the 500-line limit, state types instead of flags.
 
@@ -57,7 +57,7 @@ The crate needs entries in files an ordinary issue may not change (`team/05` sec
 | File | Entry |
 |---|---|
 | `architecture.toml` | The crate and its layer. A same-layer edge is an RFC, never part of this item |
-| `limits.toml` | One key per bound from step 4 |
+| `contracts/limits.toml` | One key per bound from step 4 |
 | `crates/<name>/AGENTS.md` (no ordinary issue writes `**/AGENTS.md`) | The whole file, from the template of team/06 section 5 |
 | `.claude/owners.toml` | The owning squad, so every path has one owner |
 | `security/trust-core.paths` | Only for a privileged crate or another D-63 class; a privileged crate outside it is a review blocker |

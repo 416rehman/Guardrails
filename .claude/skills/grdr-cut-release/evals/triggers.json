@@ -11,7 +11,7 @@
   {"query": "Is release candidate 0.7.0 ready to merge? Collect evidence for every team/05 section 16 gate on the release pull request's head.", "should_trigger": true},
   {"query": "Write .github/workflows/release.yml as the reusable release workflow for [WI-0012], with every action pinned by SHA.", "should_trigger": false},
   {"query": "Write the one-line commit subject for my spool writer fix on issue/377 in the repository's Conventional Commit form.", "should_trigger": false},
-  {"query": "Add release-please-config.json and manifest entries for the new grdr-ports crate so it gets its own version.", "should_trigger": false},
+  {"query": "Add deploy/release/release-please-config.json and manifest entries for the new grdr-ports crate so it gets its own version.", "should_trigger": false},
   {"query": "Which Sigstore identity does cosign use when the release workflow signs a binary?", "should_trigger": false},
   {"query": "Change the Dependabot config so major bumps wait seven days and minor ones three.", "should_trigger": false},
   {"query": "Triage CVE-2026-1234 in rustls privately: are we affected, and what goes into the advisory?", "should_trigger": false},

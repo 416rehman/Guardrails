@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       job:
-        description: Lab job name under lab/jobs/<job>.toml
+        description: Lab job name under deploy/qa/jobs/<job>.toml
         required: true
         type: string
       systems:
@@ -75,7 +75,7 @@ jobs:
               print(f"::error::invalid job name {job!r}", file=sys.stderr)
               sys.exit(1)
 
-          job_path = pathlib.Path("lab/jobs") / f"{job}.toml"
+          job_path = pathlib.Path("deploy/qa/jobs") / f"{job}.toml"
           if not job_path.is_file():
               print(f"::error::lab job file not found: {job_path}", file=sys.stderr)
               sys.exit(1)
@@ -220,7 +220,7 @@ jobs:
             echo "::error::no Python with tomllib on this runner"
             exit 1
           fi
-          command=$("$python_bin" -I -c 'import os, pathlib, sys, tomllib; cmd = tomllib.loads(pathlib.Path("lab/jobs", os.environ["GRDR_LAB_JOB"] + ".toml").read_text(encoding="utf-8"))["command"]; sys.stdout.buffer.write(cmd.replace("\r\n", "\n").encode("utf-8"))')
+          command=$("$python_bin" -I -c 'import os, pathlib, sys, tomllib; cmd = tomllib.loads(pathlib.Path("deploy/qa/jobs", os.environ["GRDR_LAB_JOB"] + ".toml").read_text(encoding="utf-8"))["command"]; sys.stdout.buffer.write(cmd.replace("\r\n", "\n").encode("utf-8"))')
           set +e
           set -o pipefail
           "$BASH" -c "$command" 2>&1 | tee "$GRDR_LAB_EVIDENCE_DIR/run.log"

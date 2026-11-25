@@ -18,5 +18,5 @@
   {"query": "Add an agent adapter manifest for Kiro in grdr-content.", "should_trigger": false},
   {"query": "You are eval-acceptance: judge the change on issue/702 against the issue's acceptance criteria.", "should_trigger": false},
   {"query": "As lead-content, triage the twelve proposed detection requests garden-intel filed overnight and ready the two with fixtures attached.", "should_trigger": false},
-  {"query": "Write the OCSF 1.9 export mapping for the finding class under schema/mappings.", "should_trigger": false}
+  {"query": "Write the OCSF 1.9 export mapping for the finding class under contracts/mappings.", "should_trigger": false}
 ]

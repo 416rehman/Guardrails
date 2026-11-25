@@ -37,12 +37,12 @@ most 3.
 
 ## Steps
 1. Run the affected crates' benchmarks (`cargo bench -p <crate>`). For hook-path changes also run
-   the end-to-end hook benchmark on the matrix cells `support.toml` names, through
+   the end-to-end hook benchmark on the matrix cells `contracts/support.toml` names, through
    `grdr-matrix-run`. Until the instruction-count benchmarks and the matrix runner exist
    (WI-0013), the parts that need them are `cannot-evaluate`.
 2. Apply team/05 section 10. On tier A, instruction counts gate against the `main` baseline.
    Wall clock gates on tier B for release candidates only (D-64), and only on a reference host
-   registered in `lab/reference-hosts.toml`; with none registered the cell is
+   registered in `deploy/qa/reference-hosts.toml`; with none registered the cell is
    "not run (requires hardware)", never met.
 3. An instruction-count regression over its threshold fails unless the squad's lead has added
    `perf-accepted` after a second evaluator agreed, which makes the change high tier. Any spine

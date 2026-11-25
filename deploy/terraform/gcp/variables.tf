@@ -45,7 +45,7 @@ variable "postgresql_version" {
 
   validation {
     condition     = can(regex("^POSTGRES_(1[89]|[2-9][0-9])$", var.postgresql_version))
-    error_message = "postgresql_version must be POSTGRES_18 or newer per support.toml."
+    error_message = "postgresql_version must be POSTGRES_18 or newer per contracts/support.toml."
   }
 }
 

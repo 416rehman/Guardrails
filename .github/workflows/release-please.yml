@@ -33,7 +33,7 @@ jobs:
         with:
           persist-credentials: false
           sparse-checkout: |
-            release-please-config.json
+            deploy/release/release-please-config.json
             rust-toolchain.toml
             .github/actions/tree-paths/
           sparse-checkout-cone-mode: false
@@ -48,7 +48,7 @@ jobs:
         run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
       - id: count
         run: |
-          count=$(jq '.packages | length' release-please-config.json)
+          count=$(jq '.packages | length' deploy/release/release-please-config.json)
           echo "configured=$([ "$count" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
   release:
@@ -70,8 +70,8 @@ jobs:
       - id: release-please
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
+          config-file: deploy/release/release-please-config.json
+          manifest-file: deploy/release/.release-please-manifest.json
       - id: released
         env:
           OUTPUTS: ${{ toJSON(steps.release-please.outputs) }}

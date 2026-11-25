@@ -26,7 +26,7 @@ AGENTS.md lists the interface paths that take these skills. Where the skills dis
 Every interface element on the web is an Astryx component (owner instruction 21).
 
 - `@grdr/ui` is a thin layer over Astryx for theme, tokens, language tokens and brand defaults. It wraps; it never reimplements an Astryx component.
-- `@grdr/kit` composites (mode control, approval card, setup list, timeline, triage and the rest of `interface/patterns.toml`) are compositions of `@grdr/ui` components and nothing else.
+- `@grdr/kit` composites (mode control, approval card, setup list, timeline, triage and the rest of `contracts/interface/patterns.toml`) are compositions of `@grdr/ui` components and nothing else.
 - Imports, enforced by ARCH-101 to ARCH-104: `@astryxdesign/*` only inside `web/packages/ui`; `web/packages/kit` imports only `@grdr/ui`, `@grdr/tokens` and `@grdr/i18n`; applications import interface code only from `@grdr/kit`, `@grdr/ui`, `@grdr/i18n`, `@grdr/tokens` and `@grdr/api`; `react-aria-components` and `react-aria` only in files listed in the exception registry.
 - Large tables use Astryx Table with its virtualisation plugin. The embeddable kit for partner products (D-41, D-42) renders Astryx inside a shadow root with Astryx's stylesheet adopted there. The operator plane is web, so it uses Astryx directly through `@grdr/ui`.
 
@@ -36,24 +36,24 @@ Every interface element on the web is an Astryx component (owner instruction 21)
 
 ## The rules
 
-1. **Look before you build.** Search `interface/patterns.toml`, `interface/presentation.toml`, `interface/routes.toml`, `interface/strings/src/common.mf2.toml` and the `term` tokens, in that order, and reuse what exists. A second component, word, icon or route for a registered thing is a defect.
+1. **Look before you build.** Search `contracts/interface/patterns.toml`, `contracts/interface/presentation.toml`, `contracts/interface/routes.toml`, `contracts/interface/strings/src/common.mf2.toml` and the `term` tokens, in that order, and reuse what exists. A second component, word, icon or route for a registered thing is a defect.
 2. **Compose, never style.** Application code uses only kit parts. No stylesheet, `style` prop, `className` string or raw `button`, `input`, `select`, `a`, `table`, `dialog` or layout `div` in `web/apps/*`, `web/extension/**` or `site/src/**`. The container owns spacing by token name (`gap="space-3"`), never margins on children (UX1, UX2).
 3. **Every visible string is a language token** (D-69, below and `references/strings.md`). Never concatenate, never format a date, number, list or plural yourself, never write the product name or a vocabulary term as a literal (UX3, UX4).
 4. **Enums go through `present(value, level)`.** Words, icon, tone, CLI word and tray glyph come from the registry row. Icons by meaning key through `Icon`; no emoji; one glyph, one meaning (UX5).
 5. **One `ViewState` per screen and data-bearing pattern:** `loading`, `ready`, `empty` (`nothing-yet`, `could-not-look`, `no-match`), `partial`, `stale`, `lagging`, `unreachable`, `unavailable` (`requires-server`, `requires-internet`, `not-configured`), `error`, `read-only`. "Could not look" is never drawn as zero (UX7, P9).
 6. **Mutations go through `useAction(Service.Method)`,** which renders the method's confirmation class (`none`, `consequence`, `typed`, `propose`, `quorum`). Never build a confirmation (UX8).
-7. **Link by route id.** Titles and icons come from `interface/routes.toml`, shortcuts from `interface/shortcuts.toml` (UX8).
+7. **Link by route id.** Titles and icons come from `contracts/interface/routes.toml`, shortcuts from `contracts/interface/shortcuts.toml` (UX8).
 8. **Direction-neutral layout.** Logical properties only; identifiers, paths, hashes and the canonical call in a left-to-right isolate; agent-, tool- and model-written text only through `Quoted` from the untrusted envelope (UX6, SR-36).
-9. **Register a new pattern; never write a one-off.** Write its entry in `interface/patterns.toml` (anatomy, tokens, token ids, states, accessibility contract, renderers) and one fixture per state. The same change adds a story and a Rune golden per fixture and an implementation for every renderer the entry lists (UX7, U02, U08).
+9. **Register a new pattern; never write a one-off.** Write its entry in `contracts/interface/patterns.toml` (anatomy, tokens, token ids, states, accessibility contract, renderers) and one fixture per state. The same change adds a story and a Rune golden per fixture and an implementation for every renderer the entry lists (UX7, U02, U08).
 10. **Never edit generated output** (`grdr-messages`, `@grdr/i18n`, `@grdr/tokens`, token modules). Change the source and run the generator the interface system provides (WI-0041).
 11. **Before the report** check your diff against UX1 to UX8 (`references/checks.md`) and run the gates of `grdr-verify`. No tool runs UX1 to UX8 now; `eval-ux` checks them again. There is no exemption and no inline suppression; a rule that is wrong is fixed in the rule, in its own issue.
 
 ## Language tokens (D-69)
 
-- A token is one keyed Unicode MessageFormat 2 message in `interface/strings/src/<namespace>.mf2.toml`, with `msg`, `desc` (what it means and where it shows), `max` (graphemes) and `risk` (`normal`, or `safety` for approvals, widening, block messages, privacy disclosure and legal text). Write it in its namespace file; you call its generated accessor.
-- Three tiers: `term.*` (the spine's vocabulary from `schema/vocabulary.toml`, one approved form per locale), `common.*` (any string used on two or more surfaces) and the surface namespaces. Ids are `<namespace>.<area>.<name>` in lower snake case.
+- A token is one keyed Unicode MessageFormat 2 message in `contracts/interface/strings/src/<namespace>.mf2.toml`, with `msg`, `desc` (what it means and where it shows), `max` (graphemes) and `risk` (`normal`, or `safety` for approvals, widening, block messages, privacy disclosure and legal text). Write it in its namespace file; you call its generated accessor.
+- Three tiers: `term.*` (the spine's vocabulary from `contracts/interface/vocabulary.toml`, one approved form per locale), `common.*` (any string used on two or more surfaces) and the surface namespaces. Ids are `<namespace>.<area>.<name>` in lower snake case.
 - One sentence is one token with typed arguments. Every external variable is declared with `.input` and a function, and carries `grdr:class=<data class>` where it holds data; a `content`-class argument in `notify.*` or `email.*` fails compilation (P8).
-- The product name is `{:grdr:brand}` and a vocabulary term `{name :grdr:term}`; both resolve at compile time from `brand/brand.toml` and the vocabulary.
+- The product name is `{:grdr:brand}` and a vocabulary term `{name :grdr:term}`; both resolve at compile time from `contracts/interface/brand/brand.toml` and the vocabulary.
 - Two tokens with the same English source need `desc` values that state different meanings, or the check tells you to use `common.<key>`.
 - Formatting happens only in `grdr-strings` (Rust) and `@grdr/i18n` (browsers): `:number`, `:integer`, `:datetime`, `:unit`, `:grdr:relative`, `:grdr:duration`, `:grdr:list`. Times are stored in UTC and shown in the viewer's zone.
 - Stored records and view-models carry a `MessageRef` (id and typed arguments), never formatted text, so each reader sees their own locale.

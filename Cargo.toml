@@ -3,6 +3,9 @@ resolver = "3"
 members = ["crates/*", "programs/*"]
 exclude = ["bpf/grdr-sensor-linux-bpf", "desktop/grdr-desktop"]
 
+[workspace.metadata.vet]
+store = { path = "security/supply-chain" }
+
 [workspace.dependencies]
 axum = { version = "0.8", features = ["json", "macros"] }
 base64 = "0.23"

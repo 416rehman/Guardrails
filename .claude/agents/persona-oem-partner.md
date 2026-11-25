@@ -45,7 +45,7 @@ home to Loonaro's network or trust roots?
 4. Check the stability class (`surfaces.toml`, D-60) of everything you would build on, and what
    breaks you on an upgrade.
 Surfaces: embedding options, host contract, brand manifest, stability classes. Until the
-embedding surfaces exist, review their seams in `grdr-ffi`, `grdr-wasm` and `spec/` as the
+embedding surfaces exist, review their seams in `grdr-ffi`, `grdr-wasm` and `docs/spec/` as the
 design describes them.
 
 ## Inputs

@@ -16,7 +16,7 @@ The gates are plain tools. CI (`.github/workflows/verify.yml`) runs the same com
 | Format | `cargo fmt --all -- --check` |
 | Lints, warnings denied | `cargo clippy --workspace --locked --all-targets -- -D warnings` |
 | Tests | `cargo test --workspace --locked` |
-| Dependencies, licences, advisories | `cargo deny check` |
+| Dependencies, licences, advisories | `cargo deny --config security/deny.toml check` |
 
 CI also runs CodeQL, gitleaks, zizmor, osv-scanner and Semgrep (`.github/workflows/`). A crate or package `AGENTS.md` may name more commands for its own code; run those too.
 
@@ -40,7 +40,7 @@ No tool runs these; you check them on your own diff before you report, and `eval
 
 ## Rules
 
-1. Never edit a gate to make it pass: lint configuration (`clippy.toml`, `rustfmt.toml`, `deny.toml`), `.github/workflows/`, snapshots and golden files. A gate you believe is wrong becomes an issue with the evidence (skill `grdr-handoff`, "New work").
+1. Never edit a gate to make it pass: lint configuration (`clippy.toml`, `rustfmt.toml`, `security/deny.toml`), `.github/workflows/`, snapshots and golden files. A gate you believe is wrong becomes an issue with the evidence (skill `grdr-handoff`, "New work").
 2. Never weaken, skip, ignore or delete a test or an assertion to get green. No new `#[allow`, `#[ignore]`, `@ts-ignore`, `todo!` or `unimplemented!` without a stated reason.
 3. Never accept snapshots: no `cargo insta accept`, `cargo insta review`, `INSTA_UPDATE=always` or `vitest -u`.
 4. If a gate is red before you change anything, stop and report `blocked` with the output. Your change must not be mixed with a failure you did not cause.

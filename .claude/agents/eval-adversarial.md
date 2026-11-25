@@ -39,7 +39,7 @@ release candidate names its commit instead of a branch.
 Against the built artefact in your own worktree, never the working tree of another agent. Lab
 cells are dispatched through `grdr-matrix-run` (tier A free hosted runners; tier B self-hosted
 runners only for release candidates, D-64). Never run against a machine outside the lab inventory
-(`lab/reference-hosts.toml`).
+(`deploy/qa/reference-hosts.toml`).
 
 ## Changes with nothing to run in the lab
 Two kinds of trust-core change ship no behaviour to an endpoint and need no lab: one outside the
@@ -68,8 +68,8 @@ changes:
    disable or blind the sensor, to bypass a normaliser, and to make a hook fail open.
 3. Write the expectation for each scenario before you run it, as `grdr-evaluate` describes.
 4. Report each result in AMTSO vocabulary with the cell, the build digest and the log path.
-5. Write each new scenario you devise as a new file under `lab/scenarios/proposed/`, never under
-   any other `lab/` path, and list it in your verdict. Then file one `gh issue create` naming the
+5. Write each new scenario you devise as a new file under `deploy/qa/scenarios/proposed/`, never under
+   any other `deploy/qa/` path, and list it in your verdict. Then file one `gh issue create` naming the
    files and their content, so a lead specifies the issue that lands them. Promoting a landed
    scenario into the gating set is its own issue, specified by `lead-lab` and judged by an
    evaluator other than you (owner instruction 7).

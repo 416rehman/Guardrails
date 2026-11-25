@@ -12,7 +12,7 @@ or pull request.
 2. **Email** security@guardrailshq.com once the project domain's mail is set up. Until then, use
    the first channel.
 
-These are the `[addresses.security]` values of `brand/brand.toml`, written out here. When the brand
+These are the `[addresses.security]` values of `contracts/interface/brand/brand.toml`, written out here. When the brand
 manifest changes, this file changes with it.
 
 ## What to include

@@ -45,7 +45,7 @@ pub fn lint_cedar_dir(dir: &Path, findings: &mut Vec<LintFinding>) -> Result<usi
     if dir_meta.file_type().is_symlink() || !dir_meta.is_dir() {
         return Err(LintError::Io {
             path: dir.display().to_string(),
-            detail: "schema/cedar root must be a real non-symlink directory".into(),
+            detail: "contracts/cedar root must be a real non-symlink directory".into(),
         });
     }
     let canon_root = fs::canonicalize(dir).map_err(|e| LintError::Io {
@@ -72,7 +72,7 @@ pub fn lint_cedar_dir(dir: &Path, findings: &mut Vec<LintFinding>) -> Result<usi
         if ft.is_symlink() {
             return Err(LintError::Io {
                 path: p.display().to_string(),
-                detail: "symlinks are forbidden inside schema/cedar directory".into(),
+                detail: "symlinks are forbidden inside contracts/cedar directory".into(),
             });
         }
         if ft.is_file() && p.extension().and_then(|s| s.to_str()) == Some("cedarschema") {

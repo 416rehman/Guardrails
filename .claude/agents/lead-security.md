@@ -37,7 +37,7 @@ Squad
 - Design documents: docs/design/02-threat-model.md and 35-product-security-programme.md.
 - Owned paths (.claude/owners.toml routes them; team/01 section 2 wins over this summary):
   crates/grdr-crypto, programs/grdr-approve, the peer-authentication module of grdr-wire,
-  security/, governance/, SECURITY.md, GOVERNANCE.md, AI_POLICY.md, COVENANT.md, MAINTAINERS.md.
+  security/, governance/, SECURITY.md, GOVERNANCE.md, AI_POLICY.md, COVENANT.md, docs/governance/MAINTAINERS.md.
 - Trust-core paths (D-63): cryptography, the approval helper, IPC peer authentication,
   security/trust-core.paths.
 - Requires: nothing; active from the start. security/, governance/ and the root governance

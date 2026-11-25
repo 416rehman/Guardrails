@@ -17,7 +17,7 @@ evaluators = ["eval-review", "eval-security"]
 
 [high]
 paths = [
-  "proto/**", "schema/**", "spec/**",
+  "contracts/proto/**", "contracts/cedar/**", "contracts/limits.toml", "contracts/support.toml", "docs/spec/**",
   "crates/grdr-proto/**", "crates/grdr-schema/**", "crates/grdr-model/**",
   "crates/grdr-ports/**", "crates/grdr-wire/**",
   "specs/**"
@@ -32,7 +32,7 @@ evaluators = ["eval-review", "eval-security"]
 
 [medium]
 paths = [
-  "crates/**", "programs/**", "platform/**", "web/**", "desktop/**", "deploy/**", "lab/**",
+  "crates/**", "programs/**", "platform/**", "web/**", "desktop/**", "deploy/**", "contracts/interface/**",
   "**/.claude/**", "**/.agents/**", ".github/actions/**", "**/AGENTS.md", "**/CLAUDE.md", "**/GEMINI.md", "**/CODEX.md"
 ]
 triggers = []
@@ -46,9 +46,9 @@ model_tier = "standard"
 paths = [
   "docs/**", "**/*.md",
   "Cargo.toml", "Cargo.lock", "rust-toolchain.toml",
-  "supply-chain/build-tools.toml", "supply-chain/fixtures/**",
+  "security/supply-chain/build-tools.toml", "security/supply-chain/fixtures/**",
   "rustfmt.toml", "**/clippy.toml",
-  "release-please-config.json", ".release-please-manifest.json",
+  "deploy/release/release-please-config.json", "deploy/release/.release-please-manifest.json",
   "package.json", "pnpm-lock.yaml"
 ]
 triggers = [
@@ -62,9 +62,9 @@ direct_orchestrator_allowed = true
 # Concise one-line reminders passed inline to eval-review / eval-security instead of extra agents.
 [checklist_addons]
 ui = "Check keyboard navigation, focus/contrast tokens, and responsive layout via UI specs (no hardcoded colours)."
-interface_paths = ["web/**", "site/**", "interface/**", "desktop/**", "programs/grdr/**", "programs/grdr-tray/**", "programs/grdr-approve/**", "platform/*/installer/**"]
+interface_paths = ["web/**", "site/**", "contracts/interface/**", "desktop/**", "programs/grdr/**", "programs/grdr-tray/**", "programs/grdr-approve/**", "platform/*/installer/**"]
 api = "Check wire/public Rust API backward compatibility, protobuf data_class annotations, and versioning."
-dependency = "Verify new dependencies against supply-chain/licences.toml and Cargo.lock provenance."
+dependency = "Verify new dependencies against security/supply-chain/licences.toml and Cargo.lock provenance."
 installer = "Verify platform signing, uninstall cleanup, and OS path conventions."
 content = "Check pack/rule schema validity, false-positive edge cases, and licence allow-list."
 adapter = "Verify OS/engine adapter trait compliance and parity across supported platforms."

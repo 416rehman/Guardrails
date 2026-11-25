@@ -42,7 +42,7 @@ Sub-issues and mechanisms the table has no row for:
 | #56 | Interface gate halves and the Astryx exception registry (sub-issue of #29) | Protected paths inside WI-0041 | lead-agent-kit | proposed; `lead-interfaces` readies it |
 | #57 | The planning pass never hands an issue to its own agent for readying | Conflict 6 below; without it no later agent-kit protected change can be readied | lead-agent-kit | ready |
 | #58 | `verify` fails a parser with no differential fuzz target | The mechanism ADR-0009 names | lead-agent-kit | proposed |
-| #59 | `surfaces.toml` and `support.toml` gates | The mechanisms ADR-0019 and ADR-0020 name | lead-agent-kit | proposed |
+| #59 | `surfaces.toml` and `contracts/support.toml` gates | The mechanisms ADR-0019 and ADR-0020 name | lead-agent-kit | proposed |
 | #60 | The recorded D-66 registry and trademark search | The evidence ADR-0003 names | chief-architect | proposed |
 
 ADR-0001 to ADR-0028 cite work items by their reserved id, `[WI-NNNN]`, which every issue title carries. The fleet-guard check ADR-0027 names is requirement R5 of WI-0006 (#8).

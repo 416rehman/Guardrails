@@ -92,7 +92,7 @@ implementing work item E7.1 of `docs/design/29-compliance-and-privacy.md` and
 
 - Published release lines, LTS cadence, upgrade hop bounds (at most two minors with required
   LTS stops), and security fix commitments are maintained in `docs/design/34-documentation-support-and-lifecycle.md`
-  and `support.toml`.
+  and `contracts/support.toml`.
 - Under CRA Article 13(8), any paid/commercial distribution carries at least a five-year
   support period unless shorter expected product use is justified and approved with legal counsel
   before offer (`docs/design/29-compliance-and-privacy.md` section 10).
@@ -104,7 +104,7 @@ implementing work item E7.1 of `docs/design/29-compliance-and-privacy.md` and
   `crates/grdr-crypto/` (`ed25519-dalek`, `chacha20poly1305`, `sha2`, `zeroize`, and `rustls` /
   `aws-lc-rs` for transport/FIPS builds).
 - No proprietary or non-standard cryptographic algorithms are included; CI dependency and schema
-  allow-lists (`deny.toml`, `grdr-crypto`) block unapproved cryptographic primitives.
+  allow-lists (`security/deny.toml`, `grdr-crypto`) block unapproved cryptographic primitives.
 - Complete source code for every released open-source binary stays publicly available under
   Apache-2.0 (`LICENSE`, `NOTICE`). Private or pre-disclosure OEM/embargoed builds require
   separate legal compliance review before distribution.

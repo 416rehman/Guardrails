@@ -31,7 +31,7 @@ Layers 0 to 2. Same-layer edges in architecture.toml: none (layer 3 crates never
 Reads: none yet. Writes: none yet (first content #101). Logs: LogSafe only.
 
 ## Limits
-Bounds in limits.toml: none yet (limits.toml arrives with #279).
+Bounds in contracts/limits.toml: none yet (contracts/limits.toml arrives with #279).
 
 ## Do not
 - Take a Cargo dependency on `grdr-sensor-linux-bpf`: the object is built separately and loaded (design/10 section 3).

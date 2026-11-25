@@ -6,11 +6,11 @@ use cedar_policy::{PolicySet, Schema, ValidationMode, Validator};
 
 pub const SCHEMA_VERSION: &str = "v1alpha1";
 
-pub const V1ALPHA1: &str = include_str!("../../../schema/cedar/v1alpha1.cedarschema");
+pub const V1ALPHA1: &str = include_str!("../../../contracts/cedar/v1alpha1.cedarschema");
 pub const CONSOLE_V1ALPHA1: &str =
-    include_str!("../../../schema/cedar/console_v1alpha1.cedarschema");
+    include_str!("../../../contracts/cedar/console_v1alpha1.cedarschema");
 pub const OPERATOR_V1ALPHA1: &str =
-    include_str!("../../../schema/cedar/operator_v1alpha1.cedarschema");
+    include_str!("../../../contracts/cedar/operator_v1alpha1.cedarschema");
 
 pub const CANONICAL_ACTIONS: &[&str] = &[
     "exec",
