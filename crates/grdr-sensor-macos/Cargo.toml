@@ -1,0 +1,26 @@
+[package]
+name = "grdr-sensor-macos"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[package.metadata.grdr]
+layer = 3
+privilege = "privileged"
+surface = "internal"
+renders = "none"
+
+[dependencies]
+grdr-fastpath = { workspace = true }
+grdr-model = { workspace = true }
+grdr-ports = { workspace = true }
+jiff = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+grdr-ports-testkit = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

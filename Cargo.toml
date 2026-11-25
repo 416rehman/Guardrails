@@ -28,12 +28,16 @@ grdr-fastpath-ffi = { version = "0.1.0", path = "crates/grdr-fastpath-ffi" }
 grdr-ffi = { version = "0.1.0", path = "crates/grdr-ffi" }
 grdr-identity = { version = "0.1.0", path = "crates/grdr-identity" }
 grdr-integrations = { version = "0.1.0", path = "crates/grdr-integrations" }
+grdr-ipc-os = { version = "0.1.0", path = "crates/grdr-ipc-os" }
 grdr-jobs = { version = "0.1.0", path = "crates/grdr-jobs" }
 grdr-lake = { version = "0.1.0", path = "crates/grdr-lake" }
 grdr-llm-proto = { version = "0.1.0", path = "crates/grdr-llm-proto" }
 grdr-mcp-proto = { version = "0.1.0", path = "crates/grdr-mcp-proto" }
 grdr-messages = { version = "0.1.0", path = "crates/grdr-messages" }
 grdr-model = { version = "0.1.0", path = "crates/grdr-model" }
+grdr-os-clock = { version = "0.1.0", path = "crates/grdr-os-clock" }
+grdr-os-service = { version = "0.1.0", path = "crates/grdr-os-service" }
+grdr-peer-os = { version = "0.1.0", path = "crates/grdr-peer-os" }
 grdr-policy-ref = { version = "0.1.0", path = "crates/grdr-policy-ref" }
 grdr-ports = { version = "0.1.0", path = "crates/grdr-ports" }
 grdr-ports-testkit = { version = "0.1.0", path = "crates/grdr-ports-testkit" }
@@ -45,6 +49,8 @@ grdr-sandbox-engine = { version = "0.1.0", path = "crates/grdr-sandbox-engine" }
 grdr-schema = { version = "0.1.0", path = "crates/grdr-schema" }
 grdr-schema-lint = { version = "0.1.0", path = "crates/grdr-schema-lint" }
 grdr-sensor-linux = { version = "0.1.0", path = "crates/grdr-sensor-linux" }
+grdr-sensor-macos = { version = "0.1.0", path = "crates/grdr-sensor-macos" }
+grdr-sensor-windows = { version = "0.1.0", path = "crates/grdr-sensor-windows" }
 grdr-store-local = { version = "0.1.0", path = "crates/grdr-store-local" }
 grdr-strings = { version = "0.1.0", path = "crates/grdr-strings" }
 grdr-ui-model = { version = "0.1.0", path = "crates/grdr-ui-model" }
