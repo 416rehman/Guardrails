@@ -531,10 +531,14 @@ mod tests {
 
     #[test]
     fn isolated_mode_drops_defaults_and_enforces_allow_list() {
+        let missing_base = std::env::temp_dir().join(format!(
+            "grdr-egress-test-{}-nonexistent",
+            std::process::id()
+        ));
         let isolated_empty = evaluate_egress(&EgressEvalOptions {
             component: EgressComponent::Endpoint,
             network_mode: NetworkMode::Isolated,
-            state_dir: Some(PathBuf::from("nonexistent-grdr-test-state")),
+            state_dir: Some(missing_base.join("case-empty")),
             allow_patterns: vec![],
             mirrors: vec![],
             update_sources: vec![],
@@ -548,7 +552,7 @@ mod tests {
         let rejected = evaluate_egress(&EgressEvalOptions {
             component: EgressComponent::Server,
             network_mode: NetworkMode::Isolated,
-            state_dir: Some(PathBuf::from("nonexistent-grdr-test-state")),
+            state_dir: Some(missing_base.join("case-rejected")),
             allow_patterns: vec![".airgap.test".into()],
             mirrors: vec![],
             update_sources: vec![],
@@ -564,7 +568,7 @@ mod tests {
         let allowed = evaluate_egress(&EgressEvalOptions {
             component: EgressComponent::Server,
             network_mode: NetworkMode::Isolated,
-            state_dir: Some(PathBuf::from("nonexistent-grdr-test-state")),
+            state_dir: Some(missing_base.join("case-allowed")),
             allow_patterns: vec![".airgap.test".into(), "10.77.0.0/16".into()],
             mirrors: vec!["https://mirror.airgap.test:8443".into()],
             update_sources: vec![],

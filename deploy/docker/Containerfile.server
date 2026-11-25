@@ -33,10 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates ./crates
 COPY programs ./programs
-COPY proto ./proto
-COPY brand ./brand
-COPY interface ./interface
-COPY schema ./schema
+COPY contracts ./contracts
 COPY bpf ./bpf
 
 RUN case "${TARGETARCH}" in \

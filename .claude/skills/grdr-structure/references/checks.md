@@ -18,7 +18,7 @@ Worked fix. `engine.rs` holds request decoding, policy evaluation and verdict en
 
 Top level means items directly in the file, not inside a function or `impl`. After the first top-level `impl` block or free function, no `struct`, `enum`, `type`, `trait`, `const` or `static` may follow, except inside the test module. `use` and `mod` lines belong before everything else.
 
-Worked fix. A `const RETRY_LIMIT` sits above the one function that uses it, at line 300. Move it to the constants section at the top; if it is a bound on a queue, map, cache, body size or recursion depth, it belongs in `limits.toml` instead (agents may not edit it: file it as its own issue and name it in your report).
+Worked fix. A `const RETRY_LIMIT` sits above the one function that uses it, at line 300. Move it to the constants section at the top; if it is a bound on a queue, map, cache, body size or recursion depth, it belongs in `contracts/limits.toml` instead (agents may not edit it: file it as its own issue and name it in your report).
 
 ## S3: comments on the diff
 
@@ -71,11 +71,11 @@ Worked fix. `let id = parts[2].parse::<u32>().unwrap();` on a header line become
 S7 reads every string, template and markup text outside test code, and the numbers in bound positions.
 
 - **Endpoints.** A URL with a real host (`https://{host}/v1` and a bare `https://` pass), an email address, an IPv4 or IPv6 address, `localhost`, and a dotted name whose last label is a public suffix (`api.vendor.io`; `main.rs`, `Cargo.toml` and `std::fs` pass). Module specifiers, `import x from 'socket.io'` and `include_str!("..")`, are not values.
-- **Names.** Every brand name in `brand/brand.toml` (keys `name`, `*_name`, `entity`, `*_entity`) and every vendor name in the adapter, pack and integration manifests, matched case-sensitively as whole words.
+- **Names.** Every brand name in `contracts/interface/brand/brand.toml` (keys `name`, `*_name`, `entity`, `*_entity`) and every vendor name in the adapter, pack and integration manifests, matched case-sensitively as whole words.
 - **Bounds.** A number other than 0 and 1 as the argument of a `Duration` constructor, `with_capacity`, `bounded`, `channel`, `sync_channel`, `timeout`, `sleep` or the wait of `setTimeout` and `setInterval`; as the value of a binding, field or property whose name has a bound word as a segment (`max`, `min`, `limit`, `timeout`, `deadline`, `retry`, `retries`, `attempts`, `capacity`, `cap`, `threshold`, `budget`, `interval`, `delay`, `backoff`, `ttl`, `quota`, `margin`, `cooldown`, `grace`, `burst`, `ceiling`, `depth`, `elapsed`, `port` and the time units); as one side of a comparison whose other side has such a name. A numeric constant is flagged where it is defined when its name has a bound word, when it is a `Duration`, or when the file uses it as one of those arguments or as the bound of `take`, `min`, `max`, `clamp`, `truncate`, `reserve`, `slice`, `substring` or a comparison. Structural counts (`parts.len() >= 4`, `.take(2)`) and index arithmetic pass.
 - **Visual values.** In stylesheets, style objects (`style={{ .. }}`, `style: { .. }`) and CSS-in-JS templates, a colour (hex, colour functions, the basic named colours) or a spacing length (`margin`, `padding`, `gap`, `inset` and their longhands); in any script string, a hex colour with a letter in it or a colour function.
 - **Readable text.** In TSX and JSX, element text, a string child (`{"Save"}`) and the string of a shown or announced attribute (`aria-label`, `title`, `alt`, `placeholder`, `label`, `description` and the like).
 
-Worked fix, a bound. `const PRINTED_FINDINGS: usize = 9;` used in `.take(PRINTED_FINDINGS)` becomes `printed_findings = 9` under the module's table in `limits.toml` (its own issue, since agents may not edit it), a field on that area's type in the loader, and `.take(limits.printed_findings)` where the code receives the loaded limits.
+Worked fix, a bound. `const PRINTED_FINDINGS: usize = 9;` used in `.take(PRINTED_FINDINGS)` becomes `printed_findings = 9` under the module's table in `contracts/limits.toml` (its own issue, since agents may not edit it), a field on that area's type in the loader, and `.take(limits.printed_findings)` where the code receives the loaded limits.
 
 Worked fix, an endpoint. `client.get("https://feeds.vendor.io/v1")` becomes a configuration key, `intel.feed_url`, whose default the brand manifest supplies, read once at start and passed to the client. An air-gapped or self-hosted site overrides it; nothing compiled names the host.

@@ -93,7 +93,7 @@ test("rejects hand-drawn SVG markup and standalone .svg assets while allowing ge
   );
   assert.ok(rustFindings.some((f) => f.includes("hand-drawn <svg>")));
 
-  const brandFindings = checkDesignContent("interface/brand/custom.svg", "<svg></svg>");
+  const brandFindings = checkDesignContent("contracts/interface/brand/custom.svg", "<svg></svg>");
   assert.ok(brandFindings.some((f) => f.includes("hand-authored .svg files are forbidden")));
 
   assert.deepEqual(

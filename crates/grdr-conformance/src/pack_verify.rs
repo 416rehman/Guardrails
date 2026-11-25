@@ -164,7 +164,12 @@ pub fn verify_signed_pack_dir_with_trusted(
 
 pub fn validate_live_packs(repo_root: &Path) -> Result<PackValidationSummary, ConformanceError> {
     let packs_dir = repo_root.join("packs");
-    let vocab_raw = read_regular_text(&repo_root.join("interface").join("vocabulary.toml"))?;
+    let vocab_raw = read_regular_text(
+        &repo_root
+            .join("contracts")
+            .join("interface")
+            .join("vocabulary.toml"),
+    )?;
     let vocab = parse_vocabulary_toml(&vocab_raw).map_err(|e| conf_err("vocab", &e.to_string()))?;
 
     let essentials_dir = packs_dir.join("essentials");

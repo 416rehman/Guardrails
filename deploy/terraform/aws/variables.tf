@@ -75,7 +75,7 @@ variable "postgresql_version" {
 
   validation {
     condition     = tonumber(split(".", var.postgresql_version)[0]) >= 18
-    error_message = "postgresql_version must be 18 or newer per support.toml."
+    error_message = "postgresql_version must be 18 or newer per contracts/support.toml."
   }
 }
 
@@ -93,7 +93,7 @@ variable "enable_deletion_protection" {
 
 variable "backup_retention_days" {
   type        = number
-  description = "PITR and noncurrent object retention days (limits.toml pitr_window_days)."
+  description = "PITR and noncurrent object retention days (contracts/limits.toml pitr_window_days)."
   default     = 35
 
   validation {

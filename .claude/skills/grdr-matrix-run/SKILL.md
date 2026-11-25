@@ -19,7 +19,7 @@ The item is issue `#<n>`, named in your prompt. Read it with `gh issue view <n> 
 | Source | What runs | For which commits |
 |---|---|---|
 | `verify.yml` dispatch runs (#454) | `.github/workflows/verify.yml`: `fmt`, `clippy`, tests and `cargo-deny` on `ubuntu-26.04`, `macos-26` and `windows-2025` | Dispatched on the branch head (`workflow_dispatch`) and on `main` |
-| `lab.yml` | `.github/workflows/lab.yml`: hosted lab cells (`linux-x64` on `ubuntu-26.04`, `macos-arm64` on `macos-26`, `windows-x64` with Defender active on `windows-2025`) running `lab/jobs/<job>.toml` | Dispatched on `--ref <branch>` or `main` (`workflow_dispatch`) |
+| `lab.yml` | `.github/workflows/lab.yml`: hosted lab cells (`linux-x64` on `ubuntu-26.04`, `macos-arm64` on `macos-26`, `windows-x64` with Defender active on `windows-2025`) running `deploy/qa/jobs/<job>.toml` | Dispatched on `--ref <branch>` or `main` (`workflow_dispatch`) |
 
 ## Write the code so the target edge is thin
 
@@ -29,7 +29,7 @@ A cross-target `cargo check -p <crate> --target <triple>` catches compile errors
 
 ## Pick the cells
 
-Cells come from `support.toml`, which is gate data; jobs come from `lab/jobs/*.toml`, which the lab squad owns. Read both and edit neither from this skill. Tier 1 cells are release-blocking (D-50).
+Cells come from `contracts/support.toml`, which is gate data; jobs come from `deploy/qa/jobs/*.toml`, which the lab squad owns. Read both and edit neither from this skill. Tier 1 cells are release-blocking (D-50).
 
 | Your change touches | Run at least |
 |---|---|
@@ -39,7 +39,7 @@ Cells come from `support.toml`, which is gate data; jobs come from `lab/jobs/*.t
 | `platform/windows/` | Windows 11 x64 with Defender active, and Server or ARM64 cells where the support entry lists them |
 | Shared code an OS adapter calls | The Tier 1 cells |
 
-A missing cell in `support.toml` or a missing job in `lab/jobs/` is filed as a new issue for `lead-lab` (skill `grdr-handoff`). Never stand in for either with a local run.
+A missing cell in `contracts/support.toml` or a missing job in `deploy/qa/jobs/` is filed as a new issue for `lead-lab` (skill `grdr-handoff`). Never stand in for either with a local run.
 
 ## Run
 
@@ -72,7 +72,7 @@ Rerun a failing cell at most once, and report both runs. A cell that fails and t
 
 - Drive kernel tracing (`bpftrace`, `perf`, `ftrace`, ETW sessions, DTrace) on a Tier B machine or any other shared host. It can take the machine down. Use the user-space model and the kernel matrix.
 - Log into, configure or register a runner. Registering a Tier B machine is a one-time setup on that machine, outside any agent session; no cell waits on it.
-- Compare numbers from different machines. Performance results cite the host pinned in `lab/reference-hosts.toml` (`team/05`).
+- Compare numbers from different machines. Performance results cite the host pinned in `deploy/qa/reference-hosts.toml` (`team/05`).
 - Run a model-driven cell that needs another vendor's model or account without routing through the configured provider rules.
 - Count a cell from an earlier commit for a later one. Evidence names the commit it ran on (`cell.json` `commit`).
 

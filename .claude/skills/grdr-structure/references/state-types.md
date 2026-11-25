@@ -116,4 +116,4 @@ Switch on `kind` and end with an exhaustiveness check (`const unreachable: never
 
 ## 6. When the type is not yours
 
-If the type lives outside your write set, or changing it is a public-surface or wire change (layers 0 to 2, `proto/`, `schema/`: an RFC under D-61), do not add a local shadow of it. Hand off with the transition table from step 1 as the finding and a proposed issue for the redesign.
+If the type lives outside your write set, or changing it is a public-surface or wire change (layers 0 to 2, `contracts/proto/`, `contracts/cedar/`: an RFC under D-61), do not add a local shadow of it. Hand off with the transition table from step 1 as the finding and a proposed issue for the redesign.

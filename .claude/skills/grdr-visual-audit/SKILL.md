@@ -5,13 +5,13 @@ description: Principal UI/UX Designer screenshot audit workflow. Inspects live W
 
 # Guardrails Visual UI/UX Designer Audit
 
-> Applies strictly to UI-changing PRs (`web/`, `desktop/grdr-desktop/`, `crates/grdr-ui-model/`, `interface/brand/`). Screenshot capture and PR attachment MUST NOT be used on non-UI PRs: never generate, render, or attach synthetic screenshots of CI results, terminal logs, or verification cards on non-UI PRs.
+> Applies strictly to UI-changing PRs (`web/`, `desktop/grdr-desktop/`, `crates/grdr-ui-model/`, `contracts/interface/brand/`). Screenshot capture and PR attachment MUST NOT be used on non-UI PRs: never generate, render, or attach synthetic screenshots of CI results, terminal logs, or verification cards on non-UI PRs.
 
 Code linters catch syntax. Only visual inspection of real screenshots catches truncated text, misaligned baselines, awkward card density, confusing copy, or missing affordances.
 
 ## Mandatory Visual Audit Loop
 
-Whenever any UI file (`web/packages/`, `web/apps/`, `desktop/grdr-desktop/src/`, `crates/grdr-ui-model/`, `interface/brand/`) or screenshot changes:
+Whenever any UI file (`web/packages/`, `web/apps/`, `desktop/grdr-desktop/src/`, `crates/grdr-ui-model/`, `contracts/interface/brand/`) or screenshot changes:
 
 1. **Capture fresh local screenshots (gitignored, never committed to git; attach to GitHub issues or PRs only):**
    - Desktop GPU (`--scene <name> --size 1280x820 --snap desktop/screenshots/desktop-<name>.png`)

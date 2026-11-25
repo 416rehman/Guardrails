@@ -62,7 +62,7 @@ Test the Claude Code hook shim directly:
 cargo fmt --all -- --check
 cargo clippy --workspace --locked --all-targets -- -D warnings
 cargo test --workspace --locked
-cargo deny check
+cargo deny --config security/deny.toml check
 pnpm --dir web run typecheck
 pnpm --dir web run test
 pnpm --dir web run build

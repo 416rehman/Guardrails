@@ -11,10 +11,10 @@ const TEST_DIGEST = "sha256:1111111111111111111111111111111111111111111111111111
 const ZERO_DIGEST = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
 
 const REQUIRED_TOMLS = [
-  "brand/brand.toml",
-  "limits.toml",
-  "dist.toml",
-  "support.toml",
+  "contracts/interface/brand/brand.toml",
+  "contracts/limits.toml",
+  "deploy/release/dist.toml",
+  "contracts/support.toml",
   "docs/plan/build-order.toml",
   "docs/plan/spikes.toml",
   "docs/plan/preconditions.toml",
@@ -24,7 +24,7 @@ const REQUIRED_TOMLS = [
 const REQUIRED_FILES = [
   ...REQUIRED_TOMLS,
   ".dockerignore",
-  "release/release-manifest.schema.json",
+  "deploy/release/release-manifest.schema.json",
   "deploy/docker/Containerfile.server",
   "deploy/docker/Containerfile.node-sensor",
   "deploy/docker/Containerfile.keys-pkcs11",
@@ -130,13 +130,13 @@ function findPython() {
 }
 
 function readBrandDomain() {
-  const brandTxt = readRel("brand/brand.toml");
+  const brandTxt = readRel("contracts/interface/brand/brand.toml");
   const match = brandTxt.match(/^\s*domain\s*=\s*"([^"]+)"/m);
   return match ? match[1] : "";
 }
 
 function checkHygiene(errors, targetFiles) {
-  const domainAllowed = new Set(["brand/brand.toml", "dist.toml"]);
+  const domainAllowed = new Set(["contracts/interface/brand/brand.toml", "deploy/release/dist.toml"]);
   const appleIdAllowedPrefix = ["deploy/packaging/launchd/", "deploy/packaging/macos-pkg/"];
   const brandDomain = readBrandDomain();
   const brandReversePrefix = brandDomain.split(".").reverse().join(".");
@@ -153,7 +153,7 @@ function checkHygiene(errors, targetFiles) {
           .replaceAll("<organization>" + revBase + "</organization>", "");
       }
       if (sanitized.toLowerCase().includes(brandDomain.toLowerCase())) {
-        errors.push(`brand (${rel}): hardcoded ${brandDomain} outside brand/ and dist.toml`);
+        errors.push(`brand (${rel}): hardcoded ${brandDomain} outside contracts/interface/brand/ and deploy/release/dist.toml`);
       }
     }
     for (const pat of SECRET_PATTERNS) {
@@ -185,21 +185,21 @@ tomls = {}
 for p in json.loads(sys.argv[1]):
     tomls[p] = tomllib.loads(Path(p).read_text("utf-8"))
 
-brand = tomls["brand/brand.toml"]
+brand = tomls["contracts/interface/brand/brand.toml"]
 assert brand["schema"] == "grdr.brand.v1alpha1"
 assert brand["identity"]["namespace"] == "grdr"
 assert brand["legal"]["copyright_holder"] == "The Guardrails ADR Authors"
 assert brand["os_identity"]["windows_msi_upgrade_code"] in Path("deploy/packaging/wix/Package.wxs").read_text("utf-8")
 
-limits = tomls["limits.toml"]
+limits = tomls["contracts/limits.toml"]
 for sec in ["endpoint", "packs", "uplink", "retry", "server"]:
-    assert sec in limits, f"missing {sec} in limits.toml"
+    assert sec in limits, f"missing {sec} in contracts/limits.toml"
 
-dist = tomls["dist.toml"]
+dist = tomls["deploy/release/dist.toml"]
 assert dist["phone_home"] is False
 assert len(dist["updates"]["sources"]) >= 2
 
-support = tomls["support.toml"]
+support = tomls["contracts/support.toml"]
 assert support["platform"]["databases"]["postgresql_major"] == 18
 
 slices = {s["id"] for s in tomls["docs/plan/build-order.toml"]["slice"]}
@@ -209,7 +209,7 @@ assert len(spikes) == 31, f"expected 31 spikes, got {len(spikes)}"
 risks = {r["id"] for r in tomls["docs/plan/risks.toml"]["risk"]}
 assert len(risks) == 30, f"expected 30 risks, got {len(risks)}"
 
-schema = json.loads(Path("release/release-manifest.schema.json").read_text("utf-8"))
+schema = json.loads(Path("deploy/release/release-manifest.schema.json").read_text("utf-8"))
 for req in ["bundle_version", "commit", "channel", "components", "artefacts", "compat", "wire_major", "schema_rev", "trusted_root"]:
     assert req in schema["required"], f"missing {req} in release-manifest.schema.json"
 

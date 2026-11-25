@@ -23,9 +23,9 @@ You are the orchestrator. Match process weight to risk (ADR-0043). Never force a
 
 ## 1. Read & classify lane (`.claude/risk-tiers.toml`)
 `gh issue view <n> --json number,title,body,labels,comments`.
-1. **Fast-Track (`[fast_track]`)**: dependency/tool pins (`Cargo.toml`, `Cargo.lock`, `supply-chain/build-tools.toml`, `rust-toolchain.toml`), docs/markdown, tests-only, lint/format/release config, or small bug fixes under 50 lines with no `trust_core`/`high` path. Skip spec-writer completely; implement directly (or with 1 `fast`/`standard` worker); open PR; let deterministic CI decide; merge once green (**0 LLM evaluators**).
+1. **Fast-Track (`[fast_track]`)**: dependency/tool pins (`Cargo.toml`, `Cargo.lock`, `security/supply-chain/build-tools.toml`, `rust-toolchain.toml`), docs/markdown, tests-only, lint/format/release config, or small bug fixes under 50 lines with no `trust_core`/`high` path. Skip spec-writer completely; implement directly (or with 1 `fast`/`standard` worker); open PR; let deterministic CI decide; merge once green (**0 LLM evaluators**).
 2. **Normal / Medium (`[medium]`)**: normal crates, UI, hooks, agent kit, adapters. Skip spec-writer if goal + paths + check are clear; implement on `standard` tier; run **1** `eval-review` once CI is green.
-3. **High / Trust-Core (`[high]` / `[trust_core]`)**: runtime `security/trust-core.paths`, CI workflows, public wire/schema/API (`proto/`, `schema/`, `grdr-proto/schema/model/ports/wire`), `unsafe`, or RFCs. Run **2** evaluators (`eval-review` + `eval-security`) on **2 distinct models/providers** per `.agents/models.toml` (`[cross_model]`, D-63), max **2 rounds**.
+3. **High / Trust-Core (`[high]` / `[trust_core]`)**: runtime `security/trust-core.paths`, CI workflows, public wire/schema/API (`contracts/proto/`, `contracts/cedar/`, `grdr-proto/schema/model/ports/wire`), `unsafe`, or RFCs. Run **2** evaluators (`eval-review` + `eval-security`) on **2 distinct models/providers** per `.agents/models.toml` (`[cross_model]`, D-63), max **2 rounds**.
 
 ## 2. Implement & open draft PR
 - For `fast_track` or small changes, the orchestrator may edit directly in an isolated worktree on `issue/<n>-<slug>`. Otherwise spawn the named `agent:` (`impl-rust` by default) in an isolated worktree (`.agent/worktrees/` on Antigravity) using `.agents/models.toml`.

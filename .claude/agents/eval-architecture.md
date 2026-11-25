@@ -61,7 +61,7 @@ names its design issue instead of a branch.
    - rule, detection or policy logic written in Rust or TypeScript instead of a Cedar pack, a
      detection or a manifest;
    - a threshold, bound, timeout, retry budget or schedule written as a literal or a named
-     constant instead of a `limits.toml` entry or a schema default;
+     constant instead of a `contracts/limits.toml` entry or a schema default;
    - a workflow, UI flow or approval path fixed in code where a registry, pattern or setting
      carries it;
    - a default that cannot be replaced without a code change.
@@ -69,8 +69,8 @@ names its design issue instead of a branch.
    see: a URL, host, domain, port, address or email assembled from parts; a product, company or
    brand name under another spelling; a platform path outside the per-OS tables; a colour or
    spacing value outside the tokens; a person-facing string that is not a language token. Each
-   value has one home: the configuration schema, `brand/brand.toml`, `limits.toml`, the design
-   tokens or a language token in `interface/strings/` (D-69), called through its generated
+   value has one home: the configuration schema, `contracts/interface/brand/brand.toml`, `contracts/limits.toml`, the design
+   tokens or a language token in `contracts/interface/strings/` (D-69), called through its generated
    accessor. Report each with that home.
 4. **State.** When the diff is state-touching, run A01 through `grdr-audit` on the diff, or read
    the A01 result your prompt passes on. A surviving A01 result that the change answers with a

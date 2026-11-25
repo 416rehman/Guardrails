@@ -166,6 +166,7 @@ jobs:
           RUSTUP_TOOLCHAIN: ${{ env.RUSTUP_TOOLCHAIN }}
         with:
           command: check
+          arguments: --all-features --config security/deny.toml
 
   tools:
     needs: plan

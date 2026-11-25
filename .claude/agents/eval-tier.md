@@ -47,7 +47,7 @@ Your prompt names the issue `<n>`, its branch `issue/<n>` and your round, at mos
 2. Raise to high for anything that changes what is allowed, who can approve, what is collected,
    an interface other code will copy, a `[high] triggers` entry the diff shows, or a file outside
    the issue's write set.
-3. Until `lab/reviewer-evals/` holds 50 cases, low tier covers only docs and additive changes
+3. Until `deploy/qa/reviewer-evals/` holds 50 cases, low tier covers only docs and additive changes
    behind a flag; anything else at low is raised to medium.
 4. Decide whether the diff touches the trust core by running the step 4 command below, as it
    stands and as one Bash call, never by reading the list. Its last line is the result:

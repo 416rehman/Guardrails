@@ -31,7 +31,7 @@ None: it has no dependencies (design/03 section 2).
 Reads: none yet. Writes: none yet (first content #20). Logs: LogSafe only.
 
 ## Limits
-Bounds in limits.toml: none yet (limits.toml arrives with #279).
+Bounds in contracts/limits.toml: none yet (contracts/limits.toml arrives with #279).
 
 ## Do not
 - None recorded yet.

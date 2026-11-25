@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const WEB_UI_CHANGE_RE = /^(?:web\/(?:packages|apps)\/|interface\/brand\/)/;
+const WEB_UI_CHANGE_RE = /^(?:web\/(?:packages|apps)\/|contracts\/interface\/brand\/)/;
 const DESKTOP_UI_CHANGE_RE = /^(?:desktop\/grdr-desktop\/src\/|crates\/grdr-ui-model\/)/;
 const COMMITTED_SCREENSHOT_RE = /^(?:web|desktop)\/screenshots\/|\/__screenshots__\//i;
 export const AUDIT_RECORD_REL = ".git/grdr-visual-audit.json";

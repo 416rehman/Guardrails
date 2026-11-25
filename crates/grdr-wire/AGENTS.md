@@ -28,7 +28,7 @@ Layers 0 and 1. Same-layer edges in architecture.toml: `grdr-crypto`.
 Reads: none yet. Writes: none yet (first content #374). Logs: LogSafe only.
 
 ## Limits
-Bounds in limits.toml: none yet (limits.toml arrives with #279).
+Bounds in contracts/limits.toml: none yet (contracts/limits.toml arrives with #279).
 
 ## Do not
 - Open an outbound connection outside the `Dialer` (ARCH-025).

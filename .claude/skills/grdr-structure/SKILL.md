@@ -33,7 +33,7 @@ Enforced by `.claude/hooks/docs-check.mjs` and `.agents/hooks/agy-pre-tool-use.m
 3. **No implicit state machines, ever.** Mutually exclusive booleans, a status or phase held as a string or integer, `Option` fields valid only in some phases, and checks like `started && !finished` are one lifecycle smeared across fields. Redesign it as an explicit state type: an enum whose variants carry the data each state owns, and transitions as functions that consume one state and return the next (typestate where it is cheap), so an invalid combination cannot be represented. Every non-terminal state has an exit: success, failure, cancel, timeout or restart. `references/state-types.md` shows the conversion.
 4. **Comments only when nothing else can say it.** Keep a comment only for a reason the code cannot show: an invariant, an external constraint, a link to a spec, decision record or RFC, and the `// SAFETY:` comment every `unsafe` block needs. No narration, change-log or step comments, no commented-out code, no TODO without a work-item id (`TODO(#123)`, or `TODO(WI-0012)` for a reserved item). Rename or extract instead of commenting. Rustdoc on public items stays where the crate's lints require it, and stays short.
 5. **Fix the core problem.** When a check or a review finds a problem, change the design so the problem cannot recur. Never silence the check, add a guard around the symptom, rename to dodge the pattern, or split a file mechanically to get under 500 lines. If the right fix is outside the item's write set, report the finding and a proposed issue instead of a local workaround.
-6. **Readable code.** One job per function and module. Names that say what a thing is. Early returns over nesting, four levels at most. Enums over boolean parameters. Every bound in `limits.toml`, never a magic number or a named constant holding one. Errors carry their `GRDR-<AREA>-<NNNN>` code. Modules split by feature, not by kind. The public surface as small as it can be.
+6. **Readable code.** One job per function and module. Names that say what a thing is. Early returns over nesting, four levels at most. Enums over boolean parameters. Every bound in `contracts/limits.toml`, never a magic number or a named constant holding one. Errors carry their `GRDR-<AREA>-<NNNN>` code. Modules split by feature, not by kind. The public surface as small as it can be.
 7. **Find the mechanism first** (P14, framework over features). Before writing a feature, find the mechanism it belongs to: a port with adapters, a signed pack, a manifest, a configuration schema or a plugin seam. Extend that mechanism, or add one, and express the feature as content or configuration on top of it, with the product's own behaviour as the default content. A vendor, agent, rule, threshold, workflow, UI flow, integration or policy written into code where a mechanism would carry it is a design defect, and `eval-architecture` fails it. Name the extension point you used or added in your report.
 
 ## Writing code that needs no escape hatch
@@ -62,18 +62,18 @@ Two habits keep a change small. Touch only the lines the item needs: no reformat
 | S6 | A panic path on a new line outside test code: `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `unreachable!`, indexing or slicing that panics on short input, `process::exit`; in scripts `process.exit`; diff only | Blocks | A typed error with its code that the caller handles; `get`, `split_first` or a slice pattern for input of unknown length; a type that cannot hold the impossible case |
 | S7 | A hard-coded value in non-test code: a URL, host, domain, email or IP literal; a brand or vendor name; a number used as a bound, timeout, retry count, size, capacity or threshold; a colour or spacing literal; text a person reads written into markup | Blocks | The value in its data source, read through its loader (below) |
 
-S7 takes the brand names from `brand/brand.toml` and the vendor names from the adapter, pack and integration manifests, so it finds exactly the names the data defines. Names reserved for documentation (`example.com`, `*.example`, `*.test`, `*.invalid`) and the documentation address ranges pass; loopback does not, outside tests. Zero, one and index arithmetic are never bounds. On the interface paths (`web/`, `site/`, the browser extension) UX1 and UX3 of `grdr-interface` report the colours, spacing, text and product name instead, so each literal is reported once.
+S7 takes the brand names from `contracts/interface/brand/brand.toml` and the vendor names from the adapter, pack and integration manifests, so it finds exactly the names the data defines. Names reserved for documentation (`example.com`, `*.example`, `*.test`, `*.invalid`) and the documentation address ranges pass; loopback does not, outside tests. Zero, one and index arithmetic are never bounds. On the interface paths (`web/`, `site/`, the browser extension) UX1 and UX3 of `grdr-interface` report the colours, spacing, text and product name instead, so each literal is reported once.
 
 Every value has a home outside the code, and code only reads it (owner instruction 26):
 
 | The literal | Its home |
 |---|---|
 | URL, host, port, email, IP | A configuration key in the `grdr.config` schema, its default in the brand manifest. A self-hosted site sets its own and never depends on Loonaro's domain |
-| Product or company name | `brand/brand.toml`, read through configuration, or `:grdr:brand` inside a message |
+| Product or company name | `contracts/interface/brand/brand.toml`, read through configuration, or `:grdr:brand` inside a message |
 | Vendor name | The adapter, pack or manifest entry that integrates the vendor (rule 7) |
-| Bound, timeout, retry budget, size, threshold | `limits.toml`, read through its typed loader; an operator-tunable setting goes in the configuration schema |
+| Bound, timeout, retry budget, size, threshold | `contracts/limits.toml`, read through its typed loader; an operator-tunable setting goes in the configuration schema |
 | Colour, spacing, font, motion | The design token by name |
-| Text a person reads | A language token in `interface/strings/` (D-69), called through its generated accessor |
+| Text a person reads | A language token in `contracts/interface/strings/` (D-69), called through its generated accessor |
 
 `references/checks.md` gives what each check counts and worked fixes.
 
@@ -81,7 +81,7 @@ Check each file against S1 to S7 as you finish it, not at the end: findings left
 
 ## Exemptions
 
-There is no exemption file. A true false positive of S4, S6 or S7 is argued in your report's decisions with the reason (for S4, that every combination of the fields is a meaningful value and none records progress through a lifecycle; for S6 or S7, that no data source or typed error can hold it), and `eval-architecture` decides. "It would take long to redesign" is not a false positive. A new bound is a new `limits.toml` entry, which agents may not edit: file it as its own issue with the key, the value, the area and the code that reads it, and report `blocked` until it lands.
+There is no exemption file. A true false positive of S4, S6 or S7 is argued in your report's decisions with the reason (for S4, that every combination of the fields is a meaningful value and none records progress through a lifecycle; for S6 or S7, that no data source or typed error can hold it), and `eval-architecture` decides. "It would take long to redesign" is not a false positive. A new bound is a new `contracts/limits.toml` entry, which agents may not edit: file it as its own issue with the key, the value, the area and the code that reads it, and report `blocked` until it lands.
 
 ## Audit A01
 

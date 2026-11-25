@@ -16,7 +16,7 @@
   {"query": "Fix the two major findings eval-diff left on my PR #57 for #142.", "should_trigger": false},
   {"query": "What is the difference between cannot-evaluate and fail in team/02? Explain for the owner's onboarding note.", "should_trigger": false},
   {"query": "Threat-model the new socket listener in #31 as the implementer before writing code.", "should_trigger": false},
-  {"query": "Score every evaluator against lab/reviewer-evals/ for the new model release and write up the results.", "should_trigger": false},
+  {"query": "Score every evaluator against deploy/qa/reviewer-evals/ for the new model release and write up the results.", "should_trigger": false},
   {"query": "Implement the grdr-evaluator verdict schema in crates/grdr-schema with fixtures.", "should_trigger": false},
   {"query": "As the persona-council chair, merge the eight seats' objections on the design issue #66 into the spec.", "should_trigger": false}
 ]

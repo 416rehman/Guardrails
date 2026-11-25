@@ -9,8 +9,8 @@ An RFC is required for a change to the following. The persona council and `eval-
 - the spine, `docs/design/00-decisions.md`;
 - a public crate: layers 0 to 2 (`grdr-proto`, `grdr-schema`, `grdr-model`, `grdr-core`, `grdr-fastpath`, `grdr-ffi`, `grdr-wasm`, `grdr-ports`, `grdr-crypto`, `grdr-wire` and the other layer 0 to 2 crates of design/03 section 2);
 - a same-layer dependency edge in `architecture.toml`, at any layer (design/03 section 2);
-- a wire format: `proto/grdr/**`, IPC framing;
-- the Cedar schema under `schema/`.
+- a wire format: `contracts/proto/grdr/**`, IPC framing;
+- the Cedar schema under `contracts/cedar/`.
 
 The chief architect drafts it in `rfcs/NNNN-<title>.md` and is its author of record. An RFC always escalates (team/01 section 6). The item that implements it is not worked until the RFC is accepted: make it "blocked by" the RFC's issue.
 
@@ -22,7 +22,7 @@ An ordinary issue does not edit these, and the evaluators fail a diff that does 
 |---|---|
 | `docs/decisions/ADR-NNNN-<slug>.md` | The chief architect, through its own issue, after the decision it records is made |
 | `specs/**` (Quint, Kani property statements) | its own issue for `lead-agent-kit` (gate configuration) or the chief architect (spine and plan), landed after `eval-security` and one evaluator on the other model pass (owner instruction 7); they approve every stated property |
-| `spec/**`, `conformance/vectors/**`, `tests/golden/**` | its own issue for `lead-agent-kit` (gate configuration) or the chief architect (spine and plan), landed after `eval-security` and one evaluator on the other model pass (owner instruction 7); the item is high tier |
+| `docs/spec/**`, `conformance/vectors/**`, `tests/golden/**` | its own issue for `lead-agent-kit` (gate configuration) or the chief architect (spine and plan), landed after `eval-security` and one evaluator on the other model pass (owner instruction 7); the item is high tier |
 | `security/requirements.yaml`, `security/threats.yaml` (new SR or threat ids) | its own issue for `lead-agent-kit` (gate configuration) or the chief architect (spine and plan), landed after `eval-security` and one evaluator on the other model pass (owner instruction 7), from the threat model (skill `grdr-threat-model-change`) |
 | `web/packages/ui/exceptions.toml` (an Astryx exception) | Its own item, landed after `eval-ux` and `lead-interfaces` both agree (skill `grdr-interface`) |
 | `docs/design/**` | The RFC route |

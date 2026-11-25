@@ -22,7 +22,7 @@ write set and tier are in its body and labels (skill `grdr-start-item`).
 
 | | Profile adapter | Contrib adapter |
 |---|---|---|
-| Lives in | This repository; compiled into `grdr-server` or the sensor | The `grdr-contrib` repository: one directory with an `OWNER` file naming a person, the kit version it passed and a `dist.toml` snippet |
+| Lives in | This repository; compiled into `grdr-server` or the sensor | The `grdr-contrib` repository: one directory with an `OWNER` file naming a person, the kit version it passed and a `deploy/release/dist.toml` snippet |
 | Gates a release | Yes | Never. Tier 2; removed after two red releases |
 | Limit | At most two release-gating adapters per port per profile; for endpoint ports, per operating system | None |
 
@@ -51,7 +51,7 @@ If the item would add a third release-gating adapter for a port in one profile, 
      authentication middleware and the job runner mint one;
    - cryptography only through `grdr-crypto` (ARCH-006); time and randomness only through `Clock` and
      `Entropy`;
-   - every queue, cache, batch and buffer has a bound in `limits.toml`. That file is gate data outside your
+   - every queue, cache, batch and buffer has a bound in `contracts/limits.toml`. That file is gate data outside your
      write set, so new keys become their own issue, named in your report;
    - errors carry `GRDR-<AREA>-<NNNN>` codes registered in `grdr-schema`. `unsafe` only in OS adapter
      crates, each block with a `// SAFETY:` comment;

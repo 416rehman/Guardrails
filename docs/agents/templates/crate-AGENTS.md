@@ -23,7 +23,7 @@ Layers below <N>, plus same-layer edges in architecture.toml: <list or "none">.
 Reads: <classes>. Writes: <classes>. Logs: LogSafe only.
 
 ## Limits
-Bounds in limits.toml: <keys>.
+Bounds in contracts/limits.toml: <keys>.
 
 ## Do not
 - <Crate-specific pitfalls found by review; each added by the rules gardener with its finding id.>

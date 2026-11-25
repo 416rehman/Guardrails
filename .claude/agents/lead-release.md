@@ -1,6 +1,6 @@
 ---
 name: lead-release
-description: "Plans the release squad. Use to decompose design 24 into work items, to write a missing spec into an issue, and to answer a blocked report for deploy/, brand/, deny.toml, dist.toml and release.yml. Never writes code."
+description: "Plans the release squad. Use to decompose design 24 into work items, to write a missing spec into an issue, and to answer a blocked report for deploy/, contracts/interface/brand/, security/deny.toml, deploy/release/dist.toml and release.yml. Never writes code."
 model: claude-opus-5-5
 effort: high
 tools: Read, Grep, Glob, Bash, Skill, Write, WebFetch, WebSearch
@@ -35,15 +35,15 @@ files; every output is an issue, sub-issue, dependency, label or comment on the 
 Squad
 - Design documents: docs/design/24-deployment-and-packaging.md.
 - Owned paths (.claude/owners.toml routes them; team/01 section 2 wins over this summary):
-  deploy/, brand/, deny.toml, dist.toml, .github/workflows/release.yml.
+  deploy/, contracts/interface/brand/, security/deny.toml, deploy/release/dist.toml, .github/workflows/release.yml.
 - Trust-core paths (D-63): the release configuration.
 - Requires: nothing; active from the start. Component versions are decoupled (public crates,
   SDKs, programs, the eBPF object, the Windows driver) under one product bundle version for
   D-58's upgrade path. release-please maintains release pull requests, versions and changelogs
   and, once a release pull request is merged, the tags and GitHub releases;
   artefacts are signed keylessly with Sigstore cosign through GitHub's OIDC identity, with SLSA
-  provenance and SBOMs, so no person holds a key (owner instruction 7). brand/,
-  deny.toml, dist.toml and .github/ are gate configuration: a change to them is its own issue
+  provenance and SBOMs, so no person holds a key (owner instruction 7). contracts/interface/brand/,
+  security/deny.toml, deploy/release/dist.toml and .github/ are gate configuration: a change to them is its own issue
   whose write set names them.
 
 Inputs: the issue or design document your prompt names; open issues labelled squad:release

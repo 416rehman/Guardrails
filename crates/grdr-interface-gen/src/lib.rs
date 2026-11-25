@@ -152,7 +152,10 @@ mod tests {
         if temp_root.exists() {
             fs::remove_dir_all(&temp_root).expect("cleanup old temp");
         }
-        copy_dir_recursive(&root.join("interface"), &temp_root.join("interface"));
+        copy_dir_recursive(
+            &root.join("contracts/interface"),
+            &temp_root.join("contracts/interface"),
+        );
 
         let written = run(&temp_root, RunMode::Write).expect("write generated artifacts");
         assert_eq!(written.len(), 5);
@@ -178,9 +181,12 @@ mod tests {
         if temp_root.exists() {
             fs::remove_dir_all(&temp_root).expect("cleanup old temp");
         }
-        copy_dir_recursive(&root.join("interface"), &temp_root.join("interface"));
+        copy_dir_recursive(
+            &root.join("contracts/interface"),
+            &temp_root.join("contracts/interface"),
+        );
 
-        let common_path = temp_root.join("interface/strings/src/common.mf2.toml");
+        let common_path = temp_root.join("contracts/interface/strings/src/common.mf2.toml");
         let original = fs::read_to_string(&common_path).expect("read common.mf2.toml");
         let bad = format!(
             "{original}\n[\"console.bad.example\"]\ndesc = \"Bad\"\nmax = 40\nrisk = \"normal\"\nmsg = \"Check device posture\"\n"
@@ -191,7 +197,7 @@ mod tests {
         assert!(err.to_string().contains("posture"));
 
         fs::write(&common_path, original).expect("restore common.mf2.toml");
-        let pres_path = temp_root.join("interface/presentation.toml");
+        let pres_path = temp_root.join("contracts/interface/presentation.toml");
         let pres_orig = fs::read_to_string(&pres_path).expect("read presentation.toml");
         let bad_pres = format!(
             "{pres_orig}\n[[entry]]\nenum = \"Mode\"\nvalue = \"broken\"\nlabel = \"mode.off.label\"\nicon = \"missing.icon\"\ntone = \"neutral\"\n"

@@ -7,13 +7,13 @@ use grdr_interface_gen::{RunMode, run};
 #[derive(Debug, Parser)]
 #[command(
     name = "grdr-interface-gen",
-    about = "Generate typed Rust and Web interface artifacts from interface/"
+    about = "Generate typed Rust and Web interface artifacts from contracts/interface/"
 )]
 struct Cli {
-    /// Repository root containing interface/
+    /// Repository root containing contracts/interface/
     #[arg(long, default_value = ".")]
     root: PathBuf,
-    /// Verify checked-in generated files match interface/ without writing
+    /// Verify checked-in generated files match contracts/interface/ without writing
     #[arg(long)]
     check: bool,
 }

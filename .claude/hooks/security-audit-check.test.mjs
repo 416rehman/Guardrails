@@ -71,8 +71,8 @@ test("isNonUiSecurityPath covers all non-UI and trust-core paths while keeping s
     "crates\\grdr-crypto\\src\\lib.rs",
     "programs/grdr-daemon/src/main.rs",
     "bpf/probe.c",
-    "proto/grdr/v1/event.proto",
-    "schema/tenancy/lifecycle.toml",
+    "contracts/proto/grdr/v1/event.proto",
+    "contracts/cedar/tenancy/lifecycle.toml",
     "deploy/helm/Chart.yaml",
     "scripts/release.sh",
     "platform/windows/service.rs",
@@ -83,10 +83,10 @@ test("isNonUiSecurityPath covers all non-UI and trust-core paths while keeping s
     ".agents/hooks/agy-pre-tool-use.mjs",
     ".agents/hooks.json",
     "security/trust-core.paths",
-    "supply-chain/licences.toml",
+    "security/supply-chain/licences.toml",
     "web/packages/api/src/client.ts",
-    "limits.toml",
-    "deny.toml",
+    "contracts/limits.toml",
+    "security/deny.toml",
     ".cargo/config.toml",
     "build.rs",
     "crates/grdr-ui-model/build.rs",
@@ -246,9 +246,9 @@ test("trust-core matching uses ASCII icase, prevents ReDoS, reads HEAD union, an
       "BUILD.RS",
       "crates/grdr-core/build.rs",
       "crates/grdr-core/.cargo/config.toml",
-      "deny.toml",
+      "security/deny.toml",
       "crates/grdr-core/deny.ci.toml",
-      "limits.toml",
+      "contracts/limits.toml",
       "crates/grdr-core/src/lib.rs",
       "scripts/helper.sh",
     ],
@@ -262,14 +262,14 @@ test("trust-core matching uses ASCII icase, prevents ReDoS, reads HEAD union, an
     "BUILD.RS",
     "crates/grdr-core/build.rs",
     "crates/grdr-core/.cargo/config.toml",
-    "deny.toml",
+    "security/deny.toml",
     "crates/grdr-core/deny.ci.toml",
-    "limits.toml",
+    "contracts/limits.toml",
   ]);
 
   // Removing a path from disk trust-core.paths in the same branch cannot hide it from HEAD union.
   writeFileSync(join(dir, "security/trust-core.paths"), "security/trust-core.paths\n", "utf8");
-  assert.deepEqual(findTrustCoreFiles(["limits.toml"], dir), ["limits.toml"]);
+  assert.deepEqual(findTrustCoreFiles(["contracts/limits.toml"], dir), ["contracts/limits.toml"]);
   writeFileSync(
     join(dir, "security/trust-core.paths"),
     `${readFileSync(join(REPO_ROOT, "security/trust-core.paths"), "utf8")}\n${"**/".repeat(12)}deep.rs\nfoo/**/**\n*a*a*a*a*a*a*a*a*b.rs\n`,
@@ -281,18 +281,19 @@ test("trust-core matching uses ASCII icase, prevents ReDoS, reads HEAD union, an
   ]);
   assert.ok(Date.now() - startMs < 1000, "multi-** and multi-* glob matching must stay linear-time");
 
-  writeFileSync(join(dir, "limits.toml"), "max_events = 100\n", "utf8");
-  spawnSync("git", ["add", "limits.toml"], { cwd: dir });
+  mkdirSync(join(dir, "contracts"), { recursive: true });
+  writeFileSync(join(dir, "contracts/limits.toml"), "max_events = 100\n", "utf8");
+  spawnSync("git", ["add", "contracts/limits.toml"], { cwd: dir });
   const subDir = join(dir, "crates/grdr-core");
   const deniedFromSubdir = evaluateSecurityAuditToolPayload(
     { tool_input: { command: 'git commit -m "chore(limits): update"' } },
     subDir,
   );
-  assert.ok(deniedFromSubdir.some((m) => m.includes("Trust-core paths touched") && m.includes("limits.toml")));
+  assert.ok(deniedFromSubdir.some((m) => m.includes("Trust-core paths touched") && m.includes("contracts/limits.toml")));
 
   const rec = recordSecurityAudit({ cwd: subDir, reviewer: "subdir-judge" });
   assert.equal(rec.trustCoreTouched, true);
-  assert.ok(rec.fileHashes["limits.toml"]);
+  assert.ok(rec.fileHashes["contracts/limits.toml"]);
   assert.deepEqual(
     evaluateSecurityAuditToolPayload({ tool_input: { command: 'git commit -m "chore(limits): update"' } }, subDir),
     [],

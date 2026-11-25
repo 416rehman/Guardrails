@@ -7,12 +7,12 @@ import { relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const UI_PATH_RE =
-  /^(?:web\/(?:packages|apps)|desktop\/|interface\/brand\/|crates\/grdr-ui-model\/src\/).+\.(?:[cm]?[jt]sx?|css|html|rs|svg)$/;
+  /^(?:web\/(?:packages|apps)|desktop\/|contracts\/interface\/brand\/|crates\/grdr-ui-model\/src\/).+\.(?:[cm]?[jt]sx?|css|html|rs|svg)$/;
 const RAW_CONTROL_PATH_RE = /^(?:web\/apps\/|web\/packages\/kit\/).+\.[cm]?[jt]sx$/;
 const CUSTOMER_COPY_PATH_RE =
   /^(?:web\/apps\/|web\/packages\/(?:kit|i18n)\/|desktop\/grdr-desktop\/src\/|crates\/grdr-ui-model\/src\/).+\.(?:[cm]?[jt]sx?|rs)$/;
-const SVG_FILE_RE = /^(?:web\/(?:packages|apps)|desktop\/|interface\/brand\/).+\.svg$/i;
-const TOKEN_OWNER_RE = /^(?:web\/packages\/tokens\/|interface\/tokens\.json$|desktop\/grdr-desktop\/src\/theme\.rs$)/;
+const SVG_FILE_RE = /^(?:web\/(?:packages|apps)|desktop\/|contracts\/interface\/brand\/).+\.svg$/i;
+const TOKEN_OWNER_RE = /^(?:web\/packages\/tokens\/|contracts\/interface\/tokens\.json$|desktop\/grdr-desktop\/src\/theme\.rs$)/;
 const TEST_FILE_RE = /(?:^|\/)(?:tests?\/|.*(?:\.test\.|_test\.))[^/]+$/;
 
 const HEX_COLOR_RE = /(?:^|[\s:,('"])#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/m;
@@ -140,7 +140,7 @@ export function checkDesignContent(relPath, content) {
 
   if (!isTokenOwner && HEX_COLOR_RE.test(content)) {
     findings.push(
-      `design-check (${relPath}): use semantic design tokens from interface/tokens.json instead of raw #hex colors.`,
+      `design-check (${relPath}): use semantic design tokens from contracts/interface/tokens.json instead of raw #hex colors.`,
     );
   }
   if (AI_PURPLE_OR_CLIP_RE.test(content)) {

@@ -36,7 +36,7 @@ write set and tier are in its body and labels (skill `grdr-start-item`).
 
 ## Write the manifest (design/25 section 2)
 
-YAML, validated against `schema/integration/v1alpha1`. The verifier enforces these, so write them in
+YAML, validated against `contracts/integration/v1alpha1`. The verifier enforces these, so write them in
 from the start:
 
 - `config` holds every destination, token and index the operator supplies. `host_constraint` entries
@@ -53,7 +53,7 @@ from the start:
   its scopes. Scopes in `deny_scopes.toml` (script execution, remote shell, file put) are refused.
 - `limits` bound batch bytes, batch records, rate and timeout.
 - Field mapping reuses a design/04 mapping file. A new mapping is its own proposal there.
-- Exported product names come from the brand manifest (D-66). No brand string outside `brand/`.
+- Exported product names come from the brand manifest (D-66). No brand string outside `contracts/interface/brand/`.
 
 An unknown construct makes the integration not evaluable and paused; it never fails the pack load.
 Do not rely on that to ship something the schema does not describe.

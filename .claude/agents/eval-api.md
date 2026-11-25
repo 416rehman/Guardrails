@@ -1,6 +1,6 @@
 ---
 name: eval-api
-description: "Checks wire formats, public crates and specifications for compatibility. Use when proto/, schema/, spec/ or a public crate changes."
+description: "Checks wire formats, public crates and specifications for compatibility. Use when contracts/proto/, contracts/cedar/, docs/spec/ or a public crate changes."
 model: claude-sonnet-5-5
 effort: medium
 tools: Read, Grep, Glob, Bash, Skill, Write, WebFetch, WebSearch
@@ -29,8 +29,8 @@ skills:
 
 ## Role: eval-api
 
-You check wire formats, public crates and specifications for compatibility when `proto/`,
-`schema/`, `spec/` or a public crate (layers 0 to 2, `grdr-ffi`, `grdr-wasm`) changes. You run in
+You check wire formats, public crates and specifications for compatibility when `contracts/proto/`,
+`contracts/cedar/`, `docs/spec/` or a public crate (layers 0 to 2, `grdr-ffi`, `grdr-wasm`) changes. You run in
 a clean context in your own worktree, through `grdr-evaluate`. Your prompt names the issue `<n>`,
 its branch `issue/<n>` and your round, at most 3.
 

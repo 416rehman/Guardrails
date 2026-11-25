@@ -25,7 +25,7 @@ import { parseToolCommandPlan } from "./security-audit-scan.mjs";
 
 export { SECURITY_AUDIT_RECORD_REL, resolveSecurityAuditRecordPath };
 export const NON_UI_SECURITY_AUDIT_RE =
-  /^(?:crates\/(?!grdr-ui-model\/)|programs\/|bpf\/|proto\/|schema\/|deploy\/|scripts\/|platform\/|\.github\/(?:workflows|actions)\/|\.claude\/(?:hooks\/|settings\.json$)|\.agents\/(?:hooks\/|hooks\.json$)|security\/|supply-chain\/|web\/packages\/api\/)/i;
+  /^(?:crates\/(?!grdr-ui-model\/)|programs\/|bpf\/|contracts\/(?:proto\/|cedar\/|limits\.toml$|support\.toml$)|deploy\/|scripts\/|platform\/|\.github\/(?:workflows|actions)\/|\.claude\/(?:hooks\/|settings\.json$)|\.agents\/(?:hooks\/|hooks\.json$)|security\/|web\/packages\/api\/)/i;
 export const IGNORED_NON_UI_RE =
   /(?:^|\/)node_modules\/|^target\/|^(?:crates|programs)\/[^/]+\/target\/|^web\/(?:packages\/[^/]+\/)?dist(?:-operator)?\/|\.(?:png|jpe?g|gif|webp|ico|woff2?|pdf)$/i;
 

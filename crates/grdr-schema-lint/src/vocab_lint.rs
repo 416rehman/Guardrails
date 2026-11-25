@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
-//! Vocabulary registry parser and terminology consistency linter (`interface/vocabulary.toml`).
+//! Vocabulary registry parser and terminology consistency linter (`contracts/interface/vocabulary.toml`).
 
 use std::fs;
 use std::path::Path;

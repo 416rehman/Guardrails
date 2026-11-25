@@ -9,9 +9,9 @@ use crate::model::{
 };
 use crate::toml_doc::{TomlValue, parse_toml_table};
 
-/// Loads and validates all single-source specs under `interface/`.
+/// Loads and validates all single-source specs under `contracts/interface/`.
 pub fn load_interface_bundle(repo_root: &Path) -> Result<InterfaceBundle, GenError> {
-    let iface = repo_root.join("interface");
+    let iface = repo_root.join("contracts").join("interface");
     let tokens = load_tokens(&iface)?;
     let locales = load_locales(&iface.join("strings").join("locales.toml"))?;
     let messages = load_messages(&iface.join("strings").join("src"))?;
@@ -123,7 +123,7 @@ fn lookup_token_ref<'a>(token_ref: &str, base: &'a BaseTokensFile) -> Option<&'a
 
 fn load_locales(path: &Path) -> Result<Vec<LocaleSpec>, GenError> {
     let doc = parse_toml_file(path)?;
-    let file = "interface/strings/locales.toml".to_owned();
+    let file = "contracts/interface/strings/locales.toml".to_owned();
     let rows = doc
         .get("locale")
         .and_then(TomlValue::as_table_array)
@@ -179,7 +179,7 @@ fn load_messages(dir: &Path) -> Result<Vec<MessageSpec>, GenError> {
             .and_then(|n| n.strip_suffix(".mf2.toml"))
             .unwrap_or("common")
             .to_owned();
-        let file = format!("interface/strings/src/{ns}.mf2.toml");
+        let file = format!("contracts/interface/strings/src/{ns}.mf2.toml");
         let doc = parse_toml_file(&path)?;
         for (id, val) in doc {
             let table = val.as_table().ok_or_else(|| GenError::Validation {
@@ -209,7 +209,7 @@ fn load_messages(dir: &Path) -> Result<Vec<MessageSpec>, GenError> {
 
 fn load_vocabulary(path: &Path) -> Result<VocabularySpec, GenError> {
     let doc = parse_toml_file(path)?;
-    let file = "interface/vocabulary.toml".to_owned();
+    let file = "contracts/interface/vocabulary.toml".to_owned();
     let brand_tbl = doc
         .get("brand")
         .and_then(TomlValue::as_table)
@@ -262,7 +262,7 @@ fn load_vocabulary(path: &Path) -> Result<VocabularySpec, GenError> {
 
 fn load_icons(path: &Path) -> Result<Vec<IconSpec>, GenError> {
     let doc = parse_toml_file(path)?;
-    let file = "interface/icons.toml".to_owned();
+    let file = "contracts/interface/icons.toml".to_owned();
     let rows = doc
         .get("icon")
         .and_then(TomlValue::as_table_array)
@@ -290,7 +290,7 @@ fn load_icons(path: &Path) -> Result<Vec<IconSpec>, GenError> {
 
 fn load_presentations(path: &Path) -> Result<Vec<PresentationSpec>, GenError> {
     let doc = parse_toml_file(path)?;
-    let file = "interface/presentation.toml".to_owned();
+    let file = "contracts/interface/presentation.toml".to_owned();
     let rows = doc
         .get("entry")
         .and_then(TomlValue::as_table_array)
@@ -317,7 +317,7 @@ fn load_presentations(path: &Path) -> Result<Vec<PresentationSpec>, GenError> {
 
 fn load_routes(path: &Path) -> Result<Vec<RouteSpec>, GenError> {
     let doc = parse_toml_file(path)?;
-    let file = "interface/routes.toml".to_owned();
+    let file = "contracts/interface/routes.toml".to_owned();
     let rows = doc
         .get("route")
         .and_then(TomlValue::as_table_array)
@@ -362,7 +362,7 @@ fn validate_bundle(bundle: &InterfaceBundle) -> Result<(), GenError> {
             && !icon_keys.contains(same_as.as_str())
         {
             return Err(GenError::Validation {
-                file: "interface/icons.toml".to_owned(),
+                file: "contracts/interface/icons.toml".to_owned(),
                 detail: format!("icon '{}' references missing same_as '{same_as}'", icon.key),
             });
         }
@@ -371,7 +371,7 @@ fn validate_bundle(bundle: &InterfaceBundle) -> Result<(), GenError> {
     for entry in &bundle.presentations {
         if !icon_keys.contains(entry.icon.as_str()) {
             return Err(GenError::Validation {
-                file: "interface/presentation.toml".to_owned(),
+                file: "contracts/interface/presentation.toml".to_owned(),
                 detail: format!(
                     "entry '{}::{}' references missing icon '{}'",
                     entry.enum_name, entry.value, entry.icon
@@ -380,7 +380,7 @@ fn validate_bundle(bundle: &InterfaceBundle) -> Result<(), GenError> {
         }
         if !msg_keys.contains(entry.label.as_str()) {
             return Err(GenError::Validation {
-                file: "interface/presentation.toml".to_owned(),
+                file: "contracts/interface/presentation.toml".to_owned(),
                 detail: format!(
                     "entry '{}::{}' references missing label token '{}'",
                     entry.enum_name, entry.value, entry.label
@@ -391,7 +391,7 @@ fn validate_bundle(bundle: &InterfaceBundle) -> Result<(), GenError> {
             && !msg_keys.contains(desc_key.as_str())
         {
             return Err(GenError::Validation {
-                file: "interface/presentation.toml".to_owned(),
+                file: "contracts/interface/presentation.toml".to_owned(),
                 detail: format!(
                     "entry '{}::{}' references missing description token '{}'",
                     entry.enum_name, entry.value, desc_key
@@ -403,7 +403,7 @@ fn validate_bundle(bundle: &InterfaceBundle) -> Result<(), GenError> {
     for route in &bundle.routes {
         if !icon_keys.contains(route.icon.as_str()) {
             return Err(GenError::Validation {
-                file: "interface/routes.toml".to_owned(),
+                file: "contracts/interface/routes.toml".to_owned(),
                 detail: format!(
                     "route '{}' references missing icon '{}'",
                     route.id, route.icon
@@ -412,7 +412,7 @@ fn validate_bundle(bundle: &InterfaceBundle) -> Result<(), GenError> {
         }
         if !msg_keys.contains(route.title.as_str()) {
             return Err(GenError::Validation {
-                file: "interface/routes.toml".to_owned(),
+                file: "contracts/interface/routes.toml".to_owned(),
                 detail: format!(
                     "route '{}' references missing title token '{}'",
                     route.id, route.title
@@ -425,7 +425,7 @@ fn validate_bundle(bundle: &InterfaceBundle) -> Result<(), GenError> {
         for bad in &bundle.vocabulary.forbidden {
             if contains_word_ci(&msg.msg, &bad.word) {
                 return Err(GenError::Validation {
-                    file: format!("interface/strings/src/{}.mf2.toml", msg.namespace),
+                    file: format!("contracts/interface/strings/src/{}.mf2.toml", msg.namespace),
                     detail: format!(
                         "token '{}' uses forbidden term '{}' (use '{}' instead)",
                         msg.id, bad.word, bad.replacement

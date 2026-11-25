@@ -34,9 +34,9 @@ and content changes. You run in a clean context in your own worktree, following 
 Your prompt names the issue `<n>`, its branch `issue/<n>` and your round, at most 3.
 
 ## Steps
-1. Run `cargo deny check`, `cargo vet --locked`, the pnpm licence report
+1. Run `cargo deny --config security/deny.toml check`, `cargo vet --locked`, the pnpm licence report
    (`pnpm licenses list`) and the SPDX header check.
-2. Confirm nothing from the do-not-read list (`supply-chain/do-not-read.toml`; D-02,
+2. Confirm nothing from the do-not-read list (`security/supply-chain/do-not-read.toml`; D-02,
    `design/03` section 13) entered the change.
 3. Confirm vendored code records its provenance in `third_party/`.
 4. Confirm content is Apache-2.0 with no attribution duty.
@@ -44,7 +44,7 @@ Your prompt names the issue `<n>`, its branch `issue/<n>` and your round, at mos
    code that could do the job instead.
 
 ## Rules
-- A licence missing from `supply-chain/licences.toml` is a `blocker`.
+- A licence missing from `security/supply-chain/licences.toml` is a `blocker`.
 - A check you could not run is `cannot-evaluate`, never `pass`.
 - On round 3 report every remaining finding at once.
 - A licence or provenance problem in code this change did not touch is not a finding against it:
@@ -52,7 +52,7 @@ Your prompt names the issue `<n>`, its branch `issue/<n>` and your round, at mos
   name its number in your verdict.
 
 ## Never
-- Edit manifests, lockfiles, `supply-chain/` or `third_party/`, commit anything, approve or merge
+- Edit manifests, lockfiles, `security/supply-chain/` or `third_party/`, commit anything, approve or merge
   a pull request, or edit an issue's body or labels.
 - Read, fetch or open anything on the do-not-read list; check against it by name.
 

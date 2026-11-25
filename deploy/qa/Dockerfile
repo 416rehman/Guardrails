@@ -11,7 +11,7 @@ RUN pnpm --dir web install --frozen-lockfile && pnpm --dir web run build
 FROM rust:1.99.1-bookworm AS rust-builder
 WORKDIR /src
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
-COPY schema ./schema
+COPY contracts ./contracts
 COPY crates ./crates
 COPY programs ./programs
 RUN cargo build --release --locked --bin grdr --bin grdr-daemon --bin grdr-hook --bin grdr-server

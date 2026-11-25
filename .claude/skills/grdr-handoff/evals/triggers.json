@@ -10,7 +10,7 @@
   {"query": "I found a second instance of the bug in grdr-wire outside my write set while finishing #142. Hand off and make sure that doesn't get lost.", "should_trigger": true},
   {"query": "I need a new dependency (zerocopy) to finish #16, which implementers can't add. Write it up for the lead and stop.", "should_trigger": true},
   {"query": "Evaluate the change impl-rust pushed on issue/26 against the issue's acceptance criteria and give a verdict.", "should_trigger": false},
-  {"query": "Write a JSON Schema for the report format under schema/ and a validator crate with fixtures.", "should_trigger": false},
+  {"query": "Write a JSON Schema for the report format under contracts/ and a validator crate with fixtures.", "should_trigger": false},
   {"query": "Run the repository gates on my branch and tell me what is red before I wrap up #19.", "should_trigger": false},
   {"query": "Summarise yesterday's merged pull requests for the programme manager.", "should_trigger": false},
   {"query": "Start #142: read the issue and its comments, then run the baseline.", "should_trigger": false},

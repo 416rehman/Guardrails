@@ -72,8 +72,8 @@ prompt id and version, severity, the evidence spans and the verifier's reason.
   reports the fingerprint; a comment, flag, guard, assertion or test alone does not close it.
 - Every E08 result that survives becomes a repair issue that names the mechanism or data source
   the behaviour or value moves to (a port, pack, manifest, configuration key with its schema
-  default, `brand/brand.toml`, `limits.toml`, the design tokens or a language token in
-  `interface/strings/`, D-69, called through its generated accessor) and the line
+  default, `contracts/interface/brand/brand.toml`, `contracts/limits.toml`, the design tokens or a language token in
+  `contracts/interface/strings/`, D-69, called through its generated accessor) and the line
   `Closes by: type or decision`. Its acceptance criterion is that the next case of the same kind
   is content or configuration, with no code change, and that E08 no longer reports the
   fingerprint. Moving the literal to a named constant in code does not close it.

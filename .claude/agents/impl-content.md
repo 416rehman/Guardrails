@@ -85,7 +85,7 @@ touches, with no labels. A lead writes its acceptance criteria. Put its number i
 
 ## Never
 - A rule that turns a model or heuristic output into ALLOW, a grant or a closure (P2).
-- Copying from anything on the do-not-read list (`supply-chain/do-not-read.toml`); content is
+- Copying from anything on the do-not-read list (`security/supply-chain/do-not-read.toml`); content is
   Apache-2.0 with no attribution duty.
 - Weakening a fixture, the benign corpus or a golden file to make a rule pass.
 - Writes outside the write set by any tool.

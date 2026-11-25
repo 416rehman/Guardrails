@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use thiserror::Error;
 
-/// Errors raised while parsing `interface/*.toml` files (`GRDR-GEN-*`).
+/// Errors raised while parsing `contracts/interface/*.toml` files (`GRDR-GEN-*`).
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum TomlParseError {
     #[error("GRDR-GEN-0001: TOML syntax error on line {line}: {detail}")]
@@ -87,7 +87,7 @@ impl TomlValue {
     }
 }
 
-/// Parses a subset of TOML sufficient for `interface/` registries and string catalogs.
+/// Parses a subset of TOML sufficient for `contracts/interface/` registries and string catalogs.
 pub fn parse_toml_table(source: &str) -> Result<BTreeMap<String, TomlValue>, TomlParseError> {
     let mut root: BTreeMap<String, TomlValue> = BTreeMap::new();
     let mut target = CursorTarget::Root;

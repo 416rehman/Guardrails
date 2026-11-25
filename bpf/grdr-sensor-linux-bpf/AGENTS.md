@@ -16,7 +16,7 @@ The Linux kernel programs, licensed `GPL-2.0-only OR BSD-2-Clause` (ADR-0004), o
 - Formats no text a person or an agent reads (`renders = "none"`).
 - Trust core: `bpf/**` in security/trust-core.paths (D-63).
 - Not a workspace member: the root `exclude` and its own empty `[workspace]` table.
-- Line 1 of `src/lib.rs` is `// SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause` and line 2 is `// SPDX-FileCopyrightText: <holder>`, the `[legal] copyright_holder` of `brand/brand.toml`; the object's licence string is `Dual BSD/GPL`.
+- Line 1 of `src/lib.rs` is `// SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause` and line 2 is `// SPDX-FileCopyrightText: <holder>`, the `[legal] copyright_holder` of `contracts/interface/brand/brand.toml`; the object's licence string is `Dual BSD/GPL`.
 - Programs are written in Rust with aya-ebpf; a program aya cannot express is written in C in its own directory of this crate. Its toolchain, target and dependencies are #406's.
 - CI builds the signed `.o` the back end loads (ARCH-011).
 
@@ -33,7 +33,7 @@ None: it has no dependencies and no crate depends on it (design/10 R2).
 Reads: none yet. Writes: none yet (first content #26). Logs: LogSafe only.
 
 ## Limits
-Bounds in limits.toml: none yet (limits.toml arrives with #279).
+Bounds in contracts/limits.toml: none yet (contracts/limits.toml arrives with #279).
 
 ## Do not
 - Enable kernel enforcement before S-12 and the D-62 review.

@@ -6,12 +6,12 @@ Source: D-69 in `docs/design/00-decisions.md` and design/34 section 15a. They wi
 
 | Path | Holds |
 |---|---|
-| `schema/vocabulary.toml` | The spine's vocabulary as data; generates the `term.*` tokens. A change follows the spine's route |
-| `interface/strings/locales.toml` | Tag, tier (`shipped`, `preview`, `pseudo`), script, direction, numbering system, fallback chain |
-| `interface/strings/src/<namespace>.mf2.toml` | English source: `msg`, `desc`, `max`, `risk` |
-| `interface/strings/tr/<locale>/<namespace>.mf2.toml` | Translations: `msg`, `source_hash`, `verdict`; written by `impl-l10n` only |
-| `interface/strings/style/<locale>.toml` | Register, quotation marks, casing rules |
-| `interface/strings/parity-allow.toml` | Listed ICU4X-against-`Intl` differences, each with its reason |
+| `contracts/interface/vocabulary.toml` | The spine's vocabulary as data; generates the `term.*` tokens. A change follows the spine's route |
+| `contracts/interface/strings/locales.toml` | Tag, tier (`shipped`, `preview`, `pseudo`), script, direction, numbering system, fallback chain |
+| `contracts/interface/strings/src/<namespace>.mf2.toml` | English source: `msg`, `desc`, `max`, `risk` |
+| `contracts/interface/strings/tr/<locale>/<namespace>.mf2.toml` | Translations: `msg`, `source_hash`, `verdict`; written by `impl-l10n` only |
+| `contracts/interface/strings/style/<locale>.toml` | Register, quotation marks, casing rules |
+| `contracts/interface/strings/parity-allow.toml` | Listed ICU4X-against-`Intl` differences, each with its reason |
 
 ## Namespaces
 

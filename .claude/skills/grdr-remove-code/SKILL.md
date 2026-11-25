@@ -25,7 +25,7 @@ afterwards. If the item does not say what Y is, stop with status `impossible` an
 
 ## 2. Find every reference before deleting anything
 
-`rg` each name across the whole tree: code, tests, docs, `proto/`, `schema/`, gate files, packs and
+`rg` each name across the whole tree: code, tests, docs, `contracts/proto/`, `contracts/cedar/`, gate files, packs and
 CI files. Put each hit in one of three groups: deleted by this item, moved to Y, or outside the write
 set.
 
@@ -66,7 +66,7 @@ see the target: fix the test, never the code under it.
 ## 5. Delete
 
 Delete the target and everything that exists only for it: its tests, fixtures, docs, configuration
-schema entries, feature flags and `limits.toml` keys. Retire its error codes, metric names and rule ids
+schema entries, feature flags and `contracts/limits.toml` keys. Retire its error codes, metric names and rule ids
 in their registers; they are never reused (design/34 section 10).
 
 These are not deletions, and the deletion audit (team/04 E04) fails them:

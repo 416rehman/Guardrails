@@ -13,7 +13,7 @@ The CLI: it shows state and proposes changes, and mutates nothing without a gran
 - No panic path in non-test code: the workspace clippy deny lints (`unwrap_used`, `expect_used`, `panic`, `indexing_slicing` and the rest of the root table).
 - No `unsafe`: the workspace lints forbid it.
 - Reaches the daemon only over `local` (design/11 section 1).
-- Commands, flags and exit codes come from `interface/cli.toml`, and `main` returns the generated `ExitCode` (ARCH-023).
+- Commands, flags and exit codes come from `contracts/interface/cli.toml`, and `main` returns the generated `ExitCode` (ARCH-023).
 - `programs/grdr/**` is an interface path, judged by eval-ux and eval-a11y.
 
 ## Allowed dependencies
@@ -28,7 +28,7 @@ Layers 0 to 3, wiring only. Same-layer edges: none (no program depends on anothe
 Reads: none yet. Writes: none yet (first content #1540). Logs: LogSafe only.
 
 ## Limits
-Bounds in limits.toml: none yet (limits.toml arrives with #279).
+Bounds in contracts/limits.toml: none yet (contracts/limits.toml arrives with #279).
 
 ## Do not
 - Call `std::process::exit` (ARCH-023).

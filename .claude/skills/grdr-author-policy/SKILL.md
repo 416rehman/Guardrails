@@ -87,7 +87,7 @@ narrowing.
 
 ## The Cedar schema and the evaluator
 
-- The Cedar schema under `schema/` changes only through an accepted RFC (D-61). If the item needs an
+- The Cedar schema under `contracts/cedar/` changes only through an accepted RFC (D-61). If the item needs an
   entity, attribute or action the schema lacks, stop and report `blocked` with the escalation packet
   of `team/01` section 6 (skill `grdr-handoff`).
 - Evaluator semantics (the `policy` module of `grdr-core` and `grdr-policy-ref`) are trust-core code,

@@ -1,7 +1,7 @@
 """Tests for read_pins.py: python3 -I .github/actions/pins/test_read_pins.py
 
 The oracles are the runner's reading of GITHUB_OUTPUT (runner_outputs, modelled on
-FileCommandManager in actions/runner), the real supply-chain/build-tools.toml, and the
+FileCommandManager in actions/runner), the real security/supply-chain/build-tools.toml, and the
 steps.<id>.outputs.<key> references the workflows make.
 """
 
@@ -16,7 +16,7 @@ import unittest
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 READER = HERE / "read_pins.py"
-PINS = ROOT / "supply-chain" / "build-tools.toml"
+PINS = ROOT / "security" / "supply-chain" / "build-tools.toml"
 WORKFLOWS = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
 
 DIGEST = "sha256:" + "c0" * 32
@@ -26,7 +26,7 @@ version = "8.30.1"
 licence = "MIT"
 source = "https://github.com/gitleaks/gitleaks"
 image = "ghcr.io/gitleaks/gitleaks@{DIGEST}"
-config = "supply-chain/gitleaks.toml"
+config = "security/supply-chain/gitleaks.toml"
 install = "docker pull ghcr.io/gitleaks/gitleaks@{DIGEST}"
 
 [tool.semgrep-rules]
@@ -105,7 +105,7 @@ class Reader(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(runner_outputs(result.stdout), {
             "image": f"ghcr.io/gitleaks/gitleaks@{DIGEST}",
-            "config": "supply-chain/gitleaks.toml",
+            "config": "security/supply-chain/gitleaks.toml",
         })
 
     def test_multi_line_value_is_refused(self):
@@ -125,7 +125,7 @@ class Reader(unittest.TestCase):
     def test_value_not_of_its_form_is_refused(self):
         cases = {
             "image by tag": (f"gitleaks@{DIGEST}", "gitleaks:latest", "image"),
-            "config outside the tree": ("supply-chain/gitleaks.toml", "../gitleaks.toml", "config"),
+            "config outside the tree": ("security/supply-chain/gitleaks.toml", "../gitleaks.toml", "config"),
             "abbreviated commit": ("a5" * 20, "a5a5a5a", "commit"),
             "unknown severity": ("WARNING ERROR", "WARNING --config=x", "severities"),
             "repository with a path": ("semgrep/semgrep-rules", "semgrep/semgrep-rules/x", "repository"),

@@ -50,7 +50,7 @@ Skill `grdr-work-issue` runs it (`team/01` section 1): the session reads the iss
 | Direction | `chief-architect`, `product-lead`, `programme-manager` | Fable xhigh (the only Fable agent); Opus high; Sonnet medium | The session, for an escalation, an RFC, a spec or queue order | `rfcs/`, `docs/decisions/` and `docs/agents/status/` (chief architect only); issues and comments through `gh` |
 | Leads | `lead-<squad>` × 18 | Opus high | The session, for a missing spec or an escalation in the squad | Issue specs, labels, dependencies and sub-issues through `gh`; `lead-agent-kit` also writes gate configuration in its own issues |
 | Implementers | `impl-rust`, `impl-kernel`, `impl-apple`, `impl-web`, `impl-content`, `impl-docs` (`impl-l10n` to come) | Sonnet high; Opus xhigh; Sonnet high; Sonnet medium; Sonnet high; Sonnet medium. Any of them on Opus for a trust-core path or a high-tier change | The session, with an issue number | The issue's write set, on `issue/<n>` |
-| Evaluators | `eval-*` × 13 | Section 6 | The session, by tier and kind | Reports; new issues for findings outside the change; `lab/scenarios/proposed/` for the adversary only |
+| Evaluators | `eval-*` × 13 | Section 6 | The session, by tier and kind | Reports; new issues for findings outside the change; `deploy/qa/scenarios/proposed/` for the adversary only |
 | Gardeners | `garden-*` × 9 | Section 7 | The owner or a lead, on request | Small fix branches or new issues |
 | Persona council | `persona-*` × 9 | Sonnet medium | The session, for an RFC or a UI design item | Seat verdicts |
 | Operations | `ops-triage`, `ops-runbook`, `status-drafter`, `capacity-planner`, `usage-reconciler`, `support-first-line` | Sonnet | Alert, schedule or ticket in the hosted deployment (requires the hosted service) | Records, tickets and pull requests named in section 7.1; never production |
@@ -60,7 +60,7 @@ Skill `grdr-work-issue` runs it (`team/01` section 1): the session reads the iss
 | Agent | Purpose | Owns | Inputs | Outputs | Done when |
 |---|---|---|---|---|---|
 | `chief-architect` | Own the codebase: its prompt opens with the owner's sentence "This codebase is yours: what it's for and how it's built are your call, and you'll keep building on it." (owner instruction 1). Keep the spine true and the layers clean, and be the last step of every escalation | `rfcs/`, `docs/decisions/`, spine edit proposals, `architecture.toml` proposals, design 03, 30; the issues it files | Escalations a lead left unresolved, RFCs after the persona council and `eval-architecture` reviewed them, `garden-architecture` audit findings, disputes between leads | RFC drafts and decisions, decision records, layer-rule proposals, answers to escalations, issues | Each RFC has a decision record and either a lint, test or spine edit proposal, and each escalation it took has an answer or a recorded external precondition |
-| `product-lead` | Scope, personas, acceptance and the "complete" definition | `PLAN.md` matrix, design 01, 29, 34, 36, acceptance criteria of the issues it specifies, `support.toml` proposals | Persona council verdicts, scorecards, issues without paths | Product specs and acceptance criteria with named oracles | Every request traces to a decision, document and acceptance test, with its prerequisites named (D-50) |
+| `product-lead` | Scope, personas, acceptance and the "complete" definition | `PLAN.md` matrix, design 01, 29, 34, 36, acceptance criteria of the issues it specifies, `contracts/support.toml` proposals | Persona council verdicts, scorecards, issues without paths | Product specs and acceptance criteria with named oracles | Every request traces to a decision, document and acceptance test, with its prerequisites named (D-50) |
 | `programme-manager` | Order the queue so "work the next issue" takes the right one | design 33, the queue order | Open issues, escalations | `priority:` labels, missing blocker links, a list of issues whose spec is incomplete for their lead | Every open issue has its `priority:` label |
 
 ## 4. Domain leads
@@ -81,7 +81,7 @@ One lead per squad; each squad activates when its prerequisite exists. A lead is
 | `identity-data` (SQ-10) | 15, 16 | The core `analyze` module exists | None |
 | `content` (SQ-08, SQ-09) | 13, 14, 19 | The repository exists (corpus labelling); detections require the `detect` module | None; content enters in Watch (D-61 as amended) |
 | `fleet` (SQ-12) | 22 | The endpoint daemon exists | Updater |
-| `server` (SQ-13) | 18, 20, 21, 23, 32 | `grdr-wire` and `proto/` exist; plans the operations agents (section 7.1) | Tenancy |
+| `server` (SQ-13) | 18, 20, 21, 23, 32 | `grdr-wire` and `contracts/proto/` exist; plans the operations agents (section 7.1) | Tenancy |
 | `interfaces` (SQ-14) | 27, 28 | The daemon's local API exists; agrees, with `eval-ux`, to each entry of `web/packages/ui/exceptions.toml` (owner instruction 21) | None |
 | `ecosystem` (SQ-15) | 25, 26 | The core exists | None |
 | `release` (SQ-16, release part) | 24 | The repository exists | Release configuration |
@@ -96,19 +96,19 @@ Design docs 01, 29, 30, 33, 34 and 36 belong to the direction group.
 
 | Agent | Writes | Extra tools and skills | Model, effort | Notes |
 |---|---|---|---|---|
-| `impl-rust` | Layers 0 to 4 Rust in the issue's squad paths; `proto/`, `schema/`, `sdk/`, `lab/`, `conformance/`, `deploy/` | LSP | Sonnet high | Default writer |
+| `impl-rust` | Layers 0 to 4 Rust in the issue's squad paths; `contracts/proto/`, `contracts/cedar/`, `sdk/`, `deploy/qa/`, `conformance/`, `deploy/` | LSP | Sonnet high | Default writer |
 | `impl-kernel` | `bpf/`, kernel-facing parts of `grdr-sensor-linux`; the optional Windows driver | `grdr-matrix-run` | Opus xhigh | Every issue is trust core. Active only if S-13 passes |
 | `impl-apple` | `platform/macos/` Swift shell and packaging | LSP; `grdr-matrix-run` | Sonnet high | macOS builds and tests through `grdr-matrix-run`. Extension shell is trust core |
-| `impl-web` | `interface/` (except `strings/tr/`), `web/`, `desktop/` view-models and kit, the `kit` and `ui` packages | LSP, Playwright MCP; skills `ui-architect`, then `frontend-design` for new screens, then `grdr-interface` | Sonnet medium | Composes registered patterns only; every element is an Astryx component through `@grdr/ui` (D-42, P17, owner instruction 21); pnpm only (owner instruction 24) |
+| `impl-web` | `contracts/interface/` (except `strings/tr/`), `web/`, `desktop/` view-models and kit, the `kit` and `ui` packages | LSP, Playwright MCP; skills `ui-architect`, then `frontend-design` for new screens, then `grdr-interface` | Sonnet medium | Composes registered patterns only; every element is an Astryx component through `@grdr/ui` (D-42, P17, owner instruction 21); pnpm only (owner instruction 24) |
 | `impl-content` | Content repository: Sigma rules, Cedar packs, agent manifests, mappings | `grdr-author-detection`, `grdr-author-policy`, `grdr-add-agent-adapter` | Sonnet high | Output enters in Watch and leaves it on evaluator evidence (D-61 as amended) |
 | `impl-docs` | `docs/` outside `docs/design/` and `docs/decisions/`, crate and program `README.md`, `docs/references/*-llms.txt` | Skills `ui-architect`, then `grdr-interface` for docs components; `skill-creator` | Sonnet medium | Never edits the spine |
-| `impl-l10n` (to come) | `interface/strings/tr/`, `docs/i18n/` and pack `messages/<locale>.mf2.toml`; never a source token | Skills `ui-architect`, then `grdr-interface` | Sonnet medium; Opus high for `safety` tokens | `eval-l10n` judges every change |
+| `impl-l10n` (to come) | `contracts/interface/strings/tr/`, `docs/i18n/` and pack `messages/<locale>.mf2.toml`; never a source token | Skills `ui-architect`, then `grdr-interface` | Sonnet medium; Opus high for `safety` tokens | `eval-l10n` judges every change |
 
 Embargoed fixes (D-62, SD-08) use `impl-rust` inside the private fork with the model endpoint as its only network route, no network tools and vendored crates, after `lead-security` triages the finding.
 
 ## 6. Independent evaluators
 
-Evaluators read the diff, the built artefact, the issue's acceptance criteria and their own instructions from `main`, never from the branch (brief 32), through the `grdr-evaluate` skill. Each runs in a clean context and its own worktree, and returns its verdict to the session; findings outside the change become new issues. The session picks them from `.claude/risk-tiers.toml` (`team/01` section 4) and this section's change-kind rows. For a high-tier or trust-core change `eval-diff` runs on both Opus and Sonnet, each in a clean context (D-47, `design/_review/03`). Refuting passes run on Opus. Every evaluator preloads `grdr-evaluate`, `grdr-handoff`, `grdr-vendor-research` and the writing skill. The incident eval set in `lab/reviewer-evals/` (escaped defects, reverted issues) scores every evaluator on each model release (target).
+Evaluators read the diff, the built artefact, the issue's acceptance criteria and their own instructions from `main`, never from the branch (brief 32), through the `grdr-evaluate` skill. Each runs in a clean context and its own worktree, and returns its verdict to the session; findings outside the change become new issues. The session picks them from `.claude/risk-tiers.toml` (`team/01` section 4) and this section's change-kind rows. For a high-tier or trust-core change `eval-diff` runs on both Opus and Sonnet, each in a clean context (D-47, `design/_review/03`). Refuting passes run on Opus. Every evaluator preloads `grdr-evaluate`, `grdr-handoff`, `grdr-vendor-research` and the writing skill. The incident eval set in `deploy/qa/reviewer-evals/` (escaped defects, reverted issues) scores every evaluator on each model release (target).
 
 | Agent | Purpose | When | Model, effort | Done when |
 |---|---|---|---|---|
@@ -120,14 +120,14 @@ Evaluators read the diff, the built artefact, the issue's acceptance criteria an
 | `eval-adversarial` | Attack the build in the lab: bypasses, approval forgery, tamper, injection | High tier, trust core, policy, control points; release candidates | Opus high | Scenario results in AMTSO vocabulary; new scenarios proposed |
 | `eval-ux` | Review screens and flows under ui-architect, then grdr-interface | Every `[interface]` path of `.claude/risk-tiers.toml` | Sonnet high | Each violation cites a principle and a fix |
 | `eval-performance` | Measure against spine section 6 targets | Hook path, fast path, engine, proxy, storage | Sonnet medium | `team/05` section 10 gates pass against the `main` baseline |
-| `eval-api` | Check wire and API contracts | `proto/`, `schema/`, public crates, `spec/` | Sonnet medium | `buf breaking`, semver-checks and golden vectors green, or an accepted RFC linked |
+| `eval-api` | Check wire and API contracts | `contracts/proto/`, `contracts/cedar/`, public crates, `docs/spec/` | Sonnet medium | `buf breaking`, semver-checks and golden vectors green, or an accepted RFC linked |
 | `eval-platform` | Run the change on every Tier 1 cell | Endpoint, sensor, adapter, installer and sandbox paths | Sonnet medium | Result per cell; parity gaps listed |
 | `eval-a11y` | WCAG 2.2 AA and desktop accessibility | UI paths | Sonnet medium | Automated audit, keyboard and screen-reader script results, and the U09 journeys |
 | `eval-l10n` (to come) | Blind back-translation of each changed translation, then an equivalence verdict | Every change to a translation | The model that did not translate it, high | `equivalent` for every `safety` token and `equivalent` or `minor` for the rest |
 | `eval-docs` | Documentation matches behaviour | Any user-visible change | Sonnet low | Docs diff present or "no user-visible change" proved |
 | `eval-licence` | Licence and provenance hygiene | Dependency, vendored code, content | Sonnet low | `cargo deny`, `cargo vet`, SPDX and do-not-read checks pass |
 
-Evaluators work in a scratch worktree; only `eval-adversarial` and `eval-performance` write, to `target/` and `lab/scenarios/proposed/`. Until the incident eval set holds 50 cases, low tier is limited to docs and flag-gated additive changes (h09).
+Evaluators work in a scratch worktree; only `eval-adversarial` and `eval-performance` write, to `target/` and `deploy/qa/scenarios/proposed/`. Until the incident eval set holds 50 cases, low tier is limited to docs and flag-gated additive changes (h09).
 
 ## 7. Gardeners
 
@@ -237,7 +237,7 @@ Work on a row starts when its prerequisites exist.
 | ID | Item | Acceptance | Requires |
 |---|---|---|---|
 | TR-05 | Evaluator shadow comparison | Each new evaluator's verdicts compared with the evaluators already in use and with the incident eval set before its findings fail a change | |
-| TR-06 | Incident eval set in `lab/reviewer-evals/`, scored on each model release | 50 cases before low tier widens beyond docs; each evaluator's score published per run | |
+| TR-06 | Incident eval set in `deploy/qa/reviewer-evals/`, scored on each model release | 50 cases before low tier widens beyond docs; each evaluator's score published per run | |
 | TR-11 | Operations agents of section 7.1 (`design/32` OPS-29) | OPS-S1 passes; the monthly permission test refuses every production write by each agent identity | The hosted service (D-63) |
 | TR-14 | Files for `impl-l10n`, `eval-l10n` and `garden-l10n` (D-69, P17); `persona-intl` is done | A translation change gets `eval-l10n` on the model that did not translate it | |
 

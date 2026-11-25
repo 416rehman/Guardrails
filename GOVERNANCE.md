@@ -30,7 +30,7 @@ direction in written instructions and, until the steering group exists,
 decides the foundation application and the transfer date. The owner
 signs and approves nothing that lands.
 
-Second maintainer: a maintainer named by the owner in MAINTAINERS.md who
+Second maintainer: a maintainer named by the owner in docs/governance/MAINTAINERS.md who
 holds the owner's account-level duties when the owner is absent.
 COVENANT.md states succession.
 
@@ -43,7 +43,7 @@ release pull request and checklist green and owns backports; the release
 pull request lands like any other, and the release tooling creates the
 tags.
 
-Maintainers: people listed in MAINTAINERS.md for one or more areas, with
+Maintainers: people listed in docs/governance/MAINTAINERS.md for one or more areas, with
 their affiliation. They review changes in their areas, appear in
 CODEOWNERS (which requests their review and does not require it),
 shepherd RFCs and vote on new maintainers.
@@ -133,7 +133,7 @@ Maintainers and reviewers use hardware-backed two-factor authentication
 and declare their affiliation.
 
 After six months without activity a maintainer becomes emeritus: rights
-end, the name stays in MAINTAINERS.md. The steering group may remove a
+end, the name stays in docs/governance/MAINTAINERS.md. The steering group may remove a
 maintainer for cause; the person concerned does not vote.
 
 ## Releases and support
