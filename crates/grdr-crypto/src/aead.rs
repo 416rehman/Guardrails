@@ -57,12 +57,12 @@ pub fn seal_token(
     plaintext: &[u8],
 ) -> Result<String, CryptoError> {
     let nonce_bytes = random_array::<XNONCE_LEN>()?;
-    let cipher = XChaCha20Poly1305::new(Key::from_slice(&key.bytes));
-    let nonce = XNonce::from_slice(&nonce_bytes);
+    let cipher = XChaCha20Poly1305::new(&Key::from(key.bytes));
+    let nonce = XNonce::from(nonce_bytes);
     let effective_aad = domain_separated_aad(domain, aad);
     let ciphertext = cipher
         .encrypt(
-            nonce,
+            &nonce,
             Payload {
                 msg: plaintext,
                 aad: &effective_aad,
@@ -102,12 +102,14 @@ pub fn open_token(
     let Some(ciphertext) = framed.get(1usize.saturating_add(XNONCE_LEN)..) else {
         return Err(CryptoError::InvalidToken);
     };
-    let nonce = XNonce::from_slice(nonce_slice);
-    let cipher = XChaCha20Poly1305::new(Key::from_slice(&key.bytes));
+    let nonce_bytes =
+        <[u8; XNONCE_LEN]>::try_from(nonce_slice).map_err(|_| CryptoError::InvalidToken)?;
+    let nonce = XNonce::from(nonce_bytes);
+    let cipher = XChaCha20Poly1305::new(&Key::from(key.bytes));
     let effective_aad = domain_separated_aad(domain, aad);
     cipher
         .decrypt(
-            nonce,
+            &nonce,
             Payload {
                 msg: ciphertext,
                 aad: &effective_aad,
@@ -203,7 +205,20 @@ mod tests {
         let key = SigningKeypair::generate()
             .unwrap()
             .derive_aead_key("test-cursor");
-        for bad in ["", "not-base64!!!", "AQ", "AAECAw"] {
+        let short_nonce = B64_URL.encode([TOKEN_FORMAT_VERSION; 1 + XNONCE_LEN - 1]);
+        let empty_ciphertext = B64_URL.encode([TOKEN_FORMAT_VERSION; 1 + XNONCE_LEN]);
+        let truncated_tag = B64_URL.encode([TOKEN_FORMAT_VERSION; 1 + XNONCE_LEN + 15]);
+        let wrong_version = B64_URL.encode([TOKEN_FORMAT_VERSION + 1; 1 + XNONCE_LEN + 16]);
+        for bad in [
+            "",
+            "not-base64!!!",
+            "AQ",
+            "AAECAw",
+            short_nonce.as_str(),
+            empty_ciphertext.as_str(),
+            truncated_tag.as_str(),
+            wrong_version.as_str(),
+        ] {
             assert!(matches!(
                 open_token(&key, "cursor-domain", b"aad", bad),
                 Err(CryptoError::InvalidToken)
