@@ -244,7 +244,7 @@ fn sign_target_dsse(
 #[test]
 fn verifier_enforces_p7_purity_delta_fallback_and_compat_range() {
     let res = run_verifier_tests();
-    assert!(res.is_ok(), "{res:?}");
+    assert!(res.is_ok(), "updater test failed");
 }
 
 fn run_verifier_tests() -> TestResult {
@@ -653,7 +653,7 @@ fn run_verifier_tests() -> TestResult {
 #[test]
 fn ab_slot_rollback_security_floor_authority_and_2s_handover() {
     let res = run_slots_and_handover_tests();
-    assert!(res.is_ok(), "{res:?}");
+    assert!(res.is_ok(), "updater test failed");
 }
 
 fn verify_signed_binary_fixture(

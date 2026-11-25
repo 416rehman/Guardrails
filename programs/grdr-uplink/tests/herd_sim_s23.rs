@@ -11,7 +11,7 @@ use grdr_uplink::herd_sim::{HerdScenario, HerdSimConfig, run_s23_suite};
 #[test]
 fn s23_one_million_device_fleet_herd_simulator() {
     let res = run_s23_one_million_device_suite();
-    assert!(res.is_ok(), "{res:?}");
+    assert!(res.is_ok(), "s23 herd sim test failed");
 }
 
 fn run_s23_one_million_device_suite() -> Result<(), Box<dyn Error>> {

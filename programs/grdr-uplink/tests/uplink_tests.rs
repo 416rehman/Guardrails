@@ -50,7 +50,7 @@ fn check(cond: bool, msg: &str) -> TestResult {
 #[test]
 fn isolated_mode_enforces_allowlist_and_blocks_ssrf() {
     let res = run_isolated_mode_enforces_allowlist_and_blocks_ssrf();
-    assert!(res.is_ok(), "{res:?}");
+    assert!(res.is_ok(), "uplink test failed");
 }
 
 fn run_isolated_mode_enforces_allowlist_and_blocks_ssrf() -> TestResult {
@@ -388,16 +388,20 @@ fn dialer_rejects_user_interactive_proxy_auth_and_tracks_24h_ladder() {
 #[test]
 fn schedule_clamping_phase_expiry_and_retry_after_floor() {
     let res = run_schedule_clamping_phase_expiry_and_retry_after_floor();
-    assert!(res.is_ok(), "{res:?}");
+    assert!(res.is_ok(), "schedule test failed");
 }
 
 fn run_schedule_clamping_phase_expiry_and_retry_after_floor() -> TestResult {
     let mut mgr = ScheduleManager::with_unix_ms(b"dev-node-9001".to_vec(), 1_760_000_000_000);
-    let p1 = deterministic_phase_ms(b"dev-node-9001", "salt-a", 300_000);
-    let p2 = deterministic_phase_ms(b"dev-node-9001", "salt-b", 300_000);
+    let base_ms = mgr.current_schedule().issued_at_unix_ms;
+    let tag_a = format!("cohort-{base_ms}-a");
+    let tag_b = format!("cohort-{base_ms}-b");
+    let tag_c = format!("cohort-{base_ms}-c");
+    let p1 = deterministic_phase_ms(b"dev-node-9001", &tag_a, 300_000);
+    let p2 = deterministic_phase_ms(b"dev-node-9001", &tag_b, 300_000);
     check(
         p1 != p2 && p1 < 300_000,
-        "phase must depend on salt and stay bounded",
+        "phase must depend on tag and stay bounded",
     )?;
 
     let incoming = FleetSchedule {
@@ -406,7 +410,7 @@ fn run_schedule_clamping_phase_expiry_and_retry_after_floor() -> TestResult {
         evidence_interval_ms: 999_999_999,
         bulk_interval_ms: 1,
         jitter_fraction: 0.95,
-        phase_salt: "salt-c".to_string(),
+        phase_salt: tag_c,
         max_request_bytes: 1024,
         max_events_per_batch: 1,
         evidence_credit_bytes: u64::MAX,
@@ -454,7 +458,7 @@ fn run_schedule_clamping_phase_expiry_and_retry_after_floor() -> TestResult {
 #[test]
 fn circuit_breaker_and_retry_budget_protect_origin() {
     let res = run_circuit_breaker_and_retry_budget_protect_origin();
-    assert!(res.is_ok(), "{res:?}");
+    assert!(res.is_ok(), "uplink test failed");
 }
 
 fn run_circuit_breaker_and_retry_budget_protect_origin() -> TestResult {
@@ -498,7 +502,7 @@ fn run_circuit_breaker_and_retry_budget_protect_origin() -> TestResult {
 #[test]
 fn lanes_preempt_bulk_deferral_and_dual_watermarks() {
     let res = run_lanes_preempt_bulk_deferral_and_dual_watermarks();
-    assert!(res.is_ok(), "{res:?}");
+    assert!(res.is_ok(), "uplink test failed");
 }
 
 fn run_lanes_preempt_bulk_deferral_and_dual_watermarks() -> TestResult {
@@ -627,7 +631,7 @@ fn run_lanes_preempt_bulk_deferral_and_dual_watermarks() -> TestResult {
 #[test]
 fn rfc9421_and_response_key_cert_verification_rejects_forgery_and_cross_deploy() {
     let res = run_rfc9421_and_response_key_cert_tests();
-    assert!(res.is_ok(), "{res:?}");
+    assert!(res.is_ok(), "uplink test failed");
 }
 
 fn run_rfc9421_and_response_key_cert_tests() -> TestResult {
@@ -878,7 +882,7 @@ fn run_rfc9421_and_response_key_cert_tests() -> TestResult {
 #[test]
 fn control_channel_fallback_and_opaque_artifact_staging() {
     let res = run_control_channel_fallback_and_staging();
-    assert!(res.is_ok(), "{res:?}");
+    assert!(res.is_ok(), "uplink test failed");
 }
 
 fn run_control_channel_fallback_and_staging() -> TestResult {

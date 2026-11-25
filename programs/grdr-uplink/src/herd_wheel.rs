@@ -132,6 +132,7 @@ pub fn build_devices(
     );
     let hb_interval_s = (schedule.heartbeat_interval_ms / 1_000).max(1);
     let ev_interval_s = (schedule.evidence_interval_ms / 1_000).max(1);
+    let ev_phase_tag = format!("{}-ev", schedule.phase_salt);
 
     for idx in 0..device_count {
         let cell_idx = (idx.checked_rem(cell_count).unwrap_or(0)) as u16;
@@ -141,7 +142,7 @@ pub fn build_devices(
             &schedule.phase_salt,
             schedule.heartbeat_interval_ms,
         );
-        let ev_ms = deterministic_phase_ms(&id_bytes, "ev", schedule.evidence_interval_ms);
+        let ev_ms = deterministic_phase_ms(&id_bytes, &ev_phase_tag, schedule.evidence_interval_ms);
         let mode = if idx.checked_rem(100).unwrap_or(0) < usize::from(subscribe_ratio_pct) {
             SimChannelMode::Subscribe
         } else {

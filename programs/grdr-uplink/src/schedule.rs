@@ -134,7 +134,7 @@ impl FleetSchedule {
             evidence_interval_ms: DEFAULT_EVIDENCE_INTERVAL_MS,
             bulk_interval_ms: DEFAULT_BULK_INTERVAL_MS,
             jitter_fraction: DEFAULT_JITTER_FRACTION,
-            phase_salt: "guardrails-default-phase-v1".to_string(),
+            phase_salt: format!("epoch-{issued_at_unix_ms}"),
             max_request_bytes: DEFAULT_MAX_REQUEST_BYTES,
             max_events_per_batch: DEFAULT_MAX_EVENTS_PER_BATCH,
             evidence_credit_bytes: DEFAULT_EVIDENCE_CREDIT_BYTES,
@@ -339,16 +339,16 @@ impl ScheduleManager {
     }
 }
 
-/// Deterministic `SHA-256(device_id || 0x00 || salt) mod interval_ms`.
+/// Deterministic `SHA-256(device_id || 0x00 || phase_tag) mod interval_ms`.
 #[must_use]
-pub fn deterministic_phase_ms(device_id: &[u8], salt: &str, interval_ms: u64) -> u64 {
+pub fn deterministic_phase_ms(device_id: &[u8], phase_tag: &str, interval_ms: u64) -> u64 {
     if interval_ms <= 1 {
         return 0;
     }
     let mut hasher = Sha256::new();
     hasher.update(device_id);
     hasher.update([0x00]);
-    hasher.update(salt.as_bytes());
+    hasher.update(phase_tag.as_bytes());
     let digest = hasher.finalize();
     let head: [u8; 8] = digest
         .get(..8)
