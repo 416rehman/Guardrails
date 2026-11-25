@@ -4,12 +4,13 @@
 // branch/PR rules in .claude/hooks/docs-check.mjs.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { checkEngineeringContent, evaluateHookCommand } from "../../.claude/hooks/docs-check.mjs";
+import { recordSecurityAudit } from "../../.claude/hooks/security-audit-check.mjs";
 import { handleHookPayload } from "./agy-pre-tool-use.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -292,4 +293,106 @@ test("enforces grdr-structure S1-S6, interface, commit, and pnpm-only rules via 
   );
   assert.equal(rustDeny.decision, "deny");
   assert.match(rustDeny.reason, /S6/);
+});
+
+test("enforces security-audit judge gate on non-UI git commit and gh pr create via Antigravity PreToolUse", (t) => {
+  const dir = initTempRepo("feat/issue-79-test");
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  mkdirSync(join(dir, "crates/grdr-crypto/src"), { recursive: true });
+  mkdirSync(join(dir, "security"), { recursive: true });
+  writeFileSync(
+    join(dir, "security/trust-core.paths"),
+    readFileSync(join(HERE, "..", "..", "security/trust-core.paths"), "utf8"),
+    "utf8",
+  );
+  writeFileSync(join(dir, "crates/grdr-crypto/src/lib.rs"), "pub fn seal() {}\n", "utf8");
+  spawnSync("git", ["add", "security/trust-core.paths", "crates/grdr-crypto/src/lib.rs"], { cwd: dir });
+
+  const deniedCommit = handleHookPayload(
+    JSON.stringify({
+      toolCall: { name: "run_command", args: { CommandLine: 'git commit -m "feat(crypto): seal"' } },
+      cwd: dir,
+    }),
+  );
+  assert.equal(deniedCommit.decision, "deny");
+  assert.match(deniedCommit.reason, /security-audit:/);
+  assert.match(deniedCommit.reason, /Trust-core paths touched/);
+
+  recordSecurityAudit({ cwd: dir, reviewer: "agy-judge", summary: "Verified" });
+  const allowedCommit = handleHookPayload(
+    JSON.stringify({
+      toolCall: { name: "run_command", args: { CommandLine: 'git commit -m "feat(crypto): seal"' } },
+      cwd: dir,
+    }),
+  );
+  assert.equal(allowedCommit.decision, "allow", allowedCommit.reason);
+
+  spawnSync("git", ["commit", "-m", "feat(crypto): seal"], { cwd: dir });
+  writeFileSync(join(dir, "crates/grdr-crypto/src/lib.rs"), "pub fn seal() -> u8 { 1 }\n", "utf8");
+  spawnSync("git", ["add", "crates/grdr-crypto/src/lib.rs"], { cwd: dir });
+  spawnSync("git", ["commit", "-m", "feat(crypto): update seal"], { cwd: dir });
+
+  const deniedPr = handleHookPayload(
+    JSON.stringify({
+      toolCall: {
+        name: "run_command",
+        args: {
+          CommandLine:
+            'gh pr create --base main --head feat/issue-79-test --title "feat(crypto): seal" --body "Closes #79 per D-62"',
+        },
+      },
+      cwd: dir,
+    }),
+  );
+  assert.equal(deniedPr.decision, "deny");
+  assert.match(deniedPr.reason, /security-audit:/);
+
+  recordSecurityAudit({ cwd: dir, reviewer: "agy-judge", summary: "Re-verified after commit" });
+  const allowedPr = handleHookPayload(
+    JSON.stringify({
+      toolCall: {
+        name: "run_command",
+        args: {
+          CommandLine:
+            'gh pr create --base main --head feat/issue-79-test --title "feat(crypto): seal" --body "Closes #79 per D-62"',
+        },
+      },
+      cwd: dir,
+    }),
+  );
+  assert.equal(allowedPr.decision, "allow", allowedPr.reason);
+
+  const badCli = spawnSync(process.execPath, [HOOK_SCRIPT], { input: "{malformed", encoding: "utf8" });
+  assert.equal(badCli.status, 0);
+  const parsedErr = JSON.parse(badCli.stdout);
+  assert.equal(parsedErr.decision, "deny");
+  assert.match(parsedErr.reason, /failed closed/);
+
+  const nonObj = handleHookPayload("[]");
+  assert.equal(nonObj.decision, "deny");
+  assert.match(nonObj.reason, /expected JSON object/);
+
+  const nonStrCmd = handleHookPayload(
+    JSON.stringify({ toolCall: { name: "run_command", args: { CommandLine: 123 } }, cwd: dir }),
+  );
+  assert.equal(nonStrCmd.decision, "deny");
+  assert.match(nonStrCmd.reason, /CommandLine must be a string/);
+
+  const emptyNameMissingCmd = handleHookPayload(
+    JSON.stringify({ toolCall: { name: "", args: {} }, cwd: dir }),
+  );
+  assert.equal(emptyNameMissingCmd.decision, "deny");
+  assert.match(emptyNameMissingCmd.reason, /toolCall\.name must be a non-empty string/);
+
+  const missingName = handleHookPayload(
+    JSON.stringify({ toolCall: { args: {} }, cwd: dir }),
+  );
+  assert.equal(missingName.decision, "deny");
+  assert.match(missingName.reason, /toolCall\.name must be a non-empty string/);
+
+  const emptyNameNonStrCmd = handleHookPayload(
+    JSON.stringify({ toolCall: { name: "", args: { CommandLine: 123 } }, cwd: dir }),
+  );
+  assert.equal(emptyNameNonStrCmd.decision, "deny");
+  assert.match(emptyNameNonStrCmd.reason, /failed closed/);
 });
