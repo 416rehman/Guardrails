@@ -137,6 +137,7 @@ pub(crate) fn ensure_ancestors_safe(path: &Path) -> Result<(), UplinkError> {
         }
         if let Ok(meta) = std::fs::symlink_metadata(dir)
             && is_symlink_or_reparse(&meta)
+            && !is_os_root_alias(dir, &meta)
         {
             return Err(UplinkError::StagingError {
                 detail: format!("refusing symlinked staging ancestor {}", dir.display()),
@@ -226,4 +227,123 @@ pub(crate) fn verify_same_regular_file(
         });
     }
     Ok(())
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn is_expected_macos_root_alias_target(path: &Path, target: &Path) -> bool {
+    matches!(
+        (path.to_str(), target.to_str()),
+        (Some("/var"), Some("private/var" | "/private/var"))
+            | (Some("/tmp"), Some("private/tmp" | "/private/tmp"))
+            | (Some("/etc"), Some("private/etc" | "/private/etc"))
+    )
+}
+
+fn is_os_root_alias(path: &Path, meta: &Metadata) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        meta.uid() == 0
+            && std::fs::read_link(path)
+                .is_ok_and(|target| is_expected_macos_root_alias_target(path, &target))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (path, meta);
+        false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validates_expected_macos_root_alias_targets() {
+        assert!(is_expected_macos_root_alias_target(
+            Path::new("/var"),
+            Path::new("private/var")
+        ));
+        assert!(is_expected_macos_root_alias_target(
+            Path::new("/var"),
+            Path::new("/private/var")
+        ));
+        assert!(is_expected_macos_root_alias_target(
+            Path::new("/tmp"),
+            Path::new("private/tmp")
+        ));
+        assert!(is_expected_macos_root_alias_target(
+            Path::new("/etc"),
+            Path::new("/private/etc")
+        ));
+        assert!(!is_expected_macos_root_alias_target(
+            Path::new("/var"),
+            Path::new("/tmp/evil")
+        ));
+        assert!(!is_expected_macos_root_alias_target(
+            Path::new("/var/folders"),
+            Path::new("private/var")
+        ));
+        assert!(!is_expected_macos_root_alias_target(
+            Path::new("var"),
+            Path::new("private/var")
+        ));
+    }
+
+    #[test]
+    fn rejects_non_directory_ancestor_and_validates_regular_files() {
+        let base =
+            std::env::temp_dir().join(format!("grdr-uplink-fs-{}", uuid::Uuid::now_v7().simple()));
+        std::fs::create_dir_all(&base).unwrap();
+        let file_blocker = base.join("blocker");
+        std::fs::write(&file_blocker, b"orig").unwrap();
+        assert!(matches!(
+            open_regular_nofollow_read(&file_blocker),
+            Ok((_, _))
+        ));
+        assert!(ensure_not_symlink_if_exists(&file_blocker).is_ok());
+        assert!(open_regular_nofollow_read(&base.join("missing")).is_err());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinked_ancestors_and_leaf_targets() {
+        use std::os::unix::fs::symlink;
+
+        let base =
+            std::env::temp_dir().join(format!("grdr-uplink-sym-{}", uuid::Uuid::now_v7().simple()));
+        let real_dir = base.join("real_dir");
+        std::fs::create_dir_all(&real_dir).unwrap();
+        let real_file = base.join("real_file");
+        std::fs::write(&real_file, b"keep").unwrap();
+
+        let dir_link = base.join("dir_link");
+        symlink(&real_dir, &dir_link).unwrap();
+        assert!(matches!(
+            ensure_ancestors_safe(&dir_link.join("payload.part")),
+            Err(UplinkError::StagingError { .. })
+        ));
+
+        let leaf_link = base.join("leaf_link");
+        symlink(&real_file, &leaf_link).unwrap();
+        assert!(matches!(
+            ensure_not_symlink_if_exists(&leaf_link),
+            Err(UplinkError::StagingError { .. })
+        ));
+        assert!(open_part_nofollow_append(&leaf_link).is_err());
+        assert!(open_regular_nofollow_read(&leaf_link).is_err());
+
+        let dangling_link = base.join("dangling_link");
+        symlink(base.join("nonexistent"), &dangling_link).unwrap();
+        assert!(matches!(
+            ensure_not_symlink_if_exists(&dangling_link),
+            Err(UplinkError::StagingError { .. })
+        ));
+        assert!(open_part_nofollow_append(&dangling_link).is_err());
+        assert!(open_regular_nofollow_read(&dangling_link).is_err());
+
+        assert_eq!(std::fs::read(&real_file).unwrap(), b"keep");
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }
