@@ -13,8 +13,8 @@ import {
   isGitRepository,
   parseRequiredNameStatusZ,
   printableText,
+  readBatchBytesForSource,
   readBytesForSource,
-  readCleanAuditBytes,
   resolveGitRef,
   resolveParentHead,
   resolveRepoRoot,
@@ -80,8 +80,8 @@ function discoverBranchState(rootDir) {
     if (branchDiff.deleted.has(del) && !stagedSet.has(del) && !unstagedSet.has(del)) continue;
     if (existsSync(resolve(rootDir, del))) deletedSet.delete(del);
   }
-  const files = uniqueSorted(mergedFiles.filter((f) => isNonUiSecurityPath(f, rootDir)));
-  return { ok: true, files, deletedFiles: new Set([...deletedSet].filter((f) => isNonUiSecurityPath(f, rootDir))) };
+  const files = filterNonUiSecurityPaths(mergedFiles, rootDir);
+  return { ok: true, files, deletedFiles: new Set(filterNonUiSecurityPaths([...deletedSet], rootDir)) };
 }
 
 export function loadTrustCoreMatchers(cwd = process.cwd(), ctx, headRef) {
@@ -142,6 +142,21 @@ export function findTrustCoreFiles(files, cwd = process.cwd(), ctx, headRef) {
   return matched;
 }
 
+function filterNonUiSecurityPaths(files, rootDir, ctx, headRef) {
+  let matchers;
+  const getMatchers = () => (matchers ??= loadTrustCoreMatchers(rootDir, ctx, headRef));
+  const out = [];
+  for (const raw of Array.isArray(files) ? files : []) {
+    const needsRoot = typeof raw === "string" && rootDir && (isAbsolute(raw) || /^[A-Za-z]:[\\/]/.test(raw));
+    const norm = normalizeRepoRelPath(raw, needsRoot ? rootDir : undefined);
+    if (!norm || norm.startsWith("../") || norm === "..") continue;
+    if ((!IGNORED_NON_UI_RE.test(norm) && NON_UI_SECURITY_AUDIT_RE.test(norm)) || getMatchers().some((re) => re.test(norm))) {
+      out.push(norm);
+    }
+  }
+  return uniqueSorted(out);
+}
+
 export function isNonUiSecurityPath(relPath, cwd, ctx, headRef) {
   const needsRoot = typeof relPath === "string" && cwd && (isAbsolute(relPath) || /^[A-Za-z]:[\\/]/.test(relPath));
   const norm = normalizeRepoRelPath(relPath, needsRoot ? resolveRepoRoot(cwd, ctx) : undefined);
@@ -156,14 +171,14 @@ export function collectNonUiFileHashes(cwd = process.cwd(), files = [], { source
   const rootDir = resolveRepoRoot(cwd, ctx);
   const deletedSet = deletedFiles instanceof Set ? deletedFiles : new Set(Array.isArray(deletedFiles) ? deletedFiles : []);
   const normalized = uniqueSorted(
-    files.map((file) => normalizeRepoRelPath(file, rootDir)).filter((file) => isSafeRepoRelative(file, rootDir)),
+    files.map((file) => normalizeRepoRelPath(file, rootDir)).filter((file) => !/[\0\r\n]/.test(file) && isSafeRepoRelative(file, rootDir)),
   );
+  const nonDeleted = normalized.filter((relPath) => !deletedSet.has(relPath));
+  const batchBytes = nonDeleted.length > 0 ? readBatchBytesForSource(rootDir, nonDeleted, { source, headRef, canonicalClean, ctx }) : new Map();
   const out = {};
   for (const relPath of normalized) {
     if (deletedSet.has(relPath)) { out[relPath] = DELETED_MARKER; continue; }
-    const bytes = canonicalClean && source === "disk"
-      ? readCleanAuditBytes(rootDir, relPath, ctx)
-      : readBytesForSource(rootDir, relPath, source, headRef, ctx);
+    const bytes = batchBytes.get(relPath);
     if (bytes !== undefined) out[relPath] = createHash("sha256").update(bytes).digest("hex");
   }
   return out;
@@ -188,9 +203,7 @@ export function recordSecurityAudit({
   const discovered = Array.isArray(files) ? undefined : discoverBranchState(rootDir);
   if (discovered && !discovered.ok) throw new Error(`GRDR-HOOK-0001 ${discovered.error}`);
 
-  const targetFiles = Array.isArray(files)
-    ? uniqueSorted(files.map((f) => normalizeRepoRelPath(f, rootDir)).filter((f) => isNonUiSecurityPath(f, rootDir)))
-    : discovered.files;
+  const targetFiles = Array.isArray(files) ? filterNonUiSecurityPaths(files, rootDir) : discovered.files;
   const deletedFiles = discovered ? discovered.deletedFiles : new Set(targetFiles.filter((f) => !existsSync(resolve(rootDir, f))));
   const trustCoreFiles = findTrustCoreFiles(targetFiles, rootDir);
   const record = {
@@ -230,11 +243,7 @@ export function evaluateSecurityAuditFiles(
 ) {
   if (!VALID_SOURCES.has(source)) return [`security-audit: invalid hash source "${printableText(source)}".`];
   const rootDir = resolveRepoRoot(cwd, ctx);
-  const nonUiFiles = uniqueSorted(
-    (Array.isArray(changedFiles) ? changedFiles : [])
-      .map((f) => normalizeRepoRelPath(f, rootDir))
-      .filter((f) => isNonUiSecurityPath(f, rootDir, ctx, headRef)),
-  );
+  const nonUiFiles = filterNonUiSecurityPaths(changedFiles, rootDir, ctx, headRef);
   if (nonUiFiles.length === 0) return [];
 
   const trustCoreFiles = findTrustCoreFiles(nonUiFiles, rootDir, ctx, headRef);
