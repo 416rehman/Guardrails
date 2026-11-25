@@ -1,0 +1,37 @@
+[package]
+name = "grdr-uplink"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[package.metadata.grdr]
+layer = 4
+privilege = "untrusted"
+surface = "internal"
+renders = "none"
+
+[dependencies]
+base64 = { workspace = true }
+clap = { workspace = true }
+grdr-crypto = { workspace = true }
+grdr-ipc-os = { workspace = true }
+grdr-model = { workspace = true }
+grdr-os-clock = { workspace = true }
+grdr-os-service = { workspace = true }
+grdr-peer-os = { workspace = true }
+grdr-proto = { workspace = true }
+grdr-wire = { workspace = true }
+jiff = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+zeroize = { workspace = true }
+
+[lints]
+workspace = true
