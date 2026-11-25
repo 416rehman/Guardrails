@@ -1654,6 +1654,56 @@ dependencies = [
 ]
 
 [[package]]
+name = "grdr-updater"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "grdr-compat",
+ "grdr-crypto",
+ "grdr-ipc-os",
+ "grdr-model",
+ "grdr-os-clock",
+ "grdr-os-service",
+ "grdr-peer-os",
+ "grdr-store-local",
+ "grdr-update",
+ "jiff 1.0.2",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "grdr-uplink"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "clap",
+ "grdr-crypto",
+ "grdr-ipc-os",
+ "grdr-model",
+ "grdr-os-clock",
+ "grdr-os-service",
+ "grdr-peer-os",
+ "grdr-proto",
+ "grdr-wire",
+ "jiff 1.0.2",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
 name = "grdr-wasm"
 version = "0.1.0"
 dependencies = [
