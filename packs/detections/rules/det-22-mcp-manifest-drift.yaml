@@ -1,0 +1,39 @@
+title: "MCP Tool Definition Drift After Approval"
+id: e8122f9d-c17b-5b3a-8c80-39fd3dc38722
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 22 (mcp-manifest-drift)."
+logsource:
+  product: grdr
+  category: mcp
+  service: broker
+detection:
+  selection:
+    action_class: "mcp.call"
+    mcp.manifest_drift: "detected"
+  condition: selection
+falsepositives:
+  - "Authorized server upgrade before re-pinning manifest digest"
+tags:
+  - atlas.t0110
+  - atlas.t0099
+  - owasp.asi04
+x_grdr:
+  row: 22
+  rule_id: grdr.det.core.r22.mcp-manifest-drift
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: remediate
+  stage: K1
+  atlas: [T0110, T0099]
+  owasp_asi: [ASI04]
+  mode_default: "mcp.tool-pin (Watch)"
+  response:
+    mode: simulate
+    verbs: [disable-artefact-by-digest]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-22-pos
+    negative: fix-22-neg

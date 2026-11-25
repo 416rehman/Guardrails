@@ -1,0 +1,39 @@
+title: "Package Registry Publish or External Signup Request"
+id: b3b00b79-d148-51db-889c-a23e905e3a25
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 25 (registry-publish-or-signup)."
+logsource:
+  product: grdr
+  category: net
+  service: proxy
+detection:
+  selection:
+    target.classes:
+      - "pkg.publish"
+      - "signup"
+  condition: selection
+falsepositives:
+  - "Authorized release pipeline publish under operator grant"
+tags:
+  - atlas.t0125
+  - owasp.asi10
+x_grdr:
+  row: 25
+  rule_id: grdr.det.core.r25.registry-publish-or-signup
+  version: "1.0.0"
+  finding_class: policy-violation
+  ceiling: notify
+  stage: K8
+  atlas: [T0125]
+  owasp_asi: [ASI10]
+  mode_default: "supply.publish (Watch)"
+  response:
+    mode: simulate
+    verbs: [capture-evidence]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-25-pos
+    negative: fix-25-neg

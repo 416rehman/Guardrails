@@ -1,0 +1,38 @@
+title: "Autorun Persistence Modified by Agent or Install Lineage"
+id: 6fa6ea1a-d1a5-5e6c-aa93-678df87cc119
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 19 (autorun-persistence-write)."
+logsource:
+  product: grdr
+  category: file
+  service: sensor
+detection:
+  selection:
+    action_class: "file.write"
+    target.classes: "autorun"
+  condition: selection
+falsepositives:
+  - "Signed user-requested service unit installer"
+tags:
+  - atlas.t0081
+  - owasp.asi06
+x_grdr:
+  row: 19
+  rule_id: grdr.det.core.r19.autorun-persistence-write
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: notify
+  stage: K5
+  atlas: [T0081]
+  owasp_asi: [ASI06]
+  mode_default: "none"
+  response:
+    mode: simulate
+    verbs: [capture-evidence]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-19-pos
+    negative: fix-19-neg

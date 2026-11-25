@@ -1,0 +1,40 @@
+title: "Shell Command Parse Ambiguity or Opaque Resolution"
+id: 1c0d677e-56ea-5342-93f6-a7f8a196c813
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 13 (shell-parse-ambiguity)."
+logsource:
+  product: grdr
+  category: process
+  service: hook
+detection:
+  selection:
+    action_class: "exec"
+    command.parse_status:
+      - "unresolved"
+      - "malformed"
+  condition: selection
+falsepositives:
+  - "Complex heredoc script authored interactively by operator"
+tags:
+  - atlas.t0107
+  - owasp.asi02
+x_grdr:
+  row: 13
+  rule_id: grdr.det.core.r13.shell-parse-ambiguity
+  version: "1.0.0"
+  finding_class: policy-violation
+  ceiling: record
+  stage: K3
+  atlas: [T0107]
+  owasp_asi: [ASI02]
+  mode_default: "destructive.opaque-command (Watch)"
+  response:
+    mode: simulate
+    verbs: [capture-evidence]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-13-pos
+    negative: fix-13-neg

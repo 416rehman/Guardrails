@@ -1,0 +1,53 @@
+id = "grdr.det.core"
+version = "1.0.0"
+kind = "detection"
+per_person_scoring = false
+commands = []
+executables = []
+urls = []
+env_vars_to_set = []
+mcp_servers_to_start = []
+
+[[reads]]
+path = "action_class"
+data_class = "structural"
+
+[[reads]]
+path = "actor.kind"
+data_class = "structural"
+
+[[reads]]
+path = "actor.lineage"
+data_class = "structural"
+
+[[reads]]
+path = "target.classes"
+data_class = "structural"
+
+[[reads]]
+path = "command.classes"
+data_class = "structural"
+
+[[reads]]
+path = "command.parse_status"
+data_class = "structural"
+
+[[reads]]
+path = "endpoint.classes"
+data_class = "structural"
+
+[[reads]]
+path = "config.delta_classes"
+data_class = "structural"
+
+[[reads]]
+path = "mcp.manifest_drift"
+data_class = "structural"
+
+[[reads]]
+path = "session.labels"
+data_class = "derived"
+
+[[reads]]
+path = "content.secret_signal"
+data_class = "derived"

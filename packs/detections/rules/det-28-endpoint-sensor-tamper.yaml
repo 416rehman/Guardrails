@@ -1,0 +1,37 @@
+title: "Endpoint Protection or Guardrails Sensor Tampering"
+id: a9134be6-70dc-5c5c-ab81-000eb45cc828
+status: stable
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 28 (endpoint-sensor-tamper)."
+logsource:
+  product: grdr
+  category: process
+  service: sensor
+detection:
+  selection:
+    command.classes: "edr-tamper"
+  condition: selection
+falsepositives:
+  - "Authorized signed package upgrade removing prior service binary"
+tags:
+  - atlas.t0138
+  - owasp.asi10
+x_grdr:
+  row: 28
+  rule_id: grdr.det.core.r28.endpoint-sensor-tamper
+  version: "1.0.0"
+  finding_class: tamper
+  ceiling: contain
+  stage: K9
+  atlas: [T0138]
+  owasp_asi: [ASI10]
+  mode_default: "essentials.control-files.write (Block)"
+  response:
+    mode: simulate
+    verbs: [deny, end-session]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-28-pos
+    negative: fix-28-neg

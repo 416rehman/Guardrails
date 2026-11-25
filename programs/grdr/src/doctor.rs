@@ -43,19 +43,7 @@ pub struct DoctorReport {
 }
 
 pub fn run_doctor(json: bool, profile: InstallProfile, strict: bool) -> ExitCode {
-    let device_name = detect_hostname();
-    let telemetry_reader = grdr_agents::windows_telemetry::SystemWindowsTelemetryReader;
-    let process_source = SystemWindowsProcessSource;
-    let discovery = discover_local_agents(profile);
-    let report = build_doctor_report_with(
-        &device_name,
-        profile,
-        discovery.agents.len(),
-        discovery.mcp_servers.len(),
-        &telemetry_reader,
-        &process_source,
-        Timestamp::now(),
-    );
+    let report = collect_doctor_report(profile);
 
     if json {
         match serde_json::to_string_pretty(&report) {
@@ -70,6 +58,22 @@ pub fn run_doctor(json: bool, profile: InstallProfile, strict: bool) -> ExitCode
     }
 
     exit_code_for_report(&report, strict)
+}
+
+pub fn collect_doctor_report(profile: InstallProfile) -> DoctorReport {
+    let device_name = detect_hostname();
+    let telemetry_reader = grdr_agents::windows_telemetry::SystemWindowsTelemetryReader;
+    let process_source = SystemWindowsProcessSource;
+    let discovery = discover_local_agents(profile);
+    build_doctor_report_with(
+        &device_name,
+        profile,
+        discovery.agents.len(),
+        discovery.mcp_servers.len(),
+        &telemetry_reader,
+        &process_source,
+        Timestamp::now(),
+    )
 }
 
 pub fn build_doctor_report_with(

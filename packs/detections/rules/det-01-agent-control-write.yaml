@@ -1,0 +1,43 @@
+title: "Write to Agent Control Files"
+id: 6d41f3f1-8b42-5023-8994-e83441a01b01
+status: stable
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 1 (agent-control-write)."
+logsource:
+  product: grdr
+  category: config
+  service: file-integrity
+detection:
+  selection:
+    action_class:
+      - "file.write"
+      - "file.delete"
+      - "config.change"
+    actor.lineage: "agent"
+    target.classes: "agent-control"
+  condition: selection
+falsepositives:
+  - "Explicitly authorized maintenance workflow under operator grant"
+tags:
+  - atlas.t0081
+  - atlas.t0080.000
+  - owasp.asi06
+x_grdr:
+  row: 1
+  rule_id: grdr.det.core.r01.agent-control-write
+  version: "1.0.0"
+  finding_class: tamper
+  ceiling: remediate
+  stage: K5
+  atlas: [T0081, T0080.000]
+  owasp_asi: [ASI06]
+  mode_default: "essentials.control-files.write (Block)"
+  response:
+    mode: simulate
+    verbs: [deny, quarantine-config-artefact]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-01-pos
+    negative: fix-01-neg

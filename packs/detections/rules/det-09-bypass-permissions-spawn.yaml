@@ -1,0 +1,40 @@
+title: "Non-Agent Process Spawning Agent CLI with Bypass Flags"
+id: e8853a6c-c376-5e2a-9a3f-7e5082a94409
+status: stable
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 9 (bypass-permissions-spawn)."
+logsource:
+  product: grdr
+  category: process
+  service: sensor
+detection:
+  selection:
+    actor.kind: "non-agent"
+    command.classes: "flag.bypass-permissions"
+    target.classes: "agent-binary"
+  condition: selection
+falsepositives:
+  - "Ephemeral isolated test harness with no real credentials"
+tags:
+  - atlas.t0112.000
+  - atlas.t0053
+  - owasp.asi02
+x_grdr:
+  row: 9
+  rule_id: grdr.det.core.r09.bypass-permissions-spawn
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: contain
+  stage: K3
+  atlas: [T0112.000, T0053]
+  owasp_asi: [ASI02]
+  mode_default: "essentials.bypass-flags (Block)"
+  response:
+    mode: simulate
+    verbs: [deny, freeze-session]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-09-pos
+    negative: fix-09-neg

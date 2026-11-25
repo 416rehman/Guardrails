@@ -1,0 +1,36 @@
+format: grdr.policy-tests.v1
+pack_id: grdr.essentials
+vectors:
+  - id: vec.control-file.positive
+    expect_verdict: Deny
+    expect_rule: essentials.control-files.write
+    action: file.write
+    target: ".claude/settings.json"
+  - id: vec.control-file.negative
+    expect_verdict: Allow
+    action: file.write
+    target: "src/main.rs"
+  - id: vec.cred-store.positive
+    expect_verdict: StepUp
+    expect_rule: essentials.cred-store.read
+    action: file.read
+    target: "~/.ssh/id_ed25519"
+  - id: vec.bypass-flag.positive
+    expect_verdict: Deny
+    expect_rule: essentials.bypass-flags
+    action: exec
+    target: "claude --dangerously-skip-permissions"
+  - id: vec.delete-outside.positive
+    expect_verdict: StepUp
+    expect_rule: essentials.delete-outside-workspace
+    action: file.delete
+    target: "/var/tmp/non-session-dir -rf"
+  - id: vec.delete-outside.negative-workspace
+    expect_verdict: Allow
+    action: file.delete
+    target: "build/session-scratch -rf"
+  - id: vec.elevate.positive
+    expect_verdict: StepUp
+    expect_rule: essentials.elevate
+    action: elevate
+    target: "sudo -i"

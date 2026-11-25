@@ -1,0 +1,37 @@
+title: "Vulnerable Agent or Gateway Version in Advisory Range"
+id: c1937cc9-d5df-5b63-9173-7745efedfe21
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 21 (vulnerable-agent-or-gateway)."
+logsource:
+  product: grdr
+  category: inventory
+  service: intel
+detection:
+  selection:
+    target.classes: "advisory-vulnerable-version"
+  condition: selection
+falsepositives:
+  - "Distribution package carrying backported security patch"
+tags:
+  - atlas.t0049
+  - owasp.asi04
+x_grdr:
+  row: 21
+  rule_id: grdr.det.core.r21.vulnerable-agent-or-gateway
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: record
+  stage: none
+  atlas: [T0049]
+  owasp_asi: [ASI04]
+  mode_default: "none"
+  response:
+    mode: simulate
+    verbs: [capture-evidence]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-21-pos
+    negative: fix-21-neg

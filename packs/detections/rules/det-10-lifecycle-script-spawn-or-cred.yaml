@@ -1,0 +1,41 @@
+title: "Package Lifecycle Script Spawning Agents or Reading Credentials"
+id: 3f544f08-799f-5b35-aa18-b592c3e98d10
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 10 (lifecycle-script-spawn-or-cred)."
+logsource:
+  product: grdr
+  category: process
+  service: sensor
+detection:
+  selection:
+    session.labels: "pkg-install-lineage"
+    target.classes:
+      - "agent-binary"
+      - "credential-store"
+  condition: selection
+falsepositives:
+  - "Explicitly authorized build toolchain postinstall hook"
+tags:
+  - atlas.t0010.001
+  - atlas.t0011.002
+  - owasp.asi04
+x_grdr:
+  row: 10
+  rule_id: grdr.det.core.r10.lifecycle-script-spawn-or-cred
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: contain
+  stage: K2
+  atlas: [T0010.001, T0011.002]
+  owasp_asi: [ASI04]
+  mode_default: "none"
+  response:
+    mode: simulate
+    verbs: [freeze-session, capture-evidence]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-10-pos
+    negative: fix-10-neg

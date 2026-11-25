@@ -6,12 +6,18 @@
 
 pub mod aarm;
 mod aarm_tail;
+pub mod airgap_s31;
 pub mod broker_bounds;
 pub mod containment;
+mod pack_fixtures;
+mod pack_manifest;
+mod pack_policy_vectors;
+pub mod pack_verify;
 
 use serde::{Deserialize, Serialize};
 
 pub use aarm::run_aarm_r1_to_r9;
+pub use airgap_s31::run_airgap_s31_checks;
 pub use broker_bounds::{
     FailSafeEvalResult, HOOK_ACK_BUDGET_MS, HandoverAck, ProviderResponse, SHIM_MAX_EXIT_MS,
     merge_provider_verdicts, run_broker_and_bounds_checks, sign_handover_ack,
@@ -20,6 +26,12 @@ pub use broker_bounds::{
 pub use containment::{
     CompiledNativeRule, NativeTargetKind, compile_down_sound_rules, is_compile_down_eligible,
     run_containment_and_compile_down_checks,
+};
+pub use pack_manifest::parse_pack_manifest_toml;
+pub use pack_verify::{
+    DEFAULT_PACK_SIGNER_REF, PackFileDigest, PackSignatureDoc, PackValidationSummary,
+    build_signed_pack_doc, validate_live_packs, verify_signed_pack_dir,
+    verify_signed_pack_dir_with_trusted,
 };
 
 pub const AARM_SPEC_VERSION: &str = "AARM-1.0";
@@ -43,6 +55,7 @@ pub enum ScenarioCategory {
     BrokerBounds,
     Containment,
     CompileDown,
+    Airgap,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -81,6 +94,7 @@ pub fn run_full_conformance_suite() -> Result<ConformanceReport, ConformanceErro
     results.extend(run_aarm_r1_to_r9()?);
     results.extend(run_broker_and_bounds_checks()?);
     results.extend(run_containment_and_compile_down_checks()?);
+    results.extend(run_airgap_s31_checks()?);
 
     let total = results.len();
     let passed = results

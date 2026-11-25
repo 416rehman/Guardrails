@@ -1,0 +1,40 @@
+title: "Git Executing Helper Programs in Fresh Clone"
+id: dcfa4fd5-5910-5c78-9d25-c404b518cf30
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 30 (git-clone-helper-exec)."
+logsource:
+  product: grdr
+  category: process
+  service: sensor
+detection:
+  selection:
+    command.classes:
+      - "git-fresh-clone-child"
+      - "git-fsmonitor-hook"
+      - "git-sshcommand"
+  condition: selection
+falsepositives:
+  - "Operator-installed global git credential helper outside clone dir"
+tags:
+  - atlas.t0142
+  - owasp.asi05
+x_grdr:
+  row: 30
+  rule_id: grdr.det.core.r30.git-clone-helper-exec
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: notify
+  stage: K2
+  atlas: [T0142]
+  owasp_asi: [ASI05]
+  mode_default: "none"
+  response:
+    mode: simulate
+    verbs: [capture-evidence]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-30-pos
+    negative: fix-30-neg

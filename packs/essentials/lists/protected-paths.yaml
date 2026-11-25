@@ -1,0 +1,29 @@
+format: grdr.policy-lists.v1
+pack_id: grdr.essentials
+lists:
+  agent_control:
+    - ".claude/settings.json"
+    - ".claude/settings.local.json"
+    - ".codex/config.toml"
+    - ".codex/requirements.toml"
+    - ".cursor/mcp.json"
+    - ".mcp.json"
+    - "AGENTS.md"
+  grdr_control:
+    - "/etc/grdr/"
+    - "/var/lib/grdr/"
+    - "~/.local/share/grdr/"
+  monitoring_config:
+    - ".claude/hooks/"
+    - ".agents/hooks/"
+  credential_stores:
+    - "~/.ssh/id_*"
+    - "~/.aws/credentials"
+    - "~/.config/gh/hosts.yml"
+    - "~/.kube/config"
+    - "~/.docker/config.json"
+  bypass_flags:
+    - "--dangerously-skip-permissions"
+    - "--yolo"
+    - "--no-sandbox"
+    - "--disable-sandbox"

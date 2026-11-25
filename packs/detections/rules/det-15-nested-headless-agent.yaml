@@ -1,0 +1,40 @@
+title: "Nested Headless Agent or Weaker Child Containment"
+id: 8d9551b1-fbcf-55c9-a8d0-a7d5e941aa15
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 15 (nested-headless-agent)."
+logsource:
+  product: grdr
+  category: process
+  service: hook
+detection:
+  selection:
+    action_class: "agent.spawn"
+    command.classes:
+      - "headless-agent"
+      - "weaker-child-settings"
+  condition: selection
+falsepositives:
+  - "Authorized contained worker pool spawn"
+tags:
+  - atlas.t0053
+  - owasp.asi02
+x_grdr:
+  row: 15
+  rule_id: grdr.det.core.r15.nested-headless-agent
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: contain
+  stage: K3
+  atlas: [T0053]
+  owasp_asi: [ASI02]
+  mode_default: "agents.subagent-ceiling (Watch)"
+  response:
+    mode: simulate
+    verbs: [freeze-session, end-session]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-15-pos
+    negative: fix-15-neg

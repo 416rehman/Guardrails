@@ -1,0 +1,86 @@
+id = "grdr.compliance"
+version = "1.0.0"
+kind = "compliance"
+per_person_scoring = false
+commands = []
+executables = []
+urls = []
+env_vars_to_set = []
+mcp_servers_to_start = []
+
+[[reads]]
+path = "receipt.verdict"
+data_class = "derived"
+
+[[reads]]
+path = "receipt.action_class"
+data_class = "structural"
+
+[[reads]]
+path = "receipt.rule_id"
+data_class = "structural"
+
+[[reads]]
+path = "receipt.control_point"
+data_class = "structural"
+
+[[reads]]
+path = "session.device_id"
+data_class = "identifier"
+
+[[evidence_queries]]
+id = "q.inventory.agents"
+max_class = "derived"
+group_by = ["capability", "period"]
+
+[[evidence_queries.reads]]
+path = "session.device_id"
+data_class = "identifier"
+
+[[evidence_queries]]
+id = "q.preexec.enforce"
+max_class = "derived"
+group_by = ["capability", "action_class", "verdict", "period"]
+
+[[evidence_queries.reads]]
+path = "receipt.verdict"
+data_class = "derived"
+
+[[evidence_queries.reads]]
+path = "receipt.action_class"
+data_class = "structural"
+
+[[evidence_queries]]
+id = "q.approval.graded"
+max_class = "derived"
+group_by = ["capability", "rule_id", "period"]
+
+[[evidence_queries.reads]]
+path = "receipt.verdict"
+data_class = "derived"
+
+[[evidence_queries.reads]]
+path = "receipt.rule_id"
+data_class = "structural"
+
+[[evidence_queries]]
+id = "q.receipts.signed"
+max_class = "derived"
+group_by = ["capability", "control_point", "period"]
+
+[[evidence_queries.reads]]
+path = "receipt.control_point"
+data_class = "structural"
+
+[[evidence_queries.reads]]
+path = "receipt.verdict"
+data_class = "derived"
+
+[[evidence_queries]]
+id = "q.privacy.floor"
+max_class = "derived"
+group_by = ["capability", "organisation", "period"]
+
+[[evidence_queries.reads]]
+path = "session.device_id"
+data_class = "identifier"

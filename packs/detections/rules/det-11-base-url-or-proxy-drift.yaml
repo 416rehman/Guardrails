@@ -1,0 +1,38 @@
+title: "Model Base-URL or Proxy Drift Beyond Approved List"
+id: f4d7933e-b42d-528a-819b-2c2f89f7c911
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 11 (base-url-or-proxy-drift)."
+logsource:
+  product: grdr
+  category: config
+  service: proxy
+detection:
+  selection:
+    endpoint.classes: "unapproved-model-endpoint"
+    config.delta_classes: "base-url-or-proxy-env"
+  condition: selection
+falsepositives:
+  - "Newly onboarded internal model endpoint before list sync"
+tags:
+  - atlas.t0108
+  - owasp.asi10
+x_grdr:
+  row: 11
+  rule_id: grdr.det.core.r11.base-url-or-proxy-drift
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: remediate
+  stage: K6
+  atlas: [T0108]
+  owasp_asi: [ASI10]
+  mode_default: "grdr.egress (Watch)"
+  response:
+    mode: simulate
+    verbs: [cut-session-egress, quarantine-config-artefact]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-11-pos
+    negative: fix-11-neg

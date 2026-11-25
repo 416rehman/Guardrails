@@ -1,0 +1,38 @@
+title: "Undeclared Execution in Agent Lineage Without Hook Event"
+id: 94432a99-951a-539f-b8b5-c8e992978d12
+status: stable
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 12 (undeclared-agent-execution)."
+logsource:
+  product: grdr
+  category: process
+  service: sensor
+detection:
+  selection:
+    actor.lineage: "agent"
+    command.classes: "undeclared-activity"
+  condition: selection
+falsepositives:
+  - "Background runtime housekeeping binary on allowlist"
+tags:
+  - atlas.t0053
+  - owasp.asi02
+x_grdr:
+  row: 12
+  rule_id: grdr.det.core.r12.undeclared-agent-execution
+  version: "1.0.0"
+  finding_class: tamper
+  ceiling: notify
+  stage: K3
+  atlas: [T0053]
+  owasp_asi: [ASI02]
+  mode_default: "built-in"
+  response:
+    mode: simulate
+    verbs: [capture-evidence]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-12-pos
+    negative: fix-12-neg

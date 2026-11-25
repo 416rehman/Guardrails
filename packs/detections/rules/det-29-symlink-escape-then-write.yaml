@@ -1,0 +1,38 @@
+title: "Outward Symlink Creation Followed by Write Escape"
+id: 1c0d19e5-5e64-5bc8-92bd-f69f6db58029
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 29 (symlink-escape-then-write)."
+logsource:
+  product: grdr
+  category: file
+  service: sensor
+detection:
+  selection:
+    session.labels: "outward-link-created"
+    action_class: "file.write"
+  condition: selection
+falsepositives:
+  - "Verified workspace symlink to read-only toolchain directory"
+tags:
+  - atlas.t0105
+  - owasp.asi05
+x_grdr:
+  row: 29
+  rule_id: grdr.det.core.r29.symlink-escape-then-write
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: contain
+  stage: K4
+  atlas: [T0105]
+  owasp_asi: [ASI05]
+  mode_default: "none"
+  response:
+    mode: simulate
+    verbs: [freeze-session, restore-workspace-files]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-29-pos
+    negative: fix-29-neg

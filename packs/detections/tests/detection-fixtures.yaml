@@ -1,0 +1,63 @@
+format: grdr.detection-fixtures.v1
+pack_id: grdr.det.core
+fixtures:
+  - { id: fix-01-pos, rule_id: grdr.det.core.r01.agent-control-write, expect_match: true, payload: { action_class: "file.write", "actor.lineage": "agent", "target.classes": "agent-control" } }
+  - { id: fix-01-neg, rule_id: grdr.det.core.r01.agent-control-write, expect_match: false, payload: { action_class: "file.write", "actor.lineage": "agent", "target.classes": "workspace-source" } }
+  - { id: fix-02-pos, rule_id: grdr.det.core.r02.grdr-control-tamper, expect_match: true, payload: { "actor.lineage": "agent", "target.classes": "grdr-control" } }
+  - { id: fix-02-neg, rule_id: grdr.det.core.r02.grdr-control-tamper, expect_match: false, payload: { "actor.lineage": "agent", "target.classes": "workspace-doc" } }
+  - { id: fix-03-pos, rule_id: grdr.det.core.r03.repo-carried-config, expect_match: true, payload: { action_class: "config.scan", "config.delta_classes": "adds-hook" } }
+  - { id: fix-03-neg, rule_id: grdr.det.core.r03.repo-carried-config, expect_match: false, payload: { action_class: "config.scan", "config.delta_classes": "readme-edit" } }
+  - { id: fix-04-pos, rule_id: grdr.det.core.r04.temp-hook-or-mcp-interpreter, expect_match: true, payload: { "config.delta_classes": "adds-mcp-stdio", "command.classes": "temp-or-repo-interpreter" } }
+  - { id: fix-04-neg, rule_id: grdr.det.core.r04.temp-hook-or-mcp-interpreter, expect_match: false, payload: { "config.delta_classes": "adds-mcp-stdio", "command.classes": "pinned-system-binary" } }
+  - { id: fix-05-pos, rule_id: grdr.det.core.r05.credential-store-read, expect_match: true, payload: { action_class: "file.read", "actor.lineage": "agent", "target.classes": "credential-store" } }
+  - { id: fix-05-neg, rule_id: grdr.det.core.r05.credential-store-read, expect_match: false, payload: { action_class: "file.read", "actor.lineage": "agent", "target.classes": "workspace-doc" } }
+  - { id: fix-06-pos, rule_id: grdr.det.core.r06.destructive-commands, expect_match: true, payload: { action_class: "exec", "command.classes": "rm-recursive-root" } }
+  - { id: fix-06-neg, rule_id: grdr.det.core.r06.destructive-commands, expect_match: false, payload: { action_class: "exec", "command.classes": "cargo-check" } }
+  - { id: fix-07-pos, rule_id: grdr.det.core.r07.prod-irreversible-mutation, expect_match: true, payload: { "command.classes": "irreversible", "target.classes": "org.production" } }
+  - { id: fix-07-neg, rule_id: grdr.det.core.r07.prod-irreversible-mutation, expect_match: false, payload: { "command.classes": "irreversible", "target.classes": "org.sandbox" } }
+  - { id: fix-08-pos, rule_id: grdr.det.core.r08.mass-delete-rename-rate, expect_match: true, payload: { "session.labels": "mass-change", action_class: "file.delete" } }
+  - { id: fix-08-neg, rule_id: grdr.det.core.r08.mass-delete-rename-rate, expect_match: false, payload: { "session.labels": "normal", action_class: "file.delete" } }
+  - { id: fix-09-pos, rule_id: grdr.det.core.r09.bypass-permissions-spawn, expect_match: true, payload: { "actor.kind": "non-agent", "command.classes": "flag.bypass-permissions", "target.classes": "agent-binary" } }
+  - { id: fix-09-neg, rule_id: grdr.det.core.r09.bypass-permissions-spawn, expect_match: false, payload: { "actor.kind": "non-agent", "command.classes": "normal-launch", "target.classes": "agent-binary" } }
+  - { id: fix-10-pos, rule_id: grdr.det.core.r10.lifecycle-script-spawn-or-cred, expect_match: true, payload: { "session.labels": "pkg-install-lineage", "target.classes": "credential-store" } }
+  - { id: fix-10-neg, rule_id: grdr.det.core.r10.lifecycle-script-spawn-or-cred, expect_match: false, payload: { "session.labels": "pkg-install-lineage", "target.classes": "package-cache" } }
+  - { id: fix-11-pos, rule_id: grdr.det.core.r11.base-url-or-proxy-drift, expect_match: true, payload: { "endpoint.classes": "unapproved-model-endpoint", "config.delta_classes": "base-url-or-proxy-env" } }
+  - { id: fix-11-neg, rule_id: grdr.det.core.r11.base-url-or-proxy-drift, expect_match: false, payload: { "endpoint.classes": "approved-gateway", "config.delta_classes": "base-url-or-proxy-env" } }
+  - { id: fix-12-pos, rule_id: grdr.det.core.r12.undeclared-agent-execution, expect_match: true, payload: { "actor.lineage": "agent", "command.classes": "undeclared-activity" } }
+  - { id: fix-12-neg, rule_id: grdr.det.core.r12.undeclared-agent-execution, expect_match: false, payload: { "actor.lineage": "agent", "command.classes": "declared-activity" } }
+  - { id: fix-13-pos, rule_id: grdr.det.core.r13.shell-parse-ambiguity, expect_match: true, payload: { action_class: "exec", "command.parse_status": "unresolved" } }
+  - { id: fix-13-neg, rule_id: grdr.det.core.r13.shell-parse-ambiguity, expect_match: false, payload: { action_class: "exec", "command.parse_status": "resolved" } }
+  - { id: fix-14-pos, rule_id: grdr.det.core.r14.pivot-after-denial, expect_match: true, payload: { "session.labels": "recent-deny-pivot", action_class: "exec" } }
+  - { id: fix-14-neg, rule_id: grdr.det.core.r14.pivot-after-denial, expect_match: false, payload: { "session.labels": "normal-session", action_class: "exec" } }
+  - { id: fix-15-pos, rule_id: grdr.det.core.r15.nested-headless-agent, expect_match: true, payload: { action_class: "agent.spawn", "command.classes": "headless-agent" } }
+  - { id: fix-15-neg, rule_id: grdr.det.core.r15.nested-headless-agent, expect_match: false, payload: { action_class: "agent.spawn", "command.classes": "contained-child" } }
+  - { id: fix-16-pos, rule_id: grdr.det.core.r16.secret-in-prompt-or-tool, expect_match: true, payload: { "content.secret_signal": "matched", action_class: "llm.request" } }
+  - { id: fix-16-neg, rule_id: grdr.det.core.r16.secret-in-prompt-or-tool, expect_match: false, payload: { "content.secret_signal": "clean", action_class: "llm.request" } }
+  - { id: fix-17-pos, rule_id: grdr.det.core.r17.paste-or-webhook-egress, expect_match: true, payload: { "actor.lineage": "agent", "endpoint.classes": "paste-capture" } }
+  - { id: fix-17-neg, rule_id: grdr.det.core.r17.paste-or-webhook-egress, expect_match: false, payload: { "actor.lineage": "agent", "endpoint.classes": "org-internal-api" } }
+  - { id: fix-18-pos, rule_id: grdr.det.core.r18.tunnel-or-tor-egress, expect_match: true, payload: { "actor.lineage": "agent", "command.classes": "tunnel" } }
+  - { id: fix-18-neg, rule_id: grdr.det.core.r18.tunnel-or-tor-egress, expect_match: false, payload: { "actor.lineage": "agent", "command.classes": "git-fetch" } }
+  - { id: fix-19-pos, rule_id: grdr.det.core.r19.autorun-persistence-write, expect_match: true, payload: { action_class: "file.write", "target.classes": "autorun" } }
+  - { id: fix-19-neg, rule_id: grdr.det.core.r19.autorun-persistence-write, expect_match: false, payload: { action_class: "file.write", "target.classes": "workspace-source" } }
+  - { id: fix-20-pos, rule_id: grdr.det.core.r20.bad-or-typosquat-component, expect_match: true, payload: { "target.classes": "intel-typosquat" } }
+  - { id: fix-20-neg, rule_id: grdr.det.core.r20.bad-or-typosquat-component, expect_match: false, payload: { "target.classes": "verified-crate" } }
+  - { id: fix-21-pos, rule_id: grdr.det.core.r21.vulnerable-agent-or-gateway, expect_match: true, payload: { "target.classes": "advisory-vulnerable-version" } }
+  - { id: fix-21-neg, rule_id: grdr.det.core.r21.vulnerable-agent-or-gateway, expect_match: false, payload: { "target.classes": "advisory-patched-version" } }
+  - { id: fix-22-pos, rule_id: grdr.det.core.r22.mcp-manifest-drift, expect_match: true, payload: { action_class: "mcp.call", "mcp.manifest_drift": "detected" } }
+  - { id: fix-22-neg, rule_id: grdr.det.core.r22.mcp-manifest-drift, expect_match: false, payload: { action_class: "mcp.call", "mcp.manifest_drift": "pinned" } }
+  - { id: fix-23-pos, rule_id: grdr.det.core.r23.hidden-unicode-or-tool-poisoning, expect_match: true, payload: { "target.classes": "bidi-obfuscation" } }
+  - { id: fix-23-neg, rule_id: grdr.det.core.r23.hidden-unicode-or-tool-poisoning, expect_match: false, payload: { "target.classes": "plain-ascii-tool" } }
+  - { id: fix-24-pos, rule_id: grdr.det.core.r24.secret-read-to-external-sink, expect_match: true, payload: { action_class: "data.flow", "session.labels": "secret-read" } }
+  - { id: fix-24-neg, rule_id: grdr.det.core.r24.secret-read-to-external-sink, expect_match: false, payload: { action_class: "data.flow", "session.labels": "clean-read" } }
+  - { id: fix-25-pos, rule_id: grdr.det.core.r25.registry-publish-or-signup, expect_match: true, payload: { "target.classes": "pkg.publish" } }
+  - { id: fix-25-neg, rule_id: grdr.det.core.r25.registry-publish-or-signup, expect_match: false, payload: { "target.classes": "pkg.read" } }
+  - { id: fix-26-pos, rule_id: grdr.det.core.r26.push-outside-organisation, expect_match: true, payload: { "target.classes": "push-outside-org" } }
+  - { id: fix-26-neg, rule_id: grdr.det.core.r26.push-outside-organisation, expect_match: false, payload: { "target.classes": "push-inside-org" } }
+  - { id: fix-27-pos, rule_id: grdr.det.core.r27.cloud-metadata-or-token-mint, expect_match: true, payload: { "endpoint.classes": "cloud-metadata", "command.classes": "token-mint" } }
+  - { id: fix-27-neg, rule_id: grdr.det.core.r27.cloud-metadata-or-token-mint, expect_match: false, payload: { "endpoint.classes": "org-sso", "command.classes": "token-mint" } }
+  - { id: fix-28-pos, rule_id: grdr.det.core.r28.endpoint-sensor-tamper, expect_match: true, payload: { "command.classes": "edr-tamper" } }
+  - { id: fix-28-neg, rule_id: grdr.det.core.r28.endpoint-sensor-tamper, expect_match: false, payload: { "command.classes": "service-status" } }
+  - { id: fix-29-pos, rule_id: grdr.det.core.r29.symlink-escape-then-write, expect_match: true, payload: { "session.labels": "outward-link-created", action_class: "file.write" } }
+  - { id: fix-29-neg, rule_id: grdr.det.core.r29.symlink-escape-then-write, expect_match: false, payload: { "session.labels": "clean-session", action_class: "file.write" } }
+  - { id: fix-30-pos, rule_id: grdr.det.core.r30.git-clone-helper-exec, expect_match: true, payload: { "command.classes": "git-fresh-clone-child" } }
+  - { id: fix-30-neg, rule_id: grdr.det.core.r30.git-clone-helper-exec, expect_match: false, payload: { "command.classes": "git-status" } }
