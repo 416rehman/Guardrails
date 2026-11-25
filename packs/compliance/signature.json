@@ -1,0 +1,32 @@
+{
+  "format": "grdr.pack.signature.v1",
+  "pack_id": "grdr.compliance",
+  "version": "1.0.0",
+  "domain": "grdr.pack.manifest.v1",
+  "signer_ref": "grdr-content-release-v1",
+  "verifier_ed25519_b64": "K6QXib9RtdnlYIN+Nr+dCxKafTDTBVRsFSArrrBV6U8=",
+  "manifest_sha256": "211981005721cf6f0d1da231a7537ccaf881e3c05ec948aa8302622efcc2905d",
+  "files": [
+    {
+      "path": "controls/capabilities.yaml",
+      "sha256": "203e82b9c9ec69912d8761ee695bba9b7c205352d01efbb166d06e1bdf0754d9",
+      "length": 4362
+    },
+    {
+      "path": "controls/crosswalks.yaml",
+      "sha256": "af22fafa2dca7e0f871235fa457536c05a56df89db88ae40e45f742b24652bee",
+      "length": 7668
+    },
+    {
+      "path": "controls/frameworks.yaml",
+      "sha256": "3d05dd141f5bd89a4d3916db99c5fa1fa801ab6795dde68da02eae97afdff192",
+      "length": 8799
+    },
+    {
+      "path": "pack.toml",
+      "sha256": "540e65a1a1087e874640f085b55aa9984c7b2c029d50bfca5ace513738f8d9f2",
+      "length": 1729
+    }
+  ],
+  "signature_b64": "3lZdqmcM2CBTtGDc7spYr1EC93zPNgo+JVsBISgVXjfstiALoYEGl2YwNb6Aem/1Uib8w2/VgXNiZvXr3V+mBg=="
+}

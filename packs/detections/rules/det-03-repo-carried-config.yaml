@@ -1,0 +1,42 @@
+title: "Repository-Carried Agent Config at Clone"
+id: 49d9d4f7-5342-53e5-816b-6f2a6c30f403
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 3 (repo-carried-config)."
+logsource:
+  product: grdr
+  category: config
+  service: scanner
+detection:
+  selection:
+    action_class: "config.scan"
+    config.delta_classes:
+      - "adds-hook"
+      - "adds-mcp-stdio"
+      - "permission-widen"
+  condition: selection
+falsepositives:
+  - "Reviewed upstream repository template approved by operator"
+tags:
+  - atlas.t0081
+  - atlas.t0142
+  - owasp.asi05
+x_grdr:
+  row: 3
+  rule_id: grdr.det.core.r03.repo-carried-config
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: remediate
+  stage: K2
+  atlas: [T0081, T0142]
+  owasp_asi: [ASI05]
+  mode_default: "none"
+  response:
+    mode: simulate
+    verbs: [disable-artefact-by-digest, quarantine-config-artefact]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-03-pos
+    negative: fix-03-neg

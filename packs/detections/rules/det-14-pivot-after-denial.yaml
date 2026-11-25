@@ -1,0 +1,41 @@
+title: "Tool Pivot Immediately Following Policy Denial"
+id: 57198664-f1fa-5880-ab71-a76f5281c214
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 14 (pivot-after-denial)."
+logsource:
+  product: grdr
+  category: process
+  service: core
+detection:
+  selection:
+    session.labels: "recent-deny-pivot"
+    action_class:
+      - "exec"
+      - "net.request"
+      - "mcp.call"
+  condition: selection
+falsepositives:
+  - "Agent switching to safe read-only diagnostic after initial block"
+tags:
+  - atlas.t0107
+  - owasp.asi02
+x_grdr:
+  row: 14
+  rule_id: grdr.det.core.r14.pivot-after-denial
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: contain
+  stage: K3
+  atlas: [T0107]
+  owasp_asi: [ASI02]
+  mode_default: "none"
+  response:
+    mode: simulate
+    verbs: [freeze-session]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-14-pos
+    negative: fix-14-neg

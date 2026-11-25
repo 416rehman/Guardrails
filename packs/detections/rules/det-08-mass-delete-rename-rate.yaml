@@ -1,0 +1,40 @@
+title: "High-Rate Mass Delete or Rename Activity"
+id: 7a5086a2-0e34-55d1-bb81-8c8011220108
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 8 (mass-delete-rename-rate)."
+logsource:
+  product: grdr
+  category: file
+  service: sensor
+detection:
+  selection:
+    session.labels: "mass-change"
+    action_class:
+      - "file.delete"
+      - "file.write"
+  condition: selection
+falsepositives:
+  - "Large refactor executed inside workspace under grant"
+tags:
+  - atlas.t0101
+  - owasp.asi08
+x_grdr:
+  row: 8
+  rule_id: grdr.det.core.r08.mass-delete-rename-rate
+  version: "1.0.0"
+  finding_class: overeager
+  ceiling: contain
+  stage: K8
+  atlas: [T0101]
+  owasp_asi: [ASI08]
+  mode_default: "grdr.destructive (Watch)"
+  response:
+    mode: simulate
+    verbs: [freeze-session, restore-workspace-files]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-08-pos
+    negative: fix-08-neg

@@ -13,6 +13,7 @@ renders = "none"
 [dependencies]
 grdr-agents = { workspace = true }
 grdr-broker = { workspace = true }
+grdr-comply = { workspace = true }
 grdr-core = { workspace = true }
 grdr-crypto = { workspace = true }
 grdr-export = { workspace = true }
@@ -23,6 +24,8 @@ grdr-policy-ref = { workspace = true }
 grdr-ports = { workspace = true }
 grdr-sandbox-engine = { workspace = true }
 grdr-schema = { workspace = true }
+grdr-schema-lint = { workspace = true }
+grdr-update = { workspace = true }
 jiff = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -1,0 +1,15 @@
+format: grdr.session-rules.v1
+pack_id: grdr.essentials
+rules:
+  - id: session.tainted-exfil-escalation
+    when_label: untrusted-input
+    action_class: net.request
+    verdict: step-up
+    min_grade: G1
+    reason: External egress attempted in a session holding untrusted input.
+  - id: session.secret-to-sink
+    when_label: secret-read
+    action_class: data.flow
+    verdict: step-up
+    min_grade: G2
+    reason: Outbound data flow attempted after reading credential material.

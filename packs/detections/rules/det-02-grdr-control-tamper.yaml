@@ -1,0 +1,38 @@
+title: "Guardrails Control Artifact Tampering"
+id: 929356e2-0843-502b-8280-c5443c5ef402
+status: stable
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 2 (grdr-control-tamper)."
+logsource:
+  product: grdr
+  category: process
+  service: sensor
+detection:
+  selection:
+    actor.lineage: "agent"
+    target.classes: "grdr-control"
+  condition: selection
+falsepositives:
+  - "Explicitly authorized maintenance workflow under operator grant"
+tags:
+  - atlas.t0138
+  - owasp.asi10
+x_grdr:
+  row: 2
+  rule_id: grdr.det.core.r02.grdr-control-tamper
+  version: "1.0.0"
+  finding_class: tamper
+  ceiling: contain
+  stage: K9
+  atlas: [T0138]
+  owasp_asi: [ASI10]
+  mode_default: "essentials.control-files.write (Block)"
+  response:
+    mode: simulate
+    verbs: [deny, freeze-session]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-02-pos
+    negative: fix-02-neg

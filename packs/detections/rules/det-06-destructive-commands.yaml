@@ -1,0 +1,43 @@
+title: "Destructive Command Class Invocation"
+id: b7f88318-b527-573e-9ed5-7f05121d4806
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 6 (destructive-commands)."
+logsource:
+  product: grdr
+  category: process
+  service: hook
+detection:
+  selection:
+    action_class: "exec"
+    command.classes:
+      - "rm-recursive-root"
+      - "git-history-rewrite"
+      - "infra-teardown"
+      - "db-destroy"
+      - "disk-format"
+  condition: selection
+falsepositives:
+  - "Authorized destructive maintenance inside sandbox"
+tags:
+  - atlas.t0101
+  - owasp.asi08
+x_grdr:
+  row: 6
+  rule_id: grdr.det.core.r06.destructive-commands
+  version: "1.0.0"
+  finding_class: overeager
+  ceiling: contain
+  stage: K8
+  atlas: [T0101]
+  owasp_asi: [ASI08]
+  mode_default: "grdr.destructive (Watch)"
+  response:
+    mode: simulate
+    verbs: [hold-for-grant, freeze-session]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-06-pos
+    negative: fix-06-neg

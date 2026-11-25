@@ -1,0 +1,39 @@
+title: "Agent Egress to Paste, Capture, Form, or Webhook Hosts"
+id: b7a885cb-2c13-5396-a2a0-0dc3eb936217
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 17 (paste-or-webhook-egress)."
+logsource:
+  product: grdr
+  category: net
+  service: proxy
+detection:
+  selection:
+    actor.lineage: "agent"
+    endpoint.classes: "paste-capture"
+  condition: selection
+falsepositives:
+  - "Approved internal CI webhook endpoint on allowlist"
+tags:
+  - atlas.t0077
+  - atlas.t0086
+  - owasp.asi02
+x_grdr:
+  row: 17
+  rule_id: grdr.det.core.r17.paste-or-webhook-egress
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: contain
+  stage: K8
+  atlas: [T0077, T0086]
+  owasp_asi: [ASI02]
+  mode_default: "grdr.egress (Watch)"
+  response:
+    mode: simulate
+    verbs: [cut-session-egress]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-17-pos
+    negative: fix-17-neg

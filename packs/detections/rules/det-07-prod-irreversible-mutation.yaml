@@ -1,0 +1,39 @@
+title: "Irreversible Action on Production Target"
+id: c65a7e3a-2b79-5342-938b-9f97e1b67f07
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 7 (prod-irreversible-mutation)."
+logsource:
+  product: grdr
+  category: net
+  service: proxy
+detection:
+  selection:
+    command.classes: "irreversible"
+    target.classes: "org.production"
+  condition: selection
+falsepositives:
+  - "Scheduled change window under change approval grant"
+tags:
+  - atlas.t0101
+  - atlas.t0034.002
+  - owasp.asi08
+x_grdr:
+  row: 7
+  rule_id: grdr.det.core.r07.prod-irreversible-mutation
+  version: "1.0.0"
+  finding_class: overeager
+  ceiling: contain
+  stage: K8
+  atlas: [T0101, T0034.002]
+  owasp_asi: [ASI08]
+  mode_default: "cloud.prod-mutation (Off)"
+  response:
+    mode: simulate
+    verbs: [hold-for-grant, cut-session-egress]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-07-pos
+    negative: fix-07-neg

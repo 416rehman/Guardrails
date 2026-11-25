@@ -1,0 +1,109 @@
+format: grdr.compliance-capabilities.v1
+pack_id: grdr.compliance
+version: "1.0.0"
+capabilities:
+  - id: cap.inventory.agents
+    statement: Discover agents, MCP servers, skills, models, and sponsors across endpoints.
+    decisions: ["D-24"]
+    requires: ["sensor"]
+    assurance_requirement: al0-inventoried
+    evidence_query: q.inventory.agents
+    responsibility: product
+  - id: cap.preexec.enforce
+    statement: Evaluate policy verdicts before action completion with deterministic session labels.
+    decisions: ["D-07", "D-09", "D-13"]
+    requires: ["hook", "core"]
+    assurance_requirement: al2-guided
+    evidence_query: q.preexec.enforce
+    responsibility: product
+  - id: cap.approval.graded
+    statement: Enforce graded STEP_UP approvals and deny when approvers are unreachable.
+    decisions: ["D-31"]
+    requires: ["approval-helper"]
+    assurance_requirement: al2-guided
+    evidence_query: q.approval.graded
+    responsibility: product
+  - id: cap.receipts.signed
+    statement: Produce tamper-evident signed decision receipts chained per lane and checkpoint.
+    decisions: ["D-39"]
+    requires: ["crypto"]
+    assurance_requirement: al1-observed
+    evidence_query: q.receipts.signed
+    responsibility: product
+  - id: cap.attribution.graded
+    statement: Attribute actions between agent and human with fixed ordinal evidence grades.
+    decisions: ["D-25", "D-26"]
+    requires: ["sensor"]
+    assurance_requirement: al1-observed
+    evidence_query: q.attribution.graded
+    responsibility: product
+  - id: cap.identity.brokered
+    statement: Inject short-lived scoped credentials without exposing long-lived secret bytes.
+    decisions: ["D-27"]
+    requires: ["credential-broker", "token-service"]
+    assurance_requirement: al3-contained
+    evidence_query: q.identity.brokered
+    responsibility: operator
+  - id: cap.policy.change
+    statement: Stage, replay, and sign policy pack changes through deployment rings.
+    decisions: ["D-11", "D-37"]
+    requires: ["control-plane"]
+    assurance_requirement: al2-guided
+    evidence_query: q.policy.change
+    responsibility: operator
+  - id: cap.roles.sod
+    statement: Enforce separation of duties across policy authoring, approval, and holds.
+    decisions: ["D-55"]
+    requires: ["server-rbac"]
+    assurance_requirement: al2-guided
+    evidence_query: q.roles.sod
+    responsibility: customer
+  - id: cap.detect.respond
+    statement: Correlate deterministic findings into incidents and execute scoped kill switches.
+    decisions: ["D-30", "D-54"]
+    requires: ["detect", "response"]
+    assurance_requirement: al2-guided
+    evidence_query: q.detect.respond
+    responsibility: product
+  - id: cap.export.siem
+    statement: Export structured OCSF and telemetry streams under versioned contracts.
+    decisions: ["D-54"]
+    requires: ["export"]
+    assurance_requirement: al1-observed
+    evidence_query: q.export.siem
+    responsibility: operator
+  - id: cap.retention.policy
+    statement: Enforce regime retention floors, privacy ceilings, legal holds, and erasure.
+    decisions: ["D-57"]
+    requires: ["store", "holds"]
+    assurance_requirement: al1-observed
+    evidence_query: q.retention.policy
+    responsibility: operator
+  - id: cap.privacy.floor
+    statement: Enforce metadata-default capture, two-layer pseudonyms, and visible disclosure.
+    decisions: ["D-51"]
+    requires: ["privacy-settings"]
+    assurance_requirement: al1-observed
+    evidence_query: q.privacy.floor
+    responsibility: product
+  - id: cap.containment
+    statement: Isolate agent tool execution and egress inside verified OS sandboxes.
+    decisions: ["D-21", "D-16"]
+    requires: ["sandbox-engine"]
+    assurance_requirement: al3-contained
+    evidence_query: q.containment
+    responsibility: product
+  - id: cap.oversight.report
+    statement: Compute aggregate override rates, approval latency, and unreachable-deny shares.
+    decisions: ["D-46"]
+    requires: ["audit-metrics"]
+    assurance_requirement: al2-guided
+    evidence_query: q.oversight.report
+    responsibility: operator
+  - id: cap.supplychain.provenance
+    statement: Pin MCP server and skill digests and detect manifest drift.
+    decisions: ["D-32"]
+    requires: ["mcp-broker", "discovery"]
+    assurance_requirement: al2-guided
+    evidence_query: q.supplychain.provenance
+    responsibility: product

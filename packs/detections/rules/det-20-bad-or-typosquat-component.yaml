@@ -1,0 +1,39 @@
+title: "Known-Bad or Typosquat MCP Server, Skill, or Package"
+id: a2d8dbbd-1b80-5cf5-b9fb-75077647f120
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 20 (bad-or-typosquat-component)."
+logsource:
+  product: grdr
+  category: inventory
+  service: intel
+detection:
+  selection:
+    target.classes:
+      - "intel-known-malicious"
+      - "intel-typosquat"
+  condition: selection
+falsepositives:
+  - "Verified internal fork with similar short package name"
+tags:
+  - atlas.t0010.001
+  - owasp.asi04
+x_grdr:
+  row: 20
+  rule_id: grdr.det.core.r20.bad-or-typosquat-component
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: remediate
+  stage: K2
+  atlas: [T0010.001]
+  owasp_asi: [ASI04]
+  mode_default: "grdr.supply-chain (Watch)"
+  response:
+    mode: simulate
+    verbs: [disable-artefact-by-digest]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-20-pos
+    negative: fix-20-neg

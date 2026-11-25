@@ -1,0 +1,125 @@
+format: grdr.compliance-frameworks.v1
+pack_id: grdr.compliance
+version: "1.0.0"
+frameworks:
+  - doc_id: aicpa-tsc-2017
+    title: "AICPA Trust Services Criteria (SOC 2)"
+    version: "2017"
+    controls:
+      - { control_id: "CC6.1", paraphrase: "Logical access controls and asset inventory" }
+      - { control_id: "CC6.2", paraphrase: "Authorized registration and access approval" }
+      - { control_id: "CC6.3", paraphrase: "Least-privilege role and credential scoping" }
+      - { control_id: "CC6.5", paraphrase: "Controlled disposal of protected data" }
+      - { control_id: "CC6.6", paraphrase: "Boundary containment against external threats" }
+      - { control_id: "CC6.8", paraphrase: "Prevention of unauthorized software execution" }
+      - { control_id: "CC7.2", paraphrase: "Tamper-evident monitoring of security events" }
+      - { control_id: "CC7.3", paraphrase: "Evaluation of detected security anomalies" }
+      - { control_id: "CC7.4", paraphrase: "Coordinated incident containment and response" }
+      - { control_id: "CC8.1", paraphrase: "Authorized and tested configuration changes" }
+      - { control_id: "CC4.1", paraphrase: "Ongoing monitoring of control effectiveness" }
+      - { control_id: "CC9.2", paraphrase: "Third-party component risk management" }
+      - { control_id: "P4.1", paraphrase: "Retention and disposal under privacy commitments" }
+  - doc_id: iso-27001-2022
+    title: "ISO/IEC 27001:2022 Annex A"
+    version: "2022"
+    controls:
+      - { control_id: "A.5.3", paraphrase: "Segregation of conflicting duties" }
+      - { control_id: "A.5.9", paraphrase: "Inventory of information and agent assets" }
+      - { control_id: "A.5.15", paraphrase: "Access control rules for resources" }
+      - { control_id: "A.5.16", paraphrase: "Identity management lifecycle tracking" }
+      - { control_id: "A.5.17", paraphrase: "Secret authentication material protection" }
+      - { control_id: "A.5.19", paraphrase: "Supplier service risk controls" }
+      - { control_id: "A.5.24", paraphrase: "Incident management planning and preparation" }
+      - { control_id: "A.5.33", paraphrase: "Protection of records against loss or tampering" }
+      - { control_id: "A.5.34", paraphrase: "Privacy and personal data protection" }
+      - { control_id: "A.8.2", paraphrase: "Privileged access restriction and brokering" }
+      - { control_id: "A.8.10", paraphrase: "Timely deletion of expired information" }
+      - { control_id: "A.8.15", paraphrase: "Tamper-protected activity logging" }
+      - { control_id: "A.8.16", paraphrase: "Continuous monitoring of anomalous activity" }
+      - { control_id: "A.8.22", paraphrase: "Network and execution segregation" }
+      - { control_id: "A.8.32", paraphrase: "Controlled change review and staging" }
+  - doc_id: iso-42001-2023
+    title: "ISO/IEC 42001:2023 AI Management System"
+    version: "2023"
+    controls:
+      - { control_id: "A.4.2", paraphrase: "Inventory of AI systems and components" }
+      - { control_id: "A.6.2", paraphrase: "Human oversight and system operation controls" }
+      - { control_id: "A.9.2", paraphrase: "Performance evaluation of AI governance controls" }
+      - { control_id: "A.10.2", paraphrase: "Third-party AI supplier and tool governance" }
+  - doc_id: nist-sp-800-53r5
+    title: "NIST SP 800-53 Rev 5"
+    version: "r5"
+    controls:
+      - { control_id: "AC-3", paraphrase: "Enforce approved authorizations before access" }
+      - { control_id: "AC-5", paraphrase: "Enforce separation of duties across roles" }
+      - { control_id: "AC-6", paraphrase: "Enforce least privilege for sessions and tokens" }
+      - { control_id: "AU-6", paraphrase: "Export and review audit records" }
+      - { control_id: "AU-9", paraphrase: "Protect audit logs from unauthorized tampering" }
+      - { control_id: "AU-10", paraphrase: "Non-repudiation via signed decision receipts" }
+      - { control_id: "AU-11", paraphrase: "Enforce audit record retention floors" }
+      - { control_id: "CM-3", paraphrase: "Review and stage configuration changes" }
+      - { control_id: "CM-8", paraphrase: "Maintain current system component inventory" }
+      - { control_id: "IA-2", paraphrase: "Identify and authenticate acting principals" }
+      - { control_id: "IA-5", paraphrase: "Broker short-lived authenticators" }
+      - { control_id: "IR-4", paraphrase: "Detect and contain security incidents" }
+      - { control_id: "PT-2", paraphrase: "Limit personal data collection to authorized purpose" }
+      - { control_id: "SC-7", paraphrase: "Enforce boundary containment on egress" }
+      - { control_id: "SR-3", paraphrase: "Verify supply-chain provenance and drift" }
+  - doc_id: eu-ai-act-2024-1689-c2026-07-27
+    title: "EU AI Act (Regulation 2024/1689) Deployer Duties"
+    version: "2026-07-27"
+    controls:
+      - { control_id: "Art.12", paraphrase: "Automatic event recording over system lifetime" }
+      - { control_id: "Art.14", paraphrase: "Human oversight and intervention capabilities" }
+      - { control_id: "Art.26(1)", paraphrase: "Operate AI systems per instructions of use" }
+      - { control_id: "Art.26(2)", paraphrase: "Assign competent human oversight authority" }
+      - { control_id: "Art.26(5)", paraphrase: "Monitor operation and suspend on risk" }
+      - { control_id: "Art.26(6)", paraphrase: "Retain logs at least six months" }
+      - { control_id: "Art.26(7)", paraphrase: "Inform workers before workplace deployment" }
+  - doc_id: sg-mgf-agentic-1.5
+    title: "Singapore Model Governance Framework for Agentic AI"
+    version: "1.5"
+    controls:
+      - { control_id: "MGF-INV", paraphrase: "Catalogued and centrally managed agents" }
+      - { control_id: "MGF-DET", paraphrase: "Deterministic system-level pre-execution controls" }
+      - { control_id: "MGF-CHK", paraphrase: "Approval checkpoints failing closed when unavailable" }
+      - { control_id: "MGF-LOG", paraphrase: "Immutable logging and OpenTelemetry export" }
+      - { control_id: "MGF-ID", paraphrase: "Identity tied to supervising human or department" }
+      - { control_id: "MGF-CRD", paraphrase: "Scoped, time-bound, non-transferable credentials" }
+      - { control_id: "MGF-SBX", paraphrase: "OS-native sandboxes and MCP allow-lists" }
+      - { control_id: "MGF-OVS", paraphrase: "Audit override rates and approval response latency" }
+  - doc_id: csa-aarm-1.0
+    title: "CSA Agentic AI Risk Management Conformance"
+    version: "1.0"
+    controls:
+      - { control_id: "R1", paraphrase: "Pre-execution interception and action classification" }
+      - { control_id: "R2", paraphrase: "Deterministic policy evaluation before completion" }
+      - { control_id: "R3", paraphrase: "Control-file and bypass protection" }
+      - { control_id: "R4", paraphrase: "Human approval checkpoint failing closed if unavailable" }
+      - { control_id: "R5", paraphrase: "Signed tamper-evident decision receipts" }
+      - { control_id: "R6", paraphrase: "Graded principal and session attribution" }
+      - { control_id: "R7", paraphrase: "Supply-chain pinning and manifest drift detection" }
+      - { control_id: "R8", paraphrase: "Structured telemetry export contract" }
+      - { control_id: "R9", paraphrase: "Scoped credential brokering and sandbox containment" }
+  - doc_id: pci-dss-4.0.1
+    title: "PCI DSS v4.0.1"
+    version: "4.0.1"
+    controls:
+      - { control_id: "1.3", paraphrase: "Restrict inbound and outbound boundary traffic" }
+      - { control_id: "3.4", paraphrase: "Render primary account numbers unreadable" }
+      - { control_id: "6.3", paraphrase: "Inventory and pin third-party software components" }
+      - { control_id: "6.5", paraphrase: "Manage changes through review and testing" }
+      - { control_id: "7.2", paraphrase: "Restrict access by role and need-to-know" }
+      - { control_id: "7.2.5", paraphrase: "Enforce approval on privileged system access" }
+      - { control_id: "8.6", paraphrase: "Manage interactive and application credentials" }
+      - { control_id: "10.3", paraphrase: "Protect audit logs from modification" }
+      - { control_id: "10.4", paraphrase: "Automated review of audit logs and anomalies" }
+      - { control_id: "10.5.1", paraphrase: "Retain audit history twelve months with three hot" }
+      - { control_id: "12.5.1", paraphrase: "Maintain current scope and asset inventory" }
+  - doc_id: hipaa-security-45cfr164
+    title: "HIPAA Security Rule (45 CFR Part 164)"
+    version: "45cfr164"
+    controls:
+      - { control_id: "164.308(a)(1)(ii)(D)", paraphrase: "Information system activity review" }
+      - { control_id: "164.312(b)", paraphrase: "Hardware, software, and procedural audit controls" }
+      - { control_id: "164.316(b)(2)", paraphrase: "Retain security documentation for six years" }

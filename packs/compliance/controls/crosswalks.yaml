@@ -1,0 +1,56 @@
+format: grdr.compliance-crosswalks.v1
+pack_id: grdr.compliance
+version: "1.0.0"
+crosswalks:
+  - { capability: cap.inventory.agents, framework_id: aicpa-tsc-2017, control_id: CC6.1, relation: supports, note: "Agent inventory supports access scope" }
+  - { capability: cap.inventory.agents, framework_id: iso-27001-2022, control_id: A.5.9, relation: satisfies, note: "Automated asset inventory" }
+  - { capability: cap.inventory.agents, framework_id: iso-42001-2023, control_id: A.4.2, relation: satisfies, note: "AI system inventory" }
+  - { capability: cap.inventory.agents, framework_id: nist-sp-800-53r5, control_id: CM-8, relation: satisfies, note: "Component inventory" }
+  - { capability: cap.inventory.agents, framework_id: sg-mgf-agentic-1.5, control_id: MGF-INV, relation: satisfies, note: "Catalogued agents" }
+  - { capability: cap.inventory.agents, framework_id: pci-dss-4.0.1, control_id: "12.5.1", relation: supports, note: "Asset scope inventory" }
+  - { capability: cap.preexec.enforce, framework_id: aicpa-tsc-2017, control_id: CC6.8, relation: satisfies, note: "Pre-execution prevention" }
+  - { capability: cap.preexec.enforce, framework_id: iso-27001-2022, control_id: A.8.16, relation: satisfies, note: "Monitoring and control" }
+  - { capability: cap.preexec.enforce, framework_id: nist-sp-800-53r5, control_id: AC-3, relation: satisfies, note: "Access enforcement" }
+  - { capability: cap.preexec.enforce, framework_id: eu-ai-act-2024-1689-c2026-07-27, control_id: Art.14, relation: supports, note: "Oversight enforcement" }
+  - { capability: cap.preexec.enforce, framework_id: sg-mgf-agentic-1.5, control_id: MGF-DET, relation: satisfies, note: "Deterministic pre-exec controls" }
+  - { capability: cap.preexec.enforce, framework_id: csa-aarm-1.0, control_id: R1, relation: satisfies, note: "Pre-execution interception" }
+  - { capability: cap.preexec.enforce, framework_id: csa-aarm-1.0, control_id: R2, relation: satisfies, note: "Deterministic policy evaluation" }
+  - { capability: cap.preexec.enforce, framework_id: csa-aarm-1.0, control_id: R3, relation: satisfies, note: "Control-file and bypass defense" }
+  - { capability: cap.approval.graded, framework_id: aicpa-tsc-2017, control_id: CC6.2, relation: satisfies, note: "Graded STEP_UP authorization" }
+  - { capability: cap.approval.graded, framework_id: sg-mgf-agentic-1.5, control_id: MGF-CHK, relation: satisfies, note: "Fail-closed approval checkpoint" }
+  - { capability: cap.approval.graded, framework_id: csa-aarm-1.0, control_id: R4, relation: satisfies, note: "Unavailable approver fails closed" }
+  - { capability: cap.approval.graded, framework_id: pci-dss-4.0.1, control_id: "7.2.5", relation: supports, note: "Privileged access approval" }
+  - { capability: cap.receipts.signed, framework_id: aicpa-tsc-2017, control_id: CC7.2, relation: satisfies, note: "Signed audit receipts" }
+  - { capability: cap.receipts.signed, framework_id: iso-27001-2022, control_id: A.8.15, relation: satisfies, note: "Tamper-protected logging" }
+  - { capability: cap.receipts.signed, framework_id: nist-sp-800-53r5, control_id: AU-9, relation: satisfies, note: "Audit integrity protection" }
+  - { capability: cap.receipts.signed, framework_id: nist-sp-800-53r5, control_id: AU-10, relation: satisfies, note: "Non-repudiation via Ed25519" }
+  - { capability: cap.receipts.signed, framework_id: eu-ai-act-2024-1689-c2026-07-27, control_id: Art.12, relation: satisfies, note: "Automatic lifetime logging" }
+  - { capability: cap.receipts.signed, framework_id: csa-aarm-1.0, control_id: R5, relation: satisfies, note: "Signed receipts" }
+  - { capability: cap.receipts.signed, framework_id: pci-dss-4.0.1, control_id: "10.3", relation: satisfies, note: "Log integrity controls" }
+  - { capability: cap.receipts.signed, framework_id: hipaa-security-45cfr164, control_id: "164.312(b)", relation: satisfies, note: "Audit controls" }
+  - { capability: cap.attribution.graded, framework_id: nist-sp-800-53r5, control_id: IA-2, relation: supports, note: "Principal attribution" }
+  - { capability: cap.attribution.graded, framework_id: sg-mgf-agentic-1.5, control_id: MGF-ID, relation: satisfies, note: "Human sponsor attribution" }
+  - { capability: cap.attribution.graded, framework_id: csa-aarm-1.0, control_id: R6, relation: satisfies, note: "Graded attribution grades" }
+  - { capability: cap.identity.brokered, framework_id: nist-sp-800-53r5, control_id: IA-5, relation: satisfies, note: "Brokered short-lived credentials" }
+  - { capability: cap.identity.brokered, framework_id: sg-mgf-agentic-1.5, control_id: MGF-CRD, relation: satisfies, note: "Time-bound non-transferable leases" }
+  - { capability: cap.policy.change, framework_id: aicpa-tsc-2017, control_id: CC8.1, relation: satisfies, note: "Signed staged changes" }
+  - { capability: cap.policy.change, framework_id: iso-27001-2022, control_id: A.8.32, relation: satisfies, note: "Change control" }
+  - { capability: cap.policy.change, framework_id: nist-sp-800-53r5, control_id: CM-3, relation: satisfies, note: "Change review" }
+  - { capability: cap.roles.sod, framework_id: iso-27001-2022, control_id: A.5.3, relation: satisfies, note: "Segregation of duties" }
+  - { capability: cap.roles.sod, framework_id: nist-sp-800-53r5, control_id: AC-5, relation: satisfies, note: "Separation of duties" }
+  - { capability: cap.detect.respond, framework_id: aicpa-tsc-2017, control_id: CC7.4, relation: satisfies, note: "Kill-switch containment" }
+  - { capability: cap.detect.respond, framework_id: iso-27001-2022, control_id: A.5.24, relation: satisfies, note: "Incident workflow" }
+  - { capability: cap.detect.respond, framework_id: nist-sp-800-53r5, control_id: IR-4, relation: satisfies, note: "Incident handling" }
+  - { capability: cap.export.siem, framework_id: sg-mgf-agentic-1.5, control_id: MGF-LOG, relation: satisfies, note: "OCSF telemetry export" }
+  - { capability: cap.export.siem, framework_id: csa-aarm-1.0, control_id: R8, relation: satisfies, note: "Telemetry export contract" }
+  - { capability: cap.retention.policy, framework_id: nist-sp-800-53r5, control_id: AU-11, relation: satisfies, note: "Retention floors" }
+  - { capability: cap.retention.policy, framework_id: eu-ai-act-2024-1689-c2026-07-27, control_id: "Art.26(6)", relation: satisfies, note: "Six-month retention minimum" }
+  - { capability: cap.privacy.floor, framework_id: nist-sp-800-53r5, control_id: PT-2, relation: satisfies, note: "Metadata default minimization" }
+  - { capability: cap.privacy.floor, framework_id: eu-ai-act-2024-1689-c2026-07-27, control_id: "Art.26(7)", relation: supports, note: "Worker disclosure surface" }
+  - { capability: cap.containment, framework_id: nist-sp-800-53r5, control_id: SC-7, relation: satisfies, note: "Boundary egress containment" }
+  - { capability: cap.containment, framework_id: sg-mgf-agentic-1.5, control_id: MGF-SBX, relation: satisfies, note: "OS sandbox containment" }
+  - { capability: cap.containment, framework_id: csa-aarm-1.0, control_id: R9, relation: satisfies, note: "Sandbox containment" }
+  - { capability: cap.oversight.report, framework_id: iso-42001-2023, control_id: A.9.2, relation: supports, note: "AI governance metrics" }
+  - { capability: cap.oversight.report, framework_id: sg-mgf-agentic-1.5, control_id: MGF-OVS, relation: satisfies, note: "Override and latency metrics" }
+  - { capability: cap.supplychain.provenance, framework_id: nist-sp-800-53r5, control_id: SR-3, relation: satisfies, note: "Provenance and drift checks" }
+  - { capability: cap.supplychain.provenance, framework_id: csa-aarm-1.0, control_id: R7, relation: satisfies, note: "Manifest drift detection" }

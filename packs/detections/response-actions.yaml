@@ -1,0 +1,84 @@
+format: grdr.response-actions.v1
+pack_id: grdr.det.core
+version: "1.0.0"
+actions:
+  - id: deny
+    row: 1
+    title: "Deny with reason and safe alternative"
+    mode: simulate
+    requires: ["daemon"]
+    undo: "n/a"
+    reversible: false
+    blast_radius: { max_scope: session, max_devices: 1, max_share_bp: 500 }
+  - id: hold-for-grant
+    row: 2
+    title: "Hold for grant"
+    mode: simulate
+    requires: ["daemon", "approval-helper"]
+    undo: "n/a"
+    reversible: false
+    blast_radius: { max_scope: session, max_devices: 1, max_share_bp: 500 }
+  - id: freeze-session
+    row: 3
+    title: "Freeze session"
+    mode: simulate
+    requires: ["daemon"]
+    undo: "release"
+    reversible: true
+    blast_radius: { max_scope: session, max_devices: 1, max_share_bp: 500 }
+  - id: end-session
+    row: 4
+    title: "End session with expiring restart block"
+    mode: simulate
+    requires: ["daemon"]
+    undo: "release"
+    reversible: true
+    blast_radius: { max_scope: session, max_devices: 1, max_share_bp: 500 }
+  - id: cut-session-egress
+    row: 5
+    title: "Cut session egress"
+    mode: simulate
+    requires: ["proxy", "sandbox", "sensor"]
+    undo: "release"
+    reversible: true
+    blast_radius: { max_scope: session, max_devices: 1, max_share_bp: 500 }
+  - id: quarantine-config-artefact
+    row: 6
+    title: "Quarantine config artefact to last known good"
+    mode: simulate
+    requires: ["daemon", "config-baseline"]
+    undo: "restore-quarantined-copy"
+    reversible: true
+    blast_radius: { max_scope: session, max_devices: 1, max_share_bp: 500 }
+  - id: disable-artefact-by-digest
+    row: 7
+    title: "Disable MCP server, tool or skill by digest"
+    mode: simulate
+    requires: ["hook", "mcp-broker"]
+    undo: "re-enable"
+    reversible: true
+    blast_radius: { max_scope: session, max_devices: 1, max_share_bp: 500 }
+  - id: revoke-brokered-leases
+    row: 8
+    title: "Revoke brokered leases"
+    mode: simulate
+    requires: ["credential-broker"]
+    undo: "issue-new-lease-after-release"
+    reversible: true
+    blast_radius: { max_scope: session, max_devices: 1, max_share_bp: 500 }
+  - id: capture-evidence
+    row: 9
+    title: "Capture evidence"
+    mode: simulate
+    requires: ["daemon"]
+    undo: "n/a"
+    reversible: false
+    blast_radius: { max_scope: session, max_devices: 1, max_share_bp: 500 }
+  - id: restore-workspace-files
+    row: 10
+    title: "Restore files from workspace baseline"
+    mode: simulate
+    requires: ["cow-workspace-baseline"]
+    undo: "restore-pre-restore-copy"
+    reversible: true
+    blast_radius: { max_scope: session, max_devices: 1, max_share_bp: 500 }

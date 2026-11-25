@@ -1,14 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+mod airgap;
+mod airgap_bundle;
+mod airgap_verify;
 mod audit;
+mod comply;
+mod comply_evidence;
 mod doctor;
+mod egress;
+mod enrol;
+mod enrol_state;
+mod fs_safe;
 mod hook;
 mod mcp_proxy;
 mod runner;
 mod server_cmd;
 mod server_migrate;
 mod server_preflight;
+mod support_bundle;
+mod support_redact;
+mod tar_archive;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -180,6 +192,26 @@ enum Command {
         #[arg(long, default_value_t = false)]
         strict: bool,
     },
+    /// Inspect effective outbound endpoint destinations (empty in isolated mode unless allow-listed).
+    Egress(egress::EgressCliArgs),
+    /// Build, preview, or inspect an on-device redacted support bundle.
+    SupportBundle(support_bundle::SupportBundleCliArgs),
+    /// Evaluate, export, verify, or generate RFP compliance artefacts.
+    Comply {
+        #[command(subcommand)]
+        action: comply::ComplyCommand,
+    },
+    /// Build or verify offline air-gap pack bundles.
+    Airgap {
+        #[command(subcommand)]
+        action: airgap::AirgapCommand,
+    },
+    /// Enrol this standalone endpoint to a Guardrails server while preserving local history.
+    Join(enrol::JoinCliArgs),
+    /// Return an enrolled endpoint to standalone mode while preserving local history.
+    Leave(enrol::LeaveCliArgs),
+    /// Upgrade User mode to Protected mode from a verified signed bundle or update source.
+    Protect(enrol::ProtectCliArgs),
     /// Server storage preflight checks and profile migrations.
     Server {
         #[command(subcommand)]
@@ -251,6 +283,13 @@ fn main() -> ExitCode {
             };
             doctor::run_doctor(json, install_profile, strict)
         }
+        Command::Egress(args) => egress::handle_egress_args(args),
+        Command::SupportBundle(args) => support_bundle::handle_support_bundle_args(args),
+        Command::Comply { action } => comply::handle_comply_command(action),
+        Command::Airgap { action } => airgap::handle_airgap_command(action),
+        Command::Join(args) => enrol::handle_join_args(args),
+        Command::Leave(args) => enrol::handle_leave_args(args),
+        Command::Protect(args) => enrol::handle_protect_args(args),
         Command::Server { action } => server_cmd::handle_server_command(action),
     }
 }

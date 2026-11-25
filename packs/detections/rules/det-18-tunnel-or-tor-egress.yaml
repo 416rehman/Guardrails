@@ -1,0 +1,38 @@
+title: "Network Tunnel, Mesh VPN, or Tor from Agent Lineage"
+id: 08d85287-4926-507d-8994-1255d3752818
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 18 (tunnel-or-tor-egress)."
+logsource:
+  product: grdr
+  category: net
+  service: sensor
+detection:
+  selection:
+    actor.lineage: "agent"
+    command.classes: "tunnel"
+  condition: selection
+falsepositives:
+  - "Corporate administrative diagnostic outside agent tree"
+tags:
+  - atlas.t0108
+  - owasp.asi10
+x_grdr:
+  row: 18
+  rule_id: grdr.det.core.r18.tunnel-or-tor-egress
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: contain
+  stage: K6
+  atlas: [T0108]
+  owasp_asi: [ASI10]
+  mode_default: "grdr.egress (Watch)"
+  response:
+    mode: simulate
+    verbs: [cut-session-egress, freeze-session]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-18-pos
+    negative: fix-18-neg

@@ -1,0 +1,37 @@
+{
+  "format": "grdr.pack.signature.v1",
+  "pack_id": "grdr.essentials",
+  "version": "1.0.0",
+  "domain": "grdr.pack.manifest.v1",
+  "signer_ref": "grdr-content-release-v1",
+  "verifier_ed25519_b64": "K6QXib9RtdnlYIN+Nr+dCxKafTDTBVRsFSArrrBV6U8=",
+  "manifest_sha256": "3c1940e6fc06cf174d8932eb79ca9117a9dfb7b9774eca6c98dd76e8193f4eea",
+  "files": [
+    {
+      "path": "lists/protected-paths.yaml",
+      "sha256": "d726463b7d1718dab0566f5bc6b0efb95413c43c776b5f0d35dbbcea6e0fd1ef",
+      "length": 688
+    },
+    {
+      "path": "pack.toml",
+      "sha256": "867336c0f3e78e9a3cb86638233d3800a6669d78eb63f7b6dee16cf86eca4c6b",
+      "length": 684
+    },
+    {
+      "path": "rules/essentials.cedar",
+      "sha256": "81553eb3da4832cfe7dfb27de5824844165748325c45cfcc1af71452f47b2524",
+      "length": 2547
+    },
+    {
+      "path": "session-rules.yaml",
+      "sha256": "e371165bc7fbb521f1b9a30cbb226cdee8f78730385a4c4c5238bba2435b0ae9",
+      "length": 482
+    },
+    {
+      "path": "tests/essentials-vectors.yaml",
+      "sha256": "c23620414a08ebb6e1ec92fcb45d94ce42a6da7a4a1812c798df15767fa6685a",
+      "length": 1116
+    }
+  ],
+  "signature_b64": "3Ah7o60jYrBLMXk8eDBQv4oCmYevrCJmw3dah2O01rgPy3otykUGoRj03qBwwLGQYoU1e+5JwNHVhC5EpGT2Bg=="
+}

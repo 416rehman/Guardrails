@@ -1,0 +1,37 @@
+title: "Repository Push Outside Organisation Boundary"
+id: 000aa799-a9f2-5fa2-9e08-38fa5d59c926
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 26 (push-outside-organisation)."
+logsource:
+  product: grdr
+  category: dataflow
+  service: proxy
+detection:
+  selection:
+    target.classes: "push-outside-org"
+  condition: selection
+falsepositives:
+  - "Approved upstream open-source fork synchronization"
+tags:
+  - atlas.t0086
+  - owasp.asi02
+x_grdr:
+  row: 26
+  rule_id: grdr.det.core.r26.push-outside-organisation
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: contain
+  stage: K8
+  atlas: [T0086]
+  owasp_asi: [ASI02]
+  mode_default: "grdr.dataflow (Watch)"
+  response:
+    mode: simulate
+    verbs: [cut-session-egress, freeze-session]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-26-pos
+    negative: fix-26-neg

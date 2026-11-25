@@ -1,0 +1,38 @@
+title: "Cloud Instance Metadata Access or Token Minting"
+id: 40f258a0-0102-52e2-ba90-d7141f578b27
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 27 (cloud-metadata-or-token-mint)."
+logsource:
+  product: grdr
+  category: net
+  service: sensor
+detection:
+  selection:
+    endpoint.classes: "cloud-metadata"
+    command.classes: "token-mint"
+  condition: selection
+falsepositives:
+  - "Host agent SDK probing metadata outside agent session"
+tags:
+  - atlas.t0055
+  - owasp.asi03
+x_grdr:
+  row: 27
+  rule_id: grdr.det.core.r27.cloud-metadata-or-token-mint
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: contain
+  stage: K4
+  atlas: [T0055]
+  owasp_asi: [ASI03]
+  mode_default: "grdr.egress (Watch)"
+  response:
+    mode: simulate
+    verbs: [cut-session-egress, revoke-brokered-leases]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-27-pos
+    negative: fix-27-neg

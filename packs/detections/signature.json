@@ -1,0 +1,177 @@
+{
+  "format": "grdr.pack.signature.v1",
+  "pack_id": "grdr.det.core",
+  "version": "1.0.0",
+  "domain": "grdr.pack.manifest.v1",
+  "signer_ref": "grdr-content-release-v1",
+  "verifier_ed25519_b64": "K6QXib9RtdnlYIN+Nr+dCxKafTDTBVRsFSArrrBV6U8=",
+  "manifest_sha256": "a66055a6b8212cd706b2f9a09d18f9a1acfea3027b0acf7ee547be3800eca5e7",
+  "files": [
+    {
+      "path": "pack.toml",
+      "sha256": "def9faca8233b321d0a856b79c0b8b2c3a92501a73a4ce9ef96973adb21adfde",
+      "length": 857
+    },
+    {
+      "path": "response-actions.yaml",
+      "sha256": "c23fdf6374039d279a6825146e3f566d9075cfedd315a5fa51a03d62d31f134e",
+      "length": 2638
+    },
+    {
+      "path": "rules/det-01-agent-control-write.yaml",
+      "sha256": "2647b259ab45199aa176a13a960108d289172771596c9856318c2c3ad72d3e27",
+      "length": 1078
+    },
+    {
+      "path": "rules/det-02-grdr-control-tamper.yaml",
+      "sha256": "691ec38811bdc142ed0378914483b2e49f501dbc634a589beffb8dac3587933a",
+      "length": 949
+    },
+    {
+      "path": "rules/det-03-repo-carried-config.yaml",
+      "sha256": "c73ce97a9c9f7c6be770f9fff2212e3b584cb1ec9df96f0ab77bd8ceeb9770eb",
+      "length": 1038
+    },
+    {
+      "path": "rules/det-04-temp-hook-or-mcp-interpreter.yaml",
+      "sha256": "a668f21431e838473a7ec243eb8270c53a10814f4e60075051d82b5d30746b7e",
+      "length": 1020
+    },
+    {
+      "path": "rules/det-05-credential-store-read.yaml",
+      "sha256": "11c4559dba5bb4881d1245cde86f23cef84c64249343e0aa2d47fa761f65b235",
+      "length": 1014
+    },
+    {
+      "path": "rules/det-06-destructive-commands.yaml",
+      "sha256": "2b006c16f0a6dfb4cee65f720bb283e497adf7ab5f8a9478e13f419691c38f99",
+      "length": 1041
+    },
+    {
+      "path": "rules/det-07-prod-irreversible-mutation.yaml",
+      "sha256": "5a52b39035fe9eab8fa6627476d5c87bc1c14d534fbce3e39fe2a11600629a64",
+      "length": 993
+    },
+    {
+      "path": "rules/det-08-mass-delete-rename-rate.yaml",
+      "sha256": "3c0723236d7d49a2670d1f74501b9fa509740e1a45f7f784a55b3697da98654a",
+      "length": 985
+    },
+    {
+      "path": "rules/det-09-bypass-permissions-spawn.yaml",
+      "sha256": "6df61c9e5d87cd23d0cc23c31934481b56ee9312f3765401cf9fd766ced66ea3",
+      "length": 1041
+    },
+    {
+      "path": "rules/det-10-lifecycle-script-spawn-or-cred.yaml",
+      "sha256": "aba17a8fb584ab4279cbcec4139cd6d8b17e1881a16e760319c8bdbad9e937e0",
+      "length": 1055
+    },
+    {
+      "path": "rules/det-11-base-url-or-proxy-drift.yaml",
+      "sha256": "f6b63de5726ab8896703f298f61be337e2bb0382ce75cc03132fcc294adb6779",
+      "length": 1008
+    },
+    {
+      "path": "rules/det-12-undeclared-agent-execution.yaml",
+      "sha256": "1552be8069bf6da23ba893f596160c4ce70747b7977d28934da5824444ef6def",
+      "length": 945
+    },
+    {
+      "path": "rules/det-13-shell-parse-ambiguity.yaml",
+      "sha256": "597249b814397fcb6995a4b0384811a7aae8bd7e84e3f3d490a747e87f3a2854",
+      "length": 989
+    },
+    {
+      "path": "rules/det-14-pivot-after-denial.yaml",
+      "sha256": "879a1245cc5fd36749db1dd506662387181f60e2c617fa67c17960aa3f7f0794",
+      "length": 967
+    },
+    {
+      "path": "rules/det-15-nested-headless-agent.yaml",
+      "sha256": "caa4e09c315365faf5a1bcc18f7e63bd08c792bd76b195196ce6db122be665db",
+      "length": 986
+    },
+    {
+      "path": "rules/det-16-secret-in-prompt-or-tool.yaml",
+      "sha256": "6ea9035f1a746eb3f89fe9d1fed3e860b46701187675e925fcb5fe8699add0b1",
+      "length": 987
+    },
+    {
+      "path": "rules/det-17-paste-or-webhook-egress.yaml",
+      "sha256": "7f46ab24f27f65a0bd41726b3b44390a404728034cede6aef36698fc73951464",
+      "length": 961
+    },
+    {
+      "path": "rules/det-18-tunnel-or-tor-egress.yaml",
+      "sha256": "42c72832d67b5d2646e914ba2714441e7cc94b9339d782aff8ece1cf41b74540",
+      "length": 942
+    },
+    {
+      "path": "rules/det-19-autorun-persistence-write.yaml",
+      "sha256": "7a3453306dad609e8a0d390e739d8bf40acac589b0fbbe2f8740c15f8a49695a",
+      "length": 918
+    },
+    {
+      "path": "rules/det-20-bad-or-typosquat-component.yaml",
+      "sha256": "ddabc561ee5237e0da5a0116f513d749bf49724d2c16357b6a3e2014b729b3b8",
+      "length": 989
+    },
+    {
+      "path": "rules/det-21-vulnerable-agent-or-gateway.yaml",
+      "sha256": "c5fafc6342caa8eb51fb44efe6c790b168578e015a11acb2f1c56040ac2c07ef",
+      "length": 925
+    },
+    {
+      "path": "rules/det-22-mcp-manifest-drift.yaml",
+      "sha256": "67a90907f7c5dad193346a3e02f22abf8c284e0f19a7b62c1aedd8c547fbfb71",
+      "length": 957
+    },
+    {
+      "path": "rules/det-23-hidden-unicode-or-tool-poisoning.yaml",
+      "sha256": "95c5ece6b05df971d5892cc7e4f657b046acc8fdc7ece51c2ab2c25f61f24c27",
+      "length": 1016
+    },
+    {
+      "path": "rules/det-24-secret-read-to-external-sink.yaml",
+      "sha256": "d053d3f636a6c779fe30672ac14670600794c4f4bd63ed0a6b0647626bf90ff7",
+      "length": 991
+    },
+    {
+      "path": "rules/det-25-registry-publish-or-signup.yaml",
+      "sha256": "5c279f61d2044d05bea889f18a9be528784eef450da89392c0e2a8b2eb5475ca",
+      "length": 951
+    },
+    {
+      "path": "rules/det-26-push-outside-organisation.yaml",
+      "sha256": "d9c11f294a76a110f3870f45e985732e0ac06122309a78e0bf863fa3dd2bf4b8",
+      "length": 930
+    },
+    {
+      "path": "rules/det-27-cloud-metadata-or-token-mint.yaml",
+      "sha256": "1dded4cdb0474d57674adb49e2fbc5965932a668cb37b324679dc15e4fa60274",
+      "length": 977
+    },
+    {
+      "path": "rules/det-28-endpoint-sensor-tamper.yaml",
+      "sha256": "63d729724f42dee4f919de5624509c193ae781e9b37901baea9b16e398f4cae4",
+      "length": 939
+    },
+    {
+      "path": "rules/det-29-symlink-escape-then-write.yaml",
+      "sha256": "d94a2234caa4435105af8c53ae3c8da77f68daa7fbb9d7692a8bbfa0f6445356",
+      "length": 963
+    },
+    {
+      "path": "rules/det-30-git-clone-helper-exec.yaml",
+      "sha256": "b2094ef822e4aff21fd45df1d9a9a03c421205e29b9ab8c02fd6e1cbdbcb6ece",
+      "length": 968
+    },
+    {
+      "path": "tests/detection-fixtures.yaml",
+      "sha256": "f1633cb4f6184f447b9d9f8b28c0ab93cf0119bc350bf9e7f8df74ae1fa0c83a",
+      "length": 10356
+    }
+  ],
+  "signature_b64": "fdzKDQBSynMqgGn6ejKe0lba6e1El4igiVhNb6QoXqGqCvo2Zh1zI0tMYsc0uI+jXAKqQDfmtotHTTuT/NVNBg=="
+}

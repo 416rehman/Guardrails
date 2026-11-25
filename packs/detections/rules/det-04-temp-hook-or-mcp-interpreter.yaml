@@ -1,0 +1,40 @@
+title: "Hook or MCP Entry Launching Temp or Repo Interpreter"
+id: 2a6144ec-f92f-5c9b-90a2-5a1a60e8c304
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 4 (temp-hook-or-mcp-interpreter)."
+logsource:
+  product: grdr
+  category: config
+  service: scanner
+detection:
+  selection:
+    config.delta_classes:
+      - "adds-hook"
+      - "adds-mcp-stdio"
+    command.classes: "temp-or-repo-interpreter"
+  condition: selection
+falsepositives:
+  - "Explicitly authorized local development shim"
+tags:
+  - atlas.t0081
+  - owasp.asi06
+x_grdr:
+  row: 4
+  rule_id: grdr.det.core.r04.temp-hook-or-mcp-interpreter
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: remediate
+  stage: K5
+  atlas: [T0081]
+  owasp_asi: [ASI06]
+  mode_default: "none"
+  response:
+    mode: simulate
+    verbs: [quarantine-config-artefact, disable-artefact-by-digest]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-04-pos
+    negative: fix-04-neg

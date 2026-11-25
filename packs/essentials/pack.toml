@@ -1,0 +1,41 @@
+id = "grdr.essentials"
+version = "1.0.0"
+kind = "policy"
+per_person_scoring = false
+commands = []
+executables = []
+urls = []
+env_vars_to_set = []
+mcp_servers_to_start = []
+
+[[reads]]
+path = "path.classes"
+data_class = "structural"
+
+[[reads]]
+path = "path.in_workspace"
+data_class = "structural"
+
+[[reads]]
+path = "config.change_classes"
+data_class = "structural"
+
+[[reads]]
+path = "command.classes"
+data_class = "structural"
+
+[[reads]]
+path = "credential.classes"
+data_class = "structural"
+
+[[reads]]
+path = "context.recursive"
+data_class = "structural"
+
+[[reads]]
+path = "context.grants"
+data_class = "structural"
+
+[[reads]]
+path = "context.assurance.control"
+data_class = "derived"

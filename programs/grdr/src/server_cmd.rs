@@ -6,11 +6,27 @@ use std::process::ExitCode;
 
 use clap::Subcommand;
 
+use crate::egress::{EgressComponent, EgressEvalOptions, NetworkMode, run_egress_command};
 use crate::server_migrate::{MigrateHaOptions, run_migrate_command};
 use crate::server_preflight::{PreflightOptions, run_preflight};
 
 #[derive(Debug, Subcommand)]
 pub enum ServerCommand {
+    /// Inspect effective outbound server egress destinations (empty in isolated mode unless allow-listed).
+    Egress {
+        #[arg(long, value_enum, default_value_t = NetworkMode::Standard)]
+        network_mode: NetworkMode,
+        #[arg(long, default_value_t = false)]
+        isolated: bool,
+        #[arg(long = "allow")]
+        allow: Vec<String>,
+        #[arg(long = "mirror")]
+        mirrors: Vec<String>,
+        #[arg(long = "sink")]
+        sinks: Vec<String>,
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
     /// Run storage, database, bus, and object-store preflight checks.
     Preflight {
         #[arg(long, default_value = "embedded")]
@@ -61,6 +77,34 @@ pub enum ServerCommand {
 
 pub fn handle_server_command(cmd: ServerCommand) -> ExitCode {
     match cmd {
+        ServerCommand::Egress {
+            network_mode,
+            isolated,
+            allow,
+            mirrors,
+            sinks,
+            json,
+        } => {
+            let mode = if isolated {
+                NetworkMode::Isolated
+            } else {
+                network_mode
+            };
+            run_egress_command(
+                &EgressEvalOptions {
+                    component: EgressComponent::Server,
+                    network_mode: mode,
+                    state_dir: None,
+                    allow_patterns: allow,
+                    mirrors,
+                    update_sources: Vec::new(),
+                    server_origin: None,
+                    export_sinks: sinks,
+                    updates_enabled: false,
+                },
+                json,
+            )
+        }
         ServerCommand::Preflight {
             profile,
             data_dir,

@@ -1,0 +1,40 @@
+title: "Hidden Unicode or Prompt Injection in Tool Descriptions"
+id: 8000ec48-a38d-55da-b14e-09188ec82e23
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Clean-room Guardrails ADR detection rule row 23 (hidden-unicode-or-tool-poisoning)."
+logsource:
+  product: grdr
+  category: mcp
+  service: broker
+detection:
+  selection:
+    target.classes:
+      - "bidi-obfuscation"
+      - "instruction-poisoning"
+  condition: selection
+falsepositives:
+  - "Localized RTL documentation outside parameter schemas"
+tags:
+  - atlas.t0051.001
+  - atlas.t0110
+  - owasp.asi01
+x_grdr:
+  row: 23
+  rule_id: grdr.det.core.r23.hidden-unicode-or-tool-poisoning
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: notify
+  stage: K1
+  atlas: [T0051.001, T0110]
+  owasp_asi: [ASI01]
+  mode_default: "none"
+  response:
+    mode: simulate
+    verbs: [disable-artefact-by-digest, capture-evidence]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-23-pos
+    negative: fix-23-neg
