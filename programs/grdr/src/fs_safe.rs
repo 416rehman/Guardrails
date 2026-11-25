@@ -33,10 +33,13 @@ pub fn reject_symlinks_on_existing_prefixes(path: &Path) -> Result<(), FsSafeErr
         }
         match fs::symlink_metadata(&acc) {
             Ok(meta) => {
-                if meta.file_type().is_symlink() {
-                    if is_os_root_alias(&acc, &comps) {
+                if is_symlink_or_reparse(&meta) {
+                    if comps.peek().is_some() && is_os_root_alias(&acc, &meta) {
                         continue;
                     }
+                    return Err(FsSafeError::SymlinkForbidden(acc.display().to_string()));
+                }
+                if comps.peek().is_some() && !meta.is_dir() {
                     return Err(FsSafeError::SymlinkForbidden(acc.display().to_string()));
                 }
             }
@@ -50,7 +53,8 @@ pub fn reject_symlinks_on_existing_prefixes(path: &Path) -> Result<(), FsSafeErr
 pub fn ensure_safe_dir_all(dir: &Path, private_mode: bool) -> Result<(), FsSafeError> {
     reject_symlinks_on_existing_prefixes(dir)?;
     let mut acc = PathBuf::new();
-    for comp in dir.components() {
+    let mut comps = dir.components().peekable();
+    while let Some(comp) = comps.next() {
         acc.push(comp.as_os_str());
         if matches!(
             comp,
@@ -60,7 +64,13 @@ pub fn ensure_safe_dir_all(dir: &Path, private_mode: bool) -> Result<(), FsSafeE
         }
         match fs::symlink_metadata(&acc) {
             Ok(meta) => {
-                if meta.file_type().is_symlink() || !meta.is_dir() {
+                if is_symlink_or_reparse(&meta) {
+                    if comps.peek().is_some() && is_os_root_alias(&acc, &meta) {
+                        continue;
+                    }
+                    return Err(FsSafeError::SymlinkForbidden(acc.display().to_string()));
+                }
+                if !meta.is_dir() {
                     return Err(FsSafeError::SymlinkForbidden(acc.display().to_string()));
                 }
             }
@@ -79,7 +89,7 @@ pub fn ensure_safe_dir_all(dir: &Path, private_mode: bool) -> Result<(), FsSafeE
 pub fn read_bounded_regular(path: &Path, max_bytes: u64) -> Result<Vec<u8>, FsSafeError> {
     reject_symlinks_on_existing_prefixes(path)?;
     let meta = fs::symlink_metadata(path).map_err(|e| io_err(path, &e.to_string()))?;
-    if meta.file_type().is_symlink() || !meta.is_file() {
+    if is_symlink_or_reparse(&meta) || !meta.is_file() {
         return Err(FsSafeError::SymlinkForbidden(path.display().to_string()));
     }
     if meta.len() > max_bytes {
@@ -96,10 +106,7 @@ pub fn read_bounded_regular(path: &Path, max_bytes: u64) -> Result<Vec<u8>, FsSa
         .open(path)
         .map_err(|e| io_err(path, &e.to_string()))?;
     let handle_meta = file.metadata().map_err(|e| io_err(path, &e.to_string()))?;
-    if handle_meta.file_type().is_symlink()
-        || !handle_meta.is_file()
-        || is_reparse_point(&handle_meta)
-    {
+    if is_symlink_or_reparse(&handle_meta) || !handle_meta.is_file() {
         return Err(FsSafeError::SymlinkForbidden(path.display().to_string()));
     }
     verify_same_file_identity(path, &meta, &handle_meta)?;
@@ -133,10 +140,14 @@ pub fn atomic_write_bytes(
     {
         ensure_safe_dir_all(parent, private_mode)?;
     }
-    if let Ok(meta) = fs::symlink_metadata(dest)
-        && (meta.file_type().is_symlink() || !meta.is_file())
-    {
-        return Err(FsSafeError::SymlinkForbidden(dest.display().to_string()));
+    match fs::symlink_metadata(dest) {
+        Ok(meta) => {
+            if is_symlink_or_reparse(&meta) || !meta.is_file() {
+                return Err(FsSafeError::SymlinkForbidden(dest.display().to_string()));
+            }
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => return Err(io_err(dest, &err.to_string())),
     }
 
     let tmp_path = unique_staging_path(dest)?;
@@ -178,7 +189,7 @@ pub fn load_or_create_private_keypair(path: &Path) -> Result<SigningKeypair, FsS
     reject_symlinks_on_existing_prefixes(path)?;
     match fs::symlink_metadata(path) {
         Ok(meta) => {
-            if meta.file_type().is_symlink() || !meta.is_file() {
+            if is_symlink_or_reparse(&meta) || !meta.is_file() {
                 return Err(FsSafeError::SymlinkForbidden(path.display().to_string()));
             }
             check_private_file_mode(path, &meta)?;
@@ -208,7 +219,7 @@ pub fn load_or_create_private_keypair(path: &Path) -> Result<SigningKeypair, FsS
 pub fn secure_delete_file(path: &Path) -> Result<(), FsSafeError> {
     reject_symlinks_on_existing_prefixes(path)?;
     let meta = fs::symlink_metadata(path).map_err(|e| io_err(path, &e.to_string()))?;
-    if meta.file_type().is_symlink() || !meta.is_file() {
+    if is_symlink_or_reparse(&meta) || !meta.is_file() {
         return Err(FsSafeError::SymlinkForbidden(path.display().to_string()));
     }
     let len = usize::try_from(meta.len().min(1024 * 1024)).unwrap_or(1024);
@@ -246,18 +257,27 @@ fn unique_staging_path(dest: &Path) -> Result<PathBuf, FsSafeError> {
     Ok(dir.join(format!(".{file_name}.{tag}.tmp")))
 }
 
-fn is_os_root_alias(
-    acc: &Path,
-    remaining: &std::iter::Peekable<std::path::Components<'_>>,
-) -> bool {
-    let _ = remaining;
+#[cfg(any(target_os = "macos", test))]
+fn is_expected_macos_root_alias_target(path: &Path, target: &Path) -> bool {
+    matches!(
+        (path.to_str(), target.to_str()),
+        (Some("/var"), Some("private/var" | "/private/var"))
+            | (Some("/tmp"), Some("private/tmp" | "/private/tmp"))
+            | (Some("/etc"), Some("private/etc" | "/private/etc"))
+    )
+}
+
+fn is_os_root_alias(path: &Path, meta: &fs::Metadata) -> bool {
     #[cfg(target_os = "macos")]
     {
-        acc == Path::new("/var") || acc == Path::new("/tmp")
+        use std::os::unix::fs::MetadataExt as _;
+        meta.uid() == 0
+            && fs::read_link(path)
+                .is_ok_and(|target| is_expected_macos_root_alias_target(path, &target))
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = acc;
+        let _ = (path, meta);
         false
     }
 }
@@ -332,6 +352,10 @@ const fn unix_o_nofollow() -> i32 {
     {
         0x0001_0000
     }
+}
+
+fn is_symlink_or_reparse(meta: &fs::Metadata) -> bool {
+    meta.file_type().is_symlink() || is_reparse_point(meta)
 }
 
 fn is_reparse_point(meta: &fs::Metadata) -> bool {
@@ -445,5 +469,132 @@ mod tests {
             assert_eq!(mode, 0o600);
         }
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validates_expected_macos_root_alias_targets() {
+        assert!(is_expected_macos_root_alias_target(
+            Path::new("/var"),
+            Path::new("private/var")
+        ));
+        assert!(is_expected_macos_root_alias_target(
+            Path::new("/var"),
+            Path::new("/private/var")
+        ));
+        assert!(is_expected_macos_root_alias_target(
+            Path::new("/tmp"),
+            Path::new("private/tmp")
+        ));
+        assert!(is_expected_macos_root_alias_target(
+            Path::new("/etc"),
+            Path::new("/private/etc")
+        ));
+        assert!(!is_expected_macos_root_alias_target(
+            Path::new("/var"),
+            Path::new("/tmp/evil")
+        ));
+        assert!(!is_expected_macos_root_alias_target(
+            Path::new("/var/folders"),
+            Path::new("private/var")
+        ));
+        assert!(!is_expected_macos_root_alias_target(
+            Path::new("var"),
+            Path::new("private/var")
+        ));
+    }
+
+    #[test]
+    fn rejects_non_directory_ancestor_obstruction() {
+        let base =
+            std::env::temp_dir().join(format!("grdr-fs-file-{}", uuid::Uuid::now_v7().simple()));
+        fs::create_dir_all(&base).unwrap();
+        let file_blocker = base.join("blocker");
+        fs::write(&file_blocker, b"data").unwrap();
+        assert!(matches!(
+            ensure_safe_dir_all(&file_blocker.join("nested"), true),
+            Err(FsSafeError::SymlinkForbidden(_))
+        ));
+        assert!(matches!(
+            atomic_write_bytes(&file_blocker.join("nested/k"), b"x", true),
+            Err(FsSafeError::SymlinkForbidden(_))
+        ));
+        #[cfg(target_os = "macos")]
+        {
+            assert!(matches!(
+                ensure_safe_dir_all(Path::new("/tmp"), true),
+                Err(FsSafeError::SymlinkForbidden(_))
+            ));
+            assert!(matches!(
+                reject_symlinks_on_existing_prefixes(Path::new("/var")),
+                Err(FsSafeError::SymlinkForbidden(_))
+            ));
+        }
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinked_ancestors_leaf_and_dangling_targets() {
+        use std::os::unix::fs::symlink;
+
+        let base =
+            std::env::temp_dir().join(format!("grdr-fs-sym-{}", uuid::Uuid::now_v7().simple()));
+        let real_dir = base.join("real_dir");
+        fs::create_dir_all(&real_dir).unwrap();
+        let real_file = base.join("real_file");
+        fs::write(&real_file, b"keep").unwrap();
+
+        let dir_link = base.join("dir_link");
+        symlink(&real_dir, &dir_link).unwrap();
+        assert!(matches!(
+            ensure_safe_dir_all(&dir_link.join("nested"), true),
+            Err(FsSafeError::SymlinkForbidden(_))
+        ));
+        assert!(!real_dir.join("nested").exists());
+        assert!(matches!(
+            atomic_write_bytes(&dir_link.join("nested/k"), b"x", true),
+            Err(FsSafeError::SymlinkForbidden(_))
+        ));
+        assert!(matches!(
+            read_bounded_regular(&dir_link.join("k"), 64),
+            Err(FsSafeError::SymlinkForbidden(_))
+        ));
+
+        let leaf_link = base.join("leaf_link");
+        symlink(&real_file, &leaf_link).unwrap();
+        assert!(matches!(
+            read_bounded_regular(&leaf_link, 64),
+            Err(FsSafeError::SymlinkForbidden(_))
+        ));
+        assert!(matches!(
+            atomic_write_bytes(&leaf_link, b"overwrite", true),
+            Err(FsSafeError::SymlinkForbidden(_))
+        ));
+        assert!(matches!(
+            load_or_create_private_keypair(&leaf_link),
+            Err(FsSafeError::SymlinkForbidden(_))
+        ));
+        assert!(matches!(
+            secure_delete_file(&leaf_link),
+            Err(FsSafeError::SymlinkForbidden(_))
+        ));
+
+        let dangling_link = base.join("dangling_link");
+        symlink(base.join("nonexistent"), &dangling_link).unwrap();
+        assert!(matches!(
+            atomic_write_bytes(&dangling_link, b"overwrite", true),
+            Err(FsSafeError::SymlinkForbidden(_))
+        ));
+        assert!(matches!(
+            load_or_create_private_keypair(&dangling_link),
+            Err(FsSafeError::SymlinkForbidden(_))
+        ));
+        assert!(matches!(
+            secure_delete_file(&dangling_link),
+            Err(FsSafeError::SymlinkForbidden(_))
+        ));
+
+        assert_eq!(fs::read(&real_file).unwrap(), b"keep");
+        let _ = fs::remove_dir_all(&base);
     }
 }

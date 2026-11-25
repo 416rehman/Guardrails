@@ -14,9 +14,16 @@ use crate::transport::{
     map_io_err, parse_and_validate_frame_header, validate_outgoing_frame,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StreamBlockingMode {
+    Blocking,
+    NonBlockingFallback,
+}
+
 #[derive(Debug)]
 pub struct UnixDomainLink {
     inner: StreamLink<UnixStream>,
+    blocking_mode: StreamBlockingMode,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -31,15 +38,20 @@ pub struct UnixDomainAcceptor {
 
 impl UnixDomainLink {
     pub fn from_stream(stream: UnixStream, connected_at: Timestamp) -> Result<Self, IpcError> {
+        Self::from_accepted_stream(stream, connected_at, StreamBlockingMode::Blocking)
+    }
+
+    fn from_accepted_stream(
+        stream: UnixStream,
+        connected_at: Timestamp,
+        blocking_mode: StreamBlockingMode,
+    ) -> Result<Self, IpcError> {
         let default_deadline = IpcDeadline::call_default();
-        stream
-            .set_read_timeout(Some(default_deadline.as_duration()))
-            .map_err(|e| IpcError::Io(e.to_string()))?;
-        stream
-            .set_write_timeout(Some(default_deadline.as_duration()))
-            .map_err(|e| IpcError::Io(e.to_string()))?;
+        apply_read_timeout(&stream, default_deadline.as_duration())?;
+        apply_write_timeout(&stream, default_deadline.as_duration())?;
         Ok(Self {
             inner: StreamLink::new(stream, connected_at),
+            blocking_mode,
         })
     }
 
@@ -50,10 +62,7 @@ impl UnixDomainLink {
         let mut offset = 0usize;
         while offset < buf.len() {
             let remaining = remaining_budget(start, total, deadline)?;
-            self.inner
-                .stream_mut()
-                .set_read_timeout(Some(remaining))
-                .map_err(|e| IpcError::Io(e.to_string()))?;
+            apply_read_timeout(self.inner.stream_mut(), remaining)?;
             let Some(slot) = buf.get_mut(offset..) else {
                 break;
             };
@@ -61,6 +70,18 @@ impl UnixDomainLink {
                 Ok(0) => return Err(IpcError::Io("unexpected EOF reading IPC frame".into())),
                 Ok(n) => offset = offset.saturating_add(n),
                 Err(err) if err.kind() == ErrorKind::Interrupted => continue,
+                Err(err)
+                    if self.blocking_mode == StreamBlockingMode::NonBlockingFallback
+                        && err.kind() == ErrorKind::WouldBlock =>
+                {
+                    if start.elapsed() >= total {
+                        return Err(IpcError::DeadlineExceeded {
+                            timeout_ms: deadline.as_millis_u64(),
+                        });
+                    }
+                    std::thread::sleep(Duration::from_millis(2).min(remaining));
+                    continue;
+                }
                 Err(err) => return Err(map_io_err(err, deadline)),
             }
         }
@@ -74,10 +95,7 @@ impl UnixDomainLink {
         let mut offset = 0usize;
         while offset < data.len() {
             let remaining = remaining_budget(start, total, deadline)?;
-            self.inner
-                .stream_mut()
-                .set_write_timeout(Some(remaining))
-                .map_err(|e| IpcError::Io(e.to_string()))?;
+            apply_write_timeout(self.inner.stream_mut(), remaining)?;
             let Some(chunk) = data.get(offset..) else {
                 break;
             };
@@ -85,14 +103,23 @@ impl UnixDomainLink {
                 Ok(0) => return Err(IpcError::Io("zero-byte write on IPC stream".into())),
                 Ok(n) => offset = offset.saturating_add(n),
                 Err(err) if err.kind() == ErrorKind::Interrupted => continue,
+                Err(err)
+                    if self.blocking_mode == StreamBlockingMode::NonBlockingFallback
+                        && err.kind() == ErrorKind::WouldBlock =>
+                {
+                    if start.elapsed() >= total {
+                        return Err(IpcError::DeadlineExceeded {
+                            timeout_ms: deadline.as_millis_u64(),
+                        });
+                    }
+                    std::thread::sleep(Duration::from_millis(2).min(remaining));
+                    continue;
+                }
                 Err(err) => return Err(map_io_err(err, deadline)),
             }
         }
         let remaining = remaining_budget(start, total, deadline)?;
-        self.inner
-            .stream_mut()
-            .set_write_timeout(Some(remaining))
-            .map_err(|e| IpcError::Io(e.to_string()))?;
+        apply_write_timeout(self.inner.stream_mut(), remaining)?;
         self.inner
             .stream_mut()
             .flush()
@@ -124,14 +151,8 @@ impl Link for UnixDomainLink {
     }
 
     fn set_deadlines(&mut self, read: IpcDeadline, write: IpcDeadline) -> Result<(), IpcError> {
-        self.inner
-            .stream_mut()
-            .set_read_timeout(Some(read.as_duration()))
-            .map_err(|e| IpcError::Io(e.to_string()))?;
-        self.inner
-            .stream_mut()
-            .set_write_timeout(Some(write.as_duration()))
-            .map_err(|e| IpcError::Io(e.to_string()))?;
+        apply_read_timeout(self.inner.stream_mut(), read.as_duration())?;
+        apply_write_timeout(self.inner.stream_mut(), write.as_duration())?;
         self.inner.set_deadlines(read, write)
     }
 
@@ -220,11 +241,13 @@ impl Acceptor for UnixDomainAcceptor {
         loop {
             match self.listener.accept() {
                 Ok((stream, _)) => {
-                    stream
-                        .set_nonblocking(false)
-                        .map_err(|e| IpcError::Io(e.to_string()))?;
+                    let blocking_mode = restore_accepted_blocking_mode(&stream)?;
                     let connected_at = clock.now_utc();
-                    return UnixDomainLink::from_stream(stream, connected_at);
+                    return UnixDomainLink::from_accepted_stream(
+                        stream,
+                        connected_at,
+                        blocking_mode,
+                    );
                 }
                 Err(err) if err.kind() == ErrorKind::WouldBlock => {
                     if start.elapsed() >= deadline.as_duration() {
@@ -245,6 +268,44 @@ impl Acceptor for UnixDomainAcceptor {
 
     fn address(&self) -> &LocalEndpointAddress {
         &self.address
+    }
+}
+
+fn is_macos_disconnected_invalid_input(err: &std::io::Error) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        err.kind() == ErrorKind::InvalidInput
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = err;
+        false
+    }
+}
+
+fn restore_accepted_blocking_mode(stream: &UnixStream) -> Result<StreamBlockingMode, IpcError> {
+    match stream.set_nonblocking(false) {
+        Ok(()) => Ok(StreamBlockingMode::Blocking),
+        Err(err) if is_macos_disconnected_invalid_input(&err) => {
+            Ok(StreamBlockingMode::NonBlockingFallback)
+        }
+        Err(err) => Err(IpcError::Io(err.to_string())),
+    }
+}
+
+fn apply_read_timeout(stream: &UnixStream, dur: Duration) -> Result<(), IpcError> {
+    match stream.set_read_timeout(Some(dur)) {
+        Ok(()) => Ok(()),
+        Err(err) if !dur.is_zero() && is_macos_disconnected_invalid_input(&err) => Ok(()),
+        Err(err) => Err(IpcError::Io(err.to_string())),
+    }
+}
+
+fn apply_write_timeout(stream: &UnixStream, dur: Duration) -> Result<(), IpcError> {
+    match stream.set_write_timeout(Some(dur)) {
+        Ok(()) => Ok(()),
+        Err(err) if !dur.is_zero() && is_macos_disconnected_invalid_input(&err) => Ok(()),
+        Err(err) => Err(IpcError::Io(err.to_string())),
     }
 }
 
@@ -347,5 +408,44 @@ mod tests {
         let res = link.recv_bytes();
         assert!(matches!(res, Err(IpcError::DeadlineExceeded { .. })));
         let _ = t.join();
+    }
+
+    #[test]
+    fn nonblocking_fallback_reads_buffered_frame_and_enforces_deadline() {
+        let now = Timestamp::from_second(1_700_000_000).unwrap();
+        let (mut writer, reader) = UnixStream::pair().unwrap();
+        reader.set_nonblocking(true).unwrap();
+
+        let kp = SigningKeypair::generate().unwrap();
+        let env =
+            sign_envelope(&kp, generate_nonce().unwrap(), now, "fallback".to_string()).unwrap();
+        let frame = grdr_wire::encode_frame(&env).unwrap();
+        writer.write_all(&frame).unwrap();
+        drop(writer);
+
+        let mut link = UnixDomainLink::from_accepted_stream(
+            reader,
+            now,
+            StreamBlockingMode::NonBlockingFallback,
+        )
+        .unwrap();
+        let decoded: WireEnvelope<String> = link.recv_envelope().unwrap();
+        assert_eq!(decoded.payload, "fallback");
+
+        let (stalled_writer, stalled_reader) = UnixStream::pair().unwrap();
+        stalled_reader.set_nonblocking(true).unwrap();
+        let mut timed_link = UnixDomainLink::from_accepted_stream(
+            stalled_reader,
+            now,
+            StreamBlockingMode::NonBlockingFallback,
+        )
+        .unwrap();
+        let short = IpcDeadline::from_millis_capped(25, 1_000);
+        timed_link.set_deadlines(short, short).unwrap();
+        assert!(matches!(
+            timed_link.recv_bytes(),
+            Err(IpcError::DeadlineExceeded { .. })
+        ));
+        drop(stalled_writer);
     }
 }

@@ -24,8 +24,20 @@ pub fn atomic_write_bytes(path: &Path, bytes: &[u8]) -> Result<(), UpdaterError>
         detail: format!("missing parent directory for {}", path.display()),
     })?;
     ensure_safe_dir(parent)?;
-    if path.exists() {
-        ensure_not_symlink(path)?;
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) => {
+            if is_symlink_or_reparse(&meta) || !meta.file_type().is_file() {
+                return Err(UpdaterError::PathUnsafe {
+                    detail: format!("refusing symlink or non-regular path {}", path.display()),
+                });
+            }
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => {
+            return Err(UpdaterError::Io {
+                detail: format!("failed to inspect {}: {err}", path.display()),
+            });
+        }
     }
 
     let file_name =
@@ -125,13 +137,53 @@ pub fn ensure_not_symlink(path: &Path) -> Result<(), UpdaterError> {
     Ok(())
 }
 
-/// Ensure `dir` exists and contains no symlink along its ancestor chain.
+/// Ensure `dir` exists and contains no symlink along its ancestor chain, creating missing segments one by one.
 pub fn ensure_safe_dir(dir: &Path) -> Result<(), UpdaterError> {
     reject_parent_traversal(dir)?;
-    std::fs::create_dir_all(dir).map_err(|e| UpdaterError::Io {
-        detail: format!("failed to create state dir {}: {e}", dir.display()),
-    })?;
-    ensure_not_symlink(dir)
+    if dir.as_os_str().is_empty() {
+        return Err(UpdaterError::PathUnsafe {
+            detail: "missing parent directory path".to_string(),
+        });
+    }
+    let mut acc = PathBuf::new();
+    let mut comps = dir.components().peekable();
+    while let Some(comp) = comps.next() {
+        acc.push(comp.as_os_str());
+        if matches!(
+            comp,
+            Component::Prefix(_) | Component::RootDir | Component::CurDir
+        ) {
+            continue;
+        }
+        match std::fs::symlink_metadata(&acc) {
+            Ok(meta) => {
+                if is_symlink_or_reparse(&meta) {
+                    if comps.peek().is_some() && is_os_root_alias(&acc, &meta) {
+                        continue;
+                    }
+                    return Err(UpdaterError::PathUnsafe {
+                        detail: format!("refusing symlink at state dir {}", acc.display()),
+                    });
+                }
+                if !meta.is_dir() {
+                    return Err(UpdaterError::PathUnsafe {
+                        detail: format!("expected directory at {}", acc.display()),
+                    });
+                }
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                std::fs::create_dir(&acc).map_err(|e| UpdaterError::Io {
+                    detail: format!("failed to create state dir {}: {e}", acc.display()),
+                })?;
+            }
+            Err(err) => {
+                return Err(UpdaterError::Io {
+                    detail: format!("failed to inspect state dir {}: {err}", acc.display()),
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Verify `candidate_path` resolves strictly inside `canonical_root` with zero symlinks.
@@ -178,6 +230,7 @@ fn ensure_ancestors_not_symlink(path: &Path) -> Result<(), UpdaterError> {
         }
         if let Ok(meta) = std::fs::symlink_metadata(dir)
             && is_symlink_or_reparse(&meta)
+            && !is_os_root_alias(dir, &meta)
         {
             return Err(UpdaterError::PathUnsafe {
                 detail: format!("refusing symlinked ancestor {}", dir.display()),
@@ -327,4 +380,154 @@ fn verify_same_regular_file(
         });
     }
     Ok(())
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn is_expected_macos_root_alias_target(path: &Path, target: &Path) -> bool {
+    matches!(
+        (path.to_str(), target.to_str()),
+        (Some("/var"), Some("private/var" | "/private/var"))
+            | (Some("/tmp"), Some("private/tmp" | "/private/tmp"))
+            | (Some("/etc"), Some("private/etc" | "/private/etc"))
+    )
+}
+
+fn is_os_root_alias(path: &Path, meta: &std::fs::Metadata) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        meta.uid() == 0
+            && std::fs::read_link(path)
+                .is_ok_and(|target| is_expected_macos_root_alias_target(path, &target))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (path, meta);
+        false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validates_expected_macos_root_alias_targets() {
+        assert!(is_expected_macos_root_alias_target(
+            Path::new("/var"),
+            Path::new("private/var")
+        ));
+        assert!(is_expected_macos_root_alias_target(
+            Path::new("/var"),
+            Path::new("/private/var")
+        ));
+        assert!(is_expected_macos_root_alias_target(
+            Path::new("/tmp"),
+            Path::new("private/tmp")
+        ));
+        assert!(is_expected_macos_root_alias_target(
+            Path::new("/etc"),
+            Path::new("/private/etc")
+        ));
+        assert!(!is_expected_macos_root_alias_target(
+            Path::new("/var"),
+            Path::new("/tmp/evil")
+        ));
+        assert!(!is_expected_macos_root_alias_target(
+            Path::new("/var/folders"),
+            Path::new("private/var")
+        ));
+        assert!(!is_expected_macos_root_alias_target(
+            Path::new("var"),
+            Path::new("private/var")
+        ));
+    }
+
+    #[test]
+    fn rejects_empty_and_non_directory_ancestors() {
+        assert!(matches!(
+            ensure_safe_dir(Path::new("")),
+            Err(UpdaterError::PathUnsafe { .. })
+        ));
+        let base =
+            std::env::temp_dir().join(format!("grdr-upd-file-{}", uuid::Uuid::now_v7().simple()));
+        std::fs::create_dir_all(&base).unwrap();
+        let file_blocker = base.join("blocker");
+        std::fs::write(&file_blocker, b"data").unwrap();
+        assert!(matches!(
+            ensure_safe_dir(&file_blocker.join("child")),
+            Err(UpdaterError::PathUnsafe { .. })
+        ));
+        assert!(matches!(
+            atomic_write_bytes(&file_blocker.join("child/bin"), b"x"),
+            Err(UpdaterError::PathUnsafe { .. })
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinked_ancestors_leaf_and_dangling_targets() {
+        use std::os::unix::fs::symlink;
+
+        let base =
+            std::env::temp_dir().join(format!("grdr-upd-sym-{}", uuid::Uuid::now_v7().simple()));
+        let real_dir = base.join("real_dir");
+        std::fs::create_dir_all(&real_dir).unwrap();
+        let real_file = base.join("real_file");
+        std::fs::write(&real_file, b"keep").unwrap();
+
+        let dir_link = base.join("dir_link");
+        symlink(&real_dir, &dir_link).unwrap();
+        assert!(matches!(
+            ensure_safe_dir(&dir_link.join("sub")),
+            Err(UpdaterError::PathUnsafe { .. })
+        ));
+        assert!(!real_dir.join("sub").exists());
+        assert!(matches!(
+            atomic_write_bytes(&dir_link.join("sub/bin"), b"1"),
+            Err(UpdaterError::PathUnsafe { .. })
+        ));
+        assert!(matches!(
+            read_bounded_bytes(&dir_link.join("sub/bin"), 64),
+            Err(UpdaterError::PathUnsafe { .. })
+        ));
+        assert!(matches!(
+            ensure_not_symlink(&dir_link),
+            Err(UpdaterError::PathUnsafe { .. })
+        ));
+
+        let leaf_link = base.join("leaf_link");
+        symlink(&real_file, &leaf_link).unwrap();
+        assert!(matches!(
+            atomic_write_bytes(&leaf_link, b"overwrite"),
+            Err(UpdaterError::PathUnsafe { .. })
+        ));
+        assert!(matches!(
+            read_bounded_bytes(&leaf_link, 64),
+            Err(UpdaterError::PathUnsafe { .. })
+        ));
+        assert!(matches!(
+            ensure_not_symlink(&leaf_link),
+            Err(UpdaterError::PathUnsafe { .. })
+        ));
+
+        let dangling_link = base.join("dangling_link");
+        symlink(base.join("nonexistent"), &dangling_link).unwrap();
+        assert!(matches!(
+            atomic_write_bytes(&dangling_link, b"overwrite"),
+            Err(UpdaterError::PathUnsafe { .. })
+        ));
+        assert!(matches!(
+            read_bounded_bytes(&dangling_link, 64),
+            Err(UpdaterError::PathUnsafe { .. })
+        ));
+        assert!(matches!(
+            ensure_not_symlink(&dangling_link),
+            Err(UpdaterError::PathUnsafe { .. })
+        ));
+
+        assert_eq!(std::fs::read(&real_file).unwrap(), b"keep");
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }
