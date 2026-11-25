@@ -36,6 +36,16 @@
             "type": "command",
             "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/structure-check.mjs\"",
             "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/visual-audit-check.mjs\"",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/security-audit-check.mjs\"",
+            "timeout": 30
           }
         ]
       },

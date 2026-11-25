@@ -1,27 +1,53 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 // Antigravity (Gemini) PreToolUse hook enforcing branch/PR rules (docs-check.mjs),
-// Guardrails Studio UI rules (design-check.mjs), and structure/workflow rules (structure-check.mjs).
-import { readFileSync } from "node:fs";
+// Guardrails Studio UI rules (design-check.mjs), visual audit gate (visual-audit-check.mjs),
+// security audit gate (security-audit-check.mjs), and structure/workflow rules (structure-check.mjs).
+import { readFileSync, realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { evaluateDesignToolPayload } from "../../.claude/hooks/design-check.mjs";
 import { evaluateEngineeringPayload, evaluateHookCommand } from "../../.claude/hooks/docs-check.mjs";
+import { evaluateSecurityAuditToolPayload } from "../../.claude/hooks/security-audit-check.mjs";
+import { printableText } from "../../.claude/hooks/security-audit-git.mjs";
 import { evaluateStructurePayload } from "../../.claude/hooks/structure-check.mjs";
 import { evaluateVisualAuditToolPayload } from "../../.claude/hooks/visual-audit-check.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..");
 
+function resolvePayloadCwd(payload) {
+  if (typeof payload?.cwd === "string" && payload.cwd.trim()) {
+    return payload.cwd.trim();
+  }
+  if (Array.isArray(payload?.workspacePaths)) {
+    const firstValid = payload.workspacePaths.find((p) => typeof p === "string" && p.trim());
+    if (firstValid) return firstValid.trim();
+  }
+  return REPO_ROOT;
+}
+
+function canonicalPath(targetPath) {
+  let out;
+  try {
+    out = realpathSync(targetPath);
+  } catch {
+    out = resolve(targetPath);
+  }
+  return process.platform === "win32" ? out.toLowerCase() : out;
+}
+
 export function handleHookPayload(rawText) {
   const payload = JSON.parse(rawText);
-  const toolName = payload?.toolCall?.name ?? "";
-  const cwd =
-    typeof payload?.cwd === "string" && payload.cwd
-      ? payload.cwd
-      : Array.isArray(payload?.workspacePaths) && typeof payload.workspacePaths[0] === "string"
-        ? payload.workspacePaths[0]
-        : REPO_ROOT;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return { decision: "deny", reason: "agy-pre-tool-use failed closed: expected JSON object payload." };
+  }
+  const rawName = payload?.toolCall?.name;
+  if (typeof rawName !== "string" || !rawName.trim()) {
+    return { decision: "deny", reason: "agy-pre-tool-use failed closed: toolCall.name must be a non-empty string." };
+  }
+  const toolName = rawName.trim();
+  const cwd = resolvePayloadCwd(payload);
 
   if (toolName === "write_file" || toolName === "edit_file") {
     const findings = [
@@ -35,11 +61,14 @@ export function handleHookPayload(rawText) {
     return { decision: "allow" };
   }
 
-  if (toolName && toolName !== "run_command") {
+  if (toolName !== "run_command") {
     return { decision: "allow" };
   }
-  const command = payload?.toolCall?.args?.CommandLine ?? "";
-  if (!command || typeof command !== "string") {
+  const command = payload?.toolCall?.args?.CommandLine;
+  if (typeof command !== "string") {
+    return { decision: "deny", reason: "agy-pre-tool-use failed closed: run_command CommandLine must be a string." };
+  }
+  if (!command) {
     return { decision: "allow" };
   }
   const found = [
@@ -47,6 +76,7 @@ export function handleHookPayload(rawText) {
     ...evaluateEngineeringPayload(payload, cwd),
     ...evaluateDesignToolPayload(payload, cwd),
     ...evaluateVisualAuditToolPayload(payload, cwd),
+    ...evaluateSecurityAuditToolPayload(payload, cwd),
     ...evaluateStructurePayload(payload, cwd),
   ];
   if (found.length > 0) {
@@ -56,8 +86,7 @@ export function handleHookPayload(rawText) {
 }
 
 function isMainModule() {
-  if (!process.argv[1]) return false;
-  return resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+  return Boolean(process.argv[1]) && canonicalPath(process.argv[1]) === canonicalPath(fileURLToPath(import.meta.url));
 }
 
 if (isMainModule()) {
@@ -66,7 +95,9 @@ if (isMainModule()) {
     const response = handleHookPayload(raw);
     process.stdout.write(`${JSON.stringify(response)}\n`);
   } catch (error) {
-    process.stderr.write(`agy-pre-tool-use skipped: ${error.message}\n`);
-    process.stdout.write(`${JSON.stringify({ decision: "allow" })}\n`);
+    const rawMsg = error instanceof Error ? error.message : String(error);
+    const reason = `agy-pre-tool-use failed closed: ${printableText(rawMsg, 200)}`;
+    process.stderr.write(`${reason}\n`);
+    process.stdout.write(`${JSON.stringify({ decision: "deny", reason })}\n`);
   }
 }
