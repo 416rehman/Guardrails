@@ -23,6 +23,8 @@ grdr-export = { version = "0.1.0", path = "crates/grdr-export" }
 grdr-fastpath = { version = "0.1.0", path = "crates/grdr-fastpath" }
 grdr-fastpath-ffi = { version = "0.1.0", path = "crates/grdr-fastpath-ffi" }
 grdr-ffi = { version = "0.1.0", path = "crates/grdr-ffi" }
+grdr-identity = { version = "0.1.0", path = "crates/grdr-identity" }
+grdr-integrations = { version = "0.1.0", path = "crates/grdr-integrations" }
 grdr-jobs = { version = "0.1.0", path = "crates/grdr-jobs" }
 grdr-llm-proto = { version = "0.1.0", path = "crates/grdr-llm-proto" }
 grdr-mcp-proto = { version = "0.1.0", path = "crates/grdr-mcp-proto" }
@@ -39,6 +41,7 @@ grdr-sensor-linux = { version = "0.1.0", path = "crates/grdr-sensor-linux" }
 grdr-store-local = { version = "0.1.0", path = "crates/grdr-store-local" }
 grdr-strings = { version = "0.1.0", path = "crates/grdr-strings" }
 grdr-ui-model = { version = "0.1.0", path = "crates/grdr-ui-model" }
+grdr-update = { version = "0.1.0", path = "crates/grdr-update" }
 grdr-wasm = { version = "0.1.0", path = "crates/grdr-wasm" }
 grdr-wire = { version = "0.1.0", path = "crates/grdr-wire" }
 jiff = { version = "1.0", features = ["serde"] }
