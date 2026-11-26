@@ -71,7 +71,7 @@ SPDX-FileCopyrightText: The <Project> Authors
 
 | Class | Licences | Where allowed |
 |---|---|---|
-| Permissive | `Apache-2.0`, `MIT`, `BSD-2-Clause`, `BSD-3-Clause`, `ISC`, `Zlib`, `Unicode-3.0`, `CC0-1.0` (data) | Everywhere, including the `embedded` build closure (c6 F4) |
+| Permissive | `Apache-2.0`, `MIT`, `BSD-2-Clause`, `BSD-3-Clause`, `ISC`, `Zlib`, `Unicode-3.0`, `CC0-1.0` (data), `CDLA-Permissive-2.0` (root-cert data) | Everywhere, including the `embedded` build closure (c6 F4) |
 | Weak copyleft | `MPL-2.0` | Unmodified, as a dependency of layer 3 and 4 programs only; never in layers 0 to 2, `grdr-ffi`, `grdr-wasm` or the `embedded` closure |
 | Kernel | `GPL-2.0-only` | Only kernel interfaces consumed by `bpf/`; no kernel source copied |
 | Data with attribution | `CC-BY-4.0` | Only in `intel/mirror/` and documentation |
