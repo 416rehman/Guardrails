@@ -464,7 +464,7 @@ mod tests {
             Err(PeerError::PidReuse)
         );
         assert!(matches!(
-            collect_parent_chain(&reader2, 300, MAX_PARENT_CHAIN_DEPTH + 1),
+            collect_parent_chain(&reader2, 300, MAX_PARENT_CHAIN_DEPTH.saturating_add(1)),
             Err(PeerError::Unverifiable(_))
         ));
     }

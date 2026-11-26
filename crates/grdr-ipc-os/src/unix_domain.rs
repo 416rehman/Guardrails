@@ -488,7 +488,7 @@ mod tests {
     use crate::transport::FixedTimestampSource;
 
     fn make_frame(body: &[u8]) -> Vec<u8> {
-        let mut out = Vec::with_capacity(FRAME_HEADER_LEN + body.len());
+        let mut out = Vec::with_capacity(FRAME_HEADER_LEN.saturating_add(body.len()));
         out.extend_from_slice(b"GRDR");
         out.extend_from_slice(&1u16.to_be_bytes());
         out.extend_from_slice(&u32::try_from(body.len()).unwrap().to_be_bytes());
