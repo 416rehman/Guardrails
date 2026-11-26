@@ -186,7 +186,7 @@ Templates live in `legal/terms/` as versioned Markdown. Each change produces a d
 
 | Closure | Allowed | Denied |
 |---|---|---|
-| `embedded` build profile (L3) | Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, ISC, Zlib, Unicode-3.0, BSL-1.0, CC0-1.0 (data) | Everything else |
+| `embedded` build profile (L3) | Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, ISC, Zlib, Unicode-3.0, BSL-1.0, CC0-1.0 (data), CDLA-Permissive-2.0 (root-cert data) | Everything else |
 | Sensor, server, console | The above plus MPL-2.0, unmodified, as separate crates or npm packages | GPL, LGPL, AGPL, SSPL, BUSL, ELv2, FSL, DRL, Commons Clause, CC-BY-NC |
 | eBPF crate | Our own `GPL-2.0-only OR BSD-2-Clause` (D-02) | Third-party GPL-only kernel code |
 | Content packs | Our Apache-2.0 records; mirrored records under their source licence in separate packs (GHSA is CC-BY-4.0 with attribution, 14) | DRL and ELv2 rules (Sage's rules are DRL 1.1; Elastic rules); OWASP MCP Top 10 text (CC BY-NC-SA 4.0, h06), cited by id only |
