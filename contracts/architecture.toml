@@ -1,0 +1,113 @@
+# Guardrails ADR Five-Layer Architecture Contract (docs/design/03, ARCH-001..ARCH-032).
+# Enforced in CI and pre-commit verification by scripts/check-architecture.mjs.
+schema = "grdr.architecture.v1"
+
+[layers]
+0 = ["grdr-proto", "grdr-schema"]
+1 = [
+  "grdr-compat",
+  "grdr-core",
+  "grdr-crypto",
+  "grdr-fastpath",
+  "grdr-fastpath-ffi",
+  "grdr-ffi",
+  "grdr-llm-proto",
+  "grdr-mcp-proto",
+  "grdr-model",
+  "grdr-review",
+  "grdr-wasm",
+]
+2 = ["grdr-messages", "grdr-ports", "grdr-ports-testkit", "grdr-strings", "grdr-wire"]
+3 = [
+  "grdr-agents",
+  "grdr-blob",
+  "grdr-broker",
+  "grdr-bus-log",
+  "grdr-bus-nats",
+  "grdr-comply",
+  "grdr-export",
+  "grdr-identity",
+  "grdr-integrations",
+  "grdr-ipc-os",
+  "grdr-jobs",
+  "grdr-lake",
+  "grdr-os-clock",
+  "grdr-os-service",
+  "grdr-peer-os",
+  "grdr-rel-postgres",
+  "grdr-rel-sqlite",
+  "grdr-sandbox-engine",
+  "grdr-sensor-linux",
+  "grdr-sensor-macos",
+  "grdr-sensor-windows",
+  "grdr-store-local",
+  "grdr-ui-model",
+  "grdr-update",
+]
+4 = [
+  "grdr",
+  "grdr-acp",
+  "grdr-approve",
+  "grdr-daemon",
+  "grdr-engine",
+  "grdr-hook",
+  "grdr-infer",
+  "grdr-interface-gen",
+  "grdr-mcp",
+  "grdr-proxy",
+  "grdr-run",
+  "grdr-server",
+  "grdr-tray",
+  "grdr-updater",
+  "grdr-uplink",
+]
+tool = ["grdr-conformance", "grdr-policy-ref", "grdr-schema-lint"]
+
+[same_layer_edges]
+# Explicit allow-list of same-layer normal dependencies (RFC / ADR required to add edges).
+"grdr-core" = ["grdr-crypto", "grdr-fastpath", "grdr-model"]
+"grdr-fastpath-ffi" = ["grdr-fastpath"]
+"grdr-ffi" = ["grdr-core", "grdr-fastpath", "grdr-model"]
+"grdr-llm-proto" = ["grdr-model"]
+"grdr-mcp-proto" = ["grdr-model"]
+"grdr-messages" = ["grdr-strings"]
+"grdr-model" = ["grdr-crypto"]
+"grdr-peer-os" = ["grdr-os-service"]
+"grdr-ports-testkit" = ["grdr-ports"]
+"grdr-review" = ["grdr-model"]
+"grdr-sensor-windows" = ["grdr-os-service"]
+"grdr-wasm" = ["grdr-core", "grdr-fastpath", "grdr-model"]
+
+[crypto_boundary]
+# ARCH-006: cryptography primitive crates may only be directly linked by grdr-crypto.
+sole_crypto_crate = "grdr-crypto"
+restricted_crates = [
+  "sha2",
+  "sha3",
+  "hmac",
+  "ed25519-dalek",
+  "chacha20poly1305",
+  "ring",
+  "aws-lc-rs",
+  "aes-gcm",
+  "x25519-dalek",
+  "rand",
+]
+
+[privileged_boundary]
+# ARCH-004: privileged Layer 4 programs must remain covered by security/trust-core.paths
+# and must not depend directly on unapproved runtime parsers.
+clock_reader = "grdr-os-clock"
+randomness_reader = "grdr-crypto"
+allowed_privileged_decoders = ["grdr-proto", "grdr-update"]
+os_adapters = [
+  "grdr-ipc-os",
+  "grdr-os-clock",
+  "grdr-os-service",
+  "grdr-peer-os",
+  "grdr-sandbox-engine",
+  "grdr-sensor-linux",
+  "grdr-sensor-macos",
+  "grdr-sensor-windows",
+]
+ffi_crates = ["grdr-fastpath-ffi", "grdr-ffi"]

@@ -15,7 +15,7 @@ use grdr_core::session::SessionRuleState;
 use grdr_crypto::SigningKeypair;
 use grdr_model::{
     ActionAttempt, ActionClass, CodedError, ControlPoint, DecisionReceipt, Grant, KillSwitchState,
-    PolicyPack, TrustedKeyInfo, Verdict,
+    PolicyPack, SigningKeypairExt as _, TrustedKeyInfo, Verdict,
 };
 use grdr_ports::{DecisionEnginePort, StorePort};
 use grdr_proto::{EngineCommand, EngineReply, EvaluateAttemptPayload, IpcMessage, VerdictReply};

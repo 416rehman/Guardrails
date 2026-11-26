@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 
 use grdr_crypto::{SigningKeypair, sha256_hex, verify_bytes};
-use grdr_model::{SignatureStatus, TrustedKeyInfo};
+use grdr_model::{SignatureStatus, SigningKeypairExt as _, TrustedKeyInfo};
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 

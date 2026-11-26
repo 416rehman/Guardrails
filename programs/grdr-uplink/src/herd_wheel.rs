@@ -4,7 +4,7 @@
 //! Intrusive O(1) timing wheel, compact 1M+ device initialization, and per-cell
 //! sliding-window rate measurement for the S-23 Fleet Herd Simulator.
 
-use sha2::{Digest, Sha256};
+use grdr_crypto::sha256_digest;
 
 use crate::backoff::SplitMix64;
 use crate::schedule::{FleetSchedule, deterministic_phase_ms};
@@ -123,7 +123,7 @@ pub fn build_devices(
     schedule: &FleetSchedule,
 ) -> Vec<SimDevice> {
     let mut devices = Vec::with_capacity(device_count);
-    let seed_digest = Sha256::digest(schedule.phase_salt.as_bytes());
+    let seed_digest = sha256_digest(schedule.phase_salt.as_bytes());
     let base_seed = u64::from_le_bytes(
         seed_digest
             .get(..8)

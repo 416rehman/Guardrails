@@ -11,10 +11,10 @@ surface = "public"
 renders = "none"
 
 [dependencies]
+grdr-crypto = { workspace = true }
 grdr-model = { workspace = true }
 grdr-ports = { workspace = true }
 jiff = { workspace = true }
-sha2 = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]

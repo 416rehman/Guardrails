@@ -20,7 +20,7 @@ jobs:
   docs:
     name: Docs rules of design/34
     runs-on: ubuntu-26.04
-    timeout-minutes: 5
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -34,7 +34,7 @@ jobs:
       - id: toolchain
         uses: $/.github/actions/tree-paths
         with:
-          install: "false"
+          install: "true"
       - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
         shell: bash
         env:
@@ -45,4 +45,10 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha }}
           BODY: ${{ github.event.pull_request.body }}
         run: node .claude/hooks/docs-check.mjs --ci
-      - run: node --test .claude/hooks/branch-check.test.mjs .claude/hooks/ci-stop.test.mjs .agents/hooks/agy-pre-tool-use.test.mjs
+      - run: node --test .claude/hooks/branch-check.test.mjs .claude/hooks/ci-stop.test.mjs .claude/hooks/design-check.test.mjs .claude/hooks/docs-check.test.mjs .claude/hooks/security-audit-check.test.mjs .claude/hooks/structure-check.test.mjs .claude/hooks/visual-audit-check.test.mjs .agents/hooks/agy-pre-tool-use.test.mjs
+      - run: node scripts/check-architecture.mjs
+      - env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/licence-lint.mjs
+      - run: node scripts/verify-deploy-artifacts.mjs

@@ -1,10 +1,12 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
 use std::collections::BTreeMap;
 use thiserror::Error;
 
 /// Errors raised while parsing `contracts/interface/*.toml` files (`GRDR-GEN-*`).
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum TomlParseError {
-    #[error("GRDR-GEN-0001: TOML syntax error on line {line}: {detail}")]
+    #[error("GRDR-GEN-0007: TOML syntax error on line {line}: {detail}")]
     Syntax { line: usize, detail: String },
 }
 

@@ -7,6 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use grdr_crypto::SigningKeypair;
+use grdr_model::SigningKeypairExt as _;
 use grdr_update::{
     AirgapArtifact, AirgapBundleEntry, AirgapBundleManifest, RolloutHaltEntry, RootKeyRole,
     RootMetadata, SignedMetadata, TufRole, TufRootKind, canonical_sha256, sign_dsse_envelope,

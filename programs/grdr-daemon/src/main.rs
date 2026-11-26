@@ -262,8 +262,11 @@ mod tests {
 
     #[tokio::test]
     async fn daemon_rejects_tampered_server_packs_and_writes_signed_floor_bundle() {
-        use grdr_crypto::{SigningKeypair, verify_floor_table};
-        use grdr_model::{Device, DeviceCheckinResponse, Mode, SignatureStatus, SignedFloorBundle};
+        use grdr_crypto::SigningKeypair;
+        use grdr_model::{
+            Device, DeviceCheckinResponse, Mode, SignatureStatus, SignedFloorBundle,
+            SigningKeypairExt as _, verify_floor_table,
+        };
 
         let floor_dir =
             std::env::temp_dir().join(format!("grdr-daemon-floor-{}", std::process::id()));

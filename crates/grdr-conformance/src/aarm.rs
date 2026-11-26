@@ -5,11 +5,12 @@
 use std::collections::BTreeSet;
 
 use grdr_core::policy::{essentials_pack, evaluate, evaluate_mut};
-use grdr_crypto::{SigningKeypair, verify_receipt};
+use grdr_crypto::SigningKeypair;
 use grdr_model::eval::add_seconds;
 use grdr_model::{
     ActionAttempt, ActionClass, ApprovalGrade, ControlPoint, Grant, GrantScope, KillSwitchState,
-    PolicyPack, PolicyRule, RuleMatch, SignatureStatus, Verdict,
+    PolicyPack, PolicyRule, RuleMatch, SignatureStatus, SigningKeypairExt as _, Verdict,
+    verify_receipt,
 };
 use grdr_policy_ref::{
     BoundaryObserver, DeriveInput, DeterminingForbid, InputValidity, LossBehaviour,

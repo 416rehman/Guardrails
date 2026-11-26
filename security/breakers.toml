@@ -1,0 +1,42 @@
+# Security review tier circuit breakers (docs/design/35 section 2.2, ADR-0029).
+schema = "grdr.security.breakers.v1"
+
+[governance]
+release_authority = "lead-security"
+release_requires_eval_acceptance = "eval-security"
+requires_root_cause_note = true
+ai_review_max_rounds = 3
+incident_eval_set_floor_for_low_expansion = 50
+
+[breakers.low_tier_revert_rate]
+window_days = 28
+max_revert_rate_pct = 3.0
+action = "promote_low_to_medium"
+cooldown_days = 28
+description = "A low-tier revert rate above 3% in 28 days routes all low-tier changes through medium-tier evaluators for 28 days."
+
+[breakers.low_tier_vulnerability]
+severities = ["V1", "V2"]
+action = "promote_low_to_medium"
+cooldown_days = 28
+description = "Any V1 or V2 vulnerability traced to a low-tier merge routes low-tier changes through medium-tier evaluators for 28 days."
+
+[breakers.medium_tier_defect_rate]
+window_days = 28
+min_sample_rate_pct = 20.0
+max_defect_rate_pct = 5.0
+action = "promote_medium_to_high"
+cooldown_days = 28
+description = "A medium-tier sampled defect rate over 5% sends every medium change through the high-tier evaluator set for 28 days."
+
+[breakers.trust_core_ring1_regression]
+ring = 1
+action = "freeze_trust_core_to_fixes"
+release_requirement = "three_arm_proof_and_new_oracle"
+description = "A trust-core regression in ring 1 freezes trust-core changes to fixes until resolved with a three-arm proof and new oracle."
+
+[breakers.layer_quarter_v1_burst]
+window_days = 90
+max_v1_per_layer = 1
+action = "freeze_layer_features_and_prioritize_rereview"
+description = "Two V1 vulnerabilities in a quarter freeze feature work on that layer and place re-review first in the trust-core queue."

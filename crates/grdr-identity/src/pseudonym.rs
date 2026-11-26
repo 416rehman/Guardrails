@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+use grdr_crypto::hmac_sha256;
 use jiff::{Timestamp, tz::TimeZone};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct QuarterKey {
@@ -55,40 +55,6 @@ pub fn re_pseudonymize_for_org(
         format!("org:{pseudonym_epoch}:{device_pseudonym}").as_bytes(),
     );
     format!("prn_org_{pseudonym_epoch}_{}", encode_hex_prefix(&mac, 16))
-}
-
-fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
-    const BLOCK_SIZE: usize = 64;
-    let mut padded_key = [0u8; BLOCK_SIZE];
-    if key.len() > BLOCK_SIZE {
-        let hashed: [u8; 32] = Sha256::digest(key).into();
-        for (dst, src) in padded_key.iter_mut().zip(hashed.iter()) {
-            *dst = *src;
-        }
-    } else {
-        for (dst, src) in padded_key.iter_mut().zip(key.iter()) {
-            *dst = *src;
-        }
-    }
-
-    let mut ipad = [0x36u8; BLOCK_SIZE];
-    let mut opad = [0x5cu8; BLOCK_SIZE];
-    for (dst, k) in ipad.iter_mut().zip(padded_key.iter()) {
-        *dst ^= *k;
-    }
-    for (dst, k) in opad.iter_mut().zip(padded_key.iter()) {
-        *dst ^= *k;
-    }
-
-    let mut inner = Sha256::new();
-    inner.update(ipad);
-    inner.update(data);
-    let inner_hash: [u8; 32] = inner.finalize().into();
-
-    let mut outer = Sha256::new();
-    outer.update(opad);
-    outer.update(inner_hash);
-    outer.finalize().into()
 }
 
 fn encode_hex_prefix(bytes: &[u8], byte_count: usize) -> String {

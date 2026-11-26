@@ -1,0 +1,70 @@
+# Product Plan Quotas, Retention, Regions, and Support Terms (P11, docs/design/36 section 3).
+# Invariant: ZERO code-path toggles or feature flags here; SSO, SCIM, RBAC, audit,
+# customer-managed keys, Provider tier, and full console ship in every plan and shape.
+schema = "grdr.plans.v1"
+
+[plans.free]
+display_name = "Free"
+shown_by_default = true
+max_organisations = 1
+max_active_endpoints = 10
+structural_retention_days = 30
+receipt_retention_days = 395
+audit_retention_days = 0 # unlimited; audit chain is never truncated
+regions = ["default"]
+support_tier = "community"
+sla_id = "none"
+monthly_usd_per_endpoint = 0
+annual_usd_per_endpoint = 0
+
+[plans.team]
+display_name = "Team"
+shown_by_default = true
+max_organisations = 10
+max_active_endpoints = 5000
+structural_retention_days = 184
+receipt_retention_days = 395
+audit_retention_days = 0
+regions = ["us", "eu"]
+support_tier = "email_2_business_days"
+sla_id = "sla_team_99_5"
+monthly_usd_per_endpoint = 15
+annual_usd_per_endpoint = 12
+token_markup_pct = 10
+
+[plans.enterprise]
+display_name = "Enterprise"
+shown_by_default = false
+max_organisations = 1000
+max_active_endpoints = 100000
+structural_retention_days = 365
+receipt_retention_days = 730
+audit_retention_days = 0
+regions = ["us", "eu", "uk", "dedicated"]
+support_tier = "named_contact_priority"
+sla_id = "sla_enterprise_99_8"
+dpa_and_dora_addendum = "negotiated"
+
+[plans.provider_wholesale]
+display_name = "Provider"
+shown_by_default = false
+max_organisations = 500
+nfr_endpoints = 25
+structural_retention_days = 184
+receipt_retention_days = 395
+audit_retention_days = 0
+regions = ["us", "eu", "uk"]
+support_tier = "partner_channel"
+sla_id = "sla_team_99_5"
+monthly_usd_per_endpoint = 6
+
+[plans.self_hosted_support]
+display_name = "Self-hosted Support"
+shown_by_default = false
+regions = ["self_hosted"]
+support_tier = "supported_release_lines_only"
+sla_id = "response_targets_only"
+standard_usd_per_endpoint_month = 2
+standard_min_annual_usd = 5000
+priority_usd_per_endpoint_month = 4
+priority_min_annual_usd = 20000

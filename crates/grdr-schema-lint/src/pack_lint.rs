@@ -131,14 +131,11 @@ pub fn lint_pack_manifest(
     }
 
     for snippet in &manifest.rule_snippets {
-        let collapsed = normalize_snippet_ws(snippet);
-        for pat in FORBIDDEN_EXECUTION_PATTERNS {
-            if collapsed.contains(pat) {
-                findings.push(p7_finding(
-                    &label,
-                    &format!("P7 violation: embedded snippet contains `{}`", pat.trim()),
-                ));
-            }
+        if let Some(pat) = first_forbidden_execution_pattern(snippet) {
+            findings.push(p7_finding(
+                &label,
+                &format!("P7 violation: embedded snippet contains `{pat}`"),
+            ));
         }
     }
 
@@ -226,6 +223,15 @@ pub fn lint_pack_manifest(
     }
 
     Ok(findings)
+}
+
+#[must_use]
+pub fn first_forbidden_execution_pattern(snippet: &str) -> Option<&'static str> {
+    let collapsed = normalize_snippet_ws(snippet);
+    FORBIDDEN_EXECUTION_PATTERNS
+        .iter()
+        .find(|pat| collapsed.contains(*pat))
+        .map(|pat| pat.trim())
 }
 
 fn normalize_snippet_ws(raw: &str) -> String {

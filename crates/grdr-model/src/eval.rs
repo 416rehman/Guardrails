@@ -2,7 +2,6 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
 use jiff::Timestamp;
-use sha2::{Digest, Sha256};
 
 use crate::domain::{ActionClass, ApprovalGrade, Mode};
 use crate::policy::{PolicyPack, PolicyRule, RuleMatch};
@@ -319,36 +318,7 @@ pub fn add_seconds(ts: Timestamp, seconds: i64) -> Timestamp {
     Timestamp::from_second(ts.as_second().saturating_add(seconds)).unwrap_or(ts)
 }
 
-pub fn sha256_hex(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    let mut out = String::with_capacity(64);
-    for byte in digest {
-        out.push(hex_nibble(byte >> 4));
-        out.push(hex_nibble(byte & 0x0f));
-    }
-    out
-}
-
-fn hex_nibble(value: u8) -> char {
-    match value & 0x0f {
-        0 => '0',
-        1 => '1',
-        2 => '2',
-        3 => '3',
-        4 => '4',
-        5 => '5',
-        6 => '6',
-        7 => '7',
-        8 => '8',
-        9 => '9',
-        10 => 'a',
-        11 => 'b',
-        12 => 'c',
-        13 => 'd',
-        14 => 'e',
-        _ => 'f',
-    }
-}
+pub use grdr_crypto::sha256_hex;
 
 #[cfg(test)]
 mod tests {

@@ -5,9 +5,9 @@ use std::fs;
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 
+use grdr_crypto::sha256_hex;
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension};
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use grdr_model::CodedError;
@@ -400,14 +400,4 @@ fn check_running_fence(state: &JobState, fence: FencingToken) -> Result<(), Code
             "Only Running jobs accept step or terminal updates.",
         )),
     }
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    let mut out = String::with_capacity(digest.len().saturating_mul(2));
-    for byte in digest {
-        use std::fmt::Write as _;
-        let _ = write!(out, "{byte:02x}");
-    }
-    out
 }

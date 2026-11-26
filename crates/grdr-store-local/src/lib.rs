@@ -286,6 +286,7 @@ mod tests {
             signature_verified: None,
         };
 
+        use grdr_model::SigningKeypairExt as _;
         let snapshot = PersistedDaemonSnapshot {
             schema_version: SNAPSHOT_SCHEMA_VERSION,
             device_id: "dev-1".into(),

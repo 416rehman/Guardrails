@@ -8,7 +8,8 @@ use grdr_model::error::{CODE_CONFLICT, CODE_NOT_FOUND};
 use grdr_model::eval::add_seconds;
 use grdr_model::{
     ApprovalRequest, ApprovalState, AuditEntry, CodedError, DecideApprovalInput, Finding, Grant,
-    GrantScope, KillAction, KillSwitchInput, KillSwitchState, UpdateFindingInput,
+    GrantScope, KillAction, KillSwitchInput, KillSwitchState, SigningKeypairExt as _,
+    UpdateFindingInput,
 };
 
 use super::AppState;

@@ -13,10 +13,10 @@ use uuid::Uuid;
 
 use grdr_core::compile::evaluate_compiled_floor;
 use grdr_core::policy::{essentials_pack, evaluate};
-use grdr_crypto::verify_floor_table;
 use grdr_model::{
     ActionAttempt, ActionClass, CompiledFloorTable, ControlPoint, DecideInput, DecisionReceipt,
     KillSwitchState, ProvenanceSource, SignatureStatus, TrustedKeyInfo, Verdict,
+    verify_floor_table,
 };
 
 use crate::RunError;

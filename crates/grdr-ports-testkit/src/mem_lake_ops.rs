@@ -4,7 +4,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use jiff::Timestamp;
-use sha2::{Digest, Sha256};
 
 use grdr_ports::{
     ContentKeyState, LakeBatch, LakeManifest, LakeManifestEntry, LakeRecord, LegalHold, OrgId,
@@ -252,11 +251,5 @@ pub(crate) fn day_from_ms(ms: i64) -> String {
 }
 
 fn sha256_str(input: &str) -> String {
-    let digest = Sha256::digest(input.as_bytes());
-    let mut out = String::with_capacity(64);
-    for b in digest {
-        use std::fmt::Write as _;
-        let _ = write!(out, "{b:02x}");
-    }
-    out
+    grdr_crypto::sha256_hex(input.as_bytes())
 }

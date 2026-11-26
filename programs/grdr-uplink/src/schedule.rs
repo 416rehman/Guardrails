@@ -6,9 +6,9 @@
 
 use std::collections::BTreeMap;
 
+use grdr_crypto::Sha256Hasher;
 use grdr_os_clock::Clock;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 use crate::backoff::{BackoffClass, OriginFailureController, full_jitter_backoff_ms};
 use crate::error::{UplinkError, UplinkHealthCondition};
@@ -345,11 +345,11 @@ pub fn deterministic_phase_ms(device_id: &[u8], phase_tag: &str, interval_ms: u6
     if interval_ms <= 1 {
         return 0;
     }
-    let mut hasher = Sha256::new();
+    let mut hasher = Sha256Hasher::new();
     hasher.update(device_id);
-    hasher.update([0x00]);
+    hasher.update(&[0x00]);
     hasher.update(phase_tag.as_bytes());
-    let digest = hasher.finalize();
+    let digest = hasher.finalize_digest();
     let head: [u8; 8] = digest
         .get(..8)
         .and_then(|s| s.try_into().ok())

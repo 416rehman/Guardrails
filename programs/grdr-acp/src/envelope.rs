@@ -9,7 +9,7 @@ use serde_json::Value;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use grdr_crypto::SigningKeypair;
-use grdr_model::TrustedKeyInfo;
+use grdr_model::{SigningKeypairExt as _, TrustedKeyInfo};
 use grdr_wire::{
     MAX_FRAME_BYTES, ReplayWindow, WireEnvelope, WireError, decode_frame, encode_frame,
     generate_nonce, sign_envelope,

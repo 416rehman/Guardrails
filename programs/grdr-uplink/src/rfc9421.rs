@@ -8,8 +8,7 @@ use std::collections::BTreeMap;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use grdr_crypto::SigningKeypair;
-use sha2::{Digest, Sha256};
+use grdr_crypto::{SigningKeypair, sha256_digest};
 
 use crate::error::UplinkError;
 
@@ -63,7 +62,7 @@ pub fn validate_rfc9421_token(field_name: &str, value: &str) -> Result<(), Uplin
 /// Format an RFC 9530 `Content-Digest` (`sha-256=:<base64>:`).
 #[must_use]
 pub fn compute_rfc9530_sha256_digest(body: &[u8]) -> String {
-    let digest = Sha256::digest(body);
+    let digest = sha256_digest(body);
     format!("sha-256=:{}:", STANDARD.encode(digest))
 }
 

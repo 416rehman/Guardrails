@@ -1,0 +1,28 @@
+name: Security & Trust-Core Work Item
+description: Open a non-embargoed security hardening, CI gate, or trust-core item
+title: "security: <short description>"
+labels: ["security"]
+body:
+  - type: markdown
+    attributes:
+      value: >
+        For undisclosed vulnerabilities, STOP and follow SECURITY.md private advisory instructions.
+  - type: textarea
+    id: threat_ref
+    attributes:
+      label: Threat model / security requirement reference
+      description: Reference security/threats.yaml, security/requirements.yaml, or docs/design/02 + 35.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Trust-core files and boundaries affected
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification gates and judge requirements
+    validations:
+      required: true

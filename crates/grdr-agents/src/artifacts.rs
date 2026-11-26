@@ -4,8 +4,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use grdr_crypto::{Sha256Hasher, encode_lower_hex};
 use jiff::Timestamp;
-use sha2::{Digest, Sha256};
 
 use grdr_model::{ArtifactEntry, ArtifactKind, ArtifactRiskFlag, ArtifactScope, slugify_id};
 
@@ -353,7 +353,7 @@ fn build_artifact_entry(
     now: Timestamp,
     warnings: &mut Vec<String>,
 ) -> Option<ArtifactEntry> {
-    let mut tree_hasher = Sha256::new();
+    let mut tree_hasher = Sha256Hasher::new();
     let mut total_bytes: u64 = 0;
     let mut file_count: usize = 0;
     let mut has_scripts = false;
@@ -391,14 +391,14 @@ fn build_artifact_entry(
             .unwrap_or(name)
             .replace('\\', "/");
 
-        let mut leaf_hasher = Sha256::new();
+        let mut leaf_hasher = Sha256Hasher::new();
         leaf_hasher.update(rel.as_bytes());
         leaf_hasher.update(b"\0");
         leaf_hasher.update(&bytes);
-        let leaf_digest = leaf_hasher.finalize();
+        let leaf_digest = leaf_hasher.finalize_digest();
 
         tree_hasher.update(rel.as_bytes());
-        tree_hasher.update(leaf_digest);
+        tree_hasher.update(&leaf_digest);
 
         if file
             .extension()
@@ -433,11 +433,8 @@ fn build_artifact_entry(
         return None;
     }
 
-    let digest_bytes = tree_hasher.finalize();
-    let mut digest_hex = String::with_capacity(64);
-    for byte in digest_bytes {
-        digest_hex.push_str(&format!("{byte:02x}"));
-    }
+    let digest_bytes = tree_hasher.finalize_digest();
+    let digest_hex = encode_lower_hex(&digest_bytes);
     let mut risk_flags = Vec::new();
     if has_scripts {
         risk_flags.push(ArtifactRiskFlag::HasScripts);

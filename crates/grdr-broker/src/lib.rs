@@ -64,6 +64,7 @@ pub struct McpBroker<E: DecisionEnginePort> {
 #[derive(Debug)]
 pub struct LlmBroker<E: DecisionEnginePort> {
     engine: E,
+    state: BrokerState,
     brand: String,
 }
 
@@ -184,8 +185,18 @@ impl<E: DecisionEnginePort> LlmBroker<E> {
     pub fn new(engine: E) -> Self {
         Self {
             engine,
+            state: BrokerState::Active,
             brand: DEFAULT_BRAND.to_owned(),
         }
+    }
+
+    #[must_use]
+    pub fn state(&self) -> BrokerState {
+        self.state
+    }
+
+    pub fn set_state(&mut self, state: BrokerState) {
+        self.state = state;
     }
 
     pub fn mediate_request(
@@ -194,15 +205,17 @@ impl<E: DecisionEnginePort> LlmBroker<E> {
         prompt_preview: &str,
         ctx: &McpAttemptContext,
     ) -> Result<BrokerOutcome, BrokerError> {
+        if self.state == BrokerState::Frozen {
+            return Err(BrokerError::SessionFrozen);
+        }
+
+        let safe_provider = sanitize_untrusted_text(&meta.provider);
+        let safe_model = sanitize_untrusted_text(meta.model.as_deref().unwrap_or("default"));
         let secret_hit = SECRET_PREFIXES.iter().any(|p| prompt_preview.contains(p));
         let target = if secret_hit {
-            format!("llm://{}/secret-egress-detected", meta.provider)
+            format!("llm://{safe_provider}/secret-egress-detected")
         } else {
-            format!(
-                "llm://{}/{}",
-                meta.provider,
-                meta.model.as_deref().unwrap_or("default")
-            )
+            format!("llm://{safe_provider}/{safe_model}")
         };
 
         let attempt = ActionAttempt {
@@ -216,7 +229,7 @@ impl<E: DecisionEnginePort> LlmBroker<E> {
             target,
             summary: format!(
                 "LLM request to {} ({} messages, {} tools)",
-                sanitize_untrusted_text(&meta.provider),
+                safe_provider,
                 meta.message_count,
                 meta.tool_names.len()
             ),
@@ -247,7 +260,7 @@ fn outcome_from_receipt(brand: &str, receipt: DecisionReceipt) -> BrokerOutcome 
                 brand: brand.to_owned(),
                 verb: AgentVerb::Held,
                 action_class,
-                status_code: "GRDR-DEC-STEPUP".into(),
+                status_code: "GRDR-DEC-0001".into(),
                 rule_id,
                 reference: receipt.receipt_id.clone(),
                 reason: receipt.reason.clone(),
@@ -262,7 +275,7 @@ fn outcome_from_receipt(brand: &str, receipt: DecisionReceipt) -> BrokerOutcome 
                 brand: brand.to_owned(),
                 verb: AgentVerb::Blocked,
                 action_class,
-                status_code: "GRDR-DEC-DENY".into(),
+                status_code: "GRDR-DEC-0002".into(),
                 rule_id,
                 reference: receipt.receipt_id.clone(),
                 reason: receipt.reason.clone(),
@@ -389,5 +402,25 @@ mod tests {
             .mediate_request(&meta, "Summarize lib.rs", &sample_ctx())
             .expect("mediate llm");
         assert_eq!(outcome, BrokerOutcome::Forward);
+
+        let dirty_meta = LlmRequestMeta {
+            provider: "openai\n\u{202E}evil".into(),
+            model: Some("gpt-5\r\n/../../admin".into()),
+            tool_names: vec![],
+            message_count: 1,
+            has_system_prompt: false,
+        };
+        assert!(
+            broker
+                .mediate_request(&dirty_meta, "hello", &sample_ctx())
+                .is_ok()
+        );
+
+        broker.set_state(BrokerState::Frozen);
+        assert_eq!(broker.state(), BrokerState::Frozen);
+        let frozen_err = broker
+            .mediate_request(&meta, "Summarize lib.rs", &sample_ctx())
+            .unwrap_err();
+        assert_eq!(frozen_err, BrokerError::SessionFrozen);
     }
 }

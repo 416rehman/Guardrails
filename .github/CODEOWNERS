@@ -1,0 +1,20 @@
+# Guardrails ADR CODEOWNERS (docs/design/30 section 14)
+# Accountability without bots: every owner below is a human maintainer listed in
+# docs/governance/MAINTAINERS.md. CODEOWNERS requests review only.
+
+*                               @416rehman
+/bpf/                           @416rehman
+/crates/grdr-crypto/            @416rehman
+/crates/grdr-core/              @416rehman
+/crates/grdr-fastpath/          @416rehman
+/crates/grdr-fastpath-ffi/      @416rehman
+/crates/grdr-ffi/               @416rehman
+/crates/grdr-wire/              @416rehman
+/crates/grdr-identity/          @416rehman
+/crates/grdr-update/            @416rehman
+/programs/                      @416rehman
+/contracts/                     @416rehman
+/security/                      @416rehman
+/.github/                       @416rehman
+/.claude/hooks/                 @416rehman
+/.agents/hooks/                 @416rehman

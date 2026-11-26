@@ -2,12 +2,10 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
 use std::collections::BTreeMap;
-use std::fmt::Write as _;
 
 use jiff::Timestamp;
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
 use grdr_crypto::{AeadKey, SigningKeypair, open_token, seal_token};
@@ -267,14 +265,7 @@ pub(crate) fn archive_seal_domain() -> &'static str {
     ARCHIVE_SEAL_DOMAIN
 }
 
-pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    let mut out = String::with_capacity(64);
-    for b in digest {
-        let _ = write!(out, "{b:02x}");
-    }
-    out
-}
+pub(crate) use grdr_crypto::sha256_hex;
 
 pub(crate) fn day_from_ms(ms: i64) -> Result<String, CodedError> {
     if ms < 0 {

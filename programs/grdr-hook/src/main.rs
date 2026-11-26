@@ -14,10 +14,9 @@ use uuid::Uuid;
 use grdr_agents::{HarnessKind, detect_hostname, parse_hook_stdin};
 use grdr_core::compile::evaluate_compiled_floor;
 use grdr_core::policy::{essentials_pack, evaluate, sha256_hex};
-use grdr_crypto::verify_floor_table;
 use grdr_model::{
     ActionAttempt, ActionClass, ControlPoint, DecideInput, DecisionReceipt, KillSwitchState, Mode,
-    SignatureStatus, SignedFloorBundle, TrustedKeyInfo, Verdict,
+    SignatureStatus, SignedFloorBundle, TrustedKeyInfo, Verdict, verify_floor_table,
 };
 
 #[derive(Debug, Parser)]
@@ -253,7 +252,7 @@ mod tests {
     use grdr_agents::parse_claude_hook_stdin;
     use grdr_core::compile::compile_floor_table;
     use grdr_crypto::SigningKeypair;
-    use grdr_model::{ApprovalGrade, PolicyPack, PolicyRule, RuleMatch};
+    use grdr_model::{ApprovalGrade, PolicyPack, PolicyRule, RuleMatch, SigningKeypairExt as _};
 
     #[test]
     fn failsafe_blocks_control_file_even_without_daemon() {

@@ -15,6 +15,7 @@ use grdr_comply::{
     resolve_retention_policy, validate_evidence_query, verify_evidence_bundle,
 };
 use grdr_crypto::SigningKeypair;
+use grdr_model::SigningKeypairExt as _;
 use jiff::Timestamp;
 use uuid::Uuid;
 

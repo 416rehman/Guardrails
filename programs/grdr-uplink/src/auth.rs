@@ -7,9 +7,8 @@ use std::collections::BTreeMap;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use grdr_crypto::{SigningKeypair, verify_bytes};
+use grdr_crypto::{SigningKeypair, sha256_digest, verify_bytes};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 use crate::error::UplinkError;
 use crate::rfc9421::{
@@ -143,7 +142,7 @@ impl EphemeralTransportSigner {
         let sig_b64 = self
             .transport_keypair
             .sign_bytes("grdr-uplink-v1", signature_base.as_bytes());
-        let sig_hash = Sha256::digest(sig_b64.as_bytes());
+        let sig_hash = sha256_digest(sig_b64.as_bytes());
         let request_sig_digest_b64 = STANDARD.encode(sig_hash);
 
         Ok(Rfc9421RequestHeaders {

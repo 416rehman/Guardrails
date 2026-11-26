@@ -7,7 +7,7 @@ use grdr_conformance::{
     sign_handover_ack, simulate_shim_fail_safe_eval,
 };
 use grdr_crypto::SigningKeypair;
-use grdr_model::{ActionClass, Verdict};
+use grdr_model::{ActionClass, SigningKeypairExt as _, Verdict};
 use jiff::Timestamp;
 
 #[test]

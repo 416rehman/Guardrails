@@ -11,7 +11,7 @@ use clap::{Args, ValueEnum};
 use grdr_agents::{detect_home_dir, detect_state_dir};
 use grdr_comply::deployment_fingerprint;
 use grdr_crypto::{SigningKeypair, fill_random, sha256_hex, verify_bytes};
-use grdr_model::{InstallProfile, TrustedKeyInfo};
+use grdr_model::{InstallProfile, SigningKeypairExt as _, TrustedKeyInfo};
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 

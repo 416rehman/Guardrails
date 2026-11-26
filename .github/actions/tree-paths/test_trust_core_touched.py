@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: The Guardrails ADR Authors
 """Tests for trust_core_touched.py:
 python -I -m unittest discover -s .github/actions/tree-paths -p "test_trust_core_touched.py" -v
 
@@ -187,7 +189,7 @@ class DifferentialTest(unittest.TestCase):
 class PathsModeTest(unittest.TestCase):
     def test_prints_each_matching_path_once_in_order(self):
         paths = [
-            "docs/a.md", "CONTRACTS/LIMITS.TOML", "Cargo.toml", "crates/grdr-core/src/lib.rs",
+            "docs/a.md", "CONTRACTS/LIMITS.TOML", "Cargo.toml", "crates/grdr-agents/src/lib.rs",
             "CONTRACTS/LIMITS.TOML", "crates/x/BUILD.RS", "Cargo.lock", "crates/grdr-model/src/lib.rs",
         ]
         result = run_matcher("--list", str(TRUST_CORE), "--paths", *paths)
@@ -195,7 +197,7 @@ class PathsModeTest(unittest.TestCase):
 
     def test_prints_nothing_when_no_path_matches(self):
         paths = [
-            "docs/a.md", "crates/grdr-core/src/lib.rs", "Cargo.toml", "Cargo.lock",
+            "docs/a.md", "crates/grdr-agents/src/lib.rs", "Cargo.toml", "Cargo.lock",
             "rust-toolchain.toml", "rustfmt.toml", "crates/x/clippy.toml",
         ]
         result = run_matcher("--list", str(TRUST_CORE), "--paths", *paths)
@@ -206,7 +208,7 @@ class PathsModeTest(unittest.TestCase):
         self.assertEqual((result.returncode, result.stdout), (1, "contracts/limits.toml\ncontracts/limits.toml/x\n"))
 
     def test_a_folder_line_matches_the_folder_itself(self):
-        folders = [".cargo", "crates/x/.cargo", "platform/macos", "crates/grdr-crypto", ".github/workflows"]
+        folders = [".cargo", "crates/x/.cargo", "crates/grdr-os-service", "crates/grdr-crypto", ".github/workflows"]
         result = run_matcher("--list", str(TRUST_CORE), "--paths", *folders)
         self.assertEqual((result.returncode, result.stdout.splitlines()), (1, folders))
 

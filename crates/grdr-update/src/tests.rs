@@ -4,6 +4,7 @@
 use std::collections::BTreeMap;
 
 use grdr_crypto::SigningKeypair;
+use grdr_model::SigningKeypairExt as _;
 use jiff::Timestamp;
 
 use crate::{

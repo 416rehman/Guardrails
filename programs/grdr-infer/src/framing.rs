@@ -4,15 +4,13 @@
 //! Keyed HMAC-SHA256 delimiter framing isolating untrusted prompt/tool payloads.
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroizing;
 
-use grdr_crypto::fill_random;
+use grdr_crypto::{constant_time_eq, fill_random, hmac_sha256};
 
 use crate::InferError;
 
 pub const MAX_FRAMED_RECORD_BYTES: usize = 64 * 1024;
-const HMAC_BLOCK_BYTES: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -224,58 +222,6 @@ fn validate_record_id(record_id: &str) -> Result<(), InferError> {
         )));
     }
     Ok(())
-}
-
-fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
-    let mut padded_key = [0_u8; HMAC_BLOCK_BYTES];
-    if key.len() > HMAC_BLOCK_BYTES {
-        let hashed = Sha256::digest(key);
-        for (dst, src) in padded_key.iter_mut().zip(hashed.iter()) {
-            *dst = *src;
-        }
-    } else {
-        for (dst, src) in padded_key.iter_mut().zip(key.iter()) {
-            *dst = *src;
-        }
-    }
-
-    let mut i_key_pad = [0x36_u8; HMAC_BLOCK_BYTES];
-    let mut o_key_pad = [0x5c_u8; HMAC_BLOCK_BYTES];
-    for (dst, src) in i_key_pad.iter_mut().zip(padded_key.iter()) {
-        *dst ^= *src;
-    }
-    for (dst, src) in o_key_pad.iter_mut().zip(padded_key.iter()) {
-        *dst ^= *src;
-    }
-
-    let mut inner = Sha256::new();
-    inner.update(i_key_pad);
-    inner.update(message);
-    let inner_digest = inner.finalize();
-
-    let mut outer = Sha256::new();
-    outer.update(o_key_pad);
-    outer.update(inner_digest);
-    let outer_digest = outer.finalize();
-
-    let mut out = [0_u8; 32];
-    for (dst, src) in out.iter_mut().zip(outer_digest.iter()) {
-        *dst = *src;
-    }
-    padded_key.zeroize();
-    i_key_pad.zeroize();
-    o_key_pad.zeroize();
-    out
-}
-
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter()
-        .zip(b.iter())
-        .fold(0_u8, |acc, (left, right)| acc | (left ^ right))
-        == 0
 }
 
 fn hex_lower(bytes: &[u8]) -> String {

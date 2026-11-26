@@ -523,6 +523,7 @@ dependencies = [
  "fiat-crypto",
  "rustc_version",
  "subtle",
+ "zeroize",
 ]
 
 [[package]]
@@ -636,6 +637,7 @@ dependencies = [
  "ed25519",
  "sha2",
  "subtle",
+ "zeroize",
 ]
 
 [[package]]
@@ -903,11 +905,11 @@ dependencies = [
 name = "grdr-agents"
 version = "0.1.0"
 dependencies = [
+ "grdr-crypto",
  "grdr-model",
  "jiff 1.0.2",
  "serde",
  "serde_json",
- "sha2",
  "uuid",
 ]
 
@@ -926,10 +928,10 @@ dependencies = [
 name = "grdr-blob"
 version = "0.1.0"
 dependencies = [
+ "grdr-crypto",
  "grdr-model",
  "grdr-ports",
  "grdr-ports-testkit",
- "sha2",
  "thiserror",
  "uuid",
 ]
@@ -973,7 +975,6 @@ dependencies = [
  "grdr-ports-testkit",
  "serde",
  "serde_json",
- "sha2",
  "thiserror",
 ]
 
@@ -1030,13 +1031,13 @@ name = "grdr-core"
 version = "0.1.0"
 dependencies = [
  "cedar-policy",
+ "grdr-crypto",
  "grdr-fastpath",
  "grdr-model",
  "grdr-schema",
  "jiff 1.0.2",
  "serde",
  "serde_json",
- "sha2",
  "thiserror",
  "uuid",
 ]
@@ -1049,12 +1050,10 @@ dependencies = [
  "chacha20poly1305",
  "ed25519-dalek",
  "getrandom",
- "grdr-model",
- "jiff 1.0.2",
- "serde",
- "serde_json",
  "sha2",
+ "subtle",
  "thiserror",
+ "zeroize",
 ]
 
 [[package]]
@@ -1161,7 +1160,6 @@ dependencies = [
  "jiff 1.0.2",
  "serde",
  "serde_json",
- "sha2",
  "thiserror",
  "uuid",
 ]
@@ -1177,7 +1175,6 @@ dependencies = [
  "jiff 1.0.2",
  "serde",
  "serde_json",
- "sha2",
  "thiserror",
  "tokio",
  "tracing",
@@ -1226,13 +1223,13 @@ dependencies = [
 name = "grdr-jobs"
 version = "0.1.0"
 dependencies = [
+ "grdr-crypto",
  "grdr-model",
  "grdr-ports",
  "grdr-ports-testkit",
  "rusqlite",
  "serde",
  "serde_json",
- "sha2",
  "thiserror",
  "uuid",
 ]
@@ -1251,7 +1248,6 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
- "sha2",
  "thiserror",
  "uuid",
  "zeroize",
@@ -1321,12 +1317,12 @@ dependencies = [
 name = "grdr-model"
 version = "0.1.0"
 dependencies = [
+ "grdr-crypto",
  "grdr-proto",
  "grdr-schema",
  "jiff 1.0.2",
  "serde",
  "serde_json",
- "sha2",
  "thiserror",
  "uuid",
 ]
@@ -1395,10 +1391,10 @@ name = "grdr-ports-testkit"
 version = "0.1.0"
 dependencies = [
  "grdr-core",
+ "grdr-crypto",
  "grdr-model",
  "grdr-ports",
  "jiff 1.0.2",
- "sha2",
  "uuid",
 ]
 
@@ -1450,7 +1446,6 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
- "sha2",
  "thiserror",
 ]
 
@@ -1603,7 +1598,6 @@ dependencies = [
  "prost",
  "serde",
  "serde_json",
- "sha2",
  "tokio",
  "tokio-stream",
  "tower",
@@ -1669,7 +1663,6 @@ dependencies = [
  "jiff 1.0.2",
  "serde",
  "serde_json",
- "sha2",
  "thiserror",
 ]
 
@@ -1714,7 +1707,6 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "sha2",
  "thiserror",
  "tokio",
  "tracing",

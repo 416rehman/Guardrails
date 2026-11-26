@@ -1,9 +1,9 @@
 # grdr-crypto
 
-layer: 2   privilege: none   renders: none
+layer: 1   privilege: none   renders: none
 surface: public   squad: security   trust core: yes
-stability: none yet (surfaces.toml arrives with #1122)
-design: docs/design/03-system-architecture-and-modularity.md section 2; notes: none yet (first content #334, #336, #337)
+stability: experimental (surfaces.toml)
+design: docs/design/03-system-architecture-and-modularity.md section 2; notes: ARCH-006 sole crypto boundary (Layer 1 so core/model share SHA-256 without cyclic deps)
 
 ## Purpose
 The only crate that links cryptography (ARCH-006); it composes vetted libraries only (D-63).

@@ -1,86 +1,82 @@
-# Trust-core paths (D-63, ADR-0043): strictly runtime security boundaries and core security/CI policy gates.
-# Routine dependency/tool pins (Cargo.toml, Cargo.lock, rust-toolchain.toml, security/supply-chain/build-tools.toml),
-# lint/format configs, release manifests, and agent/doc markdown sit outside trust-core so CI verifies them cleanly.
-# Each line is a git :(glob,icase) pathspec from the root, so ASCII case does not matter; `**/`
-# matches zero or more folders, and a folder line `x/**` also matches `x` itself.
-# .github/actions/tree-paths/trust_core_touched.py does the matching.
+# Trust-core paths (D-63, ADR-0043, ADR-0046): runtime security boundaries and CI/security policy gates.
+# Literal :(glob,icase) lines only (no brace expansion); validated by check_tree.py & test_trust_core_touched.py.
 
-# eBPF programs
+# Kernel sensors
 bpf/**
 
-# Windows driver and platform shells
-crates/grdr-driver-windows/**
-platform/windows/**
-
-# macOS Swift shell and system extensions
-platform/macos/**
-
-# Privileged core and approval helper
-programs/grdr-daemon/**
-crates/grdr-sandbox-engine/**
-programs/grdr-approve/**
-
-# IPC peer authentication
-crates/grdr-wire/src/peer_auth.rs
-crates/grdr-wire/src/peer_auth/**
-
-# Pack verifier, updater, and cryptography
-crates/grdr-update/**
-programs/grdr-updater/**
+# Cryptographic, policy, fastpath, FFI, wire, identity, update, reference model, sandbox, and OS adapter crates
 crates/grdr-crypto/**
-
-# Policy evaluator and fast path
-crates/grdr-core/src/policy.rs
-crates/grdr-core/src/policy/**
+crates/grdr-core/**
 crates/grdr-fastpath/**
-crates/grdr-core/src/compile/fastpath.rs
-crates/grdr-core/src/compile/fastpath/**
-
-# Tenant context and row-level security
-crates/grdr-ports/src/tenant.rs
-crates/grdr-ports/src/tenant/**
-crates/grdr-ports-kitkey/**
-crates/grdr-ports-testkit/**
-crates/grdr-rel-postgres/migrations/**
-crates/grdr-rel-postgres/src/tenant.rs
-crates/grdr-rel-postgres/src/tenant/**
-crates/grdr-rel-sqlite/src/tenant.rs
-crates/grdr-rel-sqlite/src/tenant/**
-crates/grdr-rel-sqlite/src/jobs.rs
-crates/grdr-rel-sqlite/src/jobs/**
-contracts/tenancy/lifecycle.toml
-programs/grdr-server/src/compose.rs
-programs/grdr-server/src/compose/**
-programs/grdr-server/src/api/authn.rs
-programs/grdr-server/src/api/authn/**
-programs/grdr-server/src/api/provider.rs
-programs/grdr-server/src/api/provider/**
-programs/grdr-server/src/ingest/verify.rs
-programs/grdr-server/src/ingest/verify/**
-programs/grdr-server/src/enrol.rs
-programs/grdr-server/src/enrol/**
-programs/grdr-server/src/store/consume.rs
-programs/grdr-server/src/store/consume/**
-programs/grdr-server/src/detect.rs
-programs/grdr-server/src/detect/**
-
-# FFI unsafe boundaries
-crates/grdr-ffi/**
 crates/grdr-fastpath-ffi/**
+crates/grdr-ffi/**
+crates/grdr-wire/**
+crates/grdr-ipc-os/**
+crates/grdr-peer-os/**
+crates/grdr-os-service/**
+crates/grdr-os-clock/**
+crates/grdr-identity/**
+crates/grdr-update/**
+crates/grdr-policy-ref/**
+crates/grdr-sandbox-engine/**
+crates/grdr-sensor-linux/**
+crates/grdr-sensor-macos/**
+crates/grdr-sensor-windows/**
+crates/grdr-export/**
+crates/grdr-store-local/**
+crates/grdr-model/src/signing.rs
+crates/grdr-model/src/eval.rs
 
-# Core security bounds, CI workflow definitions, and dependency licence/ban policies
+# Tenant witness, storage migrations, RLS/repos, and conformance testkit
+crates/grdr-ports/src/tenant.rs
+crates/grdr-ports-testkit/**
+crates/grdr-rel-postgres/src/migrations.rs
+crates/grdr-rel-postgres/src/dialect.rs
+crates/grdr-rel-postgres/src/store.rs
+crates/grdr-rel-postgres/src/repos.rs
+crates/grdr-rel-postgres/src/repos_core.rs
+crates/grdr-rel-postgres/src/wire_repos.rs
+crates/grdr-rel-sqlite/src/schema.rs
+crates/grdr-rel-sqlite/src/store.rs
+crates/grdr-rel-sqlite/src/repos_policy_user.rs
+
+# Endpoint and server trust-core programs & security modules
+programs/grdr-approve/**
+programs/grdr-daemon/**
+programs/grdr-engine/**
+programs/grdr-hook/**
+programs/grdr-uplink/**
+programs/grdr-updater/**
+programs/grdr-proxy/**
+programs/grdr-mcp/**
+programs/grdr-run/**
+programs/grdr-server/src/auth.rs
+programs/grdr-server/src/routes.rs
+programs/grdr-server/src/rpc/**
+programs/grdr-server/src/store/surfaces_operator.rs
+programs/grdr-server/src/store/surfaces_operator_helpers.rs
+programs/grdr-server/src/store/surfaces_operator_ops.rs
+programs/grdr-server/src/store/response_ops.rs
+
+# Contracts, security programme, CI workflows, and agent enforcement hooks
+contracts/cedar/**
+contracts/proto/**
 contracts/limits.toml
-security/trust-core.paths
-security/breakers.toml
-security/scorecard.toml
-.github/workflows/**
-security/supply-chain/licences.toml
-security/supply-chain/do-not-read.toml
+contracts/architecture.toml
+contracts/surfaces.toml
+contracts/support.toml
+contracts/codes/**
+security/**
+.github/**
+.claude/hooks/**
+.claude/settings.json
+.agents/hooks/**
+.agents/hooks.json
+
+# Supply-chain, cargo, gitattributes, submodules, and build script rules
 **/.cargo/**
 **/.gitattributes
 **/.gitmodules
-# Build-time code: every build script, and the folder (`<dir>/**`) of each workspace package whose
-# library target is a proc-macro, listed by the change that adds that target
 **/build.rs
 **/deny.toml
 **/deny.*.toml

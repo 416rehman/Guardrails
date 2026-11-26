@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+use grdr_crypto::Sha256Hasher;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 use grdr_model::DecisionReceipt;
 
@@ -85,17 +85,12 @@ impl AuditVerifyError {
 
 pub fn compute_chain_hash(prev_hash: &str, canonical_payload: &[u8]) -> String {
     let normalized_prev = normalize_digest_str(prev_hash).unwrap_or_else(|| prev_hash.to_owned());
-    let mut hasher = Sha256::new();
+    let mut hasher = Sha256Hasher::new();
     hasher.update(CHAIN_DOMAIN);
     hasher.update(normalized_prev.as_bytes());
     hasher.update(b"\0");
     hasher.update(canonical_payload);
-    let digest = hasher.finalize();
-    let mut hex = String::with_capacity(64);
-    for byte in digest {
-        hex.push(hex_nibble(byte >> 4));
-        hex.push(hex_nibble(byte & 0x0f));
-    }
+    let hex = hasher.finalize_hex();
     format!("sha256:{hex}")
 }
 
@@ -261,27 +256,6 @@ fn normalize_digest_str(raw: &str) -> Option<String> {
 
 fn is_sha256_hex(raw: &str) -> bool {
     raw.len() == 64 && raw.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
-}
-
-fn hex_nibble(value: u8) -> char {
-    match value & 0x0f {
-        0 => '0',
-        1 => '1',
-        2 => '2',
-        3 => '3',
-        4 => '4',
-        5 => '5',
-        6 => '6',
-        7 => '7',
-        8 => '8',
-        9 => '9',
-        10 => 'a',
-        11 => 'b',
-        12 => 'c',
-        13 => 'd',
-        14 => 'e',
-        _ => 'f',
-    }
 }
 
 #[cfg(test)]

@@ -17,8 +17,8 @@ use grdr_crypto::SigningKeypair;
 use grdr_model::eval::essentials_pack;
 use grdr_model::{
     ActionAttempt, DecideInput, DecisionReceipt, DiscoveryReport, Grant, InstallProfile,
-    KillSwitchState, PolicyPack, SessionSummary, SignedFloorBundle, TrustedKeyInfo, slugify_id,
-    summarize_sessions,
+    KillSwitchState, PolicyPack, SessionSummary, SignedFloorBundle, SigningKeypairExt as _,
+    TrustedKeyInfo, slugify_id, summarize_sessions,
 };
 use grdr_store_local::{LocalStore, PersistedDaemonSnapshot, SNAPSHOT_SCHEMA_VERSION};
 
