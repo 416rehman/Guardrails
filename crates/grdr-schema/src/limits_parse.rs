@@ -59,6 +59,26 @@ const ALLOWED_SECTIONS: &[(&str, &[&str])] = &[
         &["median_per_dev_day", "p95_per_dev_day", "max_opaque_pct"],
     ),
     (
+        "endpoint.linux_sensor",
+        &[
+            "catalogue_file_max_bytes",
+            "seccheck_line_max_bytes",
+            "cri_field_max_bytes",
+            "cri_annotations_max",
+            "trampoline_cap",
+            "trampoline_slots_enforce",
+        ],
+    ),
+    (
+        "endpoint.sandbox",
+        &[
+            "floor_pubkey_max_bytes",
+            "seccomp_denied_rules_max",
+            "default_memory_limit_bytes",
+            "default_cgroup_pids_max",
+        ],
+    ),
+    (
         "packs",
         &[
             "essentials_max_kb",
@@ -344,6 +364,20 @@ pub(crate) fn req_str<'a>(
         .ok_or_else(|| LimitsError::Parse {
             line: line_no,
             message: format!("expected quoted string for `{}`", full_key(section, key)),
+        })
+}
+
+pub(crate) fn req_u16(
+    sections: &SectionMap<'_>,
+    section: &str,
+    key: &str,
+) -> Result<u16, LimitsError> {
+    let (raw, line_no) = lookup(sections, section, key)?;
+    raw.replace('_', "")
+        .parse::<u16>()
+        .map_err(|_| LimitsError::Parse {
+            line: line_no,
+            message: format!("expected u16 for `{}`", full_key(section, key)),
         })
 }
 

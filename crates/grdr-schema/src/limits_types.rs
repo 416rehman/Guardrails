@@ -23,6 +23,26 @@ pub struct EndpointLimits {
     pub latency_ms: EndpointLatencyMs,
     pub ipc: EndpointIpcLimits,
     pub prompts: EndpointPromptLimits,
+    pub linux_sensor: EndpointLinuxSensorLimits,
+    pub sandbox: EndpointSandboxLimits,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EndpointLinuxSensorLimits {
+    pub catalogue_file_max_bytes: u64,
+    pub seccheck_line_max_bytes: usize,
+    pub cri_field_max_bytes: usize,
+    pub cri_annotations_max: usize,
+    pub trampoline_cap: u16,
+    pub trampoline_slots_enforce: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EndpointSandboxLimits {
+    pub floor_pubkey_max_bytes: usize,
+    pub seccomp_denied_rules_max: usize,
+    pub default_memory_limit_bytes: u64,
+    pub default_cgroup_pids_max: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

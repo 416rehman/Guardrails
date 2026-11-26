@@ -1513,13 +1513,17 @@ dependencies = [
  "clap",
  "grdr-core",
  "grdr-crypto",
+ "grdr-fastpath",
+ "grdr-ipc-os",
  "grdr-model",
+ "grdr-os-clock",
+ "grdr-peer-os",
  "grdr-sandbox-engine",
  "grdr-sensor-linux",
  "grdr-sensor-macos",
  "grdr-sensor-windows",
+ "grdr-wire",
  "jiff 1.0.2",
- "reqwest",
  "serde",
  "serde_json",
  "thiserror",
@@ -1534,9 +1538,11 @@ name = "grdr-sandbox-engine"
 version = "0.1.0"
 dependencies = [
  "grdr-model",
+ "libc",
  "serde",
  "serde_json",
  "thiserror",
+ "windows-sys",
 ]
 
 [[package]]
@@ -1570,6 +1576,9 @@ dependencies = [
  "grdr-ports",
  "grdr-ports-testkit",
  "jiff 1.0.2",
+ "libc",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 

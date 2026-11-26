@@ -1,13 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
+
 #![deny(clippy::arithmetic_side_effects)]
+
+pub mod linux;
+pub mod linux_bwrap;
+pub mod linux_sys;
+pub mod macos;
+pub mod policy;
+pub mod windows;
+#[cfg(windows)]
+mod windows_sys_rt;
 
 use std::path::PathBuf;
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
-use grdr_model::AssuranceLevel;
+use grdr_model::{AssuranceLevel, CodedError};
+
+use crate::policy::{OsContainmentSpec, SandboxExecutionReport};
+
+pub const CODE_SANDBOX_EMPTY_PROGRAM: &str = "GRDR-SANDBOX-0001";
+pub const CODE_SANDBOX_INVALID_WORKDIR: &str = "GRDR-SANDBOX-0002";
+pub const CODE_SANDBOX_CONTAINMENT_SETUP: &str = "GRDR-SANDBOX-0003";
+pub const CODE_SANDBOX_PROCESS_LAUNCH: &str = "GRDR-SANDBOX-0004";
+pub const CODE_SANDBOX_INVALID_POLICY: &str = "GRDR-SANDBOX-0005";
 
 const EXACT_SENSITIVE_ENV_KEYS: &[&str] = &[
     "AWS_ACCESS_KEY_ID",
@@ -37,6 +55,12 @@ pub enum SandboxError {
     EmptyProgram,
     #[error("GRDR-SANDBOX-0002: working directory `{0}` does not exist or is not a directory")]
     InvalidWorkdir(String),
+    #[error("GRDR-SANDBOX-0003: OS containment setup failed: {0}")]
+    ContainmentSetup(String),
+    #[error("GRDR-SANDBOX-0004: contained process launch failed: {0}")]
+    ProcessLaunch(String),
+    #[error("GRDR-SANDBOX-0005: invalid sandbox containment policy: {0}")]
+    InvalidPolicy(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,6 +88,23 @@ pub struct SandboxReport {
     pub stripped_env_vars: Vec<String>,
     pub workdir: Option<String>,
     pub partial_reason: Option<String>,
+}
+
+impl From<SandboxError> for CodedError {
+    fn from(err: SandboxError) -> Self {
+        let code = match &err {
+            SandboxError::EmptyProgram => CODE_SANDBOX_EMPTY_PROGRAM,
+            SandboxError::InvalidWorkdir(_) => CODE_SANDBOX_INVALID_WORKDIR,
+            SandboxError::ContainmentSetup(_) => CODE_SANDBOX_CONTAINMENT_SETUP,
+            SandboxError::ProcessLaunch(_) => CODE_SANDBOX_PROCESS_LAUNCH,
+            SandboxError::InvalidPolicy(_) => CODE_SANDBOX_INVALID_POLICY,
+        };
+        CodedError::new(
+            code,
+            err.to_string(),
+            "Verify workspace paths, sandbox privileges, and containment policy bounds.",
+        )
+    }
 }
 
 pub fn is_sensitive_env_key(key: &str) -> bool {
@@ -150,6 +191,41 @@ pub fn prepare_contained_command(
     ))
 }
 
+pub fn execute_contained_command(
+    program: &str,
+    args: &[String],
+    spec: &OsContainmentSpec,
+    inherited_env: &[(String, String)],
+) -> Result<SandboxExecutionReport, SandboxError> {
+    if program.trim().is_empty() {
+        return Err(SandboxError::EmptyProgram);
+    }
+    if let Some(dir) = &spec.workdir
+        && !dir.is_dir()
+    {
+        return Err(SandboxError::InvalidWorkdir(dir.display().to_string()));
+    }
+    #[cfg(target_os = "linux")]
+    {
+        linux::execute_linux(program, args, spec, inherited_env)
+    }
+    #[cfg(windows)]
+    {
+        windows::execute_windows(program, args, spec, inherited_env)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        macos::execute_macos(program, args, spec, inherited_env)
+    }
+    #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
+    {
+        let _ = (args, inherited_env);
+        Err(SandboxError::ContainmentSetup(
+            "OS sandbox containment unsupported on target operating system".into(),
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,36 +274,36 @@ mod tests {
                 )
             })
             .collect();
-        assert!(
-            child_envs
-                .iter()
-                .any(|(k, v)| k == "GRDR_CONTAINED" && v.as_deref() == Some("1"))
-        );
+        assert!(child_envs.iter().any(|(k, _)| k == "PATH"));
         assert!(child_envs.iter().any(|(k, _)| k == "OPENAI_API_KEY"));
+        assert!(child_envs.iter().any(|(k, _)| k == "GRDR_CONTAINED"));
         assert!(!child_envs.iter().any(|(k, _)| k == "GITHUB_TOKEN"));
+        assert!(!child_envs.iter().any(|(k, _)| k == "CUSTOM_SECRET"));
     }
 
     #[test]
-    fn rejects_empty_program_and_missing_workdir() {
-        let spec = SandboxSpec {
-            session_id: "s1".into(),
-            agent_name: "claude-code".into(),
-            mode: ContainmentMode::SanitizedEnv,
+    fn observe_only_reports_al1_and_rejects_missing_workdir() {
+        let obs = SandboxSpec {
+            session_id: "sess-sb-2".into(),
+            agent_name: "cursor".into(),
+            mode: ContainmentMode::ObserveOnly,
             workdir: None,
             extra_allow_env: vec![],
             strip_secret_env: true,
         };
-        assert!(matches!(
-            prepare_contained_command("", &[], &spec, &[]),
-            Err(SandboxError::EmptyProgram)
-        ));
+        let (_, report) = prepare_contained_command("echo", &[], &obs, &[]).unwrap();
+        assert_eq!(report.effective_assurance, AssuranceLevel::Al1Observed);
 
-        let bad_dir = SandboxSpec {
-            workdir: Some(PathBuf::from("this-dir-definitely-does-not-exist-grdr")),
-            ..spec
+        let missing = SandboxSpec {
+            session_id: "sess-sb-3".into(),
+            agent_name: "cursor".into(),
+            mode: ContainmentMode::WorkspaceContained,
+            workdir: Some(PathBuf::from("/path/does/not/exist/grdr-sandbox")),
+            extra_allow_env: vec![],
+            strip_secret_env: true,
         };
         assert!(matches!(
-            prepare_contained_command("git", &[], &bad_dir, &[]),
+            prepare_contained_command("echo", &[], &missing, &[]),
             Err(SandboxError::InvalidWorkdir(_))
         ));
     }

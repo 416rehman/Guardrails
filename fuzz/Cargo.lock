@@ -1082,8 +1082,11 @@ name = "grdr-sandbox-engine"
 version = "0.1.0"
 dependencies = [
  "grdr-model",
+ "libc",
  "serde",
+ "serde_json",
  "thiserror",
+ "windows-sys",
 ]
 
 [[package]]

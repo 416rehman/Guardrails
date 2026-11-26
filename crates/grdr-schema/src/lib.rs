@@ -8,6 +8,7 @@ pub mod cedar;
 pub mod limits;
 mod limits_parse;
 mod limits_types;
+mod limits_validate;
 pub mod registry;
 
 use std::collections::BTreeMap;

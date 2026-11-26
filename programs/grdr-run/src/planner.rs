@@ -21,11 +21,9 @@ use grdr_sensor_windows::{
     WindowsTier, compute_windows_assurance, plan_session_wfp_filters, plan_tool_containment,
     validate_sid_syntax,
 };
+use grdr_wire::limits::embedded_limits;
 
 use crate::RunError;
-
-pub const DEFAULT_MEMORY_LIMIT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-pub const DEFAULT_CGROUP_PIDS_MAX: u32 = 256;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -142,6 +140,16 @@ impl ContainmentStrategy {
     }
 }
 
+pub fn sandbox_default_limits() -> Result<(u64, u32, usize), RunError> {
+    let lim = embedded_limits()
+        .map_err(|e| RunError::InvalidPlan(format!("embedded limits unavailable: {e}")))?;
+    Ok((
+        lim.default_memory_limit_bytes,
+        lim.default_cgroup_pids_max,
+        lim.seccomp_denied_rules_max,
+    ))
+}
+
 pub fn build_launch_plan(
     req: &LaunchRequestSpec,
     inherited_env: &BTreeMap<String, String>,
@@ -245,6 +253,11 @@ fn validate_launch_request(req: &LaunchRequestSpec) -> Result<(), RunError> {
     {
         return Err(RunError::InvalidPlan(
             "wrap_tools strategy requires a non-empty tool_call_id".into(),
+        ));
+    }
+    if req.strategy != ContainmentStrategy::WrapTools && req.tool_call_id.is_some() {
+        return Err(RunError::InvalidPlan(
+            "tool_call_id is permitted only with wrap_tools strategy".into(),
         ));
     }
     Ok(())
@@ -358,16 +371,18 @@ fn build_platform_plan(
     req: &LaunchRequestSpec,
     strategy: ContainmentStrategy,
 ) -> Result<PlatformContainmentPlan, RunError> {
+    let (default_mem, default_pids, _) = sandbox_default_limits()?;
     match req.host_os {
-        HostOsKind::Windows => build_windows_plan(req, strategy),
+        HostOsKind::Windows => build_windows_plan(req, strategy, default_mem),
         HostOsKind::MacOs => build_macos_plan(req, strategy),
-        HostOsKind::Linux => Ok(build_linux_plan(req, strategy)),
+        HostOsKind::Linux => Ok(build_linux_plan(req, strategy, default_mem, default_pids)),
     }
 }
 
 fn build_windows_plan(
     req: &LaunchRequestSpec,
     strategy: ContainmentStrategy,
+    default_memory_limit_bytes: u64,
 ) -> Result<PlatformContainmentPlan, RunError> {
     let route = match strategy {
         ContainmentStrategy::Delegate => LaunchRoute::Delegate,
@@ -382,7 +397,7 @@ fn build_windows_plan(
         &req.sandbox_sid,
         &req.workspace_root,
         &req.protected_paths,
-        DEFAULT_MEMORY_LIMIT_BYTES,
+        default_memory_limit_bytes,
     )
     .map_err(|e| RunError::InvalidPlan(e.to_string()))?;
 
@@ -483,6 +498,8 @@ fn build_macos_plan(
 fn build_linux_plan(
     req: &LaunchRequestSpec,
     strategy: ContainmentStrategy,
+    default_memory_limit_bytes: u64,
+    default_cgroup_pids_max: u32,
 ) -> PlatformContainmentPlan {
     let mut rw_paths = vec![req.workspace_root.clone()];
     rw_paths.extend(req.state_dirs.clone());
@@ -499,9 +516,18 @@ fn build_linux_plan(
             "finit_module",
             "mount",
             "umount2",
+            "io_uring_setup",
+            "io_uring_enter",
+            "io_uring_register",
+            "bpf",
+            "unshare",
+            "setns",
+            "pivot_root",
+            "clone3",
+            "keyctl",
         ],
-        cgroup_memory_bytes: DEFAULT_MEMORY_LIMIT_BYTES,
-        cgroup_pids_max: DEFAULT_CGROUP_PIDS_MAX,
+        cgroup_memory_bytes: default_memory_limit_bytes,
+        cgroup_pids_max: default_cgroup_pids_max,
         unshare_network_except_proxy: strategy != ContainmentStrategy::RequestOnly,
     };
     PlatformContainmentPlan::Linux { plan }

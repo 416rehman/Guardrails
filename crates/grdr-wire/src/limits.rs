@@ -37,6 +37,16 @@ pub struct EmbeddedLimits {
     pub spine_interval_s: u64,
     pub heartbeat_interval_s: u64,
     pub reconnect_spread_ms: u64,
+    pub catalogue_file_max_bytes: u64,
+    pub seccheck_line_max_bytes: usize,
+    pub cri_field_max_bytes: usize,
+    pub cri_annotations_max: usize,
+    pub trampoline_cap: u16,
+    pub trampoline_slots_enforce: u16,
+    pub floor_pubkey_max_bytes: usize,
+    pub seccomp_denied_rules_max: usize,
+    pub default_memory_limit_bytes: u64,
+    pub default_cgroup_pids_max: u32,
 }
 
 static CACHED_LIMITS: OnceLock<Result<EmbeddedLimits, String>> = OnceLock::new();
@@ -97,5 +107,15 @@ fn load_from_schema() -> Result<EmbeddedLimits, String> {
         spine_interval_s: cfg.uplink.schedule.spine_interval_s,
         heartbeat_interval_s: cfg.uplink.schedule.heartbeat_interval_s,
         reconnect_spread_ms: cfg.uplink.schedule.reconnect_spread_ms,
+        catalogue_file_max_bytes: cfg.endpoint.linux_sensor.catalogue_file_max_bytes,
+        seccheck_line_max_bytes: cfg.endpoint.linux_sensor.seccheck_line_max_bytes,
+        cri_field_max_bytes: cfg.endpoint.linux_sensor.cri_field_max_bytes,
+        cri_annotations_max: cfg.endpoint.linux_sensor.cri_annotations_max,
+        trampoline_cap: cfg.endpoint.linux_sensor.trampoline_cap,
+        trampoline_slots_enforce: cfg.endpoint.linux_sensor.trampoline_slots_enforce,
+        floor_pubkey_max_bytes: cfg.endpoint.sandbox.floor_pubkey_max_bytes,
+        seccomp_denied_rules_max: cfg.endpoint.sandbox.seccomp_denied_rules_max,
+        default_memory_limit_bytes: cfg.endpoint.sandbox.default_memory_limit_bytes,
+        default_cgroup_pids_max: cfg.endpoint.sandbox.default_cgroup_pids_max,
     })
 }
