@@ -12,9 +12,10 @@ use grdr_comply::{
     export_offline_bundle, verify_evidence_bundle,
 };
 use grdr_core::policy::{essentials_pack, evaluate};
-use grdr_crypto::{SigningKeypair, verify_receipt};
+use grdr_crypto::SigningKeypair;
 use grdr_model::{
-    ActionAttempt, ActionClass, ControlPoint, KillSwitchState, SignatureStatus, Verdict,
+    ActionAttempt, ActionClass, ControlPoint, KillSwitchState, SignatureStatus,
+    SigningKeypairExt as _, Verdict, verify_receipt,
 };
 use grdr_update::{
     AirgapArtifact, AirgapBundleEntry, AirgapBundleManifest, BundleApprovalState, RolloutHaltEntry,

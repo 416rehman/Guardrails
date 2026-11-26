@@ -1,0 +1,25 @@
+name: Feature or Architecture Work Item
+description: Propose a self-contained enhancement or RFC-linked work item
+title: "feat: <short description>"
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: design_ref
+    attributes:
+      label: Design doc and decision references
+      description: Cite governing docs/design/* files and D-nn / P-nn IDs.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Proposed scope and write set
+      description: Target crates, contracts, or UI views touched.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Verification commands and acceptance checks
+    validations:
+      required: true

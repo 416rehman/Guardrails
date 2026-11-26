@@ -9,7 +9,7 @@ use grdr_crypto::{SigningKeypair, verify_bytes};
 use grdr_mcp_proto::{McpAttemptContext, ToolDescriptor, parse_mcp_request};
 use grdr_model::{
     ActionAttempt, ActionClass, CodedError, DecisionReceipt, KillSwitchState, PolicyPack,
-    TrustedKeyInfo, Verdict,
+    SigningKeypairExt as _, TrustedKeyInfo, Verdict,
 };
 use grdr_ports::DecisionEnginePort;
 use jiff::Timestamp;

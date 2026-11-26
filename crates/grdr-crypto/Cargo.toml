@@ -5,7 +5,7 @@ edition = "2024"
 license = "Apache-2.0"
 
 [package.metadata.grdr]
-layer = 2
+layer = 1
 privilege = "none"
 surface = "public"
 renders = "none"
@@ -15,12 +15,10 @@ base64 = { workspace = true }
 chacha20poly1305 = { workspace = true }
 ed25519-dalek = { workspace = true }
 getrandom = { workspace = true }
-grdr-model = { workspace = true }
-jiff = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
 sha2 = { workspace = true }
+subtle = { workspace = true }
 thiserror = { workspace = true }
+zeroize = { workspace = true }
 
 [lints]
 workspace = true

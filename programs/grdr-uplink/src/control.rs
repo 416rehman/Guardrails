@@ -8,8 +8,8 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::io::{Read as _, Write as _};
 use std::path::PathBuf;
 
+use grdr_crypto::Sha256Hasher;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 use crate::error::{OfflineReason, UplinkError};
 use crate::staging_fs::{
@@ -314,7 +314,7 @@ impl OpaqueArtifactStager {
         let part_path = self.part_path(expected_sha256);
         let (mut file, _fd_meta) = open_regular_nofollow_read(&part_path)?;
 
-        let mut hasher = Sha256::new();
+        let mut hasher = Sha256Hasher::new();
         let mut buf = [0u8; STREAM_HASH_CHUNK_BYTES];
         let mut byte_len: u64 = 0;
         loop {
@@ -339,8 +339,7 @@ impl OpaqueArtifactStager {
         }
         drop(file);
 
-        let digest = hasher.finalize();
-        let actual_hex = bytes_to_lower_hex(&digest);
+        let actual_hex = hasher.finalize_hex();
         if actual_hex != expected_sha256 {
             return Err(UplinkError::StagingError {
                 detail: format!(
@@ -391,18 +390,4 @@ fn validate_sha256_hex(sha256: &str) -> Result<(), UplinkError> {
         });
     }
     Ok(())
-}
-
-fn bytes_to_lower_hex(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(bytes.len().saturating_mul(2));
-    for &b in bytes {
-        let hi = usize::from(b >> 4);
-        let lo = usize::from(b & 0x0f);
-        if let (Some(&c1), Some(&c2)) = (HEX.get(hi), HEX.get(lo)) {
-            out.push(char::from(c1));
-            out.push(char::from(c2));
-        }
-    }
-    out
 }

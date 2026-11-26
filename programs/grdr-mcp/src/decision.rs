@@ -14,13 +14,13 @@ use uuid::Uuid;
 use grdr_broker::{BrokerOutcome, McpBroker};
 use grdr_core::compile::evaluate_compiled_floor;
 use grdr_core::policy::{ReceiptDigestInput, compute_receipt_digest, essentials_pack, evaluate};
-use grdr_crypto::verify_floor_table;
 use grdr_mcp_proto::{
     McpAttemptContext, McpMethod, McpRequest, ToolDescriptor, mcp_call_to_attempt,
 };
 use grdr_model::{
     ActionAttempt, CodedError, CompiledFloorTable, DecideInput, DecisionReceipt, Grant,
     KillSwitchState, Mode, PolicyPack, SignatureStatus, TrustedKeyInfo, Verdict,
+    verify_floor_table,
 };
 use grdr_ports::DecisionEnginePort;
 

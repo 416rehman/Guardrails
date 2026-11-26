@@ -5,14 +5,14 @@ use jiff::Timestamp;
 use uuid::Uuid;
 
 use grdr_core::{detect, policy, session};
-use grdr_crypto::verify_receipt;
 use grdr_model::error::{CODE_INVALID_INPUT, CODE_NOT_FOUND};
 use grdr_model::eval::add_seconds;
 use grdr_model::{
     ActionAttempt, ApprovalRequest, ApprovalState, AuditEntry, BatchEventsInput,
     BatchEventsResponse, CodedError, DecideInput, DecisionReceipt, Device, DeviceCheckinRequest,
     DeviceCheckinResponse, Incident, SessionDetailResponse, SessionSummary, SignatureStatus,
-    TrustedKeyInfo, Verdict, slugify_id, summarize_session_turns, summarize_sessions,
+    SigningKeypairExt as _, TrustedKeyInfo, Verdict, slugify_id, summarize_session_turns,
+    summarize_sessions, verify_receipt,
 };
 
 use super::AppState;

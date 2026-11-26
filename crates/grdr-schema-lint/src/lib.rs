@@ -17,7 +17,8 @@ use serde::{Deserialize, Serialize};
 
 pub use cedar_lint::{lint_cedar_dir, lint_cedar_policy_in_mode, lint_cedar_schema_file};
 pub use pack_lint::{
-    EvidenceQueryDecl, FieldReadDecl, PackDataClass, PackKind, PackManifest, lint_pack_manifest,
+    EvidenceQueryDecl, FieldReadDecl, PackDataClass, PackKind, PackManifest,
+    first_forbidden_execution_pattern, lint_pack_manifest,
 };
 pub use proto_lint::{lint_proto_dir, lint_proto_source};
 pub use vocab_lint::{

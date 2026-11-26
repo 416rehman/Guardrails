@@ -7,9 +7,9 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64_URL;
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
-use sha2::{Digest, Sha256};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
-use crate::CryptoError;
+use crate::{CryptoError, Sha256Hasher};
 
 const TOKEN_FORMAT_VERSION: u8 = 1;
 const XNONCE_LEN: usize = 24;
@@ -21,6 +21,20 @@ pub struct AeadKey {
     bytes: [u8; 32],
 }
 
+impl Drop for AeadKey {
+    fn drop(&mut self) {
+        self.bytes.zeroize();
+    }
+}
+
+impl Zeroize for AeadKey {
+    fn zeroize(&mut self) {
+        self.bytes.zeroize();
+    }
+}
+
+impl ZeroizeOnDrop for AeadKey {}
+
 impl fmt::Debug for AeadKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AeadKey")
@@ -31,8 +45,8 @@ impl fmt::Debug for AeadKey {
 
 impl AeadKey {
     pub fn generate() -> Result<Self, CryptoError> {
-        let bytes = random_array::<32>()?;
-        Ok(Self { bytes })
+        let bytes = Zeroizing::new(random_array::<32>()?);
+        Ok(Self { bytes: *bytes })
     }
 
     pub fn from_bytes(bytes: [u8; 32]) -> Self {
@@ -40,13 +54,18 @@ impl AeadKey {
     }
 
     pub fn derive_subkey(&self, domain: &str) -> Self {
-        let mut hasher = Sha256::new();
+        let mut hasher = Sha256Hasher::new();
         hasher.update(AEAD_SUBKEY_PREFIX);
+        let len_bytes = u64::try_from(domain.len())
+            .unwrap_or(u64::MAX)
+            .to_le_bytes();
+        hasher.update(&len_bytes);
         hasher.update(domain.as_bytes());
-        hasher.update([0u8]);
-        hasher.update(self.bytes);
-        let digest: [u8; 32] = hasher.finalize().into();
-        Self { bytes: digest }
+        hasher.update(&[0u8]);
+        hasher.update(&self.bytes);
+        Self {
+            bytes: hasher.finalize_digest(),
+        }
     }
 }
 
@@ -56,29 +75,31 @@ pub fn seal_token(
     aad: &[u8],
     plaintext: &[u8],
 ) -> Result<String, CryptoError> {
-    let nonce_bytes = random_array::<XNONCE_LEN>()?;
+    let nonce_bytes = Zeroizing::new(random_array::<XNONCE_LEN>()?);
     let cipher = XChaCha20Poly1305::new(&Key::from(key.bytes));
-    let nonce = XNonce::from(nonce_bytes);
-    let effective_aad = domain_separated_aad(domain, aad);
-    let ciphertext = cipher
-        .encrypt(
-            &nonce,
-            Payload {
-                msg: plaintext,
-                aad: &effective_aad,
-            },
-        )
-        .map_err(|_| CryptoError::AeadEncrypt("XChaCha20-Poly1305 encryption failed".into()))?;
+    let nonce = XNonce::from(*nonce_bytes);
+    let effective_aad = Zeroizing::new(domain_separated_aad(domain, aad));
+    let ciphertext = Zeroizing::new(
+        cipher
+            .encrypt(
+                &nonce,
+                Payload {
+                    msg: plaintext,
+                    aad: &effective_aad,
+                },
+            )
+            .map_err(|_| CryptoError::AeadEncrypt("XChaCha20-Poly1305 encryption failed".into()))?,
+    );
 
-    let mut framed = Vec::with_capacity(
+    let mut framed = Zeroizing::new(Vec::with_capacity(
         1usize
             .saturating_add(XNONCE_LEN)
             .saturating_add(ciphertext.len()),
-    );
+    ));
     framed.push(TOKEN_FORMAT_VERSION);
-    framed.extend_from_slice(&nonce_bytes);
+    framed.extend_from_slice(&*nonce_bytes);
     framed.extend_from_slice(&ciphertext);
-    Ok(B64_URL.encode(framed))
+    Ok(B64_URL.encode(&*framed))
 }
 
 pub fn open_token(
@@ -87,9 +108,11 @@ pub fn open_token(
     aad: &[u8],
     token: &str,
 ) -> Result<Vec<u8>, CryptoError> {
-    let framed = B64_URL
-        .decode(token.trim())
-        .map_err(|_| CryptoError::InvalidToken)?;
+    let framed = Zeroizing::new(
+        B64_URL
+            .decode(token.trim())
+            .map_err(|_| CryptoError::InvalidToken)?,
+    );
     let Some(version) = framed.first().copied() else {
         return Err(CryptoError::InvalidToken);
     };
@@ -102,11 +125,12 @@ pub fn open_token(
     let Some(ciphertext) = framed.get(1usize.saturating_add(XNONCE_LEN)..) else {
         return Err(CryptoError::InvalidToken);
     };
-    let nonce_bytes =
-        <[u8; XNONCE_LEN]>::try_from(nonce_slice).map_err(|_| CryptoError::InvalidToken)?;
-    let nonce = XNonce::from(nonce_bytes);
+    let nonce_bytes = Zeroizing::new(
+        <[u8; XNONCE_LEN]>::try_from(nonce_slice).map_err(|_| CryptoError::InvalidToken)?,
+    );
+    let nonce = XNonce::from(*nonce_bytes);
     let cipher = XChaCha20Poly1305::new(&Key::from(key.bytes));
-    let effective_aad = domain_separated_aad(domain, aad);
+    let effective_aad = Zeroizing::new(domain_separated_aad(domain, aad));
     cipher
         .decrypt(
             &nonce,
@@ -135,14 +159,19 @@ fn random_array<const N: usize>() -> Result<[u8; N], CryptoError> {
 }
 
 fn domain_separated_aad(domain: &str, aad: &[u8]) -> Vec<u8> {
+    let domain_len = u64::try_from(domain.len())
+        .unwrap_or(u64::MAX)
+        .to_le_bytes();
     let mut out = Vec::with_capacity(
         AEAD_DOMAIN_PREFIX
             .len()
+            .saturating_add(domain_len.len())
             .saturating_add(domain.len())
             .saturating_add(1)
             .saturating_add(aad.len()),
     );
     out.extend_from_slice(AEAD_DOMAIN_PREFIX);
+    out.extend_from_slice(&domain_len);
     out.extend_from_slice(domain.as_bytes());
     out.push(0);
     out.extend_from_slice(aad);
@@ -179,6 +208,14 @@ mod tests {
         // Wrong domain fails verification.
         assert!(matches!(
             open_token(&page_key, "other.domain", aad, &sealed),
+            Err(CryptoError::InvalidToken)
+        ));
+
+        // Domain with NUL cannot alias domain/AAD split boundary.
+        let nul_tok = seal_token(&page_key, "a\0b", b"c", plaintext).unwrap();
+        assert!(open_token(&page_key, "a\0b", b"c", &nul_tok).is_ok());
+        assert!(matches!(
+            open_token(&page_key, "a", b"b\0c", &nul_tok),
             Err(CryptoError::InvalidToken)
         ));
 

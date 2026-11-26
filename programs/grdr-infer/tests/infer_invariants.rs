@@ -14,6 +14,7 @@ use grdr_infer::detector::{
 };
 use grdr_infer::framing::{FramedDataClass, SessionMacKey};
 use grdr_infer::ipc::{InferIpcHost, InferWireRequest, InferWireResponse};
+use grdr_model::SigningKeypairExt as _;
 use grdr_wire::{ReplayWindow, decode_frame, encode_frame, generate_nonce, sign_envelope};
 
 struct SlowFaultDetector;

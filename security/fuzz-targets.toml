@@ -1,0 +1,72 @@
+# Registered fuzz and differential targets (docs/design/35 section 2.5, SD-04).
+schema = "grdr.fuzz-targets.v1"
+
+[[target]]
+name = "fuzz_normalizers"
+component = "shell_powershell_path_normalizers"
+source = "fuzz/fuzz_targets/fuzz_normalizers.rs"
+oracle = "Real shell/path normalization invariants and panic-free bounded evaluation"
+schedule = ["pull_request", "nightly", "weekly"]
+
+[[target]]
+name = "fuzz_hook_codec"
+component = "hook_dialect_and_process_parsers"
+source = "fuzz/fuzz_targets/fuzz_hook_codec.rs"
+oracle = "Malformed inputs deny or return structured errors without panicking"
+schedule = ["nightly"]
+
+[[target]]
+name = "fuzz_wire_frame"
+component = "grdr_wire_frames"
+source = "fuzz/fuzz_targets/fuzz_wire_frame.rs"
+oracle = "Frame length caps, magic header, and JSON codec round-trip"
+schedule = ["nightly"]
+
+[[target]]
+name = "fuzz_cedar_compile"
+component = "cedar_semantics_and_layer_composition"
+source = "fuzz/fuzz_targets/fuzz_cedar_compile.rs"
+oracle = "Cedar compilation and floor-table deny-wins consistency"
+schedule = ["nightly"]
+
+[[target]]
+name = "fuzz_mcp_jsonrpc"
+component = "mcp_protocol_parser"
+source = "fuzz/fuzz_targets/fuzz_mcp_jsonrpc.rs"
+oracle = "JSON-RPC framing, target extraction, and bounds checks"
+schedule = ["nightly"]
+
+[[target]]
+name = "fuzz_llm_proto"
+component = "llm_protocol_parser"
+source = "fuzz/fuzz_targets/fuzz_llm_proto.rs"
+oracle = "Provider metadata parsing without leaking prompt text"
+schedule = ["nightly"]
+
+[[target]]
+name = "fuzz_tuf_dsse"
+component = "grdr_update_metadata"
+source = "fuzz/fuzz_targets/fuzz_tuf_dsse.rs"
+oracle = "TUF/DSSE deserialization, size caps, and verification rejection"
+schedule = ["nightly"]
+
+[[target]]
+name = "fuzz_otlp"
+component = "otlp_telemetry_receiver"
+source = "fuzz/fuzz_targets/fuzz_otlp.rs"
+oracle = "Bounded OTLP HTTP/protobuf ingestion, redaction, and Origin rejection"
+schedule = ["nightly"]
+
+[[target]]
+name = "fuzz_pack_manifest"
+component = "pack_verifier_and_validator"
+source = "fuzz/fuzz_targets/fuzz_pack_manifest.rs"
+oracle = "TOML pack parsing and P7 forbidden-field rejection"
+schedule = ["nightly"]
+
+[[target]]
+name = "fuzz_fastpath_scan"
+component = "grdr_fastpath_scanner"
+source = "fuzz/fuzz_targets/fuzz_fastpath_scan.rs"
+oracle = "No-panic bounded scanner matching grdr-core floor table semantics"
+schedule = ["nightly"]

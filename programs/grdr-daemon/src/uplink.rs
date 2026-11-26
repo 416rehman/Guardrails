@@ -6,14 +6,14 @@ use std::time::Duration;
 use jiff::Timestamp;
 use tracing::{info, warn};
 
-use grdr_crypto::{verify_grant, verify_pack};
 use grdr_model::proto_conv::{
     agent_to_proto, artifact_to_proto, attempt_to_proto, install_profile_to_proto, key_to_proto,
     mcp_to_proto, parse_ts, proto_to_device, proto_to_grant, proto_to_key, proto_to_kill_switch,
     proto_to_pack, receipt_to_proto,
 };
 use grdr_model::{
-    BatchEventsInput, DeviceCheckinRequest, DeviceCheckinResponse, KillSwitchState, SignatureStatus,
+    BatchEventsInput, DeviceCheckinRequest, DeviceCheckinResponse, KillSwitchState,
+    SignatureStatus, SigningKeypairExt as _, verify_grant, verify_pack,
 };
 use grdr_proto::api::inventory::{
     DeviceCheckinRequest as ProtoCheckinRequest, DeviceCheckinResponse as ProtoCheckinResponse,

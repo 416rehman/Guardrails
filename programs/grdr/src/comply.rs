@@ -13,6 +13,7 @@ use grdr_comply::{
     verify_evidence_bundle,
 };
 use grdr_crypto::SigningKeypair;
+use grdr_model::SigningKeypairExt as _;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 

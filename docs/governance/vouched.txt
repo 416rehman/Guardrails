@@ -1,0 +1,4 @@
+# Guardrails ADR Vouched Contributors List (docs/design/30, CONTRIBUTING.md)
+# Format: <github_handle>  # <basis> (<date>)
+# Qualification: one merged content contribution, one accepted issue with reproducer, or maintainer vouch.
+416rehman  # repository owner and primary maintainer (2026-01-01)

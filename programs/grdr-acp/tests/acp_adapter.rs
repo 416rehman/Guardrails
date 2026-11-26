@@ -10,7 +10,7 @@ use grdr_acp::{AcpError, DecisionClient, EvalFuture, LoopbackDaemonClient};
 use grdr_core::policy::ReceiptDigestInput;
 use grdr_core::policy::compute_receipt_digest;
 use grdr_crypto::SigningKeypair;
-use grdr_model::{ActionAttempt, DecisionReceipt, Verdict};
+use grdr_model::{ActionAttempt, DecisionReceipt, SigningKeypairExt as _, Verdict};
 use grdr_wire::{ReplayWindow, decode_frame, encode_frame, generate_nonce, sign_envelope};
 
 struct FixedVerdictClient {

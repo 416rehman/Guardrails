@@ -1,0 +1,111 @@
+# Complete inventory of non-test `unsafe` items across the workspace (docs/design/35 section 2.4, SD-01, ARCH-032).
+# Unlisted non-test `unsafe` items fail architecture lint.
+schema = "grdr.unsafe-register.v1"
+
+[[entry]]
+crate = "grdr-fastpath-ffi"
+file = "crates/grdr-fastpath-ffi/src/lib.rs"
+symbol = "read_utf8_arg"
+lines = "64-78"
+invariant = "Null pointer, zero length, and MAX_FASTPATH_STR_BYTES upper bound are checked before calling slice::from_raw_parts."
+owner = "core"
+verification = ["cargo test -p grdr-fastpath-ffi", "miri", "asan"]
+
+[[entry]]
+crate = "grdr-fastpath-ffi"
+file = "crates/grdr-fastpath-ffi/src/lib.rs"
+symbol = "grdr_fastpath_eval_rules"
+lines = "86-172"
+invariant = "Caller passes valid writable output pointers and bounded rule slices; rules_len <= MAX_FASTPATH_RULES is enforced before slice construction."
+owner = "core"
+verification = ["cargo test -p grdr-fastpath-ffi", "kani", "asan"]
+
+[[entry]]
+crate = "grdr-ffi"
+file = "crates/grdr-ffi/src/lib.rs"
+symbol = "grdr_ffi_eval_json"
+lines = "80-99"
+invariant = "Null pointer, zero length, and MAX_FFI_JSON_BYTES are checked before slice::from_raw_parts; UTF-8 validity is checked without panic."
+owner = "core"
+verification = ["cargo test -p grdr-ffi", "miri", "asan"]
+
+[[entry]]
+crate = "grdr-ffi"
+file = "crates/grdr-ffi/src/lib.rs"
+symbol = "grdr_ffi_essentials_pack_json"
+lines = "104-109"
+invariant = "Unique exported C ABI symbol name across workspace; zero raw pointer dereferences."
+owner = "core"
+verification = ["cargo test -p grdr-ffi"]
+
+[[entry]]
+crate = "grdr-ffi"
+file = "crates/grdr-ffi/src/lib.rs"
+symbol = "grdr_ffi_free_string"
+lines = "115-123"
+invariant = "Null pointer returns immediately; non-null pointers originate from CString::into_raw within grdr-ffi."
+owner = "core"
+verification = ["cargo test -p grdr-ffi", "miri", "asan"]
+
+[[entry]]
+crate = "grdr-ipc-os"
+file = "crates/grdr-ipc-os/src/windows_pipe.rs"
+symbol = "WindowsNamedPipeConnector::connect"
+lines = "153-219"
+invariant = "WaitNamedPipeW receives NUL-terminated UTF-16 pipe name slice whose backing Vec outlives the call."
+owner = "endpoint"
+verification = ["cargo test -p grdr-ipc-os"]
+
+[[entry]]
+crate = "grdr-ipc-os"
+file = "crates/grdr-ipc-os/src/windows_pipe.rs"
+symbol = "overlapped_read"
+lines = "222-250"
+invariant = "Overlapped struct and stack buffers outlive completion/cancellation before returning from Win32 ReadFile."
+owner = "endpoint"
+verification = ["cargo test -p grdr-ipc-os"]
+
+[[entry]]
+crate = "grdr-ipc-os"
+file = "crates/grdr-ipc-os/src/windows_pipe.rs"
+symbol = "overlapped_write"
+lines = "252-272"
+invariant = "Overlapped struct and slice buffer remain live until overlapped write finishes or CancelIoEx completes."
+owner = "endpoint"
+verification = ["cargo test -p grdr-ipc-os"]
+
+[[entry]]
+crate = "grdr-ipc-os"
+file = "crates/grdr-ipc-os/src/windows_pipe.rs"
+symbol = "finish_overlapped"
+lines = "274-326"
+invariant = "Valid Win32 pipe and manual-reset event handles; CancelIoEx waits synchronously via GetOverlappedResult before stack storage drops."
+owner = "endpoint"
+verification = ["cargo test -p grdr-ipc-os"]
+
+[[entry]]
+crate = "grdr-ipc-os"
+file = "crates/grdr-ipc-os/src/windows_pipe.rs"
+symbol = "create_manual_reset_event"
+lines = "328-340"
+invariant = "Return handle from CreateEventW is checked against null and INVALID_HANDLE_VALUE before wrapping in OwnedHandle."
+owner = "endpoint"
+verification = ["cargo test -p grdr-ipc-os"]
+
+[[entry]]
+crate = "grdr-ipc-os"
+file = "crates/grdr-ipc-os/src/windows_pipe.rs"
+symbol = "zeroed_overlapped"
+lines = "342-351"
+invariant = "Win32 OVERLAPPED is a C repr plain-old-data struct valid under zero-initialization."
+owner = "endpoint"
+verification = ["cargo test -p grdr-ipc-os"]
+
+[[entry]]
+crate = "grdr-os-clock"
+file = "crates/grdr-os-clock/src/lib.rs"
+symbol = "probe_os_boot_uptime_ns"
+lines = "280-310"
+invariant = "Win32 GetTickCount64 accepts no pointers; POSIX/Darwin clock_gettime uses valid stack libc::timespec and checks rc != 0 before reading."
+owner = "endpoint"
+verification = ["cargo test -p grdr-os-clock"]

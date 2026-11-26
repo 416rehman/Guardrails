@@ -1,0 +1,41 @@
+# Guardrails ADR AI Tool & Model Terms Register (docs/design/36 LBC-28, L-13)
+# Review cadence ceiling: 180 days. Tracks tools named in agent workflows & PR metadata.
+schema: grdr.model-terms.v1
+review_max_age_days: 180
+entries:
+  - provider: anthropic
+    tool: claude-code
+    plan: max_team_or_api
+    last_reviewed: "2026-11-25"
+    terms_clause: "Anthropic Commercial Terms / Consumer Terms output assignment & IP section"
+    output_ownership: assigned_to_customer_where_permissible
+    zero_retention_available: true
+    subagents_permitted: true
+    counsel_ref: L-13
+  - provider: google
+    tool: antigravity
+    plan: developer_or_enterprise_api
+    last_reviewed: "2026-11-25"
+    terms_clause: "Google Cloud / Gemini API Generative AI Terms"
+    output_ownership: customer_retains_rights
+    zero_retention_available: true
+    subagents_permitted: true
+    counsel_ref: L-13
+  - provider: openai
+    tool: codex
+    plan: api_or_business
+    last_reviewed: "2026-11-25"
+    terms_clause: "OpenAI Business Terms output ownership section"
+    output_ownership: assigned_to_customer
+    zero_retention_available: true
+    subagents_permitted: true
+    counsel_ref: L-13
+  - provider: local
+    tool: ollama
+    plan: local_open_weights
+    last_reviewed: "2026-11-25"
+    terms_clause: "Apache-2.0 / MIT / open weights run entirely offline on operator hardware"
+    output_ownership: user_local_execution
+    zero_retention_available: true
+    subagents_permitted: true
+    counsel_ref: L-13

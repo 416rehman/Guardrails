@@ -15,9 +15,9 @@ const STRUCTURAL_TARGET_KEYS: &[&str] = &["path", "file_path", "url", "command",
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProtoError {
-    #[error("GRDR-PROTO-0001: invalid protocol JSON payload: {0}")]
+    #[error("GRDR-LLM-0001: invalid protocol JSON payload: {0}")]
     Parse(String),
-    #[error("GRDR-PROTO-0002: failed serializing protocol payload: {0}")]
+    #[error("GRDR-LLM-0002: failed serializing protocol payload: {0}")]
     Serialize(String),
 }
 

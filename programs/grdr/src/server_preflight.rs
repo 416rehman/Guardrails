@@ -54,7 +54,7 @@ pub fn run_preflight(opts: &PreflightOptions<'_>, json: bool, strict: bool) -> E
         match serde_json::to_string_pretty(&report) {
             Ok(out) => println!("{out}"),
             Err(err) => {
-                eprintln!("GRDR-CLI-0001: failed serializing preflight report: {err}");
+                eprintln!("GRDR-CLI-0005: failed serializing preflight report: {err}");
                 return ExitCode::FAILURE;
             }
         }

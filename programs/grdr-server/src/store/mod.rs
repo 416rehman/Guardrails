@@ -42,7 +42,7 @@ use grdr_model::error::CODE_STORE_IO;
 use grdr_model::{
     ActionAttempt, ApprovalRequest, AuditEntry, BrowserAppPolicy, CodedError, DecisionReceipt,
     DeploymentKey, Device, Finding, Grant, IntegrationEntry, KillSwitchState, LiveEvent,
-    OrgPrivacyConfig, OtlpFanoutConfig, PolicyPack, StorageMode, Verdict,
+    OrgPrivacyConfig, OtlpFanoutConfig, PolicyPack, SigningKeypairExt as _, StorageMode, Verdict,
 };
 use grdr_ports::ProfileKind;
 #[cfg(test)]

@@ -1,0 +1,144 @@
+# Public and Internal Surface Stability Registry (docs/design/03 section 7, D-60, D-61, ARCH-007).
+schema = "grdr.surfaces.v1alpha1"
+
+[crates.grdr-proto]
+layer = 0
+stability = "experimental"
+publish = true
+notes = "Generated protobuf wire and contract messages (contracts/proto/grdr/*)."
+
+[crates.grdr-schema]
+layer = 0
+stability = "experimental"
+publish = true
+notes = "Embedded Cedar schemas (v1alpha1), operational limits loader, and validation contracts."
+
+[crates.grdr-model]
+layer = 1
+stability = "experimental"
+publish = true
+notes = "Domain vocabulary, LogSafe data classification, verdicts, and policy signing extensions."
+
+[crates.grdr-core]
+layer = 1
+stability = "experimental"
+publish = true
+public_third_party_exceptions = ["cedar_policy::Schema", "cedar_policy::Request", "cedar_policy::Entities"]
+notes = "Pure evaluation, session state, fastpath compilation, and audit chain verification; Cedar types tracked per ADR-0053 until beta graduation."
+
+[crates.grdr-crypto]
+layer = 1
+stability = "experimental"
+publish = true
+notes = "Sole workspace consumer of sha2, ed25519-dalek, chacha20poly1305, and getrandom (ARCH-006)."
+
+[crates.grdr-fastpath]
+layer = 1
+stability = "experimental"
+publish = true
+notes = "no_std floor evaluator and bounded field scanner."
+
+[crates.grdr-fastpath-ffi]
+layer = 1
+stability = "experimental"
+publish = true
+notes = "C ABI fastpath entrypoints."
+
+[crates.grdr-ffi]
+layer = 1
+stability = "experimental"
+publish = true
+notes = "C ABI JSON engine facade."
+
+[crates.grdr-wasm]
+layer = 1
+stability = "experimental"
+publish = true
+notes = "WebAssembly target binding for pure policy evaluation."
+
+[crates.grdr-compat]
+layer = 1
+stability = "experimental"
+publish = true
+notes = "Protocol and bundle compatibility range resolver (D-71)."
+
+[crates.grdr-llm-proto]
+layer = 1
+stability = "experimental"
+publish = true
+notes = "Model-provider metadata extraction without raw prompt retention."
+
+[crates.grdr-mcp-proto]
+layer = 1
+stability = "experimental"
+publish = true
+notes = "MCP JSON-RPC 2.0 frame parsing and structural argument inspection."
+
+[crates.grdr-review]
+layer = 1
+stability = "experimental"
+publish = true
+notes = "Sans-IO review queue scoring and bounded judge output schema."
+
+[crates.grdr-ports]
+layer = 2
+stability = "experimental"
+publish = true
+notes = "TenantCtx, clock, blob, bus, events, jobs, and relational port traits."
+
+[crates.grdr-ports-testkit]
+layer = 2
+stability = "experimental"
+publish = true
+notes = "In-memory conformance suite and adapters for port implementers."
+
+[crates.grdr-wire]
+layer = 2
+stability = "experimental"
+publish = true
+notes = "IPC/uplink framing, Ed25519 envelopes, and replay protection."
+
+[crates.grdr-strings]
+layer = 2
+stability = "experimental"
+publish = true
+notes = "ICU4X localization runtime and MessageFormat2 token formatting."
+
+[crates.grdr-messages]
+layer = 2
+stability = "internal"
+publish = false
+notes = "Generated typed language token accessors from contracts/interface/."
+
+[crates.grdr-ui-model]
+layer = 3
+stability = "experimental"
+publish = false
+notes = "Desktop/tray view-models and intents over MessageRef tokens."
+
+[crates.grdr-approve]
+layer = 4
+stability = "experimental"
+publish = false
+notes = "OS-native out-of-band and local step-up approval prompt binary."
+
+[crates.grdr-tray]
+layer = 4
+stability = "experimental"
+publish = false
+notes = "Status indicator tray client binary."
+
+[protocols.wire]
+version = "1"
+stability = "experimental"
+spec = "crates/grdr-wire"
+
+[protocols.cedar_schema]
+version = "grdr.cedar.v1alpha1"
+stability = "experimental"
+spec = "contracts/cedar/v1alpha1.cedarschema"
+
+[protocols.limits]
+version = "grdr.limits.v1alpha1"
+stability = "experimental"
+spec = "contracts/limits.toml"

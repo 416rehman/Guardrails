@@ -175,6 +175,7 @@ pub fn verify_dsse_envelope_with_limits(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use grdr_model::SigningKeypairExt as _;
 
     #[test]
     fn dsse_pae_matches_specification_format() {

@@ -8,7 +8,7 @@ use grdr_core::policy;
 use grdr_model::error::{CODE_CONFLICT, CODE_INVALID_INPUT, CODE_NOT_FOUND};
 use grdr_model::{
     ApprovalGrade, AuditEntry, CodedError, CreateRuleInput, Mode, PolicyRule, ReplaySummary,
-    UpdateRuleInput, UpdateRuleModeInput, slugify_id,
+    SigningKeypairExt as _, UpdateRuleInput, UpdateRuleModeInput, slugify_id,
 };
 
 use super::AppState;

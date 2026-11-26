@@ -263,7 +263,7 @@ pub fn decode_frame<T: DeserializeOwned>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use grdr_model::{ActionClass, DecideInput};
+    use grdr_model::{ActionClass, DecideInput, SigningKeypairExt as _};
 
     #[test]
     fn signs_frames_verifies_and_rejects_replay_or_tampering() {

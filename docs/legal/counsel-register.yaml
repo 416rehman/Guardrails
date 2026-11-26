@@ -1,0 +1,144 @@
+# Guardrails ADR Counsel Register (docs/design/36, L-01 to L-23)
+# Every item marked open prevents paid/commercial milestones listed in `blocks` until qualified
+# counsel resolves it. Zero-budget open-source work proceeds through foundation/pro-bono legal aid.
+schema: grdr.counsel-register.v1
+steward: Loonaro
+items:
+  - id: L-01
+    topic: Trademark clearance opinion for Guardrails ADR (Nice classes 9, 42)
+    status: open
+    blocks: []
+    gates_oss_repo: false
+    route: foundation_or_pro_bono
+  - id: L-02
+    topic: Trademark registrations for Guardrails ADR and Loonaro (US, EU)
+    status: open
+    blocks: []
+    gates_oss_repo: false
+    route: sponsor_or_foundation
+  - id: L-03
+    topic: Review TRADEMARKS.md conformance mark and fork naming policy
+    status: open
+    blocks: [first_public_release]
+    gates_oss_repo: false
+    route: foundation_or_pro_bono
+  - id: L-04
+    topic: Tax, VAT, and merchant-of-record structure for Stripe billing
+    status: open
+    blocks: [paid_hosted_invoicing]
+    gates_oss_repo: false
+    route: qualified_tax_counsel
+  - id: L-05
+    topic: CRA Article 13(8) support period and commercial LTS tailoring boundary
+    status: open
+    blocks: [paid_support, paid_lts_offer]
+    gates_oss_repo: false
+    route: qualified_eu_counsel
+  - id: L-06
+    topic: Binding legal wording for COVENANT.md and springing assignment escrow
+    status: open
+    blocks: [first_public_release]
+    gates_oss_repo: false
+    route: foundation_or_pro_bono
+  - id: L-07
+    topic: Hosted Terms of Service, AUP, DPA (EU SCCs + UK addendum), and SLA sign-off
+    status: open
+    blocks: [first_hosted_tenant]
+    gates_oss_repo: false
+    route: qualified_counsel
+  - id: L-08
+    topic: Third-party dependency licence policy review and dev-tool boundary advice
+    status: open
+    blocks: []
+    gates_oss_repo: false
+    route: foundation_or_pro_bono
+  - id: L-09
+    topic: OEM and runtime embedding agreement template and indemnity scope
+    status: open
+    blocks: [oem_contract_signature]
+    gates_oss_repo: false
+    route: qualified_counsel
+  - id: L-10
+    topic: MSP Provider wholesale agreement and DPA flow-down template
+    status: open
+    blocks: [provider_contract_signature]
+    gates_oss_repo: false
+    route: qualified_counsel
+  - id: L-11
+    topic: Copyrightability of human-instructed agent-authored code (US and EU)
+    status: open
+    blocks: [first_public_release, oem_contract_signature]
+    gates_oss_repo: false
+    route: foundation_or_pro_bono
+  - id: L-12
+    topic: Inbound Apache-2.0 section 5 sufficiency without DCO/CLA
+    status: open
+    blocks: [first_public_release]
+    gates_oss_repo: false
+    route: foundation_or_pro_bono
+  - id: L-13
+    topic: AI tool subscription terms, zero data retention, and subagent permissions
+    status: open
+    blocks: []
+    gates_oss_repo: false
+    route: foundation_or_pro_bono
+  - id: L-14
+    topic: Residual verbatim reproduction risk mitigation and snippet-scan sufficiency
+    status: open
+    blocks: [first_public_release]
+    gates_oss_repo: false
+    route: foundation_or_pro_bono
+  - id: L-15
+    topic: Patent exposure and freedom-to-operate policy for agent-authored code
+    status: open
+    blocks: [oem_contract_signature]
+    gates_oss_repo: false
+    route: qualified_ip_counsel
+  - id: L-16
+    topic: US EAR standard-cryptography export posture and EU dual-use public domain status
+    status: open
+    blocks: [paid_hosted_offer, oem_contract_signature]
+    gates_oss_repo: false
+    route: foundation_or_pro_bono
+  - id: L-17
+    topic: Sanctions screening denied-jurisdiction list (OFAC, EU, UK OFSI)
+    status: open
+    blocks: [first_hosted_tenant, paid_support]
+    gates_oss_repo: false
+    route: qualified_counsel
+  - id: L-18
+    topic: Review efficacy harness benign payloads against Wassenaar intrusion software rules
+    status: open
+    blocks: [public_efficacy_harness]
+    gates_oss_repo: false
+    route: foundation_or_pro_bono
+  - id: L-19
+    topic: EU CRA Annex III Class I/II classification and Article 32(5) self-assessment
+    status: open
+    blocks: [any_paid_offer]
+    gates_oss_repo: false
+    route: qualified_eu_counsel
+  - id: L-20
+    topic: EU Product Liability Directive (2024/2853) and US liability insurance cover
+    status: open
+    blocks: [hosted_beta, any_paid_offer]
+    gates_oss_repo: false
+    route: qualified_counsel
+  - id: L-21
+    topic: Design-partner non-commercial pilot letter template
+    status: open
+    blocks: [design_partner_signing]
+    gates_oss_repo: false
+    route: foundation_or_pro_bono
+  - id: L-22
+    topic: AGPL-3.0 vs Apache-2.0 server-licence commercial and CNCF impact review
+    status: open
+    blocks: [first_public_release]
+    gates_oss_repo: false
+    route: foundation_or_pro_bono
+  - id: L-23
+    topic: Comparative advertising clearance for competitor positioning and price anchors
+    status: open
+    blocks: [public_pricing_and_comparison_pages]
+    gates_oss_repo: false
+    route: qualified_counsel

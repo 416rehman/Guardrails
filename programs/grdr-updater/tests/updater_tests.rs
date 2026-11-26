@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use grdr_compat::{CompatMatrix, ProtocolCapability, SemVer};
 use grdr_crypto::SigningKeypair;
+use grdr_model::SigningKeypairExt as _;
 use grdr_model::api::TrustedKeyInfo;
 use grdr_os_clock::ManualClock;
 use grdr_update::{

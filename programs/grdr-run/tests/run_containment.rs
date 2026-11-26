@@ -11,7 +11,7 @@ use grdr_core::policy::compute_receipt_digest;
 use grdr_crypto::SigningKeypair;
 use grdr_model::{
     ActionAttempt, ActionClass, ApprovalGrade, AssuranceLevel, InstallProfile, Mode, PolicyPack,
-    PolicyRule, RuleMatch, Verdict,
+    PolicyRule, RuleMatch, SigningKeypairExt as _, Verdict,
 };
 use grdr_run::RunError;
 use grdr_run::gate::{

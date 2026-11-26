@@ -12,6 +12,7 @@ pub mod containment;
 mod pack_fixtures;
 mod pack_manifest;
 mod pack_policy_vectors;
+mod pack_toml;
 pub mod pack_verify;
 
 use serde::{Deserialize, Serialize};

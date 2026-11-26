@@ -23,7 +23,7 @@ use grdr_mcp::transport::{McpBrokerService, build_http_router, mediate_stdio_lin
 use grdr_mcp_proto::{McpMethod, McpRequest, ToolDescriptor};
 use grdr_model::{
     ActionAttempt, ActionClass, ApprovalGrade, CompiledFloorTable, Mode, PolicyPack, PolicyRule,
-    RuleMatch, TrustedKeyInfo, Verdict,
+    RuleMatch, SigningKeypairExt as _, TrustedKeyInfo, Verdict,
 };
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 

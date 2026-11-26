@@ -59,11 +59,15 @@ pub fn canonicalize_path(raw: &str) -> String {
     let without_scheme = trimmed
         .strip_prefix("file:///")
         .map(|rest| format!("/{rest}"))
-        .or_else(|| trimmed.strip_prefix("file://").map(str::to_string))
+        .or_else(|| {
+            trimmed
+                .strip_prefix("file://")
+                .map(|rest| rest.trim().to_string())
+        })
         .unwrap_or_else(|| trimmed.to_string());
 
     let slashed = without_scheme.replace('\\', "/");
-    let (prefix, rest) = extract_path_root(&slashed);
+    let (mut prefix, rest) = extract_path_root(&slashed);
 
     let mut stack: Vec<&str> = Vec::new();
     for segment in rest.split('/') {
@@ -76,17 +80,79 @@ pub fn canonicalize_path(raw: &str) -> String {
         }
     }
 
-    if prefix.is_empty() && stack.is_empty() {
+    let head = resolve_boundary_segments(&mut prefix, &mut stack);
+    let slice = stack.get(head..).unwrap_or(&[]);
+
+    if prefix.is_empty() && slice.is_empty() {
         return ".".into();
     }
-    let joined = stack.join("/");
+    let joined = slice.join("/");
     if prefix.is_empty() {
-        joined
-    } else if joined.is_empty() {
-        prefix
+        let final_joined = joined.trim();
+        if final_joined.is_empty() {
+            ".".into()
+        } else {
+            final_joined.to_string()
+        }
     } else {
-        format!("{prefix}{joined}")
+        let final_joined = joined.trim_end();
+        if final_joined.is_empty() {
+            prefix
+        } else {
+            format!("{prefix}{final_joined}")
+        }
     }
+}
+
+fn resolve_boundary_segments(prefix: &mut String, stack: &mut Vec<&str>) -> usize {
+    let mut head: usize = 0;
+    loop {
+        let mut changed = false;
+        while stack.len() > head {
+            let Some(tail) = stack.last().copied() else {
+                break;
+            };
+            let trimmed_tail = if prefix.is_empty() && stack.len().saturating_sub(head) == 1 {
+                tail.trim()
+            } else {
+                tail.trim_end()
+            };
+            match trimmed_tail {
+                "" | "." => {
+                    let _ = stack.pop();
+                    changed = true;
+                }
+                ".." => {
+                    let _ = stack.pop();
+                    if stack.len() > head {
+                        let _ = stack.pop();
+                    }
+                    changed = true;
+                }
+                _ => break,
+            }
+        }
+        if prefix.is_empty()
+            && let Some(first) = stack.get(head).copied()
+        {
+            match first.trim_start() {
+                "" => {
+                    *prefix = "/".into();
+                    head = head.saturating_add(1);
+                    changed = true;
+                }
+                "." | ".." => {
+                    head = head.saturating_add(1);
+                    changed = true;
+                }
+                _ => {}
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    head
 }
 
 pub fn normalize_command(raw: &str) -> NormalizedCommand {
@@ -426,5 +492,107 @@ mod tests {
                 .iter()
                 .any(|t| t == "privilege-escalation")
         );
+    }
+
+    #[test]
+    fn path_canonicalizer_is_idempotent_across_file_scheme_whitespace() {
+        for raw in [
+            "file://   foo",
+            "file://   ..",
+            "file://   ~/../.ssh/id_rsa",
+            "file://   C:\\Users\\dev\\..\\key.pem",
+            "file:///foo",
+            "file:///",
+            "   ",
+            "./   foo",
+            "./  /.",
+            "/a /.",
+            "/a/ /.",
+            "a /.",
+            "C:\\a \\.",
+            "./   C:/foo",
+            "./   ~/foo",
+            "./   /   ",
+            "./ /a/ /.",
+            "./ / /.",
+            "/  /.",
+            "./   ./foo",
+            "./   ../foo",
+            "./   ..",
+            "./   ./.   /.",
+            "/a/. /.",
+            "/a/.. /.",
+            "a/. /.",
+            "a/.. /.",
+            "~/a/. /.",
+            "~/a/.. /.",
+            "C:/a/. /.",
+            "C:/a/.. /.",
+            "a/. /. /.",
+        ] {
+            let once = canonicalize_path(raw);
+            let twice = canonicalize_path(&once);
+            assert_eq!(twice, once, "canonicalize_path not idempotent on {raw:?}");
+        }
+        assert_eq!(canonicalize_path("file://   foo"), "foo");
+        assert_eq!(canonicalize_path("file://   .."), ".");
+        assert_eq!(canonicalize_path("./   foo"), "foo");
+        assert_eq!(canonicalize_path("./  /."), ".");
+        assert_eq!(canonicalize_path("/a /."), "/a");
+        assert_eq!(canonicalize_path("/a/ /."), "/a");
+        assert_eq!(canonicalize_path("a /."), "a");
+        assert_eq!(canonicalize_path("C:\\a \\."), "C:/a");
+        assert_eq!(canonicalize_path("./   ./foo"), "foo");
+        assert_eq!(canonicalize_path("./   ../foo"), "foo");
+        assert_eq!(canonicalize_path("./   .."), ".");
+        assert_eq!(canonicalize_path("./   ./.   /."), ".");
+        assert_eq!(canonicalize_path("/a/. /."), "/a");
+        assert_eq!(canonicalize_path("/a/.. /."), "/");
+        assert_eq!(canonicalize_path("a/. /."), "a");
+        assert_eq!(canonicalize_path("a/.. /."), ".");
+        assert_eq!(canonicalize_path("~/a/.. /."), "~/");
+        assert_eq!(canonicalize_path("C:/a/.. /."), "C:/");
+        assert_eq!(canonicalize_path("a/. /. /."), "a");
+
+        // Stress boundary combinations of slashes, dots, whitespace, drives, and file schemes.
+        let tokens = [
+            "", " ", "  ", ".", "..", " .", ". ", " ..", ".. ", "a", " a ", "file://", "file:///",
+            "~", "C:", "\\", "/",
+        ];
+        let mut seed: u64 = 0x517c_c1b7_2722_0a95;
+        for _ in 0..4096 {
+            let mut raw = String::new();
+            seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+            let count = (seed % 6).saturating_add(1);
+            for _ in 0..count {
+                seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+                let idx = usize::try_from(seed).unwrap_or(0) % tokens.len();
+                if let Some(tok) = tokens.get(idx) {
+                    raw.push_str(tok);
+                }
+            }
+            let once = canonicalize_path(&raw);
+            let twice = canonicalize_path(&once);
+            assert_eq!(twice, once, "canonicalize_path not idempotent on {raw:?}");
+        }
+    }
+
+    #[test]
+    fn command_normalizer_handles_backslash_runs_and_preserves_clean_idempotency() {
+        let mut bytes = vec![0x8e, 0x95, 0x00, 0x00, 0x00];
+        bytes.extend(std::iter::repeat_n(b'\\', 188));
+        bytes.extend_from_slice(&[0x3a, 0xb7, 0x00, 0xff]);
+        let lossy = String::from_utf8_lossy(&bytes);
+        let cmd = normalize_command(&lossy);
+        assert_eq!(cmd.status, CommandParseStatus::Resolved);
+        assert!(cmd.canonical_text.contains('\\'));
+        assert!(cmd.segments.iter().all(|s| !s.is_empty()));
+
+        let clean = normalize_command(r#"r"m" -rf /tmp/scratch && git status"#);
+        assert_eq!(clean.status, CommandParseStatus::Resolved);
+        let again = normalize_command(&clean.canonical_text);
+        assert_eq!(again.status, CommandParseStatus::Resolved);
+        assert_eq!(again.canonical_text, clean.canonical_text);
+        assert_eq!(again.segments, clean.segments);
     }
 }

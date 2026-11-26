@@ -1,0 +1,233 @@
+schema: grdr.requirements.v1
+version: "2026-11-25"
+governing_design: docs/design/02-threat-model.md
+
+security_requirements:
+  - id: SR-01
+    component: [grdr-hook, grdr-daemon, grdr-wire, grdr-peer-os]
+    requirement: Shim verifies daemon endpoint owner before trusting verdict; daemon authenticates peers by OS kernel handle, never PID.
+    prerequisite: none
+  - id: SR-02
+    component: [grdr-daemon, grdr-os-service, grdr]
+    requirement: Local APIs use OS sockets or named pipes in privileged directories in Protected profile; CI asserts listener and egress inventory.
+    prerequisite: none
+  - id: SR-03
+    component: [grdr-server, grdr]
+    requirement: Local console runs unprivileged on loopback with random port, one-time launch token, Host and Origin checks, no CORS, proposal-only mutations.
+    prerequisite: none
+  - id: SR-04
+    component: [grdr-daemon, grdr-mcp]
+    requirement: Mutating calls from local surfaces or MCP server are proposals only; calls originating inside governed agent sessions are refused.
+    prerequisite: none
+  - id: SR-05
+    component: [grdr-core, grdr-engine, grdr-proxy]
+    requirement: Privileged core parses fixed layouts only; untrusted content runs in sandboxed engine and unprivileged proxy over size-capped versioned frames.
+    prerequisite: unprivileged-proxy
+  - id: SR-06
+    component: [grdr-os-service]
+    requirement: Protected profile keeps policy, keys, spool, shim, and managed settings non-user-writable across both supported topologies.
+    prerequisite: none
+  - id: SR-07
+    component: [grdr-daemon, grdr-ui-model]
+    requirement: User profile reports tamper=user and control=request, caps local approvals at G0, disables credential broker/CA, makes zero boundary claim.
+    prerequisite: none
+  - id: SR-08
+    component: [grdr-core, grdr-sensor-linux, grdr-sensor-macos, grdr-sensor-windows]
+    requirement: Agent-lineage writes to any agent control files, Guardrails files, and alerting/monitoring configs are Block from first protection.
+    prerequisite: os-sensor-deny-tier
+  - id: SR-09
+    component: [grdr-sensor-linux, grdr-sensor-macos, grdr-sensor-windows, grdr-run]
+    requirement: Elevate actions are Ask by default (Block/fail-closed inside contained sessions), with capability probe feeding assurance record.
+    prerequisite: grdr-run
+  - id: SR-10
+    component: [grdr-agents, grdr-server]
+    requirement: Hook dark, configured-not-effective, sensor stop, uninstall, and heartbeat gaps raise tamper findings with signed going-down event.
+    prerequisite: server-detect
+  - id: SR-11
+    component: [grdr-core]
+    requirement: Session identity is sensor-assigned; labels, grants, and denial ledgers inherit to child processes and resist harness resets.
+    prerequisite: none
+  - id: SR-12
+    component: [grdr-sensor-linux, grdr-sensor-macos, grdr-sensor-windows]
+    requirement: Agent credential stores and local conversation DBs are protected against out-of-lineage opens; denied on Linux kernel tier.
+    prerequisite: os-sensor
+  - id: SR-13
+    component: [grdr-daemon, grdr-sensor-windows]
+    requirement: Core-to-engine liveness detects process suspension; Windows sensor detects bind-link redirection of install directory.
+    prerequisite: windows-sensor
+  - id: SR-14
+    component: [grdr-hook, grdr-fastpath]
+    requirement: Hook decides via signed device-local parse-free floor table after 250ms timeout (or handover deadline <= 2s) and always exits within 2s.
+    prerequisite: none
+  - id: SR-15
+    component: [grdr-broker, grdr-hook, grdr-proxy, grdr-run]
+    requirement: Zero silent fail-open; any degraded fallback marks Degraded and emits an audit event; contained sessions enforce fail-closed.
+    prerequisite: none
+  - id: SR-16
+    component: [grdr-updater, grdr-engine]
+    requirement: Crash-loop ladder never relaxes fail-closed classes or signed security floor; input-correlated crashes quarantine offending input.
+    prerequisite: none
+  - id: SR-17
+    component: [grdr-agents, grdr-core]
+    requirement: Malformed events deny; unresolved shell commands classify as exec.opaque; unrecognized harness versions drop to Watch with telemetry finding.
+    prerequisite: none
+  - id: SR-18
+    component: [grdr-approve]
+    requirement: Approval prompts render only on OS-native surfaces showing canonical action plus hidden-character warnings; agent prompts never authorize.
+    prerequisite: none
+  - id: SR-19
+    component: [grdr-core, grdr-run, grdr-mcp]
+    requirement: Grants are exact and single-use by default, digest-bound to argv/cwd/env/referenced files, re-checked at OS control points, voided on label rise.
+    prerequisite: none
+  - id: SR-20
+    component: [grdr-engine, grdr-approve]
+    requirement: Unavailable minimum approval grade converts Ask to Block; three consecutive denials/timeouts freeze the session; zero self-approved exceptions.
+    prerequisite: server-approve
+  - id: SR-21
+    component: [grdr-approve]
+    requirement: Only G2 and G3 assurance grades claim unforgeability; failing platforms are demoted to G0 before release.
+    prerequisite: none
+  - id: SR-22
+    component: [grdr-approve, grdr-server]
+    requirement: Out-of-band approval renders server canonical action and binding code; timeout always denies.
+    prerequisite: server-approve
+  - id: SR-23
+    component: [grdr-daemon, grdr-approve]
+    requirement: Step-up required for join, leave, uninstall, pause, Mode down, exceptions, pack removal, capture increase, and kill-switch release.
+    prerequisite: server
+  - id: SR-24
+    component: [grdr-update, grdr-updater]
+    requirement: Only project root authorizes binaries; rollback, freeze, mix-and-match, and wrong-root attacks fail; expiry marks Stale without halting rules.
+    prerequisite: none
+  - id: SR-25
+    component: [grdr-conformance, grdr-schema-lint, grdr-update]
+    requirement: Pack verifier rejects any pack, adapter, or provider manifest declaring commands, executables, fetch URLs, env sets, or MCP servers (P7).
+    prerequisite: none
+  - id: SR-26
+    component: [grdr-core, grdr-update]
+    requirement: Operator-signed policy only narrows (timeouts count as widening); widening/capture/content grants require organisation signature.
+    prerequisite: deployment-root
+  - id: SR-27
+    component: [grdr-agents]
+    requirement: Agent hook installation uses code-defined templates pointing only to Guardrails shim absolute path via atomic journalled writes.
+    prerequisite: none
+  - id: SR-28
+    component: [grdr-updater, grdr-engine]
+    requirement: Updater performs zero network I/O and trial-loads content inside sandboxed engine before activation.
+    prerequisite: none
+  - id: SR-29
+    component: [grdr-daemon, grdr-uplink]
+    requirement: Commands above device scope carry approver hardware-key signatures, scope, monotonic counter, and expiry verified on device.
+    prerequisite: server-control
+  - id: SR-30
+    component: [grdr-daemon, grdr-uplink]
+    requirement: Deployment-key commands are strictly bounded to session or device scope, automatic containment actions, and explicit expiry.
+    prerequisite: server-control
+  - id: SR-31
+    component: [grdr-daemon, grdr-uplink]
+    requirement: Single approver freeze caps at 60 minutes; repeated 24h freezes and org-wide kill/revoke require two independent signatures.
+    prerequisite: server-control
+  - id: SR-32
+    component: [grdr-daemon, grdr-uplink]
+    requirement: Devices rate-limit destructive remote commands, persist kill state across reboot, and enforce freeze -> isolate -> capture -> revoke order.
+    prerequisite: server
+  - id: SR-33
+    component: [grdr-integrations]
+    requirement: Incumbent-EDR credentials permit containment scopes only and never script execution.
+    prerequisite: integrations-host
+  - id: SR-34
+    component: [grdr-proxy]
+    requirement: Credential broker verifies kernel peer handle, executable identity, and scope; never serves credentials over loopback TCP.
+    prerequisite: credential-broker
+  - id: SR-35
+    component: [grdr-proxy]
+    requirement: Credential inject is default; release <= 15m, reduced scope, stamps secret-read label, never escapes endpoint, refuses uncontained sessions.
+    prerequisite: credential-broker
+  - id: SR-36
+    component: [grdr-ui-model, grdr-review]
+    requirement: Untrusted text renders inert (no active HTML/Markdown/links); LLM judges frame untrusted payloads with HMAC delimiters and emit typed verdicts.
+    prerequisite: ui-and-review
+  - id: SR-37
+    component: [grdr-review, grdr-infer]
+    requirement: Review judges have egress pinned solely to configured backend, single-org isolation, per-job unwrapped keys, and verdict-only outputs.
+    prerequisite: review-stage
+  - id: SR-38
+    component: [grdr-proxy]
+    requirement: Optional interception CA is memory-only, per-device, name-constrained, injected per process tree, never added to OS trust stores.
+    prerequisite: none
+  - id: SR-39
+    component: [grdr-proxy, grdr-engine]
+    requirement: Loopback telemetry receivers run unprivileged, reject Origin headers, require per-instance bearer tokens, store payloads as unverified claims.
+    prerequisite: none
+  - id: SR-40
+    component: [grdr-proxy, grdr-broker, grdr-mcp]
+    requirement: Proxy/broker source destinations from policy, pin MCP manifests by hash, bind OAuth state to issuer/audience, deny on evaluation error.
+    prerequisite: none
+  - id: SR-41
+    component: [grdr-uplink, grdr-server]
+    requirement: Device auth uses RFC 9421 HTTP message signatures; detects transport downgrades and cloned chains; fresh enrolment stays in Watch until admitted.
+    prerequisite: server
+  - id: SR-42
+    component: [grdr-ports, grdr-rel-postgres, grdr-rel-sqlite, grdr-lake, grdr-blob]
+    requirement: Every server data read requires a TenantCtx witness, row-level security, and per-org key/prefix isolation.
+    prerequisite: server
+  - id: SR-43
+    component: [grdr-server, grdr-identity]
+    requirement: Operator plane cannot access tenant content; break-glass grants are time-boxed, tenant-visible, and require two-person quorum.
+    prerequisite: server
+  - id: SR-44
+    component: [grdr-server]
+    requirement: Per-organisation ingest, bus, and query quotas never drop policy verdicts, security findings, or audit records.
+    prerequisite: server
+  - id: SR-45
+    component: [grdr-core, grdr-lake, grdr-bus-log]
+    requirement: Audit lanes are hash-chained with signed batch heads, byte-exact archives, and dual-org entries for cross-tenant actions.
+    prerequisite: server-audit
+  - id: SR-46
+    component: [grdr-server]
+    requirement: Tier 0 decide/gateway paths deny on evaluation error, carry no default cryptographic keys, and keep master secrets off request paths.
+    prerequisite: server
+  - id: SR-47
+    component: [grdr-server, grdr-mcp]
+    requirement: Server MCP endpoint is stateless, read-only, org-bound, denies content without content grant, hides policy/detection internals from governed agents.
+    prerequisite: server
+  - id: SR-48
+    component: [grdr-integrations]
+    requirement: Integrations execute declarative manifests or capability-constrained Wasm components with explicit egress allow-lists and secret references.
+    prerequisite: integrations-host
+  - id: SR-49
+    component: [grdr-identity, grdr-daemon, grdr-schema-lint]
+    requirement: Re-identification requires declared purpose, incident ref, and two approvers with user disclosure; packs cannot group by individual principal.
+    prerequisite: server-identity
+  - id: SR-50
+    component: [grdr-server]
+    requirement: Server restore mints a new server epoch and replays revocations, kill states, and consumed tokens; audit logs never rewind.
+    prerequisite: server
+
+secure_development_requirements:
+  - id: SD-01
+    requirement: Workspace forbids unsafe_code except listed OS adapter and FFI crates carrying documented SAFETY invariants verified under Miri/ASan/Kani.
+  - id: SD-02
+    requirement: Privileged and library code deny unwrap, expect, panic!, indexing, and checked arithmetic overflow; FFI entry points return status codes.
+  - id: SD-03
+    requirement: Cargo deny, cargo vet, CycloneDX SBOM, VEX, SLSA L3, reproducible builds, and 7-day dependency patch SLAs apply from release 0.1.
+  - id: SD-04
+    requirement: Every parser and normaliser has a fuzz target and differential oracle against its production consumer.
+  - id: SD-05
+    requirement: Trust-core changes require clean-context dual independent model-diverse security evaluators plus reference/matrix verification.
+  - id: SD-06
+    requirement: Agents ingesting external untrusted text run without write privileges or secret access; risk-tier paths guard protected configs.
+  - id: SD-07
+    requirement: Cryptography uses vetted primitives isolated inside grdr-crypto with constant-time secret comparison and zeroization.
+  - id: SD-08
+    requirement: Embargoed vulnerability patches develop in private isolated branches with network tools disabled and >=10-business-day pre-disclosure.
+  - id: SD-09
+    requirement: SECURITY.md and sealed PSIRT intake operate from commit one; engine/normaliser bypasses and memory faults trigger CVEs and VEX.
+  - id: SD-10
+    requirement: Release signing uses two separated GitHub Actions environments with threshold Ed25519 keys plus keyless OIDC Sigstore provenance.
+  - id: SD-11
+    requirement: Secrets never appear on CLI arguments, logs, LogSafe outputs, or redacted support bundles.
+  - id: SD-12
+    requirement: Third-party GitHub Actions, plugins, and skills pin exact commit SHAs verified against resolved checkouts.
+  - id: SD-13
+    requirement: Change risk tiers escalate monotonically from risk-tiers.toml and trust-core.paths; circuit breakers promote tiers on regressions.

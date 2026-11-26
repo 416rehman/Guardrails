@@ -105,14 +105,14 @@ test("isNonUiSecurityPath covers all non-UI and trust-core paths while keeping s
     "docs/design/02-threat-model.md",
     "README.md",
     "target/debug/lib.rlib",
-    "crates/grdr-core/target/debug/lib.rlib",
+    "crates/grdr-agents/target/debug/lib.rlib",
     "web/packages/api/node_modules/foo/index.js",
     "web/packages/api/dist/index.js",
     "deploy/assets/logo.png",
     "scripts/preview.jpg",
-    "security/badge.webp",
-    "crates/grdr-core/font.woff2",
-    "security/threat-report.pdf",
+    "crates/grdr-lake/badge.webp",
+    "crates/grdr-agents/font.woff2",
+    "deploy/threat-report.pdf",
   ];
   for (const path of excluded) {
     assert.equal(isNonUiSecurityPath(path, dir), false, `expected excluded: ${path}`);
@@ -121,9 +121,11 @@ test("isNonUiSecurityPath covers all non-UI and trust-core paths while keeping s
   // Trust-core matches must never be suppressed by IGNORED_NON_UI_RE, and absolute subdir paths normalize to repo root.
   for (const tcIgnored of [
     "crates/grdr-crypto/target/backdoor.rs",
+    "crates/grdr-core/target/debug/lib.rlib",
     "programs/grdr-daemon/target/build.rs",
     "bpf/node_modules/probe.c",
     "crates/grdr-crypto/blob.png",
+    "security/badge.webp",
   ]) {
     assert.equal(isNonUiSecurityPath(tcIgnored, dir), true, `trust-core must override ignore: ${tcIgnored}`);
   }
@@ -143,7 +145,8 @@ test("allows UI-only and docs-only file sets without a security audit record", (
 
 test("denies missing, unreadable, failed, nonzero, or metadata-tampered records and allows exact SHA-256 stamp", (t) => {
   const dir = makeTempRepo(t);
-  const libRel = "crates/grdr-core/src/lib.rs";
+  const libRel = "crates/grdr-agents/src/lib.rs";
+  mkdirSync(join(dir, "crates/grdr-agents/src"), { recursive: true });
   writeFileSync(join(dir, libRel), "pub fn safe() -> u8 { 1 }\n", "utf8");
 
   const missing = evaluateSecurityAuditFiles([libRel], dir);
@@ -243,13 +246,14 @@ test("trust-core matching uses ASCII icase, prevents ReDoS, reads HEAD union, an
       "crates/grdr-crypto/src/aead.rs",
       "crates/grdr-wire/src/peer_auth.rs",
       "crates/grdr-wire/src/peer_auth/unix.rs",
+      "crates/grdr-wire/src/lib.rs",
       "BUILD.RS",
       "crates/grdr-core/build.rs",
       "crates/grdr-core/.cargo/config.toml",
       "security/deny.toml",
       "crates/grdr-core/deny.ci.toml",
       "contracts/limits.toml",
-      "crates/grdr-core/src/lib.rs",
+      "crates/grdr-agents/src/lib.rs",
       "scripts/helper.sh",
     ],
     dir,
@@ -259,6 +263,7 @@ test("trust-core matching uses ASCII icase, prevents ReDoS, reads HEAD union, an
     "crates/grdr-crypto/src/aead.rs",
     "crates/grdr-wire/src/peer_auth.rs",
     "crates/grdr-wire/src/peer_auth/unix.rs",
+    "crates/grdr-wire/src/lib.rs",
     "BUILD.RS",
     "crates/grdr-core/build.rs",
     "crates/grdr-core/.cargo/config.toml",
@@ -625,7 +630,8 @@ test("supports git worktree .git pointer files and rejects malformed .git files"
 
 test("CLI supports --record, fails closed on malformed stdin, and works through directory junctions", (t) => {
   const dir = makeTempRepo(t);
-  const rel = "crates/grdr-core/src/cli_test.rs";
+  const rel = "crates/grdr-agents/src/cli_test.rs";
+  mkdirSync(join(dir, "crates/grdr-agents/src"), { recursive: true });
   writeFileSync(join(dir, rel), "pub fn cli() {}\n", "utf8");
   spawnSync("git", ["add", rel], { cwd: dir });
 

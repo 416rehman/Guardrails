@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard};
 
-use sha2::{Digest, Sha256};
+pub(crate) use grdr_crypto::sha256_hex;
 
 use grdr_model::CodedError;
 use grdr_model::error::CODE_STORE_IO;
@@ -190,14 +190,4 @@ fn check_single_blob_scope(ctx: &SingleCtx, path: &TenantPath) -> Result<(), Cod
         ));
     }
     Ok(())
-}
-
-pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    let mut out = String::with_capacity(digest.len().saturating_mul(2));
-    for byte in digest {
-        use std::fmt::Write as _;
-        let _ = write!(out, "{byte:02x}");
-    }
-    out
 }

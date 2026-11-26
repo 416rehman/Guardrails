@@ -1,0 +1,168 @@
+schema: grdr.threats.v1
+version: "2026-11-25"
+governing_design: docs/design/02-threat-model.md
+
+trust_boundaries:
+  - id: TB-1
+    name: hook-shim-to-daemon
+    description: Local IPC from agent hook shim to daemon; peer authenticated by OS kernel handle and verified daemon owner (SR-01).
+  - id: TB-2
+    name: daemon-to-engine
+    description: Priv-sep boundary from privileged daemon to sandboxed engine; fixed protobuf IPC frames, size-capped and versioned (SR-05).
+  - id: TB-3
+    name: daemon-to-proxy
+    description: Network proxy and MCP/model protocol parser boundary; runs unprivileged away from core secrets (SR-05, SR-40).
+  - id: TB-4
+    name: local-console-listener
+    description: Loopback-only unprivileged console listener with one-time launch token, Host/Origin validation, and proposal-only mutations (SR-03, SR-04).
+  - id: TB-5
+    name: updater-and-tuf-root
+    description: TUF + DSSE offline metadata verification and binary replacement bounded by security floor (SR-16, SR-24, SR-28).
+  - id: TB-6
+    name: pack-manifest-and-cedar
+    description: Declarative P7 pack verification preventing executable/command/URL/env/MCP smuggling (SR-25, SR-26).
+  - id: TB-7
+    name: credential-broker
+    description: OS kernel handle and executable identity verification before inject or scoped release (SR-34, SR-35).
+  - id: TB-8
+    name: uplink-to-server
+    description: Mutual-proof HTTP Message Signatures (RFC 9421), anti-clone tracking, and monotonic control replay floors (SR-29, SR-30, SR-41).
+  - id: TB-9
+    name: multi-tenant-storage
+    description: Row-level security and TenantPath/per-org KMS key isolation across Postgres, SQLite, lake, and blob stores (SR-42, SR-43).
+  - id: TB-10
+    name: ci-supply-chain
+    description: Pinned SHA actions, Rust toolchain integrity, trust-core path gating, and licence boundaries (SD-03, SD-05, SD-12).
+
+kill_chain:
+  - stage: K1
+    name: Influence
+    techniques:
+      - Indirect prompt injection through web pages, issues, tool outputs, tool descriptions, and skills
+    atlas: [AML.T0051.001, AML.T0068, AML.T0134]
+    asi: [ASI01]
+    saf_mcp: [SAF-T1102, SAF-T1110]
+    first_control: Broker and proxy label sources untrusted:*; delimited HMAC framing (SR-36)
+    requirements: [SR-36, SR-40]
+  - stage: K2
+    name: Pre-trust execution
+    techniques:
+      - Repository-carried agent configs, MCP stdio auto-start, lifecycle scripts
+    atlas: [AML.T0081, AML.T0142]
+    asi: [ASI04, ASI05]
+    saf_mcp: [SAF-T1101, SAF-T1206]
+    first_control: Config integrity at clone and sensor floor rules (SR-08, SR-25)
+    requirements: [SR-08, SR-25, SR-27, SR-40]
+  - stage: K3
+    name: Guardrail evasion
+    techniques:
+      - Shell-semantics gaps, path traversal/symlink tricks, tool-fallback pivot, nested headless agent, hook stall
+    atlas: [AML.T0107, AML.T0053]
+    asi: [ASI02, ASI09]
+    saf_mcp: [SAF-T1401, SAF-T1403]
+    first_control: Hook requests mediation while OS sensor evaluates concrete effect; malformed denies (SR-14, SR-17)
+    requirements: [SR-14, SR-15, SR-17]
+  - stage: K4
+    name: Expansion
+    techniques:
+      - Sandbox escape, elevate paths, credential-store reads, cloud metadata endpoints
+    atlas: [AML.T0105, AML.T0083, AML.T0055]
+    asi: [ASI03, ASI05]
+    saf_mcp: [SAF-T1303, SAF-T1502]
+    first_control: Protected credential paths and Ask/fail-closed elevate gate (SR-09, SR-12)
+    requirements: [SR-09, SR-12, SR-34, SR-35]
+  - stage: K5
+    name: Persistence
+    techniques:
+      - Writes to hooks, MCP entries, rules, memory, instruction files, autoruns
+    atlas: [AML.T0081, AML.T0080.000]
+    asi: [ASI06]
+    saf_mcp: [SAF-T1204, SAF-T1202]
+    first_control: Essentials Block rule on all agent control files (SR-08)
+    requirements: [SR-08, SR-27]
+  - stage: K6
+    name: Command and control
+    techniques:
+      - Base-URL drift, heartbeat instruction files, tunnels, AI service as relay
+    atlas: [AML.T0108, AML.T0096]
+    asi: [ASI10]
+    saf_mcp: [SAF-T1901, SAF-T1904]
+    first_control: Session egress allow-list and isolated mode DNS/packet denial (SR-40)
+    requirements: [SR-38, SR-40]
+  - stage: K7
+    name: Lateral movement
+    techniques:
+      - One agent rewrites another agent config, repo-borne propagation, shared stores, CI pivot
+    atlas: [AML.T0118, AML.T0143]
+    asi: [ASI07, ASI08]
+    saf_mcp: [SAF-T1705, SAF-T1701]
+    first_control: Host-wide control-file protection and server cross-run detection (SR-08, SR-11)
+    requirements: [SR-08, SR-11]
+  - stage: K8
+    name: Objective
+    techniques:
+      - Exfiltration to sinks, destructive file/infra actions, public publishing, resource abuse
+    atlas: [AML.T0077, AML.T0086, AML.T0101, AML.T0034]
+    asi: [ASI02, ASI08]
+    saf_mcp: [SAF-T1910, SAF-T2101]
+    first_control: Secret-read sink gating, irreversibility Ask gate, mass-change breaker (SR-19, SR-20, SR-32)
+    requirements: [SR-19, SR-20, SR-32, SR-35]
+  - stage: K9
+    name: Defence impairment
+    techniques:
+      - Sensor or monitor tampering, alert-recipient edits, indicator removal, dead-man logic
+    atlas: [AML.T0138, AML.T0121]
+    asi: [ASI10]
+    saf_mcp: [SAF-T1106]
+    first_control: Protected-profile file permissions, signed floor table, going-down/dark tamper detection (SR-06, SR-10)
+    requirements: [SR-06, SR-10, SR-13, SR-16, SR-24]
+
+adversarial_classes:
+  - id: AC-01
+    name: Tool poisoning, shadowing, and rug pull
+    adversary: ADV-3
+    atlas: [AML.T0110, AML.T0109, AML.T0099, AML.T0111]
+    asi: [ASI02, ASI04]
+    saf_mcp: [SAF-T1001, SAF-T1008, SAF-T1201, SAF-T1501]
+    control: Manifest hash pinning in MCP broker with step-up re-approval on drift
+    requirements: [SR-40]
+  - id: AC-02
+    name: MCP authorization failures (mix-up, audience, confused deputy, rebinding)
+    adversary: [ADV-3, ADV-7]
+    atlas: [AML.T0091.000, AML.T0106]
+    asi: [ASI03]
+    saf_mcp: [SAF-T1007, SAF-T1009, SAF-T1307]
+    control: Broker-owned OAuth state bound strictly to issuer and audience
+    requirements: [SR-40]
+  - id: AC-03
+    name: Malicious skills, extensions, and packages
+    adversary: [ADV-3, ADV-9]
+    atlas: [AML.T0010.001, AML.T0010.005]
+    asi: [ASI04]
+    saf_mcp: [SAF-T1002, SAF-T1003, SAF-T1004]
+    control: Digest pinning, P7 static pack linting, and signed intelligence disabling
+    requirements: [SR-24, SR-25]
+  - id: AC-04
+    name: Agent CLI weaponized by malware
+    adversary: ADV-6
+    atlas: [AML.T0112.000, AML.T0053, AML.T0103]
+    asi: [ASI02, ASI10]
+    saf_mcp: [SAF-T1111]
+    control: Hook-dark and unmatched OS-effect detections plus credential store protection
+    requirements: [SR-10, SR-12]
+  - id: AC-05
+    name: Identity and privilege abuse through shared credentials
+    adversary: [ADV-2, ADV-6]
+    atlas: [AML.T0012, AML.T0073]
+    asi: [ASI03]
+    saf_mcp: [SAF-T1302, SAF-T1304]
+    control: Credential broker inject mode with kernel-handle and executable identity checks
+    requirements: [SR-12, SR-34, SR-35]
+  - id: AC-06
+    name: Gateway and framework exploitation
+    adversary: [ADV-7, ADV-11]
+    atlas: [AML.T0049, AML.T0132]
+    asi: [ASI04]
+    saf_mcp: [SAF-T1005, SAF-T1404]
+    control: Fail-closed Tier 0 evaluation, host/origin validation, and size-capped framed parsing
+    requirements: [SR-03, SR-05, SR-40, SR-46]

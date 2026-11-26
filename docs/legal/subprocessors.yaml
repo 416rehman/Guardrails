@@ -1,0 +1,15 @@
+# Guardrails ADR Sub-Processor Register (docs/design/36 section 5)
+# Standalone and self-hosted deployments transmit zero data to Loonaro.
+# Hosted SaaS sub-processor changes require 30 days' advance notice prior to effective_from.
+schema: grdr.subprocessors.v1
+notice_period_days: 30
+standalone_selfhosted_external_subprocessors: false
+
+subprocessors: []
+# Schema example for future hosted SaaS entries once D-63 prerequisites & L-07 close:
+# - name: "<provider>"
+#   purpose: "<hosted infrastructure / region role>"
+#   data_classes: ["metadata", "identity"]
+#   region: "EU / US"
+#   transfer_basis: "EU SCCs + UK Addendum"
+#   effective_from: "YYYY-MM-DD"

@@ -1,0 +1,99 @@
+[package]
+name = "grdr-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+axum = { version = "0.8", features = ["json", "macros"] }
+grdr-agents = { path = "../crates/grdr-agents" }
+grdr-conformance = { path = "../crates/grdr-conformance" }
+grdr-core = { path = "../crates/grdr-core" }
+grdr-fastpath = { path = "../crates/grdr-fastpath" }
+grdr-llm-proto = { path = "../crates/grdr-llm-proto" }
+grdr-mcp-proto = { path = "../crates/grdr-mcp-proto" }
+grdr-model = { path = "../crates/grdr-model" }
+grdr-proxy = { path = "../programs/grdr-proxy" }
+grdr-schema = { path = "../crates/grdr-schema" }
+grdr-schema-lint = { path = "../crates/grdr-schema-lint" }
+grdr-update = { path = "../crates/grdr-update" }
+grdr-wire = { path = "../crates/grdr-wire" }
+jiff = { version = "1.0", features = ["serde"] }
+libfuzzer-sys = "0.4"
+serde_json = "1.0"
+
+[[bin]]
+name = "fuzz_normalizers"
+path = "fuzz_targets/fuzz_normalizers.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_hook_codec"
+path = "fuzz_targets/fuzz_hook_codec.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_wire_frame"
+path = "fuzz_targets/fuzz_wire_frame.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_cedar_compile"
+path = "fuzz_targets/fuzz_cedar_compile.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_mcp_jsonrpc"
+path = "fuzz_targets/fuzz_mcp_jsonrpc.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_llm_proto"
+path = "fuzz_targets/fuzz_llm_proto.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_tuf_dsse"
+path = "fuzz_targets/fuzz_tuf_dsse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_otlp"
+path = "fuzz_targets/fuzz_otlp.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_pack_manifest"
+path = "fuzz_targets/fuzz_pack_manifest.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_fastpath_scan"
+path = "fuzz_targets/fuzz_fastpath_scan.rs"
+test = false
+doc = false
+bench = false

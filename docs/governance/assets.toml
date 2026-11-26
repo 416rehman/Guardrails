@@ -1,0 +1,85 @@
+# Guardrails ADR Covenant Asset Register (D-03, docs/design/30 section 13)
+schema = "grdr.assets.v1"
+steward = "Loonaro"
+project_name = "Guardrails ADR"
+namespace = "grdr"
+
+[[asset]]
+id = "asset.domain.primary"
+category = "domain"
+identifier = "guardrailshq.com"
+custodian = "Loonaro"
+transfer_mechanism = "registrar_transfer_via_escrow_L06"
+foundation_transfer = true
+
+[[asset]]
+id = "asset.trademarks"
+category = "trademark"
+identifier = "Guardrails ADR wordmark, logo, and conformance marks"
+custodian = "Loonaro"
+transfer_mechanism = "assignment_via_escrow_L06"
+foundation_transfer = true
+
+[[asset]]
+id = "asset.repo.main"
+category = "repository"
+identifier = "github.com/416rehman/Guardrails"
+custodian = "416rehman"
+transfer_mechanism = "github_repository_transfer"
+foundation_transfer = true
+
+[[asset]]
+id = "asset.repo.packs"
+category = "repository"
+identifier = "github.com/416rehman/Guardrails-packs"
+custodian = "416rehman"
+transfer_mechanism = "github_repository_transfer"
+foundation_transfer = true
+
+[[asset]]
+id = "asset.repo.contrib"
+category = "repository"
+identifier = "github.com/416rehman/Guardrails-contrib"
+custodian = "416rehman"
+transfer_mechanism = "github_repository_transfer"
+foundation_transfer = true
+
+[[asset]]
+id = "asset.tuf.root"
+category = "signing_authority"
+identifier = "Project TUF root and role threshold keys (release-signer + independent-rebuilder)"
+custodian = "github_actions_oidc_environments"
+transfer_mechanism = "recorded_tuf_root_rotation"
+foundation_transfer = true
+
+[[asset]]
+id = "asset.endpoints.default"
+category = "infrastructure_dns"
+identifier = "updates.guardrailshq.com, enrol.guardrailshq.com, docs.guardrailshq.com, status.guardrailshq.com"
+custodian = "Loonaro"
+transfer_mechanism = "dns_and_domain_transfer"
+foundation_transfer = true
+
+[[asset]]
+id = "asset.conformance.registry"
+category = "conformance"
+identifier = "Public conformance mark registry and published kits"
+custodian = "Loonaro"
+transfer_mechanism = "repository_and_registry_transfer"
+foundation_transfer = true
+
+[[asset]]
+id = "asset.corpora.heldout"
+category = "corpora"
+identifier = "Held-out evaluation corpora (published 2 releases after use)"
+custodian = "Loonaro"
+transfer_mechanism = "repository_transfer"
+foundation_transfer = true
+
+[[asset]]
+id = "asset.signing.platform"
+category = "platform_identity"
+identifier = "Windows free OSS signing programme and optional Apple Team ID (non-transferable)"
+custodian = "Loonaro"
+transfer_mechanism = "covenant_signing_continuity_while_held"
+foundation_transfer = false
