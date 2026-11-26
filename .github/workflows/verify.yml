@@ -172,7 +172,8 @@ jobs:
           RUSTUP_TOOLCHAIN: ${{ env.RUSTUP_TOOLCHAIN }}
         with:
           command: check
-          arguments: --manifest-path fuzz/Cargo.toml --all-features --config fuzz/deny.toml
+          manifest-path: fuzz/Cargo.toml
+          arguments: --all-features --config fuzz/deny.toml
 
   tools:
     needs: plan

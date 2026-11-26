@@ -5,9 +5,10 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { closeSync, fstatSync, openSync, readdirSync, readFileSync } from "node:fs";
 import { posix, resolve } from "node:path";
 
+import { compileGlob } from "./glob-match.mjs";
 import { parseSimpleToml } from "./toml-parse.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -165,37 +166,8 @@ const LEGACY_MISSING_HEADER_BASELINE = new Set([
   "web/vite.config.ts",
 ]);
 
-function globToRegex(glob) {
-  let out = "^";
-  let i = 0;
-  while (i < glob.length) {
-    const rest = glob.slice(i);
-    if (rest === "**") {
-      out += ".*";
-      i += 2;
-    } else if (rest.startsWith("**/")) {
-      out += "(?:.*/)?";
-      i += 3;
-    } else if (rest.startsWith("/**")) {
-      out += "(?:/.*)?";
-      i += 3;
-    } else if (glob[i] === "*") {
-      out += "[^/]*";
-      i += 1;
-    } else if (glob[i] === "?") {
-      out += "[^/]";
-      i += 1;
-    } else {
-      out += glob[i].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      i += 1;
-    }
-  }
-  out += "$";
-  return new RegExp(out);
-}
-
 function compileMatchers(patterns) {
-  return (patterns || []).map((pat) => ({ pat, re: globToRegex(pat) }));
+  return (patterns || []).map((pat) => ({ pat, re: compileGlob(pat) }));
 }
 
 function matchesAny(compiled, relPath) {
@@ -235,7 +207,7 @@ export function loadLicenceConfig(root = ROOT) {
     ),
     pathRules: (hdrCfg.path || []).map((entry) => ({
       glob: entry.glob,
-      re: globToRegex(entry.glob),
+      re: compileGlob(entry.glob),
       expression: entry.expression,
     })),
     allowedIdentifiers,
@@ -381,20 +353,19 @@ export function runFixturesAndGlobCases(cfg, root = ROOT) {
 
   const fixRoot = resolve(root, "security/supply-chain/fixtures/licence-lint");
   let fixtureCount = 0;
-  for (const dirEntry of readdirSync(fixRoot)) {
-    const dirPath = resolve(fixRoot, dirEntry);
-    if (!statSync(dirPath).isDirectory()) continue;
-    for (const fileEntry of readdirSync(dirPath)) {
-      const full = resolve(dirPath, fileEntry);
-      if (!statSync(full).isFile()) continue;
+  for (const dirEntry of readdirSync(fixRoot, { withFileTypes: true })) {
+    if (!dirEntry.isDirectory()) continue;
+    const dirPath = resolve(fixRoot, dirEntry.name);
+    for (const fileEntry of readdirSync(dirPath, { withFileTypes: true })) {
+      const buf = readRegularFileSafe(resolve(dirPath, fileEntry.name));
+      if (!buf) continue;
       fixtureCount += 1;
-      const buf = readFileSync(full);
-      const err = checkFileBuffer(`fixtures/${dirEntry}/${fileEntry}`, buf, cfg);
-      const expectPass = dirEntry.startsWith("good-");
+      const err = checkFileBuffer(`fixtures/${dirEntry.name}/${fileEntry.name}`, buf, cfg);
+      const expectPass = dirEntry.name.startsWith("good-");
       if (expectPass) {
-        assert.equal(err, null, `expected passing fixture ${dirEntry}/${fileEntry} failed: ${err}`);
+        assert.equal(err, null, `expected passing fixture ${dirEntry.name}/${fileEntry.name} failed: ${err}`);
       } else {
-        assert.notEqual(err, null, `expected failing fixture ${dirEntry}/${fileEntry} unexpectedly passed`);
+        assert.notEqual(err, null, `expected failing fixture ${dirEntry.name}/${fileEntry.name} unexpectedly passed`);
       }
     }
   }
@@ -451,6 +422,21 @@ function collectChangedFiles(root) {
   return changed;
 }
 
+function readRegularFileSafe(absPath) {
+  let fd;
+  try {
+    fd = openSync(absPath, "r");
+  } catch {
+    return null;
+  }
+  try {
+    if (!fstatSync(fd).isFile()) return null;
+    return readFileSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 function main() {
   const cfg = loadLicenceConfig(ROOT);
   const { globCases, fixtures } = runFixturesAndGlobCases(cfg, ROOT);
@@ -471,9 +457,9 @@ function main() {
 
   const failures = [];
   for (const relPath of allFiles) {
-    const abs = resolve(ROOT, relPath);
-    if (!existsSync(abs) || !statSync(abs).isFile()) continue;
-    const err = checkFileBuffer(relPath, readFileSync(abs), cfg);
+    const buf = readRegularFileSafe(resolve(ROOT, relPath));
+    if (!buf) continue;
+    const err = checkFileBuffer(relPath, buf, cfg);
     const norm = relPath.replace(/\\/g, "/");
     if (err && (!LEGACY_MISSING_HEADER_BASELINE.has(norm) || changedFiles.has(norm))) {
       failures.push(err);

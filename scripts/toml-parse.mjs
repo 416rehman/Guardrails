@@ -2,6 +2,15 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 // Shared deterministic TOML subset parser used by architecture and licence lint scripts.
 
+const FORBIDDEN_TOML_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+function safeKey(key, lineNo) {
+  if (FORBIDDEN_TOML_KEYS.has(key)) {
+    throw new Error(`Forbidden TOML key "${key}"${lineNo ? ` at line ${lineNo}` : ""}`);
+  }
+  return key;
+}
+
 function stripTomlComment(line) {
   let inDouble = false;
   let inSingle = false;
@@ -70,9 +79,9 @@ function splitTopLevel(inner, sep = ",") {
 function unquoteKey(raw) {
   const k = raw.trim();
   if ((k.startsWith('"') && k.endsWith('"')) || (k.startsWith("'") && k.endsWith("'"))) {
-    return k.slice(1, -1);
+    return safeKey(k.slice(1, -1));
   }
-  return k;
+  return safeKey(k);
 }
 
 function parseTomlValue(raw) {
@@ -91,44 +100,69 @@ function parseTomlValue(raw) {
   }
   if (s.startsWith("{") && s.endsWith("}")) {
     const inner = s.slice(1, -1).trim();
-    const obj = {};
-    if (!inner) return obj;
+    const tbl = new Map();
+    if (!inner) return tbl;
     for (const pair of splitTopLevel(inner, ",")) {
       const eq = pair.indexOf("=");
       if (eq === -1) throw new Error(`Invalid inline TOML table entry: ${pair}`);
       const k = unquoteKey(pair.slice(0, eq));
       const v = parseTomlValue(pair.slice(eq + 1));
-      obj[k] = v;
+      tbl.set(k, v);
     }
-    return obj;
+    return tbl;
   }
   return s;
 }
 
-function setNested(root, pathParts, isArrayTable, lineNo) {
-  let cur = root;
+function setNested(rootMap, pathParts, isArrayTable, lineNo) {
+  let cur = rootMap;
   for (let i = 0; i < pathParts.length - 1; i += 1) {
-    const p = pathParts[i];
-    if (Array.isArray(cur[p])) {
-      cur = cur[p][cur[p].length - 1];
+    const seg = safeKey(pathParts[i], lineNo);
+    const existing = cur.get(seg);
+    if (Array.isArray(existing)) {
+      cur = existing.at(-1);
+    } else if (existing instanceof Map) {
+      cur = existing;
+    } else if (existing === undefined) {
+      const sub = new Map();
+      cur.set(seg, sub);
+      cur = sub;
     } else {
-      if (!cur[p] || typeof cur[p] !== "object") cur[p] = {};
-      cur = cur[p];
+      throw new Error(`TOML header conflict at line ${lineNo}`);
     }
   }
-  const last = pathParts[pathParts.length - 1];
+  const last = safeKey(pathParts[pathParts.length - 1], lineNo);
+  const existing = cur.get(last);
   if (isArrayTable) {
-    if (!cur[last]) cur[last] = [];
-    if (!Array.isArray(cur[last])) throw new Error(`TOML header conflict at line ${lineNo}`);
-    const obj = {};
-    cur[last].push(obj);
+    let arr = existing;
+    if (arr === undefined) {
+      arr = [];
+      cur.set(last, arr);
+    }
+    if (!Array.isArray(arr)) throw new Error(`TOML header conflict at line ${lineNo}`);
+    const obj = new Map();
+    arr.push(obj);
     return obj;
   }
-  if (!cur[last]) cur[last] = {};
-  if (typeof cur[last] !== "object" || Array.isArray(cur[last])) {
+  if (existing === undefined) {
+    const obj = new Map();
+    cur.set(last, obj);
+    return obj;
+  }
+  if (!(existing instanceof Map)) {
     throw new Error(`TOML table conflict at line ${lineNo}`);
   }
-  return cur[last];
+  return existing;
+}
+
+function materializeToml(val) {
+  if (val instanceof Map) {
+    return Object.fromEntries(Array.from(val.entries(), ([k, v]) => [k, materializeToml(v)]));
+  }
+  if (Array.isArray(val)) {
+    return val.map((item) => materializeToml(item));
+  }
+  return val;
 }
 
 function countBracketDelta(s) {
@@ -158,7 +192,7 @@ function countBracketDelta(s) {
 
 export function parseSimpleToml(text) {
   const clean = text.replace(/^\uFEFF/, "");
-  const root = {};
+  const root = new Map();
   let current = root;
   const lines = clean.split(/\r?\n/);
   let pendingKey = null;
@@ -173,10 +207,10 @@ export function parseSimpleToml(text) {
       pendingVal += " " + stripped;
       pendingBracketDepth += countBracketDelta(stripped);
       if (pendingBracketDepth <= 0) {
-        if (Object.hasOwn(current, pendingKey)) {
+        if (current.has(pendingKey)) {
           throw new Error(`Duplicate TOML key ${pendingKey} at line ${i + 1}`);
         }
-        current[pendingKey] = parseTomlValue(pendingVal);
+        current.set(pendingKey, parseTomlValue(pendingVal));
         pendingKey = null;
         pendingVal = "";
         pendingBracketDepth = 0;
@@ -198,7 +232,7 @@ export function parseSimpleToml(text) {
     if (eq === -1) {
       throw new Error(`Malformed TOML at line ${i + 1}: ${stripped}`);
     }
-    const key = unquoteKey(stripped.slice(0, eq));
+    const key = safeKey(unquoteKey(stripped.slice(0, eq)), i + 1);
     const val = stripped.slice(eq + 1).trim();
     const delta = countBracketDelta(val);
     if (delta > 0) {
@@ -207,13 +241,13 @@ export function parseSimpleToml(text) {
       pendingBracketDepth = delta;
       continue;
     }
-    if (Object.hasOwn(current, key)) {
+    if (current.has(key)) {
       throw new Error(`Duplicate TOML key ${key} at line ${i + 1}`);
     }
-    current[key] = parseTomlValue(val);
+    current.set(key, parseTomlValue(val));
   }
   if (pendingKey !== null) {
     throw new Error(`Unclosed multiline TOML array for key ${pendingKey}`);
   }
-  return root;
+  return materializeToml(root);
 }

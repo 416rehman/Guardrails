@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+cd "${SRC}/guardrails"
+
 NIGHTLY_TOOLCHAIN="$(env -u RUSTUP_TOOLCHAIN rustup toolchain list | awk '/^nightly/{print $1; exit}')"
 if [ -z "${NIGHTLY_TOOLCHAIN}" ]; then
   echo "GRDR-FUZZ-0001: pre-installed nightly Rust toolchain is missing in container" >&2
@@ -10,9 +12,9 @@ fi
 export RUSTUP_TOOLCHAIN="${NIGHTLY_TOOLCHAIN}"
 
 if [ -n "${SANITIZER:-}" ]; then
-  cargo fuzz build -O --locked --sanitizer "${SANITIZER}"
+  cargo fuzz build -O --sanitizer "${SANITIZER}" -- --locked
 else
-  cargo fuzz build -O --locked
+  cargo fuzz build -O -- --locked
 fi
 
 FUZZ_TARGET_DIR="fuzz/target/x86_64-unknown-linux-gnu/release"
