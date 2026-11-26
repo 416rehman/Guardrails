@@ -130,7 +130,7 @@ fn merge_post_facts(
             "endpoint path component count changed across connect".to_string(),
         ));
     }
-    for (orig, after) in facts.iter_mut().zip(post.into_iter()) {
+    for (orig, after) in facts.iter_mut().zip(post) {
         orig.post_dev = after.dev;
         orig.post_ino = after.ino;
     }
@@ -209,6 +209,7 @@ fn fstatat_nofollow(dir_fd: libc::c_int, name: &std::ffi::CStr) -> Result<libc::
 
 #[cfg(unix)]
 fn fact_from_stat(path: &Path, is_leaf: bool, st: &libc::stat) -> PathComponentFact {
+    #[allow(clippy::useless_conversion)]
     let mode = u32::from(st.st_mode);
     let ftype = st.st_mode & libc::S_IFMT;
     let node_kind = if ftype == libc::S_IFLNK {
@@ -220,9 +221,9 @@ fn fact_from_stat(path: &Path, is_leaf: bool, st: &libc::stat) -> PathComponentF
     } else {
         PathNodeKind::Other
     };
-    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_sign_loss, clippy::useless_conversion)]
     let dev = u64::try_from(st.st_dev).unwrap_or(0);
-    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_sign_loss, clippy::useless_conversion)]
     let ino = u64::try_from(st.st_ino).unwrap_or(0);
     PathComponentFact {
         path: path.display().to_string(),
