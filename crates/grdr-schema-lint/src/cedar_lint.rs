@@ -11,8 +11,8 @@ use grdr_model::IdentityMode;
 use grdr_schema::cedar::{CANONICAL_ACTIONS, CedarPlane, parse_schema};
 
 use crate::{
-    LintDomain, LintError, LintFinding, LintSeverity, MAX_LINT_FILE_BYTES,
-    read_bounded_regular_file,
+    LintDomain, LintError, LintFinding, LintSeverity, MAX_LINT_FILE_BYTES, canonicalize_real_dir,
+    is_symlink_or_reparse, read_bounded_regular_file, reject_symlinks_under,
 };
 
 const REQUIRED_RUNTIME_ENTITIES: &[&str] = &[
@@ -38,23 +38,39 @@ const REQUIRED_RUNTIME_ENTITIES: &[&str] = &[
 ];
 
 pub fn lint_cedar_dir(dir: &Path, findings: &mut Vec<LintFinding>) -> Result<usize, LintError> {
-    let dir_meta = fs::symlink_metadata(dir).map_err(|e| LintError::Io {
+    let canon_dir = canonicalize_real_dir(dir, "contracts/cedar")?;
+    lint_cedar_dir_under(&canon_dir, &canon_dir, findings)
+}
+
+pub(crate) fn lint_cedar_dir_under(
+    canon_root: &Path,
+    dir: &Path,
+    findings: &mut Vec<LintFinding>,
+) -> Result<usize, LintError> {
+    let checked = reject_symlinks_under(canon_root, dir, true)?;
+    let dir_meta = fs::symlink_metadata(&checked).map_err(|e| LintError::Io {
         path: dir.display().to_string(),
         detail: e.to_string(),
     })?;
-    if dir_meta.file_type().is_symlink() || !dir_meta.is_dir() {
+    if is_symlink_or_reparse(&dir_meta) || !dir_meta.is_dir() {
         return Err(LintError::Io {
             path: dir.display().to_string(),
             detail: "contracts/cedar root must be a real non-symlink directory".into(),
         });
     }
-    let canon_root = fs::canonicalize(dir).map_err(|e| LintError::Io {
+    let canon_dir = fs::canonicalize(&checked).map_err(|e| LintError::Io {
         path: dir.display().to_string(),
         detail: e.to_string(),
     })?;
+    if !canon_dir.starts_with(canon_root) {
+        return Err(LintError::Io {
+            path: dir.display().to_string(),
+            detail: "cedar directory escapes repository root".into(),
+        });
+    }
 
     let mut count: usize = 0;
-    let entries = fs::read_dir(&canon_root).map_err(|e| LintError::Io {
+    let entries = fs::read_dir(&canon_dir).map_err(|e| LintError::Io {
         path: dir.display().to_string(),
         detail: e.to_string(),
     })?;
@@ -69,13 +85,17 @@ pub fn lint_cedar_dir(dir: &Path, findings: &mut Vec<LintFinding>) -> Result<usi
             detail: e.to_string(),
         })?;
         let p = entry.path();
-        if ft.is_symlink() {
+        let meta = fs::symlink_metadata(&p).map_err(|e| LintError::Io {
+            path: p.display().to_string(),
+            detail: e.to_string(),
+        })?;
+        if ft.is_symlink() || is_symlink_or_reparse(&meta) {
             return Err(LintError::Io {
                 path: p.display().to_string(),
                 detail: "symlinks are forbidden inside contracts/cedar directory".into(),
             });
         }
-        if ft.is_file() && p.extension().and_then(|s| s.to_str()) == Some("cedarschema") {
+        if meta.is_file() && p.extension().and_then(|s| s.to_str()) == Some("cedarschema") {
             paths.push(p);
         }
     }
@@ -87,7 +107,7 @@ pub fn lint_cedar_dir(dir: &Path, findings: &mut Vec<LintFinding>) -> Result<usi
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown.cedarschema");
-        let content = read_bounded_regular_file(&canon_root, path, MAX_LINT_FILE_BYTES)?;
+        let content = read_bounded_regular_file(canon_root, path, MAX_LINT_FILE_BYTES)?;
         lint_cedar_schema_file(file_name, &content, findings);
     }
     Ok(count)

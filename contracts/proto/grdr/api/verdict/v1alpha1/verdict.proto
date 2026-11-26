@@ -6,82 +6,88 @@ syntax = "proto3";
 
 package grdr.api.verdict.v1alpha1;
 
+import "grdr/common/v1alpha1/options.proto";
 import "grdr/common/v1alpha1/enums.proto";
 import "grdr/common/v1alpha1/resources.proto";
-import "grdr/common/v1alpha1/types.proto";
 
 // Request for Evaluate.
 message EvaluateRequest {
   // Optional existing session identifier.
-  optional string session_id = 1;
+  optional string session_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Optional enrolled device identifier.
-  optional string device_id = 2;
+  optional string device_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Optional device hostname fallback.
-  optional string device_name = 3;
+  optional string device_name = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
   // Agent harness name issuing the action attempt.
-  string agent_name = 4;
+  string agent_name = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Classified action category.
-  grdr.common.v1alpha1.ActionClass action_class = 5;
+  grdr.common.v1alpha1.ActionClass action_class = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Enforcement control point.
-  optional grdr.common.v1alpha1.ControlPoint control_point = 6;
+  optional grdr.common.v1alpha1.ControlPoint control_point = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Target path, host, URL, or MCP tool identifier.
-  string target = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT];
+  string target = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_ARGUMENT, (grdr.common.v1alpha1.sealable) = true];
   // Optional concise summary.
-  optional string summary = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT];
+  optional string summary = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY, (grdr.common.v1alpha1.sealable) = true];
+  reserved 900 to 999;
 }
 
 // Response for Evaluate.
 message EvaluateResponse {
   // Signed decision receipt recording verdict and matched rule.
-  grdr.common.v1alpha1.DecisionReceipt receipt = 1;
+  grdr.common.v1alpha1.DecisionReceipt receipt = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for EvaluateBrowser.
 message EvaluateBrowserRequest {
   // Managed browser AI application identifier.
-  string app_id = 1;
+  string app_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Destination web domain.
-  string domain = 2;
+  string domain = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER];
   // Browser DLP inspection classification.
-  grdr.common.v1alpha1.BrowserDlpClass dlp_class = 3;
+  grdr.common.v1alpha1.BrowserDlpClass dlp_class = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Uploaded file extension when dlp_class is file upload.
-  optional string file_extension = 4;
+  optional string file_extension = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // True when client-side scanner matched a secret pattern.
-  bool has_secret_match = 5;
+  bool has_secret_match = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Response for EvaluateBrowser.
 message EvaluateBrowserResponse {
   // Evaluated browser application identifier.
-  string app_id = 1;
+  string app_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Browser application display name.
-  string app_name = 2;
+  string app_name = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Enforced browser verdict.
-  grdr.common.v1alpha1.Verdict verdict = 3;
+  grdr.common.v1alpha1.Verdict verdict = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
   // Matched browser policy rule identifier if denied or stepped up.
-  optional string rule_id = 4;
+  optional string rule_id = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Explanation rendered for the browser extension UI.
-  string reason = 5;
+  string reason = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
   // Evaluated browser DLP class.
-  grdr.common.v1alpha1.BrowserDlpClass dlp_class = 6;
+  grdr.common.v1alpha1.BrowserDlpClass dlp_class = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for IngestBatch.
 message IngestBatchRequest {
   // Sending endpoint device identifier.
-  string device_id = 1;
+  string device_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Action attempts observed since the previous batch.
-  repeated grdr.common.v1alpha1.ActionAttempt attempts = 2;
+  repeated grdr.common.v1alpha1.ActionAttempt attempts = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Decision receipts evaluated locally by the endpoint daemon.
-  repeated grdr.common.v1alpha1.DecisionReceipt receipts = 3;
+  repeated grdr.common.v1alpha1.DecisionReceipt receipts = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Response for IngestBatch.
 message IngestBatchResponse {
   // Number of attempts and receipts accepted by the server.
-  uint64 accepted = 1;
+  uint64 accepted = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Number of new security findings synthesized during ingest.
-  uint64 findings_created = 2;
+  uint64 findings_created = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
 }
 
 // Policy verdict evaluation and endpoint telemetry batch ingestion.

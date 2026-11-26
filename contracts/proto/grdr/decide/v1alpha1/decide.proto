@@ -1,0 +1,174 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Synchronous control-point DecisionService IPC protocol (docs/design/07, 17, 34).
+syntax = "proto3";
+
+package grdr.decide.v1alpha1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/message_ref.proto";
+import "grdr/common/v1alpha1/options.proto";
+import "grdr/decision/v1alpha1/decision.proto";
+import "grdr/event/v1alpha1/action.proto";
+
+// Route directing an operator or developer toward resolution when blocked or stepped up.
+enum PersonRoute {
+  // Unspecified person route.
+  PERSON_ROUTE_UNSPECIFIED = 0;
+  // Open local OS approval prompt (`grdr-approve`).
+  PERSON_ROUTE_APPROVE_PROMPT = 1 [(grdr.common.v1alpha1.wire_name) = "approve_prompt"];
+  // Open web console approval/exception review.
+  PERSON_ROUTE_CONSOLE_REVIEW = 2 [(grdr.common.v1alpha1.wire_name) = "console_review"];
+  // Inspect CLI explanation via `grdr why`.
+  PERSON_ROUTE_CLI_WHY = 3 [(grdr.common.v1alpha1.wire_name) = "cli_why"];
+  // Action prohibited unconditionally by locked baseline policy.
+  PERSON_ROUTE_NO_EXCEPTION = 4 [(grdr.common.v1alpha1.wire_name) = "no_exception"];
+}
+
+// Guidance code instructing the governed agent how to proceed after a block (34 section 5).
+enum AgentNext {
+  // Unspecified agent guidance.
+  AGENT_NEXT_UNSPECIFIED = 0;
+  // Wait for operator step-up grant resolution.
+  AGENT_NEXT_WAIT_FOR_GRANT = 1 [(grdr.common.v1alpha1.wire_name) = "wait_for_grant"];
+  // Stop and ask the user for confirmation out-of-band.
+  AGENT_NEXT_ASK_USER = 2 [(grdr.common.v1alpha1.wire_name) = "ask_user"];
+  // Retry with the rewritten action returned by MODIFY.
+  AGENT_NEXT_USE_REWRITTEN = 3 [(grdr.common.v1alpha1.wire_name) = "use_rewritten"];
+  // Abort this action permanently without retrying.
+  AGENT_NEXT_ABORT_ACTION = 4 [(grdr.common.v1alpha1.wire_name) = "abort_action"];
+}
+
+// Typed non-widening block/step-up notice filled by the engine (design/34).
+message BlockNotice {
+  // Registered reason code (`GRDR-*`).
+  string reason_code = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Headline language-token reference.
+  grdr.common.v1alpha1.MessageRef headline = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Human remediation detail token reference.
+  grdr.common.v1alpha1.MessageRef detail = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Next route offered to the person.
+  PersonRoute person_route = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Structured non-widening instruction delivered to the agent harness.
+  AgentNext agent_next = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Documentation slug relative to configured docs host.
+  string docs_anchor = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Control-point verbs and failure mode declared during Hello handshake.
+message ControlPointCapability {
+  // Control point type.
+  grdr.common.v1alpha1.ControlPoint control_point = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Action classes this control point can enforce before execution.
+  repeated grdr.common.v1alpha1.ActionClass enforceable_classes = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Action classes only observable after execution.
+  repeated grdr.common.v1alpha1.ActionClass observable_classes = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Failure mode configured on timeout or daemon unavailability.
+  grdr.common.v1alpha1.OnFailure on_failure = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Control-point registration request opening a session or long-lived channel.
+message HelloRequest {
+  // Control point identifier and adapter version.
+  string component = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Declared control-point capabilities.
+  ControlPointCapability capability = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Endpoint session or process key when available.
+  optional string session_id = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Daemon registration response delivering active interest filters (D-05).
+message HelloResponse {
+  // Unique identifier for the live daemon boot epoch.
+  string daemon_boot_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Digest of active compiled policy interest set.
+  string interest_digest = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Action classes currently watched or enforced by policy.
+  repeated grdr.common.v1alpha1.ActionClass active_classes = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
+}
+
+// Pre-execution decision request sent by shims, MCP broker, and proxy over local IPC.
+message DecideRequest {
+  // Idempotency request identifier.
+  string request_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Active monitored session identifier.
+  string session_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Active tool call identifier when inside a tool loop.
+  optional string tool_call_id = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Calling control point.
+  grdr.common.v1alpha1.ControlPoint control_point = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Typed action intent to evaluate.
+  grdr.event.v1alpha1.Action action = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Control-point evaluation deadline (D-14).
+  google.protobuf.Duration deadline = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Fast peer-authenticated acknowledgement returned before engine evaluation completes (D-14).
+message DecideAck {
+  // Server/daemon assigned decision identifier.
+  string decision_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Current daemon boot identifier.
+  string daemon_boot_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Receipt timestamp proving liveness within 250 ms budget.
+  google.protobuf.Timestamp received_at = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Enforced verdict response delivered back to the calling control point.
+message DecideResponse {
+  // Assigned decision identifier.
+  string decision_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Fast acknowledgement frame data.
+  DecideAck ack = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Canonical policy verdict prior to control-point degradation.
+  grdr.decision.v1alpha1.Verdict verdict = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Effective verdict degraded per control-point capability table (07 section 3).
+  grdr.common.v1alpha1.Verdict degraded_verdict = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Typed non-widening explanation notice when denied or stepped up.
+  optional BlockNotice block_notice = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Rewritten safe action payload when verdict is VERDICT_MODIFY.
+  optional grdr.event.v1alpha1.Action rewritten_action = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Signed decision receipt digest.
+  string receipt_digest = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Post-action outcome or lifecycle notification requiring acknowledgement only.
+message ReportRequest {
+  // Control point emitting the outcome notification.
+  grdr.common.v1alpha1.ControlPoint control_point = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Session identifier.
+  string session_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Observed action outcome.
+  grdr.event.v1alpha1.Action action = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Linked decision identifier when paired with an earlier Decide call.
+  optional string decision_id = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Acknowledgement confirming durable local spool write for Report.
+message ReportResponse {
+  // True when spooled durably on the daemon.
+  bool accepted = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Assigned event sequence number on the active lane.
+  uint64 seq = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Synchronous endpoint decision service hosted on the local daemon `decide` socket/pipe.
+service DecisionService {
+  // Registers control-point capabilities and retrieves current policy interest filters.
+  rpc Hello(HelloRequest) returns (HelloResponse);
+  // Evaluates an intent action synchronously under control-point deadline.
+  rpc Decide(DecideRequest) returns (DecideResponse);
+  // Records post-action or lifecycle observations without verdict evaluation.
+  rpc Report(ReportRequest) returns (ReportResponse);
+}

@@ -1,0 +1,203 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Embedded sans-IO policy/detection engine boundary shared by C ABI, wasm32, and sidecar (ADR-0054, RFC 0014).
+syntax = "proto3";
+
+package grdr.embed.v1alpha1;
+
+import "google/protobuf/timestamp.proto";
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/options.proto";
+import "grdr/event/v1alpha1/event.proto";
+
+// Deterministic clock-tick input driving session window timeouts and expiries inside embedded Engine::step.
+message Tick {
+  // Current wall-clock timestamp supplied by the embedder host.
+  google.protobuf.Timestamp now = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Input handed to embedded Engine::step across C ABI, wasm32, and EngineService sidecar.
+message Input {
+  // Discriminated input kind; tags 3..5 reserved for action_request, grant, and response_command.
+  oneof kind {
+    // Telemetry event evaluated against loaded rules and detectors.
+    grdr.event.v1alpha1.Event event = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+    // Deterministic clock advancement tick.
+    Tick tick = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  }
+  reserved 3 to 5;
+  reserved 900 to 999;
+}
+
+// Effect request emitted by the pure core engine for host execution.
+message Effect {
+  // Effect payload; tags 1..4 reserved for expectation, actuator_request, label_projection, interest_change.
+  string effect_kind = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Target session or resource identifier.
+  string target_ref = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Deterministic argument or rule identifier driving the effect.
+  string rule_id = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
+}
+
+// Typed engine diagnostic emitted on load or evaluation faults.
+message Diagnostic {
+  // Diagnostic severity classification.
+  enum Severity {
+    // Unspecified diagnostic severity.
+    SEVERITY_UNSPECIFIED = 0;
+    // Informational notice.
+    SEVERITY_INFO = 1 [(grdr.common.v1alpha1.wire_name) = "info"];
+    // Non-fatal warning such as skipped unsupported construct.
+    SEVERITY_WARN = 2 [(grdr.common.v1alpha1.wire_name) = "warn"];
+    // Hard failure requiring fallback per host on_failure mode.
+    SEVERITY_ERROR = 3 [(grdr.common.v1alpha1.wire_name) = "error"];
+  }
+
+  // Registered `GRDR-CORE-*` diagnostic code.
+  string code = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Severity tier.
+  Severity severity = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Optional associated rule identifier.
+  optional string rule_id = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Concise deterministic diagnostic text.
+  string message = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
+}
+
+// Output produced by one deterministic Engine::step call (ADR-0054).
+message Output {
+  // Monotonic step counter.
+  uint64 step_seq = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Seeded `stp_...` step identifier.
+  string step_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Emitted canonical telemetry events.
+  repeated grdr.event.v1alpha1.Event events = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Emitted engine side-effect requests for host actuators.
+  repeated Effect effects = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Structured step diagnostics.
+  repeated Diagnostic diagnostics = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 6;
+  reserved 900 to 999;
+}
+
+// Summary returned when loading a verified rule bundle against a host profile.
+message LoadReport {
+  // Rule descriptor skipped because host capabilities omit required signals.
+  message NotEvaluable {
+    // Rule identifier marked not evaluable.
+    string rule_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+    // Reason code explaining missing signal or version mismatch.
+    string reason_code = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+    reserved 900 to 999;
+  }
+
+  // SHA-256 digest of the loaded verified bundle.
+  string bundle_digest = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Rules downgraded to not-evaluable under this host profile.
+  repeated NotEvaluable not_evaluable = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
+}
+
+// Serialisable engine snapshot state for sidecar and handover persistence.
+message EngineState {
+  // Snapshot binary format version.
+  uint32 format_version = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Bound verified bundle digest.
+  string bundle_digest = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Last committed step sequence.
+  uint64 step_seq = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Host profile signed by an embedding partner describing supported signals (ADR-0054).
+message HostProfile {
+  // Embedding host vendor or distribution identifier.
+  string host_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Host product version string.
+  string host_version = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 3 to 8;
+  reserved 900 to 999;
+}
+
+// Sidecar actuator command dispatched to host protective layer.
+message ActuatorRequest {
+  // Request identifier.
+  string request_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Requested containment or response action.
+  grdr.common.v1alpha1.KillAction action = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Target session or process key.
+  string target_id = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Host actuator execution result returned to sidecar engine.
+message ActuatorResult {
+  // Matching request identifier.
+  string request_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // True when actuator succeeded cleanly.
+  bool succeeded = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Optional error diagnostic.
+  optional Diagnostic diagnostic = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
+}
+
+// Request loading a verified bundle and host profile into the sidecar engine.
+message LoadBundleRequest {
+  // Serialised verified policy/detection bundle bytes.
+  bytes bundle = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Signed host capability profile.
+  HostProfile host_profile = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Response returning the resulting LoadReport.
+message LoadBundleResponse {
+  // Load verification summary.
+  LoadReport report = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
+}
+
+// Request executing one engine step inside the sidecar process.
+message StepRequest {
+  // Deterministic event or tick input.
+  Input input = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // 32-byte per-step host entropy seed.
+  bytes entropy = 2 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT,
+    (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  reserved 900 to 999;
+}
+
+// Response carrying the step Output.
+message StepResponse {
+  // Resulting events, effects, and diagnostics.
+  Output output = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
+}
+
+// Request probing sidecar engine readiness and active bundle state.
+message GetEngineHealthRequest {}
+
+// Sidecar health response.
+message GetEngineHealthResponse {
+  // Current engine state snapshot header.
+  EngineState state = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // True when engine is ready to accept Step calls.
+  bool healthy = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
+}
+
+// Out-of-process sidecar EngineService over length-prefixed local IPC (26 section 7).
+service EngineService {
+  // Loads a verified bundle and host capability profile.
+  rpc LoadBundle(LoadBundleRequest) returns (LoadBundleResponse);
+  // Advances engine evaluation by one event or tick.
+  rpc Step(StepRequest) returns (StepResponse);
+  // Reports engine snapshot state and health.
+  rpc GetEngineHealth(GetEngineHealthRequest) returns (GetEngineHealthResponse);
+}

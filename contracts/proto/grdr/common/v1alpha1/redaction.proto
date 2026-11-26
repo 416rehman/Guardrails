@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Capture redaction descriptors and endpoint-sealed HPKE envelope containers (D-35, D-51).
+syntax = "proto3";
+
+package grdr.common.v1alpha1;
+
+import "grdr/common/v1alpha1/options.proto";
+
+// Explicit metadata recording what fields or classes were withheld under capture policy.
+message Redaction {
+  // Wire names of withheld commitment data classes (for example "content.argument").
+  repeated string withheld_classes = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
+  // Field paths stripped before leaving the device capture boundary.
+  repeated string withheld_fields = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
+  // Policy or capture reason explaining why fields were withheld.
+  string reason = 3 [(data_class) = DATA_CLASS_DERIVED];
+  // Active capture level applied at the boundary.
+  string capture_level = 4 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Endpoint-sealed HPKE ciphertext container placed in reserved 900..999 field twins (D-35).
+message Sealed {
+  // Recipient public encryption key identifier (customer-managed org key).
+  string recipient_key_id = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
+  // AEAD/KEM cipher suite tag (for example "DHKEM(P-256,HKDF-SHA256)/AES-128-GCM").
+  string enc = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
+  // HPKE-encrypted protobuf serialization of the withheld sensitive field.
+  bytes ciphertext = 3 [(data_class) = DATA_CLASS_CONTENT, (content_kind) = CONTENT_KIND_BODY];
+  // Underlying plaintext commitment data class wire name protected inside ciphertext.
+  DataClass inner_class = 4 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}

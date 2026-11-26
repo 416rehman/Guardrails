@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Repeated-event roll-up summary payload with RFC 6962 Merkle root (D-52).
+syntax = "proto3";
+
+package grdr.event.v1alpha1;
+
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/options.proto";
+import "grdr/event/v1alpha1/envelope.proto";
+
+// Roll-up summary aggregating repeated allowed exec, file, or network events within a tool call.
+message ActionRollup {
+  // Rolled-up action class (exec, file.read, net.connect, etc.).
+  grdr.common.v1alpha1.ActionClass action_class = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Total number of repeated individual observations folded into this roll-up.
+  uint64 event_count = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // First and last local sequence numbers covered by the roll-up.
+  uint64 first_seq = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Inclusive ending local sequence number folded into the roll-up.
+  uint64 last_seq = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // RFC 6962 Merkle tree root and optional proof path over the elided leaves.
+  MerkleRollupProof merkle = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Count of distinct executables, hosts, or path prefixes observed in the batch.
+  uint32 distinct_targets = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Digest of canonical summary metadata retained when raw leaves stay local.
+  string summary_digest = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}

@@ -1,0 +1,277 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Canonical typed action event payloads across exec, file, net, mcp, llm, cred, and elevate (D-06, P8).
+syntax = "proto3";
+
+package grdr.event.v1alpha1;
+
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/ids.proto";
+import "grdr/common/v1alpha1/options.proto";
+
+// Deterministic fact extracted by analysers and safely readable by Cedar policy rules.
+message DeterministicFact {
+  // Fact key name (for example "exec.pipe_to_interpreter").
+  string key = 1 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Origin of the fact (deterministic vs heuristic vs model).
+  grdr.common.v1alpha1.FactOrigin origin = 2 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Analyser module identifier and version.
+  string analyser = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Strongly typed scalar value; floats are never policy_readable.
+  oneof value {
+    // Boolean assertion result.
+    bool flag = 4 [
+      (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+      (grdr.common.v1alpha1.policy_readable) = true
+    ];
+    // Deterministic count or numeric threshold.
+    int64 count = 5 [
+      (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+      (grdr.common.v1alpha1.policy_readable) = true
+    ];
+    // Bounded categorical label value.
+    string tag = 6 [
+      (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+      (grdr.common.v1alpha1.policy_readable) = true
+    ];
+  }
+  reserved 900 to 999;
+}
+
+// Reference to a correlated secondary action triggered by a composite command.
+message SecondaryActionRef {
+  // Correlated secondary action identifier (act_...).
+  string action_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Action class of the secondary action.
+  grdr.common.v1alpha1.ActionClass action_class = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Typed details for process execution actions (action.exec).
+message ExecAction {
+  // Target binary reference.
+  grdr.common.v1alpha1.ExecutableRef executable = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Deterministic command risk tags emitted by normalisers.
+  repeated string command_classes = 2 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Argument vector length.
+  uint32 argv_count = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // HMAC digest over normalised argv tokens.
+  string argv_digest = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER];
+  // Working directory reference.
+  grdr.common.v1alpha1.PathRef cwd = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Exit code when phase is ACTION_PHASE_OUTCOME.
+  optional int32 exit_code = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Redacted argv array safe only at redacted_arguments or higher.
+  repeated string argv_redacted = 7 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT,
+    (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_ARGUMENT,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  // Raw shell command line gated by full_content and sealable under D-35.
+  optional string command_line = 8 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT,
+    (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  reserved 900 to 999;
+}
+
+// Typed details for filesystem read/write/delete actions (action.file.*).
+message FileAction {
+  // Normalised path reference.
+  grdr.common.v1alpha1.PathRef path = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Target size in bytes when observed.
+  optional uint64 byte_count = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Digest of content read or written.
+  optional string content_digest = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Protected path rule class hit if any.
+  optional string protected_category = 4 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  reserved 900 to 999;
+}
+
+// Typed details for network connection and HTTP request actions (action.net.*).
+message NetAction {
+  // Remote hostname or SNI domain.
+  string host = 1 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Destination TCP/UDP port.
+  uint32 port = 2 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Transport scheme or protocol (https, tls, ssh, dns).
+  string protocol = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // HTTP method when applicable.
+  optional string method = 4 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Host reputation or tenant classification tag.
+  optional string destination_class = 5 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Redacted URL path and query string gated by capture policy.
+  optional string request_target = 6 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT,
+    (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_ARGUMENT,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  reserved 900 to 999;
+}
+
+// Typed details for MCP server connection and tool call actions (action.mcp.*).
+message McpAction {
+  // Target MCP server identifier.
+  string mcp_id = 1 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Invoked MCP method or tool name.
+  string tool_name = 2 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // SHA-256 digest of the pinned or observed tool manifest.
+  string manifest_digest = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Derived write capability indicator.
+  bool write_capable = 4 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Redacted JSON-RPC arguments gated by capture policy.
+  optional string arguments_preview = 5 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT,
+    (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_ARGUMENT,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  reserved 900 to 999;
+}
+
+// Typed details for LLM inference request metadata (action.llm.request).
+message LlmAction {
+  // Inference provider host or endpoint class.
+  string provider_host = 1 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Requested model identifier.
+  string model = 2 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // True when endpoint belongs to tenant-approved boundary.
+  bool tenant_endpoint = 3 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Prompt and completion token counts when returned.
+  uint64 input_tokens = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Redacted prompt excerpt gated by capture policy.
+  optional string prompt_excerpt = 5 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT,
+    (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  reserved 900 to 999;
+}
+
+// Typed details for brokered credential access and leasing (action.cred.use).
+message CredAction {
+  // Stable pseudonymised credential reference (crd_...).
+  string credential_ref = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER];
+  // Credential sensitivity tier (production, model, cloud, forge, ssh, publish).
+  string credential_class = 2 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Active broker lease identifier reserved under 15-01 (design/15 section 15).
+  string lease_id = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // True when kernel peer identity verified the requesting caller.
+  bool peer_verified = 4 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Granted scope classes bound to this lease.
+  repeated string scope_classes = 5 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  reserved 900 to 999;
+}
+
+// Typed details for privilege escalation or system boundary crossings (action.elevate).
+message ElevateAction {
+  // Elevation mechanism (sudo, uac, container_socket, service_control).
+  string mechanism = 1 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Requested target privilege or role.
+  string requested_privilege = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Normalised target binary or unit.
+  grdr.common.v1alpha1.TargetRef target = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Canonical action payload attached to action.* events across control points.
+message Action {
+  // Unique action identifier (act_...).
+  string action_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Coarse action category.
+  grdr.common.v1alpha1.ActionClass action_class = 2 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Lifecycle phase (intent before execution vs outcome after).
+  grdr.common.v1alpha1.ActionPhase phase = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Observed or enforced execution outcome.
+  grdr.common.v1alpha1.ActionOutcome outcome = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Agent harness tool name when triggered from a harness hook.
+  optional string native_tool = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Attribution resolution status.
+  grdr.common.v1alpha1.ResolutionKind resolution = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Canonical target reference.
+  grdr.common.v1alpha1.TargetRef target = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Correlated deterministic analysis facts readable by policy rules.
+  repeated DeterministicFact facts = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Domain-separated digest over canonicalised action parameters and target.
+  string action_digest = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Linked policy decision identifier when policy evaluated this action.
+  optional string decision_id = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Correlated secondary actions derived from this intent.
+  repeated SecondaryActionRef secondary_actions = 11 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Per-class structured action detail.
+  oneof detail {
+    // Execution action details.
+    ExecAction exec = 12 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+    // Filesystem action details.
+    FileAction file = 13 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+    // Network action details.
+    NetAction net = 14 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+    // MCP action details.
+    McpAction mcp = 15 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+    // LLM request details.
+    LlmAction llm = 16 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+    // Credential broker details.
+    CredAction cred = 17 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+    // Elevation details.
+    ElevateAction elevate = 18 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  }
+  reserved 900 to 999;
+}

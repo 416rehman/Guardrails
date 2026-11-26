@@ -1522,6 +1522,7 @@ version = "0.1.0"
 dependencies = [
  "cedar-policy",
  "grdr-model",
+ "grdr-proto",
  "grdr-schema",
  "serde",
  "serde_json",

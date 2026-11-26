@@ -1,0 +1,224 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Canonical endpoint, identity, agent, session, and workspace entities (docs/design/04 section 3).
+syntax = "proto3";
+
+package grdr.entity.v1alpha1;
+
+import "google/protobuf/timestamp.proto";
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/ids.proto";
+import "grdr/common/v1alpha1/options.proto";
+
+// Monitored customer tenant boundary identified by opaque identifier.
+message Organisation {
+  // Opaque organisation identifier (org_...).
+  string org_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Active tenant privacy visibility mode.
+  grdr.common.v1alpha1.IdentityMode identity_mode = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Active default capture level for remote event uploads.
+  grdr.common.v1alpha1.CaptureLevel capture_level = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Enrolled or standalone endpoint host running the Guardrails sensor.
+message Device {
+  // Unique device identifier (dev_...).
+  string device_id = 1 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Owning organisation identifier.
+  string org_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Device hostname redacted under pseudonymous profile rules.
+  string hostname = 3 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  // Operating system family (linux, macos, windows).
+  string os = 4 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // CPU architecture identifier.
+  string arch = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Install privilege topology (user or protected).
+  grdr.common.v1alpha1.InstallProfile install_profile = 6 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Effective device tamper resistance grade.
+  grdr.common.v1alpha1.TamperGrade tamper = 7 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Overall endpoint assurance level.
+  grdr.common.v1alpha1.AssuranceLevel assurance_level = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Running sensor software version.
+  string sensor_version = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Timestamp of last check-in or observation.
+  google.protobuf.Timestamp last_seen_at = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Human or workload principal pseudonymised under P8 privacy profiles.
+message Principal {
+  // Stable per-org or per-device pseudonym (prn_...).
+  string pseudonym = 1 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER,
+    (grdr.common.v1alpha1.policy_readable) = true,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  // Coarse principal kind.
+  grdr.common.v1alpha1.ActorKind kind = 2 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Source mechanism mapping OS user or IdP account to this principal.
+  string mapping = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Verification grade of principal identity binding.
+  grdr.common.v1alpha1.IdentityProof identity_proof = 4 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Optional named user display label masked under works-council mode.
+  optional string display_name = 5 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  // Optional named email address masked under works-council mode.
+  optional string email = 6 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  reserved 900 to 999;
+}
+
+// Catalogued AI agent family (for example claude-code or codex).
+message AgentType {
+  // Stable catalogue agent type identifier (agt_...).
+  string agent_type_id = 1 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Canonical human-facing product slug.
+  string slug = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Catalogue tier (tier_a, tier_b, tier_c, bespoke).
+  string catalogue_tier = 3 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Whether processes of this agent are dedicated exclusively to agent loops.
+  bool session_exclusive = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Concrete discovered installation or process instance of an agent on a device.
+message AgentInstance {
+  // Stable device-local or org-wide agent instance identifier (agi_...).
+  string agent_instance_id = 1 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Owning agent type identifier.
+  string agent_type_id = 2 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Host device identifier.
+  string device_id = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Observed program identity string.
+  string program_identity = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Instance lifecycle state.
+  grdr.common.v1alpha1.AgentLifecycle lifecycle = 5 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Effective sandbox containment mode.
+  grdr.common.v1alpha1.ContainmentMode containment_mode = 6 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Observed executable reference.
+  grdr.common.v1alpha1.ExecutableRef executable = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Attributed agent execution session with inherited policy labels.
+message Session {
+  // Unique session identifier (ses_...).
+  string session_id = 1 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Owning agent instance identifier.
+  string agent_instance_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Host device identifier.
+  string device_id = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Attributed human or workload principal.
+  Principal principal = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER];
+  // Active behavioural taint labels accumulated during the session.
+  repeated grdr.common.v1alpha1.SessionLabel labels = 5 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Session workspace location reference.
+  grdr.common.v1alpha1.PathRef workspace = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Timestamp when the session opened.
+  google.protobuf.Timestamp started_at = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Optional parent session identifier for spawned subagents.
+  optional string parent_session_id = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Distinct tool invocation span within a monitored agent session.
+message ToolCall {
+  // Unique tool call identifier (tc_...).
+  string tool_call_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Parent session identifier.
+  string session_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Harness-native tool name (for example Bash, Read, or MCP tool).
+  string native_tool = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Timestamp when the tool call started.
+  google.protobuf.Timestamp started_at = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Discovered or configured Model Context Protocol server entity.
+message McpServer {
+  // Stable MCP server identifier.
+  string mcp_id = 1 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Display name from agent configuration.
+  string name = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Transport mechanism (stdio, sse, streamable_http).
+  string transport = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Whether launch and tool manifest digests are pinned.
+  bool identity_pinned = 4 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Hash of pinned tool manifest definitions.
+  string manifest_digest = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Discovered agent skill, rule, plugin, command, or subagent configuration artifact.
+message Artifact {
+  // Unique artifact identifier.
+  string artifact_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Artifact category from registry.
+  grdr.common.v1alpha1.ArtifactKind kind = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Optional open artifact category name.
+  optional string kind_other = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Configuration scope (user, workspace, organisation).
+  grdr.common.v1alpha1.ArtifactScope scope = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Content digest of artifact payload.
+  string content_digest = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Source location reference without raw user home names.
+  grdr.common.v1alpha1.PathRef location = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}

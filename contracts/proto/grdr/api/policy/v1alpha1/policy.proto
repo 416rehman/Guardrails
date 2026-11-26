@@ -6,6 +6,7 @@ syntax = "proto3";
 
 package grdr.api.policy.v1alpha1;
 
+import "grdr/common/v1alpha1/options.proto";
 import "grdr/common/v1alpha1/enums.proto";
 import "grdr/common/v1alpha1/resources.proto";
 import "grdr/common/v1alpha1/types.proto";
@@ -13,65 +14,68 @@ import "grdr/common/v1alpha1/types.proto";
 // Historical attempt outcome previewed by counterfactual rule replay.
 message ReplaySample {
   // Attempt identifier sampled from recent telemetry.
-  string attempt_id = 1;
+  string attempt_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Session identifier.
-  string session_id = 2;
+  string session_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Agent harness name.
-  string agent_name = 3;
+  string agent_name = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Action class evaluated.
-  grdr.common.v1alpha1.ActionClass action_class = 4;
+  grdr.common.v1alpha1.ActionClass action_class = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Attempt target.
-  string target = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT];
+  string target = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_ARGUMENT, (grdr.common.v1alpha1.sealable) = true];
   // Original enforced verdict.
-  grdr.common.v1alpha1.Verdict current_verdict = 6;
+  grdr.common.v1alpha1.Verdict current_verdict = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
   // Counterfactual verdict under candidate_mode.
-  grdr.common.v1alpha1.Verdict candidate_verdict = 7;
+  grdr.common.v1alpha1.Verdict candidate_verdict = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
   // RFC 3339 attempt timestamp.
-  string timestamp = 8;
+  string timestamp = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Counterfactual replay impact summary returned before promoting a rule mode.
 message ReplaySummary {
   // Evaluated rule identifier.
-  string rule_id = 1;
+  string rule_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Candidate enforcement mode tested.
-  grdr.common.v1alpha1.Mode candidate_mode = 2;
+  grdr.common.v1alpha1.Mode candidate_mode = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Human label for the replayed window.
-  string window_label = 3;
+  string window_label = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Total historical attempts scanned.
-  uint64 total_scanned = 4;
+  uint64 total_scanned = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
   // Total attempts matching the rule.
-  uint64 matched = 5;
+  uint64 matched = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
   // Attempts that would trigger Ask under candidate_mode.
-  uint64 would_ask = 6;
+  uint64 would_ask = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
   // Attempts that would trigger Block under candidate_mode.
-  uint64 would_block = 7;
+  uint64 would_block = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
   // Non-matching attempts.
-  uint64 not_matched = 8;
+  uint64 not_matched = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
   // Sampled affected attempts.
-  repeated ReplaySample samples = 9;
+  repeated ReplaySample samples = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Managed generative AI browser application DLP policy.
 message BrowserAppPolicy {
   // Unique browser app policy identifier.
-  string id = 1;
+  string id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Display name of the AI web application.
-  string name = 2;
+  string name = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Protected destination web domains.
-  repeated string domains = 3;
-  // Active enforcement posture mode.
-  grdr.common.v1alpha1.Mode mode = 4;
+  repeated string domains = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Active enforcement mode.
+  grdr.common.v1alpha1.Mode mode = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Whether file uploads are blocked or stepped up.
-  bool block_file_uploads = 5;
+  bool block_file_uploads = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Whether pasted secrets are blocked or stepped up.
-  bool block_secret_paste = 6;
+  bool block_secret_paste = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Whether only managed browser extensions are permitted.
-  bool managed_extension_only = 7;
+  bool managed_extension_only = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Events observed over the last 24 hours.
-  uint32 events_24h = 8;
+  uint32 events_24h = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Blocked events over the last 24 hours.
-  uint32 blocked_24h = 9;
+  uint32 blocked_24h = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for ListPacks.
@@ -80,69 +84,77 @@ message ListPacksRequest {}
 // Response for ListPacks.
 message ListPacksResponse {
   // Active signed policy packs and their rules.
-  repeated grdr.common.v1alpha1.PolicyPack packs = 1;
+  repeated grdr.common.v1alpha1.PolicyPack packs = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Revision and ETag metadata.
-  grdr.common.v1alpha1.RevisionMeta revision = 2;
+  grdr.common.v1alpha1.RevisionMeta revision = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for CreateRule.
 message CreateRuleRequest {
+  reserved 900 to 999;
+
   // Target pack identifier; defaults to custom pack when omitted.
-  optional string pack_id = 1;
+  optional string pack_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Concise rule title.
-  string title = 2;
+  string title = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
   // Detailed rule description.
-  string description = 3;
+  string description = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Initial enforcement mode.
-  grdr.common.v1alpha1.Mode mode = 4;
+  grdr.common.v1alpha1.Mode mode = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Minimum approval grade when mode is Ask.
-  optional grdr.common.v1alpha1.ApprovalGrade min_grade = 5;
+  optional grdr.common.v1alpha1.ApprovalGrade min_grade = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Rule matcher criteria.
-  grdr.common.v1alpha1.RuleMatch matcher = 6;
+  grdr.common.v1alpha1.RuleMatch matcher = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Explanation template shown on match.
-  string reason_template = 7;
+  string reason_template = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Optional custom Cedar policy text.
-  optional string cedar = 8;
+  optional string cedar = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY, (grdr.common.v1alpha1.sealable) = true];
 }
 
 // Response for CreateRule.
 message CreateRuleResponse {
   // Newly created and re-signed policy rule.
-  grdr.common.v1alpha1.PolicyRule rule = 1;
+  grdr.common.v1alpha1.PolicyRule rule = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for UpdateRule.
 message UpdateRuleRequest {
+  reserved 900 to 999;
+
   // Identifier of the rule to update.
-  string id = 1;
+  string id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Updated title.
-  optional string title = 2;
+  optional string title = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
   // Updated description.
-  optional string description = 3;
+  optional string description = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Updated enforcement mode.
-  optional grdr.common.v1alpha1.Mode mode = 4;
+  optional grdr.common.v1alpha1.Mode mode = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Updated minimum approval grade.
-  optional grdr.common.v1alpha1.ApprovalGrade min_grade = 5;
+  optional grdr.common.v1alpha1.ApprovalGrade min_grade = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Updated matcher criteria.
-  optional grdr.common.v1alpha1.RuleMatch matcher = 6;
+  optional grdr.common.v1alpha1.RuleMatch matcher = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Updated explanation template.
-  optional string reason_template = 7;
+  optional string reason_template = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Updated Cedar source text.
-  optional string cedar = 8;
+  optional string cedar = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY, (grdr.common.v1alpha1.sealable) = true];
   // Optional actor attribution.
-  optional string actor = 9;
+  optional string actor = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
 }
 
 // Response for UpdateRule.
 message UpdateRuleResponse {
   // Updated policy rule.
-  grdr.common.v1alpha1.PolicyRule rule = 1;
+  grdr.common.v1alpha1.PolicyRule rule = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for DeleteRule.
 message DeleteRuleRequest {
   // Identifier of the custom rule to delete.
-  string id = 1;
+  string id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Response for DeleteRule.
@@ -150,34 +162,39 @@ message DeleteRuleResponse {}
 
 // Request for UpdateRuleMode.
 message UpdateRuleModeRequest {
+  reserved 900 to 999;
+
   // Identifier of the rule to transition.
-  string id = 1;
+  string id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Target enforcement mode.
-  grdr.common.v1alpha1.Mode mode = 2;
+  grdr.common.v1alpha1.Mode mode = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Optional actor attribution.
-  optional string actor = 3;
+  optional string actor = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
   // Confirmation flag required when promoting directly to Block.
-  optional bool replay_confirmed = 4;
+  optional bool replay_confirmed = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
 }
 
 // Response for UpdateRuleMode.
 message UpdateRuleModeResponse {
   // Updated policy rule after transition.
-  grdr.common.v1alpha1.PolicyRule rule = 1;
+  grdr.common.v1alpha1.PolicyRule rule = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for ReplayRule.
 message ReplayRuleRequest {
   // Identifier of the rule to simulate.
-  string id = 1;
+  string id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Candidate mode to evaluate against recent telemetry.
-  grdr.common.v1alpha1.Mode candidate_mode = 2;
+  grdr.common.v1alpha1.Mode candidate_mode = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Response for ReplayRule.
 message ReplayRuleResponse {
   // Counterfactual replay summary and affected samples.
-  ReplaySummary summary = 1;
+  ReplaySummary summary = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for ListBrowserPolicies.
@@ -186,29 +203,32 @@ message ListBrowserPoliciesRequest {}
 // Response for ListBrowserPolicies.
 message ListBrowserPoliciesResponse {
   // Managed browser AI application DLP policies.
-  repeated BrowserAppPolicy policies = 1;
+  repeated BrowserAppPolicy policies = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Revision and ETag metadata.
-  grdr.common.v1alpha1.RevisionMeta revision = 2;
+  grdr.common.v1alpha1.RevisionMeta revision = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for UpdateBrowserPolicy.
 message UpdateBrowserPolicyRequest {
   // Browser policy identifier.
-  string id = 1;
+  string id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Updated mode.
-  optional grdr.common.v1alpha1.Mode mode = 2;
+  optional grdr.common.v1alpha1.Mode mode = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Updated file-upload guard setting.
-  optional bool block_file_uploads = 3;
+  optional bool block_file_uploads = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Updated secret-paste guard setting.
-  optional bool block_secret_paste = 4;
+  optional bool block_secret_paste = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Updated managed-extension-only requirement.
-  optional bool managed_extension_only = 5;
+  optional bool managed_extension_only = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Response for UpdateBrowserPolicy.
 message UpdateBrowserPolicyResponse {
   // Updated browser application policy.
-  BrowserAppPolicy policy = 1;
+  BrowserAppPolicy policy = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Policy packs, rule editing, mode promotion replay, and browser DLP policies.

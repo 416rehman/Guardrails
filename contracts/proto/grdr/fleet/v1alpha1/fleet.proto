@@ -1,0 +1,194 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Fleet control plane, compatibility negotiation, enrolment, commands, and schedules (22).
+syntax = "proto3";
+
+package grdr.fleet.v1alpha1;
+
+import "google/protobuf/timestamp.proto";
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/options.proto";
+
+// Contract version range advertised during compatibility negotiation (D-71).
+message CompatRange {
+  // Contract identifier (for example "grdr.ingest.v1alpha1", "grdr.pack.v1alpha1").
+  string contract = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Minimum supported semantic version or revision.
+  string min_version = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Maximum supported semantic version or revision.
+  string max_version = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Server-directed fleet schedule pacing batching, heartbeats, polling, and backoff caps.
+message Schedule {
+  // Monotonic schedule revision identifier.
+  uint64 revision = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Steady-state event batch upload cadence in milliseconds.
+  uint32 batch_interval_ms = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Deterministic device-hashed check-in phase offset in milliseconds.
+  uint32 checkin_phase_ms = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Fleet heartbeat cadence in milliseconds.
+  uint32 heartbeat_interval_ms = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Long-poll wait timeout in milliseconds.
+  uint32 poll_interval_ms = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Minimum retry backoff floor in milliseconds.
+  uint32 retry_after_ms = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Client compatibility handshake sent on check-in and enrolment (D-71).
+message Handshake {
+  // Endpoint sensor release version.
+  string sensor_version = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Supported wire and bundle contract ranges.
+  repeated CompatRange contracts = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Install privilege profile.
+  grdr.common.v1alpha1.InstallProfile install_profile = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Short-lived response verification key certificate signed by the fleet key (22 section 4.4).
+message ResponseKeyCertificate {
+  // Key identifier bound to responses.
+  string key_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Raw Ed25519 or P-256 public key bytes.
+  bytes public_key = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Key validity start timestamp.
+  google.protobuf.Timestamp not_before = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Key expiration timestamp.
+  google.protobuf.Timestamp not_after = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Signature issued by the pinned fleet trust key.
+  bytes fleet_signature = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Signed endpoint response command envelope verified against approver roster (D-30).
+message CommandEnvelope {
+  // Unique idempotent command identifier.
+  string command_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Target response action (freeze, kill, isolate, capture, revoke, release).
+  grdr.common.v1alpha1.KillAction action = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Target containment scope.
+  grdr.common.v1alpha1.KillScope scope = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Expiration deadline evaluated against trusted time.
+  google.protobuf.Timestamp not_after = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Canonical signed command payload bytes.
+  bytes payload = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Quorum signatures from authorised approver roster.
+  repeated bytes signatures = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Device enrolment request carrying deployment token or workload attestation.
+message EnrolRequest {
+  // Single-use enrolment token or MDM deployment key material.
+  bytes enrolment_token = 1 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT,
+    (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  // Device public key bytes to bind to the assigned identity.
+  bytes device_public_key = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Key custody protection class (hardware, os_keystore, file).
+  string key_protection = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Device compatibility handshake.
+  Handshake handshake = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Enrolment response issuing device identity, pinned trust roots, and initial schedule.
+message EnrolResponse {
+  // Assigned endpoint device identifier (dev_...).
+  string device_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Assigned owning organisation identifier (org_...).
+  string org_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Pinned deployment root digest.
+  string deployment_root_digest = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Initial fleet schedule.
+  Schedule schedule = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Certified server response verification key.
+  ResponseKeyCertificate response_cert = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Periodic OpAMP-style check-in reporting desired-vs-active bundle digests and health.
+message CheckInRequest {
+  // Enrolled device identifier.
+  string device_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Compatibility handshake.
+  Handshake handshake = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Currently active signed bundle digests.
+  repeated string active_bundle_digests = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Overall device health status string.
+  string health_summary = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Check-in timestamp converted from monotonic clock reading per ADR-0047.
+  google.protobuf.Timestamp health_at = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Server check-in response carrying desired bundle digests, commands, and schedule.
+message CheckInResponse {
+  // Authoritative schedule when updated.
+  Schedule schedule = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Desired pack and bundle digests for the device's rollout ring.
+  repeated string desired_bundle_digests = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Pending signed response commands awaiting execution.
+  repeated CommandEnvelope pending_commands = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Certified short-lived response key.
+  ResponseKeyCertificate response_cert = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Authoritative server UTC timestamp.
+  google.protobuf.Timestamp server_time = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Long-poll wait request listening for command or schedule notifications without push.
+message WaitRequest {
+  // Enrolled device identifier.
+  string device_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Last acknowledged schedule revision.
+  uint64 known_schedule_revision = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Long-poll wakeup notification prompting check-in or command fetch.
+message WaitResponse {
+  // True when new commands are queued for retrieval.
+  bool commands_available = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // True when schedule revision advanced.
+  bool schedule_changed = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Server UTC timestamp at wakeup.
+  google.protobuf.Timestamp server_time = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Request fetching queued signed response commands for an enrolled device.
+message PendingCommandsRequest {
+  // Enrolled device identifier.
+  string device_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Response containing queued signed response commands.
+message PendingCommandsResponse {
+  // Signed commands verified by endpoint approver roster.
+  repeated CommandEnvelope commands = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Device enrolment endpoint.
+service EnrolService {
+  // Enrols a device and issues initial organisation binding and trust certificates.
+  rpc Enrol(EnrolRequest) returns (EnrolResponse);
+}
+
+// Fleet control-plane synchronization, command retrieval, and long-poll notifications.
+service FleetService {
+  // Reports device health and digests, returning desired bundles and pending commands.
+  rpc CheckIn(CheckInRequest) returns (CheckInResponse);
+  // Waits via long-poll for schedule or command updates behind inspecting proxies.
+  rpc Wait(WaitRequest) returns (WaitResponse);
+  // Fetches queued signed response commands.
+  rpc PendingCommands(PendingCommandsRequest) returns (PendingCommandsResponse);
+}

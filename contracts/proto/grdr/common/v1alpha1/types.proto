@@ -1,171 +1,85 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
-// Shared options, pagination, revision, and error types for Guardrails ADR APIs.
+// Shared pagination, revision, and coded error types for Guardrails ADR APIs.
 syntax = "proto3";
 
 package grdr.common.v1alpha1;
 
-import "google/protobuf/descriptor.proto";
-
-// Data classification assigned to API and schema fields (P8 privacy tiers).
-enum DataClass {
-  // Unspecified data class.
-  DATA_CLASS_UNSPECIFIED = 0;
-  // Public documentation or static reference data.
-  DATA_CLASS_PUBLIC = 1;
-  // Structural or operational metadata safe across profiles.
-  DATA_CLASS_METADATA = 2;
-  // Named person or directory identifier hidden in pseudonymous mode.
-  DATA_CLASS_IDENTIFIER = 3;
-  // Pseudonymous subject identifier.
-  DATA_CLASS_PSEUDONYM = 4;
-  // Untrusted prompt, payload, or command content gated by content grant.
-  DATA_CLASS_CONTENT = 5;
-  // Secret material never exposed across read endpoints.
-  DATA_CLASS_SECRET = 6;
-}
-
-// Confirmation friction required before executing a mutating method.
-enum ConfirmClass {
-  // Unspecified confirmation class.
-  CONFIRM_CLASS_UNSPECIFIED = 0;
-  // Direct mutation with no confirmation modal.
-  CONFIRM_CLASS_NONE = 1;
-  // Single-step consequence confirmation.
-  CONFIRM_CLASS_CONSEQUENCE = 2;
-  // Typed identifier confirmation for destructive changes.
-  CONFIRM_CLASS_TYPED = 3;
-  // Change proposal requiring out-of-band review.
-  CONFIRM_CLASS_PROPOSE = 4;
-  // Dual-approver or hardware-key quorum confirmation.
-  CONFIRM_CLASS_QUORUM = 5;
-}
-
-// Audit trail classification attached to every RPC method.
-enum AuditClass {
-  // Unspecified audit class.
-  AUDIT_CLASS_UNSPECIFIED = 0;
-  // Liveness or health probe with no audit record.
-  AUDIT_CLASS_NONE = 1;
-  // Standard read operation.
-  AUDIT_CLASS_READ = 2;
-  // Sensitive read involving developer activity or identity.
-  AUDIT_CLASS_SENSITIVE_READ = 3;
-  // Policy, finding, or inventory mutation.
-  AUDIT_CLASS_MUTATION = 4;
-  // High-impact kill-switch, privacy, or key mutation.
-  AUDIT_CLASS_CRITICAL_MUTATION = 5;
-}
-
-// Priority and throttling bucket assigned to every RPC method.
-enum RateClass {
-  // Unspecified rate class.
-  RATE_CLASS_UNSPECIFIED = 0;
-  // Exempt health and readiness checks.
-  RATE_CLASS_HEALTH = 1;
-  // Standard API read or list call.
-  RATE_CLASS_STANDARD = 2;
-  // Interactive console mutation or detail inspection.
-  RATE_CLASS_INTERACTIVE = 3;
-  // Critical safety control such as approval decision or kill switch.
-  RATE_CLASS_CRITICAL = 4;
-  // Bulk export or replay operation.
-  RATE_CLASS_BULK = 5;
-  // High-volume telemetry and verdict ingest.
-  RATE_CLASS_INGEST = 6;
-}
+import "grdr/common/v1alpha1/options.proto";
 
 // Broad failure category carried in ErrorDetail.
 enum ErrorClass {
   // Unspecified error class.
   ERROR_CLASS_UNSPECIFIED = 0;
   // Invalid request arguments, filter syntax, or page token.
-  ERROR_CLASS_VALIDATION = 1;
+  ERROR_CLASS_VALIDATION = 1 [(wire_name) = "validation"];
   // Missing or invalid caller authentication credentials.
-  ERROR_CLASS_AUTH = 2;
+  ERROR_CLASS_AUTH = 2 [(wire_name) = "auth"];
   // Authenticated caller lacks required policy scope.
-  ERROR_CLASS_PERMISSION = 3;
+  ERROR_CLASS_PERMISSION = 3 [(wire_name) = "permission"];
   // Requested resource was not found.
-  ERROR_CLASS_NOT_FOUND = 4;
+  ERROR_CLASS_NOT_FOUND = 4 [(wire_name) = "not_found"];
   // Revision ETag or uniqueness conflict.
-  ERROR_CLASS_CONFLICT = 5;
+  ERROR_CLASS_CONFLICT = 5 [(wire_name) = "conflict"];
   // Caller exceeded configured rate budget.
-  ERROR_CLASS_RATE_LIMIT = 6;
+  ERROR_CLASS_RATE_LIMIT = 6 [(wire_name) = "rate_limit"];
   // Unexpected internal server error.
-  ERROR_CLASS_INTERNAL = 7;
-}
-
-extend google.protobuf.MethodOptions {
-  // Required authorisation scope string checked on method invocation.
-  string scope = 50001;
-  // Audit trail category emitted for invocations of this method.
-  AuditClass audit = 50002;
-  // Rate-limiting class controlling token-bucket shedding.
-  RateClass rate_class = 50003;
-  // Confirmation friction tier expected by Console, CLI, and MCP clients.
-  ConfirmClass confirm = 50004;
-  // Whether this read-only method may be exposed through the governed MCP bridge.
-  bool mcp_exposed = 50005;
-}
-
-extend google.protobuf.FieldOptions {
-  // Privacy data classification for this field.
-  DataClass data_class = 50011;
-  // Whether this field is allowlisted in AIP-160 filter expressions.
-  bool filterable = 50012;
-  // Whether this field is allowlisted in AIP-158 order_by clauses.
-  bool sortable = 50013;
+  ERROR_CLASS_INTERNAL = 7 [(wire_name) = "internal"];
 }
 
 // Structured error identity matching google.rpc.ErrorInfo wire layout.
 message ErrorInfo {
   // Registry UPPER_SNAKE error reason, for example PAGE_TOKEN_INVALID.
-  string reason = 1;
+  string reason = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Error domain identifier, fixed to grdr.api for server responses.
-  string domain = 2;
+  string domain = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Structured contextual attributes such as code, field, or request_id.
-  map<string, string> metadata = 3;
+  map<string, string> metadata = 3 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Guardrails-specific coded error detail attached to Connect error responses.
 message ErrorDetail {
   // Stable Guardrails registry code in GRDR-<AREA>-<NNNN> format.
-  string code = 1;
+  string code = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
   // UPPER_SNAKE machine-readable reason for programmatic branching.
-  string reason = 2;
+  string reason = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Coarse error category.
-  ErrorClass class = 3;
+  ErrorClass class = 3 [(data_class) = DATA_CLASS_STRUCTURAL];
   // English diagnostic message safe for operators and logs.
-  string message = 4;
+  string message = 4 [(data_class) = DATA_CLASS_DERIVED];
   // Optional i18n message token id.
-  string message_id = 5;
+  string message_id = 5 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Concise remediation hint.
-  string fix = 6;
+  string fix = 6 [(data_class) = DATA_CLASS_DERIVED];
   // Documentation reference URL or anchor.
-  string docs_url = 7;
+  string docs_url = 7 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Correlation request id matching the grdr-request-id HTTP header.
-  string request_id = 8;
+  string request_id = 8 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Additional structured error context.
-  map<string, string> metadata = 9;
+  map<string, string> metadata = 9 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // AIP-158 cursor pagination metadata returned by all list endpoints.
 message PageInfo {
   // AEAD-sealed opaque cursor token for fetching the next page.
-  string next_page_token = 1;
+  string next_page_token = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
   // AEAD-sealed opaque cursor token for returning to the previous page.
-  string prev_page_token = 2;
+  string prev_page_token = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Estimated total matching rows from server metadata without full table count.
-  uint64 total_size_estimate = 3;
+  uint64 total_size_estimate = 3 [(data_class) = DATA_CLASS_DERIVED];
   // True when more matching items remain after the current page.
-  bool has_more = 4;
+  bool has_more = 4 [(data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
 }
 
 // Revision and caching metadata for conditional GET and optimistic updates.
 message RevisionMeta {
   // Strong or weak ETag value computed from collection revision, filter, and order.
-  string etag = 1;
+  string etag = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Monotonic collection high-water mark sequence number.
-  uint64 high_water_mark = 2;
+  uint64 high_water_mark = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }

@@ -1,0 +1,135 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Security findings, correlated incidents, suppressions, evidence spans, and observables (04, 13, 18).
+syntax = "proto3";
+
+package grdr.finding.v1alpha1;
+
+import "google/protobuf/timestamp.proto";
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/ids.proto";
+import "grdr/common/v1alpha1/options.proto";
+
+// Exact supporting evidence span pointing into an event, digest, or transcript fragment.
+message EvidenceSpan {
+  // Unique evidence span identifier.
+  string span_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Evidence span kind.
+  grdr.common.v1alpha1.EvidenceKind kind = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Custom evidence kind when EVIDENCE_KIND_OTHER is selected.
+  optional string kind_other = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Event or artifact identifier holding the evidence.
+  string source_ref = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Domain-separated digest of the exact substring or artifact.
+  string digest = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Bounded verbatim evidence snippet permitted only under D-51 finding routes or grants.
+  optional string text = 6 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT,
+    (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  reserved 900 to 999;
+}
+
+// Indexed indicator value enabling retro-hunt correlation across endpoints (D-54).
+message Observable {
+  // Observable identifier.
+  string observable_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Indicator kind (executable_digest, destination_host, mcp_digest, skill_digest, package).
+  string kind = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Keyed HMAC or SHA-256 digest of the observable value.
+  string value_digest = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER];
+  // Optional readable observable value subject to capture policy.
+  optional string value = 4 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT,
+    (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_ARGUMENT,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  // Earliest observed timestamp in tenant retention.
+  google.protobuf.Timestamp first_seen_at = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Latest observed timestamp in tenant retention.
+  google.protobuf.Timestamp last_seen_at = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Scoped, owned finding suppression record with mandatory expiration (D-54).
+message Suppression {
+  // Unique suppression identifier.
+  string suppression_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Suppressed rule identifier.
+  string rule_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Digest of matching target/program scope.
+  string scope_digest = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Owning team or approver pseudonym.
+  string owner = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER];
+  // Required written justification.
+  string justification = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Mandatory expiry timestamp (suppressions never last forever).
+  google.protobuf.Timestamp expires_at = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Security, tamper, policy-violation, or coverage-gap finding emitted on the evidence/spine lanes.
+message Finding {
+  // Unique finding identifier (fnd_...).
+  string finding_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Owning organisation identifier.
+  string org_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Linked session identifier.
+  string session_id = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Owning endpoint device identifier.
+  string device_id = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Canonical finding class.
+  grdr.common.v1alpha1.FindingClass finding_class = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Custom finding class string when FINDING_CLASS_OTHER is used.
+  optional string finding_class_other = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Finding severity tier.
+  grdr.common.v1alpha1.FindingSeverity severity = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Current triage lifecycle state.
+  grdr.common.v1alpha1.FindingLifecycle lifecycle = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Detection or policy rule identifier.
+  optional string rule_id = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Deterministic finding headline.
+  string title = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Concise triage summary.
+  string summary = 11 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Canonical target reference.
+  grdr.common.v1alpha1.TargetRef target = 12 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER];
+  // Supporting evidence spans.
+  repeated EvidenceSpan evidence_spans = 13 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Associated hunt observables.
+  repeated Observable observables = 14 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // True when generated by retrospective hunt rather than live detection (never pages).
+  bool retro = 15 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Detection timestamp.
+  google.protobuf.Timestamp detected_at = 16 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Correlated incident grouping one or more findings across a session or attack chain.
+message Incident {
+  // Unique incident identifier (inc_...).
+  string incident_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Owning organisation identifier.
+  string org_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Primary session identifier.
+  string session_id = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Primary device identifier.
+  string device_id = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Incident headline.
+  string title = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Incident narrative summary.
+  string summary = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Highest severity across correlated findings.
+  grdr.common.v1alpha1.FindingSeverity severity = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Incident lifecycle state.
+  grdr.common.v1alpha1.FindingLifecycle lifecycle = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Correlated finding identifiers.
+  repeated string finding_ids = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Earliest contributing finding timestamp.
+  google.protobuf.Timestamp first_seen_at = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Latest contributing finding timestamp.
+  google.protobuf.Timestamp last_seen_at = 11 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}

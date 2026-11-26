@@ -66,6 +66,10 @@ contracts/architecture.toml
 contracts/surfaces.toml
 contracts/support.toml
 contracts/codes/**
+crates/grdr-schema/capture.toml
+crates/grdr-schema/reclassifications.toml
+crates/grdr-schema-lint/foreign_files.toml
+crates/grdr-schema-lint/**
 security/**
 .github/**
 .claude/hooks/**

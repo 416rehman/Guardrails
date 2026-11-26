@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Typed localised language-token references across gRPC, Connect, and UI views (D-69, RFC 0017).
+syntax = "proto3";
+
+package grdr.common.v1alpha1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "grdr/common/v1alpha1/options.proto";
+
+// Exact fixed-point decimal string representation passed into MessageFormat2 tokens.
+message DecimalInput {
+  // Canonical decimal ASCII string without lossy floating-point conversion.
+  string raw = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
+  // Fractional scale digits preserved during rendering.
+  uint32 scale = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Single typed placeholder argument supplied to a MessageRef language token.
+message MessageArg {
+  // Placeholder argument name matching the language-token catalogue schema.
+  string name = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
+  // Data classification inherited by this specific argument value.
+  DataClass value_class = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
+  // Typed scalar argument value; untyped arbitrary JSON is forbidden.
+  oneof value {
+    // Structural metadata text argument.
+    string text_structural = 3 [(data_class) = DATA_CLASS_STRUCTURAL];
+    // Subject or identifier text argument subject to privacy profile masking.
+    string text_identifier = 4 [(data_class) = DATA_CLASS_IDENTIFIER, (sealable) = true];
+    // Content argument gated by capture policy and content grants.
+    string text_content = 5 [
+      (data_class) = DATA_CLASS_CONTENT,
+      (content_kind) = CONTENT_KIND_ARGUMENT,
+      (sealable) = true
+    ];
+    // Integer quantity formatted per negotiated locale.
+    int64 integer = 6 [(data_class) = DATA_CLASS_STRUCTURAL];
+    // Exact fixed-point decimal quantity.
+    DecimalInput decimal = 7 [(data_class) = DATA_CLASS_STRUCTURAL];
+    // Timestamp formatted in caller timezone.
+    google.protobuf.Timestamp timestamp = 8 [(data_class) = DATA_CLASS_STRUCTURAL];
+    // Bounded duration formatted for human readers.
+    google.protobuf.Duration duration = 9 [(data_class) = DATA_CLASS_STRUCTURAL];
+  }
+  reserved 900 to 999;
+}
+
+// Localisable message reference rendered by UI kits without leaking raw English templates.
+message MessageRef {
+  // Registered language-token identifier (for example "verdict.block.headline").
+  string token_id = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
+  // Typed named arguments bound to the language token.
+  repeated MessageArg args = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
+  // Digest of the token catalogue source from which this reference was constructed.
+  string source_hash = 3 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}

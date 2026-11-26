@@ -2,13 +2,12 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 //! Vocabulary registry parser and terminology consistency linter (`contracts/interface/vocabulary.toml`).
 
-use std::fs;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    LintDomain, LintError, LintFinding, LintSeverity, MAX_LINT_FILE_BYTES,
+    LintDomain, LintError, LintFinding, LintSeverity, MAX_LINT_FILE_BYTES, canonicalize_real_dir,
     read_bounded_regular_file,
 };
 
@@ -99,11 +98,22 @@ pub fn lint_vocabulary_toml(
     findings: &mut Vec<LintFinding>,
 ) -> Result<usize, LintError> {
     let parent = path.parent().unwrap_or(path);
-    let canon_root = fs::canonicalize(parent).map_err(|e| LintError::Io {
-        path: path.display().to_string(),
-        detail: e.to_string(),
-    })?;
-    let raw = read_bounded_regular_file(&canon_root, path, MAX_LINT_FILE_BYTES)?;
+    let canon_parent = canonicalize_real_dir(parent, "vocabulary directory")?;
+    let Some(file_name) = path.file_name() else {
+        return Err(LintError::Io {
+            path: path.display().to_string(),
+            detail: "missing vocabulary filename".into(),
+        });
+    };
+    lint_vocabulary_toml_under(&canon_parent, &canon_parent.join(file_name), findings)
+}
+
+pub(crate) fn lint_vocabulary_toml_under(
+    canon_root: &Path,
+    path: &Path,
+    findings: &mut Vec<LintFinding>,
+) -> Result<usize, LintError> {
+    let raw = read_bounded_regular_file(canon_root, path, MAX_LINT_FILE_BYTES)?;
     let registry = parse_vocabulary_toml(&raw)?;
 
     for req_key in REQUIRED_TERM_KEYS {

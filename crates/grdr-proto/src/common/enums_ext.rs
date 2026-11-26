@@ -12,6 +12,7 @@ pub enum FindingClass {
     Overeager = 3,
     Tamper = 4,
     CoverageGap = 5,
+    Other = 99,
 }
 proto_enum_codec!(FindingClass, finding_class_serde, [
     FindingClass::Unspecified => "FINDING_CLASS_UNSPECIFIED",
@@ -20,6 +21,7 @@ proto_enum_codec!(FindingClass, finding_class_serde, [
     FindingClass::Overeager => "FINDING_CLASS_OVEREAGER" | "overeager",
     FindingClass::Tamper => "FINDING_CLASS_TAMPER" | "tamper",
     FindingClass::CoverageGap => "FINDING_CLASS_COVERAGE_GAP" | "coverage_gap",
+    FindingClass::Other => "FINDING_CLASS_OTHER" | "other",
 ]);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
@@ -122,6 +124,7 @@ pub enum ArtifactKind {
     Plugin = 3,
     Command = 4,
     Subagent = 5,
+    Other = 99,
 }
 proto_enum_codec!(ArtifactKind, artifact_kind_serde, [
     ArtifactKind::Unspecified => "ARTIFACT_KIND_UNSPECIFIED",
@@ -130,6 +133,7 @@ proto_enum_codec!(ArtifactKind, artifact_kind_serde, [
     ArtifactKind::Plugin => "ARTIFACT_KIND_PLUGIN" | "plugin",
     ArtifactKind::Command => "ARTIFACT_KIND_COMMAND" | "command",
     ArtifactKind::Subagent => "ARTIFACT_KIND_SUBAGENT" | "subagent",
+    ArtifactKind::Other => "ARTIFACT_KIND_OTHER" | "other",
 ]);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]

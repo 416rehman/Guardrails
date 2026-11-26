@@ -1,0 +1,93 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Assurance records, control-point capabilities, and canary probe results (docs/design/07 section 11).
+syntax = "proto3";
+
+package grdr.assurance.v1alpha1;
+
+import "google/protobuf/timestamp.proto";
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/options.proto";
+
+// Per-(control_point, action_class) enforcement capability state measured on the endpoint.
+message ControlPointCapability {
+  // Control point reporting capability.
+  grdr.common.v1alpha1.ControlPoint control_point = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Action class governed by this capability row.
+  grdr.common.v1alpha1.ActionClass action_class = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // True when listener or sensor attachment succeeded.
+  bool attached = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // True when enforcing rather than monitor-only.
+  bool enforcing = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Effective visibility grade for this action class.
+  grdr.common.v1alpha1.Visibility visibility = 5 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Effective control strength for this action class.
+  grdr.common.v1alpha1.ControlStrength control = 6 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Effective failure handling mode proven for this control point.
+  grdr.common.v1alpha1.OnFailure on_failure = 7 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  reserved 900 to 999;
+}
+
+// Single capability or canary self-test result contributing to assurance calculation.
+message CapabilityProbeResult {
+  // Registered probe name (for example hook-canary or lsm-attach).
+  string probe_name = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // True when probe passed within budget.
+  bool passed = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Diagnostic reason code when failed or downgraded.
+  string detail_code = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Timestamp when probe executed.
+  google.protobuf.Timestamp measured_at = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Evaluated four-axis assurance state and computed level emitted as assurance.record (07 section 11).
+message AssuranceRecord {
+  // Linked session identifier when scoped to a session.
+  optional string session_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Endpoint device identifier.
+  string device_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Agent instance identifier.
+  string agent_instance_id = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Rolled-up visibility tier readable by Cedar policy.
+  grdr.common.v1alpha1.Visibility visibility = 4 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Rolled-up control strength readable by Cedar policy.
+  grdr.common.v1alpha1.ControlStrength control = 5 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Rolled-up failure behaviour readable by Cedar policy.
+  grdr.common.v1alpha1.OnFailure on_failure = 6 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Endpoint tamper resistance tier readable by Cedar policy.
+  grdr.common.v1alpha1.TamperGrade tamper = 7 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Human summary level AL0..AL4 (display only; policy never reads level).
+  grdr.common.v1alpha1.AssuranceLevel level = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Per-control-point capabilities backing this assurance calculation.
+  repeated ControlPointCapability capabilities = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Probe outcomes backing this record.
+  repeated CapabilityProbeResult probes = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Blocker codes preventing elevation to the next assurance level.
+  repeated string next_level_blockers = 11 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Timestamp when the record was computed.
+  google.protobuf.Timestamp evaluated_at = 12 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}

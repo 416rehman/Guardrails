@@ -1,0 +1,4 @@
+# Append-only schema reclassification & R17b org confirmation ledger (docs/design/04, RFC 0006 R17).
+# Every entry requires: rfc = "NNNN", seat = "persona-privacy-officer" | "persona-soc-analyst",
+# plus from, to, target, and justification. Removed fields require successor = "<path>".
+schema = "grdr.reclassifications.v1alpha1"

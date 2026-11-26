@@ -142,3 +142,111 @@ spec = "contracts/cedar/v1alpha1.cedarschema"
 version = "grdr.limits.v1alpha1"
 stability = "experimental"
 spec = "contracts/limits.toml"
+
+[[proto_package]]
+package = "common.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "entity.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "event.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "decision.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "finding.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "assurance.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "inventory.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "feed.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "export.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "decide.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "local.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "provider.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "identity.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "ingest.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "fleet.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "bootstrap.v1"
+class = "experimental"
+
+[[proto_package]]
+package = "embed.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "operator.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "api.activity.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "api.inventory.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "api.operator.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "api.overview.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "api.policy.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "api.response.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "api.surfaces.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "api.tenancy.v1alpha1"
+class = "experimental"
+
+[[proto_package]]
+package = "api.verdict.v1alpha1"
+class = "experimental"

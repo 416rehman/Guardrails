@@ -1,0 +1,116 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Descriptor options, canonical privacy data classes, and method metadata for Guardrails ADR.
+syntax = "proto3";
+
+package grdr.common.v1alpha1;
+
+import "google/protobuf/descriptor.proto";
+
+// Sensitivity data classification attached to every schema field (P8, D-51, RFC 0006).
+enum DataClass {
+  // Unspecified data class; rejected on every concrete field.
+  DATA_CLASS_UNSPECIFIED = 0;
+  // Subject, user, principal, email, display name, or sponsor identifier.
+  DATA_CLASS_IDENTIFIER = 1 [(wire_name) = "identifier"];
+  // Fixed structural, topological, digest, timestamp, or configuration field.
+  DATA_CLASS_STRUCTURAL = 2 [(wire_name) = "structural"];
+  // Computed counts, risk tiers, labels, verdicts, reasons, or rule matches.
+  DATA_CLASS_DERIVED = 3 [(wire_name) = "derived"];
+  // Untrusted argument, target, command, prompt, payload, or secret content.
+  DATA_CLASS_CONTENT = 4 [(wire_name) = "content"];
+}
+
+// Sub-classification required on every DATA_CLASS_CONTENT field and forbidden elsewhere.
+enum ContentKind {
+  // Unspecified content kind; rejected on DATA_CLASS_CONTENT fields.
+  CONTENT_KIND_UNSPECIFIED = 0;
+  // Bounded command, path, URL, tool target, or redacted argument fragment.
+  CONTENT_KIND_ARGUMENT = 1 [(wire_name) = "argument"];
+  // Prompt body, transcript excerpt, stdin/stdout payload, evidence span, or secret body.
+  CONTENT_KIND_BODY = 2 [(wire_name) = "body"];
+}
+
+// Confirmation friction tier expected by Console, CLI, and MCP clients.
+enum ConfirmClass {
+  // Unspecified confirmation class.
+  CONFIRM_CLASS_UNSPECIFIED = 0;
+  // Direct mutation with no confirmation modal.
+  CONFIRM_CLASS_NONE = 1 [(wire_name) = "none"];
+  // Single-step consequence confirmation.
+  CONFIRM_CLASS_CONSEQUENCE = 2 [(wire_name) = "consequence"];
+  // Typed identifier confirmation for destructive changes.
+  CONFIRM_CLASS_TYPED = 3 [(wire_name) = "typed"];
+  // Change proposal requiring out-of-band review.
+  CONFIRM_CLASS_PROPOSE = 4 [(wire_name) = "propose"];
+  // Dual-approver or hardware-key quorum confirmation.
+  CONFIRM_CLASS_QUORUM = 5 [(wire_name) = "quorum"];
+}
+
+// Audit trail classification attached to every RPC method.
+enum AuditClass {
+  // Unspecified audit class.
+  AUDIT_CLASS_UNSPECIFIED = 0;
+  // Liveness or health probe with no audit record.
+  AUDIT_CLASS_NONE = 1 [(wire_name) = "none"];
+  // Standard read operation.
+  AUDIT_CLASS_READ = 2 [(wire_name) = "read"];
+  // Sensitive read involving developer activity or identity.
+  AUDIT_CLASS_SENSITIVE_READ = 3 [(wire_name) = "sensitive_read"];
+  // Policy, finding, or inventory mutation.
+  AUDIT_CLASS_MUTATION = 4 [(wire_name) = "mutation"];
+  // High-impact kill-switch, privacy, or key mutation.
+  AUDIT_CLASS_CRITICAL_MUTATION = 5 [(wire_name) = "critical_mutation"];
+}
+
+// Priority and throttling bucket assigned to every RPC method.
+enum RateClass {
+  // Unspecified rate class.
+  RATE_CLASS_UNSPECIFIED = 0;
+  // Exempt health and readiness checks.
+  RATE_CLASS_HEALTH = 1 [(wire_name) = "health"];
+  // Standard API read or list call.
+  RATE_CLASS_STANDARD = 2 [(wire_name) = "standard"];
+  // Interactive console mutation or detail inspection.
+  RATE_CLASS_INTERACTIVE = 3 [(wire_name) = "interactive"];
+  // Critical safety control such as approval decision or kill switch.
+  RATE_CLASS_CRITICAL = 4 [(wire_name) = "critical"];
+  // Bulk export or replay operation.
+  RATE_CLASS_BULK = 5 [(wire_name) = "bulk"];
+  // High-volume telemetry and verdict ingest.
+  RATE_CLASS_INGEST = 6 [(wire_name) = "ingest"];
+}
+
+extend google.protobuf.FieldOptions {
+  // Required privacy data class for every protobuf field.
+  DataClass data_class = 50001;
+  // Required sub-kind whenever data_class is DATA_CLASS_CONTENT.
+  ContentKind content_kind = 50002;
+  // Marks fields exposed deterministically to policy evaluation (never floats).
+  bool policy_readable = 50003;
+  // Marks fields supporting endpoint HPKE sealing into a reserved 900..999 twin.
+  bool sealable = 50004;
+  // Whether this field is allowlisted in AIP-160 filter expressions.
+  bool filterable = 50005;
+  // Whether this field is allowlisted in AIP-158 order_by clauses.
+  bool sortable = 50006;
+}
+
+extend google.protobuf.EnumValueOptions {
+  // Canonical lowercase stable wire name required on every non-zero enum value.
+  string wire_name = 50011;
+}
+
+extend google.protobuf.MethodOptions {
+  // Required authorisation scope string checked on method invocation.
+  string scope = 50001;
+  // Audit trail category emitted for invocations of this method.
+  AuditClass audit = 50002;
+  // Rate-limiting class controlling token-bucket shedding.
+  RateClass rate_class = 50003;
+  // Confirmation friction tier expected by Console, CLI, and MCP clients.
+  ConfirmClass confirm = 50004;
+  // Whether this read-only method may be exposed through the governed MCP bridge.
+  bool mcp_exposed = 50005;
+}

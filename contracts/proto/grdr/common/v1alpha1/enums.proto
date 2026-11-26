@@ -6,18 +6,20 @@ syntax = "proto3";
 
 package grdr.common.v1alpha1;
 
-// Enforcement posture mode applied to a rule or pack (Off, Watch, Ask, Block).
+import "grdr/common/v1alpha1/options.proto";
+
+// Enforcement mode applied to a rule or pack (Off, Watch, Ask, Block).
 enum Mode {
   // Unspecified enforcement mode.
   MODE_UNSPECIFIED = 0;
   // Rule is disabled.
-  MODE_OFF = 1;
+  MODE_OFF = 1 [(wire_name) = "off"];
   // Rule records telemetry hits without prompting or blocking.
-  MODE_WATCH = 2;
+  MODE_WATCH = 2 [(wire_name) = "watch"];
   // Rule triggers interactive step-up approval.
-  MODE_ASK = 3;
+  MODE_ASK = 3 [(wire_name) = "ask"];
   // Rule immediately denies matching attempts.
-  MODE_BLOCK = 4;
+  MODE_BLOCK = 4 [(wire_name) = "block"];
 }
 
 // Enforcement verdict returned by policy evaluation.
@@ -25,73 +27,73 @@ enum Verdict {
   // Unspecified verdict.
   VERDICT_UNSPECIFIED = 0;
   // Action is permitted to proceed.
-  VERDICT_ALLOW = 1;
+  VERDICT_ALLOW = 1 [(wire_name) = "allow"];
   // Action is rewritten or constrained before execution.
-  VERDICT_MODIFY = 2;
+  VERDICT_MODIFY = 2 [(wire_name) = "modify"];
   // Action requires out-of-band approval step-up.
-  VERDICT_STEP_UP = 3;
+  VERDICT_STEP_UP = 3 [(wire_name) = "step_up"];
   // Decision is deferred for asynchronous review.
-  VERDICT_DEFER = 4;
+  VERDICT_DEFER = 4 [(wire_name) = "defer"];
   // Action is denied.
-  VERDICT_DENY = 5;
+  VERDICT_DENY = 5 [(wire_name) = "deny"];
 }
 
-// High-level agent action classification evaluated by policy.
+// High-level agent action classification evaluated by policy (closed enum; Design 04 R-1/13).
 enum ActionClass {
   // Unspecified action class.
   ACTION_CLASS_UNSPECIFIED = 0;
   // Shell or command execution.
-  ACTION_CLASS_EXEC = 1;
+  ACTION_CLASS_EXEC = 1 [(wire_name) = "exec"];
   // File read operation.
-  ACTION_CLASS_FILE_READ = 2;
+  ACTION_CLASS_FILE_READ = 2 [(wire_name) = "file.read"];
   // File creation or modification.
-  ACTION_CLASS_FILE_WRITE = 3;
+  ACTION_CLASS_FILE_WRITE = 3 [(wire_name) = "file.write"];
   // File deletion.
-  ACTION_CLASS_FILE_DELETE = 4;
+  ACTION_CLASS_FILE_DELETE = 4 [(wire_name) = "file.delete"];
   // Network socket connection.
-  ACTION_CLASS_NET_CONNECT = 5;
+  ACTION_CLASS_NET_CONNECT = 5 [(wire_name) = "net.connect"];
   // Outbound HTTP or network request.
-  ACTION_CLASS_NET_REQUEST = 6;
+  ACTION_CLASS_NET_REQUEST = 6 [(wire_name) = "net.request"];
   // Model inference request.
-  ACTION_CLASS_LLM_REQUEST = 7;
+  ACTION_CLASS_LLM_REQUEST = 7 [(wire_name) = "llm.request"];
   // MCP server transport connection.
-  ACTION_CLASS_MCP_CONNECT = 8;
+  ACTION_CLASS_MCP_CONNECT = 8 [(wire_name) = "mcp.connect"];
   // MCP tool invocation.
-  ACTION_CLASS_MCP_CALL = 9;
+  ACTION_CLASS_MCP_CALL = 9 [(wire_name) = "mcp.call"];
   // Credential or secret access.
-  ACTION_CLASS_CRED_USE = 10;
+  ACTION_CLASS_CRED_USE = 10 [(wire_name) = "cred.use"];
   // Subagent process spawn.
-  ACTION_CLASS_AGENT_SPAWN = 11;
+  ACTION_CLASS_AGENT_SPAWN = 11 [(wire_name) = "agent.spawn"];
   // Agent or environment configuration mutation.
-  ACTION_CLASS_CONFIG_CHANGE = 12;
+  ACTION_CLASS_CONFIG_CHANGE = 12 [(wire_name) = "config.change"];
   // Privilege elevation request.
-  ACTION_CLASS_ELEVATE = 13;
+  ACTION_CLASS_ELEVATE = 13 [(wire_name) = "elevate"];
   // Interactive UI automation action.
-  ACTION_CLASS_UI_ACT = 14;
+  ACTION_CLASS_UI_ACT = 14 [(wire_name) = "ui.act"];
   // Cross-boundary data flow transfer.
-  ACTION_CLASS_DATA_FLOW = 15;
+  ACTION_CLASS_DATA_FLOW = 15 [(wire_name) = "data.flow"];
 }
 
-// Enforcement surface where an action attempt was intercepted.
+// Enforcement surface where an action attempt was intercepted (closed enum; Design 04).
 enum ControlPoint {
   // Unspecified control point.
   CONTROL_POINT_UNSPECIFIED = 0;
   // Agent harness hook interception.
-  CONTROL_POINT_HOOK = 1;
+  CONTROL_POINT_HOOK = 1 [(wire_name) = "hook"];
   // Managed MCP broker interception.
-  CONTROL_POINT_MCP_BROKER = 2;
+  CONTROL_POINT_MCP_BROKER = 2 [(wire_name) = "mcp-broker"];
   // Outbound network proxy interception.
-  CONTROL_POINT_PROXY = 3;
+  CONTROL_POINT_PROXY = 3 [(wire_name) = "proxy"];
   // OS sandbox containment layer.
-  CONTROL_POINT_SANDBOX = 4;
+  CONTROL_POINT_SANDBOX = 4 [(wire_name) = "sandbox"];
   // Host OS telemetry sensor.
-  CONTROL_POINT_SENSOR = 5;
+  CONTROL_POINT_SENSOR = 5 [(wire_name) = "sensor"];
   // Managed browser extension DLP guard.
-  CONTROL_POINT_BROWSER = 6;
+  CONTROL_POINT_BROWSER = 6 [(wire_name) = "browser"];
   // Model or credential gateway.
-  CONTROL_POINT_GATEWAY = 7;
+  CONTROL_POINT_GATEWAY = 7 [(wire_name) = "gateway"];
   // SaaS connector integration boundary.
-  CONTROL_POINT_CONNECTOR = 8;
+  CONTROL_POINT_CONNECTOR = 8 [(wire_name) = "connector"];
 }
 
 // Agent telemetry visibility strength.
@@ -99,13 +101,13 @@ enum Visibility {
   // Unspecified visibility.
   VISIBILITY_UNSPECIFIED = 0;
   // No telemetry observed.
-  VISIBILITY_NONE = 1;
+  VISIBILITY_NONE = 1 [(wire_name) = "none"];
   // Self-reported by agent without independent verification.
-  VISIBILITY_CLAIMED = 2;
+  VISIBILITY_CLAIMED = 2 [(wire_name) = "claimed"];
   // Independently observed on host or proxy.
-  VISIBILITY_OBSERVED = 3;
+  VISIBILITY_OBSERVED = 3 [(wire_name) = "observed"];
   // Cross-checked across multiple independent sensors.
-  VISIBILITY_CROSS_CHECKED = 4;
+  VISIBILITY_CROSS_CHECKED = 4 [(wire_name) = "cross_checked"];
 }
 
 // Enforcement boundary control strength.
@@ -113,13 +115,13 @@ enum ControlStrength {
   // Unspecified control strength.
   CONTROL_STRENGTH_UNSPECIFIED = 0;
   // No active control boundary.
-  CONTROL_STRENGTH_NONE = 1;
+  CONTROL_STRENGTH_NONE = 1 [(wire_name) = "none"];
   // Advisory request-level mediation.
-  CONTROL_STRENGTH_REQUEST = 2;
+  CONTROL_STRENGTH_REQUEST = 2 [(wire_name) = "request"];
   // Scoped hook or wrapper mediation.
-  CONTROL_STRENGTH_SCOPED_BOUNDARY = 3;
+  CONTROL_STRENGTH_SCOPED_BOUNDARY = 3 [(wire_name) = "scoped_boundary"];
   // Mandatory OS-enforced containment boundary.
-  CONTROL_STRENGTH_MANDATORY_BOUNDARY = 4;
+  CONTROL_STRENGTH_MANDATORY_BOUNDARY = 4 [(wire_name) = "mandatory_boundary"];
 }
 
 // Failure disposition when an enforcer is unreachable.
@@ -127,9 +129,9 @@ enum OnFailure {
   // Unspecified failure mode.
   ON_FAILURE_UNSPECIFIED = 0;
   // Fail open on timeout or transport error.
-  ON_FAILURE_OPEN = 1;
+  ON_FAILURE_OPEN = 1 [(wire_name) = "open"];
   // Fail closed on timeout or transport error.
-  ON_FAILURE_CLOSED = 2;
+  ON_FAILURE_CLOSED = 2 [(wire_name) = "closed"];
 }
 
 // Tamper-resistance grade of the deployed boundary.
@@ -137,11 +139,11 @@ enum TamperGrade {
   // Unspecified tamper grade.
   TAMPER_GRADE_UNSPECIFIED = 0;
   // User-writable hooks and configuration.
-  TAMPER_GRADE_USER = 1;
+  TAMPER_GRADE_USER = 1 [(wire_name) = "user"];
   // Administrator-protected configuration.
-  TAMPER_GRADE_ADMIN = 2;
+  TAMPER_GRADE_ADMIN = 2 [(wire_name) = "admin"];
   // Platform-enforced signed policy and system service.
-  TAMPER_GRADE_PLATFORM = 3;
+  TAMPER_GRADE_PLATFORM = 3 [(wire_name) = "platform"];
 }
 
 // Composite endpoint/agent assurance level (AL0..AL4).
@@ -149,15 +151,15 @@ enum AssuranceLevel {
   // Unspecified assurance level.
   ASSURANCE_LEVEL_UNSPECIFIED = 0;
   // AL0: discovered inventory only.
-  ASSURANCE_LEVEL_AL0 = 1;
+  ASSURANCE_LEVEL_AL0 = 1 [(wire_name) = "al0"];
   // AL1: observed telemetry without active enforcement.
-  ASSURANCE_LEVEL_AL1 = 2;
+  ASSURANCE_LEVEL_AL1 = 2 [(wire_name) = "al1"];
   // AL2: guided hook/prompt mediation.
-  ASSURANCE_LEVEL_AL2 = 3;
+  ASSURANCE_LEVEL_AL2 = 3 [(wire_name) = "al2"];
   // AL3: contained execution boundary.
-  ASSURANCE_LEVEL_AL3 = 4;
+  ASSURANCE_LEVEL_AL3 = 4 [(wire_name) = "al3"];
   // AL4: mandatory signed policy enforcement.
-  ASSURANCE_LEVEL_AL4 = 5;
+  ASSURANCE_LEVEL_AL4 = 5 [(wire_name) = "al4"];
 }
 
 // Endpoint daemon installation profile.
@@ -165,9 +167,9 @@ enum InstallProfile {
   // Unspecified install profile.
   INSTALL_PROFILE_UNSPECIFIED = 0;
   // User-space installation.
-  INSTALL_PROFILE_USER = 1;
+  INSTALL_PROFILE_USER = 1 [(wire_name) = "user"];
   // Managed system/admin protected installation.
-  INSTALL_PROFILE_PROTECTED = 2;
+  INSTALL_PROFILE_PROTECTED = 2 [(wire_name) = "protected"];
 }
 
 // Approval grade required to grant an Ask/StepUp request.
@@ -175,13 +177,13 @@ enum ApprovalGrade {
   // Unspecified approval grade.
   APPROVAL_GRADE_UNSPECIFIED = 0;
   // G0: low-risk automated or single acknowledgement.
-  APPROVAL_GRADE_G0 = 1;
+  APPROVAL_GRADE_G0 = 1 [(wire_name) = "g0"];
   // G1: standard operator confirmation.
-  APPROVAL_GRADE_G1 = 2;
+  APPROVAL_GRADE_G1 = 2 [(wire_name) = "g1"];
   // G2: step-up authentication required.
-  APPROVAL_GRADE_G2 = 3;
+  APPROVAL_GRADE_G2 = 3 [(wire_name) = "g2"];
   // G3: dual-approver or hardware-key quorum.
-  APPROVAL_GRADE_G3 = 4;
+  APPROVAL_GRADE_G3 = 4 [(wire_name) = "g3"];
 }
 
 // Lifetime scope for an approved temporary grant.
@@ -189,11 +191,11 @@ enum GrantScope {
   // Unspecified grant scope.
   GRANT_SCOPE_UNSPECIFIED = 0;
   // Valid for a single attempt.
-  GRANT_SCOPE_ONCE = 1;
+  GRANT_SCOPE_ONCE = 1 [(wire_name) = "once"];
   // Valid for the remainder of the session.
-  GRANT_SCOPE_SESSION = 2;
+  GRANT_SCOPE_SESSION = 2 [(wire_name) = "session"];
   // Valid for one hour.
-  GRANT_SCOPE_ONE_HOUR = 3;
+  GRANT_SCOPE_ONE_HOUR = 3 [(wire_name) = "one_hour"];
 }
 
 // Lifecycle status of an approval request.
@@ -201,13 +203,13 @@ enum ApprovalStatus {
   // Unspecified approval status.
   APPROVAL_STATUS_UNSPECIFIED = 0;
   // Waiting for operator decision before expiry.
-  APPROVAL_STATUS_PENDING = 1;
+  APPROVAL_STATUS_PENDING = 1 [(wire_name) = "pending"];
   // Approved with a signed temporary grant.
-  APPROVAL_STATUS_APPROVED = 2;
+  APPROVAL_STATUS_APPROVED = 2 [(wire_name) = "approved"];
   // Explicitly denied by operator.
-  APPROVAL_STATUS_DENIED = 3;
+  APPROVAL_STATUS_DENIED = 3 [(wire_name) = "denied"];
   // Expired without operator decision.
-  APPROVAL_STATUS_EXPIRED = 4;
+  APPROVAL_STATUS_EXPIRED = 4 [(wire_name) = "expired"];
 }
 
 // Target scope for emergency kill-switch or freeze actions.
@@ -215,11 +217,11 @@ enum KillScope {
   // Unspecified kill scope.
   KILL_SCOPE_UNSPECIFIED = 0;
   // Single active session.
-  KILL_SCOPE_SESSION = 1;
+  KILL_SCOPE_SESSION = 1 [(wire_name) = "session"];
   // Single endpoint device.
-  KILL_SCOPE_DEVICE = 2;
+  KILL_SCOPE_DEVICE = 2 [(wire_name) = "device"];
   // Entire organisation tenant.
-  KILL_SCOPE_ORGANISATION = 3;
+  KILL_SCOPE_ORGANISATION = 3 [(wire_name) = "organisation"];
 }
 
 // Emergency control action requested against the kill switch.
@@ -227,11 +229,11 @@ enum KillAction {
   // Unspecified kill action.
   KILL_ACTION_UNSPECIFIED = 0;
   // Temporarily freeze target activity.
-  KILL_ACTION_FREEZE = 1;
+  KILL_ACTION_FREEZE = 1 [(wire_name) = "freeze"];
   // Permanently terminate target activity until release.
-  KILL_ACTION_KILL = 2;
+  KILL_ACTION_KILL = 2 [(wire_name) = "kill"];
   // Release active freeze or kill state.
-  KILL_ACTION_RELEASE = 3;
+  KILL_ACTION_RELEASE = 3 [(wire_name) = "release"];
 }
 
 // Current active state of the emergency kill switch.
@@ -239,11 +241,11 @@ enum KillState {
   // Unspecified kill state.
   KILL_STATE_UNSPECIFIED = 0;
   // Normal operation with no active freeze or kill.
-  KILL_STATE_INACTIVE = 1;
+  KILL_STATE_INACTIVE = 1 [(wire_name) = "inactive"];
   // Target is temporarily frozen until expiry.
-  KILL_STATE_FROZEN = 2;
+  KILL_STATE_FROZEN = 2 [(wire_name) = "frozen"];
   // Target is killed until explicit release.
-  KILL_STATE_KILLED = 3;
+  KILL_STATE_KILLED = 3 [(wire_name) = "killed"];
 }
 
 // Category of security finding generated by detections or policy denials.
@@ -251,15 +253,17 @@ enum FindingClass {
   // Unspecified finding class.
   FINDING_CLASS_UNSPECIFIED = 0;
   // Threat detection match.
-  FINDING_CLASS_THREAT = 1;
+  FINDING_CLASS_THREAT = 1 [(wire_name) = "threat"];
   // Policy violation intercepted by Ask or Block rules.
-  FINDING_CLASS_POLICY_VIOLATION = 2;
+  FINDING_CLASS_POLICY_VIOLATION = 2 [(wire_name) = "policy_violation"];
   // Overeager or noisy rule hit pattern.
-  FINDING_CLASS_OVEREAGER = 3;
+  FINDING_CLASS_OVEREAGER = 3 [(wire_name) = "overeager"];
   // Attempt to bypass containment or tamper with guardrails.
-  FINDING_CLASS_TAMPER = 4;
+  FINDING_CLASS_TAMPER = 4 [(wire_name) = "tamper"];
   // Coverage gap in endpoint hook or sensor protection.
-  FINDING_CLASS_COVERAGE_GAP = 5;
+  FINDING_CLASS_COVERAGE_GAP = 5 [(wire_name) = "coverage_gap"];
+  // Other unlisted FindingClass value.
+  FINDING_CLASS_OTHER = 99 [(wire_name) = "other"];
 }
 
 // Severity level of a finding or incident.
@@ -267,13 +271,13 @@ enum FindingSeverity {
   // Unspecified severity.
   FINDING_SEVERITY_UNSPECIFIED = 0;
   // Low-severity finding.
-  FINDING_SEVERITY_LOW = 1;
+  FINDING_SEVERITY_LOW = 1 [(wire_name) = "low"];
   // Medium-severity finding.
-  FINDING_SEVERITY_MEDIUM = 2;
+  FINDING_SEVERITY_MEDIUM = 2 [(wire_name) = "medium"];
   // High-severity finding.
-  FINDING_SEVERITY_HIGH = 3;
+  FINDING_SEVERITY_HIGH = 3 [(wire_name) = "high"];
   // Critical-severity finding.
-  FINDING_SEVERITY_CRITICAL = 4;
+  FINDING_SEVERITY_CRITICAL = 4 [(wire_name) = "critical"];
 }
 
 // Triage lifecycle state of a finding or incident.
@@ -281,13 +285,13 @@ enum FindingLifecycle {
   // Unspecified finding lifecycle.
   FINDING_LIFECYCLE_UNSPECIFIED = 0;
   // Newly opened and untriaged.
-  FINDING_LIFECYCLE_OPEN = 1;
+  FINDING_LIFECYCLE_OPEN = 1 [(wire_name) = "open"];
   // Acknowledged by an operator.
-  FINDING_LIFECYCLE_ACKNOWLEDGED = 2;
+  FINDING_LIFECYCLE_ACKNOWLEDGED = 2 [(wire_name) = "acknowledged"];
   // Contained or mitigated pending final resolution.
-  FINDING_LIFECYCLE_CONTAINED = 3;
+  FINDING_LIFECYCLE_CONTAINED = 3 [(wire_name) = "contained"];
   // Resolved or remediated.
-  FINDING_LIFECYCLE_RESOLVED = 4;
+  FINDING_LIFECYCLE_RESOLVED = 4 [(wire_name) = "resolved"];
 }
 
 // OpenTelemetry-aligned execution span kind for an action attempt.
@@ -295,33 +299,33 @@ enum SpanKind {
   // Unspecified span kind.
   SPAN_KIND_UNSPECIFIED = 0;
   // Top-level agent invocation.
-  SPAN_KIND_INVOKE_AGENT = 1;
+  SPAN_KIND_INVOKE_AGENT = 1 [(wire_name) = "invoke_agent"];
   // Conversational chat turn.
-  SPAN_KIND_CHAT = 2;
+  SPAN_KIND_CHAT = 2 [(wire_name) = "chat"];
   // Tool execution span.
-  SPAN_KIND_EXECUTE_TOOL = 3;
+  SPAN_KIND_EXECUTE_TOOL = 3 [(wire_name) = "execute_tool"];
   // MCP tool or resource call.
-  SPAN_KIND_MCP_CALL = 4;
+  SPAN_KIND_MCP_CALL = 4 [(wire_name) = "mcp_call"];
   // Host OS effect span.
-  SPAN_KIND_OS_EFFECT = 5;
+  SPAN_KIND_OS_EFFECT = 5 [(wire_name) = "os_effect"];
   // Subagent delegation spawn.
-  SPAN_KIND_SUBAGENT_SPAWN = 6;
+  SPAN_KIND_SUBAGENT_SPAWN = 6 [(wire_name) = "subagent_spawn"];
   // Context compaction event.
-  SPAN_KIND_COMPACTION = 7;
+  SPAN_KIND_COMPACTION = 7 [(wire_name) = "compaction"];
 }
 
-// Provenance confidence source for telemetry records.
+// Provenance confidence source for telemetry records (closed enum; Design 04 R-13).
 enum ProvenanceSource {
   // Unspecified provenance source.
   PROVENANCE_SOURCE_UNSPECIFIED = 0;
   // Claimed by agent payload.
-  PROVENANCE_SOURCE_CLAIMED = 1;
+  PROVENANCE_SOURCE_CLAIMED = 1 [(wire_name) = "claimed"];
   // Observed by local daemon or hook.
-  PROVENANCE_SOURCE_OBSERVED = 2;
+  PROVENANCE_SOURCE_OBSERVED = 2 [(wire_name) = "observed"];
   // Mediated by active enforcement wrapper.
-  PROVENANCE_SOURCE_MEDIATED = 3;
+  PROVENANCE_SOURCE_MEDIATED = 3 [(wire_name) = "mediated"];
   // Reconciled across host sensor and proxy logs.
-  PROVENANCE_SOURCE_RECONCILED = 4;
+  PROVENANCE_SOURCE_RECONCILED = 4 [(wire_name) = "reconciled"];
 }
 
 // Behavioural classification labels attached to a session or incident.
@@ -329,13 +333,13 @@ enum SessionLabel {
   // Unspecified session label.
   SESSION_LABEL_UNSPECIFIED = 0;
   // Sensitive credential resource accessed.
-  SESSION_LABEL_CREDENTIAL_ACCESSED = 1;
+  SESSION_LABEL_CREDENTIAL_ACCESSED = 1 [(wire_name) = "credential_accessed"];
   // Untrusted web origin fetched into context.
-  SESSION_LABEL_UNTRUSTED_WEB_FETCHED = 2;
+  SESSION_LABEL_UNTRUSTED_WEB_FETCHED = 2 [(wire_name) = "untrusted_web_fetched"];
   // Repeated policy denials observed in session.
-  SESSION_LABEL_REPEATED_DENIALS = 3;
+  SESSION_LABEL_REPEATED_DENIALS = 3 [(wire_name) = "repeated_denials"];
   // Tainted outbound data exfiltration risk.
-  SESSION_LABEL_TAINTED_EXFIL_RISK = 4;
+  SESSION_LABEL_TAINTED_EXFIL_RISK = 4 [(wire_name) = "tainted_exfil_risk"];
 }
 
 // Type of AI coding artifact discovered on an endpoint.
@@ -343,15 +347,17 @@ enum ArtifactKind {
   // Unspecified artifact kind.
   ARTIFACT_KIND_UNSPECIFIED = 0;
   // Agent skill definition.
-  ARTIFACT_KIND_SKILL = 1;
+  ARTIFACT_KIND_SKILL = 1 [(wire_name) = "skill"];
   // Local agent rule file.
-  ARTIFACT_KIND_RULE = 2;
+  ARTIFACT_KIND_RULE = 2 [(wire_name) = "rule"];
   // Agent plugin package.
-  ARTIFACT_KIND_PLUGIN = 3;
+  ARTIFACT_KIND_PLUGIN = 3 [(wire_name) = "plugin"];
   // Custom slash command file.
-  ARTIFACT_KIND_COMMAND = 4;
+  ARTIFACT_KIND_COMMAND = 4 [(wire_name) = "command"];
   // Subagent prompt or definition.
-  ARTIFACT_KIND_SUBAGENT = 5;
+  ARTIFACT_KIND_SUBAGENT = 5 [(wire_name) = "subagent"];
+  // Other unlisted ArtifactKind value.
+  ARTIFACT_KIND_OTHER = 99 [(wire_name) = "other"];
 }
 
 // Scope where an artifact is installed on the host.
@@ -359,11 +365,11 @@ enum ArtifactScope {
   // Unspecified artifact scope.
   ARTIFACT_SCOPE_UNSPECIFIED = 0;
   // User home directory scope.
-  ARTIFACT_SCOPE_USER = 1;
+  ARTIFACT_SCOPE_USER = 1 [(wire_name) = "user"];
   // Repository workspace scope.
-  ARTIFACT_SCOPE_WORKSPACE = 2;
+  ARTIFACT_SCOPE_WORKSPACE = 2 [(wire_name) = "workspace"];
   // System managed scope.
-  ARTIFACT_SCOPE_MANAGED = 3;
+  ARTIFACT_SCOPE_MANAGED = 3 [(wire_name) = "managed"];
 }
 
 // Risk indicator attached to a discovered artifact.
@@ -371,13 +377,13 @@ enum ArtifactRiskFlag {
   // Unspecified risk flag.
   ARTIFACT_RISK_FLAG_UNSPECIFIED = 0;
   // Artifact contains executable scripts.
-  ARTIFACT_RISK_FLAG_HAS_SCRIPTS = 1;
+  ARTIFACT_RISK_FLAG_HAS_SCRIPTS = 1 [(wire_name) = "has_scripts"];
   // Artifact requests broad filesystem or shell permissions.
-  ARTIFACT_RISK_FLAG_REQUESTS_BROAD_TOOLS = 2;
+  ARTIFACT_RISK_FLAG_REQUESTS_BROAD_TOOLS = 2 [(wire_name) = "requests_broad_tools"];
   // Artifact contains bidirectional Unicode obfuscation characters.
-  ARTIFACT_RISK_FLAG_BIDI_OBFUSCATION = 3;
+  ARTIFACT_RISK_FLAG_BIDI_OBFUSCATION = 3 [(wire_name) = "bidi_obfuscation"];
   // Artifact is not pinned to an immutable digest.
-  ARTIFACT_RISK_FLAG_UNPINNED_DIGEST = 4;
+  ARTIFACT_RISK_FLAG_UNPINNED_DIGEST = 4 [(wire_name) = "unpinned_digest"];
 }
 
 // Organisation privacy visibility mode for developer identities (P8).
@@ -385,9 +391,9 @@ enum IdentityMode {
   // Unspecified identity mode.
   IDENTITY_MODE_UNSPECIFIED = 0;
   // Named user directory correlation enabled.
-  IDENTITY_MODE_NAMED = 1;
+  IDENTITY_MODE_NAMED = 1 [(wire_name) = "named"];
   // Works-council pseudonymous mode (prn_ identifiers only).
-  IDENTITY_MODE_PSEUDONYMOUS = 2;
+  IDENTITY_MODE_PSEUDONYMOUS = 2 [(wire_name) = "pseudonymous"];
 }
 
 // Additive user risk tier.
@@ -395,13 +401,13 @@ enum RiskTier {
   // Unspecified risk tier.
   RISK_TIER_UNSPECIFIED = 0;
   // Low baseline risk.
-  RISK_TIER_LOW = 1;
+  RISK_TIER_LOW = 1 [(wire_name) = "low"];
   // Elevated risk requiring attention.
-  RISK_TIER_ELEVATED = 2;
+  RISK_TIER_ELEVATED = 2 [(wire_name) = "elevated"];
   // High risk score.
-  RISK_TIER_HIGH = 3;
+  RISK_TIER_HIGH = 3 [(wire_name) = "high"];
   // Critical risk score.
-  RISK_TIER_CRITICAL = 4;
+  RISK_TIER_CRITICAL = 4 [(wire_name) = "critical"];
 }
 
 // Status of a device enrolment deployment key.
@@ -409,13 +415,13 @@ enum DeploymentKeyStatus {
   // Unspecified deployment key status.
   DEPLOYMENT_KEY_STATUS_UNSPECIFIED = 0;
   // Key is active and has remaining uses.
-  DEPLOYMENT_KEY_STATUS_ACTIVE = 1;
+  DEPLOYMENT_KEY_STATUS_ACTIVE = 1 [(wire_name) = "active"];
   // Key reached max_uses.
-  DEPLOYMENT_KEY_STATUS_EXHAUSTED = 2;
+  DEPLOYMENT_KEY_STATUS_EXHAUSTED = 2 [(wire_name) = "exhausted"];
   // Key passed expires_at timestamp.
-  DEPLOYMENT_KEY_STATUS_EXPIRED = 3;
+  DEPLOYMENT_KEY_STATUS_EXPIRED = 3 [(wire_name) = "expired"];
   // Key was manually revoked.
-  DEPLOYMENT_KEY_STATUS_REVOKED = 4;
+  DEPLOYMENT_KEY_STATUS_REVOKED = 4 [(wire_name) = "revoked"];
 }
 
 // Supported enterprise MDM configuration export format.
@@ -423,19 +429,19 @@ enum MdmFormat {
   // Unspecified MDM format.
   MDM_FORMAT_UNSPECIFIED = 0;
   // Microsoft Intune Win32 deployment script.
-  MDM_FORMAT_INTUNE_WIN32 = 1;
+  MDM_FORMAT_INTUNE_WIN32 = 1 [(wire_name) = "intune_win32"];
   // Apple Jamf configuration mobileconfig.
-  MDM_FORMAT_JAMF_MOBILECONFIG = 2;
+  MDM_FORMAT_JAMF_MOBILECONFIG = 2 [(wire_name) = "jamf_mobileconfig"];
   // Hexnode MDM profile.
-  MDM_FORMAT_HEXNODE = 3;
+  MDM_FORMAT_HEXNODE = 3 [(wire_name) = "hexnode"];
   // Tanium deployment package.
-  MDM_FORMAT_TANIUM = 4;
+  MDM_FORMAT_TANIUM = 4 [(wire_name) = "tanium"];
   // Google Chrome Enterprise policy JSON.
-  MDM_FORMAT_CHROME_ENTERPRISE = 5;
+  MDM_FORMAT_CHROME_ENTERPRISE = 5 [(wire_name) = "chrome_enterprise"];
   // Mozilla Firefox GPO policy JSON.
-  MDM_FORMAT_FIREFOX_GPO = 6;
+  MDM_FORMAT_FIREFOX_GPO = 6 [(wire_name) = "firefox_gpo"];
   // Linux APT/RPM repository configuration.
-  MDM_FORMAT_LINUX_REPO = 7;
+  MDM_FORMAT_LINUX_REPO = 7 [(wire_name) = "linux_repo"];
 }
 
 // External integration category.
@@ -443,11 +449,11 @@ enum IntegrationCategory {
   // Unspecified integration category.
   INTEGRATION_CATEGORY_UNSPECIFIED = 0;
   // Directory / SCIM / IdP sync.
-  INTEGRATION_CATEGORY_DIRECTORY_SYNC = 1;
+  INTEGRATION_CATEGORY_DIRECTORY_SYNC = 1 [(wire_name) = "directory_sync"];
   // SaaS connector.
-  INTEGRATION_CATEGORY_SAAS_CONNECTOR = 2;
+  INTEGRATION_CATEGORY_SAAS_CONNECTOR = 2 [(wire_name) = "saas_connector"];
   // SIEM / OCSF / OTLP export sink.
-  INTEGRATION_CATEGORY_EXPORT_SINK = 3;
+  INTEGRATION_CATEGORY_EXPORT_SINK = 3 [(wire_name) = "export_sink"];
 }
 
 // Operational health state of an integration.
@@ -455,13 +461,13 @@ enum IntegrationHealthState {
   // Unspecified health state.
   INTEGRATION_HEALTH_STATE_UNSPECIFIED = 0;
   // Integration is healthy and connected.
-  INTEGRATION_HEALTH_STATE_CONNECTED = 1;
+  INTEGRATION_HEALTH_STATE_CONNECTED = 1 [(wire_name) = "connected"];
   // Credentials expiring soon or non-fatal warning.
-  INTEGRATION_HEALTH_STATE_AT_RISK = 2;
+  INTEGRATION_HEALTH_STATE_AT_RISK = 2 [(wire_name) = "at_risk"];
   // Readiness checks failing.
-  INTEGRATION_HEALTH_STATE_DEGRADED = 3;
+  INTEGRATION_HEALTH_STATE_DEGRADED = 3 [(wire_name) = "degraded"];
   // Integration has not been configured.
-  INTEGRATION_HEALTH_STATE_NOT_CONFIGURED = 4;
+  INTEGRATION_HEALTH_STATE_NOT_CONFIGURED = 4 [(wire_name) = "not_configured"];
 }
 
 // Browser DLP inspection action classification.
@@ -469,13 +475,13 @@ enum BrowserDlpClass {
   // Unspecified browser DLP class.
   BROWSER_DLP_CLASS_UNSPECIFIED = 0;
   // File upload to generative AI web app.
-  BROWSER_DLP_CLASS_FILE_UPLOAD = 1;
+  BROWSER_DLP_CLASS_FILE_UPLOAD = 1 [(wire_name) = "file_upload"];
   // Secret or credential paste.
-  BROWSER_DLP_CLASS_PASTE_SECRET = 2;
+  BROWSER_DLP_CLASS_PASTE_SECRET = 2 [(wire_name) = "paste_secret"];
   // Source code snippet paste.
-  BROWSER_DLP_CLASS_SOURCE_CODE = 3;
+  BROWSER_DLP_CLASS_SOURCE_CODE = 3 [(wire_name) = "source_code"];
   // Customer PII paste.
-  BROWSER_DLP_CLASS_CUSTOMER_PII = 4;
+  BROWSER_DLP_CLASS_CUSTOMER_PII = 4 [(wire_name) = "customer_pii"];
 }
 
 // Column visibility class exposed by schema introspection.
@@ -483,13 +489,13 @@ enum SchemaDataClass {
   // Unspecified schema data class.
   SCHEMA_DATA_CLASS_UNSPECIFIED = 0;
   // Operational metadata column.
-  SCHEMA_DATA_CLASS_METADATA = 1;
+  SCHEMA_DATA_CLASS_METADATA = 1 [(wire_name) = "metadata"];
   // Named identity column masked in pseudonymous mode.
-  SCHEMA_DATA_CLASS_NAMED_IDENTITY = 2;
+  SCHEMA_DATA_CLASS_NAMED_IDENTITY = 2 [(wire_name) = "named_identity"];
   // Content-class column gated by content grant.
-  SCHEMA_DATA_CLASS_CONTENT = 3;
+  SCHEMA_DATA_CLASS_CONTENT = 3 [(wire_name) = "content"];
   // Secret column never readable.
-  SCHEMA_DATA_CLASS_SECRET = 4;
+  SCHEMA_DATA_CLASS_SECRET = 4 [(wire_name) = "secret"];
 }
 
 // Overall server health status.
@@ -497,13 +503,13 @@ enum ServerHealth {
   // Unspecified server health.
   SERVER_HEALTH_UNSPECIFIED = 0;
   // Legacy OK readiness alias.
-  SERVER_HEALTH_OK = 1;
+  SERVER_HEALTH_OK = 1 [(wire_name) = "ok"];
   // All subsystems healthy.
-  SERVER_HEALTH_HEALTHY = 2;
+  SERVER_HEALTH_HEALTHY = 2 [(wire_name) = "healthy"];
   // Partial degradation on secondary subsystem.
-  SERVER_HEALTH_DEGRADED = 3;
+  SERVER_HEALTH_DEGRADED = 3 [(wire_name) = "degraded"];
   // Server or primary storage unavailable.
-  SERVER_HEALTH_UNAVAILABLE = 4;
+  SERVER_HEALTH_UNAVAILABLE = 4 [(wire_name) = "unavailable"];
 }
 
 // Backing persistence storage engine kind.
@@ -511,7 +517,401 @@ enum StorageKind {
   // Unspecified storage kind.
   STORAGE_KIND_UNSPECIFIED = 0;
   // Ephemeral in-memory store.
-  STORAGE_KIND_MEMORY = 1;
+  STORAGE_KIND_MEMORY = 1 [(wire_name) = "memory"];
   // Embedded SQLite database.
-  STORAGE_KIND_SQLITE = 2;
+  STORAGE_KIND_SQLITE = 2 [(wire_name) = "sqlite"];
+}
+
+// Canonical telemetry shipping lanes mapped 1:1 to spool files and retention (04 section 2, ADR-0041).
+enum Lane {
+  // Unspecified telemetry lane.
+  LANE_UNSPECIFIED = 0;
+  // Synchronous and post-action policy decisions and receipts.
+  LANE_DECISION = 1 [(wire_name) = "decision"];
+  // Session, tool call, finding, and lifecycle spine events.
+  LANE_SPINE = 2 [(wire_name) = "spine"];
+  // High-volume allowed-event roll-ups and telemetry summaries.
+  LANE_BULK = 3 [(wire_name) = "bulk"];
+  // Supporting evidence spans, discovery payloads, and forensic snapshots.
+  LANE_EVIDENCE = 4 [(wire_name) = "evidence"];
+  // Device-only local audit and diagnostic events never uploaded by default.
+  LANE_LOCAL = 5 [(wire_name) = "local"];
+}
+
+// Endpoint capture ceiling controlling what field sensitivity classes leave the device (04, D-51).
+enum CaptureLevel {
+  // Unspecified capture level.
+  CAPTURE_LEVEL_UNSPECIFIED = 0;
+  // Only metadata (structural, derived, pseudonymised identifier commitments).
+  CAPTURE_LEVEL_METADATA = 1 [(wire_name) = "metadata"];
+  // Redacted command/tool arguments shipped alongside metadata.
+  CAPTURE_LEVEL_REDACTED_ARGUMENTS = 2 [(wire_name) = "redacted_arguments"];
+  // Redacted arguments and redacted prompt/tool body text where authorised.
+  CAPTURE_LEVEL_REDACTED_CONTENT = 3 [(wire_name) = "redacted_content"];
+  // Full prompt, argument, and response body capture where explicitly authorised.
+  CAPTURE_LEVEL_FULL_CONTENT = 4 [(wire_name) = "full_content"];
+}
+
+// Broad classification of the initiating actor on a telemetry envelope (Design 04 R4).
+enum ActorKind {
+  // Unspecified actor kind.
+  ACTOR_KIND_UNSPECIFIED = 0;
+  // Direct human operator or developer action.
+  ACTOR_KIND_HUMAN = 1 [(wire_name) = "human"];
+  // Governed AI agent harness or autonomous child.
+  ACTOR_KIND_AGENT = 2 [(wire_name) = "agent"];
+  // Operating system background service or daemon component.
+  ACTOR_KIND_SYSTEM = 3 [(wire_name) = "system"];
+  // Unauthenticated external caller or remote webhook.
+  ACTOR_KIND_EXTERNAL = 4 [(wire_name) = "external"];
+  // Attribution confidence below minimum threshold (Design 04 R4).
+  ACTOR_KIND_UNDETERMINED = 5 [(wire_name) = "undetermined"];
+}
+
+// Lifecycle phase of an evaluated or observed action.
+enum ActionPhase {
+  // Unspecified action phase.
+  ACTION_PHASE_UNSPECIFIED = 0;
+  // Pre-execution policy interception intent.
+  ACTION_PHASE_INTENT = 1 [(wire_name) = "intent"];
+  // Post-execution completion or failure outcome.
+  ACTION_PHASE_OUTCOME = 2 [(wire_name) = "outcome"];
+}
+
+// Observed or enforced outcome of an action attempt.
+enum ActionOutcome {
+  // Unspecified outcome.
+  ACTION_OUTCOME_UNSPECIFIED = 0;
+  // Pre-execution attempt pending completion.
+  ACTION_OUTCOME_ATTEMPTED = 1 [(wire_name) = "attempted"];
+  // Action permitted and completed normally.
+  ACTION_OUTCOME_COMPLETED = 2 [(wire_name) = "completed"];
+  // Action prevented by Guardrails policy or host boundary.
+  ACTION_OUTCOME_DENIED = 3 [(wire_name) = "denied"];
+  // Action attempted execution and exited with an error.
+  ACTION_OUTCOME_FAILED = 4 [(wire_name) = "failed"];
+  // Execution outcome could not be observed (gap or async loss).
+  ACTION_OUTCOME_UNKNOWN = 5 [(wire_name) = "unknown"];
+}
+
+// Attribution confidence state for resolving an event to a specific agent session (D-25).
+enum ResolutionKind {
+  // Unspecified resolution state.
+  RESOLUTION_KIND_UNSPECIFIED = 0;
+  // Attribution unambiguously bound to one session and tool call.
+  RESOLUTION_KIND_RESOLVED = 1 [(wire_name) = "resolved"];
+  // Attribution uncertain within a shared host such as an IDE (D-25).
+  RESOLUTION_KIND_UNDETERMINED = 2 [(wire_name) = "undetermined"];
+  // Attribution failed or outside known lineage.
+  RESOLUTION_KIND_UNRESOLVED = 3 [(wire_name) = "unresolved"];
+}
+
+// Identity proof strength backing a principal or workload identity (D-27, design/15).
+enum IdentityProof {
+  // Unspecified proof grade.
+  IDENTITY_PROOF_UNSPECIFIED = 0;
+  // Observed passively on host or User profile without cryptographic attestation.
+  IDENTITY_PROOF_OBSERVED = 1 [(wire_name) = "observed"];
+  // Declared in bespoke manifest or self-asserted configuration.
+  IDENTITY_PROOF_SELF_ASSERTED = 2 [(wire_name) = "self_asserted"];
+  // Issued or correlated through upstream enterprise IdP/OIDC.
+  IDENTITY_PROOF_IDP_ISSUED = 3 [(wire_name) = "idp_issued"];
+  // Cryptographically attested by privileged endpoint or SPIFFE workload root.
+  IDENTITY_PROOF_ATTESTED = 4 [(wire_name) = "attested"];
+}
+
+// Trust tier classifying how an observation or claim was obtained.
+enum ProvenanceKind {
+  // Unspecified provenance kind.
+  PROVENANCE_KIND_UNSPECIFIED = 0;
+  // Directly observed at kernel, OS sensor, or enforcement boundary.
+  PROVENANCE_KIND_OBSERVED = 1 [(wire_name) = "observed"];
+  // Self-reported claim emitted by harness hooks or transcripts.
+  PROVENANCE_KIND_CLAIMED = 2 [(wire_name) = "claimed"];
+  // Heuristically inferred from multi-signal correlation.
+  PROVENANCE_KIND_INFERRED = 3 [(wire_name) = "inferred"];
+  // Deterministically derived from prior verified records.
+  PROVENANCE_KIND_DERIVED = 4 [(wire_name) = "derived"];
+}
+
+// Normalised path category preserving structure while hiding local home paths.
+enum PathClass {
+  // Unspecified path class.
+  PATH_CLASS_UNSPECIFIED = 0;
+  // Active project or repository workspace directory.
+  PATH_CLASS_WORKSPACE = 1 [(wire_name) = "workspace"];
+  // User home or profile configuration directory.
+  PATH_CLASS_HOME = 2 [(wire_name) = "home"];
+  // Operating system binary or configuration root.
+  PATH_CLASS_SYSTEM = 3 [(wire_name) = "system"];
+  // Temporary or scratch directory.
+  PATH_CLASS_TEMP = 4 [(wire_name) = "temp"];
+  // Credential, key, or protected security store path.
+  PATH_CLASS_SENSITIVE = 5 [(wire_name) = "sensitive"];
+  // Path outside workspace and home directories.
+  PATH_CLASS_EXTERNAL = 6 [(wire_name) = "external"];
+}
+
+// Origin classification for extracted action analysis facts (P2).
+enum FactOrigin {
+  // Unspecified fact origin.
+  FACT_ORIGIN_UNSPECIFIED = 0;
+  // Reproducible deterministic analyser rule (eligible for policy).
+  FACT_ORIGIN_DETERMINISTIC = 1 [(wire_name) = "deterministic"];
+  // Probabilistic or heuristic classification (advisory only).
+  FACT_ORIGIN_HEURISTIC = 2 [(wire_name) = "heuristic"];
+  // Local/remote model classifier output (advisory only, never policy).
+  FACT_ORIGIN_MODEL = 3 [(wire_name) = "model"];
+}
+
+// Discovery triage disposition classifying an observed program identity (05 section 11).
+enum Disposition {
+  // Unspecified disposition.
+  DISPOSITION_UNSPECIFIED = 0;
+  // Confirmed new bespoke or catalogued AI agent.
+  DISPOSITION_CONFIRMED_AGENT = 1 [(wire_name) = "confirmed_agent"];
+  // Mapped as variant route of an existing catalogued agent.
+  DISPOSITION_KNOWN_VARIANT = 2 [(wire_name) = "known_variant"];
+  // Direct LLM client library without autonomous tool loop.
+  DISPOSITION_LLM_CLIENT = 3 [(wire_name) = "llm_client"];
+  // Non-AI software suppressed from agent inventory.
+  DISPOSITION_NOT_AI = 4 [(wire_name) = "not_ai"];
+  // Temporarily snoozed unknown discovery item (<= 30 days).
+  DISPOSITION_SNOOZED = 5 [(wire_name) = "snoozed"];
+}
+
+// Lifecycle status of an agent instance on endpoints and registries (15-29).
+enum AgentLifecycle {
+  // Unspecified lifecycle status.
+  AGENT_LIFECYCLE_UNSPECIFIED = 0;
+  // Newly observed pending triage or activation.
+  AGENT_LIFECYCLE_DISCOVERED = 1 [(wire_name) = "discovered"];
+  // Active governed agent instance.
+  AGENT_LIFECYCLE_ACTIVE = 2 [(wire_name) = "active"];
+  // Temporarily suspended or frozen by operator action.
+  AGENT_LIFECYCLE_SUSPENDED = 3 [(wire_name) = "suspended"];
+  // Retired due to 30-day inactivity or decommission.
+  AGENT_LIFECYCLE_RETIRED = 4 [(wire_name) = "retired"];
+}
+
+// Session/process sandbox containment enforcement strategy (D-21).
+enum ContainmentMode {
+  // Unspecified containment mode.
+  CONTAINMENT_MODE_UNSPECIFIED = 0;
+  // Uncontained request-level monitoring only.
+  CONTAINMENT_MODE_NONE = 1 [(wire_name) = "none"];
+  // Configured and verified the agent harness native sandbox.
+  CONTAINMENT_MODE_DELEGATE = 2 [(wire_name) = "delegate"];
+  // Tool child subprocesses execute inside Guardrails sandbox launcher.
+  CONTAINMENT_MODE_WRAP_TOOLS = 3 [(wire_name) = "wrap_tools"];
+  // Whole agent process tree executes inside Guardrails sandbox launcher.
+  CONTAINMENT_MODE_WRAP_AGENT = 4 [(wire_name) = "wrap_agent"];
+}
+
+// Model/upstream credential custody mechanism configured for an agent instance (D-27).
+enum CredentialMode {
+  // Unspecified credential mode.
+  CREDENTIAL_MODE_UNSPECIFIED = 0;
+  // Vendor-native authentication pinned inside agent config.
+  CREDENTIAL_MODE_VENDOR_LOGIN = 1 [(wire_name) = "vendor_login"];
+  // Requests traverse gateway holding upstream credentials.
+  CREDENTIAL_MODE_GATEWAY = 2 [(wire_name) = "gateway"];
+  // Scoped lease injected/released by Guardrails credential helper.
+  CREDENTIAL_MODE_KEY_HELPER = 3 [(wire_name) = "key_helper"];
+  // OIDC/SPIFFE workload federation without static secrets.
+  CREDENTIAL_MODE_FEDERATED = 4 [(wire_name) = "federated"];
+}
+
+// Telemetry capture channel used by a sensor or adapter (open enum).
+enum ChannelKind {
+  // Unspecified channel.
+  CHANNEL_KIND_UNSPECIFIED = 0;
+  // Harness hook script callback.
+  CHANNEL_KIND_HOOK_CALLBACK = 1 [(wire_name) = "hook_callback"];
+  // Kernel/OS process or file sensor stream.
+  CHANNEL_KIND_SENSOR_EXEC = 2 [(wire_name) = "sensor_exec"];
+  // Explicit local HTTP proxy or model gateway.
+  CHANNEL_KIND_PROXY_HTTP = 3 [(wire_name) = "proxy_http"];
+  // Model Context Protocol relay channel.
+  CHANNEL_KIND_MCP_BROKER = 4 [(wire_name) = "mcp_broker"];
+  // OpenTelemetry OTLP receiver.
+  CHANNEL_KIND_OTLP = 5 [(wire_name) = "otlp"];
+  // Agent transcript tail observation.
+  CHANNEL_KIND_TRANSCRIPT_TAIL = 6 [(wire_name) = "transcript_tail"];
+  // Other channel kind.
+  CHANNEL_KIND_OTHER = 99 [(wire_name) = "other"];
+}
+
+// Deterministic evidence category supporting agent attribution edges (open enum, 06 R-15).
+enum AttributionEvidenceKind {
+  // Unspecified attribution evidence.
+  ATTRIBUTION_EVIDENCE_KIND_UNSPECIFIED = 0;
+  // Exclusive OS session container boundary (cgroup/job/launchd).
+  ATTRIBUTION_EVIDENCE_KIND_SESSION_CONTAINER = 1 [(wire_name) = "session_container"];
+  // Per-call correlation via hook tool_call_id and command digest.
+  ATTRIBUTION_EVIDENCE_KIND_HOOK_CORRELATION = 2 [(wire_name) = "hook_correlation"];
+  // Self-declared manifest or claimed transcript only.
+  ATTRIBUTION_EVIDENCE_KIND_DECLARED_ONLY = 3 [(wire_name) = "declared_only"];
+  // Process fork/exec lineage descent from agent-capable root.
+  ATTRIBUTION_EVIDENCE_KIND_LINEAGE = 4 [(wire_name) = "lineage"];
+  // Human direct terminal input outside agent loop.
+  ATTRIBUTION_EVIDENCE_KIND_HUMAN_ENTRY = 5 [(wire_name) = "human_entry"];
+  // Operating system background principal.
+  ATTRIBUTION_EVIDENCE_KIND_SYSTEM_PRINCIPAL = 6 [(wire_name) = "system_principal"];
+  // File-mediated or indirect cross-process influence.
+  ATTRIBUTION_EVIDENCE_KIND_INFLUENCED = 7 [(wire_name) = "influenced"];
+  // Kernel/environment session tag matched at exec time.
+  ATTRIBUTION_EVIDENCE_KIND_EXEC_TAG = 8 [(wire_name) = "exec_tag"];
+  // Other attribution evidence signal.
+  ATTRIBUTION_EVIDENCE_KIND_OTHER = 99 [(wire_name) = "other"];
+}
+
+// Explicit reason documenting a missing or expired sequence range on an audit lane (P9).
+enum GapReason {
+  // Unspecified gap reason.
+  GAP_REASON_UNSPECIFIED = 0;
+  // Spool ring buffer evicted oldest bulk records under sustained offline pressure.
+  GAP_REASON_SPOOL_SHEDDING = 1 [(wire_name) = "spool_shedding"];
+  // Local flight recorder TTL expired prior to backfill collection.
+  GAP_REASON_RECORDER_EXPIRED = 2 [(wire_name) = "recorder_expired"];
+  // Kernel or ETW ring dropped events under process burst load.
+  GAP_REASON_COLLECTOR_LOSS = 3 [(wire_name) = "collector_loss"];
+  // Non-monotonic host clock discontinuity forced epoch rollover.
+  GAP_REASON_CLOCK_JUMP = 4 [(wire_name) = "clock_jump"];
+  // Other documented telemetry gap reason.
+  GAP_REASON_OTHER = 99 [(wire_name) = "other"];
+}
+
+// Digest or keyed MAC algorithm tag carried on Digest fields (open enum).
+enum HashAlgorithm {
+  // Unspecified hash algorithm.
+  HASH_ALGORITHM_UNSPECIFIED = 0;
+  // FIPS 180-4 SHA-256 digest.
+  HASH_ALGORITHM_SHA256 = 1 [(wire_name) = "sha256"];
+  // Keyed HMAC-SHA256 digest.
+  HASH_ALGORITHM_HMAC_SHA256 = 2 [(wire_name) = "hmac_sha256"];
+  // Other algorithm tag.
+  HASH_ALGORITHM_OTHER = 99 [(wire_name) = "other"];
+}
+
+// Category of evidence carried inside Finding.EvidenceSpan (open enum).
+enum EvidenceKind {
+  // Unspecified evidence kind.
+  EVIDENCE_KIND_UNSPECIFIED = 0;
+  // Bounded verbatim substring excerpt.
+  EVIDENCE_KIND_SPAN_TEXT = 1 [(wire_name) = "span_text"];
+  // Content-addressed artifact digest reference.
+  EVIDENCE_KIND_ARTIFACT_DIGEST = 2 [(wire_name) = "artifact_digest"];
+  // Linked policy decision receipt identifier.
+  EVIDENCE_KIND_RECEIPT_REF = 3 [(wire_name) = "receipt_ref"];
+  // Process tree lineage trace.
+  EVIDENCE_KIND_PROCESS_LINEAGE = 4 [(wire_name) = "process_lineage"];
+  // Other finding evidence kind.
+  EVIDENCE_KIND_OTHER = 99 [(wire_name) = "other"];
+}
+
+// Review cluster triage lifecycle status (closed enum).
+enum ReviewClusterStatus {
+  // Unspecified review cluster status.
+  REVIEW_CLUSTER_STATUS_UNSPECIFIED = 0;
+  // Open cluster awaiting triage.
+  REVIEW_CLUSTER_STATUS_OPEN = 1 [(wire_name) = "open"];
+  // Cluster promoted into an active policy rule.
+  REVIEW_CLUSTER_STATUS_PROMOTED = 2 [(wire_name) = "promoted"];
+  // Cluster suppressed under an active suppression.
+  REVIEW_CLUSTER_STATUS_SUPPRESSED = 3 [(wire_name) = "suppressed"];
+  // Cluster dismissed by reviewer.
+  REVIEW_CLUSTER_STATUS_DISMISSED = 4 [(wire_name) = "dismissed"];
+  // Cluster escalated to incident or responder review.
+  REVIEW_CLUSTER_STATUS_ESCALATED = 5 [(wire_name) = "escalated"];
+}
+
+// Provider multi-org health status (closed enum).
+enum ProviderOrgStatus {
+  // Unspecified provider organisation status.
+  PROVIDER_ORG_STATUS_UNSPECIFIED = 0;
+  // Organisation telemetry and controls operating normally.
+  PROVIDER_ORG_STATUS_HEALTHY = 1 [(wire_name) = "healthy"];
+  // Organisation requires operator attention.
+  PROVIDER_ORG_STATUS_ATTENTION = 2 [(wire_name) = "attention"];
+  // Organisation endpoints or relay offline.
+  PROVIDER_ORG_STATUS_OFFLINE = 3 [(wire_name) = "offline"];
+}
+
+// Data subject rights request lifecycle state (closed enum).
+enum SubjectRequestStatus {
+  // Unspecified subject request status.
+  SUBJECT_REQUEST_STATUS_UNSPECIFIED = 0;
+  // Subject request fulfilled.
+  SUBJECT_REQUEST_STATUS_EXECUTED = 1 [(wire_name) = "executed"];
+  // Subject request blocked or delayed pending legal hold resolution.
+  SUBJECT_REQUEST_STATUS_PENDING_HELD = 2 [(wire_name) = "pending_held"];
+}
+
+// Re-identification approval workflow status (closed enum).
+enum ReidRequestStatus {
+  // Unspecified re-identification request status.
+  REID_REQUEST_STATUS_UNSPECIFIED = 0;
+  // Awaiting required approver quorum.
+  REID_REQUEST_STATUS_PENDING_QUORUM = 1 [(wire_name) = "pending_quorum"];
+  // Quorum approved pseudonym unmasking.
+  REID_REQUEST_STATUS_APPROVED = 2 [(wire_name) = "approved"];
+  // Request rejected by quorum.
+  REID_REQUEST_STATUS_DENIED = 3 [(wire_name) = "denied"];
+}
+
+// Operator runtime configuration revision lifecycle (closed enum).
+enum ConfigRevisionLifecycle {
+  // Unspecified configuration revision lifecycle.
+  CONFIG_REVISION_LIFECYCLE_UNSPECIFIED = 0;
+  // Staged draft revision.
+  CONFIG_REVISION_LIFECYCLE_DRAFT = 1 [(wire_name) = "draft"];
+  // Validated against preflight checks.
+  CONFIG_REVISION_LIFECYCLE_VALIDATED = 2 [(wire_name) = "validated"];
+  // Currently rolling out across cell targets.
+  CONFIG_REVISION_LIFECYCLE_APPLYING = 3 [(wire_name) = "applying"];
+  // Active revision on targets.
+  CONFIG_REVISION_LIFECYCLE_APPLIED = 4 [(wire_name) = "applied"];
+  // Rolled back after failure or operator rollback.
+  CONFIG_REVISION_LIFECYCLE_ROLLED_BACK = 5 [(wire_name) = "rolled_back"];
+  // Replaced by a subsequent applied revision.
+  CONFIG_REVISION_LIFECYCLE_SUPERSEDED = 6 [(wire_name) = "superseded"];
+  // Discarded prior to rollout.
+  CONFIG_REVISION_LIFECYCLE_DISCARDED = 7 [(wire_name) = "discarded"];
+}
+
+// Upgrade compatibility preflight check outcome (closed enum).
+enum CompatOutcomeKind {
+  // Unspecified compatibility outcome.
+  COMPAT_OUTCOME_KIND_UNSPECIFIED = 0;
+  // Target version is fully compatible.
+  COMPAT_OUTCOME_KIND_COMPATIBLE = 1 [(wire_name) = "compatible"];
+  // Target version is compatible with operator warnings.
+  COMPAT_OUTCOME_KIND_COMPATIBLE_WITH_WARNINGS = 2 [(wire_name) = "compatible_with_warnings"];
+  // Target version is incompatible.
+  COMPAT_OUTCOME_KIND_INCOMPATIBLE = 3 [(wire_name) = "incompatible"];
+}
+
+// Operator service target readiness status (closed enum).
+enum TargetHealthStatus {
+  // Unspecified target health status.
+  TARGET_HEALTH_STATUS_UNSPECIFIED = 0;
+  // Target healthy and circuit closed.
+  TARGET_HEALTH_STATUS_HEALTHY = 1 [(wire_name) = "healthy"];
+  // Target experiencing elevated errors or latency.
+  TARGET_HEALTH_STATUS_DEGRADED = 2 [(wire_name) = "degraded"];
+  // Target circuit breaker open.
+  TARGET_HEALTH_STATUS_OPEN_CIRCUIT = 3 [(wire_name) = "open_circuit"];
+}
+
+// Backup/restore verification drill outcome status (closed enum).
+enum BackupDrillStatus {
+  // Unspecified backup drill status.
+  BACKUP_DRILL_STATUS_UNSPECIFIED = 0;
+  // Backup drill verified cleanly.
+  BACKUP_DRILL_STATUS_PASSED = 1 [(wire_name) = "passed"];
+  // Backup drill currently executing.
+  BACKUP_DRILL_STATUS_RUNNING = 2 [(wire_name) = "running"];
+  // Backup drill failed verification.
+  BACKUP_DRILL_STATUS_FAILED = 3 [(wire_name) = "failed"];
 }

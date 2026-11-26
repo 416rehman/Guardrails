@@ -5,8 +5,14 @@
 use serde::{Deserialize, Serialize};
 
 pub mod api;
+pub mod canonical;
 pub mod common;
+pub mod descriptor;
+mod descriptor_wire;
 pub mod serde_proto;
+pub mod unknown_fields;
+mod unknown_fields_nested;
+mod unknown_fields_nested_walk;
 
 pub const PROTO_VERSION: u16 = 1;
 pub const DEFAULT_MAX_IPC_BYTES: usize = 1_048_576;
@@ -19,6 +25,8 @@ pub enum ProtoError {
     EmptyCorrelationId,
     #[error("GRDR-PROTO-0003: IPC payload invalid: {0}")]
     InvalidPayload(String),
+    #[error("GRDR-PROTO-0004: constraint violation: {0}")]
+    ConstraintViolation(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

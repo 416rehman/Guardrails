@@ -1,0 +1,234 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Isolated operator administration plane contract authorised under Grdr::Operator without tenant content routes (D-70).
+syntax = "proto3";
+
+package grdr.operator.v1alpha1;
+
+import "google/protobuf/timestamp.proto";
+import "grdr/common/v1alpha1/options.proto";
+import "grdr/common/v1alpha1/types.proto";
+
+// Explicit staged lifecycle states for runtime settings revisions (D-70).
+enum RuntimeConfigState {
+  // Unspecified revision state.
+  RUNTIME_CONFIG_STATE_UNSPECIFIED = 0;
+  // Draft edited locally before validation.
+  RUNTIME_CONFIG_STATE_DRAFT = 1 [(grdr.common.v1alpha1.wire_name) = "draft"];
+  // Passed schema and compatibility validation checks.
+  RUNTIME_CONFIG_STATE_VALIDATED = 2 [(grdr.common.v1alpha1.wire_name) = "validated"];
+  // Rolling out to canary replica / targets.
+  RUNTIME_CONFIG_STATE_APPLYING = 3 [(grdr.common.v1alpha1.wire_name) = "applying"];
+  // Active and healthy across all cell targets.
+  RUNTIME_CONFIG_STATE_APPLIED = 4 [(grdr.common.v1alpha1.wire_name) = "applied"];
+  // Rolled back automatically due to target health failure or operator command.
+  RUNTIME_CONFIG_STATE_ROLLED_BACK = 5 [(grdr.common.v1alpha1.wire_name) = "rolled_back"];
+  // Superseded by a newer applied revision.
+  RUNTIME_CONFIG_STATE_SUPERSEDED = 6 [(grdr.common.v1alpha1.wire_name) = "superseded"];
+  // Discarded prior to activation.
+  RUNTIME_CONFIG_STATE_DISCARDED = 7 [(grdr.common.v1alpha1.wire_name) = "discarded"];
+}
+
+// Keyed runtime setting entry tracked under operator configuration-as-code.
+message RuntimeSettingEntry {
+  // Canonical `grdr.config` key path.
+  string key = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Serialized setting value string (non-secret runtime tier only).
+  string value = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // True when key is locked to GitOps deployment repository authority.
+  bool source_locked = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // True when widening this key requires operator passkey step-up.
+  bool security_sensitive = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Versioned runtime configuration revision for the operator plane.
+message RuntimeConfigRevision {
+  // Revision identifier.
+  string revision_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Monotonic revision version counter.
+  uint64 version = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Lifecycle state.
+  RuntimeConfigState state = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Settings carried in this revision.
+  repeated RuntimeSettingEntry settings = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Operator principal pseudonym who staged the revision.
+  string author = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER];
+  // Creation timestamp.
+  google.protobuf.Timestamp created_at = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Target and port health snapshot monitored by the operator plane (no tenant content).
+message OperatorTargetHealth {
+  // Service target identifier (ingest, control, content, audit, keys, router).
+  string target_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Current target readiness status (`healthy`, `degraded`, `unhealthy`).
+  string status = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Open circuit breaker count.
+  uint32 open_breakers = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Last probe timestamp.
+  google.protobuf.Timestamp checked_at = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Tenant organisation administrative lifecycle summary (metadata only, D-55).
+message OrganisationSummary {
+  // Opaque organisation identifier.
+  string org_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Administrative lifecycle status (`active`, `suspended`, `migrating`).
+  string status = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Home deployment cell identifier.
+  string home_cell = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Operator-realm audit entry kept on its own checkpoint chain beside tenant chains.
+message OperatorAuditEntry {
+  // Unique operator audit entry identifier.
+  string entry_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Operator principal identifier.
+  string operator_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER];
+  // Administrative action kind.
+  string action = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Target resource identifier.
+  string target = 4 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  // Checkpoint chain digest.
+  string chain_digest = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Event timestamp.
+  google.protobuf.Timestamp recorded_at = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Request listing staged and applied runtime configuration revisions.
+message ListRuntimeRevisionsRequest {
+  // Optional page size.
+  uint32 page_size = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Bound page cursor token.
+  string page_token = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Response containing runtime configuration revisions.
+message ListRuntimeRevisionsResponse {
+  // Matching runtime configuration revisions.
+  repeated RuntimeConfigRevision revisions = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Cursor pagination metadata.
+  grdr.common.v1alpha1.PageInfo page_info = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Request staging a validated runtime configuration revision without applying it.
+message StageRuntimeRevisionRequest {
+  // Settings to apply relative to current active revision.
+  repeated RuntimeSettingEntry settings = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Dry-run validation flag (AIP validate_only).
+  bool validate_only = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Response returning the validated/staged revision.
+message StageRuntimeRevisionResponse {
+  // Staged revision entry.
+  RuntimeConfigRevision revision = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Request applying or rolling back a runtime configuration revision.
+message ApplyRuntimeRevisionRequest {
+  // Target revision identifier.
+  string revision_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Optimistic concurrency ETag.
+  string etag = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Response returning the updated revision state.
+message ApplyRuntimeRevisionResponse {
+  // Resulting revision record.
+  RuntimeConfigRevision revision = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
+}
+
+// Request probing target and port health across the deployment cell.
+message ListTargetHealthRequest {}
+
+// Response containing per-target health snapshots.
+message ListTargetHealthResponse {
+  // Health snapshots per server target.
+  repeated OperatorTargetHealth targets = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
+}
+
+// Request listing operator audit chain entries.
+message ListOperatorAuditRequest {
+  // Requested page size.
+  uint32 page_size = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Bound page token.
+  string page_token = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Response listing operator audit entries.
+message ListOperatorAuditResponse {
+  // Operator audit records.
+  repeated OperatorAuditEntry entries = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Cursor pagination metadata.
+  grdr.common.v1alpha1.PageInfo page_info = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Operator-plane service isolated onto the `operator` listener and Grdr::Operator realm (D-70).
+service OperatorPlaneService {
+  // Lists runtime configuration revisions.
+  rpc ListRuntimeRevisions(ListRuntimeRevisionsRequest) returns (ListRuntimeRevisionsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "operator:config:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_STANDARD;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+
+  // Validates and stages a runtime configuration revision.
+  rpc StageRuntimeRevision(StageRuntimeRevisionRequest) returns (StageRuntimeRevisionResponse) {
+    option (grdr.common.v1alpha1.scope) = "operator:config:write";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_INTERACTIVE;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_CONSEQUENCE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+
+  // Rolls a validated runtime configuration revision across targets with health rollback.
+  rpc ApplyRuntimeRevision(ApplyRuntimeRevisionRequest) returns (ApplyRuntimeRevisionResponse) {
+    option (grdr.common.v1alpha1.scope) = "operator:config:apply";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_CRITICAL_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_CRITICAL;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_TYPED;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+
+  // Lists target and port health across the local cell.
+  rpc ListTargetHealth(ListTargetHealthRequest) returns (ListTargetHealthResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "operator:health:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_NONE;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_HEALTH;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+
+  // Lists operator-realm tamper-evident audit records.
+  rpc ListOperatorAudit(ListOperatorAuditRequest) returns (ListOperatorAuditResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "operator:audit:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_SENSITIVE_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_STANDARD;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+}

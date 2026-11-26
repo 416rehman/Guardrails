@@ -1,0 +1,72 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Ordered, cursor-resumable external export records for SIEM, webhook, and lake sinks (04, 25).
+syntax = "proto3";
+
+package grdr.export.v1alpha1;
+
+import "google/protobuf/timestamp.proto";
+import "grdr/common/v1alpha1/options.proto";
+import "grdr/decision/v1alpha1/decision.proto";
+import "grdr/event/v1alpha1/action.proto";
+import "grdr/finding/v1alpha1/finding.proto";
+
+// Monotonic per-destination delivery cursor supporting at-least-once replay.
+message ExportCursor {
+  // Configured export destination identifier.
+  string destination_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Opaque stream partition position token.
+  string stream_offset = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Monotonic delivery revision sequence.
+  uint64 revision = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Target export serialization dialect.
+enum ExportDialect {
+  // Unspecified export dialect.
+  EXPORT_DIALECT_UNSPECIFIED = 0;
+  // Native Guardrails protobuf JSON.
+  EXPORT_DIALECT_NATIVE_JSON = 1 [(grdr.common.v1alpha1.wire_name) = "native_json"];
+  // Open Cybersecurity Schema Framework 1.9.
+  EXPORT_DIALECT_OCSF_1_9 = 2 [(grdr.common.v1alpha1.wire_name) = "ocsf_1_9"];
+  // OpenTelemetry OTLP log/span envelope.
+  EXPORT_DIALECT_OTLP = 3 [(grdr.common.v1alpha1.wire_name) = "otlp"];
+  // RFC 5424 structured syslog.
+  EXPORT_DIALECT_SYSLOG = 4 [(grdr.common.v1alpha1.wire_name) = "syslog"];
+  // Splunk HTTP Event Collector JSON.
+  EXPORT_DIALECT_HEC = 5 [(grdr.common.v1alpha1.wire_name) = "hec"];
+  // Custom partner export dialect.
+  EXPORT_DIALECT_OTHER = 99 [(grdr.common.v1alpha1.wire_name) = "other"];
+}
+
+// Wrapper envelope shipped to external SIEM, SOAR, and object storage export destinations.
+message ExportRecord {
+  // Stable record identifier preserving idempotency across retries and updates.
+  string export_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Delivery cursor position.
+  ExportCursor cursor = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Target wire dialect used during down-conversion.
+  ExportDialect dialect = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Optional open dialect string when dialect is EXPORT_DIALECT_OTHER.
+  optional string dialect_other = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Emission timestamp.
+  google.protobuf.Timestamp emitted_at = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Capture ceiling enforced for this export destination.
+  string capture_ceiling = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Canonical typed entity exported on this record.
+  oneof item {
+    // Exported security finding.
+    grdr.finding.v1alpha1.Finding finding = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+    // Exported correlated incident.
+    grdr.finding.v1alpha1.Incident incident = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+    // Exported policy decision record.
+    grdr.decision.v1alpha1.DecisionRecord decision = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+    // Exported decision receipt.
+    grdr.decision.v1alpha1.Receipt receipt = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+    // Exported action record.
+    grdr.event.v1alpha1.Action action = 11 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  }
+  reserved 900 to 999;
+}

@@ -1,0 +1,172 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Discovery evidence, agent declarations, declared-vs-observed diff state, and AgentBom (04, 05).
+syntax = "proto3";
+
+package grdr.inventory.v1alpha1;
+
+import "google/protobuf/timestamp.proto";
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/ids.proto";
+import "grdr/common/v1alpha1/options.proto";
+
+// Reconciliation status comparing declared inventory against endpoint sensor observation.
+enum DiffState {
+  // Unspecified diff state.
+  DIFF_STATE_UNSPECIFIED = 0;
+  // Declared and observed attributes agree.
+  DIFF_STATE_MATCHED = 1 [(grdr.common.v1alpha1.wire_name) = "matched"];
+  // Observed on endpoint without matching declaration.
+  DIFF_STATE_OBSERVED_ONLY = 2 [(grdr.common.v1alpha1.wire_name) = "observed_only"];
+  // Declared in registry or config without endpoint sighting.
+  DIFF_STATE_DECLARED_ONLY = 3 [(grdr.common.v1alpha1.wire_name) = "declared_only"];
+  // Declared and observed attributes conflict.
+  DIFF_STATE_MISMATCH = 4 [(grdr.common.v1alpha1.wire_name) = "mismatch"];
+  // Seen only by an incumbent EDR connector.
+  DIFF_STATE_INCUMBENT_ONLY = 5 [(grdr.common.v1alpha1.wire_name) = "incumbent_only"];
+}
+
+// Cryptographic digest pinning state for MCP servers, tools, skills, and plugins.
+enum PinState {
+  // Unspecified pin state.
+  PIN_STATE_UNSPECIFIED = 0;
+  // Digest verified against pinned expectation.
+  PIN_STATE_PINNED = 1 [(grdr.common.v1alpha1.wire_name) = "pinned"];
+  // Artifact has no cryptographic pin recorded.
+  PIN_STATE_UNPINNED = 2 [(grdr.common.v1alpha1.wire_name) = "unpinned"];
+  // Observed digest differs from previously pinned digest.
+  PIN_STATE_DRIFTED = 3 [(grdr.common.v1alpha1.wire_name) = "drifted"];
+}
+
+// Evidence emitted by endpoint discovery passes 1 through 4.
+message DiscoveryEvidence {
+  // Discovery pass number (1 catalogue, 2 building-blocks, 3 behaviour, 4 declared).
+  uint32 pass = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Matched program identity string.
+  string program_identity = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Observed catalogue tier or disposition classification.
+  grdr.common.v1alpha1.Disposition disposition = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Detected package names and versions (for pass 2 building blocks).
+  repeated string package_markers = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Path reference to discovered configuration without leaking home usernames.
+  optional grdr.common.v1alpha1.PathRef config_path = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Optional could-not-look blind spot reason code.
+  optional string blind_spot_reason = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
+}
+
+// Tool entry declared inside a bespoke AgentDeclaration manifest.
+message DeclaredToolSpec {
+  // Tool name exposed to policy and inventory.
+  string name = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Canonical action class invoked by this tool.
+  grdr.common.v1alpha1.ActionClass action_class = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Schema for bespoke agent manifest files, SDK register calls, and registry entries (05 section 12).
+message AgentDeclaration {
+  // Manifest schema tag (for example grdr.agent/v1alpha1).
+  string schema = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Agent slug identifier.
+  string slug = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Sponsor team identifier (never a person).
+  string sponsor_team = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Program identity specifier (package or source coordinate).
+  string program_identity = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // True when agent runs in dedicated sessions rather than shared hosts.
+  bool session_exclusive = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Tools declared for this bespoke agent.
+  repeated DeclaredToolSpec tools = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Declared MCP server coordinates.
+  repeated string mcp_servers = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Declared upstream inference endpoints.
+  repeated string model_endpoints = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Intended credential delivery mode.
+  grdr.common.v1alpha1.CredentialMode credential_mode = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Verification status of this declaration.
+  grdr.common.v1alpha1.IdentityProof identity_proof = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
+}
+
+// Declared-source row ingested from local config, MDM, or incumbent EDR inventories.
+message DeclaredSourceRow {
+  // Originating source adapter name.
+  string source_name = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Reported program or package identity.
+  string identity = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Declared-vs-observed reconciliation status.
+  DiffState diff_state = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Optional pin state for MCP or skill rows.
+  optional PinState pin_state = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Timestamp observed by source adapter.
+  google.protobuf.Timestamp observed_at = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Inventory state delta emitted on spine/bulk lanes (`inventory.*`).
+message InventoryChange {
+  // Change operation kind (discovered, updated, drifted, retired).
+  string change_kind = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Affected agent instance identifier.
+  string agent_instance_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Pin status when tracking MCP servers or artifacts.
+  PinState pin_state = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Reconciliation state against declarations.
+  DiffState diff_state = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Supporting discovery evidence.
+  optional DiscoveryEvidence evidence = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Single component entry inside an exported AgentBom.
+message BomComponent {
+  // Unique component reference inside the BOM graph.
+  string component_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Component category (agent, building_block, mcp_server, tool, skill, endpoint, credential_ref).
+  string component_kind = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Canonical package or display identifier.
+  string name = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Observed or declared component version.
+  optional string version = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Content or binary digest.
+  optional string digest = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Cryptographic pin state.
+  PinState pin_state = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Reconciliation status against declared sources.
+  DiffState diff_state = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Provenance grade of observation.
+  grdr.common.v1alpha1.ProvenanceKind provenance = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Assurance level reached on this component.
+  grdr.common.v1alpha1.AssuranceLevel assurance_level = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
+}
+
+// Directed authority or dependency edge in an AgentBom (`uses`, `loads`, `calls`, `runs_on`).
+message BomEdge {
+  // Source component identifier.
+  string from_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Destination component identifier.
+  string to_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Relationship edge label (uses, loads, calls, runs_on).
+  string relation = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Canonical Agent Bill of Materials exported to native JSON, CycloneDX 1.7, or OCSF 5020 (04, 05 section 13).
+message AgentBom {
+  // BOM generation identifier.
+  string bom_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Scope level (device, organisation, repository).
+  string scope = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Generation timestamp.
+  google.protobuf.Timestamp generated_at = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Inventoried components across agents, MCP servers, tools, and artifacts.
+  repeated BomComponent components = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Directed dependency and execution edges.
+  repeated BomEdge edges = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Signature over canonical BOM document.
+  optional string signature = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}

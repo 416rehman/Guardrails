@@ -6,585 +6,614 @@ syntax = "proto3";
 
 package grdr.common.v1alpha1;
 
+import "grdr/common/v1alpha1/options.proto";
 import "grdr/common/v1alpha1/enums.proto";
-import "grdr/common/v1alpha1/types.proto";
 
 // Ed25519 trusted verification public key record.
 message TrustedKeyInfo {
   // Stable key identifier prefix.
-  string key_id = 1 [(data_class) = DATA_CLASS_PUBLIC];
+  string key_id = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Base64-encoded 32-byte Ed25519 verifying key.
-  string public_key_b64 = 2 [(data_class) = DATA_CLASS_PUBLIC];
+  string public_key_b64 = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Assurance dimensions describing endpoint visibility and enforcement strength.
 message AssuranceRecord {
+  reserved 900 to 999;
+
   // Telemetry visibility strength.
-  Visibility visibility = 1;
+  Visibility visibility = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Control boundary strength.
-  ControlStrength control = 2;
+  ControlStrength control = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Failure open/closed behaviour.
-  OnFailure on_failure = 3;
+  OnFailure on_failure = 3 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Tamper resistance grade.
-  TamperGrade tamper = 4;
+  TamperGrade tamper = 4 [(data_class) = DATA_CLASS_STRUCTURAL];
 }
 
 // Discovered MCP server transport configuration on an endpoint.
 message McpServerEntry {
   // Server identifier or alias.
-  string name = 1 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string name = 1 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Transport mechanism such as stdio or streamable_http.
-  string transport = 2 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string transport = 2 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Executable command or endpoint URL.
-  string command = 3 [(data_class) = DATA_CLASS_METADATA];
+  string command = 3 [(data_class) = DATA_CLASS_CONTENT, (content_kind) = CONTENT_KIND_ARGUMENT, (sealable) = true];
   // Agent harness that declared this MCP server.
-  string source_agent = 4 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string source_agent = 4 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Host configuration file path.
-  string config_path = 5 [(data_class) = DATA_CLASS_METADATA];
+  string config_path = 5 [(data_class) = DATA_CLASS_CONTENT, (content_kind) = CONTENT_KIND_ARGUMENT, (sealable) = true];
   // True when pinned to an approved digest or manifest.
-  bool pinned = 6 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  bool pinned = 6 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
+  reserved 900 to 999;
 }
 
 // AI coding agent discovered on an endpoint device.
 message DiscoveredAgent {
   // Unique agent instance identifier.
-  string id = 1 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string id = 1 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Display name of the agent harness.
-  string name = 2 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string name = 2 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Agent harness family kind.
-  string kind = 3 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string kind = 3 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Host configuration file path.
-  string config_path = 4 [(data_class) = DATA_CLASS_METADATA];
+  string config_path = 4 [(data_class) = DATA_CLASS_CONTENT, (content_kind) = CONTENT_KIND_ARGUMENT, (sealable) = true];
   // True when Guardrails interception hooks are installed.
-  bool hook_installed = 5 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  bool hook_installed = 5 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Number of MCP servers declared under this agent.
-  uint64 mcp_count = 6 [(data_class) = DATA_CLASS_METADATA, (sortable) = true];
+  uint64 mcp_count = 6 [(data_class) = DATA_CLASS_STRUCTURAL, (sortable) = true];
   // Multi-axis assurance record.
-  AssuranceRecord assurance = 7;
+  AssuranceRecord assurance = 7 [(data_class) = DATA_CLASS_DERIVED];
   // Composite assurance tier AL0..AL4.
-  AssuranceLevel assurance_level = 8 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  AssuranceLevel assurance_level = 8 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Optional human or team sponsor pseudonym/name.
   optional string sponsor = 9 [(data_class) = DATA_CLASS_IDENTIFIER];
   // RFC 3339 discovery timestamp.
-  string detected_at = 10 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string detected_at = 10 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
+  reserved 900 to 999;
 }
 
 // Discovered agent artifact such as a skill, rule, plugin, command, or subagent.
 message ArtifactEntry {
   // Unique artifact identifier.
-  string id = 1 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string id = 1 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Artifact name.
-  string name = 2 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string name = 2 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Artifact classification.
-  ArtifactKind kind = 3 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  ArtifactKind kind = 3 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Filesystem installation scope.
-  ArtifactScope scope = 4 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  ArtifactScope scope = 4 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Originating agent harness.
-  string source_agent = 5 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string source_agent = 5 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Host path of the artifact manifest or file.
-  string path = 6 [(data_class) = DATA_CLASS_METADATA];
+  string path = 6 [(data_class) = DATA_CLASS_CONTENT, (content_kind) = CONTENT_KIND_ARGUMENT, (sealable) = true];
   // SHA-256 content digest.
-  string content_digest = 7 [(data_class) = DATA_CLASS_METADATA];
+  string content_digest = 7 [(data_class) = DATA_CLASS_STRUCTURAL];
   // File count inside the artifact directory.
-  uint64 file_count = 8 [(data_class) = DATA_CLASS_METADATA];
+  uint64 file_count = 8 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Total byte size.
-  uint64 total_bytes = 9 [(data_class) = DATA_CLASS_METADATA];
+  uint64 total_bytes = 9 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Observed invocation count.
-  uint32 usage_count = 10 [(data_class) = DATA_CLASS_METADATA, (sortable) = true];
+  uint32 usage_count = 10 [(data_class) = DATA_CLASS_STRUCTURAL, (sortable) = true];
   // True when pinned by policy or digest.
-  bool pinned = 11 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  bool pinned = 11 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Automated risk flags detected on inspection.
-  repeated ArtifactRiskFlag risk_flags = 12;
+  repeated ArtifactRiskFlag risk_flags = 12 [(data_class) = DATA_CLASS_DERIVED];
   // Owning endpoint device identifier.
-  string device_id = 13 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string device_id = 13 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Owning endpoint hostname.
-  string device_name = 14 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string device_name = 14 [(data_class) = DATA_CLASS_IDENTIFIER, (filterable) = true, (sealable) = true];
   // Optional owning user identifier or pseudonym.
   optional string user_id = 15 [(data_class) = DATA_CLASS_IDENTIFIER, (filterable) = true];
   // RFC 3339 detection timestamp.
-  string detected_at = 16 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string detected_at = 16 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
+  // Optional custom artifact kind label when ARTIFACT_KIND_OTHER is used.
+  optional string kind_other = 17 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Enrolled endpoint device managed by Guardrails ADR.
 message Device {
   // Unique device identifier.
-  string id = 1 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string id = 1 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Endpoint hostname.
-  string hostname = 2 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string hostname = 2 [(data_class) = DATA_CLASS_IDENTIFIER, (filterable) = true, (sortable) = true, (sealable) = true];
   // Operating system identifier.
-  string os = 3 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string os = 3 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // CPU architecture.
-  string arch = 4 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string arch = 4 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Daemon install profile.
-  InstallProfile install_profile = 5 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  InstallProfile install_profile = 5 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Running grdr-daemon semantic version.
-  string daemon_version = 6 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string daemon_version = 6 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // True when endpoint checked in recently.
-  bool online = 7 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  bool online = 7 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // True when endpoint interception hooks are verified active.
-  bool hook_effective = 8 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  bool hook_effective = 8 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Agents discovered on this device.
-  repeated DiscoveredAgent agents = 9;
+  repeated DiscoveredAgent agents = 9 [(data_class) = DATA_CLASS_STRUCTURAL];
   // MCP servers configured on this device.
-  repeated McpServerEntry mcp_servers = 10;
+  repeated McpServerEntry mcp_servers = 10 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Artifacts discovered on this device.
-  repeated ArtifactEntry artifacts = 11;
+  repeated ArtifactEntry artifacts = 11 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Optional attributed user identifier or pseudonym.
   optional string user_id = 12 [(data_class) = DATA_CLASS_IDENTIFIER, (filterable) = true];
   // Optional attributed user display label.
   optional string user_display = 13 [(data_class) = DATA_CLASS_IDENTIFIER];
   // RFC 3339 last check-in timestamp.
-  string last_seen = 14 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string last_seen = 14 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Device Ed25519 signing public key metadata.
-  optional TrustedKeyInfo public_key = 15;
+  optional TrustedKeyInfo public_key = 15 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Secondary action nested inside an observed command execution.
 message SecondaryAction {
   // Executed subcommand name.
-  string command = 1 [(data_class) = DATA_CLASS_CONTENT];
+  string command = 1 [(data_class) = DATA_CLASS_CONTENT, (content_kind) = CONTENT_KIND_ARGUMENT, (sealable) = true];
   // Classified action category.
-  ActionClass action_class = 2;
+  ActionClass action_class = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Target path, host, or resource.
-  string target = 3 [(data_class) = DATA_CLASS_CONTENT];
+  string target = 3 [(data_class) = DATA_CLASS_CONTENT, (content_kind) = CONTENT_KIND_ARGUMENT, (sealable) = true];
+  reserved 900 to 999;
 }
 
 // Single agent action attempt intercepted at a control point.
 message ActionAttempt {
   // Unique attempt identifier.
-  string id = 1 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string id = 1 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Owning session identifier.
-  string session_id = 2 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string session_id = 2 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Owning device identifier.
-  string device_id = 3 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string device_id = 3 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Owning device hostname.
-  string device_name = 4 [(data_class) = DATA_CLASS_METADATA];
+  string device_name = 4 [(data_class) = DATA_CLASS_IDENTIFIER, (sealable) = true];
   // Agent harness name.
-  string agent_name = 5 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string agent_name = 5 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Classified action category.
-  ActionClass action_class = 6 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  ActionClass action_class = 6 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Enforcement control point.
-  ControlPoint control_point = 7 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  ControlPoint control_point = 7 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Attempt target path, host, or tool resource.
-  string target = 8 [(data_class) = DATA_CLASS_CONTENT];
+  string target = 8 [(data_class) = DATA_CLASS_CONTENT, (content_kind) = CONTENT_KIND_ARGUMENT, (sealable) = true];
   // Concise human summary.
-  string summary = 9 [(data_class) = DATA_CLASS_CONTENT];
+  string summary = 9 [(data_class) = DATA_CLASS_CONTENT, (content_kind) = CONTENT_KIND_BODY, (sealable) = true];
   // RFC 3339 attempt timestamp.
-  string timestamp = 10 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string timestamp = 10 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Optional user identifier or pseudonym.
   optional string user_id = 11 [(data_class) = DATA_CLASS_IDENTIFIER];
   // Optional user display name.
   optional string user_display = 12 [(data_class) = DATA_CLASS_IDENTIFIER];
   // Conversational turn number starting at 1.
-  uint32 turn_index = 13;
+  uint32 turn_index = 13 [(data_class) = DATA_CLASS_STRUCTURAL];
   // OpenTelemetry span id.
-  optional string span_id = 14;
+  optional string span_id = 14 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Parent span id.
-  optional string parent_span_id = 15;
+  optional string parent_span_id = 15 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Span classification kind.
-  SpanKind span_kind = 16;
+  SpanKind span_kind = 16 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Execution duration in milliseconds.
-  uint64 duration_ms = 17;
+  uint64 duration_ms = 17 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Telemetry provenance source.
-  ProvenanceSource provenance = 18;
+  ProvenanceSource provenance = 18 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Parsed secondary commands if any.
-  repeated SecondaryAction secondary_actions = 19;
+  repeated SecondaryAction secondary_actions = 19 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Optional skill name invoked.
-  optional string skill_used = 20;
+  optional string skill_used = 20 [(data_class) = DATA_CLASS_STRUCTURAL];
   // True when attempt represents context compaction.
-  bool compaction = 21;
+  bool compaction = 21 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Signed policy evaluation receipt produced for an action attempt.
 message DecisionReceipt {
   // Unique receipt identifier.
-  string receipt_id = 1 [(data_class) = DATA_CLASS_METADATA];
+  string receipt_id = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Linked action attempt identifier.
-  string attempt_id = 2 [(data_class) = DATA_CLASS_METADATA];
+  string attempt_id = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Owning session identifier.
-  string session_id = 3 [(data_class) = DATA_CLASS_METADATA];
+  string session_id = 3 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Owning device identifier.
-  string device_id = 4 [(data_class) = DATA_CLASS_METADATA];
+  string device_id = 4 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Agent harness name.
-  string agent_name = 5 [(data_class) = DATA_CLASS_METADATA];
+  string agent_name = 5 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Action class evaluated.
-  ActionClass action_class = 6;
+  ActionClass action_class = 6 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Interception control point.
-  ControlPoint control_point = 7;
+  ControlPoint control_point = 7 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Attempt target path, host, or resource.
-  string target = 8 [(data_class) = DATA_CLASS_CONTENT];
+  string target = 8 [(data_class) = DATA_CLASS_CONTENT, (content_kind) = CONTENT_KIND_ARGUMENT, (sealable) = true];
   // Enforced verdict.
-  Verdict verdict = 9;
+  Verdict verdict = 9 [(data_class) = DATA_CLASS_DERIVED];
   // Counterfactual verdict if Watch mode were promoted.
-  optional Verdict would_be = 10;
+  optional Verdict would_be = 10 [(data_class) = DATA_CLASS_DERIVED];
   // Matched policy rule identifier.
-  optional string rule_id = 11;
+  optional string rule_id = 11 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Matched policy pack identifier.
-  optional string pack_id = 12;
+  optional string pack_id = 12 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Applied enforcement mode.
-  optional Mode mode_applied = 13;
+  optional Mode mode_applied = 13 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Temporary grant identifier if allowed via grant.
-  optional string grant_id = 14;
+  optional string grant_id = 14 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Human-readable reason explaining the verdict.
-  string reason = 15 [(data_class) = DATA_CLASS_METADATA];
+  string reason = 15 [(data_class) = DATA_CLASS_DERIVED];
   // Actionable next step for the operator or agent.
-  string next_step = 16 [(data_class) = DATA_CLASS_METADATA];
+  string next_step = 16 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Digest of the canonical decision receipt payload.
-  string receipt_digest = 17 [(data_class) = DATA_CLASS_METADATA];
+  string receipt_digest = 17 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Signing Ed25519 key identifier.
-  optional string key_id = 18;
+  optional string key_id = 18 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Base64 Ed25519 signature over canonical receipt payload.
-  optional string signature = 19;
+  optional string signature = 19 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Verification flag evaluated by the server or console.
-  optional bool signature_verified = 20;
+  optional bool signature_verified = 20 [(data_class) = DATA_CLASS_DERIVED];
   // RFC 3339 decision timestamp.
-  string decided_at = 21 [(data_class) = DATA_CLASS_METADATA];
+  string decided_at = 21 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Signed temporary approval grant distributed to endpoints.
 message Grant {
   // Unique grant identifier.
-  string grant_id = 1;
+  string grant_id = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Rule identifier covered by this grant.
-  string rule_id = 2;
+  string rule_id = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Session identifier bound when scope is once or session.
-  string session_id = 3;
+  string session_id = 3 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Device identifier or wildcard.
-  string device_id = 4;
+  string device_id = 4 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Permitted action class.
-  ActionClass action_class = 5;
+  ActionClass action_class = 5 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Target match pattern.
-  string target_pattern = 6;
+  string target_pattern = 6 [(data_class) = DATA_CLASS_CONTENT, (content_kind) = CONTENT_KIND_ARGUMENT, (sealable) = true];
   // Grant lifetime scope.
-  GrantScope scope = 7;
+  GrantScope scope = 7 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Approval grade used to authorise the grant.
-  ApprovalGrade grade = 8;
+  ApprovalGrade grade = 8 [(data_class) = DATA_CLASS_STRUCTURAL];
   // RFC 3339 grant creation timestamp.
-  string granted_at = 9;
+  string granted_at = 9 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Optional RFC 3339 expiry timestamp.
-  optional string expires_at = 10;
+  optional string expires_at = 10 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Optional remaining single-use count.
-  optional uint32 remaining_uses = 11;
+  optional uint32 remaining_uses = 11 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Approver rationale note.
-  string note = 12;
+  string note = 12 [(data_class) = DATA_CLASS_CONTENT, (content_kind) = CONTENT_KIND_BODY, (sealable) = true];
   // Signing key identifier.
-  optional string key_id = 13;
+  optional string key_id = 13 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Base64 Ed25519 signature.
-  optional string signature = 14;
+  optional string signature = 14 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Conversational turn roll-up inside a session detail view.
 message TurnSummary {
   // 1-based turn index.
-  uint32 turn_index = 1;
+  uint32 turn_index = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Trace identifier for the turn.
-  string trace_id = 2;
+  string trace_id = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Number of spans observed in the turn.
-  uint64 span_count = 3;
+  uint64 span_count = 3 [(data_class) = DATA_CLASS_DERIVED];
   // Aggregated turn duration in milliseconds.
-  uint64 duration_ms = 4;
+  uint64 duration_ms = 4 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Count of denied attempts in the turn.
-  uint64 blocked_count = 5;
+  uint64 blocked_count = 5 [(data_class) = DATA_CLASS_DERIVED];
   // Count of step-up attempts in the turn.
-  uint64 asked_count = 6;
+  uint64 asked_count = 6 [(data_class) = DATA_CLASS_DERIVED];
   // True when context compaction occurred in the turn.
-  bool has_compaction = 7;
+  bool has_compaction = 7 [(data_class) = DATA_CLASS_STRUCTURAL];
   // True when a subagent handoff occurred in the turn.
-  bool has_subagent_handoff = 8;
+  bool has_subagent_handoff = 8 [(data_class) = DATA_CLASS_STRUCTURAL];
   // RFC 3339 start timestamp of the turn.
-  string started_at = 9;
+  string started_at = 9 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Monitored agent execution session summary.
 message SessionSummary {
   // Unique session identifier.
-  string id = 1 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string id = 1 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Endpoint device identifier.
-  string device_id = 2 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string device_id = 2 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Endpoint device hostname.
-  string device_name = 3 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string device_name = 3 [(data_class) = DATA_CLASS_IDENTIFIER, (filterable) = true, (sortable) = true, (sealable) = true];
   // Agent harness name.
-  string agent_name = 4 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string agent_name = 4 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Optional user identifier or pseudonym.
   optional string user_id = 5 [(data_class) = DATA_CLASS_IDENTIFIER, (filterable) = true];
   // Optional user display name.
   optional string user_display = 6 [(data_class) = DATA_CLASS_IDENTIFIER];
   // Distinct conversational turns recorded.
-  uint64 turn_count = 7 [(data_class) = DATA_CLASS_METADATA, (sortable) = true];
+  uint64 turn_count = 7 [(data_class) = DATA_CLASS_STRUCTURAL, (sortable) = true];
   // Optional parent session identifier for subagent delegation.
-  optional string parent_session_id = 8 [(data_class) = DATA_CLASS_METADATA];
+  optional string parent_session_id = 8 [(data_class) = DATA_CLASS_STRUCTURAL];
   // RFC 3339 session start timestamp.
-  string started_at = 9 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string started_at = 9 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // RFC 3339 latest observed activity timestamp.
-  string last_activity = 10 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string last_activity = 10 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Total action attempts recorded.
-  uint64 total_actions = 11 [(data_class) = DATA_CLASS_METADATA, (sortable) = true];
+  uint64 total_actions = 11 [(data_class) = DATA_CLASS_STRUCTURAL, (sortable) = true];
   // Count of blocked attempts.
-  uint64 blocked_count = 12 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  uint64 blocked_count = 12 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Count of step-up attempts.
-  uint64 step_up_count = 13 [(data_class) = DATA_CLASS_METADATA, (sortable) = true];
+  uint64 step_up_count = 13 [(data_class) = DATA_CLASS_STRUCTURAL, (sortable) = true];
   // Count of watch hits.
-  uint64 watch_hits = 14 [(data_class) = DATA_CLASS_METADATA, (sortable) = true];
+  uint64 watch_hits = 14 [(data_class) = DATA_CLASS_STRUCTURAL, (sortable) = true];
   // Session assurance level.
-  AssuranceLevel assurance_level = 15 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  AssuranceLevel assurance_level = 15 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Behavioural session labels.
-  repeated SessionLabel labels = 16;
+  repeated SessionLabel labels = 16 [(data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
 }
 
 // Structured matcher criteria for a declarative policy rule.
 message RuleMatch {
   // Action classes matched by this rule.
-  repeated ActionClass action_classes = 1;
+  repeated ActionClass action_classes = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Target path or URL prefixes.
-  repeated string target_prefixes = 2;
+  repeated string target_prefixes = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Target substrings.
-  repeated string target_contains = 3;
+  repeated string target_contains = 3 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Agent harness names matched, or empty for all agents.
-  repeated string agents = 4;
+  repeated string agents = 4 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Single declarative policy rule compiled into Cedar and floor tables.
 message PolicyRule {
+  reserved 900 to 999;
+
   // Unique rule identifier.
-  string id = 1 [(data_class) = DATA_CLASS_METADATA];
+  string id = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Concise operator-facing rule title.
-  string title = 2 [(data_class) = DATA_CLASS_METADATA];
+  string title = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Rule intent description.
-  string description = 3 [(data_class) = DATA_CLASS_METADATA];
+  string description = 3 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Active enforcement mode.
-  Mode mode = 4 [(data_class) = DATA_CLASS_METADATA];
+  Mode mode = 4 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Minimum approval grade for Ask overrides.
-  ApprovalGrade min_grade = 5 [(data_class) = DATA_CLASS_METADATA];
+  ApprovalGrade min_grade = 5 [(data_class) = DATA_CLASS_STRUCTURAL];
   // True when rule evaluation is active.
-  bool enabled = 6 [(data_class) = DATA_CLASS_METADATA];
+  bool enabled = 6 [(data_class) = DATA_CLASS_STRUCTURAL];
   // True for Essentials baseline floor rules that cannot be deleted.
-  bool locked = 7 [(data_class) = DATA_CLASS_METADATA];
+  bool locked = 7 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Structured rule matcher conditions.
-  RuleMatch matcher = 8;
+  RuleMatch matcher = 8 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Total matched attempts.
-  uint64 hits = 9;
+  uint64 hits = 9 [(data_class) = DATA_CLASS_DERIVED];
   // Counterfactual Ask hits while in Watch mode.
-  uint64 would_ask_hits = 10;
+  uint64 would_ask_hits = 10 [(data_class) = DATA_CLASS_DERIVED];
   // Counterfactual Block hits while in Watch mode.
-  uint64 would_block_hits = 11;
+  uint64 would_block_hits = 11 [(data_class) = DATA_CLASS_DERIVED];
   // Operator-facing explanation template.
-  string reason_template = 12;
+  string reason_template = 12 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Optional explicit Cedar policy source.
-  optional string cedar = 13;
+  optional string cedar = 13 [(data_class) = DATA_CLASS_CONTENT, (content_kind) = CONTENT_KIND_BODY, (sealable) = true];
 }
 
 // Signed bundle of related policy rules.
 message PolicyPack {
   // Pack identifier.
-  string id = 1;
+  string id = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Display name of the pack.
-  string name = 2;
+  string name = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Pack summary description.
-  string description = 3;
+  string description = 3 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Semantic version string.
-  string version = 4;
+  string version = 4 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Release channel such as stable or preview.
-  string channel = 5;
+  string channel = 5 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Rules contained in the pack.
-  repeated PolicyRule rules = 6;
+  repeated PolicyRule rules = 6 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Signing key identifier.
-  optional string key_id = 7;
+  optional string key_id = 7 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Base64 Ed25519 pack signature.
-  optional string signature = 8;
+  optional string signature = 8 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Step-up approval request generated by an Ask policy match.
 message ApprovalRequest {
   // Unique approval request identifier.
-  string id = 1 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string id = 1 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Linked decision receipt identifier.
-  string receipt_id = 2 [(data_class) = DATA_CLASS_METADATA];
+  string receipt_id = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Linked session identifier.
-  string session_id = 3 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string session_id = 3 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Owning device identifier.
-  string device_id = 4 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string device_id = 4 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Owning device hostname.
-  string device_name = 5 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string device_name = 5 [(data_class) = DATA_CLASS_IDENTIFIER, (filterable) = true, (sealable) = true];
   // Agent harness name.
-  string agent_name = 6 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string agent_name = 6 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Action class awaiting approval.
-  ActionClass action_class = 7 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  ActionClass action_class = 7 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Requested target resource.
-  string target = 8 [(data_class) = DATA_CLASS_CONTENT];
+  string target = 8 [(data_class) = DATA_CLASS_CONTENT, (content_kind) = CONTENT_KIND_ARGUMENT, (sealable) = true];
   // Triggering rule identifier.
-  string rule_id = 9 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string rule_id = 9 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Triggering rule title.
-  string rule_title = 10 [(data_class) = DATA_CLASS_METADATA];
+  string rule_title = 10 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Required approval grade.
-  ApprovalGrade required_grade = 11 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  ApprovalGrade required_grade = 11 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Reason presented to the approver.
-  string reason = 12 [(data_class) = DATA_CLASS_METADATA];
+  string reason = 12 [(data_class) = DATA_CLASS_DERIVED];
   // RFC 3339 request timestamp.
-  string requested_at = 13 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string requested_at = 13 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Current approval lifecycle status.
-  ApprovalStatus status = 14 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  ApprovalStatus status = 14 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Expiry timestamp while pending or expired.
-  optional string expires_at = 15 [(data_class) = DATA_CLASS_METADATA];
+  optional string expires_at = 15 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Issued grant identifier when approved.
-  optional string grant_id = 16 [(data_class) = DATA_CLASS_METADATA];
+  optional string grant_id = 16 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Granted scope when approved.
-  optional GrantScope scope = 17;
+  optional GrantScope scope = 17 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Decision timestamp when approved or denied.
-  optional string decided_at = 18 [(data_class) = DATA_CLASS_METADATA];
+  optional string decided_at = 18 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Operator decision rationale note.
-  optional string note = 19 [(data_class) = DATA_CLASS_METADATA];
+  optional string note = 19 [(data_class) = DATA_CLASS_CONTENT, (content_kind) = CONTENT_KIND_BODY, (sealable) = true];
+  reserved 900 to 999;
 }
 
 // Security finding detected from policy violations or endpoint telemetry.
 message Finding {
   // Unique finding identifier.
-  string id = 1 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string id = 1 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Linked session identifier.
-  string session_id = 2 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string session_id = 2 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Owning device identifier.
-  string device_id = 3 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string device_id = 3 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Owning device hostname.
-  string device_name = 4 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string device_name = 4 [(data_class) = DATA_CLASS_IDENTIFIER, (filterable) = true, (sealable) = true];
   // Agent harness name.
-  string agent_name = 5 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string agent_name = 5 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Finding category.
-  FindingClass finding_class = 6 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  FindingClass finding_class = 6 [(data_class) = DATA_CLASS_DERIVED, (filterable) = true];
   // Finding severity level.
-  FindingSeverity severity = 7 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  FindingSeverity severity = 7 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Current triage lifecycle state.
-  FindingLifecycle lifecycle = 8 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  FindingLifecycle lifecycle = 8 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Optional triggering rule identifier.
-  optional string rule_id = 9 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  optional string rule_id = 9 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Concise finding title.
-  string title = 10 [(data_class) = DATA_CLASS_METADATA];
+  string title = 10 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Human summary of the finding.
-  string summary = 11 [(data_class) = DATA_CLASS_METADATA];
+  string summary = 11 [(data_class) = DATA_CLASS_DERIVED];
   // Target path, URL, or resource.
-  string target = 12 [(data_class) = DATA_CLASS_CONTENT];
+  string target = 12 [(data_class) = DATA_CLASS_CONTENT, (content_kind) = CONTENT_KIND_ARGUMENT, (sealable) = true];
   // RFC 3339 detection timestamp.
-  string detected_at = 13 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string detected_at = 13 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
+  // Optional custom finding class label when FINDING_CLASS_OTHER is used.
+  optional string finding_class_other = 14 [(data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
 }
 
 // Correlated security incident grouping one or more findings.
 message Incident {
   // Unique incident identifier.
-  string id = 1 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string id = 1 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Primary session identifier.
-  string session_id = 2 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string session_id = 2 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Primary device identifier.
-  string device_id = 3 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string device_id = 3 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Primary device hostname.
-  string device_name = 4 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string device_name = 4 [(data_class) = DATA_CLASS_IDENTIFIER, (filterable) = true, (sealable) = true];
   // Agent harness name.
-  string agent_name = 5 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string agent_name = 5 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Incident headline.
-  string title = 6 [(data_class) = DATA_CLASS_METADATA];
+  string title = 6 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Correlated narrative summary.
-  string summary = 7 [(data_class) = DATA_CLASS_METADATA];
+  string summary = 7 [(data_class) = DATA_CLASS_DERIVED];
   // Highest severity across correlated findings.
-  FindingSeverity severity = 8 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  FindingSeverity severity = 8 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Incident lifecycle status.
-  FindingLifecycle lifecycle = 9 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  FindingLifecycle lifecycle = 9 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Correlated finding identifiers.
-  repeated string finding_ids = 10;
+  repeated string finding_ids = 10 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Number of correlated findings.
-  uint64 finding_count = 11 [(data_class) = DATA_CLASS_METADATA, (sortable) = true];
+  uint64 finding_count = 11 [(data_class) = DATA_CLASS_STRUCTURAL, (sortable) = true];
   // Behavioural labels associated with the incident.
-  repeated SessionLabel labels = 12;
+  repeated SessionLabel labels = 12 [(data_class) = DATA_CLASS_DERIVED];
   // RFC 3339 timestamp of the earliest finding.
-  string first_seen = 13 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string first_seen = 13 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // RFC 3339 timestamp of the latest finding.
-  string last_seen = 14 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string last_seen = 14 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
+  reserved 900 to 999;
 }
 
 // Tamper-evident control-plane audit log record.
 message AuditEntry {
   // Unique audit entry identifier.
-  string id = 1 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string id = 1 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // RFC 3339 event timestamp.
-  string timestamp = 2 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string timestamp = 2 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
   // Event kind tag.
-  string kind = 3 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string kind = 3 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Actor identifier or pseudonym.
   string actor = 4 [(data_class) = DATA_CLASS_IDENTIFIER, (filterable) = true];
   // Human-readable action summary.
-  string summary = 5 [(data_class) = DATA_CLASS_METADATA];
+  string summary = 5 [(data_class) = DATA_CLASS_DERIVED];
   // Affected target resource identifier.
-  string target = 6 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string target = 6 [(data_class) = DATA_CLASS_IDENTIFIER, (filterable) = true, (sealable) = true];
+  reserved 900 to 999;
 }
 
 // Active emergency kill-switch or freeze state.
 message KillSwitchState {
   // Current emergency switch state.
-  KillState state = 1;
+  KillState state = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Target scope when frozen or killed.
-  optional KillScope scope = 2;
+  optional KillScope scope = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Target entity id when frozen or killed.
-  optional string target_id = 3;
+  optional string target_id = 3 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Operator rationale when frozen or killed.
-  optional string reason = 4;
+  optional string reason = 4 [(data_class) = DATA_CLASS_DERIVED];
   // RFC 3339 activation timestamp.
-  optional string issued_at = 5;
+  optional string issued_at = 5 [(data_class) = DATA_CLASS_STRUCTURAL];
   // RFC 3339 automatic expiration timestamp when frozen.
-  optional string expires_at = 6;
+  optional string expires_at = 6 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Additive transparent user risk factor breakdown.
 message UserRiskFactor {
   // Factor code.
-  string code = 1;
+  string code = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Human factor label.
-  string label = 2;
+  string label = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Additive points contributed.
-  uint32 points = 3;
+  uint32 points = 3 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Observed count contributing to this factor.
-  uint32 count = 4;
+  uint32 count = 4 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Monitored user profile respecting organisation privacy identity_mode.
 message UserProfile {
   // User identifier or pseudonym under works-council mode.
-  string id = 1 [(data_class) = DATA_CLASS_PSEUDONYM, (filterable) = true, (sortable) = true];
+  string id = 1 [(data_class) = DATA_CLASS_IDENTIFIER, (filterable) = true, (sortable) = true];
   // Display name or pseudonymous label.
   string display_name = 2 [(data_class) = DATA_CLASS_IDENTIFIER, (filterable) = true, (sortable) = true];
   // Email address or redacted marker.
   string email = 3 [(data_class) = DATA_CLASS_IDENTIFIER, (filterable) = true];
   // Department or organisational unit.
-  string department = 4 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string department = 4 [(data_class) = DATA_CLASS_IDENTIFIER, (filterable) = true, (sealable) = true];
   // Originating identity provider or discovery source.
-  string idp_source = 5 [(data_class) = DATA_CLASS_METADATA, (filterable) = true];
+  string idp_source = 5 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true];
   // Stable pseudonym identifier prn_.
-  string pseudonym_id = 6 [(data_class) = DATA_CLASS_PSEUDONYM, (filterable) = true];
+  string pseudonym_id = 6 [(data_class) = DATA_CLASS_IDENTIFIER, (filterable) = true];
   // Associated device identifiers.
-  repeated string device_ids = 7;
+  repeated string device_ids = 7 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Distinct agent harnesses used.
-  repeated string agent_names = 8;
+  repeated string agent_names = 8 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Artifact count attributed to this user.
-  uint64 artifact_count = 9 [(sortable) = true];
+  uint64 artifact_count = 9 [(data_class) = DATA_CLASS_DERIVED, (sortable) = true];
   // Session count attributed to this user.
-  uint64 session_count = 10 [(sortable) = true];
+  uint64 session_count = 10 [(data_class) = DATA_CLASS_DERIVED, (sortable) = true];
   // Blocked action count.
-  uint64 blocked_count = 11 [(sortable) = true];
+  uint64 blocked_count = 11 [(data_class) = DATA_CLASS_DERIVED, (sortable) = true];
   // Step-up action count.
-  uint64 asked_count = 12 [(sortable) = true];
+  uint64 asked_count = 12 [(data_class) = DATA_CLASS_DERIVED, (sortable) = true];
   // Watch hit count.
-  uint64 watch_count = 13 [(sortable) = true];
+  uint64 watch_count = 13 [(data_class) = DATA_CLASS_DERIVED, (sortable) = true];
   // Open or historical finding count.
-  uint64 finding_count = 14 [(sortable) = true];
+  uint64 finding_count = 14 [(data_class) = DATA_CLASS_DERIVED, (sortable) = true];
   // Additive risk score from 0 to 100.
-  uint32 risk_score = 15 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  uint32 risk_score = 15 [(data_class) = DATA_CLASS_DERIVED, (filterable) = true, (sortable) = true];
   // Derived risk tier.
-  RiskTier risk_tier = 16 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  RiskTier risk_tier = 16 [(data_class) = DATA_CLASS_DERIVED, (filterable) = true, (sortable) = true];
   // Transparent breakdown of additive risk points.
-  repeated UserRiskFactor risk_factors = 17;
+  repeated UserRiskFactor risk_factors = 17 [(data_class) = DATA_CLASS_DERIVED];
   // RFC 3339 last active timestamp.
-  string last_active = 18 [(data_class) = DATA_CLASS_METADATA, (filterable) = true, (sortable) = true];
+  string last_active = 18 [(data_class) = DATA_CLASS_STRUCTURAL, (filterable) = true, (sortable) = true];
+  reserved 900 to 999;
 }
 
 // Organisation privacy visibility configuration.
 message OrgPrivacyConfig {
   // Active identity visibility mode.
-  IdentityMode identity_mode = 1;
+  IdentityMode identity_mode = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
   // Whether additive user risk scoring is enabled.
-  bool user_risk_scoring = 2;
+  bool user_risk_scoring = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }

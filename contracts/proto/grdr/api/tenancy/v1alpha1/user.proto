@@ -6,6 +6,7 @@ syntax = "proto3";
 
 package grdr.api.tenancy.v1alpha1;
 
+import "grdr/common/v1alpha1/options.proto";
 import "grdr/common/v1alpha1/enums.proto";
 import "grdr/common/v1alpha1/resources.proto";
 import "grdr/common/v1alpha1/types.proto";
@@ -13,51 +14,55 @@ import "grdr/common/v1alpha1/types.proto";
 // Request for ListUsers using AIP-158 cursor pagination and AIP-160 filters.
 message ListUsersRequest {
   // Requested page size (default 50, maximum 1000).
-  uint32 page_size = 1;
+  uint32 page_size = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // AEAD-sealed opaque page cursor token.
-  string page_token = 2;
+  string page_token = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Bounded AIP-160 filter expression over filterable UserProfile fields.
-  string filter = 3;
+  string filter = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Sort specification over sortable UserProfile fields.
-  string order_by = 4;
+  string order_by = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Response for ListUsers.
 message ListUsersResponse {
   // Current page of user profiles respecting active identity_mode.
-  repeated grdr.common.v1alpha1.UserProfile users = 1;
+  repeated grdr.common.v1alpha1.UserProfile users = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // AIP-158 cursor pagination metadata.
-  grdr.common.v1alpha1.PageInfo page_info = 2;
+  grdr.common.v1alpha1.PageInfo page_info = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Revision and ETag metadata.
-  grdr.common.v1alpha1.RevisionMeta revision = 3;
+  grdr.common.v1alpha1.RevisionMeta revision = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for GetUser.
 message GetUserRequest {
   // User identifier or pseudonym.
-  string id = 1;
+  string id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER];
+  reserved 900 to 999;
 }
 
 // Response for GetUser.
 message GetUserResponse {
   // Detailed user profile.
-  grdr.common.v1alpha1.UserProfile user = 1;
+  grdr.common.v1alpha1.UserProfile user = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Devices attributed to this user.
-  repeated grdr.common.v1alpha1.Device devices = 2;
+  repeated grdr.common.v1alpha1.Device devices = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Monitored sessions attributed to this user.
-  repeated grdr.common.v1alpha1.SessionSummary sessions = 3;
+  repeated grdr.common.v1alpha1.SessionSummary sessions = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Recent action attempts attributed to this user.
-  repeated grdr.common.v1alpha1.ActionAttempt recent_attempts = 4;
+  repeated grdr.common.v1alpha1.ActionAttempt recent_attempts = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Decision receipts attributed to this user.
-  repeated grdr.common.v1alpha1.DecisionReceipt receipts = 5;
+  repeated grdr.common.v1alpha1.DecisionReceipt receipts = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Findings attributed to this user.
-  repeated grdr.common.v1alpha1.Finding findings = 6;
+  repeated grdr.common.v1alpha1.Finding findings = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Artifacts attributed to this user.
-  repeated grdr.common.v1alpha1.ArtifactEntry artifacts = 7;
+  repeated grdr.common.v1alpha1.ArtifactEntry artifacts = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Effective organisation identity mode applied when rendering this detail.
-  grdr.common.v1alpha1.IdentityMode identity_mode = 8;
+  grdr.common.v1alpha1.IdentityMode identity_mode = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Revision and ETag metadata.
-  grdr.common.v1alpha1.RevisionMeta revision = 9;
+  grdr.common.v1alpha1.RevisionMeta revision = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for GetPrivacyConfig.
@@ -66,25 +71,29 @@ message GetPrivacyConfigRequest {}
 // Response for GetPrivacyConfig.
 message GetPrivacyConfigResponse {
   // Effective organisation privacy visibility settings.
-  grdr.common.v1alpha1.OrgPrivacyConfig config = 1;
+  grdr.common.v1alpha1.OrgPrivacyConfig config = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Revision and ETag metadata.
-  grdr.common.v1alpha1.RevisionMeta revision = 2;
+  grdr.common.v1alpha1.RevisionMeta revision = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for UpdatePrivacyConfig.
 message UpdatePrivacyConfigRequest {
+  reserved 900 to 999;
+
   // Optional new identity mode (named or pseudonymous).
-  optional grdr.common.v1alpha1.IdentityMode identity_mode = 1;
+  optional grdr.common.v1alpha1.IdentityMode identity_mode = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Optional toggle for additive risk scoring.
-  optional bool user_risk_scoring = 2;
+  optional bool user_risk_scoring = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Optional actor attribution.
-  optional string actor = 3;
+  optional string actor = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
 }
 
 // Response for UpdatePrivacyConfig.
 message UpdatePrivacyConfigResponse {
   // Updated organisation privacy configuration.
-  grdr.common.v1alpha1.OrgPrivacyConfig config = 1;
+  grdr.common.v1alpha1.OrgPrivacyConfig config = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Monitored developer profiles and works-council privacy visibility settings.

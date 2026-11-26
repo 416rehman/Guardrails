@@ -13,6 +13,7 @@ renders = "none"
 [dependencies]
 cedar-policy = { workspace = true }
 grdr-model = { workspace = true }
+grdr-proto = { workspace = true }
 grdr-schema = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

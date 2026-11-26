@@ -6,258 +6,279 @@ syntax = "proto3";
 
 package grdr.api.inventory.v1alpha1;
 
+import "grdr/common/v1alpha1/options.proto";
 import "grdr/common/v1alpha1/enums.proto";
 import "grdr/common/v1alpha1/resources.proto";
 import "grdr/common/v1alpha1/types.proto";
 
 // Platform endpoint installer specification for onboarding teams.
 message InstallerSpec {
+  reserved 900 to 999;
+
   // Target OS identifier.
-  string platform = 1;
+  string platform = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Human-readable installer title.
-  string label = 2;
+  string label = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Distributed binary version.
-  string version = 3;
+  string version = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Shell or package install command.
-  string command = 4;
+  string command = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_ARGUMENT, (grdr.common.v1alpha1.sealable) = true];
   // SHA-256 verification digest.
-  string sha256 = 5;
+  string sha256 = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Verification doctor command.
-  string doctor_command = 6;
+  string doctor_command = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Deployment notes.
-  string notes = 7;
+  string notes = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
 }
 
 // Endpoint enrolment deployment key metadata (never carries plaintext secret after creation).
 message DeploymentKey {
+  reserved 900 to 999;
+
   // Unique deployment key identifier.
-  string id = 1;
+  string id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Operator label.
-  string label = 2;
+  string label = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Redacted token preview prefix.
-  string token_preview = 3;
+  string token_preview = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Assigned daemon install profile.
-  string install_profile = 4;
+  string install_profile = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Rollout wave name.
-  string wave = 5;
+  string wave = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Maximum permitted enrolments.
-  uint32 max_uses = 6;
+  uint32 max_uses = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Consumed enrolment count.
-  uint32 used_count = 7;
+  uint32 used_count = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
   // Key status.
-  grdr.common.v1alpha1.DeploymentKeyStatus status = 8;
+  grdr.common.v1alpha1.DeploymentKeyStatus status = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
   // RFC 3339 creation timestamp.
-  string created_at = 9;
+  string created_at = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // RFC 3339 expiry timestamp.
-  string expires_at = 10;
+  string expires_at = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Creator identity.
-  string created_by = 11;
+  string created_by = 11 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
 }
 
 // Local OTLP telemetry fanout status and configuration.
 message OtlpFanoutConfig {
   // Whether local OTLP fanout is active.
-  bool enabled = 1;
+  bool enabled = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // gRPC listener port.
-  uint32 grpc_port = 2;
+  uint32 grpc_port = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // HTTP listener port.
-  uint32 http_port = 3;
+  uint32 http_port = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Loopback or configured bind address.
-  string bind_address = 4;
+  string bind_address = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Configured downstream collector targets.
-  repeated string downstream_targets = 5;
+  repeated string downstream_targets = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // True when bound strictly to loopback.
-  bool loopback_only = 6;
+  bool loopback_only = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Accepted span count over the last 24 hours.
-  uint64 accepted_spans_24h = 7;
+  uint64 accepted_spans_24h = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Readiness probe check for an integration connector.
 message ReadinessCheck {
   // Check name.
-  string name = 1;
+  string name = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // True when check succeeded.
-  bool passed = 2;
+  bool passed = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Diagnostic summary.
-  string detail = 3;
+  string detail = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Configured external directory, SaaS, or SIEM integration entry.
 message IntegrationEntry {
   // Unique integration identifier.
-  string id = 1;
+  string id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Integration display name.
-  string name = 2;
+  string name = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Vendor or protocol provider name.
-  string provider = 3;
+  string provider = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Integration category.
-  grdr.common.v1alpha1.IntegrationCategory category = 4;
+  grdr.common.v1alpha1.IntegrationCategory category = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Computed operational health state.
-  grdr.common.v1alpha1.IntegrationHealthState state = 5;
+  grdr.common.v1alpha1.IntegrationHealthState state = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Synchronised user count.
-  uint32 synced_users = 6;
+  uint32 synced_users = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // RFC 3339 timestamp of the last sync if any.
-  optional string last_sync_at = 7;
+  optional string last_sync_at = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Remaining credential lifetime in days if known.
-  optional uint32 credential_expires_in_days = 8;
+  optional uint32 credential_expires_in_days = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Operational status detail.
-  string detail = 9;
+  string detail = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Executed readiness checks.
-  repeated ReadinessCheck readiness_checks = 10;
+  repeated ReadinessCheck readiness_checks = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for ListDevices using AIP-158 cursor pagination and AIP-160 filters.
 message ListDevicesRequest {
   // Requested page size (default 50, maximum 1000).
-  uint32 page_size = 1;
+  uint32 page_size = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // AEAD-sealed opaque page cursor token.
-  string page_token = 2;
+  string page_token = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Bounded AIP-160 filter expression over filterable Device fields.
-  string filter = 3;
+  string filter = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Sort specification over sortable Device fields.
-  string order_by = 4;
+  string order_by = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Response for ListDevices.
 message ListDevicesResponse {
   // Current page of enrolled devices.
-  repeated grdr.common.v1alpha1.Device devices = 1;
+  repeated grdr.common.v1alpha1.Device devices = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // AIP-158 cursor pagination metadata.
-  grdr.common.v1alpha1.PageInfo page_info = 2;
+  grdr.common.v1alpha1.PageInfo page_info = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Revision and ETag metadata.
-  grdr.common.v1alpha1.RevisionMeta revision = 3;
+  grdr.common.v1alpha1.RevisionMeta revision = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for DeviceCheckin submitted by grdr-daemon endpoints.
 message DeviceCheckinRequest {
+  reserved 900 to 999;
+
   // Previously assigned device identifier if already enrolled.
-  optional string device_id = 1;
+  optional string device_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Endpoint hostname.
-  string hostname = 2;
+  string hostname = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
   // Operating system identifier.
-  string os = 3;
+  string os = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // CPU architecture.
-  string arch = 4;
+  string arch = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Daemon install profile.
-  grdr.common.v1alpha1.InstallProfile install_profile = 5;
+  grdr.common.v1alpha1.InstallProfile install_profile = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Daemon version string.
-  string daemon_version = 6;
+  string daemon_version = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Whether Guardrails hooks are active on the host.
-  bool hook_effective = 7;
+  bool hook_effective = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
   // Agents discovered during local scan.
-  repeated grdr.common.v1alpha1.DiscoveredAgent agents = 8;
+  repeated grdr.common.v1alpha1.DiscoveredAgent agents = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // MCP servers discovered during local scan.
-  repeated grdr.common.v1alpha1.McpServerEntry mcp_servers = 9;
+  repeated grdr.common.v1alpha1.McpServerEntry mcp_servers = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Artifacts discovered during local scan.
-  repeated grdr.common.v1alpha1.ArtifactEntry artifacts = 10;
+  repeated grdr.common.v1alpha1.ArtifactEntry artifacts = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Optional attributed user identifier.
-  optional string user_id = 11;
+  optional string user_id = 11 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
   // Optional attributed user display name.
-  optional string user_display = 12;
+  optional string user_display = 12 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
   // Endpoint Ed25519 signing public key metadata.
-  optional grdr.common.v1alpha1.TrustedKeyInfo device_public_key = 13;
+  optional grdr.common.v1alpha1.TrustedKeyInfo device_public_key = 13 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
 }
 
 // Response for DeviceCheckin.
 message DeviceCheckinResponse {
   // Authoritative enrolled device record.
-  grdr.common.v1alpha1.Device device = 1;
+  grdr.common.v1alpha1.Device device = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Signed active policy packs to enforce locally.
-  repeated grdr.common.v1alpha1.PolicyPack packs = 2;
+  repeated grdr.common.v1alpha1.PolicyPack packs = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Active signed temporary grants targeting this device.
-  repeated grdr.common.v1alpha1.Grant grants = 3;
+  repeated grdr.common.v1alpha1.Grant grants = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Current emergency kill-switch state.
-  grdr.common.v1alpha1.KillSwitchState kill_switch = 4;
+  grdr.common.v1alpha1.KillSwitchState kill_switch = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // RFC 3339 authoritative server timestamp.
-  string server_time = 5;
+  string server_time = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Trusted Ed25519 public keys for local signature verification.
-  repeated grdr.common.v1alpha1.TrustedKeyInfo trusted_keys = 6;
+  repeated grdr.common.v1alpha1.TrustedKeyInfo trusted_keys = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Discovered agent view paired with owning device metadata for flat fleet queries.
 message AgentInventoryItem {
   // Owning device identifier.
-  string device_id = 1;
+  string device_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Owning device hostname.
-  string device_name = 2;
+  string device_name = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
   // Discovered agent details.
-  grdr.common.v1alpha1.DiscoveredAgent agent = 3;
+  grdr.common.v1alpha1.DiscoveredAgent agent = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for ListAgents using AIP-158 cursor pagination and AIP-160 filters.
 message ListAgentsRequest {
   // Requested page size (default 50, maximum 1000).
-  uint32 page_size = 1;
+  uint32 page_size = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // AEAD-sealed opaque page cursor token.
-  string page_token = 2;
+  string page_token = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Bounded AIP-160 filter expression.
-  string filter = 3;
+  string filter = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Sort specification over sortable agent fields.
-  string order_by = 4;
+  string order_by = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Response for ListAgents.
 message ListAgentsResponse {
   // Current page of discovered agents.
-  repeated AgentInventoryItem items = 1;
+  repeated AgentInventoryItem items = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // AIP-158 cursor pagination metadata.
-  grdr.common.v1alpha1.PageInfo page_info = 2;
+  grdr.common.v1alpha1.PageInfo page_info = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Revision and ETag metadata.
-  grdr.common.v1alpha1.RevisionMeta revision = 3;
+  grdr.common.v1alpha1.RevisionMeta revision = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Discovered MCP server paired with owning device metadata.
 message McpInventoryItem {
   // Owning device identifier.
-  string device_id = 1;
+  string device_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Owning device hostname.
-  string device_name = 2;
+  string device_name = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
   // Discovered MCP server details.
-  grdr.common.v1alpha1.McpServerEntry server = 3;
+  grdr.common.v1alpha1.McpServerEntry server = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for ListMcpServers using AIP-158 cursor pagination and AIP-160 filters.
 message ListMcpServersRequest {
   // Requested page size (default 50, maximum 1000).
-  uint32 page_size = 1;
+  uint32 page_size = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // AEAD-sealed opaque page cursor token.
-  string page_token = 2;
+  string page_token = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Bounded AIP-160 filter expression.
-  string filter = 3;
+  string filter = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Sort specification over sortable MCP server fields.
-  string order_by = 4;
+  string order_by = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Response for ListMcpServers.
 message ListMcpServersResponse {
   // Current page of MCP servers.
-  repeated McpInventoryItem items = 1;
+  repeated McpInventoryItem items = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // AIP-158 cursor pagination metadata.
-  grdr.common.v1alpha1.PageInfo page_info = 2;
+  grdr.common.v1alpha1.PageInfo page_info = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Revision and ETag metadata.
-  grdr.common.v1alpha1.RevisionMeta revision = 3;
+  grdr.common.v1alpha1.RevisionMeta revision = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for ListArtifacts using AIP-158 cursor pagination and AIP-160 filters.
 message ListArtifactsRequest {
   // Requested page size (default 50, maximum 1000).
-  uint32 page_size = 1;
+  uint32 page_size = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // AEAD-sealed opaque page cursor token.
-  string page_token = 2;
+  string page_token = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Bounded AIP-160 filter expression.
-  string filter = 3;
+  string filter = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Sort specification over sortable artifact fields.
-  string order_by = 4;
+  string order_by = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Response for ListArtifacts.
 message ListArtifactsResponse {
   // Current page of discovered agent artifacts.
-  repeated grdr.common.v1alpha1.ArtifactEntry artifacts = 1;
+  repeated grdr.common.v1alpha1.ArtifactEntry artifacts = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // AIP-158 cursor pagination metadata.
-  grdr.common.v1alpha1.PageInfo page_info = 2;
+  grdr.common.v1alpha1.PageInfo page_info = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Revision and ETag metadata.
-  grdr.common.v1alpha1.RevisionMeta revision = 3;
+  grdr.common.v1alpha1.RevisionMeta revision = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for GetConnectConfig.
@@ -266,77 +287,85 @@ message GetConnectConfigRequest {}
 // Response for GetConnectConfig.
 message GetConnectConfigResponse {
   // Authoritative server origin URL.
-  string server_origin = 1;
+  string server_origin = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Supported endpoint installer commands.
-  repeated InstallerSpec installers = 2;
+  repeated InstallerSpec installers = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Provisioned enrolment deployment keys.
-  repeated DeploymentKey deployment_keys = 3;
+  repeated DeploymentKey deployment_keys = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Local OTLP telemetry fanout state.
-  OtlpFanoutConfig otlp = 4;
+  OtlpFanoutConfig otlp = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Configured directory, SaaS, and export integrations.
-  repeated IntegrationEntry integrations = 5;
+  repeated IntegrationEntry integrations = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Revision and ETag metadata.
-  grdr.common.v1alpha1.RevisionMeta revision = 6;
+  grdr.common.v1alpha1.RevisionMeta revision = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for CreateDeploymentKey.
 message CreateDeploymentKeyRequest {
   // Operator label.
-  string label = 1;
+  string label = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Target deployment wave name.
-  string wave = 2;
+  string wave = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Assigned install profile.
-  string install_profile = 3;
+  string install_profile = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Maximum permitted uses.
-  uint32 max_uses = 4;
+  uint32 max_uses = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Validity duration in days.
-  uint32 ttl_days = 5;
+  uint32 ttl_days = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Response for CreateDeploymentKey.
 message CreateDeploymentKeyResponse {
   // Created deployment key metadata.
-  DeploymentKey key = 1;
+  DeploymentKey key = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // One-time plaintext enrolment secret shown once to the creator.
-  string plaintext_token = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_SECRET];
+  string plaintext_token = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY, (grdr.common.v1alpha1.sealable) = true];
+  reserved 900 to 999;
 }
 
 // Request for RevokeDeploymentKey.
 message RevokeDeploymentKeyRequest {
   // Deployment key identifier to revoke.
-  string id = 1;
+  string id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Response for RevokeDeploymentKey.
 message RevokeDeploymentKeyResponse {
   // Updated revoked deployment key metadata.
-  DeploymentKey key = 1;
+  DeploymentKey key = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for RenderMdmConfig.
 message RenderMdmConfigRequest {
   // Target MDM or browser GPO format.
-  grdr.common.v1alpha1.MdmFormat format = 1;
+  grdr.common.v1alpha1.MdmFormat format = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Optional deployment key identifier to embed.
-  optional string deployment_key_id = 2;
+  optional string deployment_key_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Whether to include browser extension policy enforcement.
-  bool include_browser_extension = 3;
+  bool include_browser_extension = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Update authority URL embedded in generated manifests.
-  string update_authority = 4;
+  string update_authority = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Response for RenderMdmConfig.
 message RenderMdmConfigResponse {
+  reserved 900 to 999;
+
   // Rendered MDM format.
-  grdr.common.v1alpha1.MdmFormat format = 1;
+  grdr.common.v1alpha1.MdmFormat format = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Suggested configuration filename.
-  string filename = 2;
+  string filename = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Configuration MIME content type.
-  string content_type = 3;
+  string content_type = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Rendered profile or script payload.
-  string payload = 4;
+  string payload = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY, (grdr.common.v1alpha1.sealable) = true];
   // Rollout guidance notes for administrators.
-  repeated string deployment_notes = 5;
+  repeated string deployment_notes = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
 }
 
 // Request for ListIntegrations.
@@ -345,21 +374,24 @@ message ListIntegrationsRequest {}
 // Response for ListIntegrations.
 message ListIntegrationsResponse {
   // Configured directory, SaaS, and SIEM integrations.
-  repeated IntegrationEntry integrations = 1;
+  repeated IntegrationEntry integrations = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Revision and ETag metadata.
-  grdr.common.v1alpha1.RevisionMeta revision = 2;
+  grdr.common.v1alpha1.RevisionMeta revision = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for CheckIntegrationReadiness.
 message CheckIntegrationReadinessRequest {
   // Integration identifier to probe.
-  string id = 1;
+  string id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Response for CheckIntegrationReadiness.
 message CheckIntegrationReadinessResponse {
   // Updated integration entry with fresh readiness checks.
-  IntegrationEntry integration = 1;
+  IntegrationEntry integration = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Fleet inventory, endpoint enrolment, deployment keys, MDM rendering, and integrations.
