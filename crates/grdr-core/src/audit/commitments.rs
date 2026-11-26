@@ -376,15 +376,16 @@ mod tests {
     #[test]
     fn commitment_framing_and_salt_policy_reject_adversarial_inputs() {
         let base_salts = test_salts();
-        let mut s0 = base_salts[0][..16].to_vec();
-        s0[15] = 0x00;
+        let s0 = base_salts[0][..16].to_vec();
         let p0 = b"payload";
         let s1 = base_salts[0][..15].to_vec();
-        let p1 = b"\0payload";
+        let mut p1 = Vec::with_capacity(p0.len().saturating_add(1));
+        p1.push(base_salts[0][15]);
+        p1.extend_from_slice(p0);
         assert_ne!(
             compute_class_commitment(CommitmentClass::Structural, &s0, p0),
-            compute_class_commitment(CommitmentClass::Structural, &s1, p1),
-            "length-prefixed framing must prevent NUL-boundary shifts"
+            compute_class_commitment(CommitmentClass::Structural, &s1, &p1),
+            "length-prefixed framing must prevent boundary shifts"
         );
 
         let mut bad_short = salt_slices(&base_salts);
