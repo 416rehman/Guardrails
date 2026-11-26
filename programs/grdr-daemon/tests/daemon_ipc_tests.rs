@@ -853,12 +853,19 @@ type TestHold = ();
 #[cfg(windows)]
 type TestPreScm = Vec<Option<grdr_peer_os::win_peer::ScmServiceProbe>>;
 #[cfg(not(windows))]
-type TestPreScm = ();
+#[derive(Default)]
+struct TestPreScm {
+    _private: (),
+}
 
 fn probe_pre_scm() -> TestPreScm {
     #[cfg(windows)]
     {
         grdr_peer_os::win_peer::probe_scm_services(&["Guardrails", "GuardrailsHandover"])
+    }
+    #[cfg(not(windows))]
+    {
+        TestPreScm::default()
     }
 }
 
