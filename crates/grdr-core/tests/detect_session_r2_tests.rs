@@ -268,7 +268,7 @@ fn response_builtins_correlation_and_restore_bounds_enforced() {
     let self_rem = "title: \"Self\"\nid: 00000000-0000-0000-0000-000000000091\nstatus: stable\nauthor: \"The Guardrails ADR Authors\"\nlogsource:\n  product: grdr\n  category: any\n  service: any\ndetection:\n  sel:\n    action_class: exec\n  condition: sel\nx_grdr:\n  row: 91\n  rule_id: unit.rem\n  version: \"1.0.0\"\n  finding_class: threat\n  ceiling: remediate\n  response:\n    mode: live\n    verbs: [cut-session-egress]\n    max_scope: session\n    max_share_bp: 500\n";
     let (mut rem_eng, rem_rep) = SigmaDetectionEngine::load(
         &VerifiedDetectionContent {
-            pack_id: "grdr.det.ext".into(),
+            pack_id: "grdr.det.core".into(),
             version: "1.0.0".into(),
             raw_rules_yaml: vec![self_rem.into()],
             pack_mode: Mode::Block,
@@ -297,12 +297,12 @@ fn response_builtins_correlation_and_restore_bounds_enforced() {
     // Built-ins STILL execute when pack_mode == Mode::Off even if YAML IDs were loaded.
     let r34 = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../packs/detections-ext/rules/det-34-effect-mismatch.yaml"
+        "/../../packs/detections/rules/det-34-effect-mismatch.yaml"
     ))
     .expect("r34");
     let (mut off_eng, _) = SigmaDetectionEngine::load(
         &VerifiedDetectionContent {
-            pack_id: "grdr.det.ext".into(),
+            pack_id: "grdr.det.core".into(),
             version: "1.0.0".into(),
             raw_rules_yaml: vec![r34],
             pack_mode: Mode::Off,
@@ -1647,22 +1647,22 @@ fn round3_clock_skew_config_taint_baseline_and_detect_bounds_enforced() {
     // Built-in r33/r34/r46 stay active on non-YAML service/category events + sensor eviction keeps newest.
     let r33_yaml = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../packs/detections-ext/rules/det-33-hook-dark.yaml"
+        "/../../packs/detections/rules/det-33-hook-dark.yaml"
     ))
     .expect("r33");
     let r34_yaml = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../packs/detections-ext/rules/det-34-effect-mismatch.yaml"
+        "/../../packs/detections/rules/det-34-effect-mismatch.yaml"
     ))
     .expect("r34");
     let r46_yaml = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../packs/detections-ext/rules/det-46-judge-probing.yaml"
+        "/../../packs/detections/rules/det-46-judge-probing.yaml"
     ))
     .expect("r46");
     let (mut svc_eng, _) = SigmaDetectionEngine::load(
         &VerifiedDetectionContent {
-            pack_id: "grdr.det.ext".into(),
+            pack_id: "grdr.det.core".into(),
             version: "1.0.0".into(),
             raw_rules_yaml: vec![r33_yaml, r34_yaml, r46_yaml],
             pack_mode: Mode::Watch,
@@ -1792,7 +1792,7 @@ fn round3_clock_skew_config_taint_baseline_and_detect_bounds_enforced() {
     // det-35 multi-branch temporal rule retains active entries across >256 rule eviction when older rules exist.
     let det35_yaml = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../packs/detections-ext/rules/det-35-write-then-exec-same-digest.yaml"
+        "/../../packs/detections/rules/det-35-write-then-exec-same-digest.yaml"
     ))
     .expect("det35");
     let mut flood_rules = vec![det35_yaml];
@@ -1805,7 +1805,7 @@ fn round3_clock_skew_config_taint_baseline_and_detect_bounds_enforced() {
     }
     let (mut d35_eng, _) = SigmaDetectionEngine::load(
         &VerifiedDetectionContent {
-            pack_id: "grdr.det.ext".into(),
+            pack_id: "grdr.det.core".into(),
             version: "1.0.0".into(),
             raw_rules_yaml: flood_rules,
             pack_mode: Mode::Watch,
@@ -2986,4 +2986,70 @@ fn round7_toml_yaml_json_session_and_builtin_org_isolation() {
         "4 events in org-a + 1 in org-b must not cross-trigger judge-probing"
     );
     assert_eq!(org_eng.snapshot().judge_probe_history.len(), 2);
+
+    // Custom `finding_class: other` + `x_grdr.finding_class_other` propagates cleanly, while invalid labels fail closed.
+    let other_yaml = concat!(
+        "title: \"Custom drift rule\"\n",
+        "id: 00000000-0000-0000-0000-000000000991\n",
+        "status: stable\n",
+        "author: \"Unit\"\n",
+        "logsource:\n",
+        "  product: grdr\n",
+        "  category: any\n",
+        "  service: any\n",
+        "detection:\n",
+        "  sel:\n",
+        "    target: \"drift.json\"\n",
+        "  condition: sel\n",
+        "x_grdr:\n",
+        "  row: 991\n",
+        "  rule_id: unit.other.class\n",
+        "  version: \"1.0.0\"\n",
+        "  finding_class: other\n",
+        "  finding_class_other: supply_chain_drift\n",
+        "  ceiling: notify\n",
+    );
+    let (mut oth_eng, oth_rep) = SigmaDetectionEngine::load(
+        &VerifiedDetectionContent {
+            pack_id: "unit.custom".into(),
+            version: "1.0.0".into(),
+            raw_rules_yaml: vec![other_yaml.into()],
+            pack_mode: Mode::Watch,
+        },
+        &host_profile(DeploymentScope::Any),
+    )
+    .expect("load other class rule");
+    assert_eq!(oth_rep.loaded_rules.len(), 1);
+    let mut oth_out = DetectOutput::default();
+    oth_eng.on_event(
+        &ev_at(
+            10,
+            "s-oth",
+            "r-oth",
+            "d1",
+            ActionClass::FileWrite,
+            "any",
+            "any",
+            "drift.json",
+            BTreeMap::new(),
+        ),
+        &mut oth_out,
+    );
+    let emitted = oth_out
+        .findings
+        .iter()
+        .find(|f| f.rule_id.as_deref() == Some("unit.other.class"))
+        .expect("finding emitted");
+    assert_eq!(emitted.class, grdr_model::FindingClass::Other);
+    assert_eq!(
+        emitted.finding_class_other.as_deref(),
+        Some("supply_chain_drift")
+    );
+
+    let bad_other_yaml = other_yaml.replace("supply_chain_drift", "   ");
+    assert!(parse_sigma_rule(&bad_other_yaml).is_err());
+
+    let mismatch_other_yaml = other_yaml.replace("finding_class: other", "finding_class: threat");
+    assert_ne!(mismatch_other_yaml, other_yaml);
+    assert!(parse_sigma_rule(&mismatch_other_yaml).is_err());
 }

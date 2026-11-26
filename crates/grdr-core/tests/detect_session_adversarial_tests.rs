@@ -312,12 +312,12 @@ fn sigma_modifiers_origin_clamp_structural_isolation_and_response_gates() {
     // Host placement scope mismatch skips rule instead of loading silently.
     let srv_host = test_host(DeploymentScope::Server);
     let dev_only_yaml = fs::read_to_string(
-        repo_root().join("packs/detections-ext/rules/det-37-encoded-or-nested-payload.yaml"),
+        repo_root().join("packs/detections/rules/det-37-encoded-or-nested-payload.yaml"),
     )
     .expect("det-37");
     let (_eng, rep) = SigmaDetectionEngine::load(
         &VerifiedDetectionContent {
-            pack_id: "grdr.det.ext".into(),
+            pack_id: "grdr.det.core".into(),
             version: "1.0.0".into(),
             raw_rules_yaml: vec![dev_only_yaml],
             pack_mode: Mode::Watch,
@@ -333,25 +333,24 @@ fn sigma_modifiers_origin_clamp_structural_isolation_and_response_gates() {
 fn correlation_group_isolation_overflow_eviction_cross_device_and_pack_size_cap() {
     let host = test_host(DeploymentScope::Any);
     let det35 = fs::read_to_string(
-        repo_root().join("packs/detections-ext/rules/det-35-write-then-exec-same-digest.yaml"),
+        repo_root().join("packs/detections/rules/det-35-write-then-exec-same-digest.yaml"),
     )
     .expect("det35");
     let det42 = fs::read_to_string(
-        repo_root().join("packs/detections-ext/rules/det-42-many-sessions-shared-store.yaml"),
+        repo_root().join("packs/detections/rules/det-42-many-sessions-shared-store.yaml"),
     )
     .expect("det42");
     let det43 = fs::read_to_string(
-        repo_root().join("packs/detections-ext/rules/det-43-suspicious-artefact-cross-device.yaml"),
+        repo_root().join("packs/detections/rules/det-43-suspicious-artefact-cross-device.yaml"),
     )
     .expect("det43");
-    let det46 = fs::read_to_string(
-        repo_root().join("packs/detections-ext/rules/det-46-judge-probing.yaml"),
-    )
-    .expect("det46");
+    let det46 =
+        fs::read_to_string(repo_root().join("packs/detections/rules/det-46-judge-probing.yaml"))
+            .expect("det46");
 
     let (mut eng, _) = SigmaDetectionEngine::load(
         &VerifiedDetectionContent {
-            pack_id: "grdr.det.ext".into(),
+            pack_id: "grdr.det.core".into(),
             version: "1.0.0".into(),
             raw_rules_yaml: vec![det35, det42, det43, det46],
             pack_mode: Mode::Watch,
@@ -694,7 +693,7 @@ fn l0_compilers_escape_injections_lower_boolean_ast_and_match_shipped_pack_l0() 
     // Shipped `packs/l0/` files match det-37 compiled outputs with zero `%grdr_agent_images%` placeholders.
     let r37 = parse_sigma_rule(
         &fs::read_to_string(
-            repo_root().join("packs/detections-ext/rules/det-37-encoded-or-nested-payload.yaml"),
+            repo_root().join("packs/detections/rules/det-37-encoded-or-nested-payload.yaml"),
         )
         .expect("det-37"),
     )

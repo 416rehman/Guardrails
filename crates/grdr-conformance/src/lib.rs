@@ -9,10 +9,13 @@ mod aarm_tail;
 pub mod airgap_s31;
 pub mod broker_bounds;
 pub mod containment;
+mod pack_compliance;
+mod pack_fixture_eval;
 mod pack_fixtures;
 mod pack_manifest;
 mod pack_policy_vectors;
 mod pack_toml;
+mod pack_trust;
 pub mod pack_verify;
 
 use serde::{Deserialize, Serialize};
@@ -29,6 +32,7 @@ pub use containment::{
     run_containment_and_compile_down_checks,
 };
 pub use pack_manifest::parse_pack_manifest_toml;
+pub use pack_trust::load_pack_trust_roots;
 pub use pack_verify::{
     DEFAULT_PACK_SIGNER_REF, PackFileDigest, PackSignatureDoc, PackValidationSummary,
     build_signed_pack_doc, validate_live_packs, verify_signed_pack_dir,

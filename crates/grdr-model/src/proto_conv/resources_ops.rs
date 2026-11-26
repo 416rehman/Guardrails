@@ -7,12 +7,13 @@ use super::enums::{
     action_class_to_proto, approval_grade_to_proto, finding_class_to_proto,
     finding_lifecycle_to_proto, finding_severity_to_proto, grant_scope_to_proto,
     identity_mode_to_proto, kill_scope_to_proto, proto_to_action_class, proto_to_approval_grade,
-    proto_to_grant_scope, risk_tier_to_proto, session_label_to_proto,
+    proto_to_finding_class, proto_to_finding_lifecycle, proto_to_finding_severity,
+    proto_to_grant_scope, risk_tier_to_proto, session_label_to_proto, validate_other_label,
 };
 use super::resources::parse_ts;
 use crate::{
-    ActionClass, ApprovalGrade, ApprovalRequest, ApprovalState, AuditEntry, Finding, Grant,
-    GrantScope, Incident, KillSwitchState, OrgPrivacyConfig, UserProfile,
+    ActionClass, ApprovalGrade, ApprovalRequest, ApprovalState, AuditEntry, Finding, FindingClass,
+    FindingLifecycle, Grant, GrantScope, Incident, KillSwitchState, OrgPrivacyConfig, UserProfile,
 };
 
 pub fn grant_to_proto(g: &Grant) -> pb::Grant {
@@ -124,6 +125,9 @@ pub fn finding_to_proto(f: &Finding) -> pb::Finding {
         device_name: f.device_name.clone(),
         agent_name: f.agent_name.clone(),
         finding_class: finding_class_to_proto(f.class),
+        finding_class_other: (f.class == FindingClass::Other)
+            .then(|| f.finding_class_other.clone())
+            .flatten(),
         severity: finding_severity_to_proto(f.severity),
         lifecycle: finding_lifecycle_to_proto(f.lifecycle),
         rule_id: f.rule_id.clone(),
@@ -132,6 +136,31 @@ pub fn finding_to_proto(f: &Finding) -> pb::Finding {
         target: f.target.clone(),
         detected_at: f.detected_at.to_string(),
     }
+}
+
+pub fn proto_to_finding(f: pb::Finding) -> Result<Finding, String> {
+    let class = proto_to_finding_class(f.finding_class);
+    let finding_class_other = validate_other_label(
+        f.finding_class_other,
+        class == FindingClass::Other,
+        "finding_class_other",
+    )?;
+    Ok(Finding {
+        id: f.id,
+        session_id: f.session_id,
+        device_id: f.device_id,
+        device_name: f.device_name,
+        agent_name: f.agent_name,
+        class,
+        finding_class_other,
+        severity: proto_to_finding_severity(f.severity),
+        lifecycle: proto_to_finding_lifecycle(f.lifecycle).unwrap_or(FindingLifecycle::Open),
+        rule_id: f.rule_id,
+        title: f.title,
+        summary: f.summary,
+        target: f.target,
+        detected_at: parse_ts(&f.detected_at)?,
+    })
 }
 
 pub fn incident_to_proto(i: &Incident) -> pb::Incident {

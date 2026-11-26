@@ -213,6 +213,7 @@ pub fn normalize_etw_record(
                 ),
                 title: "ETW user-mode provider PID or host mismatch".into(),
                 class: FindingClass::Tamper,
+                finding_class_other: None,
                 severity: FindingSeverity::High,
                 lifecycle: FindingLifecycle::Open,
                 device_id: device_id.into(),

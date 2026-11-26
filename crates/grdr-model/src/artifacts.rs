@@ -12,6 +12,7 @@ pub enum ArtifactKind {
     Plugin,
     Command,
     Subagent,
+    Other,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -36,6 +37,8 @@ pub struct ArtifactEntry {
     pub id: String,
     pub name: String,
     pub kind: ArtifactKind,
+    #[serde(default)]
+    pub kind_other: Option<String>,
     pub scope: ArtifactScope,
     pub source_agent: String,
     pub path: String,

@@ -16,7 +16,7 @@ use crate::detect::yaml::{YamlValue, parse_yaml};
 const EMBEDDED_ESSENTIALS_SESSION_YAML: &str =
     include_str!("../../../../packs/essentials/session-rules.yaml");
 const EMBEDDED_EXTENDED_SESSION_YAML: &str =
-    include_str!("../../../../packs/detections-ext/session-rules.yaml");
+    include_str!("../../../../packs/detections/session-rules.yaml");
 const FALLBACK_FAIL_CLOSED_RULE_ID: &str = "session.fail-closed-parse-error";
 const MAX_SESSION_RULE_WINDOW_SECS: u64 = 86_400;
 const MAX_SESSION_RULE_THRESHOLD: u32 = 10_000;

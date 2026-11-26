@@ -29,7 +29,7 @@ use crate::detect::types::{
     DEFAULT_DETECT_LAG_BACKLOG_EVENTS, DEFAULT_DETECT_LAG_MS, DetectError, DetectOutput,
     DetectState, DetectionEngine, EventView, HostProfile, LoadReport,
     MAX_CORRELATION_ENTRIES_PER_LINEAGE, MAX_ENGINE_DEDUP_KEYS, MAX_ENGINE_LINEAGES,
-    MAX_GROUP_KEYS_PER_LINEAGE, MAX_GROUP_KEYS_PER_RULE, MAX_PROBE_BUCKETS, RuleOrigin,
+    MAX_GROUP_KEYS_PER_LINEAGE, MAX_GROUP_KEYS_PER_RULE, MAX_PROBE_BUCKETS, RuleOrigin, SigmaRule,
     SkippedRule, VerifiedDetectionContent,
 };
 
@@ -59,6 +59,10 @@ fn detections_max_mb_cached() -> usize {
 }
 
 impl SigmaDetectionEngine {
+    pub fn loaded_rules(&self) -> impl Iterator<Item = &SigmaRule> {
+        self.rules.iter().map(|compiled| &compiled.rule)
+    }
+
     pub fn set_fleet_active_devices(&mut self, count: usize) {
         self.fleet_active_devices = count.max(1);
     }
@@ -86,6 +90,7 @@ impl SigmaDetectionEngine {
                 device_name: self.host.device_name.clone(),
                 agent_name: "grdr-engine".into(),
                 class: FindingClass::CoverageGap,
+                finding_class_other: None,
                 severity: FindingSeverity::Medium,
                 lifecycle: FindingLifecycle::Open,
                 rule_id: Some("health.coverage.detect-lag".into()),
@@ -205,6 +210,7 @@ impl SigmaDetectionEngine {
             device_name: ev.device_name.to_owned(),
             agent_name: ev.agent_name.to_owned(),
             class: rule.finding_class,
+            finding_class_other: rule.finding_class_other.clone(),
             severity: rule.severity,
             lifecycle: FindingLifecycle::Open,
             rule_id: Some(rule.rule_id.clone()),
@@ -264,7 +270,6 @@ impl DetectionEngine for SigmaDetectionEngine {
         let mut report = LoadReport::default();
         let mut max_span: i64 = 3_600;
         let is_official_pack = content.pack_id == "grdr.det.core"
-            || content.pack_id == "grdr.det.ext"
             || content.pack_id == "grdr.det.experimental"
             || content.pack_id == "grdr.det.tripwires";
 

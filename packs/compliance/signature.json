@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "domain": "grdr.pack.manifest.v1",
   "signer_ref": "grdr-content-release-v1",
-  "verifier_ed25519_b64": "K6QXib9RtdnlYIN+Nr+dCxKafTDTBVRsFSArrrBV6U8=",
-  "manifest_sha256": "211981005721cf6f0d1da231a7537ccaf881e3c05ec948aa8302622efcc2905d",
+  "verifier_ed25519_b64": "yZLUmIo+llGBxrCT49SMCiFp7wpDhnA5NP+EX1pG+Wg=",
+  "manifest_sha256": "8d197862ec2e99897a93c4a1c6bcdd2d2e111f178abdbbe9de126c3bcabd2297",
   "files": [
     {
       "path": "controls/capabilities.yaml",
@@ -24,9 +24,9 @@
     },
     {
       "path": "pack.toml",
-      "sha256": "540e65a1a1087e874640f085b55aa9984c7b2c029d50bfca5ace513738f8d9f2",
+      "sha256": "f0f1e47a5a548ce56f5927416fb2ffd0ebca8d525760f13734e04a9a556c1c88",
       "length": 1729
     }
   ],
-  "signature_b64": "3lZdqmcM2CBTtGDc7spYr1EC93zPNgo+JVsBISgVXjfstiALoYEGl2YwNb6Aem/1Uib8w2/VgXNiZvXr3V+mBg=="
+  "signature_b64": "o9dccnLSBW4+QfROyK0RJY9YGq+LsnqLlAtdp3faIiXRbMvfxmao6OJKvTBYFlh2WmoreyEYIdo2jZgB+D9hCg=="
 }

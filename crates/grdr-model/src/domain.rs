@@ -4,6 +4,8 @@
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
+pub const MAX_OTHER_LABEL_CHARS: usize = 128;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Mode {
@@ -203,6 +205,7 @@ pub enum FindingClass {
     Overeager,
     Tamper,
     CoverageGap,
+    Other,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

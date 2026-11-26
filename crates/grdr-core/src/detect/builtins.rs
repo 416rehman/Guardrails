@@ -293,6 +293,7 @@ pub(super) fn emit_builtin_finding(
         device_name: ev.device_name.to_owned(),
         agent_name: ev.agent_name.to_owned(),
         class: spec.class,
+        finding_class_other: None,
         severity: spec.severity,
         lifecycle: FindingLifecycle::Open,
         rule_id: Some(spec.rule_id.to_owned()),

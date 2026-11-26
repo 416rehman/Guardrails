@@ -26,7 +26,7 @@ data_class = "structural"
 
 [[reads]]
 path = "session.device_id"
-data_class = "identifier"
+data_class = "structural"
 
 [[evidence_queries]]
 id = "q.inventory.agents"
@@ -35,7 +35,7 @@ group_by = ["capability", "period"]
 
 [[evidence_queries.reads]]
 path = "session.device_id"
-data_class = "identifier"
+data_class = "structural"
 
 [[evidence_queries]]
 id = "q.preexec.enforce"
@@ -83,4 +83,4 @@ group_by = ["capability", "organisation", "period"]
 
 [[evidence_queries.reads]]
 path = "session.device_id"
-data_class = "identifier"
+data_class = "structural"

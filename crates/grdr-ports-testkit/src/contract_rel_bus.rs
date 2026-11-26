@@ -126,6 +126,7 @@ pub fn assert_relational_store_contract(store: &impl RelationalStorePort) -> Res
         device_name: "laptop-alpha".into(),
         agent_name: "claude-code".into(),
         class: FindingClass::PolicyViolation,
+        finding_class_other: None,
         severity: FindingSeverity::High,
         lifecycle: FindingLifecycle::Open,
         rule_id: Some("rule-1".into()),

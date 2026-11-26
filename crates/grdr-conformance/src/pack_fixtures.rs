@@ -5,146 +5,198 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+use grdr_core::detect::engine::SigmaDetectionEngine;
+use grdr_core::detect::response::DEFAULT_MAX_SHARE_BP;
+use grdr_core::detect::types::{
+    DeploymentScope, DetectionEngine, HostProfile, ResponseExecutionMode, SigmaRule,
+    VerifiedDetectionContent,
+};
+use grdr_core::detect::yaml::{YamlValue, parse_yaml};
+use grdr_model::Mode;
+
 use crate::ConformanceError;
+use crate::pack_fixture_eval::{
+    DetectionFixtureSpec, eval_condition_for_fixture, parse_detection_fixtures_yaml,
+    validate_positive_payload_concrete,
+};
 use crate::pack_manifest::{conf_err, read_regular_text, unquote};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SigmaRuleSpec {
-    pub row: u32,
-    pub rule_id: String,
-    pub selection: BTreeMap<String, Vec<String>>,
-    pub positive_fixture: String,
-    pub negative_fixture: String,
-    pub response_verbs: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DetectionFixtureSpec {
-    pub id: String,
-    pub rule_id: String,
-    pub expect_match: bool,
-    pub payload: BTreeMap<String, String>,
+#[derive(Debug, Clone)]
+struct ParsedFixtureRule {
+    rule: SigmaRule,
+    positive_fixture: String,
+    negative_fixture: String,
 }
 
 pub fn execute_detection_fixtures(
     rule_files: &[PathBuf],
-    fixtures_path: &Path,
+    fixture_paths: &[PathBuf],
     known_actions: &BTreeSet<String>,
 ) -> Result<usize, ConformanceError> {
-    let mut rules = Vec::with_capacity(rule_files.len());
+    if rule_files.is_empty() || fixture_paths.is_empty() {
+        return Err(conf_err(
+            "det-fixtures",
+            "expected non-empty detection rules and fixture files",
+        ));
+    }
+
+    let mut raw_rules_yaml = Vec::with_capacity(rule_files.len());
+    let mut fixture_refs: BTreeMap<String, (String, String)> = BTreeMap::new();
     for path in rule_files {
         let raw = read_regular_text(path)?;
-        let spec = parse_sigma_rule_yaml(&raw, path)?;
-        for verb in &spec.response_verbs {
-            if !known_actions.contains(verb) {
-                return Err(conf_err(
-                    "det-fixtures",
-                    &format!(
-                        "rule `{}` cites unknown response verb `{verb}`",
-                        spec.rule_id
-                    ),
-                ));
-            }
-        }
-        rules.push(spec);
-    }
-
-    let fixtures_raw = read_regular_text(fixtures_path)?;
-    let fixtures = parse_detection_fixtures_yaml(&fixtures_raw)?;
-    let mut by_id: BTreeMap<&str, &DetectionFixtureSpec> = BTreeMap::new();
-    for fix in &fixtures {
-        if by_id.insert(fix.id.as_str(), fix).is_some() {
+        let (rule_id, pos_id, neg_id) = parse_rule_fixture_refs(&raw, path)?;
+        if fixture_refs
+            .insert(rule_id.clone(), (pos_id, neg_id))
+            .is_some()
+        {
             return Err(conf_err(
                 "det-fixtures",
-                &format!("duplicate fixture id `{}`", fix.id),
+                &format!("duplicate detection rule_id `{rule_id}`"),
             ));
+        }
+        raw_rules_yaml.push(raw);
+    }
+
+    let host = default_fixture_host();
+    let content = VerifiedDetectionContent {
+        pack_id: "grdr.det.core".into(),
+        version: "1.0.0".into(),
+        raw_rules_yaml,
+        pack_mode: Mode::Watch,
+    };
+    let (engine, load_report) = SigmaDetectionEngine::load(&content, &host)
+        .map_err(|e| conf_err("det-fixtures", &e.to_string()))?;
+    if load_report.loaded_rules.len() != rule_files.len() || !load_report.skipped_rules.is_empty() {
+        return Err(conf_err(
+            "det-fixtures",
+            &format!(
+                "expected all {} rules to load cleanly (loaded={}, skipped={})",
+                rule_files.len(),
+                load_report.loaded_rules.len(),
+                load_report.skipped_rules.len()
+            ),
+        ));
+    }
+
+    let mut rules = Vec::with_capacity(rule_files.len());
+    for loaded in engine.loaded_rules() {
+        validate_rule_response(loaded, known_actions)?;
+        let (positive_fixture, negative_fixture) =
+            fixture_refs.get(&loaded.rule_id).cloned().ok_or_else(|| {
+                conf_err(
+                    "det-fixtures",
+                    &format!("missing test refs for rule `{}`", loaded.rule_id),
+                )
+            })?;
+        rules.push(ParsedFixtureRule {
+            rule: loaded.clone(),
+            positive_fixture,
+            negative_fixture,
+        });
+    }
+
+    let mut all_fixtures = Vec::new();
+    let mut seen_fixture_ids = BTreeSet::new();
+    for fix_path in fixture_paths {
+        let raw = read_regular_text(fix_path)?;
+        let parsed = parse_detection_fixtures_yaml(&raw, fix_path)?;
+        for fix in parsed {
+            if !seen_fixture_ids.insert(fix.id.clone()) {
+                return Err(conf_err(
+                    "det-fixtures",
+                    &format!("duplicate fixture id `{}`", fix.id),
+                ));
+            }
+            all_fixtures.push(fix);
         }
     }
 
+    let by_id: BTreeMap<&str, &DetectionFixtureSpec> =
+        all_fixtures.iter().map(|f| (f.id.as_str(), f)).collect();
     let mut used_ids = BTreeSet::new();
-    for rule in &rules {
-        let pos = by_id.get(rule.positive_fixture.as_str()).ok_or_else(|| {
-            conf_err(
-                "det-fixtures",
-                &format!(
-                    "missing positive fixture `{}` for rule `{}`",
-                    rule.positive_fixture, rule.rule_id
-                ),
-            )
-        })?;
-        let neg = by_id.get(rule.negative_fixture.as_str()).ok_or_else(|| {
-            conf_err(
-                "det-fixtures",
-                &format!(
-                    "missing negative fixture `{}` for rule `{}`",
-                    rule.negative_fixture, rule.rule_id
-                ),
-            )
-        })?;
+
+    for entry in &rules {
+        let pos = by_id
+            .get(entry.positive_fixture.as_str())
+            .copied()
+            .ok_or_else(|| {
+                conf_err(
+                    "det-fixtures",
+                    &format!(
+                        "missing positive fixture `{}` for rule `{}`",
+                        entry.positive_fixture, entry.rule.rule_id
+                    ),
+                )
+            })?;
+        let neg = by_id
+            .get(entry.negative_fixture.as_str())
+            .copied()
+            .ok_or_else(|| {
+                conf_err(
+                    "det-fixtures",
+                    &format!(
+                        "missing negative fixture `{}` for rule `{}`",
+                        entry.negative_fixture, entry.rule.rule_id
+                    ),
+                )
+            })?;
         used_ids.insert(pos.id.as_str());
         used_ids.insert(neg.id.as_str());
 
-        if pos.rule_id != rule.rule_id || !pos.expect_match {
+        if pos.rule_id != entry.rule.rule_id || !pos.expect_match {
             return Err(conf_err(
                 "det-fixtures",
                 &format!("positive fixture `{}` metadata mismatch", pos.id),
             ));
         }
-        if neg.rule_id != rule.rule_id || neg.expect_match {
+        if neg.rule_id != entry.rule.rule_id || neg.expect_match {
             return Err(conf_err(
                 "det-fixtures",
                 &format!("negative fixture `{}` metadata mismatch", neg.id),
             ));
         }
 
-        for field in rule.selection.keys() {
-            let Some(val) = pos.payload.get(field) else {
-                return Err(conf_err(
-                    "det-fixtures",
-                    &format!(
-                        "positive fixture `{}` missing constrained field `{field}`",
-                        pos.id
-                    ),
-                ));
-            };
-            if val.trim().is_empty() || val.contains('*') || val.contains('?') {
-                return Err(conf_err(
-                    "det-fixtures",
-                    &format!(
-                        "positive fixture `{}` field `{field}` uses empty or wildcard value",
-                        pos.id
-                    ),
-                ));
-            }
-        }
+        validate_positive_payload_concrete(&entry.rule, pos, &host.expand_vars)?;
 
-        if !selection_matches(&rule.selection, &pos.payload) {
+        if !eval_condition_for_fixture(
+            &entry.rule.condition_ast,
+            &entry.rule.selections,
+            &pos.payload,
+            &host.expand_vars,
+            0,
+        )? {
             return Err(conf_err(
                 "det-fixtures",
                 &format!(
-                    "positive fixture `{}` did not match rule `{}` selection",
-                    pos.id, rule.rule_id
+                    "positive fixture `{}` did not match rule `{}`",
+                    pos.id, entry.rule.rule_id
                 ),
             ));
         }
-        if selection_matches(&rule.selection, &neg.payload) {
+        if eval_condition_for_fixture(
+            &entry.rule.condition_ast,
+            &entry.rule.selections,
+            &neg.payload,
+            &host.expand_vars,
+            0,
+        )? {
             return Err(conf_err(
                 "det-fixtures",
                 &format!(
                     "negative fixture `{}` unexpectedly matched rule `{}`",
-                    neg.id, rule.rule_id
+                    neg.id, entry.rule.rule_id
                 ),
             ));
         }
     }
 
-    if used_ids.len() != fixtures.len() {
+    if used_ids.len() != all_fixtures.len() {
         return Err(conf_err(
             "det-fixtures",
             "orphan detection fixture(s) unreferenced by any rule",
         ));
     }
-    Ok(fixtures.len())
+    Ok(all_fixtures.len())
 }
 
 pub fn validate_cra_workspace_refs(repo_root: &Path) -> Result<(), ConformanceError> {
@@ -197,165 +249,118 @@ pub fn collect_response_action_ids(actions_raw: &str) -> BTreeSet<String> {
     ids
 }
 
-fn selection_matches(
-    selection: &BTreeMap<String, Vec<String>>,
-    payload: &BTreeMap<String, String>,
-) -> bool {
-    !selection.is_empty()
-        && selection.iter().all(|(field, allowed)| {
-            payload
-                .get(field)
-                .is_some_and(|actual| allowed.iter().any(|cand| cand == actual))
-        })
+fn default_fixture_host() -> HostProfile {
+    let mut expand_vars = BTreeMap::new();
+    expand_vars.insert(
+        "grdr_agent_images".into(),
+        vec!["claude".into(), "codex".into()],
+    );
+    HostProfile {
+        device_id: "conformance-dev".into(),
+        device_name: "conformance-host".into(),
+        organisation_id: "default".into(),
+        scope: DeploymentScope::Any,
+        provenance_grade: 2,
+        expand_vars,
+        model_audit_passed: true,
+        remediate_approvers: BTreeMap::new(),
+    }
 }
 
-fn parse_sigma_rule_yaml(raw: &str, path: &Path) -> Result<SigmaRuleSpec, ConformanceError> {
-    let mut row: Option<u32> = None;
-    let mut rule_id = String::new();
-    let mut positive_fixture = String::new();
-    let mut negative_fixture = String::new();
-    let mut response_verbs = Vec::new();
-    let mut selection: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    let mut in_selection = false;
-    let mut current_sel_key: Option<String> = None;
-
-    for raw_line in raw.lines() {
-        let trimmed = raw_line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-        if raw_line.starts_with("  selection:") {
-            in_selection = true;
-            current_sel_key = None;
-            continue;
-        }
-        if in_selection && !raw_line.starts_with("    ") {
-            in_selection = false;
-            current_sel_key = None;
-        }
-        if in_selection {
-            if raw_line.starts_with("      - ") {
-                if let Some(key) = current_sel_key.as_deref()
-                    && let Some(item) = trimmed.strip_prefix("- ")
-                {
-                    selection
-                        .entry(key.to_owned())
-                        .or_default()
-                        .push(unquote(item));
-                }
-            } else if raw_line.starts_with("    ")
-                && let Some((k, v)) = trimmed.split_once(':')
-            {
-                let key = unquote(k);
-                let val = v.trim();
-                if val.is_empty() {
-                    current_sel_key = Some(key);
-                } else {
-                    selection.entry(key).or_default().push(unquote(val));
-                    current_sel_key = None;
-                }
-            }
-            continue;
-        }
-
-        if let Some((k, v)) = trimmed.split_once(':') {
-            let key = k.trim();
-            let val = v.trim();
-            match key {
-                "row" => row = val.parse::<u32>().ok(),
-                "rule_id" => rule_id = unquote(val),
-                "positive" => positive_fixture = unquote(val),
-                "negative" => negative_fixture = unquote(val),
-                "verbs" => {
-                    response_verbs = val
-                        .trim_start_matches('[')
-                        .trim_end_matches(']')
-                        .split(',')
-                        .map(unquote)
-                        .filter(|s| !s.is_empty())
-                        .collect();
-                }
-                _ => {}
-            }
-        }
-    }
-
-    let resolved_row = row.ok_or_else(|| {
+fn parse_rule_fixture_refs(
+    raw: &str,
+    path: &Path,
+) -> Result<(String, String, String), ConformanceError> {
+    let doc = parse_yaml(raw).map_err(|e| conf_err("det-pack", &e.to_string()))?;
+    let x_grdr = doc
+        .get("x_grdr")
+        .ok_or_else(|| conf_err("det-pack", &format!("missing x_grdr in {}", path.display())))?;
+    let rule_id = x_grdr
+        .get("rule_id")
+        .and_then(YamlValue::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            conf_err(
+                "det-pack",
+                &format!("missing x_grdr.rule_id in {}", path.display()),
+            )
+        })?
+        .to_owned();
+    let tests = x_grdr.get("tests").ok_or_else(|| {
         conf_err(
             "det-pack",
-            &format!("missing x_grdr.row in {}", path.display()),
+            &format!("missing x_grdr.tests in {}", path.display()),
         )
     })?;
-    if rule_id.is_empty()
-        || selection.is_empty()
-        || positive_fixture.is_empty()
-        || negative_fixture.is_empty()
-    {
+    let pos = tests
+        .get("positive")
+        .and_then(YamlValue::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            conf_err(
+                "det-pack",
+                &format!("missing x_grdr.tests.positive in {}", path.display()),
+            )
+        })?
+        .to_owned();
+    let neg = tests
+        .get("negative")
+        .and_then(YamlValue::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            conf_err(
+                "det-pack",
+                &format!("missing x_grdr.tests.negative in {}", path.display()),
+            )
+        })?
+        .to_owned();
+    Ok((rule_id, pos, neg))
+}
+
+fn validate_rule_response(
+    rule: &SigmaRule,
+    known_actions: &BTreeSet<String>,
+) -> Result<(), ConformanceError> {
+    let Some(binding) = &rule.response else {
+        return Err(conf_err(
+            "det-pack",
+            &format!("rule `{}` missing x_grdr.response block", rule.rule_id),
+        ));
+    };
+    if binding.mode != ResponseExecutionMode::Simulate {
+        return Err(conf_err(
+            "det-pack",
+            &format!("rule `{}` response mode must be `simulate`", rule.rule_id),
+        ));
+    }
+    if binding.max_scope != "session" && binding.max_scope != "organisation" {
         return Err(conf_err(
             "det-pack",
             &format!(
-                "incomplete rule metadata or selection in {}",
-                path.display()
+                "rule `{}` invalid response max_scope `{}`",
+                rule.rule_id, binding.max_scope
             ),
         ));
     }
-    Ok(SigmaRuleSpec {
-        row: resolved_row,
-        rule_id,
-        selection,
-        positive_fixture,
-        negative_fixture,
-        response_verbs,
-    })
-}
-
-fn parse_detection_fixtures_yaml(raw: &str) -> Result<Vec<DetectionFixtureSpec>, ConformanceError> {
-    let mut out = Vec::new();
-    for line in raw.lines() {
-        let trimmed = line.trim();
-        let Some(inner) = trimmed.strip_prefix("- {") else {
-            continue;
-        };
-        let body = inner.trim_end_matches('}');
-        let (head, payload_part) = body
-            .split_once("payload:")
-            .ok_or_else(|| conf_err("det-fixtures", &format!("missing payload in `{trimmed}`")))?;
-        let (mut id, mut rule_id, mut expect_match) = (String::new(), String::new(), None);
-        for pair in head.split(',') {
-            if let Some((k, v)) = pair.split_once(':') {
-                match k.trim() {
-                    "id" => id = unquote(v),
-                    "rule_id" => rule_id = unquote(v),
-                    "expect_match" => expect_match = Some(v.trim() == "true"),
-                    _ => {}
-                }
-            }
-        }
-        let payload_inner = payload_part
-            .trim()
-            .trim_start_matches('{')
-            .trim_end_matches('}');
-        let mut payload = BTreeMap::new();
-        for pair in payload_inner.split(',') {
-            if let Some((k, v)) = pair.split_once(':') {
-                let fk = unquote(k);
-                let fv = unquote(v);
-                if !fk.is_empty() {
-                    payload.insert(fk, fv);
-                }
-            }
-        }
-        out.push(DetectionFixtureSpec {
-            id,
-            rule_id,
-            expect_match: expect_match.ok_or_else(|| {
-                conf_err(
-                    "det-fixtures",
-                    &format!("missing expect_match in `{trimmed}`"),
-                )
-            })?,
-            payload,
-        });
+    if binding.max_share_bp > DEFAULT_MAX_SHARE_BP {
+        return Err(conf_err(
+            "det-pack",
+            &format!(
+                "rule `{}` response max_share_bp {} exceeds {DEFAULT_MAX_SHARE_BP}",
+                rule.rule_id, binding.max_share_bp
+            ),
+        ));
     }
-    Ok(out)
+    for verb in &binding.verbs {
+        if !known_actions.contains(verb) {
+            return Err(conf_err(
+                "det-fixtures",
+                &format!(
+                    "rule `{}` cites unknown response verb `{verb}`",
+                    rule.rule_id
+                ),
+            ));
+        }
+    }
+    Ok(())
 }

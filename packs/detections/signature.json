@@ -4,13 +4,13 @@
   "version": "1.0.0",
   "domain": "grdr.pack.manifest.v1",
   "signer_ref": "grdr-content-release-v1",
-  "verifier_ed25519_b64": "K6QXib9RtdnlYIN+Nr+dCxKafTDTBVRsFSArrrBV6U8=",
-  "manifest_sha256": "a66055a6b8212cd706b2f9a09d18f9a1acfea3027b0acf7ee547be3800eca5e7",
+  "verifier_ed25519_b64": "yZLUmIo+llGBxrCT49SMCiFp7wpDhnA5NP+EX1pG+Wg=",
+  "manifest_sha256": "810f985452ed03347e1207926816b8a270a01e4e6493df7ec9a161df5897be89",
   "files": [
     {
       "path": "pack.toml",
-      "sha256": "def9faca8233b321d0a856b79c0b8b2c3a92501a73a4ce9ef96973adb21adfde",
-      "length": 857
+      "sha256": "71ca7afb67e642a87451fe9a9b02971812014e6b041400b1610d900c73d2b2cb",
+      "length": 2166
     },
     {
       "path": "response-actions.yaml",
@@ -168,10 +168,100 @@
       "length": 968
     },
     {
+      "path": "rules/det-31-monitoring-config-tamper.yaml",
+      "sha256": "4cc7884606d835abffed07183774092ee15d894156fad9b760ae94e0e8d1698e",
+      "length": 1206
+    },
+    {
+      "path": "rules/det-32-non-agent-store-read.yaml",
+      "sha256": "87796998c2e4490a228cde09c83a0cda198e6ba331912c261916ba8537479bd5",
+      "length": 991
+    },
+    {
+      "path": "rules/det-33-hook-dark.yaml",
+      "sha256": "6357a4b0e96bbc2877f68941bab9823fc43d2c5d4120205c1e0b3c88f4bb673e",
+      "length": 920
+    },
+    {
+      "path": "rules/det-34-effect-mismatch.yaml",
+      "sha256": "86ae8aa597f4bbfb382084da150d23f87c8be05af20d5d1f81eb1a3d40f12bd5",
+      "length": 929
+    },
+    {
+      "path": "rules/det-35-write-then-exec-same-digest.yaml",
+      "sha256": "f638e8bd1c4f7684b9ad2737e53c5b917f308f2566dac3fb604325a7a43a3474",
+      "length": 1054
+    },
+    {
+      "path": "rules/det-36-stdlib-module-shadowing.yaml",
+      "sha256": "2ddfb318bff59a08a3dcb11544e6e634d9976258763d3d52d2d45ff82d66be5e",
+      "length": 834
+    },
+    {
+      "path": "rules/det-37-encoded-or-nested-payload.yaml",
+      "sha256": "40492f909e82a9db599881f18369151c97ccb013df37cd8ae74bc57ea60375b4",
+      "length": 995
+    },
+    {
+      "path": "rules/det-38-inline-credential-args.yaml",
+      "sha256": "85332d3bac48050588ff6042a0839e183e2bb464af7a9d2f41cde53d3c365d82",
+      "length": 921
+    },
+    {
+      "path": "rules/det-39-policy-source-added.yaml",
+      "sha256": "373ef85fc668bec6a82e2ee9467180802f3a01dbae5a3e5868a89e2b6184025d",
+      "length": 830
+    },
+    {
+      "path": "rules/det-40-agent-control-non-loopback.yaml",
+      "sha256": "5692806a763cc9bd59e3d6f41e903b4502aa5877f68e77d11c4f5ac1f0103c9a",
+      "length": 838
+    },
+    {
+      "path": "rules/det-41-high-entropy-dns.yaml",
+      "sha256": "0d9d4bc59d6fcdbe438e5279cd6d5ebf053fbb541b7018045e67456ff82a6c1b",
+      "length": 829
+    },
+    {
+      "path": "rules/det-42-many-sessions-shared-store.yaml",
+      "sha256": "cdb90536f89d64f31d70da8daea2374451d8ad3819f8590b546a50c3fa42f101",
+      "length": 1042
+    },
+    {
+      "path": "rules/det-43-suspicious-artefact-cross-device.yaml",
+      "sha256": "7d8781cc0428499e8d90aeb42777a02b20560aa40195c5813ee583213f0d5d6f",
+      "length": 994
+    },
+    {
+      "path": "rules/det-44-skill-drift-or-remote-fetch.yaml",
+      "sha256": "569e2538f9d1eb0eb64984932064ac2a23a312a20e499ba098b8023c2f80b9b7",
+      "length": 927
+    },
+    {
+      "path": "rules/det-45-label-late.yaml",
+      "sha256": "1dfd1d944b352a56c08ba936b2ae1bf498862f6a6a81d6f2861663cf061fed08",
+      "length": 740
+    },
+    {
+      "path": "rules/det-46-judge-probing.yaml",
+      "sha256": "a1cf639bac6f8ded0531ed11b8d9411fc0b8e24b98437e62e42405cc7f8ddbd0",
+      "length": 915
+    },
+    {
+      "path": "session-rules.yaml",
+      "sha256": "d9d1a744d6002756d2dfe26bda93c88ebf8f42b71d40caa3d6562901fd52613d",
+      "length": 2944
+    },
+    {
+      "path": "tests/detection-fixtures-ext.yaml",
+      "sha256": "71babc1662ae89162d602cc61e187b4469cf62ce7c3ef8a97c2a5258fcaa1bd6",
+      "length": 4829
+    },
+    {
       "path": "tests/detection-fixtures.yaml",
       "sha256": "f1633cb4f6184f447b9d9f8b28c0ab93cf0119bc350bf9e7f8df74ae1fa0c83a",
       "length": 10356
     }
   ],
-  "signature_b64": "fdzKDQBSynMqgGn6ejKe0lba6e1El4igiVhNb6QoXqGqCvo2Zh1zI0tMYsc0uI+jXAKqQDfmtotHTTuT/NVNBg=="
+  "signature_b64": "uRsAPhW74JnNtjC1Fxz8/g1xONzAAxeG/uRLdjqmQ5hSf3vTmXIJ9TubQc9WgvZebRDqUux/bWBr8o59zMUICQ=="
 }

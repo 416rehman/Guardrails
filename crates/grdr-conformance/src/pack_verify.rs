@@ -1,34 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
-//! Pinned Ed25519 pack signature verification, P7 lint, and default pack suite validation.
+//! External trust-root Ed25519 pack signature verification, P7 lint, and default pack validation.
 
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use grdr_comply::default_registry;
+use grdr_core::session::rules::SessionRuleSet;
 use grdr_crypto::{SigningKeypair, sha256_hex, verify_bytes};
 use grdr_model::IdentityMode;
 use grdr_schema_lint::{lint_cedar_policy_in_mode, lint_pack_manifest, parse_vocabulary_toml};
 use serde::{Deserialize, Serialize};
 
 use crate::ConformanceError;
+use crate::pack_compliance::validate_compliance_pack;
 use crate::pack_fixtures::{
     collect_response_action_ids, execute_detection_fixtures, validate_cra_workspace_refs,
 };
 use crate::pack_manifest::{
-    MAX_PACK_FILE_BYTES, check_no_em_dash_or_vocab, conf_err, parse_pack_manifest_toml,
-    read_regular_text,
+    MAX_PACK_FILE_BYTES, check_no_em_dash_or_vocab, conf_err, is_symlink_or_reparse,
+    parse_pack_manifest_toml, read_regular_bounded_bytes, read_regular_text,
 };
 use crate::pack_policy_vectors::execute_essentials_vectors;
+use crate::pack_trust::{TRUST_ROOTS_FILENAME, load_pack_trust_roots};
 
 pub const PACK_SIG_DOMAIN: &str = "grdr.pack.manifest.v1";
 pub const DEFAULT_PACK_SIGNER_REF: &str = "grdr-content-release-v1";
-pub const PINNED_DEFAULT_PACK_PUBKEYS: &[(&str, &str)] = &[(
-    DEFAULT_PACK_SIGNER_REF,
-    "K6QXib9RtdnlYIN+Nr+dCxKafTDTBVRsFSArrrBV6U8=",
-)];
-const MAX_PARAPHRASE_WORDS: usize = 20;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PackFileDigest {
@@ -76,7 +73,7 @@ pub fn build_signed_pack_doc(
             "no regular files found in pack directory",
         ));
     }
-    let payload = canonical_manifest_text(pack_id, version, &files);
+    let payload = canonical_manifest_text(pack_id, version, &files)?;
     let manifest_sha256 = sha256_hex(payload.as_bytes());
     let signature_b64 = keypair.sign_bytes(PACK_SIG_DOMAIN, payload.as_bytes());
     Ok(PackSignatureDoc {
@@ -96,7 +93,46 @@ pub fn verify_signed_pack_dir(
     pack_dir: &Path,
     expected_pack_id: &str,
 ) -> Result<PackSignatureDoc, ConformanceError> {
-    verify_signed_pack_dir_with_trusted(pack_dir, expected_pack_id, PINNED_DEFAULT_PACK_PUBKEYS)
+    let pack_meta = fs::symlink_metadata(pack_dir)
+        .map_err(|e| conf_err("pack-trust", &format!("{}: {e}", pack_dir.display())))?;
+    if is_symlink_or_reparse(&pack_meta) || !pack_meta.is_dir() {
+        return Err(conf_err(
+            "pack-trust",
+            &format!(
+                "pack directory `{}` must be a real non-symlink directory",
+                pack_dir.display()
+            ),
+        ));
+    }
+    let packs_root = pack_dir
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .ok_or_else(|| {
+            conf_err(
+                "pack-trust",
+                &format!(
+                    "pack directory `{}` must have a non-empty parent directory for `{TRUST_ROOTS_FILENAME}`",
+                    pack_dir.display()
+                ),
+            )
+        })?;
+    let root_meta = fs::symlink_metadata(packs_root)
+        .map_err(|e| conf_err("pack-trust", &format!("{}: {e}", packs_root.display())))?;
+    if is_symlink_or_reparse(&root_meta) || !root_meta.is_dir() {
+        return Err(conf_err(
+            "pack-trust",
+            &format!(
+                "packs root `{}` must be a real non-symlink directory",
+                packs_root.display()
+            ),
+        ));
+    }
+    let active = load_pack_trust_roots(&packs_root.join(TRUST_ROOTS_FILENAME))?;
+    let refs: Vec<(&str, &str)> = active
+        .iter()
+        .map(|(sref, pk)| (sref.as_str(), pk.as_str()))
+        .collect();
+    verify_signed_pack_dir_with_trusted(pack_dir, expected_pack_id, &refs)
 }
 
 pub fn verify_signed_pack_dir_with_trusted(
@@ -134,13 +170,13 @@ pub fn verify_signed_pack_dir_with_trusted(
             conf_err(
                 "pack-sig",
                 &format!(
-                    "unpinned or untrusted pack signer `{}` for `{expected_pack_id}`",
+                    "untrusted pack signer `{}` for `{expected_pack_id}`",
                     sig.signer_ref
                 ),
             )
         })?;
 
-    let payload = canonical_manifest_text(&sig.pack_id, &sig.version, &sig.files);
+    let payload = canonical_manifest_text(&sig.pack_id, &sig.version, &sig.files)?;
     if sha256_hex(payload.as_bytes()) != sig.manifest_sha256 {
         return Err(conf_err("pack-sig", "manifest_sha256 mismatch"));
     }
@@ -164,6 +200,15 @@ pub fn verify_signed_pack_dir_with_trusted(
 
 pub fn validate_live_packs(repo_root: &Path) -> Result<PackValidationSummary, ConformanceError> {
     let packs_dir = repo_root.join("packs");
+    let packs_meta = fs::symlink_metadata(&packs_dir)
+        .map_err(|e| conf_err("pack-sig", &format!("{}: {e}", packs_dir.display())))?;
+    if is_symlink_or_reparse(&packs_meta) || !packs_meta.is_dir() {
+        return Err(conf_err(
+            "pack-sig",
+            "packs root must be a real non-symlink directory",
+        ));
+    }
+
     let vocab_raw = read_regular_text(
         &repo_root
             .join("contracts")
@@ -172,29 +217,41 @@ pub fn validate_live_packs(repo_root: &Path) -> Result<PackValidationSummary, Co
     )?;
     let vocab = parse_vocabulary_toml(&vocab_raw).map_err(|e| conf_err("vocab", &e.to_string()))?;
 
-    let essentials_dir = packs_dir.join("essentials");
-    let detections_dir = packs_dir.join("detections");
-    let compliance_dir = packs_dir.join("compliance");
-
-    for (dir, id) in [
-        (&essentials_dir, "grdr.essentials"),
-        (&detections_dir, "grdr.det.core"),
-        (&compliance_dir, "grdr.compliance"),
-    ] {
+    let mut signed_dirs = collect_signed_pack_dirs(&packs_dir)?;
+    signed_dirs.sort();
+    let mut verified_ids = BTreeSet::new();
+    for dir in &signed_dirs {
         let toml_raw = read_regular_text(&dir.join("pack.toml"))?;
         let manifest = parse_pack_manifest_toml(&toml_raw)?;
-        if manifest.id != id {
-            return Err(conf_err(
-                "pack-lint",
-                &format!("expected pack `{id}`, got `{}`", manifest.id),
-            ));
-        }
         lint_pack_manifest(&manifest, IdentityMode::Named)
             .map_err(|e| conf_err("pack-lint", &e.to_string()))?;
         lint_pack_manifest(&manifest, IdentityMode::Pseudonymous)
             .map_err(|e| conf_err("pack-lint", &e.to_string()))?;
-        verify_signed_pack_dir(dir, id)?;
+        let sig = verify_signed_pack_dir(dir, &manifest.id)?;
+        if sig.version != manifest.version {
+            return Err(conf_err(
+                "pack-sig",
+                &format!(
+                    "signed version `{}` != pack.toml version `{}` for `{}`",
+                    sig.version, manifest.version, manifest.id
+                ),
+            ));
+        }
+        verified_ids.insert(manifest.id);
     }
+
+    for required_id in ["grdr.essentials", "grdr.det.core", "grdr.compliance"] {
+        if !verified_ids.contains(required_id) {
+            return Err(conf_err(
+                "pack-sig",
+                &format!("required signed pack `{required_id}` missing under packs/"),
+            ));
+        }
+    }
+
+    let essentials_dir = packs_dir.join("essentials");
+    let detections_dir = packs_dir.join("detections");
+    let compliance_dir = packs_dir.join("compliance");
 
     let cedar_src = read_regular_text(&essentials_dir.join("rules").join("essentials.cedar"))?;
     lint_cedar_policy_in_mode("grdr.essentials", &cedar_src, IdentityMode::Named)
@@ -205,6 +262,7 @@ pub fn validate_live_packs(repo_root: &Path) -> Result<PackValidationSummary, Co
         &cedar_src,
         &essentials_dir.join("tests/essentials-vectors.yaml"),
     )?;
+    validate_session_rule_packs(&essentials_dir, &detections_dir, &vocab)?;
 
     let (det_count, det_fixtures, resp_count) = validate_detection_pack(&detections_dir, &vocab)?;
     let (cap_count, fw_count) = validate_compliance_pack(&compliance_dir, &vocab)?;
@@ -218,8 +276,71 @@ pub fn validate_live_packs(repo_root: &Path) -> Result<PackValidationSummary, Co
         response_actions_count: resp_count,
         compliance_capabilities_count: cap_count,
         compliance_frameworks_count: fw_count,
-        signed_packs_verified: 3,
+        signed_packs_verified: signed_dirs.len(),
     })
+}
+
+fn collect_signed_pack_dirs(packs_dir: &Path) -> Result<Vec<PathBuf>, ConformanceError> {
+    let dir_meta =
+        fs::symlink_metadata(packs_dir).map_err(|e| conf_err("pack-sig", &e.to_string()))?;
+    if is_symlink_or_reparse(&dir_meta) || !dir_meta.is_dir() {
+        return Err(conf_err(
+            "pack-sig",
+            "packs directory must be a real non-symlink directory",
+        ));
+    }
+    let mut dirs = Vec::new();
+    for entry in fs::read_dir(packs_dir).map_err(|e| conf_err("pack-sig", &e.to_string()))? {
+        let p = entry
+            .map_err(|e| conf_err("pack-sig", &e.to_string()))?
+            .path();
+        let meta = fs::symlink_metadata(&p).map_err(|e| conf_err("pack-sig", &e.to_string()))?;
+        if is_symlink_or_reparse(&meta) {
+            return Err(conf_err(
+                "pack-sig",
+                &format!(
+                    "symlink or reparse point forbidden in packs/: `{}`",
+                    p.display()
+                ),
+            ));
+        }
+        if !meta.is_dir() && !meta.is_file() {
+            return Err(conf_err(
+                "pack-sig",
+                &format!("non-regular entry forbidden in packs/: `{}`", p.display()),
+            ));
+        }
+        if meta.is_dir() && p.join("signature.json").is_file() {
+            dirs.push(p);
+        }
+    }
+    Ok(dirs)
+}
+
+fn validate_session_rule_packs(
+    essentials_dir: &Path,
+    detections_dir: &Path,
+    vocab: &grdr_schema_lint::VocabularyRegistry,
+) -> Result<(), ConformanceError> {
+    let ess_path = essentials_dir.join("session-rules.yaml");
+    let det_path = detections_dir.join("session-rules.yaml");
+    let ess_raw = read_regular_text(&ess_path)?;
+    let det_raw = read_regular_text(&det_path)?;
+    check_no_em_dash_or_vocab(&ess_path, &ess_raw, vocab)?;
+    check_no_em_dash_or_vocab(&det_path, &det_raw, vocab)?;
+    let ess_set = SessionRuleSet::from_yaml(&ess_raw)
+        .map_err(|e| conf_err("session-pack", &e.to_string()))?;
+    let det_set = SessionRuleSet::from_yaml(&det_raw)
+        .map_err(|e| conf_err("session-pack", &e.to_string()))?;
+    if ess_set.rules.is_empty() || det_set.rules.is_empty() {
+        return Err(conf_err(
+            "session-pack",
+            "session-rules.yaml must contain at least one rule",
+        ));
+    }
+    SessionRuleSet::merge_restrict_only(&ess_set, &det_set)
+        .map_err(|e| conf_err("session-pack", &e.to_string()))?;
+    Ok(())
 }
 
 fn validate_detection_pack(
@@ -228,16 +349,7 @@ fn validate_detection_pack(
 ) -> Result<(usize, usize, usize), ConformanceError> {
     let rules_dir = dir.join("rules");
     let mut seen_rows = BTreeSet::new();
-    let mut rule_files = Vec::new();
-    for entry in fs::read_dir(&rules_dir).map_err(|e| conf_err("det-pack", &e.to_string()))? {
-        let p = entry
-            .map_err(|e| conf_err("det-pack", &e.to_string()))?
-            .path();
-        if p.extension().and_then(|s| s.to_str()) == Some("yaml") {
-            rule_files.push(p);
-        }
-    }
-    rule_files.sort();
+    let rule_files = collect_sorted_yaml_files(&rules_dir, "det-pack")?;
     for path in &rule_files {
         let text = read_regular_text(path)?;
         check_no_em_dash_or_vocab(path, &text, vocab)?;
@@ -245,7 +357,6 @@ fn validate_detection_pack(
             "product: grdr",
             "license: \"Apache-2.0\"",
             "mode: simulate",
-            "max_scope: session",
             "max_share_bp: 500",
         ] {
             if !text.contains(req) {
@@ -262,10 +373,10 @@ fn validate_detection_pack(
             seen_rows.insert(num);
         }
     }
-    if rule_files.len() != 30 || seen_rows.len() != 30 {
+    if rule_files.is_empty() || seen_rows.len() != rule_files.len() {
         return Err(conf_err(
             "det-pack",
-            "expected 30 distinct Sigma detection rules (rows 1..=30)",
+            "expected >= 1 Sigma rule and distinct `x_grdr.row` values across all detection rules",
         ));
     }
 
@@ -276,71 +387,52 @@ fn validate_detection_pack(
         .lines()
         .filter(|l| l.trim() == "mode: simulate")
         .count();
-    if known_actions.len() != 10 || sim_count != 10 {
+    if known_actions.is_empty() || sim_count != known_actions.len() {
         return Err(conf_err(
             "det-pack",
-            "response-actions.yaml must define 10 actions all in simulate mode",
+            "response-actions.yaml must define >= 1 action all in simulate mode",
         ));
     }
 
-    let fixtures_passed = execute_detection_fixtures(
-        &rule_files,
-        &dir.join("tests").join("detection-fixtures.yaml"),
-        &known_actions,
-    )?;
+    let fixture_files = collect_sorted_yaml_files(&dir.join("tests"), "det-fixtures")?;
+    for path in &fixture_files {
+        let raw = read_regular_text(path)?;
+        check_no_em_dash_or_vocab(path, &raw, vocab)?;
+    }
+    let fixtures_passed = execute_detection_fixtures(&rule_files, &fixture_files, &known_actions)?;
     Ok((rule_files.len(), fixtures_passed, known_actions.len()))
 }
 
-fn validate_compliance_pack(
-    dir: &Path,
-    vocab: &grdr_schema_lint::VocabularyRegistry,
-) -> Result<(usize, usize), ConformanceError> {
-    let controls_dir = dir.join("controls");
-    let caps_raw = read_regular_text(&controls_dir.join("capabilities.yaml"))?;
-    let fws_raw = read_regular_text(&controls_dir.join("frameworks.yaml"))?;
-    let cw_raw = read_regular_text(&controls_dir.join("crosswalks.yaml"))?;
-    for (p, t) in [
-        (controls_dir.join("capabilities.yaml"), &caps_raw),
-        (controls_dir.join("frameworks.yaml"), &fws_raw),
-        (controls_dir.join("crosswalks.yaml"), &cw_raw),
-    ] {
-        check_no_em_dash_or_vocab(&p, t, vocab)?;
+fn collect_sorted_yaml_files(dir: &Path, domain: &str) -> Result<Vec<PathBuf>, ConformanceError> {
+    let dir_meta = fs::symlink_metadata(dir).map_err(|e| conf_err(domain, &e.to_string()))?;
+    if is_symlink_or_reparse(&dir_meta) || !dir_meta.is_dir() {
+        return Err(conf_err(
+            domain,
+            &format!("`{}` must be a real non-symlink directory", dir.display()),
+        ));
     }
-
-    let registry = default_registry();
-    for cap_id in registry.capabilities.keys() {
-        if !caps_raw.contains(cap_id) {
+    let mut files = Vec::new();
+    for entry in fs::read_dir(dir).map_err(|e| conf_err(domain, &e.to_string()))? {
+        let p = entry.map_err(|e| conf_err(domain, &e.to_string()))?.path();
+        let meta = fs::symlink_metadata(&p).map_err(|e| conf_err(domain, &e.to_string()))?;
+        if is_symlink_or_reparse(&meta) {
             return Err(conf_err(
-                "comply-pack",
-                &format!("capabilities.yaml missing `{cap_id}`"),
+                domain,
+                &format!("symlink or reparse point forbidden at `{}`", p.display()),
             ));
         }
-    }
-    for fw_id in registry.frameworks.keys() {
-        if !fws_raw.contains(fw_id) {
-            return Err(conf_err(
-                "comply-pack",
-                &format!("frameworks.yaml missing `{fw_id}`"),
-            ));
-        }
-    }
-
-    for line in fws_raw.lines() {
-        if let Some(idx) = line.find("paraphrase:") {
-            let phrase = line
-                .get(idx.saturating_add("paraphrase:".len())..)
-                .unwrap_or("");
-            let cleaned = phrase.trim().trim_end_matches('}').trim().trim_matches('"');
-            let words = cleaned.split_whitespace().count();
-            if words > MAX_PARAPHRASE_WORDS {
+        if p.extension().and_then(|s| s.to_str()) == Some("yaml") {
+            if !meta.is_file() {
                 return Err(conf_err(
-                    "comply-pack",
-                    &format!("control paraphrase exceeds {MAX_PARAPHRASE_WORDS} words: {cleaned}"),
+                    domain,
+                    &format!("YAML path `{}` must be a regular file", p.display()),
                 ));
             }
+            files.push(p);
         }
     }
-    Ok((registry.capabilities.len(), registry.frameworks.len()))
+    files.sort();
+    Ok(files)
 }
 
 fn collect_pack_digests(
@@ -348,6 +440,16 @@ fn collect_pack_digests(
     dir: &Path,
     depth: usize,
 ) -> Result<Vec<PackFileDigest>, ConformanceError> {
+    if depth == 0 {
+        let root_meta =
+            fs::symlink_metadata(root).map_err(|e| conf_err("pack-sig", &e.to_string()))?;
+        if is_symlink_or_reparse(&root_meta) || !root_meta.is_dir() {
+            return Err(conf_err(
+                "pack-sig",
+                "pack root must be a real non-symlink directory",
+            ));
+        }
+    }
     if depth > 8 {
         return Err(conf_err("pack-sig", "directory depth exceeded"));
     }
@@ -362,8 +464,11 @@ fn collect_pack_digests(
     let mut out = Vec::new();
     for p in children {
         let meta = fs::symlink_metadata(&p).map_err(|e| conf_err("pack-sig", &e.to_string()))?;
-        if meta.file_type().is_symlink() {
-            return Err(conf_err("pack-sig", "symlinks forbidden in pack directory"));
+        if is_symlink_or_reparse(&meta) {
+            return Err(conf_err(
+                "pack-sig",
+                "symlinks or reparse points forbidden in pack directory",
+            ));
         }
         if meta.is_dir() {
             out.extend(collect_pack_digests(root, &p, depth.saturating_add(1))?);
@@ -376,28 +481,51 @@ fn collect_pack_digests(
             if rel == "signature.json" {
                 continue;
             }
-            if meta.len() > MAX_PACK_FILE_BYTES {
-                return Err(conf_err("pack-sig", "pack file exceeds size limit"));
-            }
-            let raw = fs::read(&p).map_err(|e| conf_err("pack-sig", &e.to_string()))?;
+            let raw = read_regular_bounded_bytes(&p, MAX_PACK_FILE_BYTES)?;
             out.push(PackFileDigest {
                 path: rel,
                 sha256: sha256_hex(&raw),
                 length: u64::try_from(raw.len()).unwrap_or(u64::MAX),
             });
+        } else {
+            return Err(conf_err(
+                "pack-sig",
+                &format!(
+                    "non-regular filesystem entry `{}` forbidden in pack directory",
+                    p.display()
+                ),
+            ));
         }
     }
     out.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(out)
 }
 
-fn canonical_manifest_text(pack_id: &str, version: &str, files: &[PackFileDigest]) -> String {
+fn validate_manifest_token(val: &str, label: &str) -> Result<(), ConformanceError> {
+    if val.is_empty() || val.chars().any(|ch| ch.is_control() || ch.is_whitespace()) {
+        return Err(conf_err(
+            "pack-sig",
+            &format!("canonical manifest `{label}` contains empty, whitespace, or control chars"),
+        ));
+    }
+    Ok(())
+}
+
+fn canonical_manifest_text(
+    pack_id: &str,
+    version: &str,
+    files: &[PackFileDigest],
+) -> Result<String, ConformanceError> {
+    validate_manifest_token(pack_id, "pack_id")?;
+    validate_manifest_token(version, "version")?;
     let mut lines = Vec::with_capacity(files.len().saturating_add(3));
     lines.push(PACK_SIG_DOMAIN.to_owned());
     lines.push(pack_id.to_owned());
     lines.push(version.to_owned());
     for f in files {
+        validate_manifest_token(&f.path, "file.path")?;
+        validate_manifest_token(&f.sha256, "file.sha256")?;
         lines.push(format!("{} {} {}", f.path, f.sha256, f.length));
     }
-    lines.join("\n")
+    Ok(lines.join("\n"))
 }

@@ -1,5 +1,5 @@
 format: grdr.detection-fixtures-ext.v1
-pack_id: grdr.det.ext
+pack_id: grdr.det.core
 fixtures:
   - id: fix-31-pos
     rule_id: grdr.det.core.r31.monitoring-config-tamper

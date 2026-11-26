@@ -28,12 +28,10 @@ const ALLOWED_GROUP_BY_DIMENSIONS: &[&str] = &[
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EvidenceDataClass {
-    Public,
-    Identifier,
     Structural,
     Derived,
+    Identifier,
     Content,
-    Secret,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -294,4 +292,35 @@ pub fn canonical_evidence_bytes(item: &EvidenceItem) -> Result<Vec<u8>, ComplyEr
     serde_json::to_vec(&canonical).map_err(|e| ComplyError::Serialization {
         detail: e.to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EvidenceDataClass, EvidenceQuery, FieldRead, validate_evidence_query};
+
+    #[test]
+    fn evidence_data_class_is_four_canonical_p8_tiers() {
+        assert!(EvidenceDataClass::Structural < EvidenceDataClass::Derived);
+        assert!(EvidenceDataClass::Derived < EvidenceDataClass::Identifier);
+        assert!(EvidenceDataClass::Identifier < EvidenceDataClass::Content);
+
+        let parsed: EvidenceDataClass =
+            serde_json::from_str("\"derived\"").expect("derived class parses");
+        assert_eq!(parsed, EvidenceDataClass::Derived);
+        assert!(serde_json::from_str::<EvidenceDataClass>("\"public\"").is_err());
+        assert!(serde_json::from_str::<EvidenceDataClass>("\"secret\"").is_err());
+
+        let identifier_query = EvidenceQuery {
+            id: "q.test.identifier".into(),
+            version: "1.0.0".into(),
+            capability: "cap.inventory.agents".into(),
+            reads: vec![FieldRead {
+                field_path: "session.user_id".into(),
+                data_class: EvidenceDataClass::Identifier,
+            }],
+            max_class: EvidenceDataClass::Derived,
+            group_by: vec!["capability".into()],
+        };
+        assert!(validate_evidence_query(&identifier_query).is_err());
+    }
 }

@@ -145,13 +145,20 @@ pub(crate) fn validate_checkin_p8(req: &DeviceCheckinRequest) -> Result<(), Upli
             reason: "P8 privacy violation: user_id/user_display must remain None".to_string(),
         });
     }
-    if contains_p8_pii_or_secret(&req.hostname) {
+    if contains_p8_pii_or_secret(&req.hostname)
+        || req.hostname.contains('\\')
+        || req.hostname.contains('/')
+    {
         return Err(UplinkError::AckUnverified {
             reason: "P8 privacy violation in device checkin hostname".to_string(),
         });
     }
     for artifact in &req.artifacts {
         if artifact.user_id.is_some()
+            || artifact
+                .kind_other
+                .as_deref()
+                .is_some_and(contains_p8_pii_or_secret)
             || contains_p8_pii_or_secret(&artifact.path)
             || contains_p8_pii_or_secret(&artifact.name)
             || contains_p8_pii_or_secret(&artifact.device_name)

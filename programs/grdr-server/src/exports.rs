@@ -5,7 +5,9 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
-use grdr_model::{ActionAttempt, DecisionReceipt, Finding, FindingSeverity, Incident, Verdict};
+use grdr_model::{
+    ActionAttempt, DecisionReceipt, Finding, FindingClass, FindingSeverity, Incident, Verdict,
+};
 
 use crate::store::StoreData;
 
@@ -324,7 +326,10 @@ fn finding_to_ocsf(finding: &Finding) -> OcsfEvent {
         metadata: OcsfMetadata {
             version: OCSF_VERSION,
             uid: finding.id.clone(),
-            event_code: format!("{:?}", finding.class).to_lowercase(),
+            event_code: match (finding.class, finding.finding_class_other.as_deref()) {
+                (FindingClass::Other, Some(label)) if !label.trim().is_empty() => label.to_owned(),
+                _ => format!("{:?}", finding.class).to_lowercase(),
+            },
             product: OcsfProduct {
                 name: "Guardrails ADR",
                 vendor_name: "Guardrails",
@@ -358,5 +363,36 @@ fn finding_to_ocsf(finding: &Finding) -> OcsfEvent {
             key_id: None,
             lifecycle: Some(format!("{:?}", finding.lifecycle).to_lowercase()),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use jiff::Timestamp;
+
+    use grdr_model::{Finding, FindingClass, FindingLifecycle, FindingSeverity};
+
+    use super::finding_to_ocsf;
+
+    #[test]
+    fn ocsf_export_surfaces_finding_class_other_label() {
+        let finding = Finding {
+            id: "fnd-oth".into(),
+            session_id: "s1".into(),
+            device_id: "d1".into(),
+            device_name: "host".into(),
+            agent_name: "claude-code".into(),
+            class: FindingClass::Other,
+            finding_class_other: Some("supply_chain_drift".into()),
+            severity: FindingSeverity::High,
+            lifecycle: FindingLifecycle::Open,
+            rule_id: Some("r.custom".into()),
+            title: "Drift".into(),
+            summary: "Out-of-band edit".into(),
+            target: "mcp.json".into(),
+            detected_at: Timestamp::UNIX_EPOCH,
+        };
+        let ocsf = finding_to_ocsf(&finding);
+        assert_eq!(ocsf.metadata.event_code, "supply_chain_drift");
     }
 }

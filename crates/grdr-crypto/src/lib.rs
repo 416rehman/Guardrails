@@ -52,15 +52,15 @@ pub struct SigningKeypair {
     key_id: String,
 }
 
+#[derive(Default)]
+pub struct Sha256Hasher {
+    inner: Sha256,
+}
+
 impl Drop for SigningKeypair {
     fn drop(&mut self) {
         self.key_id.zeroize();
     }
-}
-
-#[derive(Default)]
-pub struct Sha256Hasher {
-    inner: Sha256,
 }
 
 impl Sha256Hasher {
@@ -312,20 +312,29 @@ pub fn load_or_create_keypair(path: &Path) -> Result<SigningKeypair, CryptoError
     Ok(kp)
 }
 
-pub fn verify_bytes(
-    public_key_b64: &str,
-    domain: &str,
-    payload: &[u8],
-    signature_b64: &str,
-) -> Result<(), CryptoError> {
+fn decode_verifying_key(public_key_b64: &str) -> Result<VerifyingKey, CryptoError> {
     let pk_bytes = B64
         .decode(public_key_b64.trim())
         .map_err(|e| CryptoError::InvalidKey(format!("base64 decode failed: {e}")))?;
     let pk_arr: [u8; 32] = pk_bytes
         .try_into()
         .map_err(|_| CryptoError::InvalidKey("public key must be 32 bytes".into()))?;
-    let verifying_key = VerifyingKey::from_bytes(&pk_arr)
-        .map_err(|e| CryptoError::InvalidKey(format!("invalid Ed25519 public key: {e}")))?;
+    VerifyingKey::from_bytes(&pk_arr)
+        .map_err(|e| CryptoError::InvalidKey(format!("invalid Ed25519 public key: {e}")))
+}
+
+pub fn validate_public_key_b64(public_key_b64: &str) -> Result<(), CryptoError> {
+    decode_verifying_key(public_key_b64)?;
+    Ok(())
+}
+
+pub fn verify_bytes(
+    public_key_b64: &str,
+    domain: &str,
+    payload: &[u8],
+    signature_b64: &str,
+) -> Result<(), CryptoError> {
+    let verifying_key = decode_verifying_key(public_key_b64)?;
 
     let sig_bytes = B64
         .decode(signature_b64.trim())

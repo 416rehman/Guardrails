@@ -9,7 +9,7 @@ use ipnet::IpNet;
 use regex::RegexBuilder;
 
 use grdr_crypto::sha256_hex;
-use grdr_model::{FindingClass, FindingSeverity};
+use grdr_model::{FindingClass, FindingSeverity, MAX_OTHER_LABEL_CHARS};
 
 use crate::detect::eval::parse_condition_ast;
 use crate::detect::response::validate_response_binding_with_legacy;
@@ -127,6 +127,26 @@ pub(crate) fn parse_sigma_rule_for_verified_pack(
         None => FindingClass::Threat,
         Some(v) => parse_finding_class(opt_str_field(v, "x_grdr.finding_class")?)?,
     };
+    let finding_class_other = match x_grdr.get("finding_class_other") {
+        None => None,
+        Some(v) => {
+            if finding_class != FindingClass::Other {
+                return Err(DetectError::InvalidRule(
+                    "`x_grdr.finding_class_other` requires `x_grdr.finding_class: other`".into(),
+                ));
+            }
+            let label = opt_str_field(v, "x_grdr.finding_class_other")?;
+            if label.trim().is_empty()
+                || label.chars().any(char::is_control)
+                || label.chars().count() > MAX_OTHER_LABEL_CHARS
+            {
+                return Err(DetectError::InvalidRule(format!(
+                    "`x_grdr.finding_class_other` must be non-empty <= {MAX_OTHER_LABEL_CHARS} chars with no control chars"
+                )));
+            }
+            Some(label.to_owned())
+        }
+    };
     let ceiling = match x_grdr.get("ceiling") {
         None => FindingCeiling::Notify,
         Some(v) => parse_ceiling(opt_str_field(v, "x_grdr.ceiling")?)?,
@@ -211,6 +231,7 @@ pub(crate) fn parse_sigma_rule_for_verified_pack(
         rule_id,
         version,
         finding_class,
+        finding_class_other,
         severity,
         ceiling,
         scope,

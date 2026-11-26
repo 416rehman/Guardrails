@@ -241,7 +241,10 @@ fn parse_sequence(
             }
             continue;
         }
-        if let Some((k, rest)) = split_map_key(after_dash)? {
+        if !after_dash.starts_with('{')
+            && !after_dash.starts_with('[')
+            && let Some((k, rest)) = split_map_key(after_dash)?
+        {
             let item_indent = line.indent.saturating_add(2);
             let mut map = BTreeMap::new();
             if rest.is_empty() {
@@ -405,5 +408,32 @@ mod tests {
             doc.get("dq").and_then(YamlValue::as_str),
             Some("\\n and a\"b")
         );
+    }
+
+    #[test]
+    fn yaml_sequence_supports_inline_flow_map_items() {
+        let raw = "fixtures:\n  - { id: f1, expect_match: true, payload: { action_class: \"file.write\" } }\n";
+        let doc = parse_yaml(raw).expect("flow map sequence parses");
+        let items = doc
+            .get("fixtures")
+            .and_then(YamlValue::as_seq)
+            .expect("seq");
+        assert_eq!(items.len(), 1);
+        let first = items.first().expect("first");
+        assert_eq!(first.get("id").and_then(YamlValue::as_str), Some("f1"));
+        assert_eq!(
+            first.get("expect_match").and_then(YamlValue::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            first
+                .get("payload")
+                .and_then(|p| p.get("action_class"))
+                .and_then(YamlValue::as_str),
+            Some("file.write")
+        );
+        assert!(parse_yaml("a: [1, {b: 2]]\n").is_err());
+        assert!(parse_yaml("a: {x: [1}\n").is_err());
+        assert!(parse_yaml("fixtures:\n  - { id: f1, payload: [1} }\n").is_err());
     }
 }
