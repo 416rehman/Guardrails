@@ -81,7 +81,7 @@ fn run_updater_worker_test() -> Result<(), Box<dyn Error>> {
             protocol_version: IPC_WIRE_VERSION,
             service: EndpointServiceKind::ProviderUpdater as i32,
             profile: ChannelProfileKind::Inherited as i32,
-            client_nonce: vec![8u8; 16],
+            client_nonce: uuid::Uuid::now_v7().as_bytes().to_vec(),
             pid: std::process::id(),
             capabilities: vec!["updater.v1".to_string()],
         },

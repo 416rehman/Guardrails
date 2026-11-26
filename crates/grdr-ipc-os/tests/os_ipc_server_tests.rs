@@ -65,7 +65,9 @@ fn run_windows_pipe_handshake() -> Result<(), Box<dyn std::error::Error>> {
             credit_delta: DEFAULT_INITIAL_CREDIT,
             payload: Some(WirePayload::Ready(ReadyFrame {
                 protocol_version: IPC_WIRE_VERSION,
-                server_nonce: vec![7; 16],
+                server_nonce: grdr_wire::generate_nonce()
+                    .map_err(|e| e.to_string())?
+                    .into_bytes(),
                 max_frame_bytes: 1_048_576,
                 handover_stage: HandoverStage::Normal as i32,
                 initial_credit: DEFAULT_INITIAL_CREDIT,
@@ -109,7 +111,7 @@ fn run_windows_pipe_handshake() -> Result<(), Box<dyn std::error::Error>> {
             protocol_version: IPC_WIRE_VERSION,
             service: EndpointServiceKind::Decide as i32,
             profile: ChannelProfileKind::User as i32,
-            client_nonce: vec![9; 16],
+            client_nonce: grdr_wire::generate_nonce()?.into_bytes(),
             pid: std::process::id(),
             capabilities: vec![],
         })),

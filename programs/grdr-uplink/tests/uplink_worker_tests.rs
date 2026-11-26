@@ -82,7 +82,7 @@ fn run_uplink_worker_test() -> Result<(), Box<dyn Error>> {
             protocol_version: IPC_WIRE_VERSION,
             service: EndpointServiceKind::ProviderUplink as i32,
             profile: ChannelProfileKind::Inherited as i32,
-            client_nonce: vec![7u8; 16],
+            client_nonce: uuid::Uuid::now_v7().as_bytes().to_vec(),
             pid: std::process::id(),
             capabilities: vec!["uplink.v1".to_string()],
         },

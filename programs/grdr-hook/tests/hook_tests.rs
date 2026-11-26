@@ -764,7 +764,9 @@ fn run_ipc_client_adversarial_checks() -> Result<(), Box<dyn Error>> {
 
         #[cfg(unix)]
         let (addr_str, srv_handle) = {
+            use grdr_ipc_os::LocalEndpointAddress;
             use grdr_ipc_os::proto_io::ProtoIpcStream;
+            use grdr_ipc_os::transport::{Acceptor, FixedTimestampSource, IpcDeadline};
             use grdr_ipc_os::unix_domain::UnixDomainAcceptor;
             let base = std::env::var_os("XDG_RUNTIME_DIR")
                 .or_else(|| std::env::var_os("HOME"))
@@ -774,14 +776,21 @@ fn run_ipc_client_adversarial_checks() -> Result<(), Box<dyn Error>> {
             fs::create_dir_all(&sock_dir)?;
             let sock_path = sock_dir.join("decide.sock");
             let addr_str = sock_path.to_string_lossy().into_owned();
-            let mut acceptor = UnixDomainAcceptor::bind(&sock_path, 0o600)?;
+            let mut acceptor = UnixDomainAcceptor::bind_with_mode(
+                LocalEndpointAddress::UnixSocket {
+                    path: sock_path.clone(),
+                },
+                0o600,
+            )?;
             let handle = std::thread::spawn(move || -> Result<(), String> {
-                let link = acceptor
-                    .accept(Duration::from_secs(3))
-                    .map_err(|e| e.to_string())?;
-                let (uid, gid) = grdr_peer_os::unix_peer::current_effective_ids()
-                    .ok_or_else(|| "uid unavailable".to_string())?;
                 let clock = SystemClock::new();
+                let now = clock.now_wall().map_err(|e| e.to_string())?;
+                let ts = FixedTimestampSource::new(now);
+                let link = acceptor
+                    .accept(IpcDeadline::from_millis_capped(3_000, 3_000), &ts)
+                    .map_err(|e| e.to_string())?;
+                let (uid, _gid) = grdr_peer_os::unix_peer::current_effective_ids()
+                    .ok_or_else(|| "uid unavailable".to_string())?;
                 let stamp = grdr_peer_os::unix_peer::UnixConnectStamp {
                     boot_uptime_ms: clock
                         .boot_uptime()
@@ -887,7 +896,6 @@ fn run_ipc_client_adversarial_checks() -> Result<(), Box<dyn Error>> {
                         std::thread::sleep(Duration::from_millis(350));
                     }
                 }
-                let _ = gid;
                 let _ = fs::remove_dir_all(&sock_dir);
                 Ok(())
             });

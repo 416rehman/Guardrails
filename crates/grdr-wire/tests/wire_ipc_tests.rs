@@ -61,7 +61,9 @@ impl FrameStream for MemPipe {
 }
 
 fn valid_nonce() -> Vec<u8> {
-    vec![0xAB; 16]
+    grdr_wire::generate_nonce()
+        .map(|n| n.into_bytes().into_iter().take(16).collect())
+        .unwrap_or_default()
 }
 
 fn root_fact() -> PathComponentFact {
@@ -939,11 +941,14 @@ fn run_r2_wire_checks() -> Result<(), Box<dyn Error>> {
         outbound: VecDeque::new(),
         inbound: VecDeque::new(),
     };
+    let c_nonce = valid_nonce();
+    let mut s_nonce = c_nonce.clone();
+    s_nonce.extend_from_slice(&valid_nonce());
     let hello = HelloFrame {
         protocol_version: IPC_WIRE_VERSION,
         profile: 2,
         service: EndpointServiceKind::Decide as i32,
-        client_nonce: vec![1u8; 16],
+        client_nonce: c_nonce,
         pid: 55,
         capabilities: vec!["decide".into()],
     };
@@ -951,7 +956,7 @@ fn run_r2_wire_checks() -> Result<(), Box<dyn Error>> {
         protocol_version: IPC_WIRE_VERSION,
         initial_credit: DEFAULT_INITIAL_CREDIT,
         max_frame_bytes: 65_536,
-        server_nonce: vec![1u8; 32],
+        server_nonce: s_nonce,
         floor_digest: "d".into(),
         epoch: 1,
         handover_stage: HandoverStage::Normal as i32,
