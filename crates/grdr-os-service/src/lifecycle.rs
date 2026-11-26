@@ -168,9 +168,25 @@ impl ServiceAdapter for SystemServiceAdapter {
                 let payload = format_sd_notify_payload(state);
                 send_systemd_notify_from_env(&payload)
             }
-            ServiceManagerBackend::WindowsScm
-            | ServiceManagerBackend::Launchd
-            | ServiceManagerBackend::Foreground => Ok(()),
+            ServiceManagerBackend::WindowsScm => {
+                let (scm_state, code) = match state {
+                    ServiceManagerState::Starting { .. } => {
+                        (crate::win_scm::ScmState::StartPending, 0)
+                    }
+                    ServiceManagerState::Ready | ServiceManagerState::Reloading => {
+                        (crate::win_scm::ScmState::Running, 0)
+                    }
+                    ServiceManagerState::Degraded { .. } => (crate::win_scm::ScmState::Running, 0),
+                    ServiceManagerState::Stopping { .. } => {
+                        (crate::win_scm::ScmState::StopPending, 0)
+                    }
+                    ServiceManagerState::Stopped { exit_code } => {
+                        (crate::win_scm::ScmState::Stopped, *exit_code)
+                    }
+                };
+                crate::win_scm::report_scm_state(scm_state, code)
+            }
+            ServiceManagerBackend::Launchd | ServiceManagerBackend::Foreground => Ok(()),
         }
     }
 
@@ -285,7 +301,10 @@ pub fn plan_launchd_listeners(socket_names: &[String]) -> Vec<AdoptedListener> {
 }
 
 #[cfg(unix)]
-fn send_systemd_notify_to_socket(raw_sock: &str, payload: &str) -> Result<(), ServiceError> {
+pub(crate) fn send_systemd_notify_to_socket(
+    raw_sock: &str,
+    payload: &str,
+) -> Result<(), ServiceError> {
     use std::os::unix::net::UnixDatagram;
 
     if raw_sock.is_empty() {

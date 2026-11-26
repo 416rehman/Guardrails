@@ -1,359 +1,266 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
+#![deny(clippy::arithmetic_side_effects)]
 
-use std::fs;
+//! Thin fail-closed endpoint hook binary (`grdr-hook`) over OS IPC and signed binary floor cache.
+
 use std::io::{IsTerminal, Read};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::Duration;
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 use clap::Parser;
-use jiff::Timestamp;
-use uuid::Uuid;
+use grdr_crypto::sha256_hex;
+use grdr_os_clock::{Clock, SystemClock};
+use grdr_wire::limits::embedded_limits;
+use grdr_wire::messages::WireVerdict;
 
-use grdr_agents::{HarnessKind, detect_hostname, parse_hook_stdin};
-use grdr_core::compile::evaluate_compiled_floor;
-use grdr_core::policy::{essentials_pack, evaluate, sha256_hex};
-use grdr_model::{
-    ActionAttempt, ActionClass, ControlPoint, DecideInput, DecisionReceipt, KillSwitchState, Mode,
-    SignatureStatus, SignedFloorBundle, TrustedKeyInfo, Verdict, verify_floor_table,
+use grdr_hook::dialect::{HookDialect, classify_action, format_dialect_decision};
+use grdr_hook::floor_fallback::HookVerdictOutcome;
+use grdr_hook::ipc_client::{evaluate_against_daemon_or_floor, is_protected_profile_active};
+use grdr_hook::json_scan::{ScannedHookInput, max_hook_stdin_bytes, scan_hook_json};
+use grdr_hook::offline_spool::{
+    enqueue_offline_metadata, resolve_offline_spool_dir, resolve_protected_state_dir,
 };
+
+const DEFAULT_WATCHDOG_TIMEOUT_MS: u64 = 1950;
 
 #[derive(Debug, Parser)]
 #[command(
     name = "grdr-hook",
-    about = "Guardrails ADR low-latency agent hook shim"
+    about = "Guardrails ADR thin fail-closed hook shim"
 )]
 struct Args {
-    #[arg(long, env = "GRDR_DAEMON_URL", default_value = "http://127.0.0.1:8788")]
-    daemon: String,
-
-    #[arg(long, default_value_t = 250)]
-    timeout_ms: u64,
-
-    #[arg(long, env = "GRDR_FLOOR_TABLE")]
-    floor_table: Option<PathBuf>,
-
-    #[arg(long, env = "GRDR_FLOOR_KEY")]
-    floor_key: Option<PathBuf>,
-
-    #[arg(long)]
-    action: Option<String>,
-
-    #[arg(long)]
-    target: Option<String>,
-
     #[arg(long, default_value = "auto")]
     agent: String,
+    #[arg(long)]
+    action: Option<String>,
+    #[arg(long)]
+    target: Option<String>,
+    #[arg(long)]
+    session_id: Option<String>,
+    #[arg(long)]
+    socket: Option<String>,
+    #[arg(long)]
+    state_dir: Option<String>,
+}
 
-    #[arg(long, default_value = "sess-cli-hook")]
-    session_id: String,
+enum WorkerResult {
+    Evaluated {
+        input: Box<ScannedHookInput>,
+        outcome: HookVerdictOutcome,
+    },
+    InputRejected {
+        dialect: HookDialect,
+        message: String,
+    },
 }
 
 fn main() -> ExitCode {
     let args = Args::parse();
-    let device_name = detect_hostname();
+    let started = Instant::now();
+    let protected = is_protected_profile_active();
+    let default_dialect =
+        HookDialect::from_cli_name(&args.agent).unwrap_or(HookDialect::ClaudeCode);
 
-    let attempt = if let (Some(action), Some(target)) = (args.action, args.target) {
-        ActionAttempt {
-            id: format!("att_{}", Uuid::now_v7().simple()),
-            session_id: args.session_id,
-            device_id: format!("dev-{device_name}"),
-            device_name,
-            agent_name: args.agent,
-            action_class: ActionClass::from_name(&action),
-            control_point: ControlPoint::Hook,
-            target,
-            summary: "CLI hook test invocation".into(),
-            timestamp: Timestamp::now(),
-            ..Default::default()
-        }
-    } else if !std::io::stdin().is_terminal() {
-        let mut raw = String::new();
-        if let Err(err) = std::io::stdin().read_to_string(&mut raw) {
-            eprintln!("grdr-hook fail-open read error: {err}");
-            return ExitCode::SUCCESS;
-        }
-        if raw.trim().is_empty() {
-            return ExitCode::SUCCESS;
-        }
-        match parse_hook_stdin(HarnessKind::from_name(&args.agent), &raw, &device_name) {
-            Ok(attempt) => attempt,
-            Err(err) => {
-                eprintln!("grdr-hook invalid payload: {err}");
-                return ExitCode::SUCCESS;
+    if protected && has_protected_override_tamper(&args) {
+        emit_fail_closed(
+            default_dialect,
+            "PreToolUse",
+            "protected profile rejects custom --state-dir, --socket, or environment overrides",
+        );
+        return ExitCode::from(2);
+    }
+
+    let state_dir = if protected {
+        resolve_protected_state_dir(true)
+    } else {
+        args.state_dir
+            .as_ref()
+            .map_or_else(|| resolve_protected_state_dir(false), PathBuf::from)
+    };
+    let sock_override = (!protected).then(|| args.socket.clone()).flatten();
+
+    let has_cli_action = args.action.is_some() && args.target.is_some();
+    if !has_cli_action && std::io::stdin().is_terminal() {
+        emit_fail_closed(
+            default_dialect,
+            "PreToolUse",
+            "grdr-hook requires JSON on stdin or explicit --action and --target",
+        );
+        return ExitCode::from(2);
+    }
+
+    let (tx, rx) = mpsc::channel();
+    let state_worker = state_dir.clone();
+    let cli_action = args.action;
+    let cli_target = args.target;
+    let cli_session = args.session_id;
+    let cli_agent = args.agent;
+    let now_wall = SystemClock::new()
+        .now_wall()
+        .unwrap_or(jiff::Timestamp::UNIX_EPOCH);
+    let req_id = format!("hk-{}-{}", std::process::id(), now_wall.as_millisecond());
+
+    let _worker = std::thread::spawn(move || {
+        let result = match parse_invocation(
+            &cli_agent,
+            cli_action.as_deref(),
+            cli_target.as_deref(),
+            cli_session.as_deref(),
+        ) {
+            Ok(input) => {
+                let outcome = evaluate_against_daemon_or_floor(
+                    &input,
+                    &state_worker,
+                    sock_override.as_deref(),
+                    protected,
+                    &req_id,
+                    1,
+                    started,
+                );
+                if outcome.floor_fallback || !outcome.degraded_reason.is_empty() {
+                    let spool_dir = resolve_offline_spool_dir(protected, &state_worker);
+                    record_offline(&spool_dir, &input, &outcome);
+                }
+                WorkerResult::Evaluated {
+                    input: Box::new(input),
+                    outcome,
+                }
+            }
+            Err(message) => {
+                let dialect =
+                    HookDialect::from_cli_name(&cli_agent).unwrap_or(HookDialect::ClaudeCode);
+                WorkerResult::InputRejected { dialect, message }
+            }
+        };
+        let _ = tx.send(result);
+    });
+
+    let watchdog_ms = embedded_limits().map_or(DEFAULT_WATCHDOG_TIMEOUT_MS, |l| {
+        l.shim_hang_max_ms.saturating_sub(50).max(250)
+    });
+    let remaining_watchdog = Duration::from_millis(watchdog_ms)
+        .checked_sub(started.elapsed())
+        .unwrap_or(Duration::from_millis(1));
+    match rx.recv_timeout(remaining_watchdog) {
+        Ok(WorkerResult::Evaluated { input, outcome }) => {
+            let rendered = format_dialect_decision(
+                input.dialect,
+                &input.event_name,
+                outcome.verdict,
+                &outcome.reason,
+                &outcome.rule_id,
+            );
+            println!("{rendered}");
+            match outcome.verdict {
+                WireVerdict::Allow => ExitCode::SUCCESS,
+                WireVerdict::Ask | WireVerdict::Block | WireVerdict::Unspecified => {
+                    ExitCode::from(2)
+                }
             }
         }
-    } else {
-        eprintln!("grdr-hook expects Claude Code hook JSON on stdin or --action and --target.");
-        return ExitCode::SUCCESS;
-    };
-
-    evaluate_and_exit(
-        &attempt,
-        &args.daemon,
-        args.timeout_ms,
-        args.floor_table.as_deref(),
-        args.floor_key.as_deref(),
-    )
-}
-
-fn evaluate_and_exit(
-    attempt: &ActionAttempt,
-    daemon_url: &str,
-    timeout_ms: u64,
-    floor_table_path: Option<&Path>,
-    floor_key_path: Option<&Path>,
-) -> ExitCode {
-    let receipt = match query_daemon(attempt, daemon_url, timeout_ms) {
-        Ok(receipt) => receipt,
-        Err(_err) => evaluate_failsafe(attempt, floor_table_path, floor_key_path),
-    };
-
-    match receipt.verdict {
-        Verdict::Allow | Verdict::Modify => ExitCode::SUCCESS,
-        Verdict::Deny | Verdict::StepUp | Verdict::Defer => {
-            let label = match receipt.verdict {
-                Verdict::Deny => "BLOCKED",
-                Verdict::StepUp => "APPROVAL REQUIRED",
-                _ => "DEFERRED",
-            };
-            let rule_id = receipt.rule_id.as_deref().unwrap_or("essentials.floor");
-            eprintln!(
-                "Guardrails ADR {label} [{rule_id}]: {}\nNext step: {}\nReceipt: {}",
-                receipt.reason, receipt.next_step, receipt.receipt_id
+        Ok(WorkerResult::InputRejected { dialect, message }) => {
+            emit_fail_closed(dialect, "PreToolUse", &message);
+            ExitCode::from(2)
+        }
+        Err(_) => {
+            emit_fail_closed(
+                default_dialect,
+                "PreToolUse",
+                "hook exceeded watchdog deadline; failing closed",
             );
             ExitCode::from(2)
         }
     }
 }
 
-fn query_daemon(
-    attempt: &ActionAttempt,
-    daemon_url: &str,
-    timeout_ms: u64,
-) -> Result<DecisionReceipt, String> {
-    let url = format!("{}/local/v1/decide", daemon_url.trim_end_matches('/'));
-    let payload = DecideInput {
-        session_id: Some(attempt.session_id.clone()),
-        device_id: Some(attempt.device_id.clone()),
-        device_name: Some(attempt.device_name.clone()),
-        agent_name: attempt.agent_name.clone(),
-        action_class: attempt.action_class,
-        control_point: Some(attempt.control_point),
-        target: attempt.target.clone(),
-        summary: Some(attempt.summary.clone()),
-    };
-
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_millis(timeout_ms.max(25)))
-        .build()
-        .map_err(|e| format!("http client init failed: {e}"))?;
-
-    let resp = client
-        .post(&url)
-        .json(&payload)
-        .send()
-        .map_err(|e| format!("daemon request failed: {e}"))?;
-
-    if !resp.status().is_success() {
-        return Err(format!("daemon returned {}", resp.status()));
-    }
-
-    resp.json::<DecisionReceipt>()
-        .map_err(|e| format!("invalid receipt json: {e}"))
+fn has_protected_override_tamper(args: &Args) -> bool {
+    args.state_dir.is_some()
+        || args.socket.is_some()
+        || std::env::var_os("GRDR_STATE_DIR").is_some_and(|v| !v.is_empty())
+        || std::env::var_os("GRDR_DECIDE_ENDPOINT").is_some_and(|v| !v.is_empty())
 }
 
-fn default_floor_table_path() -> PathBuf {
-    std::env::temp_dir().join("grdr-failsafe-floor.json")
-}
-
-fn evaluate_failsafe(
-    attempt: &ActionAttempt,
-    floor_table_path: Option<&Path>,
-    floor_key_path: Option<&Path>,
-) -> DecisionReceipt {
-    let default_path = default_floor_table_path();
-    let candidate = floor_table_path.unwrap_or(&default_path);
-    let key_path = floor_key_path
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| candidate.with_extension("pub"));
-
-    if candidate.is_file()
-        && key_path.is_file()
-        && let Ok(raw_table) = fs::read_to_string(candidate)
-        && let Ok(raw_key) = fs::read_to_string(&key_path)
-        && let Ok(bundle) = serde_json::from_str::<SignedFloorBundle>(&raw_table)
-        && let Ok(pinned_key) = serde_json::from_str::<TrustedKeyInfo>(&raw_key)
-    {
-        match verify_floor_table(&bundle.table, &[pinned_key]) {
-            SignatureStatus::Verified => {
-                if let Some(hit) = evaluate_compiled_floor(
-                    &bundle.table,
-                    attempt.action_class,
-                    &attempt.agent_name,
-                    &attempt.target,
-                ) {
-                    let now = Timestamp::now();
-                    let digest_input = format!(
-                        "{}:{}:{}:{}:{}",
-                        attempt.session_id,
-                        attempt.agent_name,
-                        attempt.action_class.as_str(),
-                        attempt.target,
-                        hit.rule_id
-                    );
-                    return DecisionReceipt {
-                        receipt_id: format!("rcp_{}", Uuid::now_v7().simple()),
-                        attempt_id: attempt.id.clone(),
-                        session_id: attempt.session_id.clone(),
-                        device_id: attempt.device_id.clone(),
-                        agent_name: attempt.agent_name.clone(),
-                        action_class: attempt.action_class,
-                        control_point: attempt.control_point,
-                        target: attempt.target.clone(),
-                        verdict: hit.verdict,
-                        would_be: None,
-                        rule_id: Some(hit.rule_id),
-                        pack_id: Some("failsafe-floor".into()),
-                        mode_applied: Some(Mode::Block),
-                        grant_id: None,
-                        reason: hit.reason,
-                        next_step: "Blocked by signed offline fail-safe floor table.".into(),
-                        receipt_digest: sha256_hex(digest_input.as_bytes()),
-                        decided_at: now,
-                        key_id: bundle.table.key_id,
-                        signature: bundle.table.signature,
-                        signature_verified: Some(true),
-                    };
-                }
-            }
-            SignatureStatus::Invalid | SignatureStatus::Unsigned => {
-                eprintln!(
-                    "grdr-hook warning: fail-safe floor table signature check failed against pinned key; falling back to Essentials."
-                );
-            }
+fn parse_invocation(
+    agent: &str,
+    action: Option<&str>,
+    target: Option<&str>,
+    session_id: Option<&str>,
+) -> Result<ScannedHookInput, String> {
+    if let (Some(action), Some(target)) = (action, target) {
+        if action.trim().is_empty() || target.trim().is_empty() {
+            return Err("hook --action and --target cannot be empty".to_string());
         }
+        let dialect = HookDialect::from_cli_name(agent).unwrap_or(HookDialect::ClaudeCode);
+        let is_shell = action.eq_ignore_ascii_case("bash")
+            || action.eq_ignore_ascii_case("exec")
+            || action.eq_ignore_ascii_case("sh")
+            || action.eq_ignore_ascii_case("pwsh")
+            || action.eq_ignore_ascii_case("cmd")
+            || action.eq_ignore_ascii_case("powershell");
+        return Ok(ScannedHookInput {
+            dialect,
+            session_id: session_id.unwrap_or_default().to_string(),
+            event_name: "PreToolUse".to_string(),
+            tool_name: action.to_string(),
+            target: target.to_string(),
+            command_line: if is_shell {
+                target.to_string()
+            } else {
+                String::new()
+            },
+            cwd: String::new(),
+            payload_sha256: sha256_hex(format!("{action}:{target}").as_bytes()),
+            raw_payload: String::new(),
+            action_class: classify_action(action, "PreToolUse", ""),
+            control_point: 1,
+        });
     }
 
-    let packs = vec![essentials_pack()];
-    evaluate(
-        attempt,
-        &packs,
-        &[],
-        &KillSwitchState::Inactive,
-        Timestamp::now(),
-    )
+    let max_stdin = max_hook_stdin_bytes();
+    let mut raw = Vec::new();
+    let mut handle =
+        std::io::stdin().take(u64::try_from(max_stdin.saturating_add(1)).unwrap_or(u64::MAX));
+    handle
+        .read_to_end(&mut raw)
+        .map_err(|err| format!("hook stdin read error (fail-closed): {err}"))?;
+
+    scan_hook_json(&raw, agent).map_err(|err| err.to_string())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use grdr_agents::parse_claude_hook_stdin;
-    use grdr_core::compile::compile_floor_table;
-    use grdr_crypto::SigningKeypair;
-    use grdr_model::{ApprovalGrade, PolicyPack, PolicyRule, RuleMatch, SigningKeypairExt as _};
-
-    #[test]
-    fn failsafe_blocks_control_file_even_without_daemon() {
-        let attempt = parse_claude_hook_stdin(
-            r#"{"session_id":"s1","tool_name":"Write","tool_input":{"file_path":".claude/settings.json"}}"#,
-            "box",
-        )
-        .unwrap();
-        let receipt = evaluate_failsafe(&attempt, None, None);
-        assert_eq!(receipt.verdict, Verdict::Deny);
+fn record_offline(state_dir: &Path, input: &ScannedHookInput, outcome: &HookVerdictOutcome) {
+    let verdict_label = match outcome.verdict {
+        WireVerdict::Allow => "allow",
+        WireVerdict::Ask => "ask",
+        WireVerdict::Block | WireVerdict::Unspecified => "block",
+    };
+    let wall = SystemClock::new()
+        .now_wall()
+        .unwrap_or(jiff::Timestamp::UNIX_EPOCH);
+    let ts_ms = wall.as_millisecond();
+    if let Err(err) = enqueue_offline_metadata(
+        state_dir,
+        input.dialect.as_agent_str(),
+        &input.session_id,
+        &input.target,
+        verdict_label,
+        &outcome.reason,
+        ts_ms,
+    ) {
+        eprintln!("hook offline spool write failed: {}", err.kind());
     }
+}
 
-    #[test]
-    fn failsafe_allows_safe_command() {
-        let attempt = parse_claude_hook_stdin(
-            r#"{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"git status"}}"#,
-            "box",
-        )
-        .unwrap();
-        let receipt = evaluate_failsafe(&attempt, None, None);
-        assert_eq!(receipt.verdict, Verdict::Allow);
-    }
-
-    #[test]
-    fn failsafe_evaluates_signed_compiled_floor_bundle_and_rejects_rogue_or_tampered_tables() {
-        let now = Timestamp::now();
-        let kp = SigningKeypair::generate().unwrap();
-        let custom_pack = PolicyPack {
-            id: "pack-custom".into(),
-            name: "Custom".into(),
-            description: "Custom floor".into(),
-            version: "1.0.0".into(),
-            channel: "custom".into(),
-            rules: vec![PolicyRule {
-                id: "custom.block-prod-deploy".into(),
-                title: "Block prod deploy".into(),
-                description: "Block prod deploy".into(),
-                mode: Mode::Block,
-                min_grade: ApprovalGrade::G2,
-                enabled: true,
-                locked: true,
-                matcher: RuleMatch {
-                    action_classes: vec![ActionClass::Exec],
-                    target_prefixes: vec![],
-                    target_contains: vec!["deploy-prod".into()],
-                    agents: vec![],
-                },
-                hits: 0,
-                would_ask_hits: 0,
-                would_block_hits: 0,
-                reason_template: "Blocked custom prod deploy.".into(),
-                cedar: None,
-            }],
-            key_id: None,
-            signature: None,
-        };
-
-        let mut table = compile_floor_table(std::slice::from_ref(&custom_pack), now);
-        kp.sign_floor_table(&mut table).unwrap();
-        let bundle = SignedFloorBundle {
-            table,
-            signer: kp.public_info(),
-        };
-
-        let dir = std::env::temp_dir().join(format!("grdr-hook-test-{}", std::process::id()));
-        let _ = fs::create_dir_all(&dir);
-        let floor_path = dir.join("floor.json");
-        let key_path = dir.join("floor.pub");
-        fs::write(&floor_path, serde_json::to_string(&bundle).unwrap()).unwrap();
-        fs::write(&key_path, serde_json::to_string(&kp.public_info()).unwrap()).unwrap();
-
-        let attempt = parse_claude_hook_stdin(
-            r#"{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"./deploy-prod --force"}}"#,
-            "box",
-        )
-        .unwrap();
-
-        let receipt = evaluate_failsafe(&attempt, Some(&floor_path), Some(&key_path));
-        assert_eq!(receipt.verdict, Verdict::Deny);
-        assert_eq!(receipt.rule_id.as_deref(), Some("custom.block-prod-deploy"));
-        assert_eq!(receipt.signature_verified, Some(true));
-
-        let rogue_kp = SigningKeypair::generate().unwrap();
-        let mut rogue_table = compile_floor_table(&[custom_pack], now);
-        rogue_kp.sign_floor_table(&mut rogue_table).unwrap();
-        let rogue_bundle = SignedFloorBundle {
-            table: rogue_table,
-            signer: rogue_kp.public_info(),
-        };
-        fs::write(&floor_path, serde_json::to_string(&rogue_bundle).unwrap()).unwrap();
-
-        let rejected_rogue = evaluate_failsafe(&attempt, Some(&floor_path), Some(&key_path));
-        assert_eq!(rejected_rogue.verdict, Verdict::Allow);
-
-        let mut tampered = bundle;
-        tampered.table.rules[0].target_contains = vec!["unrelated-command".into()];
-        fs::write(&floor_path, serde_json::to_string(&tampered).unwrap()).unwrap();
-
-        let after_tamper = evaluate_failsafe(&attempt, Some(&floor_path), Some(&key_path));
-        assert_eq!(after_tamper.verdict, Verdict::Allow);
-
-        let _ = fs::remove_dir_all(&dir);
-    }
+fn emit_fail_closed(dialect: HookDialect, event_name: &str, reason: &str) {
+    let body = format_dialect_decision(
+        dialect,
+        event_name,
+        WireVerdict::Block,
+        reason,
+        "HOOK-FAIL-CLOSED",
+    );
+    println!("{body}");
+    eprintln!("{reason}");
 }

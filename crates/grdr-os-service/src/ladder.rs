@@ -156,6 +156,10 @@ impl CrashLoopLadder {
         self.last_slot_switch_at = Some(now);
         self.previous_slot_version = previous_slot_version;
         self.security_floor_version = security_floor_version;
+        self.quarantined_digests.clear();
+        self.quarantine_order.clear();
+        self.digest_strikes.clear();
+        self.digest_strike_order.clear();
         if self.rung == LadderRung::SafeMode {
             self.rung = LadderRung::Normal;
             self.entered_rung_at = now;
@@ -305,8 +309,10 @@ impl CrashLoopLadder {
         in_flight_digests: &[String],
     ) -> Option<String> {
         let mut first_quarantined = None;
-        for digest in in_flight_digests {
-            if !self.digest_strikes.contains_key(digest) {
+        let unique: BTreeSet<&str> = in_flight_digests.iter().map(String::as_str).collect();
+        for digest_str in unique {
+            let digest = digest_str.to_string();
+            if !self.digest_strikes.contains_key(&digest) {
                 evict_fifo_if_full(
                     &mut self.digest_strikes,
                     &mut self.digest_strike_order,
@@ -316,8 +322,8 @@ impl CrashLoopLadder {
             }
             let count = self.digest_strikes.entry(digest.clone()).or_insert(0);
             *count = count.saturating_add(1);
-            if *count >= 2 && !self.is_quarantined(digest, now) {
-                if !self.quarantined_digests.contains_key(digest) {
+            if *count >= 2 && !self.is_quarantined(&digest, now) {
+                if !self.quarantined_digests.contains_key(&digest) {
                     evict_fifo_if_full(
                         &mut self.quarantined_digests,
                         &mut self.quarantine_order,
@@ -328,7 +334,7 @@ impl CrashLoopLadder {
                 self.quarantined_digests
                     .insert(digest.clone(), add_secs(now, QUARANTINE_TTL_SECS));
                 if first_quarantined.is_none() {
-                    first_quarantined = Some(digest.clone());
+                    first_quarantined = Some(digest);
                 }
             }
         }

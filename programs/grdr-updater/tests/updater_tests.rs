@@ -23,6 +23,7 @@ use grdr_updater::fs_safe::atomic_write_bytes;
 use grdr_updater::handover::{DEFAULT_HANDOVER_WINDOW_MS, HandoverCoordinator};
 use grdr_updater::p7_delta::{
     DeltaOp, DeltaPackage, enforce_p7_json_purity, reconstruct_delta_or_request_full,
+    validate_safe_target_path,
 };
 use grdr_updater::slots::{BinaryIntegrityOutcome, SlotActivationManager, UpdateAuthority};
 use grdr_updater::verify::{CdnFreshnessStatus, DualRootVerifier, StagedUpdateBundle};
@@ -245,7 +246,7 @@ fn sign_target_dsse(
 #[test]
 fn verifier_enforces_p7_purity_delta_fallback_and_compat_range() {
     let res = run_verifier_tests();
-    assert!(res.is_ok(), "updater test failed");
+    assert!(res.is_ok(), "updater verifier test failed: {res:?}");
 }
 
 fn run_verifier_tests() -> TestResult {
@@ -654,7 +655,7 @@ fn run_verifier_tests() -> TestResult {
 #[test]
 fn ab_slot_rollback_security_floor_authority_and_2s_handover() {
     let res = run_slots_and_handover_tests();
-    assert!(res.is_ok(), "updater test failed");
+    assert!(res.is_ok(), "updater slots test failed: {res:?}");
 }
 
 fn verify_signed_binary_fixture(
@@ -717,7 +718,7 @@ fn run_slots_and_handover_tests() -> TestResult {
 
     let v2 = b"binary-v2";
     let verified_v2 = verify_signed_binary_fixture("0.2.0", 2, v2, now)?;
-    let slot_b = mgr.activate_verified_binary(&verified_v2, Some(2), now.as_second())?;
+    let slot_b = mgr.activate_verified_binary(&verified_v2, Some(2), now.as_second(), 1_000)?;
     check(slot_b.slot == UpdateSlot::SlotB, "must activate SlotB")?;
     check(
         mgr.security_floor() == 2,
@@ -727,49 +728,80 @@ fn run_slots_and_handover_tests() -> TestResult {
     let verified_v1 = verify_signed_binary_fixture("0.1.0", 1, v1, now)?;
     check(
         matches!(
-            mgr.activate_verified_binary(&verified_v1, None, now.as_second()),
+            mgr.activate_verified_binary(&verified_v1, None, now.as_second(), 1_000),
             Err(UpdaterError::SecurityFloorViolation { .. })
         ),
         "downgrade below security floor must fail",
     )?;
     check(
-        mgr.record_startup_crash("crash-1", now.as_second().saturating_add(10))?
+        mgr.record_startup_crash("crash-1", now.as_second().saturating_add(10), 11_000)?
             .is_none(),
         "crash 1 no revert",
     )?;
     check(
-        mgr.record_startup_crash("crash-2", now.as_second().saturating_add(20))?
+        mgr.record_startup_crash("crash-2", now.as_second().saturating_add(20), 21_000)?
             .is_none(),
         "crash 2 no revert",
     )?;
     check(
         matches!(
-            mgr.record_startup_crash("crash-3", now.as_second().saturating_add(30)),
+            mgr.record_startup_crash("crash-3", now.as_second().saturating_add(30), 31_000),
             Err(UpdaterError::SecurityFloorViolation { .. })
         ),
         "revert below security floor must be blocked",
     )?;
 
+    let pre_commit_err = mgr.confirm_stable_commit(now.as_second().saturating_add(100), 101_000);
+    check(
+        matches!(
+            pre_commit_err,
+            Err(UpdaterError::SlotTransitionInvalid { .. })
+        ),
+        "confirm_stable_commit before stabilization deadline must fail closed",
+    )?;
+
     let v3 = b"binary-v3";
     let verified_v3 = verify_signed_binary_fixture("0.3.0", 3, v3, now)?;
-    mgr.activate_verified_binary(&verified_v3, None, now.as_second().saturating_add(40))?;
     check(
-        mgr.record_startup_crash("ntp-backwards", now.as_second().saturating_sub(100))?
-            .is_none(),
+        matches!(
+            mgr.activate_verified_binary(
+                &verified_v3,
+                None,
+                now.as_second().saturating_add(40),
+                41_000
+            ),
+            Err(UpdaterError::SlotTransitionInvalid { .. })
+        ),
+        "double activate_verified_binary while pending unconfirmed must be refused",
+    )?;
+    mgr.confirm_stable_commit(now.as_second().saturating_add(1_800), 1_801_000)?;
+    mgr.activate_verified_binary(
+        &verified_v3,
+        None,
+        now.as_second().saturating_add(1_840),
+        1_841_000,
+    )?;
+    check(
+        mgr.record_startup_crash(
+            "ntp-backwards",
+            now.as_second().saturating_sub(100),
+            1_845_000,
+        )?
+        .is_none(),
         "NTP backward jump prior to stabilization start must not extend crash revert window",
     )?;
     check(
-        mgr.record_startup_crash("crash-1", now.as_second().saturating_add(50))?
+        mgr.record_startup_crash("crash-1", now.as_second().saturating_add(1_850), 1_851_000)?
             .is_none(),
         "crash 1",
     )?;
     check(
-        mgr.record_startup_crash("crash-2", now.as_second().saturating_add(60))?
+        mgr.record_startup_crash("crash-2", now.as_second().saturating_add(1_860), 1_861_000)?
             .is_none(),
         "crash 2",
     )?;
     let rolled = mgr
-        .record_startup_crash("crash-3", now.as_second().saturating_add(70))?
+        .record_startup_crash("crash-3", now.as_second().saturating_add(1_870), 1_871_000)?
         .ok_or("reverts cleanly to v2")?;
     check(rolled.version == "0.2.0", "rolled back slot mismatch")?;
 
@@ -893,7 +925,7 @@ fn run_slots_and_handover_tests() -> TestResult {
     )?;
     check(
         matches!(
-            managed.activate_verified_binary(&verified_v3, None, now.as_second()),
+            managed.activate_verified_binary(&verified_v3, None, now.as_second(), 1_000),
             Err(UpdaterError::AuthorityDisallowed { .. })
         ),
         "Managed mode must refuse binary slot writes",
@@ -996,6 +1028,42 @@ fn run_slots_and_handover_tests() -> TestResult {
             BinaryIntegrityOutcome::ExternalBinaryTamperDetected { .. }
         ),
         "external binary tamper must be surfaced",
+    )?;
+
+    // Enforce P7 camelCase/kebab-case key normalization, ADS ':' refusal, and non-empty delta ops.
+    check(
+        matches!(
+            enforce_p7_json_purity("policy", br#"{"executablePath":"/bin/sh"}"#),
+            Err(UpdaterError::ForbiddenField { .. })
+        ),
+        "camelCase executablePath must trigger P7 refusal",
+    )?;
+    check(
+        matches!(
+            enforce_p7_json_purity("policy", br#"{"mcp-servers":[]}"#),
+            Err(UpdaterError::ForbiddenField { .. })
+        ),
+        "kebab-case mcp-servers must trigger P7 refusal",
+    )?;
+    check(
+        matches!(
+            validate_safe_target_path("packs/foo.json:stream"),
+            Err(UpdaterError::PathUnsafe { .. })
+        ),
+        "NTFS ADS colon in target path must be refused",
+    )?;
+    let empty_delta = DeltaPackage {
+        target_path: "bin/grdrd".to_string(),
+        base_sha256: canonical_sha256(b"base"),
+        expected_target_sha256: canonical_sha256(b"base"),
+        operations: vec![DeltaOp::CopyBase { offset: 0, len: 0 }],
+    };
+    check(
+        matches!(
+            reconstruct_delta_or_request_full(b"base", &empty_delta, 1024),
+            Err(UpdaterError::DeltaFallbackRequired { .. })
+        ),
+        "zero-length CopyBase delta op must request fallback",
     )?;
 
     let _ = std::fs::remove_dir_all(&dir);

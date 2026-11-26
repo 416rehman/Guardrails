@@ -1136,8 +1136,11 @@ name = "grdr-wire"
 version = "0.1.0"
 dependencies = [
  "grdr-crypto",
+ "grdr-fastpath",
  "grdr-model",
+ "grdr-schema",
  "jiff 1.0.3",
+ "prost",
  "serde",
  "serde_json",
  "thiserror",

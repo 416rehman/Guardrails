@@ -14,13 +14,18 @@ renders = "none"
 grdr-crypto = { workspace = true }
 grdr-model = { workspace = true }
 grdr-ports = { workspace = true }
+grdr-schema = { workspace = true }
 jiff = { workspace = true }
+rusqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
 grdr-ports-testkit = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [lints]
 workspace = true

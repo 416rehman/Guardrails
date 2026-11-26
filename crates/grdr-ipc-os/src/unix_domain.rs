@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
+#![deny(clippy::arithmetic_side_effects)]
 
 use std::io::{ErrorKind, Read, Write};
+use std::os::fd::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::time::{Duration, Instant};
 
+use grdr_wire::frame::IpcFrameError;
 use jiff::Timestamp;
 
 use crate::IpcError;
@@ -53,6 +56,115 @@ impl UnixDomainLink {
             inner: StreamLink::new(stream, connected_at),
             blocking_mode,
         })
+    }
+
+    pub(crate) const fn read_deadline(&self) -> IpcDeadline {
+        self.inner.read_deadline()
+    }
+
+    pub(crate) const fn write_deadline(&self) -> IpcDeadline {
+        self.inner.write_deadline()
+    }
+
+    pub(crate) fn read_chunk_cumulative(
+        &mut self,
+        buf: &mut [u8],
+        deadline: Instant,
+    ) -> Result<usize, IpcFrameError> {
+        let timeout_ms = self.inner.read_deadline().as_millis_u64();
+        loop {
+            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+                return Err(IpcFrameError::TimedOut { timeout_ms });
+            };
+            if let Err(err) = apply_read_timeout(self.inner.stream_mut(), remaining) {
+                return Err(IpcFrameError::Io {
+                    detail: err.to_string(),
+                });
+            }
+            match self.inner.stream_mut().read(buf) {
+                Ok(n) => return Ok(n),
+                Err(err) if err.kind() == ErrorKind::Interrupted => continue,
+                Err(err)
+                    if self.blocking_mode == StreamBlockingMode::NonBlockingFallback
+                        && err.kind() == ErrorKind::WouldBlock =>
+                {
+                    let Some(rem_after) = deadline.checked_duration_since(Instant::now()) else {
+                        return Err(IpcFrameError::TimedOut { timeout_ms });
+                    };
+                    std::thread::sleep(Duration::from_millis(2).min(rem_after));
+                }
+                Err(err) if matches!(err.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) => {
+                    return Err(IpcFrameError::TimedOut { timeout_ms });
+                }
+                Err(err) => {
+                    return Err(IpcFrameError::Io {
+                        detail: err.to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    pub(crate) fn write_all_cumulative_until(
+        &mut self,
+        data: &[u8],
+        deadline: Instant,
+    ) -> Result<(), IpcFrameError> {
+        let timeout_ms = self.inner.write_deadline().as_millis_u64();
+        let mut offset = 0usize;
+        while offset < data.len() {
+            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+                return Err(IpcFrameError::TimedOut { timeout_ms });
+            };
+            if let Err(err) = apply_write_timeout(self.inner.stream_mut(), remaining) {
+                return Err(IpcFrameError::Io {
+                    detail: err.to_string(),
+                });
+            }
+            let Some(chunk) = data.get(offset..) else {
+                break;
+            };
+            match self.inner.stream_mut().write(chunk) {
+                Ok(0) => {
+                    return Err(IpcFrameError::Io {
+                        detail: "zero-byte write on IPC stream".to_string(),
+                    });
+                }
+                Ok(n) => offset = offset.saturating_add(n),
+                Err(err) if err.kind() == ErrorKind::Interrupted => continue,
+                Err(err)
+                    if self.blocking_mode == StreamBlockingMode::NonBlockingFallback
+                        && err.kind() == ErrorKind::WouldBlock =>
+                {
+                    let Some(rem_after) = deadline.checked_duration_since(Instant::now()) else {
+                        return Err(IpcFrameError::TimedOut { timeout_ms });
+                    };
+                    std::thread::sleep(Duration::from_millis(2).min(rem_after));
+                }
+                Err(err) if matches!(err.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) => {
+                    return Err(IpcFrameError::TimedOut { timeout_ms });
+                }
+                Err(err) => {
+                    return Err(IpcFrameError::Io {
+                        detail: err.to_string(),
+                    });
+                }
+            }
+        }
+        let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+            return Err(IpcFrameError::TimedOut { timeout_ms });
+        };
+        if let Err(err) = apply_write_timeout(self.inner.stream_mut(), remaining) {
+            return Err(IpcFrameError::Io {
+                detail: err.to_string(),
+            });
+        }
+        self.inner
+            .stream_mut()
+            .flush()
+            .map_err(|err| IpcFrameError::Io {
+                detail: err.to_string(),
+            })
     }
 
     fn read_exact_cumulative(&mut self, buf: &mut [u8]) -> Result<(), IpcError> {
@@ -179,7 +291,10 @@ impl Connector for UnixDomainConnector {
         let start = Instant::now();
         let stream = loop {
             match UnixStream::connect(path) {
-                Ok(s) => break s,
+                Ok(s) => {
+                    set_fd_cloexec(&s)?;
+                    break s;
+                }
                 Err(err) if err.kind() == ErrorKind::WouldBlock => {
                     if start.elapsed() >= deadline.as_duration() {
                         return Err(IpcError::DeadlineExceeded {
@@ -200,14 +315,15 @@ impl Connector for UnixDomainConnector {
 
 impl UnixDomainAcceptor {
     pub fn bind(address: LocalEndpointAddress) -> Result<Self, IpcError> {
-        validate_endpoint_address(TargetOsKind::current(), &address)?;
-        let LocalEndpointAddress::UnixSocket { path } = &address else {
-            return Err(IpcError::InvalidAddress(
-                "UnixDomainAcceptor requires UnixSocket address".into(),
-            ));
-        };
-        let listener = UnixListener::bind(path)
-            .map_err(|e| IpcError::Io(format!("bind `{}` failed: {e}", path.display())))?;
+        Self::bind_with_mode(address, 0o600)
+    }
+
+    pub fn bind_with_mode(
+        address: LocalEndpointAddress,
+        socket_mode: u32,
+    ) -> Result<Self, IpcError> {
+        let (listener, _) =
+            crate::unix_domain_bind::bind_unix_listener_with_mode(&address, socket_mode)?;
         Self::from_listener(listener, address)
     }
 
@@ -215,6 +331,7 @@ impl UnixDomainAcceptor {
         listener: UnixListener,
         address: LocalEndpointAddress,
     ) -> Result<Self, IpcError> {
+        set_fd_cloexec(&listener)?;
         listener
             .set_nonblocking(true)
             .map_err(|e| IpcError::Io(e.to_string()))?;
@@ -241,6 +358,7 @@ impl Acceptor for UnixDomainAcceptor {
         loop {
             match self.listener.accept() {
                 Ok((stream, _)) => {
+                    set_fd_cloexec(&stream)?;
                     let blocking_mode = restore_accepted_blocking_mode(&stream)?;
                     let connected_at = clock.now_utc();
                     return UnixDomainLink::from_accepted_stream(
@@ -270,6 +388,8 @@ impl Acceptor for UnixDomainAcceptor {
         &self.address
     }
 }
+
+use crate::unix_domain_bind::set_fd_cloexec;
 
 fn is_macos_disconnected_invalid_input(err: &std::io::Error) -> bool {
     #[cfg(target_os = "macos")]
@@ -333,17 +453,55 @@ fn map_connect_err(err: std::io::Error, target: String) -> IpcError {
     }
 }
 
+impl UnixDomainLink {
+    #[must_use]
+    pub fn borrowed_fd(&self) -> std::os::fd::BorrowedFd<'_> {
+        use std::os::fd::AsFd;
+        self.inner.stream().as_fd()
+    }
+}
+
+impl std::os::fd::AsRawFd for UnixDomainLink {
+    fn as_raw_fd(&self) -> std::os::fd::RawFd {
+        self.inner.stream().as_raw_fd()
+    }
+}
+
+impl std::io::Read for UnixDomainLink {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.inner.stream_mut().read(buf)
+    }
+}
+
+impl std::io::Write for UnixDomainLink {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.inner.stream_mut().write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.stream_mut().flush()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::transport::FixedTimestampSource;
-    use grdr_crypto::SigningKeypair;
-    use grdr_wire::{WireEnvelope, generate_nonce, sign_envelope};
+
+    fn make_frame(body: &[u8]) -> Vec<u8> {
+        let mut out = Vec::with_capacity(FRAME_HEADER_LEN + body.len());
+        out.extend_from_slice(b"GRDR");
+        out.extend_from_slice(&1u16.to_be_bytes());
+        out.extend_from_slice(&u32::try_from(body.len()).unwrap().to_be_bytes());
+        out.extend_from_slice(body);
+        out
+    }
 
     #[test]
     fn unix_acceptor_and_connector_exchange_frames_with_deadlines() {
-        let sock_path =
-            std::path::PathBuf::from(format!("/tmp/grdr-ipc-{}.sock", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("grdr-ipc-u-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let sock_path = dir.join("decide.sock");
         let _ = std::fs::remove_file(&sock_path);
         let addr = LocalEndpointAddress::UnixSocket {
             path: sock_path.clone(),
@@ -355,26 +513,20 @@ mod tests {
             acceptor.accept(IpcDeadline::from_millis_capped(5, 1_000), &clock),
             Err(IpcError::DeadlineExceeded { .. })
         ));
+        let frame = make_frame(b"ping");
+        let sent_frame = frame.clone();
         let handle = std::thread::spawn(move || {
             let mut client = UnixDomainConnector
                 .connect(&addr, IpcDeadline::call_default(), &clock)
                 .unwrap();
-            let kp = SigningKeypair::generate().unwrap();
-            let env = sign_envelope(
-                &kp,
-                generate_nonce().unwrap(),
-                clock.now_utc(),
-                "ping".to_string(),
-            )
-            .unwrap();
-            client.send_envelope(&env).unwrap();
+            client.send_bytes(&sent_frame).unwrap();
         });
 
         let mut server_link = acceptor
             .accept(IpcDeadline::call_default(), &clock)
             .unwrap();
-        let received: WireEnvelope<String> = server_link.recv_envelope().unwrap();
-        assert_eq!(received.payload, "ping");
+        let received = server_link.recv_bytes().unwrap();
+        assert_eq!(received, frame);
         acceptor.stop();
         assert!(matches!(
             acceptor.accept(IpcDeadline::call_default(), &clock),
@@ -382,6 +534,7 @@ mod tests {
         ));
         handle.join().unwrap();
         let _ = std::fs::remove_file(&sock_path);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -416,10 +569,7 @@ mod tests {
         let (mut writer, reader) = UnixStream::pair().unwrap();
         reader.set_nonblocking(true).unwrap();
 
-        let kp = SigningKeypair::generate().unwrap();
-        let env =
-            sign_envelope(&kp, generate_nonce().unwrap(), now, "fallback".to_string()).unwrap();
-        let frame = grdr_wire::encode_frame(&env).unwrap();
+        let frame = make_frame(b"fallback");
         writer.write_all(&frame).unwrap();
         drop(writer);
 
@@ -429,8 +579,8 @@ mod tests {
             StreamBlockingMode::NonBlockingFallback,
         )
         .unwrap();
-        let decoded: WireEnvelope<String> = link.recv_envelope().unwrap();
-        assert_eq!(decoded.payload, "fallback");
+        let decoded = link.recv_bytes().unwrap();
+        assert_eq!(decoded, frame);
 
         let (stalled_writer, stalled_reader) = UnixStream::pair().unwrap();
         stalled_reader.set_nonblocking(true).unwrap();

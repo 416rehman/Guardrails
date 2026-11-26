@@ -248,7 +248,7 @@ fn evaluate_windows_peer(
     policy: &PeerAuthPolicy,
     hold: &ProcessHold,
 ) -> PeerAuthDecision {
-    let Ok(owner_sid) = grdr_os_service::validate_windows_sid(&win.pipe_owner_sid) else {
+    let Ok(owner_sid) = crate::scm_probe::validate_windows_sid(&win.pipe_owner_sid) else {
         return refuse(PeerRefusal::ServerForeign {
             seen: OwnerClass::ForeignPrincipal,
         });
@@ -264,7 +264,7 @@ fn evaluate_windows_peer(
     }
 
     if let Some(expected_sid) = &policy.expected_windows_sid {
-        let Ok(clean_expected) = grdr_os_service::validate_windows_sid(expected_sid) else {
+        let Ok(clean_expected) = crate::scm_probe::validate_windows_sid(expected_sid) else {
             return refuse(PeerRefusal::UnverifiableHold);
         };
         if owner_sid != clean_expected {
@@ -275,7 +275,7 @@ fn evaluate_windows_peer(
     }
 
     if let Some(expected_service_sid) = &win.expected_service_sid {
-        let Ok(clean_svc_sid) = grdr_os_service::validate_windows_sid(expected_service_sid) else {
+        let Ok(clean_svc_sid) = crate::scm_probe::validate_windows_sid(expected_service_sid) else {
             return refuse(PeerRefusal::UnverifiableHold);
         };
         if owner_sid != clean_svc_sid {
@@ -304,7 +304,7 @@ fn evaluate_windows_peer(
     let Some(msg_sid_raw) = win.message_identity_sid.as_deref() else {
         return refuse(PeerRefusal::MissingMessageIdentity);
     };
-    let Ok(msg_sid) = grdr_os_service::validate_windows_sid(msg_sid_raw) else {
+    let Ok(msg_sid) = crate::scm_probe::validate_windows_sid(msg_sid_raw) else {
         return refuse(PeerRefusal::MissingMessageIdentity);
     };
     if !win.open_as_self_verified {

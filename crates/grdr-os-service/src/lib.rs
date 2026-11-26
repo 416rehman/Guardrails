@@ -5,7 +5,10 @@
 pub mod ladder;
 pub mod lifecycle;
 pub mod pipe_dacl;
+pub mod rss;
 pub mod supervision;
+pub mod unix_control;
+pub mod win_scm;
 
 use grdr_model::CodedError;
 
@@ -18,9 +21,10 @@ pub use lifecycle::{
     format_sd_notify_payload, parse_systemd_listen_fds,
 };
 pub use pipe_dacl::{
-    NamedPipeAccessRight, NamedPipeDaclSpec, PipeSecurityProfile, build_named_pipe_dacl,
-    validate_windows_sid,
+    NamedPipeAccessRight, NamedPipeDaclSpec, PipeMandatoryLabel, PipeSecurityProfile,
+    build_named_pipe_dacl, validate_windows_sid,
 };
+pub use rss::current_process_rss_bytes;
 pub use supervision::{ChildHeartbeatMonitor, ChildLifecycle, SupervisionDecision};
 
 pub const CODE_SVC_INVALID_TRANSITION: &str = "GRDR-SVC-0001";

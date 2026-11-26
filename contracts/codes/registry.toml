@@ -103,6 +103,12 @@ GRDR-CRYPTO-0006 = { owner = "grdr-crypto", file = "crates/grdr-crypto/src/lib.r
 GRDR-CRYPTO-0007 = { owner = "grdr-crypto", file = "crates/grdr-crypto/src/lib.rs" }
 GRDR-CRYPTO-0008 = { owner = "grdr-crypto", file = "crates/grdr-crypto/src/lib.rs" }
 GRDR-DAEMON-0001 = { owner = "grdr-model", file = "crates/grdr-model/src/error.rs" }
+GRDR-DAEM-0001 = { owner = "grdr-daemon", file = "programs/grdr-daemon/src/main.rs" }
+GRDR-DAEM-0002 = { owner = "grdr-daemon", file = "programs/grdr-daemon/src/main.rs" }
+GRDR-DAEM-0003 = { owner = "grdr-daemon", file = "programs/grdr-daemon/src/ipc_server.rs" }
+GRDR-DAEM-0004 = { owner = "grdr-daemon", file = "programs/grdr-daemon/src/ipc_server.rs" }
+GRDR-DAEM-0005 = { owner = "grdr-daemon", file = "programs/grdr-daemon/src/supervisor.rs" }
+GRDR-DAEM-0006 = { owner = "grdr-daemon", file = "programs/grdr-daemon/src/floor_compiler.rs" }
 GRDR-DEC-0001 = { owner = "grdr-broker", file = "crates/grdr-broker/src/lib.rs" }
 GRDR-DEC-0002 = { owner = "grdr-broker", file = "crates/grdr-broker/src/lib.rs" }
 GRDR-DETECT-0001 = { owner = "grdr-core", file = "crates/grdr-core/src/detect/types.rs" }
@@ -171,6 +177,10 @@ GRDR-INT-0006 = { owner = "grdr-integrations", file = "crates/grdr-integrations/
 GRDR-INT-0007 = { owner = "grdr-integrations", file = "crates/grdr-integrations/src/lib.rs" }
 GRDR-INT-0008 = { owner = "grdr-integrations", file = "crates/grdr-integrations/src/lib.rs" }
 GRDR-INT-0009 = { owner = "grdr-integrations", file = "crates/grdr-integrations/src/lib.rs" }
+GRDR-HOOK-0001 = { owner = "grdr-hook", file = "programs/grdr-hook/src/json_scan.rs" }
+GRDR-HOOK-0002 = { owner = "grdr-hook", file = "programs/grdr-hook/src/json_scan.rs" }
+GRDR-HOOK-0003 = { owner = "grdr-hook", file = "programs/grdr-hook/src/json_scan.rs" }
+GRDR-HOOK-0004 = { owner = "grdr-hook", file = "programs/grdr-hook/src/json_scan.rs" }
 GRDR-INTEL-0001 = { owner = "grdr-intel", file = "crates/grdr-intel/src/lib.rs" }
 GRDR-INTEL-0002 = { owner = "grdr-intel", file = "crates/grdr-intel/src/lib.rs" }
 GRDR-INTEL-0003 = { owner = "grdr-intel", file = "crates/grdr-intel/src/lib.rs" }
@@ -212,6 +222,19 @@ GRDR-LLM-0002 = { owner = "grdr-llm-proto", file = "crates/grdr-llm-proto/src/li
 GRDR-LSTORE-0001 = { owner = "grdr-store-local", file = "crates/grdr-store-local/src/lib.rs" }
 GRDR-LSTORE-0002 = { owner = "grdr-store-local", file = "crates/grdr-store-local/src/lib.rs" }
 GRDR-LSTORE-0003 = { owner = "grdr-store-local", file = "crates/grdr-store-local/src/lib.rs" }
+GRDR-LSTORE-0004 = { owner = "grdr-store-local", file = "crates/grdr-store-local/src/zstd_frame.rs" }
+GRDR-LSTORE-0005 = { owner = "grdr-store-local", file = "crates/grdr-store-local/src/zstd_frame.rs" }
+GRDR-LSTORE-0006 = { owner = "grdr-store-local", file = "crates/grdr-store-local/src/zstd_frame.rs" }
+GRDR-LSTORE-0007 = { owner = "grdr-store-local", file = "crates/grdr-store-local/src/spool_io.rs" }
+GRDR-LSTORE-0008 = { owner = "grdr-store-local", file = "crates/grdr-store-local/src/spool_io.rs" }
+GRDR-LSTORE-0009 = { owner = "grdr-store-local", file = "crates/grdr-store-local/src/spool_io.rs" }
+GRDR-LSTORE-0010 = { owner = "grdr-store-local", file = "crates/grdr-store-local/src/spool_io.rs" }
+GRDR-LSTORE-0011 = { owner = "grdr-store-local", file = "crates/grdr-store-local/src/checkpoint.rs" }
+GRDR-LSTORE-0012 = { owner = "grdr-store-local", file = "crates/grdr-store-local/src/checkpoint.rs" }
+GRDR-LSTORE-0013 = { owner = "grdr-store-local", file = "crates/grdr-store-local/src/checkpoint.rs" }
+GRDR-LSTORE-0014 = { owner = "grdr-store-local", file = "crates/grdr-store-local/src/recorder.rs" }
+GRDR-LSTORE-0015 = { owner = "grdr-store-local", file = "crates/grdr-store-local/src/recorder.rs" }
+GRDR-LSTORE-0016 = { owner = "grdr-store-local", file = "crates/grdr-store-local/src/recorder.rs" }
 GRDR-MACSENS-0001 = { owner = "grdr-sensor-macos", file = "crates/grdr-sensor-macos/src/lib.rs" }
 GRDR-MACSENS-0002 = { owner = "grdr-sensor-macos", file = "crates/grdr-sensor-macos/src/lib.rs" }
 GRDR-MACSENS-0003 = { owner = "grdr-sensor-macos", file = "crates/grdr-sensor-macos/src/lib.rs" }
@@ -378,3 +401,32 @@ GRDR-WIRE-0005 = { owner = "grdr-wire", file = "crates/grdr-wire/src/lib.rs" }
 GRDR-WIRE-0006 = { owner = "grdr-wire", file = "crates/grdr-wire/src/lib.rs" }
 GRDR-WIRE-0007 = { owner = "grdr-wire", file = "crates/grdr-wire/src/lib.rs" }
 GRDR-WIRE-0008 = { owner = "grdr-wire", file = "crates/grdr-wire/src/lib.rs" }
+GRDR-WIRE-0009 = { owner = "grdr-wire", file = "crates/grdr-wire/src/frame.rs" }
+GRDR-WIRE-0010 = { owner = "grdr-wire", file = "crates/grdr-wire/src/frame.rs", shared_with = ["grdr-hook"] }
+GRDR-WIRE-0011 = { owner = "grdr-wire", file = "crates/grdr-wire/src/frame.rs" }
+GRDR-WIRE-0012 = { owner = "grdr-wire", file = "crates/grdr-wire/src/frame.rs" }
+GRDR-WIRE-0013 = { owner = "grdr-wire", file = "crates/grdr-wire/src/frame.rs" }
+GRDR-WIRE-0014 = { owner = "grdr-wire", file = "crates/grdr-wire/src/frame.rs" }
+GRDR-WIRE-0015 = { owner = "grdr-wire", file = "crates/grdr-wire/src/frame.rs" }
+GRDR-WIRE-0016 = { owner = "grdr-wire", file = "crates/grdr-wire/src/frame.rs" }
+GRDR-WIRE-0017 = { owner = "grdr-wire", file = "crates/grdr-wire/src/frame.rs" }
+GRDR-WIRE-0018 = { owner = "grdr-wire", file = "crates/grdr-wire/src/peer_types.rs" }
+GRDR-WIRE-0019 = { owner = "grdr-wire", file = "crates/grdr-wire/src/peer_types.rs" }
+GRDR-WIRE-0020 = { owner = "grdr-wire", file = "crates/grdr-wire/src/peer_types.rs" }
+GRDR-WIRE-0021 = { owner = "grdr-wire", file = "crates/grdr-wire/src/peer_types.rs" }
+GRDR-WIRE-0022 = { owner = "grdr-wire", file = "crates/grdr-wire/src/peer_types.rs" }
+GRDR-WIRE-0023 = { owner = "grdr-wire", file = "crates/grdr-wire/src/peer_types.rs" }
+GRDR-WIRE-0024 = { owner = "grdr-wire", file = "crates/grdr-wire/src/peer_types.rs" }
+GRDR-WIRE-0025 = { owner = "grdr-wire", file = "crates/grdr-wire/src/peer_types.rs" }
+GRDR-WIRE-0026 = { owner = "grdr-wire", file = "crates/grdr-wire/src/floor_bin.rs" }
+GRDR-WIRE-0027 = { owner = "grdr-wire", file = "crates/grdr-wire/src/floor_bin.rs" }
+GRDR-WIRE-0028 = { owner = "grdr-wire", file = "crates/grdr-wire/src/floor_bin.rs" }
+GRDR-WIRE-0029 = { owner = "grdr-wire", file = "crates/grdr-wire/src/floor_bin.rs" }
+GRDR-WIRE-0030 = { owner = "grdr-wire", file = "crates/grdr-wire/src/floor_bin.rs" }
+GRDR-WIRE-0031 = { owner = "grdr-wire", file = "crates/grdr-wire/src/floor_bin.rs" }
+GRDR-WIRE-0033 = { owner = "grdr-wire", file = "crates/grdr-wire/src/floor_bin.rs" }
+GRDR-WIRE-0034 = { owner = "grdr-wire", file = "crates/grdr-wire/src/floor_bin.rs" }
+GRDR-WIRE-0035 = { owner = "grdr-wire", file = "crates/grdr-wire/src/peer_types.rs" }
+GRDR-WIRE-0036 = { owner = "grdr-wire", file = "crates/grdr-wire/src/frame.rs", shared_with = ["grdr-engine", "grdr-updater", "grdr-uplink"] }
+GRDR-WIRE-0037 = { owner = "grdr-wire", file = "crates/grdr-wire/src/frame.rs", shared_with = ["grdr-engine", "grdr-updater", "grdr-uplink"] }
+GRDR-WIRE-0038 = { owner = "grdr-wire", file = "crates/grdr-wire/src/frame.rs" }

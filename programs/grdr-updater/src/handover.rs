@@ -122,8 +122,35 @@ impl HandoverCoordinator {
         Ok(marker)
     }
 
+    /// Non-destructively check whether an unexpired active `state/handover` marker exists.
+    pub fn peek_active(&self, clock: &dyn Clock) -> Result<Option<HandoverMarker>, UpdaterError> {
+        match std::fs::symlink_metadata(&self.marker_path) {
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(err) => {
+                return Err(UpdaterError::Io {
+                    detail: format!("failed to inspect handover marker: {err}"),
+                });
+            }
+            Ok(_) => {}
+        }
+        self.inspect_marker(clock).map(Some).or_else(|e| match e {
+            UpdaterError::HandoverInvalid { .. } => Ok(None),
+            other => Err(other),
+        })
+    }
+
     /// Validate an active `state/handover` marker across reboot-safe monotonic + wall bounds and consume once.
     pub fn validate_and_consume(&self, clock: &dyn Clock) -> Result<HandoverMarker, UpdaterError> {
+        let mut marker = self.inspect_marker(clock)?;
+        marker.marker_status = HandoverMarkerStatus::Consumed;
+        let encoded = serde_json::to_vec_pretty(&marker).map_err(|e| UpdaterError::Io {
+            detail: format!("failed to update handover marker: {e}"),
+        })?;
+        atomic_write_bytes(&self.marker_path, &encoded)?;
+        Ok(marker)
+    }
+
+    fn inspect_marker(&self, clock: &dyn Clock) -> Result<HandoverMarker, UpdaterError> {
         ensure_safe_dir(&self.state_root)?;
         let canonical_root =
             std::fs::canonicalize(&self.state_root).map_err(|e| UpdaterError::Io {
@@ -135,11 +162,16 @@ impl HandoverCoordinator {
                 detail: format!("missing or unreadable handover marker: {e}"),
             }
         })?;
-        let mut marker: HandoverMarker =
+        let marker: HandoverMarker =
             serde_json::from_slice(&raw).map_err(|e| UpdaterError::HandoverInvalid {
                 detail: format!("corrupt handover marker: {e}"),
             })?;
 
+        if marker.version != 1 {
+            return Err(UpdaterError::HandoverInvalid {
+                detail: format!("unsupported handover marker version {}", marker.version),
+            });
+        }
         validate_sha256_hex(&marker.target_sha256)?;
         if marker.marker_status != HandoverMarkerStatus::Active {
             return Err(UpdaterError::HandoverInvalid {
@@ -179,10 +211,14 @@ impl HandoverCoordinator {
                 detail: e.to_string(),
             })?
             .as_millisecond();
-        if now_wall_ms < marker.issued_wall_unix_ms || now_wall_ms > marker.expires_wall_unix_ms {
+        // Tolerate bounded NTP step inside an active monotonic [created..=expires] window.
+        let ntp_step_tol_ms: i64 = 60_000;
+        if now_wall_ms < marker.issued_wall_unix_ms.saturating_sub(ntp_step_tol_ms)
+            || now_wall_ms > marker.expires_wall_unix_ms.saturating_add(ntp_step_tol_ms)
+        {
             return Err(UpdaterError::HandoverInvalid {
                 detail: format!(
-                    "handover marker expired by wall clock ({} > {})",
+                    "handover marker wall clock far outside window ({} vs {})",
                     now_wall_ms, marker.expires_wall_unix_ms
                 ),
             });
@@ -201,12 +237,6 @@ impl HandoverCoordinator {
                 detail: "target binary digest changed prior to handover completion".to_string(),
             });
         }
-
-        marker.marker_status = HandoverMarkerStatus::Consumed;
-        let encoded = serde_json::to_vec_pretty(&marker).map_err(|e| UpdaterError::Io {
-            detail: format!("failed to update handover marker: {e}"),
-        })?;
-        atomic_write_bytes(&self.marker_path, &encoded)?;
         Ok(marker)
     }
 }
@@ -221,7 +251,7 @@ pub fn run_updater_self_test(clock: &dyn Clock) -> Result<(), UpdaterError> {
     Ok(())
 }
 
-fn boot_mono_ms(clock: &dyn Clock) -> Result<u64, UpdaterError> {
+pub(crate) fn boot_mono_ms(clock: &dyn Clock) -> Result<u64, UpdaterError> {
     let uptime = clock.boot_uptime().map_err(|e| UpdaterError::ClockFailed {
         detail: e.to_string(),
     })?;

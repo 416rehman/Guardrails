@@ -1,90 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
+#![deny(clippy::arithmetic_side_effects)]
 
 //! Signed A/B slot activation, LKG pack channels, `security_floor` enforcement,
 //! update authority isolation (`self`/`managed`/`image`), and crash auto-revert (`D-11`).
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use grdr_crypto::{SigningKeypair, verify_bytes};
-use grdr_update::{PackKind, SlotState, UpdateSlot, canonical_sha256};
-use serde::{Deserialize, Serialize};
+use grdr_crypto::SigningKeypair;
+use grdr_update::{PackKind, UpdateSlot, canonical_sha256};
 
 use crate::error::UpdaterError;
-use crate::fs_safe::{atomic_write_bytes, ensure_not_symlink, ensure_safe_dir, read_bounded_bytes};
+use crate::fs_safe::{
+    atomic_write_bytes, ensure_not_symlink, ensure_safe_dir, path_exists_nofollow,
+    read_bounded_bytes,
+};
+use crate::p7_delta::max_bytes_for_pack;
+use crate::slot_journal::{
+    initial_slot_journal, load_verified_journal, persist_signed_journal, sync_slot_state_floor,
+    validate_channel_name, validate_sha256_hex,
+};
 use crate::verify::VerifiedUpdateArtifact;
+
+pub use crate::slot_journal::{
+    BinaryIntegrityOutcome, PackChannelRecord, PendingCommitWindow, SignedSlotJournal, SlotJournal,
+    SlotSnapshot, UpdateAuthority,
+};
 
 /// Startup failures during 30-minute stabilization window before automatic rollback.
 pub const MAX_CONSECUTIVE_BOOT_CRASHES: u32 = 3;
 /// Post-activation binary stabilization window in wall seconds (30 minutes).
 pub const COMMIT_STABILIZATION_WINDOW_S: i64 = 1_800;
-/// Maximum slot journal size permitted from disk (4 MiB).
-const MAX_JOURNAL_BYTES: u64 = 4_194_304;
 /// Maximum slot binary size permitted from disk (128 MiB).
 const MAX_SLOT_BINARY_BYTES: u64 = 134_217_728;
-
-/// Governing update authority on this host (`docs/design/11` & `24`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum UpdateAuthority {
-    SelfManaged,
-    Managed,
-    Image,
-}
-
-/// Binary integrity observation in `Managed` or `SelfManaged` authority.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum BinaryIntegrityOutcome {
-    MatchesExpected,
-    ExternalBinaryTamperDetected {
-        expected_sha256: String,
-        actual_sha256: String,
-    },
-}
-
-/// Versioned snapshot of an inactive/active slot used for deterministic rollback.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SlotSnapshot {
-    pub slot: UpdateSlot,
-    pub version: String,
-    pub generation: u64,
-    pub sha256: String,
-}
-
-/// Persistent active/LKG metadata for one policy/pack channel.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PackChannelRecord {
-    pub channel: String,
-    pub active_version: String,
-    pub active_generation: u64,
-    pub active_sha256: String,
-    pub lkg_version: Option<String>,
-    pub lkg_generation: Option<u64>,
-    pub lkg_sha256: Option<String>,
-}
-
-/// Durable journal persisted atomically on every state transition.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SlotJournal {
-    pub authority: UpdateAuthority,
-    pub slot_state: SlotState,
-    pub security_floor: u64,
-    pub active: SlotSnapshot,
-    pub previous: Option<SlotSnapshot>,
-    pub pending_commit_issued_wall_s: Option<i64>,
-    pub pending_commit_until_wall_s: Option<i64>,
-    pub consecutive_crashes: u32,
-    pub pack_channels: BTreeMap<String, PackChannelRecord>,
-}
-
-/// Ed25519-authenticated slot journal envelope preventing unauthorized local mutation.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SignedSlotJournal {
-    pub journal: SlotJournal,
-    pub key_id: String,
-    pub signature_b64: String,
-}
 
 /// Atomic updater controller for binary slots and pack channels.
 pub struct SlotActivationManager {
@@ -95,6 +43,64 @@ pub struct SlotActivationManager {
 }
 
 impl SlotActivationManager {
+    /// Initialize a brand-new Slot A state root with a concrete initial binary payload.
+    pub fn init_new(
+        state_root: PathBuf,
+        authority: UpdateAuthority,
+        journal_signer: SigningKeypair,
+        initial_version: impl Into<String>,
+        initial_generation: u64,
+        initial_bytes: &[u8],
+    ) -> Result<Self, UpdaterError> {
+        ensure_safe_dir(&state_root)?;
+        let journal_path = state_root.join("slots.journal.json");
+        if path_exists_nofollow(&journal_path)? {
+            return Err(UpdaterError::SlotTransitionInvalid {
+                detail: "refusing init_new when slots.journal.json already exists".to_string(),
+            });
+        }
+        let initial_sha = canonical_sha256(initial_bytes);
+        let journal = initial_slot_journal(
+            authority,
+            initial_version.into(),
+            initial_generation,
+            initial_sha,
+        );
+        let mgr = Self {
+            state_root,
+            journal_path,
+            journal_signer,
+            journal,
+        };
+        atomic_write_bytes(&mgr.slot_binary_path(UpdateSlot::SlotA), initial_bytes)?;
+        mgr.persist()?;
+        Ok(mgr)
+    }
+
+    /// Open and verify an existing `slots.journal.json` without ever resetting `security_floor`.
+    pub fn open_existing(
+        state_root: PathBuf,
+        authority: UpdateAuthority,
+        journal_signer: SigningKeypair,
+    ) -> Result<Self, UpdaterError> {
+        ensure_safe_dir(&state_root)?;
+        let journal_path = state_root.join("slots.journal.json");
+        if !path_exists_nofollow(&journal_path)? {
+            return Err(UpdaterError::SlotTransitionInvalid {
+                detail: "missing signed slots.journal.json".to_string(),
+            });
+        }
+        let journal = load_verified_journal(&journal_path, authority, &journal_signer)?;
+        let mgr = Self {
+            state_root,
+            journal_path,
+            journal_signer,
+            journal,
+        };
+        mgr.verify_active_binary_on_disk(false)?;
+        Ok(mgr)
+    }
+
     /// Load and cryptographically verify `slots.journal.json` or initialize safely on Slot A.
     pub fn open_or_init(
         state_root: PathBuf,
@@ -109,67 +115,39 @@ impl SlotActivationManager {
         validate_sha256_hex(&initial_sha)?;
         let journal_path = state_root.join("slots.journal.json");
 
-        if journal_path.exists() {
-            let raw = read_bounded_bytes(&journal_path, MAX_JOURNAL_BYTES)?;
-            let envelope: SignedSlotJournal =
-                serde_json::from_slice(&raw).map_err(|e| UpdaterError::SlotTransitionInvalid {
-                    detail: format!("corrupt signed slot journal: {e}"),
-                })?;
-            if envelope.key_id != journal_signer.key_id() {
-                return Err(UpdaterError::SlotTransitionInvalid {
-                    detail: "slot journal key_id does not match pinned journal signer".to_string(),
+        if path_exists_nofollow(&journal_path)? {
+            let journal = load_verified_journal(&journal_path, authority, &journal_signer)?;
+            if journal.security_floor < initial_generation {
+                return Err(UpdaterError::SecurityFloorViolation {
+                    current_floor: initial_generation,
+                    candidate_generation: journal.security_floor,
                 });
             }
-            let canonical =
-                serde_json::to_vec(&envelope.journal).map_err(|e| UpdaterError::Io {
-                    detail: format!("canonical slot journal encode failed: {e}"),
-                })?;
-            verify_bytes(
-                &journal_signer.public_key_b64(),
-                "grdr-slot-journal-v1",
-                &canonical,
-                &envelope.signature_b64,
-            )
-            .map_err(|_| UpdaterError::SlotTransitionInvalid {
-                detail: "slot journal signature verification failed (tamper detected)".to_string(),
-            })?;
-            if envelope.journal.authority != authority {
-                return Err(UpdaterError::AuthorityDisallowed {
-                    authority: format!("{:?}", envelope.journal.authority),
-                    action: format!("reopen with mismatched authority {authority:?}"),
-                });
-            }
-            return Ok(Self {
+            let mgr = Self {
                 state_root,
                 journal_path,
                 journal_signer,
-                journal: envelope.journal,
+                journal,
+            };
+            mgr.verify_active_binary_on_disk(true)?;
+            return Ok(mgr);
+        }
+
+        if path_exists_nofollow(&state_root.join("slot_a.bin"))?
+            || path_exists_nofollow(&state_root.join("slot_b.bin"))?
+        {
+            return Err(UpdaterError::SlotTransitionInvalid {
+                detail: "refusing initial journal creation when slot binaries already exist"
+                    .to_string(),
             });
         }
 
-        let version = initial_version.into();
-        let slot_state = SlotState::initial(
-            version.clone(),
-            initial_generation,
-            initial_sha.clone(),
-            initial_generation,
-        );
-        let journal = SlotJournal {
+        let journal = initial_slot_journal(
             authority,
-            slot_state,
-            security_floor: initial_generation,
-            active: SlotSnapshot {
-                slot: UpdateSlot::SlotA,
-                version,
-                generation: initial_generation,
-                sha256: initial_sha,
-            },
-            previous: None,
-            pending_commit_issued_wall_s: None,
-            pending_commit_until_wall_s: None,
-            consecutive_crashes: 0,
-            pack_channels: BTreeMap::new(),
-        };
+            initial_version.into(),
+            initial_generation,
+            initial_sha,
+        );
         let mgr = Self {
             state_root,
             journal_path,
@@ -186,6 +164,7 @@ impl SlotActivationManager {
         verified: &VerifiedUpdateArtifact,
         new_security_floor: Option<u64>,
         now_wall_unix_s: i64,
+        now_mono_ms: u64,
     ) -> Result<SlotSnapshot, UpdaterError> {
         if verified.pack_kind() != PackKind::Binary {
             return Err(UpdaterError::SlotTransitionInvalid {
@@ -199,6 +178,29 @@ impl SlotActivationManager {
             });
         }
 
+        let generation = verified.generation();
+        if generation < self.journal.security_floor {
+            return Err(UpdaterError::SecurityFloorViolation {
+                current_floor: self.journal.security_floor,
+                candidate_generation: generation,
+            });
+        }
+        if let Some(floor) = new_security_floor
+            && floor > generation
+        {
+            return Err(UpdaterError::SecurityFloorViolation {
+                current_floor: floor,
+                candidate_generation: generation,
+            });
+        }
+
+        if !matches!(self.journal.pending_commit, PendingCommitWindow::Idle) {
+            return Err(UpdaterError::SlotTransitionInvalid {
+                detail: "pending unconfirmed slot activation must commit before another activation"
+                    .to_string(),
+            });
+        }
+
         let candidate_bytes = verified.verified_bytes();
         let byte_len = u64::try_from(candidate_bytes.len()).unwrap_or(u64::MAX);
         if byte_len > MAX_SLOT_BINARY_BYTES {
@@ -209,17 +211,8 @@ impl SlotActivationManager {
             });
         }
 
-        let generation = verified.generation();
-        if generation < self.journal.security_floor {
-            return Err(UpdaterError::SecurityFloorViolation {
-                current_floor: self.journal.security_floor,
-                candidate_generation: generation,
-            });
-        }
-
         let version = verified.version().to_string();
         let sha256 = verified.sha256().to_string();
-
         let staged = self
             .journal
             .slot_state
@@ -253,32 +246,42 @@ impl SlotActivationManager {
         if let Some(floor) = new_security_floor
             && floor > self.journal.security_floor
         {
-            self.journal.security_floor = floor.min(generation);
+            self.journal.security_floor = floor;
         }
 
         self.journal.slot_state = activated;
+        sync_slot_state_floor(&mut self.journal);
         self.journal.previous = Some(prev);
         self.journal.active = next_snapshot.clone();
-        self.journal.pending_commit_issued_wall_s = Some(now_wall_unix_s);
-        self.journal.pending_commit_until_wall_s =
-            Some(now_wall_unix_s.saturating_add(COMMIT_STABILIZATION_WINDOW_S));
+        self.journal.pending_commit = PendingCommitWindow::Pending {
+            issued_wall_s: now_wall_unix_s,
+            until_wall_s: now_wall_unix_s.saturating_add(COMMIT_STABILIZATION_WINDOW_S),
+            issued_mono_ms: now_mono_ms,
+        };
         self.journal.consecutive_crashes = 0;
         self.persist()?;
         Ok(next_snapshot)
     }
 
-    /// Record a startup crash during the bounded `[issued..=deadline]` stabilization window.
+    /// Record a startup crash during the bounded wall + monotonic stabilization window.
     pub fn record_startup_crash(
         &mut self,
         reason: &str,
         now_wall_unix_s: i64,
+        now_mono_ms: u64,
     ) -> Result<Option<SlotSnapshot>, UpdaterError> {
+        let window_ms = u64::try_from(COMMIT_STABILIZATION_WINDOW_S)
+            .unwrap_or(1_800)
+            .saturating_mul(1_000);
         let within_window = matches!(
-            (
-                self.journal.pending_commit_issued_wall_s,
-                self.journal.pending_commit_until_wall_s,
-            ),
-            (Some(issued), Some(deadline)) if (issued..=deadline).contains(&now_wall_unix_s)
+            self.journal.pending_commit,
+            PendingCommitWindow::Pending {
+                issued_wall_s,
+                until_wall_s,
+                issued_mono_ms,
+            } if (issued_wall_s..=until_wall_s).contains(&now_wall_unix_s)
+                && now_mono_ms >= issued_mono_ms
+                && now_mono_ms.saturating_sub(issued_mono_ms) <= window_ms
         );
         if !within_window {
             return Ok(None);
@@ -331,24 +334,58 @@ impl SlotActivationManager {
             })?;
 
         self.journal.slot_state = rolled;
+        sync_slot_state_floor(&mut self.journal);
         self.journal.active = prev.clone();
         self.journal.previous = None;
-        self.journal.pending_commit_issued_wall_s = None;
-        self.journal.pending_commit_until_wall_s = None;
+        self.journal.pending_commit = PendingCommitWindow::Idle;
         self.journal.consecutive_crashes = 0;
         self.persist()?;
         Ok(Some(prev))
     }
 
-    /// Commit the pending slot once health checks stabilize.
-    pub fn confirm_stable_commit(&mut self) -> Result<(), UpdaterError> {
-        self.journal.pending_commit_issued_wall_s = None;
-        self.journal.pending_commit_until_wall_s = None;
+    /// Commit the pending slot once both wall and monotonic stabilization windows have elapsed.
+    pub fn confirm_stable_commit(
+        &mut self,
+        now_wall_unix_s: i64,
+        now_mono_ms: u64,
+    ) -> Result<(), UpdaterError> {
+        let window_ms = u64::try_from(COMMIT_STABILIZATION_WINDOW_S)
+            .unwrap_or(1_800)
+            .saturating_mul(1_000);
+        match self.journal.pending_commit {
+            PendingCommitWindow::Idle => {
+                return Err(UpdaterError::SlotTransitionInvalid {
+                    detail: "no pending unconfirmed slot activation to commit".to_string(),
+                });
+            }
+            PendingCommitWindow::Pending {
+                until_wall_s,
+                issued_mono_ms,
+                ..
+            } => {
+                if now_wall_unix_s < until_wall_s {
+                    return Err(UpdaterError::SlotTransitionInvalid {
+                        detail: format!(
+                            "stabilization window active until {until_wall_s} (now {now_wall_unix_s})"
+                        ),
+                    });
+                }
+                let elapsed_mono_ms = now_mono_ms.saturating_sub(issued_mono_ms);
+                if now_mono_ms < issued_mono_ms || elapsed_mono_ms < window_ms {
+                    return Err(UpdaterError::SlotTransitionInvalid {
+                        detail: format!(
+                            "monotonic stabilization window active ({elapsed_mono_ms}ms < {window_ms}ms)"
+                        ),
+                    });
+                }
+            }
+        }
+        self.journal.pending_commit = PendingCommitWindow::Idle;
         self.journal.consecutive_crashes = 0;
         self.persist()
     }
 
-    /// Stage and swap a verified content/policy pack channel, preserving its previous LKG.
+    /// Stage and swap a verified content/policy pack channel, persisting its previous LKG payload.
     pub fn activate_verified_pack(
         &mut self,
         verified: &VerifiedUpdateArtifact,
@@ -370,6 +407,9 @@ impl SlotActivationManager {
         let generation = verified.generation();
         let sha256 = verified.sha256().to_string();
         let version = verified.version().to_string();
+        let pack_file = self.state_root.join(format!("pack_{channel}.json"));
+        let lkg_file = self.state_root.join(format!("pack_{channel}.lkg.json"));
+
         let next_record = if let Some(existing) = self.journal.pack_channels.get(channel) {
             if generation <= existing.active_generation {
                 return Err(UpdaterError::StaleOrRollback {
@@ -378,6 +418,18 @@ impl SlotActivationManager {
                         existing.active_generation
                     ),
                 });
+            }
+            if path_exists_nofollow(&pack_file)? {
+                let prev_bytes =
+                    read_bounded_bytes(&pack_file, max_bytes_for_pack(verified.pack_kind()))?;
+                if canonical_sha256(&prev_bytes) != existing.active_sha256 {
+                    return Err(UpdaterError::SlotTransitionInvalid {
+                        detail: format!(
+                            "existing active pack '{channel}' digest mismatch before LKG save"
+                        ),
+                    });
+                }
+                atomic_write_bytes(&lkg_file, &prev_bytes)?;
             }
             PackChannelRecord {
                 channel: channel.to_string(),
@@ -400,7 +452,6 @@ impl SlotActivationManager {
             }
         };
 
-        let pack_file = self.state_root.join(format!("pack_{channel}.json"));
         atomic_write_bytes(&pack_file, verified.verified_bytes())?;
         self.journal
             .pack_channels
@@ -428,19 +479,16 @@ impl SlotActivationManager {
         }
     }
 
-    /// Read current active slot snapshot.
     #[must_use]
     pub const fn active_slot(&self) -> &SlotSnapshot {
         &self.journal.active
     }
 
-    /// Current enforced binary security floor generation.
     #[must_use]
     pub const fn security_floor(&self) -> u64 {
         self.journal.security_floor
     }
 
-    /// File path backing a given slot binary.
     #[must_use]
     pub fn slot_binary_path(&self, slot: UpdateSlot) -> PathBuf {
         let name = match slot {
@@ -450,22 +498,31 @@ impl SlotActivationManager {
         self.state_root.join(name)
     }
 
+    fn verify_active_binary_on_disk(&self, allow_absent: bool) -> Result<(), UpdaterError> {
+        let active_path = self.slot_binary_path(self.journal.active.slot);
+        if !path_exists_nofollow(&active_path)? {
+            if allow_absent {
+                return Ok(());
+            }
+            return Err(UpdaterError::SlotTransitionInvalid {
+                detail: format!("missing active slot binary {}", active_path.display()),
+            });
+        }
+        let bytes = read_bounded_bytes(&active_path, MAX_SLOT_BINARY_BYTES)?;
+        let actual = canonical_sha256(&bytes);
+        if actual != self.journal.active.sha256 {
+            return Err(UpdaterError::SlotTransitionInvalid {
+                detail: format!(
+                    "active slot {:?} binary digest mismatch (expected {}, got {actual})",
+                    self.journal.active.slot, self.journal.active.sha256
+                ),
+            });
+        }
+        Ok(())
+    }
+
     fn persist(&self) -> Result<(), UpdaterError> {
-        let canonical = serde_json::to_vec(&self.journal).map_err(|e| UpdaterError::Io {
-            detail: format!("failed to canonicalize slot journal: {e}"),
-        })?;
-        let signature_b64 = self
-            .journal_signer
-            .sign_bytes("grdr-slot-journal-v1", &canonical);
-        let envelope = SignedSlotJournal {
-            journal: self.journal.clone(),
-            key_id: self.journal_signer.key_id().to_string(),
-            signature_b64,
-        };
-        let encoded = serde_json::to_vec_pretty(&envelope).map_err(|e| UpdaterError::Io {
-            detail: format!("failed to encode slot journal: {e}"),
-        })?;
-        atomic_write_bytes(&self.journal_path, &encoded)
+        persist_signed_journal(&self.journal_path, &self.journal_signer, &self.journal)
     }
 }
 
@@ -474,30 +531,4 @@ const fn inactive_slot(active: UpdateSlot) -> UpdateSlot {
         UpdateSlot::SlotA => UpdateSlot::SlotB,
         UpdateSlot::SlotB => UpdateSlot::SlotA,
     }
-}
-
-fn validate_channel_name(channel: &str) -> Result<(), UpdaterError> {
-    if channel.is_empty()
-        || !channel
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
-    {
-        return Err(UpdaterError::PathUnsafe {
-            detail: format!("invalid pack channel name '{channel}'"),
-        });
-    }
-    Ok(())
-}
-
-fn validate_sha256_hex(sha256: &str) -> Result<(), UpdaterError> {
-    if sha256.len() != 64
-        || !sha256
-            .bytes()
-            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
-    {
-        return Err(UpdaterError::SlotTransitionInvalid {
-            detail: format!("invalid SHA-256 hex digest '{sha256}'"),
-        });
-    }
-    Ok(())
 }

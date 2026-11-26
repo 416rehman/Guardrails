@@ -2,11 +2,19 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 #![deny(clippy::arithmetic_side_effects)]
 
-use std::fs::{self, OpenOptions};
+pub mod checkpoint;
+pub mod crc32c;
+pub mod daemon_codecs;
+pub mod fs_hardening;
+pub mod recorder;
+mod recorder_retention;
+pub mod spool;
+pub mod spool_io;
+mod spool_recover;
+pub mod zstd_frame;
+
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-
-use serde::{Deserialize, Serialize};
 
 use grdr_crypto::{SigningKeypair, load_or_create_keypair};
 use grdr_model::error::{CODE_STORE_CORRUPT, CODE_STORE_IO};
@@ -15,11 +23,21 @@ use grdr_model::{
     Verdict,
 };
 use grdr_ports::{PortSnapshot, StorePort};
+use serde::{Deserialize, Serialize};
+
+use crate::fs_hardening::{
+    atomic_write_private, ensure_private_dir_all, open_nofollow_append_create,
+    read_bounded_nofollow, redact_path_label,
+};
 
 pub const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 const SNAPSHOT_FILE: &str = "state.json";
+const EPOCH_FILE: &str = "store.epoch";
 const SIGNING_KEY_FILE: &str = "signing.key";
 const RECEIPT_WAL_FILE: &str = "receipts.wal.jsonl";
+const MAX_SNAPSHOT_BYTES: usize = 16 * 1024 * 1024;
+const MAX_WAL_BYTES: usize = 32 * 1024 * 1024;
+const MAX_EPOCH_BYTES: usize = 128;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -32,12 +50,15 @@ pub enum StoreError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PersistedDaemonSnapshot {
     pub schema_version: u32,
     pub device_id: String,
     pub hostname: String,
     pub packs: Vec<PolicyPack>,
     pub grants: Vec<Grant>,
+    #[serde(default)]
+    pub revoked_grant_ids: Vec<String>,
     pub trusted_keys: Vec<TrustedKeyInfo>,
     pub kill_switch: KillSwitchState,
     pub attempts: Vec<ActionAttempt>,
@@ -53,13 +74,14 @@ pub struct LocalStore {
 
 impl LocalStore {
     pub fn open(root_dir: PathBuf) -> Result<Self, StoreError> {
-        fs::create_dir_all(&root_dir).map_err(|e| StoreError::Io {
-            path: root_dir.display().to_string(),
-            detail: e.to_string(),
+        ensure_private_dir_all(&root_dir).map_err(|detail| StoreError::Io {
+            path: redact_path_label(&root_dir),
+            detail,
         })?;
         Ok(Self { root_dir })
     }
 
+    #[must_use]
     pub fn root_dir(&self) -> &Path {
         &self.root_dir
     }
@@ -69,71 +91,111 @@ impl LocalStore {
             .map_err(|e| StoreError::Key(e.to_string()))
     }
 
+    pub fn current_epoch(&self) -> Result<u64, StoreError> {
+        let path = self.root_dir.join(EPOCH_FILE);
+        let raw = match read_bounded_nofollow(&path, MAX_EPOCH_BYTES) {
+            Ok(bytes) => bytes,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(err) => {
+                return Err(StoreError::Io {
+                    path: redact_path_label(&path),
+                    detail: err.to_string(),
+                });
+            }
+        };
+        let text = std::str::from_utf8(&raw)
+            .map_err(|e| StoreError::Codec(format!("invalid epoch UTF-8: {e}")))?;
+        text.trim()
+            .parse::<u64>()
+            .map_err(|e| StoreError::Codec(format!("corrupt store epoch counter: {e}")))
+    }
+
+    pub fn advance_epoch(&self) -> Result<u64, StoreError> {
+        let next = self
+            .current_epoch()?
+            .checked_add(1)
+            .ok_or_else(|| StoreError::Codec("epoch counter overflow".to_string()))?;
+        let path = self.root_dir.join(EPOCH_FILE);
+        atomic_write_private(&path, format!("{next}\n").as_bytes()).map_err(|detail| {
+            StoreError::Io {
+                path: redact_path_label(&path),
+                detail,
+            }
+        })?;
+        Ok(next)
+    }
+
     pub fn load_snapshot(&self) -> Result<Option<PersistedDaemonSnapshot>, StoreError> {
         let path = self.root_dir.join(SNAPSHOT_FILE);
-        if !path.is_file() {
-            return Ok(None);
+        let raw = match read_bounded_nofollow(&path, MAX_SNAPSHOT_BYTES) {
+            Ok(bytes) => bytes,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(err) => {
+                return Err(StoreError::Io {
+                    path: redact_path_label(&path),
+                    detail: err.to_string(),
+                });
+            }
+        };
+        let snap: PersistedDaemonSnapshot =
+            serde_json::from_slice(&raw).map_err(|e| StoreError::Codec(e.to_string()))?;
+        if snap.schema_version != SNAPSHOT_SCHEMA_VERSION {
+            return Err(StoreError::Codec(format!(
+                "unsupported snapshot schema_version {}",
+                snap.schema_version
+            )));
         }
-        let raw = fs::read_to_string(&path).map_err(|e| StoreError::Io {
-            path: path.display().to_string(),
-            detail: e.to_string(),
-        })?;
-        let parsed: PersistedDaemonSnapshot =
-            serde_json::from_str(&raw).map_err(|e| StoreError::Codec(e.to_string()))?;
-        Ok(Some(parsed))
+        Ok(Some(snap))
     }
 
     pub fn save_snapshot(&self, snapshot: &PersistedDaemonSnapshot) -> Result<(), StoreError> {
-        let final_path = self.root_dir.join(SNAPSHOT_FILE);
-        let tmp_path = self.root_dir.join("state.json.tmp");
+        if snapshot.schema_version != SNAPSHOT_SCHEMA_VERSION {
+            return Err(StoreError::Codec(format!(
+                "unsupported snapshot schema_version {}",
+                snapshot.schema_version
+            )));
+        }
+        let path = self.root_dir.join(SNAPSHOT_FILE);
         let bytes =
             serde_json::to_vec_pretty(snapshot).map_err(|e| StoreError::Codec(e.to_string()))?;
-
-        let mut file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(&tmp_path)
-            .map_err(|e| StoreError::Io {
-                path: tmp_path.display().to_string(),
-                detail: e.to_string(),
-            })?;
-        file.write_all(&bytes).map_err(|e| StoreError::Io {
-            path: tmp_path.display().to_string(),
-            detail: e.to_string(),
-        })?;
-        file.sync_all().map_err(|e| StoreError::Io {
-            path: tmp_path.display().to_string(),
-            detail: e.to_string(),
-        })?;
-        drop(file);
-
-        fs::rename(&tmp_path, &final_path).map_err(|e| StoreError::Io {
-            path: final_path.display().to_string(),
-            detail: e.to_string(),
-        })?;
-        Ok(())
+        atomic_write_private(&path, &bytes).map_err(|detail| StoreError::Io {
+            path: redact_path_label(&path),
+            detail,
+        })
     }
 
     pub fn append_receipt_wal(&self, receipt: &DecisionReceipt) -> Result<(), StoreError> {
         let wal_path = self.root_dir.join(RECEIPT_WAL_FILE);
-        let line = serde_json::to_string(receipt).map_err(|e| StoreError::Codec(e.to_string()))?;
-
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&wal_path)
-            .map_err(|e| StoreError::Io {
-                path: wal_path.display().to_string(),
-                detail: e.to_string(),
-            })?;
-        writeln!(file, "{line}").map_err(|e| StoreError::Io {
-            path: wal_path.display().to_string(),
+        let mut line =
+            serde_json::to_string(receipt).map_err(|e| StoreError::Codec(e.to_string()))?;
+        line.push('\n');
+        let line_len = u64::try_from(line.len()).unwrap_or(u64::MAX);
+        let mut file = open_nofollow_append_create(&wal_path).map_err(|e| StoreError::Io {
+            path: redact_path_label(&wal_path),
             detail: e.to_string(),
         })?;
+        let current_len = file
+            .metadata()
+            .map_err(|e| StoreError::Io {
+                path: redact_path_label(&wal_path),
+                detail: e.to_string(),
+            })?
+            .len();
+        let next_len = current_len.saturating_add(line_len);
+        if next_len > u64::try_from(MAX_WAL_BYTES).unwrap_or(u64::MAX) {
+            return Err(StoreError::Io {
+                path: redact_path_label(&wal_path),
+                detail: "receipt WAL exceeded maximum size cap".to_string(),
+            });
+        }
+        file.write_all(line.as_bytes())
+            .map_err(|e| StoreError::Io {
+                path: redact_path_label(&wal_path),
+                detail: e.to_string(),
+            })?;
         if receipt.verdict != Verdict::Allow {
             file.sync_all().map_err(|e| StoreError::Io {
-                path: wal_path.display().to_string(),
+                path: redact_path_label(&wal_path),
                 detail: e.to_string(),
             })?;
         }
@@ -142,25 +204,29 @@ impl LocalStore {
 
     pub fn read_receipt_wal(&self) -> Result<Vec<DecisionReceipt>, StoreError> {
         let wal_path = self.root_dir.join(RECEIPT_WAL_FILE);
-        if !wal_path.is_file() {
-            return Ok(Vec::new());
-        }
-        let file = fs::File::open(&wal_path).map_err(|e| StoreError::Io {
-            path: wal_path.display().to_string(),
-            detail: e.to_string(),
-        })?;
-        let reader = BufReader::new(file);
+        let raw = match read_bounded_nofollow(&wal_path, MAX_WAL_BYTES) {
+            Ok(bytes) => bytes,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(err) => {
+                return Err(StoreError::Io {
+                    path: redact_path_label(&wal_path),
+                    detail: err.to_string(),
+                });
+            }
+        };
+        let reader = BufReader::new(std::io::Cursor::new(raw));
         let mut out = Vec::new();
         for line_res in reader.lines() {
             let line = line_res.map_err(|e| StoreError::Io {
-                path: wal_path.display().to_string(),
+                path: redact_path_label(&wal_path),
                 detail: e.to_string(),
             })?;
-            if line.trim().is_empty() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
                 continue;
             }
             let receipt: DecisionReceipt =
-                serde_json::from_str(&line).map_err(|e| StoreError::Codec(e.to_string()))?;
+                serde_json::from_str(trimmed).map_err(|e| StoreError::Codec(e.to_string()))?;
             out.push(receipt);
         }
         Ok(out)
@@ -197,6 +263,7 @@ impl From<&PortSnapshot> for PersistedDaemonSnapshot {
             hostname: s.hostname.clone(),
             packs: s.packs.clone(),
             grants: s.grants.clone(),
+            revoked_grant_ids: Vec::new(),
             trusted_keys: s.trusted_keys.clone(),
             kill_switch: s.kill_switch.clone(),
             attempts: s.attempts.clone(),
@@ -247,6 +314,8 @@ impl StorePort for LocalStore {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
     use grdr_model::eval::essentials_pack;
     use grdr_model::{ActionClass, ControlPoint, Mode};
@@ -293,6 +362,7 @@ mod tests {
             hostname: "workstation".into(),
             packs: vec![essentials_pack()],
             grants: vec![],
+            revoked_grant_ids: vec!["gr-revoked-1".into()],
             trusted_keys: vec![kp1.public_info()],
             kill_switch: KillSwitchState::Inactive,
             attempts: vec![],
@@ -302,14 +372,18 @@ mod tests {
         };
         store.save_snapshot(&snapshot).unwrap();
         store.append_receipt_wal(&receipt).unwrap();
+        let epoch1 = store.advance_epoch().unwrap();
+        assert_eq!(epoch1, 1);
 
         let reopened = LocalStore::open(dir.clone()).unwrap();
         let kp2 = reopened.load_or_create_signing_key().unwrap();
         assert_eq!(kp1.key_id(), kp2.key_id());
+        assert_eq!(reopened.current_epoch().unwrap(), 1);
 
         let loaded = reopened.load_snapshot().unwrap().unwrap();
         assert_eq!(loaded.pending_receipts.len(), 1);
         assert_eq!(loaded.trusted_keys.len(), 1);
+        assert_eq!(loaded.revoked_grant_ids, vec!["gr-revoked-1"]);
 
         let wal = reopened.read_receipt_wal().unwrap();
         assert_eq!(wal.len(), 1);

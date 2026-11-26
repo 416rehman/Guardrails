@@ -1066,20 +1066,20 @@ dependencies = [
 name = "grdr-daemon"
 version = "0.1.0"
 dependencies = [
- "axum",
  "clap",
- "grdr-agents",
- "grdr-core",
  "grdr-crypto",
+ "grdr-fastpath",
+ "grdr-ipc-os",
  "grdr-model",
- "grdr-proto",
+ "grdr-os-clock",
+ "grdr-os-service",
+ "grdr-peer-os",
+ "grdr-sandbox-engine",
  "grdr-store-local",
+ "grdr-wire",
  "jiff 1.0.2",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tower",
+ "prost",
+ "thiserror",
  "tracing",
  "tracing-subscriber",
  "uuid",
@@ -1091,17 +1091,15 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "grdr-core",
- "grdr-crypto",
+ "grdr-ipc-os",
  "grdr-model",
- "grdr-ports",
- "grdr-ports-testkit",
- "grdr-proto",
- "grdr-store-local",
+ "grdr-os-clock",
+ "grdr-os-service",
  "grdr-wire",
  "jiff 1.0.2",
  "serde",
  "serde_json",
- "uuid",
+ "thiserror",
 ]
 
 [[package]]
@@ -1146,14 +1144,14 @@ name = "grdr-hook"
 version = "0.1.0"
 dependencies = [
  "clap",
- "grdr-agents",
- "grdr-core",
  "grdr-crypto",
- "grdr-model",
+ "grdr-fastpath",
+ "grdr-ipc-os",
+ "grdr-os-clock",
+ "grdr-peer-os",
+ "grdr-wire",
  "jiff 1.0.2",
- "reqwest",
- "serde_json",
- "uuid",
+ "thiserror",
 ]
 
 [[package]]
@@ -1238,6 +1236,7 @@ dependencies = [
  "grdr-model",
  "grdr-wire",
  "jiff 1.0.2",
+ "libc",
  "serde",
  "serde_json",
  "thiserror",
@@ -1372,9 +1371,11 @@ version = "0.1.0"
 dependencies = [
  "grdr-model",
  "jiff 1.0.2",
+ "libc",
  "serde",
  "serde_json",
  "thiserror",
+ "windows-sys",
 ]
 
 [[package]]
@@ -1382,12 +1383,14 @@ name = "grdr-peer-os"
 version = "0.1.0"
 dependencies = [
  "grdr-model",
- "grdr-os-service",
+ "grdr-os-clock",
  "grdr-wire",
  "jiff 1.0.2",
+ "libc",
  "serde",
  "serde_json",
  "thiserror",
+ "windows-sys",
 ]
 
 [[package]]
@@ -1646,7 +1649,10 @@ dependencies = [
  "grdr-model",
  "grdr-ports",
  "grdr-ports-testkit",
+ "grdr-schema",
  "jiff 1.0.2",
+ "libc",
+ "rusqlite",
  "serde",
  "serde_json",
  "thiserror",
@@ -1711,6 +1717,7 @@ dependencies = [
  "grdr-peer-os",
  "grdr-store-local",
  "grdr-update",
+ "grdr-wire",
  "jiff 1.0.2",
  "serde",
  "serde_json",
@@ -1763,8 +1770,11 @@ name = "grdr-wire"
 version = "0.1.0"
 dependencies = [
  "grdr-crypto",
+ "grdr-fastpath",
  "grdr-model",
+ "grdr-schema",
  "jiff 1.0.2",
+ "prost",
  "serde",
  "serde_json",
  "thiserror",

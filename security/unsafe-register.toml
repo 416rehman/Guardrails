@@ -49,10 +49,73 @@ verification = ["cargo test -p grdr-ffi", "miri", "asan"]
 
 [[entry]]
 crate = "grdr-ipc-os"
+file = "crates/grdr-ipc-os/src/duplex_pipe.rs"
+symbol = "NonBlockGuard::drop"
+lines = "41-54"
+invariant = "Restores prior F_GETFL flags on open borrowed pipe writer fd when O_NONBLOCK was toggled."
+owner = "endpoint"
+verification = ["cargo test -p grdr-ipc-os"]
+
+[[entry]]
+crate = "grdr-ipc-os"
+file = "crates/grdr-ipc-os/src/duplex_pipe.rs"
+symbol = "PipeWaitModeGuard::drop"
+lines = "57-76"
+invariant = "Restores Win32 PIPE_WAIT mode on open writer pipe handle when PIPE_NOWAIT was enabled."
+owner = "endpoint"
+verification = ["cargo test -p grdr-ipc-os"]
+
+[[entry]]
+crate = "grdr-ipc-os"
+file = "crates/grdr-ipc-os/src/duplex_pipe.rs"
+symbol = "enter_nonblocking"
+lines = "127-153"
+invariant = "Queries F_GETFL and sets O_NONBLOCK only on open RawFd, returning RAII NonBlockGuard."
+owner = "endpoint"
+verification = ["cargo test -p grdr-ipc-os"]
+
+[[entry]]
+crate = "grdr-ipc-os"
+file = "crates/grdr-ipc-os/src/duplex_pipe.rs"
+symbol = "poll_fd"
+lines = "160-186"
+invariant = "Bounded POSIX poll(POLLIN/POLLOUT) over single stack pollfd on open RawFd."
+owner = "endpoint"
+verification = ["cargo test -p grdr-ipc-os"]
+
+[[entry]]
+crate = "grdr-ipc-os"
+file = "crates/grdr-ipc-os/src/duplex_pipe.rs"
+symbol = "enter_pipe_nowait"
+lines = "288-311"
+invariant = "Checks GetFileType == FILE_TYPE_PIPE before calling SetNamedPipeHandleState(PIPE_NOWAIT) and wraps handle in PipeWaitModeGuard."
+owner = "endpoint"
+verification = ["cargo test -p grdr-ipc-os"]
+
+[[entry]]
+crate = "grdr-ipc-os"
+file = "crates/grdr-ipc-os/src/duplex_pipe.rs"
+symbol = "read_chunk_until"
+lines = "319-377"
+invariant = "Calls Win32 PeekNamedPipe on open reader pipe handle under cumulative Instant deadline, failing closed on unexpected Win32 errors without blocking."
+owner = "endpoint"
+verification = ["cargo test -p grdr-ipc-os"]
+
+[[entry]]
+crate = "grdr-ipc-os"
+file = "crates/grdr-ipc-os/src/unix_domain_bind.rs"
+symbol = "set_fd_cloexec"
+lines = "15-28"
+invariant = "Socket descriptor is live and wrapped in UnixListener/UnixStream; F_GETFD and F_SETFD FD_CLOEXEC never leak listener or accepted fds across exec."
+owner = "endpoint"
+verification = ["cargo test -p grdr-ipc-os"]
+
+[[entry]]
+crate = "grdr-ipc-os"
 file = "crates/grdr-ipc-os/src/windows_pipe.rs"
 symbol = "WindowsNamedPipeConnector::connect"
-lines = "153-219"
-invariant = "WaitNamedPipeW receives NUL-terminated UTF-16 pipe name slice whose backing Vec outlives the call."
+lines = "224-287"
+invariant = "WaitNamedPipeW receives NUL-terminated UTF-16 pipe name slice whose backing Vec outlives the call; FiveRightRestrictedMask + SQOS Identification are enforced."
 owner = "endpoint"
 verification = ["cargo test -p grdr-ipc-os"]
 
@@ -60,8 +123,8 @@ verification = ["cargo test -p grdr-ipc-os"]
 crate = "grdr-ipc-os"
 file = "crates/grdr-ipc-os/src/windows_pipe.rs"
 symbol = "overlapped_read"
-lines = "222-250"
-invariant = "Overlapped struct and stack buffers outlive completion/cancellation before returning from Win32 ReadFile."
+lines = "291-318"
+invariant = "ReadFile operates on a caller-owned overlapped pipe Handle; stack OVERLAPPED and event handle remain pinned until finish_overlapped completes or cancels and drains."
 owner = "endpoint"
 verification = ["cargo test -p grdr-ipc-os"]
 
@@ -69,8 +132,8 @@ verification = ["cargo test -p grdr-ipc-os"]
 crate = "grdr-ipc-os"
 file = "crates/grdr-ipc-os/src/windows_pipe.rs"
 symbol = "overlapped_write"
-lines = "252-272"
-invariant = "Overlapped struct and slice buffer remain live until overlapped write finishes or CancelIoEx completes."
+lines = "321-340"
+invariant = "WriteFile operates on a bounded u32 byte slice whose backing Vec/slice and stack OVERLAPPED outlive finish_overlapped completion or CancelIoEx drain."
 owner = "endpoint"
 verification = ["cargo test -p grdr-ipc-os"]
 
@@ -78,8 +141,8 @@ verification = ["cargo test -p grdr-ipc-os"]
 crate = "grdr-ipc-os"
 file = "crates/grdr-ipc-os/src/windows_pipe.rs"
 symbol = "finish_overlapped"
-lines = "274-326"
-invariant = "Valid Win32 pipe and manual-reset event handles; CancelIoEx waits synchronously via GetOverlappedResult before stack storage drops."
+lines = "346-400"
+invariant = "On WaitForSingleObject timeout or error, CancelIoEx and GetOverlappedResult(..., TRUE) wait for kernel release before stack OVERLAPPED drops; maps broken/unconnected pipe to clean EOF."
 owner = "endpoint"
 verification = ["cargo test -p grdr-ipc-os"]
 
@@ -87,8 +150,8 @@ verification = ["cargo test -p grdr-ipc-os"]
 crate = "grdr-ipc-os"
 file = "crates/grdr-ipc-os/src/windows_pipe.rs"
 symbol = "create_manual_reset_event"
-lines = "328-340"
-invariant = "Return handle from CreateEventW is checked against null and INVALID_HANDLE_VALUE before wrapping in OwnedHandle."
+lines = "406-415"
+invariant = "CreateEventW result is checked against null and INVALID_HANDLE_VALUE before wrapping in OwnedHandle."
 owner = "endpoint"
 verification = ["cargo test -p grdr-ipc-os"]
 
@@ -96,10 +159,415 @@ verification = ["cargo test -p grdr-ipc-os"]
 crate = "grdr-ipc-os"
 file = "crates/grdr-ipc-os/src/windows_pipe.rs"
 symbol = "zeroed_overlapped"
-lines = "342-351"
-invariant = "Win32 OVERLAPPED is a C repr plain-old-data struct valid under zero-initialization."
+lines = "420-425"
+invariant = "OVERLAPPED is a plain C ABI struct valid when zero-initialized before setting hEvent."
 owner = "endpoint"
 verification = ["cargo test -p grdr-ipc-os"]
+
+[[entry]]
+crate = "grdr-ipc-os"
+file = "crates/grdr-ipc-os/src/windows_pipe_server.rs"
+symbol = "LocalSdGuard::drop"
+lines = "54-62"
+invariant = "Non-null PSECURITY_DESCRIPTOR originates solely from ConvertStringSecurityDescriptorToSecurityDescriptorW and is freed once via LocalFree."
+owner = "endpoint"
+verification = ["cargo test -p grdr-ipc-os"]
+
+[[entry]]
+crate = "grdr-ipc-os"
+file = "crates/grdr-ipc-os/src/windows_pipe_server.rs"
+symbol = "disconnect_handle"
+lines = "251-256"
+invariant = "DisconnectNamedPipe is invoked only on an acceptor-owned server pipe instance prior to re-arming or rollback."
+owner = "endpoint"
+verification = ["cargo test -p grdr-ipc-os"]
+
+[[entry]]
+crate = "grdr-ipc-os"
+file = "crates/grdr-ipc-os/src/windows_pipe_server.rs"
+symbol = "create_pipe_instance"
+lines = "262-320"
+invariant = "Validates pipe leaf and SDDL (no interior NUL/control), converts SDDL to LocalSdGuard-managed SD, sets PIPE_REJECT_REMOTE_CLIENTS and FILE_FLAG_FIRST_PIPE_INSTANCE on first bind, and wraps non-INVALID handles in OwnedHandle."
+owner = "endpoint"
+verification = ["cargo test -p grdr-ipc-os"]
+
+[[entry]]
+crate = "grdr-ipc-os"
+file = "crates/grdr-ipc-os/src/windows_pipe_server.rs"
+symbol = "wait_connect"
+lines = "326-393"
+invariant = "Bounded non-INFINITE WaitForSingleObject on ConnectNamedPipe OVERLAPPED; drains CancelIoEx + GetOverlappedResult before returning or dropping stack OVERLAPPED so late connect races never leak."
+owner = "endpoint"
+verification = ["cargo test -p grdr-ipc-os"]
+
+[[entry]]
+crate = "grdr-ipc-os"
+file = "crates/grdr-ipc-os/src/windows_pipe_server.rs"
+symbol = "current_filetime_100ns"
+lines = "396-407"
+invariant = "GetSystemTimeAsFileTime writes strictly to local stack FILETIME storage."
+owner = "endpoint"
+verification = ["cargo test -p grdr-ipc-os"]
+
+[[entry]]
+crate = "grdr-os-service"
+file = "crates/grdr-os-service/src/unix_control.rs"
+symbol = "MallocGuard::drop"
+lines = "24-32"
+invariant = "Non-null pointer originates from Apple launch_activate_socket and is freed via libc::free on all exits including early returns."
+owner = "endpoint"
+verification = ["cargo test -p grdr-os-service"]
+
+[[entry]]
+crate = "grdr-os-service"
+file = "crates/grdr-os-service/src/unix_control.rs"
+symbol = "<top-level>"
+lines = "35-42"
+invariant = "Extern C ABI declaration matches Apple launch_activate_socket(const char *, int **, size_t *) from libSystem."
+owner = "endpoint"
+verification = ["cargo test -p grdr-os-service"]
+
+[[entry]]
+crate = "grdr-os-service"
+file = "crates/grdr-os-service/src/unix_control.rs"
+symbol = "register_unix_signal"
+lines = "90-116"
+invariant = "Signal handlers invoke only async-signal-safe AtomicBool Release store; sigemptyset return code is checked and SA_RESTART is enabled strictly for SIGHUP reload."
+owner = "endpoint"
+verification = ["cargo test -p grdr-os-service"]
+
+[[entry]]
+crate = "grdr-os-service"
+file = "crates/grdr-os-service/src/unix_control.rs"
+symbol = "activate_macos_sockets"
+lines = "137-202"
+invariant = "MallocGuard frees raw_ptr regardless of count, count is bounded by MAX_LAUNCHD_ACTIVATE_FDS, fds <= 2 are rejected, fcntl sets FD_CLOEXEC on every descriptor, unconsumed descriptors >= 3 are closed on any error via close_remaining_raw_fds, and validated fds move into OwnedFd."
+owner = "endpoint"
+verification = ["cargo test -p grdr-os-service"]
+
+[[entry]]
+crate = "grdr-os-service"
+file = "crates/grdr-os-service/src/unix_control.rs"
+symbol = "close_remaining_raw_fds"
+lines = "204-215"
+invariant = "Called only on launch_activate_socket validation failure for raw descriptors >= 3 not yet transferred to OwnedFd."
+owner = "endpoint"
+verification = ["cargo test -p grdr-os-service"]
+
+[[entry]]
+crate = "grdr-os-service"
+file = "crates/grdr-os-service/src/win_scm.rs"
+symbol = "ScopedScHandle::drop"
+lines = "67-76"
+invariant = "Non-null SC_HANDLE originates from OpenSCManagerW or OpenServiceW and is closed once via CloseServiceHandle."
+owner = "endpoint"
+verification = ["cargo test -p grdr-os-service"]
+
+[[entry]]
+crate = "grdr-os-service"
+file = "crates/grdr-os-service/src/win_scm.rs"
+symbol = "query_service_process"
+lines = "86-114"
+invariant = "Service name is validated against NUL/slash/empty/len; SC_HANDLEs are RAII-wrapped in ScopedScHandle."
+owner = "endpoint"
+verification = ["cargo test -p grdr-os-service"]
+
+[[entry]]
+crate = "grdr-os-service"
+file = "crates/grdr-os-service/src/win_scm.rs"
+symbol = "demand_start_service"
+lines = "120-195"
+invariant = "Validates service name, caps timeout, treats ERROR_SERVICE_ALREADY_RUNNING and SERVICE_STOP_PENDING safely, and wraps all SCM handles in ScopedScHandle."
+owner = "endpoint"
+verification = ["cargo test -p grdr-os-service"]
+
+[[entry]]
+crate = "grdr-os-service"
+file = "crates/grdr-os-service/src/win_scm.rs"
+symbol = "register_scm_handler"
+lines = "201-218"
+invariant = "Validates service name, checks RegisterServiceCtrlHandlerExW non-null handle, and stores it in AtomicPtr<c_void>."
+owner = "endpoint"
+verification = ["cargo test -p grdr-os-service"]
+
+[[entry]]
+crate = "grdr-os-service"
+file = "crates/grdr-os-service/src/win_scm.rs"
+symbol = "report_scm_state"
+lines = "220-268"
+invariant = "Reads SERVICE_STATUS_HANDLE from AtomicPtr, validates non-null handle, updates dwCheckPoint monotonically, and clears handle after ScmState::Stopped."
+owner = "endpoint"
+verification = ["cargo test -p grdr-os-service"]
+
+[[entry]]
+crate = "grdr-os-service"
+file = "crates/grdr-os-service/src/win_scm.rs"
+symbol = "query_handle_status"
+lines = "270-323"
+invariant = "Zero-initialized SERVICE_STATUS_PROCESS buffer size and returned cbBytesNeeded are validated before reading dwCurrentState/dwProcessId."
+owner = "endpoint"
+verification = ["cargo test -p grdr-os-service"]
+
+[[entry]]
+crate = "grdr-os-service"
+file = "crates/grdr-os-service/src/win_scm.rs"
+symbol = "scm_control_callback"
+lines = "325-344"
+invariant = "Win32 LPHANDLER_FUNCTION_EX callback reads no pointers, updates AtomicBool flags atomically, and returns ERROR_CALL_NOT_IMPLEMENTED for unknown controls."
+owner = "endpoint"
+verification = ["cargo test -p grdr-os-service"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/scm_probe.rs"
+symbol = "ScopedScHandle::drop"
+lines = "79-89"
+invariant = "Closes non-null SC_HANDLE via CloseServiceHandle."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/scm_probe.rs"
+symbol = "query_service_process"
+lines = "91-142"
+invariant = "Validates service name and queries read-only SC_STATUS_PROCESS_INFO with cbBytesNeeded >= sizeof checks over RAII ScopedScHandles."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/unix_peer.rs"
+symbol = "read_platform_unix_peer"
+lines = "62-300, 422-448"
+invariant = "Verifies getsockopt ucred size and rejects u32::MAX; binds pidfd after reading /proc/<pid>/stat and /proc/<pid>/status Uid/Gid; converts USER_HZ via sysconf(_SC_CLK_TCK); on macOS requires LOCAL_PEERTOKEN + egid/pidversion check without pid=0 fallback; generic Unix fallback passes stack uid_t/gid_t pointers to POSIX getpeereid without pointer arithmetic."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/unix_path.rs"
+symbol = "inspect_unix_chain"
+lines = "25-100"
+invariant = "Walks component-by-component from / opening directories first with openat(O_NOFOLLOW | O_DIRECTORY) then calling fstat, applying fstatat(AT_SYMLINK_NOFOLLOW) on terminal socket paths with post_dev/post_ino initialized to 0."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/unix_path.rs"
+symbol = "fstat_fd"
+lines = "175-195"
+invariant = "Fstat writes solely to stack libc::stat initialized via mem::zeroed."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/unix_path.rs"
+symbol = "fstatat_nofollow"
+lines = "197-218"
+invariant = "Fstatat operates on open parent dirfd + NUL-terminated component CStr with AT_SYMLINK_NOFOLLOW."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/unix_path.rs"
+symbol = "current_effective_ids"
+lines = "245-260"
+invariant = "Read-only POSIX geteuid/getegid calls with zero pointer arguments."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_acl.rs"
+symbol = "verify_windows_path_security"
+lines = "28-83"
+invariant = "Validates non-null non-INVALID BorrowedHandle, frees GetSecurityInfo PSECURITY_DESCRIPTOR via LocalAllocGuard, and enforces owner + non-NULL DACL restrictions."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_acl.rs"
+symbol = "restrict_windows_dir_handle_dacl"
+lines = "87-190"
+invariant = "Validates BorrowedHandle and caller ownership before applying protected SYSTEM/Admin/caller-only DACL via handle-level SetSecurityInfo with LocalAllocGuard cleanup."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_acl.rs"
+symbol = "dacl_to_sddl"
+lines = "190-245"
+invariant = "Frees SDDL UTF-16 buffer via LocalAllocGuard and scans bounded NUL-terminated code units (<= 65536)."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_peer.rs"
+symbol = "ImpersonateGuard::revert"
+lines = "48-63"
+invariant = "Calls RevertToSelf explicitly and returns Err(PeerError) if reverting impersonation fails so callers retire the thread instead of retaining client context."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_peer.rs"
+symbol = "ImpersonateGuard::drop"
+lines = "66-79"
+invariant = "Fallback panic-unwind RevertToSelf if caller exited without explicit revert()."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_peer.rs"
+symbol = "current_filetime_100ns"
+lines = "81-92"
+invariant = "GetSystemTimeAsFileTime writes strictly to stack FILETIME storage."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_peer.rs"
+symbol = "read_windows_pipe_client_pre"
+lines = "94-132"
+invariant = "Takes BorrowedHandle<'_> pipe handle, validates GetNamedPipeClientProcessId, and retains live OwnedHandle on client process across two-stage frame read."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_peer.rs"
+symbol = "verify_windows_pipe_client_post_read"
+lines = "134-196"
+invariant = "Re-checks GetNamedPipeClientProcessId after Hello frame, impersonates via OpenThreadToken(OpenAsSelf=TRUE) in read_impersonated_thread_token, and always calls ImpersonateGuard::revert()? before inspecting read errors."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_peer.rs"
+symbol = "read_impersonated_thread_token"
+lines = "198-219"
+invariant = "Opens current thread impersonation token with OpenAsSelf = TRUE while pipe impersonation guard is active and closes handle via ScopedWinHandle."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_peer.rs"
+symbol = "read_windows_pipe_server"
+lines = "264-364"
+invariant = "Takes BorrowedHandle<'_>, verifies GetSecurityInfo OWNER_SECURITY_INFORMATION and GetNamedPipeServerProcessId against dual paired SCM PID probes without OpenProcess on Protected servers."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_peer.rs"
+symbol = "read_process_claims_held"
+lines = "366-400"
+invariant = "OpenProcess handle validated non-null and non-INVALID_HANDLE_VALUE before wrapping in OwnedHandle alongside OpenProcessToken handle."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_peer.rs"
+symbol = "read_process_start_time"
+lines = "402-420"
+invariant = "GetProcessTimes writes to stack FILETIME structs on an open process handle."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_peer.rs"
+symbol = "current_process_sid"
+lines = "422-438"
+invariant = "Uses GetCurrentProcess pseudo-handle with OpenProcessToken(TOKEN_QUERY) into RAII ScopedWinHandle."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_token.rs"
+symbol = "ScopedWinHandle::drop"
+lines = "27-36"
+invariant = "Closes Win32 HANDLE when non-null and not INVALID_HANDLE_VALUE."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_token.rs"
+symbol = "LocalAllocGuard::drop"
+lines = "39-48"
+invariant = "Frees LocalAlloc buffer allocated by ConvertSidToStringSidW/GetSecurityInfo."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_token.rs"
+symbol = "read_token_user_sid"
+lines = "53-65"
+invariant = "Reads TOKEN_USER from 8-byte aligned Vec<u64> token buffer verified >= size_of::<TOKEN_USER>() with non-null PSID guard."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_token.rs"
+symbol = "read_token_integrity_rid"
+lines = "69-108"
+invariant = "Reads TOKEN_MANDATORY_LABEL from 8-byte aligned Vec<u64> token buffer and validates non-null count/subauthority pointers and non-zero count."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_token.rs"
+symbol = "read_token_impersonation_level"
+lines = "112-135"
+invariant = "Calls GetTokenInformation(TokenImpersonationLevel) into aligned stack SECURITY_IMPERSONATION_LEVEL."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_token.rs"
+symbol = "read_token_is_app_container"
+lines = "139-162"
+invariant = "Calls GetTokenInformation(TokenIsAppContainer) into aligned stack u32."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_token.rs"
+symbol = "query_token_info"
+lines = "166-211"
+invariant = "Probes GetTokenInformation checking ERROR_INSUFFICIENT_BUFFER, allocates 8-byte aligned Vec<u64>, checks cap (<= 64 * 1024), and returns written byte length."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_token.rs"
+symbol = "psid_to_string"
+lines = "217-249"
+invariant = "Checks non-null PSID, wraps ConvertSidToStringSidW pointer in LocalAllocGuard, and enforces NUL termination within 256 UTF-16 units."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
 
 [[entry]]
 crate = "grdr-os-clock"
@@ -109,3 +577,120 @@ lines = "280-310"
 invariant = "Win32 GetTickCount64 accepts no pointers; POSIX/Darwin clock_gettime uses valid stack libc::timespec and checks rc != 0 before reading."
 owner = "endpoint"
 verification = ["cargo test -p grdr-os-clock"]
+
+[[entry]]
+crate = "grdr-os-service"
+file = "crates/grdr-os-service/src/rss.rs"
+symbol = "<top-level>"
+lines = "25-34"
+invariant = "Extern system ABI declarations match Win32 kernel32 GetCurrentProcess and K32GetProcessMemoryInfo signatures."
+owner = "endpoint"
+verification = ["cargo test -p grdr-os-service"]
+
+[[entry]]
+crate = "grdr-os-service"
+file = "crates/grdr-os-service/src/rss.rs"
+symbol = "win_current_rss_bytes"
+lines = "75-87"
+invariant = "Calls GetCurrentProcess with zero preconditions and passes pseudo-handle to win_handle_rss_bytes."
+owner = "endpoint"
+verification = ["cargo test -p grdr-os-service"]
+
+[[entry]]
+crate = "grdr-os-service"
+file = "crates/grdr-os-service/src/rss.rs"
+symbol = "win_handle_rss_bytes"
+lines = "89-120"
+invariant = "Checks non-null process handle and calls K32GetProcessMemoryInfo with exact sizeof::<ProcessMemoryCounters>() cb into stack struct."
+owner = "endpoint"
+verification = ["cargo test -p grdr-os-service"]
+
+[[entry]]
+crate = "grdr-os-service"
+file = "crates/grdr-os-service/src/rss.rs"
+symbol = "unix_rusage_rss_bytes"
+lines = "135-165"
+invariant = "Zero-initializes stack libc::rusage POD struct and checks getrusage rc == 0 before reading ru_maxrss."
+owner = "endpoint"
+verification = ["cargo test -p grdr-os-service"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/unix_peer.rs"
+symbol = "read_macos_peer_observation"
+lines = "301-376"
+invariant = "Zero-initializes stack libc::proc_bsdinfo POD struct, checks proc_pidinfo(PROC_PIDTBSDINFO) byte count matches size_of::<proc_bsdinfo>() before field access, and treats EPERM on launchd pid 1 as root boundary."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/unix_peer.rs"
+symbol = "query_macos_proc_path"
+lines = "395-420"
+invariant = "Passes zeroed buffer of PROC_PIDPATHINFO_MAXSIZE to proc_pidpath, validates positive bounded return length, and stops at first NUL byte."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_proc.rs"
+symbol = "windows_system_directory"
+lines = "244-257"
+invariant = "Calls GetWindowsDirectoryW with exact stack UTF-16 buffer capacity and validates returned length < buf.len()."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_proc.rs"
+symbol = "snapshot_process_map"
+lines = "259-307"
+invariant = "Wraps CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS) handle in ScopedWinHandle, initializes PROCESSENTRY32W::dwSize to struct byte size, and bounds iteration to 65536 entries."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_proc.rs"
+symbol = "open_limited_query"
+lines = "309-327"
+invariant = "Calls OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION) and validates non-null and non-INVALID_HANDLE_VALUE before wrapping in OwnedHandle."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_proc.rs"
+symbol = "read_process_id"
+lines = "329-340"
+invariant = "Calls GetProcessId on an owned open Win32 process handle and rejects zero PID."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_proc.rs"
+symbol = "read_process_start_time_100ns"
+lines = "342-363"
+invariant = "Calls GetProcessTimes with stack-local FILETIME structs on a held process handle."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_proc.rs"
+symbol = "query_process_image_path"
+lines = "365-389"
+invariant = "Calls QueryFullProcessImageNameW with bounded 1024-unit stack UTF-16 buffer and checks return status and 1..=len bounds."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_proc.rs"
+symbol = "read_optional_process_token"
+lines = "391-405"
+invariant = "Opens process token with TOKEN_QUERY on open process handle, wraps non-null token in ScopedWinHandle, and handles ACCESS_DENIED gracefully."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]

@@ -4,6 +4,12 @@
 use std::path::PathBuf;
 
 use grdr_model::InstallProfile;
+use grdr_wire::endpoint::{
+    EndpointOverrides, PlatformKind, resolve_endpoint, validate_unix_endpoint_path,
+    validate_windows_pipe_name,
+};
+use grdr_wire::messages::EndpointServiceKind;
+use grdr_wire::peer_auth::Profile;
 use serde::{Deserialize, Serialize};
 
 use crate::IpcError;
@@ -96,6 +102,40 @@ pub fn resolve_endpoint_address(
     session_suffix: Option<&str>,
 ) -> Result<LocalEndpointAddress, IpcError> {
     let ns = sanitize_segment(namespace)?;
+    let wire_os = to_wire_platform(os);
+    if ns == "grdr" {
+        let wire_profile = match profile {
+            InstallProfile::Protected => Profile::Protected,
+            InstallProfile::User => Profile::User,
+        };
+        let wire_service = match kind {
+            EndpointKind::Decide => EndpointServiceKind::Decide,
+            EndpointKind::Local => EndpointServiceKind::Local,
+            EndpointKind::Provider => EndpointServiceKind::Unspecified,
+        };
+        let mut overrides = EndpointOverrides::default();
+        if let Some(dir) = user_runtime_dir {
+            let safe = require_safe_user_runtime_dir(Some(dir))?;
+            overrides.xdg_runtime_dir = Some(PathBuf::from(safe));
+        }
+        if let Some(suffix) = session_suffix {
+            overrides.windows_user_sid = Some(sanitize_segment(suffix)?);
+        }
+        let resolved = resolve_endpoint(wire_service, wire_profile, &overrides, wire_os)
+            .map_err(|err| IpcError::InvalidAddress(err.to_string()))?;
+        let addr = match (resolved.unix_path, resolved.pipe_name) {
+            (Some(path), _) => LocalEndpointAddress::UnixSocket { path },
+            (_, Some(pipe_name)) => LocalEndpointAddress::WindowsPipe { pipe_name },
+            (None, None) => {
+                return Err(IpcError::InvalidAddress(
+                    "resolved endpoint produced neither socket nor pipe".into(),
+                ));
+            }
+        };
+        validate_endpoint_address(os, &addr)?;
+        return Ok(addr);
+    }
+
     let slug = kind.slug();
     let addr = match (os, profile) {
         (TargetOsKind::Linux, InstallProfile::Protected) => LocalEndpointAddress::UnixSocket {
@@ -117,7 +157,7 @@ pub fn resolve_endpoint_address(
             }
         }
         (TargetOsKind::Windows, InstallProfile::Protected) => LocalEndpointAddress::WindowsPipe {
-            pipe_name: format!(r"\\.\pipe\{ns}-{slug}"),
+            pipe_name: format!(r"\\.\pipe\{ns}-protected-{slug}"),
         },
         (TargetOsKind::Windows, InstallProfile::User) => {
             let raw_suffix = session_suffix.ok_or_else(|| {
@@ -127,12 +167,20 @@ pub fn resolve_endpoint_address(
             })?;
             let suffix = sanitize_segment(raw_suffix)?;
             LocalEndpointAddress::WindowsPipe {
-                pipe_name: format!(r"\\.\pipe\{ns}-{slug}-{suffix}"),
+                pipe_name: format!(r"\\.\pipe\{ns}-user-{suffix}-{slug}"),
             }
         }
     };
     validate_endpoint_address(os, &addr)?;
     Ok(addr)
+}
+
+const fn to_wire_platform(os: TargetOsKind) -> PlatformKind {
+    match os {
+        TargetOsKind::Linux => PlatformKind::Linux,
+        TargetOsKind::MacOs => PlatformKind::MacOs,
+        TargetOsKind::Windows => PlatformKind::Windows,
+    }
 }
 
 pub fn validate_endpoint_address(
@@ -141,55 +189,19 @@ pub fn validate_endpoint_address(
 ) -> Result<(), IpcError> {
     match addr {
         LocalEndpointAddress::UnixSocket { path } => {
-            let raw = path.to_string_lossy();
-            if raw.trim().is_empty()
-                || !raw.starts_with('/')
-                || raw.chars().any(|c| c == '\0' || c.is_control())
-            {
-                return Err(IpcError::InvalidAddress(format!(
-                    "unix socket path `{raw}` must be non-empty, absolute, and control-char free"
-                )));
-            }
-            if raw
-                .split('/')
-                .skip(1)
-                .any(|seg| seg.is_empty() || seg == "." || seg == "..")
-            {
-                return Err(IpcError::InvalidAddress(format!(
-                    "unix socket path `{raw}` contains invalid `.`, `..`, or empty segments"
-                )));
-            }
-            let max_len = match os {
-                TargetOsKind::MacOs => MACOS_SUN_PATH_LIMIT,
-                _ => LINUX_SUN_PATH_LIMIT,
-            };
-            if raw.len() >= max_len {
-                return Err(IpcError::InvalidAddress(format!(
-                    "unix socket path `{raw}` length {} exceeds sun_path limit {}",
-                    raw.len(),
-                    max_len
-                )));
-            }
-            Ok(())
+            validate_unix_endpoint_path(path, to_wire_platform(os))
+                .map_err(|err| IpcError::InvalidAddress(err.to_string()))
         }
         LocalEndpointAddress::WindowsPipe { pipe_name } => {
-            let Some(leaf) = pipe_name.strip_prefix(WINDOWS_PIPE_PREFIX) else {
-                return Err(IpcError::InvalidAddress(format!(
-                    "Windows named pipe `{pipe_name}` must start with `\\\\.\\pipe\\`"
-                )));
-            };
-            if leaf.is_empty()
-                || leaf.len() > MAX_PIPE_LEAF_LEN
-                || leaf.contains("..")
-                || leaf.chars().any(|c| {
-                    c == '\\' || c == '/' || c == '\0' || c.is_control() || c.is_whitespace()
-                })
+            if let Some(leaf) = pipe_name.strip_prefix(WINDOWS_PIPE_PREFIX)
+                && leaf.len() > MAX_PIPE_LEAF_LEN
             {
-                return Err(IpcError::InvalidAddress(format!(
-                    "Windows named pipe `{pipe_name}` contains invalid leaf characters"
-                )));
+                return Err(IpcError::InvalidAddress(
+                    "Windows named pipe leaf exceeds maximum length".into(),
+                ));
             }
-            Ok(())
+            validate_windows_pipe_name(pipe_name)
+                .map_err(|err| IpcError::InvalidAddress(err.to_string()))
         }
     }
 }
@@ -281,9 +293,16 @@ mod tests {
         assert_eq!(
             win,
             LocalEndpointAddress::WindowsPipe {
-                pipe_name: r"\\.\pipe\grdr-local-S-1-5-21-1001".into()
+                pipe_name: r"\\.\pipe\grdr-user-S-1-5-21-1001-local".into()
             }
         );
+        let tmp_sock = LocalEndpointAddress::UnixSocket {
+            path: PathBuf::from("/tmp/grdr-evil.sock"),
+        };
+        assert!(matches!(
+            validate_endpoint_address(TargetOsKind::Linux, &tmp_sock),
+            Err(IpcError::InvalidAddress(_))
+        ));
     }
 
     #[test]
