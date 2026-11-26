@@ -1,0 +1,17 @@
+format: grdr.policy-tests.v1
+pack_id: grdr.elevate
+vectors:
+  - id: vec.elevate.sudo.positive
+    expect_verdict: StepUp
+    expect_rule: elevate.sudo-exec
+    action: exec
+    target: "sudo apt update"
+  - id: vec.elevate.route.positive
+    expect_verdict: StepUp
+    expect_rule: elevate.route
+    action: elevate
+    target: "sudo"
+  - id: vec.elevate.cargo.negative
+    expect_verdict: Allow
+    action: exec
+    target: "cargo test"

@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 //! Pure path/command normalization and Cedar stub checks for the reference evaluator.
 
-use grdr_model::{ActionAttempt, ActionClass, CommandParseStatus, PolicyRule};
+use grdr_model::{ActionAttempt, ActionClass, CommandParseStatus};
 
 const OPAQUE_PATTERNS: &[&str] = &[
     "$(",
@@ -16,7 +16,6 @@ const OPAQUE_PATTERNS: &[&str] = &[
 ];
 
 pub(crate) struct TargetSignals {
-    pub(crate) normalized_target: String,
     pub(crate) command_status: CommandParseStatus,
     pub(crate) risk_score: u32,
     pub(crate) sensitive_credential: bool,
@@ -26,67 +25,6 @@ pub(crate) struct TargetSignals {
 struct RefNormalizedCommand {
     status: CommandParseStatus,
     canonical_text: String,
-}
-
-pub(crate) fn rule_is_final(rule: &PolicyRule) -> bool {
-    if rule.locked {
-        return true;
-    }
-    let Some(cedar) = rule.cedar.as_deref() else {
-        return false;
-    };
-    let stripped: String = cedar.chars().filter(|c| !c.is_whitespace()).collect();
-    stripped.contains("@final(\"true\")")
-}
-
-pub(crate) fn validate_inline_cedar_stub(source: &str) -> bool {
-    let mut cleaned = String::with_capacity(source.len());
-    for line in source.lines() {
-        cleaned.push_str(line.split("//").next().unwrap_or(""));
-        cleaned.push('\n');
-    }
-    let mut in_string = false;
-    let mut escaped = false;
-    let mut paren_depth: i32 = 0;
-    let mut brace_depth: i32 = 0;
-    for ch in cleaned.chars() {
-        if escaped {
-            escaped = false;
-            continue;
-        }
-        if in_string {
-            if ch == '\\' {
-                escaped = true;
-            } else if ch == '"' {
-                in_string = false;
-            }
-            continue;
-        }
-        match ch {
-            '"' => in_string = true,
-            '(' => paren_depth = paren_depth.saturating_add(1),
-            ')' => {
-                paren_depth = paren_depth.saturating_sub(1);
-                if paren_depth < 0 {
-                    return false;
-                }
-            }
-            '{' => brace_depth = brace_depth.saturating_add(1),
-            '}' => {
-                brace_depth = brace_depth.saturating_sub(1);
-                if brace_depth < 0 {
-                    return false;
-                }
-            }
-            _ => {}
-        }
-    }
-    if in_string || escaped || paren_depth != 0 || brace_depth != 0 {
-        return false;
-    }
-    let trimmed = cleaned.trim();
-    let compact: String = trimmed.chars().filter(|c| !c.is_whitespace()).collect();
-    trimmed.ends_with(';') && compact.contains("forbid(") && !compact.contains("permit(")
 }
 
 pub(crate) fn analyze_attempt_signals(attempt: &ActionAttempt) -> TargetSignals {
@@ -111,6 +49,8 @@ pub(crate) fn analyze_attempt_signals(attempt: &ActionAttempt) -> TargetSignals 
             ".cursor/",
             ".codex/",
             ".gemini/",
+            ".windsurf/",
+            ".grdr/",
             "grdr-data/",
             "security/",
         ],
@@ -140,6 +80,9 @@ pub(crate) fn analyze_attempt_signals(attempt: &ActionAttempt) -> TargetSignals 
             "--dangerously-skip-permissions",
             "--no-verify",
             "--disable-hooks",
+            "--no-sandbox",
+            "--disable-sandbox",
+            "--yolo",
             "grdr_disable",
         ],
     ) {
@@ -186,7 +129,6 @@ pub(crate) fn analyze_attempt_signals(attempt: &ActionAttempt) -> TargetSignals 
     }
 
     TargetSignals {
-        normalized_target,
         command_status,
         risk_score: risk_score.min(100),
         sensitive_credential,
@@ -237,11 +179,19 @@ fn canonicalize_path_ref(raw: &str) -> String {
     let (mut prefix, rest) = extract_path_root_ref(&slashed);
 
     let mut stack: Vec<&str> = Vec::new();
+    let preserve_underflow = prefix.is_empty()
+        || prefix.starts_with('~')
+        || prefix.starts_with("//")
+        || (prefix.len() == 2 && prefix.ends_with(':'));
     for seg in rest.split('/') {
         match seg {
             "" | "." => {}
             ".." => {
-                let _ = stack.pop();
+                if !stack.is_empty() && stack.last() != Some(&"..") {
+                    let _ = stack.pop();
+                } else if preserve_underflow {
+                    stack.push("..");
+                }
             }
             other => stack.push(other),
         }
@@ -289,11 +239,14 @@ fn resolve_boundary_segments_ref(prefix: &mut String, stack: &mut Vec<&str>) -> 
                     changed = true;
                 }
                 ".." => {
-                    let _ = stack.pop();
-                    if stack.len() > head {
+                    let prior = stack.len().saturating_sub(head);
+                    if prior >= 2 && stack.get(stack.len().saturating_sub(2)) != Some(&"..") {
                         let _ = stack.pop();
+                        let _ = stack.pop();
+                        changed = true;
+                    } else {
+                        break;
                     }
-                    changed = true;
                 }
                 _ => break,
             }
@@ -307,7 +260,7 @@ fn resolve_boundary_segments_ref(prefix: &mut String, stack: &mut Vec<&str>) -> 
                     head = head.saturating_add(1);
                     changed = true;
                 }
-                "." | ".." => {
+                "." => {
                     head = head.saturating_add(1);
                     changed = true;
                 }
@@ -325,14 +278,35 @@ fn extract_path_root_ref(slashed: &str) -> (String, &str) {
     if let Some(rest) = slashed.strip_prefix("~/") {
         return ("~/".into(), rest);
     }
+    if let Some(rest) = slashed.strip_prefix('~') {
+        if let Some((user, tail)) = rest.split_once('/') {
+            return (format!("~{user}/"), tail);
+        }
+        return (format!("~{rest}"), "");
+    }
+    if let Some(after_unc) = slashed.strip_prefix("//") {
+        if let Some((srv, rest1)) = after_unc.split_once('/')
+            && let Some((share, tail)) = rest1.split_once('/')
+            && !srv.is_empty()
+            && !share.is_empty()
+        {
+            return (format!("//{srv}/{share}/"), tail);
+        }
+        return ("//".into(), after_unc);
+    }
     if let Some(rest) = slashed.strip_prefix('/') {
         return ("/".into(), rest);
     }
     let mut chars = slashed.chars();
-    if let (Some(drive), Some(':'), Some('/')) = (chars.next(), chars.next(), chars.next())
+    if let (Some(drive), Some(':'), third) = (chars.next(), chars.next(), chars.next())
         && drive.is_ascii_alphabetic()
     {
-        let prefix = format!("{drive}:/");
+        if third == Some('/') {
+            let prefix = format!("{drive}:/");
+            let rest = slashed.strip_prefix(&prefix).unwrap_or("");
+            return (prefix, rest);
+        }
+        let prefix = format!("{drive}:");
         let rest = slashed.strip_prefix(&prefix).unwrap_or("");
         return (prefix, rest);
     }

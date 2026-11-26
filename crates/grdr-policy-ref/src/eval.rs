@@ -13,10 +13,11 @@ use grdr_model::{
     PolicyPack, PolicyRule, SessionLabel, Verdict,
 };
 
-use crate::normalize::{
-    TargetSignals, analyze_attempt_signals, normalize_target_for_match, rule_is_final,
-    validate_inline_cedar_stub,
+use crate::cedar_stub::{
+    grant_satisfies_rule_ref, rule_approver, rule_effective_min_grade, rule_effective_mode,
+    rule_is_final, validate_inline_cedar_stub,
 };
+use crate::normalize::{TargetSignals, analyze_attempt_signals, normalize_target_for_match};
 
 const REPEATED_DENIALS_THRESHOLD: u32 = 2;
 
@@ -145,138 +146,200 @@ pub fn evaluate_ref(
     kill_switch: &KillSwitchState,
     now: Timestamp,
 ) -> ReferenceDecision {
+    evaluate_ref_with_lifted(attempt, packs, grants, kill_switch, now).0
+}
+
+fn evaluate_ref_with_lifted(
+    attempt: &ActionAttempt,
+    packs: &[PolicyPack],
+    grants: &[Grant],
+    kill_switch: &KillSwitchState,
+    now: Timestamp,
+) -> (ReferenceDecision, Vec<String>) {
     for pack in packs {
         for rule in &pack.rules {
             if rule.enabled
-                && rule.mode != Mode::Off
                 && let Some(cedar) = rule.cedar.as_deref()
                 && !cedar.trim().is_empty()
                 && !validate_inline_cedar_stub(cedar)
             {
-                return ReferenceDecision {
-                    verdict: Verdict::Deny,
-                    would_be: None,
-                    rule_id: Some("policy.compile-error".into()),
-                    pack_id: Some("system".into()),
-                    mode_applied: Some(Mode::Block),
-                    grant_id: None,
-                    reason: format!(
-                        "Policy rule `{}` failed inline Cedar syntax validation.",
-                        rule.id
-                    ),
-                };
+                return (
+                    ReferenceDecision {
+                        verdict: Verdict::Deny,
+                        would_be: None,
+                        rule_id: Some("policy.compile-error".into()),
+                        pack_id: Some("system".into()),
+                        mode_applied: Some(Mode::Block),
+                        grant_id: None,
+                        reason: format!(
+                            "Policy rule `{}` failed inline Cedar syntax validation.",
+                            rule.id
+                        ),
+                    },
+                    Vec::new(),
+                );
             }
         }
     }
 
     if kill_switch.is_active_for(&attempt.session_id, &attempt.device_id, now) {
-        return ReferenceDecision {
-            verdict: Verdict::Deny,
-            would_be: None,
-            rule_id: Some("system.kill-switch".into()),
-            pack_id: Some("system".into()),
-            mode_applied: Some(Mode::Block),
-            grant_id: None,
-            reason: "Kill switch or freeze active for session/device.".into(),
-        };
+        return (
+            ReferenceDecision {
+                verdict: Verdict::Deny,
+                would_be: None,
+                rule_id: Some("system.kill-switch".into()),
+                pack_id: Some("system".into()),
+                mode_applied: Some(Mode::Block),
+                grant_id: None,
+                reason: "Kill switch or freeze active for session/device.".into(),
+            },
+            Vec::new(),
+        );
     }
 
-    let mut enforced_hits: Vec<RuleMatchCandidate<'_>> = Vec::new();
+    let mut enforced_hits: Vec<(Mode, RuleMatchCandidate<'_>)> = Vec::new();
     let mut watch_hits: Vec<RuleMatchCandidate<'_>> = Vec::new();
 
     for pack in packs {
         for rule in &pack.rules {
-            if !rule.enabled || rule.mode == Mode::Off || !rule_matches_attempt(rule, attempt) {
+            let eff_mode = rule_effective_mode(rule);
+            if !rule.enabled || eff_mode == Mode::Off || !rule_matches_attempt(rule, attempt) {
                 continue;
             }
-            match rule.mode {
+            match eff_mode {
                 Mode::Watch => watch_hits.push(RuleMatchCandidate {
                     pack_id: &pack.id,
                     rule,
                 }),
-                Mode::Ask | Mode::Block => enforced_hits.push(RuleMatchCandidate {
-                    pack_id: &pack.id,
-                    rule,
-                }),
+                Mode::Ask | Mode::Block => enforced_hits.push((
+                    eff_mode,
+                    RuleMatchCandidate {
+                        pack_id: &pack.id,
+                        rule,
+                    },
+                )),
                 Mode::Off => {}
             }
         }
     }
 
-    let mut blocking_hits: Vec<RuleMatchCandidate<'_>> = Vec::new();
-    let mut lifted_hits: Vec<(RuleMatchCandidate<'_>, &Grant)> = Vec::new();
+    let mut match_attempt = attempt.clone();
+    if !matches!(
+        attempt.action_class,
+        ActionClass::FileRead
+            | ActionClass::FileWrite
+            | ActionClass::FileDelete
+            | ActionClass::ConfigChange
+    ) {
+        let (norm_target, _) = normalize_target_for_match(attempt.action_class, &attempt.target);
+        if !norm_target.is_empty() {
+            match_attempt.target = norm_target;
+        }
+    }
 
-    for cand in enforced_hits {
+    let mut blocking_hits: Vec<(Mode, RuleMatchCandidate<'_>)> = Vec::new();
+    let mut lifted_hits: Vec<(Mode, RuleMatchCandidate<'_>, &Grant)> = Vec::new();
+
+    for (eff_mode, cand) in enforced_hits {
         let is_final = rule_is_final(cand.rule);
-        let liftable = cand.rule.mode == Mode::Ask || (cand.rule.mode == Mode::Block && !is_final);
+        let eff_grade = rule_effective_min_grade(cand.rule);
+        let approver = rule_approver(cand.rule);
+        let liftable = !is_final && (eff_mode == Mode::Ask || eff_mode == Mode::Block);
         let matching_grant = if liftable {
             grants.iter().find(|g| {
                 g.rule_id == cand.rule.id
-                    && g.grade >= cand.rule.min_grade
-                    && g.matches(attempt, now)
+                    && grant_satisfies_rule_ref(eff_mode, eff_grade, is_final, &approver, g)
+                    && g.matches(&match_attempt, now)
             })
         } else {
             None
         };
         if let Some(grant) = matching_grant {
-            lifted_hits.push((cand, grant));
+            lifted_hits.push((eff_mode, cand, grant));
         } else {
-            blocking_hits.push(cand);
+            blocking_hits.push((eff_mode, cand));
         }
     }
 
-    blocking_hits.sort_by_key(|c| Reverse(c.rule.mode));
-    if let Some(top) = blocking_hits.first() {
-        let verdict = if top.rule.mode == Mode::Block {
+    blocking_hits.sort_by(|(ma, ca), (mb, cb)| {
+        Reverse(*ma)
+            .cmp(&Reverse(*mb))
+            .then_with(|| ca.rule.id.cmp(&cb.rule.id))
+    });
+    if let Some((eff_mode, top)) = blocking_hits.first() {
+        let verdict = if *eff_mode == Mode::Block {
             Verdict::Deny
         } else {
             Verdict::StepUp
         };
-        return ReferenceDecision {
-            verdict,
-            would_be: None,
-            rule_id: Some(top.rule.id.clone()),
-            pack_id: Some(top.pack_id.to_owned()),
-            mode_applied: Some(top.rule.mode),
-            grant_id: None,
-            reason: top.rule.reason_template.clone(),
-        };
+        return (
+            ReferenceDecision {
+                verdict,
+                would_be: None,
+                rule_id: Some(top.rule.id.clone()),
+                pack_id: Some(top.pack_id.to_owned()),
+                mode_applied: Some(*eff_mode),
+                grant_id: None,
+                reason: top.rule.reason_template.clone(),
+            },
+            Vec::new(),
+        );
     }
 
-    lifted_hits.sort_by_key(|(c, _)| Reverse(c.rule.mode));
-    if let Some((top, grant)) = lifted_hits.first() {
-        return ReferenceDecision {
-            verdict: Verdict::Allow,
-            would_be: Some(Verdict::StepUp),
-            rule_id: Some(top.rule.id.clone()),
-            pack_id: Some(top.pack_id.to_owned()),
-            mode_applied: Some(top.rule.mode),
-            grant_id: Some(grant.grant_id.clone()),
-            reason: format!("Allowed by active approval grant {}.", grant.grant_id),
-        };
+    lifted_hits.sort_by(|(ma, ca, _), (mb, cb, _)| {
+        Reverse(*ma)
+            .cmp(&Reverse(*mb))
+            .then_with(|| ca.rule.id.cmp(&cb.rule.id))
+    });
+    if let Some((eff_mode, top, grant)) = lifted_hits.first() {
+        let mut consumed = Vec::new();
+        for (_, _, g) in &lifted_hits {
+            if !consumed.contains(&g.grant_id) {
+                consumed.push(g.grant_id.clone());
+            }
+        }
+        return (
+            ReferenceDecision {
+                verdict: Verdict::Allow,
+                would_be: Some(Verdict::StepUp),
+                rule_id: Some(top.rule.id.clone()),
+                pack_id: Some(top.pack_id.to_owned()),
+                mode_applied: Some(*eff_mode),
+                grant_id: Some(grant.grant_id.clone()),
+                reason: format!("Allowed by active approval grant {}.", grant.grant_id),
+            },
+            consumed,
+        );
     }
 
+    watch_hits.sort_by(|a, b| a.rule.id.cmp(&b.rule.id));
     if let Some(watch) = watch_hits.first() {
-        return ReferenceDecision {
-            verdict: Verdict::Allow,
-            would_be: Some(Verdict::StepUp),
-            rule_id: Some(watch.rule.id.clone()),
-            pack_id: Some(watch.pack_id.to_owned()),
-            mode_applied: Some(Mode::Watch),
-            grant_id: None,
-            reason: watch.rule.reason_template.clone(),
-        };
+        return (
+            ReferenceDecision {
+                verdict: Verdict::Allow,
+                would_be: Some(Verdict::StepUp),
+                rule_id: Some(watch.rule.id.clone()),
+                pack_id: Some(watch.pack_id.to_owned()),
+                mode_applied: Some(Mode::Watch),
+                grant_id: None,
+                reason: watch.rule.reason_template.clone(),
+            },
+            Vec::new(),
+        );
     }
 
-    ReferenceDecision {
-        verdict: Verdict::Allow,
-        would_be: None,
-        rule_id: None,
-        pack_id: None,
-        mode_applied: None,
-        grant_id: None,
-        reason: "No policy rule restricted this action.".into(),
-    }
+    (
+        ReferenceDecision {
+            verdict: Verdict::Allow,
+            would_be: None,
+            rule_id: None,
+            pack_id: None,
+            mode_applied: None,
+            grant_id: None,
+            reason: "No policy rule restricted this action.".into(),
+        },
+        Vec::new(),
+    )
 }
 
 pub fn evaluate_ref_mut(
@@ -286,8 +349,8 @@ pub fn evaluate_ref_mut(
     kill_switch: &KillSwitchState,
     now: Timestamp,
 ) -> ReferenceDecision {
-    let decision = evaluate_ref(attempt, packs, grants, kill_switch, now);
-    consume_matching_grant(&decision, grants);
+    let (decision, consumed) = evaluate_ref_with_lifted(attempt, packs, grants, kill_switch, now);
+    consume_matching_grants(&consumed, grants);
     decision
 }
 
@@ -316,18 +379,26 @@ pub fn evaluate_ref_with_session(
         return decision;
     }
 
-    let mut match_attempt = attempt.clone();
-    if !signals.normalized_target.is_empty() {
-        match_attempt.target = signals.normalized_target.clone();
-    }
-
-    let mut decision = evaluate_ref(&match_attempt, packs, grants, kill_switch, now);
-    consume_matching_grant(&decision, grants);
+    let (mut decision, consumed) =
+        evaluate_ref_with_lifted(attempt, packs, grants, kill_switch, now);
+    consume_matching_grants(&consumed, grants);
 
     if decision.verdict == Verdict::Allow {
+        let (norm_synthetic, _) = normalize_target_for_match(attempt.action_class, &attempt.target);
+        let mut synth_attempt = attempt.clone();
+        if !matches!(
+            attempt.action_class,
+            ActionClass::FileRead
+                | ActionClass::FileWrite
+                | ActionClass::FileDelete
+                | ActionClass::ConfigChange
+        ) && !norm_synthetic.is_empty()
+        {
+            synth_attempt.target = norm_synthetic;
+        }
         if signals.command_status == CommandParseStatus::Unresolved {
             decision = evaluate_synthetic_step_up_ref(
-                attempt,
+                &synth_attempt,
                 grants,
                 "session.opaque-command",
                 "Opaque shell construct (subshell, backtick, or encoded command) requires approval.",
@@ -336,7 +407,7 @@ pub fn evaluate_ref_with_session(
         } else if let Some((rule_id, reason)) =
             session_state.pre_evaluate_escalation(attempt, &signals)
         {
-            decision = evaluate_synthetic_step_up_ref(attempt, grants, rule_id, reason, now);
+            decision = evaluate_synthetic_step_up_ref(&synth_attempt, grants, rule_id, reason, now);
         }
     }
 
@@ -344,11 +415,11 @@ pub fn evaluate_ref_with_session(
     decision
 }
 
-fn consume_matching_grant(decision: &ReferenceDecision, grants: &mut [Grant]) {
-    if let Some(grant_id) = decision.grant_id.as_deref()
-        && let Some(grant) = grants.iter_mut().find(|g| g.grant_id == grant_id)
-    {
-        grant.consume_use();
+fn consume_matching_grants(consumed_ids: &[String], grants: &mut [Grant]) {
+    for gid in consumed_ids {
+        if let Some(grant) = grants.iter_mut().find(|g| &g.grant_id == gid) {
+            grant.consume_use();
+        }
     }
 }
 

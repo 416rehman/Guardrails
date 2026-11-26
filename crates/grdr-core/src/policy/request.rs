@@ -1,29 +1,196 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
-//! Builds schema-validated Cedar 4.x Entities and Requests from ActionAttempts.
+//! Builds schema-validated Cedar 4.x Requests, uncertainty sets, and derived `data.flow` checks.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::str::FromStr;
+use std::collections::{BTreeMap, BTreeSet};
 
-use cedar_policy::{
-    Context, Entities, Entity, EntityId, EntityTypeName, EntityUid, Request, RestrictedExpression,
+use cedar_policy::{Entities, Request};
+use grdr_model::{
+    ActionAttempt, ActionClass, ApprovalGrade, BoundaryObserver, Grant, IdentityMode,
+    InstallProfile, Mode, PolicyPack,
 };
-use grdr_model::{ActionAttempt, ActionClass, Grant, Mode, PolicyPack, SessionLabel};
-use grdr_schema::cedar::resource_entity_type_for_action;
 use jiff::Timestamp;
 
 use super::PolicyError;
 use super::compiler::{CompiledRuleMeta, runtime_schema};
-use super::signals::{CedarSignals, extract_cedar_signals};
-use crate::analyze::classify_target;
+use super::entities::{build_entities, entity_uid, req_err};
+use super::request_ctx::{build_context, populate_uncertainty};
+use super::signals::extract_cedar_signals;
+use crate::analyze::{classify_target, normalize_attempt_target};
 use crate::session::SessionRuleState;
 
+const SINK_CLASSES: &[&str] = &[
+    "egress-outside-profile",
+    "push-outside-org",
+    "pkg.publish",
+    "message.send",
+    "mcp-unpinned-write",
+    "llm-non-tenant",
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ContextField {
+    SessionLabels,
+    CommandClasses,
+    PathWorkspace,
+    RecursiveFlag,
+    EndpointPort,
+    HttpClasses,
+    CloudMeta,
+    LlmTenant,
+    McpServerPin,
+    McpToolPin,
+    McpArgs,
+    ChildAgentMeta,
+    ConfigClasses,
+    UserIdentity,
+    TargetClasses,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ActorKind {
+    Agent,
+    Human,
+    System,
+    Undetermined,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum CredUseMode {
+    #[default]
+    Inject,
+    Release,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum SessionFreezeState {
+    #[default]
+    Active,
+    Frozen,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AssuranceHints {
+    pub visibility: u8,
+    pub control: u8,
+    pub tamper: u8,
+    pub fail_closed: bool,
+}
+
+// grdr:allow-s4 orthogonal Cedar Skill entity attributes matching v1alpha1.cedarschema
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillRequestMeta {
+    pub id: String,
+    pub kind: String,
+    pub digest_pinned: bool,
+    pub has_scripts: bool,
+    pub requests_broad_tools: bool,
+    pub bidi_obfuscation: bool,
+    pub classes: BTreeSet<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct McpRequestHints {
+    pub server_pinned: Option<bool>,
+    pub tool_pinned: Option<bool>,
+    pub args_extracted: bool,
+    pub read_only_hint: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct VerificationHints {
+    pub llm_tenant_verified: bool,
+    pub cloud_verified: bool,
+}
+
+// grdr:allow-s4 orthogonal Cedar request build inputs matching v1alpha1.cedarschema
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestBuildOptions {
+    pub identity_mode: IdentityMode,
+    pub host_profile: InstallProfile,
+    pub actor_kind: ActorKind,
+    pub agent_capable_host: bool,
+    pub attribution_grade: ApprovalGrade,
+    pub min_attribution_grade: ApprovalGrade,
+    pub os_name: String,
+    pub org_id: String,
+    pub group_id: String,
+    pub department: String,
+    pub user_risk_tier: String,
+    pub agent_tier: String,
+    pub session_depth: i64,
+    pub session_contained: bool,
+    pub session_containment: String,
+    pub session_freeze: SessionFreezeState,
+    pub label_epoch: u64,
+    pub child_depth: i64,
+    pub child_contained: bool,
+    pub child_tier: String,
+    pub child_classes: BTreeSet<String>,
+    pub cred_mode: CredUseMode,
+    pub assurance: Option<AssuranceHints>,
+    pub observer: BoundaryObserver,
+    pub parsed_port: Option<i64>,
+    pub mcp_transport: String,
+    pub mcp_server_id: String,
+    pub mcp_hints: McpRequestHints,
+    pub verification: VerificationHints,
+    pub extra_absent: BTreeSet<ContextField>,
+    pub extra_pending: BTreeSet<ContextField>,
+    pub skill_meta: Option<SkillRequestMeta>,
+}
+
 #[derive(Debug)]
-pub(crate) struct BuiltCedarRequest {
-    pub(crate) request: Request,
-    pub(crate) entities: Entities,
-    pub(crate) request_without_grants: Option<Request>,
-    pub(crate) lifted_grant_by_rule_id: BTreeMap<String, String>,
+pub struct CedarRequest {
+    pub request: Request,
+    pub entities: Entities,
+    pub request_without_grants: Option<Request>,
+    pub data_flow_request_without_grants: Option<Request>,
+    pub lifted_grant_by_rule_id: BTreeMap<String, String>,
+    pub data_flow_request: Option<Request>,
+    pub absent: BTreeSet<ContextField>,
+    pub pending: BTreeSet<ContextField>,
+    pub principal_is_process: bool,
+    pub command_status: grdr_model::CommandParseStatus,
+}
+
+impl Default for RequestBuildOptions {
+    fn default() -> Self {
+        Self {
+            identity_mode: IdentityMode::Named,
+            host_profile: InstallProfile::User,
+            actor_kind: ActorKind::Agent,
+            agent_capable_host: true,
+            attribution_grade: ApprovalGrade::G2,
+            min_attribution_grade: ApprovalGrade::G1,
+            os_name: "unknown".into(),
+            org_id: "default".into(),
+            group_id: "default".into(),
+            department: "engineering".into(),
+            user_risk_tier: "standard".into(),
+            agent_tier: "A".into(),
+            session_depth: 0,
+            session_contained: false,
+            session_containment: "none".into(),
+            session_freeze: SessionFreezeState::Active,
+            label_epoch: 0,
+            child_depth: 1,
+            child_contained: false,
+            child_tier: "A".into(),
+            child_classes: BTreeSet::new(),
+            cred_mode: CredUseMode::Inject,
+            assurance: None,
+            observer: BoundaryObserver::None,
+            parsed_port: None,
+            mcp_transport: "stdio".into(),
+            mcp_server_id: "default".into(),
+            mcp_hints: McpRequestHints::default(),
+            verification: VerificationHints::default(),
+            extra_absent: BTreeSet::new(),
+            extra_pending: BTreeSet::new(),
+            skill_meta: None,
+        }
+    }
 }
 
 pub(crate) fn build_cedar_request(
@@ -33,428 +200,251 @@ pub(crate) fn build_cedar_request(
     grants: &[Grant],
     session_state: Option<&SessionRuleState>,
     now: Timestamp,
-) -> Result<BuiltCedarRequest, PolicyError> {
+) -> Result<CedarRequest, PolicyError> {
+    build_cedar_request_with_options(
+        attempt,
+        packs,
+        active_rules,
+        grants,
+        session_state,
+        &RequestBuildOptions::default(),
+        now,
+    )
+}
+
+pub fn build_cedar_request_with_options(
+    attempt: &ActionAttempt,
+    packs: &[PolicyPack],
+    active_rules: &[CompiledRuleMeta],
+    grants: &[Grant],
+    session_state: Option<&SessionRuleState>,
+    opts: &RequestBuildOptions,
+    now: Timestamp,
+) -> Result<CedarRequest, PolicyError> {
     let schema = runtime_schema()?;
     let analysis = classify_target(attempt.action_class, &attempt.target);
-    let signals = extract_cedar_signals(attempt, &analysis, packs);
+    let signals = extract_cedar_signals(attempt, &analysis, packs, opts);
 
-    let mut lifted_grant_by_rule_id = BTreeMap::new();
-    let mut granted_rule_ids = BTreeSet::new();
-    for rule_meta in active_rules {
-        let liftable =
-            rule_meta.mode == Mode::Ask || (rule_meta.mode == Mode::Block && !rule_meta.is_final);
-        if !liftable {
-            continue;
-        }
-        if let Some(grant) = grants.iter().find(|g| {
-            g.rule_id == rule_meta.rule_id
-                && g.grade >= rule_meta.min_grade
-                && g.matches(attempt, now)
-        }) {
-            granted_rule_ids.insert(rule_meta.rule_id.clone());
-            lifted_grant_by_rule_id.insert(rule_meta.rule_id.clone(), grant.grant_id.clone());
-        }
-    }
+    let (granted_rule_ids, lifted_grant_by_rule_id) =
+        collect_matching_grants(attempt, active_rules, grants, now);
 
-    let (principal_uid, resource_uid, entities) = build_entities(attempt, &signals)?;
+    let mut absent = opts.extra_absent.clone();
+    let mut pending = opts.extra_pending.clone();
+    populate_uncertainty(
+        attempt,
+        analysis.command_status,
+        &signals,
+        opts,
+        &mut absent,
+        &mut pending,
+    );
+
+    let graph = build_entities(attempt, &signals, opts)?;
     let action_uid = entity_uid("Grdr::Action", attempt.action_class.as_str())?;
+    let principal_uid = if graph.principal_is_process {
+        graph.process_uid.clone()
+    } else {
+        graph.session_uid.clone()
+    };
 
-    let context_with_grants = build_context(attempt, &signals, session_state, &granted_rule_ids)?;
+    let ctx_grants = build_context(
+        attempt,
+        analysis.command_status,
+        &signals,
+        session_state,
+        &granted_rule_ids,
+        opts,
+        attempt.action_class,
+    )?;
     let request = Request::new(
         principal_uid.clone(),
         action_uid.clone(),
-        resource_uid.clone(),
-        context_with_grants,
+        graph.resource_uid.clone(),
+        ctx_grants,
         Some(schema),
     )
-    .map_err(|e| PolicyError::RequestBuildFailed {
-        detail: e.to_string(),
-    })?;
+    .map_err(req_err)?;
 
     let request_without_grants = if granted_rule_ids.is_empty() {
         None
     } else {
         let empty = BTreeSet::new();
-        let context_no_grants = build_context(attempt, &signals, session_state, &empty)?;
+        let ctx_none = build_context(
+            attempt,
+            analysis.command_status,
+            &signals,
+            session_state,
+            &empty,
+            opts,
+            attempt.action_class,
+        )?;
         Some(
             Request::new(
                 principal_uid,
                 action_uid,
-                resource_uid,
-                context_no_grants,
+                graph.resource_uid,
+                ctx_none,
                 Some(schema),
             )
-            .map_err(|e| PolicyError::RequestBuildFailed {
-                detail: e.to_string(),
-            })?,
+            .map_err(req_err)?,
         )
     };
 
-    Ok(BuiltCedarRequest {
-        request,
-        entities,
-        request_without_grants,
-        lifted_grant_by_rule_id,
-    })
-}
-
-fn build_entities(
-    attempt: &ActionAttempt,
-    signals: &CedarSignals,
-) -> Result<(EntityUid, EntityUid, Entities), PolicyError> {
-    let schema = runtime_schema()?;
-    let org_id = "default";
-    let group_id = "default";
-    let device_id = non_empty_or(&attempt.device_id, "device-unknown");
-    let agent_lower = attempt.agent_name.trim().to_ascii_lowercase();
-    let agent_id = non_empty_or(&agent_lower, "agent-unknown");
-    let instance_id = format!("{device_id}:{agent_id}");
-    let session_id = non_empty_or(&attempt.session_id, "session-unknown");
-
-    let org_uid = entity_uid("Grdr::Organisation", org_id)?;
-    let group_uid = entity_uid("Grdr::Group", group_id)?;
-    let device_uid = entity_uid("Grdr::Device", device_id)?;
-    let agent_uid = entity_uid("Grdr::Agent", agent_id)?;
-    let instance_uid = entity_uid("Grdr::AgentInstance", &instance_id)?;
-    let session_uid = entity_uid("Grdr::Session", session_id)?;
-
-    let mut entities = vec![
-        Entity::new_no_attrs(org_uid.clone(), HashSet::new()),
-        Entity::new_no_attrs(group_uid.clone(), HashSet::from([org_uid])),
-        Entity::new(
-            device_uid.clone(),
-            HashMap::from([
-                (
-                    "os".into(),
-                    RestrictedExpression::new_string("unknown".into()),
-                ),
-                (
-                    "profile".into(),
-                    RestrictedExpression::new_string("user".into()),
-                ),
-            ]),
-            HashSet::from([group_uid.clone()]),
-        )
-        .map_err(entity_err)?,
-    ];
-
-    let agent_classes = if attempt.action_class == ActionClass::AgentSpawn {
-        set_expr(&signals.resource_classes)
-    } else {
-        RestrictedExpression::new_set([])
-    };
-    entities.push(
-        Entity::new(
-            agent_uid.clone(),
-            HashMap::from([
-                ("tier".into(), RestrictedExpression::new_string("A".into())),
-                ("classes".into(), agent_classes),
-            ]),
-            HashSet::new(),
-        )
-        .map_err(entity_err)?,
-    );
-
-    entities.push(Entity::new_no_attrs(
-        instance_uid.clone(),
-        HashSet::from([agent_uid.clone(), device_uid, group_uid]),
-    ));
-
-    entities.push(
-        Entity::new(
-            session_uid.clone(),
-            HashMap::from([
-                ("depth".into(), RestrictedExpression::new_long(0)),
-                ("contained".into(), RestrictedExpression::new_bool(false)),
-                (
-                    "containment".into(),
-                    RestrictedExpression::new_string("none".into()),
-                ),
-                ("classes".into(), RestrictedExpression::new_set([])),
-            ]),
-            HashSet::from([instance_uid]),
-        )
-        .map_err(entity_err)?,
-    );
-
-    let resource_type = resource_entity_type_for_action(attempt.action_class.as_str());
-    let resource_id = non_empty_or(&attempt.id, "target");
-    let resource_uid = if attempt.action_class == ActionClass::AgentSpawn {
-        agent_uid
-    } else {
-        let uid = entity_uid(resource_type, resource_id)?;
-        let res_entity = build_resource_entity(attempt, uid.clone(), signals, &mut entities)?;
-        entities.push(res_entity);
-        uid
-    };
-
-    let compiled_entities = Entities::from_entities(entities, Some(schema)).map_err(|e| {
-        PolicyError::RequestBuildFailed {
-            detail: e.to_string(),
-        }
-    })?;
-
-    Ok((session_uid, resource_uid, compiled_entities))
-}
-
-fn build_resource_entity(
-    attempt: &ActionAttempt,
-    uid: EntityUid,
-    signals: &CedarSignals,
-    extra_entities: &mut Vec<Entity>,
-) -> Result<Entity, PolicyError> {
-    let mut attrs = HashMap::from([("classes".into(), set_expr(&signals.resource_classes))]);
-    let mut parents = HashSet::new();
-
-    match attempt.action_class {
-        ActionClass::FileRead | ActionClass::FileWrite | ActionClass::FileDelete => {
-            attrs.insert(
-                "in_workspace".into(),
-                RestrictedExpression::new_bool(signals.in_workspace),
-            );
-        }
-        ActionClass::NetConnect | ActionClass::NetRequest => {
-            attrs.insert("port".into(), RestrictedExpression::new_long(443));
-        }
-        ActionClass::LlmRequest => {
-            attrs.insert(
-                "provider".into(),
-                RestrictedExpression::new_string("unknown".into()),
-            );
-        }
-        ActionClass::McpConnect => {
-            attrs.insert(
-                "transport".into(),
-                RestrictedExpression::new_string("stdio".into()),
-            );
-            attrs.insert(
-                "identity_pinned".into(),
-                RestrictedExpression::new_bool(false),
-            );
-        }
-        ActionClass::McpCall => {
-            let server_uid = entity_uid("Grdr::McpServer", "default")?;
-            let server = Entity::new(
-                server_uid.clone(),
-                HashMap::from([
-                    (
-                        "transport".into(),
-                        RestrictedExpression::new_string("stdio".into()),
-                    ),
-                    (
-                        "identity_pinned".into(),
-                        RestrictedExpression::new_bool(false),
-                    ),
-                    ("classes".into(), RestrictedExpression::new_set([])),
-                ]),
-                HashSet::new(),
-            )
-            .map_err(entity_err)?;
-            extra_entities.push(server);
-            parents.insert(server_uid);
-            attrs.insert(
-                "manifest_pinned".into(),
-                RestrictedExpression::new_bool(false),
-            );
-            attrs.insert(
-                "write_capable".into(),
-                RestrictedExpression::new_bool(signals.write_capable),
-            );
-        }
-        _ => {}
-    }
-
-    Entity::new(uid, attrs, parents).map_err(entity_err)
-}
-
-fn build_context(
-    attempt: &ActionAttempt,
-    signals: &CedarSignals,
-    session_state: Option<&SessionRuleState>,
-    grants: &BTreeSet<String>,
-) -> Result<Context, PolicyError> {
-    let (session_labels, label_epoch) = match session_state {
-        Some(state) => {
-            let mut labels: BTreeSet<String> = state
-                .labels
-                .iter()
-                .map(|l| l.as_str().to_string())
-                .collect();
-            if state.labels.contains(&SessionLabel::CredentialAccessed) {
-                labels.insert("sensitive".into());
-                labels.insert("secret-read".into());
-            }
-            if state.labels.contains(&SessionLabel::UntrustedWebFetched) {
-                labels.insert("untrusted".into());
-            }
-            let epoch = i64::try_from(state.event_seq).unwrap_or(i64::MAX);
-            (labels, epoch)
-        }
-        None => (BTreeSet::new(), 0),
-    };
-
-    let session_rec = record_expr([
-        ("labels", set_expr(&session_labels)),
-        ("label_epoch", RestrictedExpression::new_long(label_epoch)),
-    ])?;
-    let attribution_rec = record_expr([
-        ("grade", RestrictedExpression::new_long(2)),
-        (
-            "actor_kind",
-            RestrictedExpression::new_string("agent".into()),
-        ),
-        ("evidence", RestrictedExpression::new_set([])),
-    ])?;
-    let assurance_rec = record_expr([
-        ("visibility", RestrictedExpression::new_long(2)),
-        ("control", RestrictedExpression::new_long(1)),
-        ("tamper", RestrictedExpression::new_long(0)),
-        ("fail_closed", RestrictedExpression::new_bool(false)),
-    ])?;
-    let schedule_rec = record_expr([])?;
-
-    let mut pairs: Vec<(String, RestrictedExpression)> = vec![
-        ("session".into(), session_rec),
-        ("grants".into(), set_expr(grants)),
-        ("attribution".into(), attribution_rec),
-        ("assurance".into(), assurance_rec),
-        ("facts".into(), set_expr(&signals.facts)),
-        (
-            "control_point".into(),
-            RestrictedExpression::new_string(control_point_name(attempt.control_point).into()),
-        ),
-        ("schedule".into(), schedule_rec),
-    ];
-
-    match attempt.action_class {
-        ActionClass::Exec => {
-            pairs.push((
-                "command".into(),
-                record_expr([("classes", set_expr(&signals.command_classes))])?,
-            ));
-        }
-        ActionClass::FileRead | ActionClass::FileWrite | ActionClass::FileDelete => {
-            pairs.push((
-                "recursive".into(),
-                RestrictedExpression::new_bool(signals.recursive),
-            ));
-        }
-        ActionClass::NetRequest => {
-            pairs.push((
-                "http".into(),
-                record_expr([("classes", RestrictedExpression::new_set([]))])?,
-            ));
-            pairs.push((
-                "cloud".into(),
-                record_expr([
-                    ("provider", RestrictedExpression::new_string(String::new())),
-                    ("account_classes", RestrictedExpression::new_set([])),
-                    ("tenant_classes", RestrictedExpression::new_set([])),
-                    ("verified", RestrictedExpression::new_bool(false)),
-                ])?,
-            ));
-        }
-        ActionClass::LlmRequest => {
-            pairs.push((
-                "tenant".into(),
-                record_expr([
-                    ("classes", RestrictedExpression::new_set([])),
-                    ("verified", RestrictedExpression::new_bool(false)),
-                ])?,
-            ));
-        }
-        ActionClass::McpCall => {
-            pairs.push((
-                "args".into(),
-                record_expr([
-                    ("classes", RestrictedExpression::new_set([])),
-                    ("extracted", RestrictedExpression::new_bool(false)),
-                ])?,
-            ));
-        }
-        ActionClass::CredUse => {
-            pairs.push((
-                "mode".into(),
-                RestrictedExpression::new_string("inject".into()),
-            ));
-        }
-        ActionClass::AgentSpawn => {
-            pairs.push((
-                "child".into(),
-                record_expr([
-                    ("depth", RestrictedExpression::new_long(1)),
-                    ("contained", RestrictedExpression::new_bool(false)),
-                    ("classes", RestrictedExpression::new_set([])),
-                ])?,
-            ));
-        }
-        ActionClass::ConfigChange => {
-            pairs.push(("change_classes".into(), set_expr(&signals.resource_classes)));
-        }
-        ActionClass::DataFlow => {
-            pairs.push(("source_labels".into(), set_expr(&session_labels)));
-        }
-        ActionClass::NetConnect
-        | ActionClass::McpConnect
-        | ActionClass::Elevate
-        | ActionClass::UiAct => {}
-    }
-
-    Context::from_pairs(pairs).map_err(|e| PolicyError::RequestBuildFailed {
-        detail: e.to_string(),
-    })
-}
-
-fn entity_uid(ty: &str, id: &str) -> Result<EntityUid, PolicyError> {
-    let type_name = EntityTypeName::from_str(ty).map_err(|e| PolicyError::RequestBuildFailed {
-        detail: e.to_string(),
-    })?;
-    let eid = EntityId::new(id);
-    Ok(EntityUid::from_type_name_and_id(type_name, eid))
-}
-
-fn set_expr(values: &BTreeSet<String>) -> RestrictedExpression {
-    RestrictedExpression::new_set(
-        values
+    let has_data_flow = attempt.action_class != ActionClass::DataFlow
+        && signals
+            .sink_classes
             .iter()
-            .map(|val| RestrictedExpression::new_string(val.clone())),
-    )
-}
-
-fn record_expr<const N: usize>(
-    fields: [(&str, RestrictedExpression); N],
-) -> Result<RestrictedExpression, PolicyError> {
-    RestrictedExpression::new_record(fields.into_iter().map(|(k, v)| (k.to_string(), v))).map_err(
-        |e| PolicyError::RequestBuildFailed {
-            detail: e.to_string(),
-        },
-    )
-}
-
-fn entity_err(err: impl std::fmt::Display) -> PolicyError {
-    PolicyError::RequestBuildFailed {
-        detail: err.to_string(),
-    }
-}
-
-fn non_empty_or<'a>(raw: &'a str, fallback: &'a str) -> &'a str {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        fallback
+            .any(|c| SINK_CLASSES.contains(&c.as_str()));
+    let (data_flow_request, data_flow_request_without_grants) = if has_data_flow {
+        let df_action = entity_uid("Grdr::Action", ActionClass::DataFlow.as_str())?;
+        let df_ctx = build_context(
+            attempt,
+            analysis.command_status,
+            &signals,
+            session_state,
+            &granted_rule_ids,
+            opts,
+            ActionClass::DataFlow,
+        )?;
+        let df_req = Request::new(
+            graph.session_uid.clone(),
+            df_action.clone(),
+            graph.sink_uid.clone(),
+            df_ctx,
+            Some(schema),
+        )
+        .map_err(req_err)?;
+        let df_no_grants = if granted_rule_ids.is_empty() {
+            None
+        } else {
+            let empty = BTreeSet::new();
+            let df_ctx_none = build_context(
+                attempt,
+                analysis.command_status,
+                &signals,
+                session_state,
+                &empty,
+                opts,
+                ActionClass::DataFlow,
+            )?;
+            Some(
+                Request::new(
+                    graph.session_uid,
+                    df_action,
+                    graph.sink_uid,
+                    df_ctx_none,
+                    Some(schema),
+                )
+                .map_err(req_err)?,
+            )
+        };
+        (Some(df_req), df_no_grants)
     } else {
-        trimmed
-    }
+        (None, None)
+    };
+
+    Ok(CedarRequest {
+        request,
+        entities: graph.entities,
+        request_without_grants,
+        data_flow_request_without_grants,
+        lifted_grant_by_rule_id,
+        data_flow_request,
+        absent,
+        pending,
+        principal_is_process: graph.principal_is_process,
+        command_status: analysis.command_status,
+    })
 }
 
-fn control_point_name(cp: grdr_model::ControlPoint) -> &'static str {
-    match cp {
-        grdr_model::ControlPoint::Hook => "hook",
-        grdr_model::ControlPoint::McpBroker => "mcp-broker",
-        grdr_model::ControlPoint::Proxy => "proxy",
-        grdr_model::ControlPoint::Sandbox => "sandbox",
-        grdr_model::ControlPoint::Sensor => "sensor",
-        grdr_model::ControlPoint::Browser => "browser",
-        grdr_model::ControlPoint::Gateway => "gateway",
-        grdr_model::ControlPoint::Connector => "connector",
+fn collect_matching_grants(
+    attempt: &ActionAttempt,
+    active_rules: &[CompiledRuleMeta],
+    grants: &[Grant],
+    now: Timestamp,
+) -> (BTreeSet<String>, BTreeMap<String, String>) {
+    let match_attempt = if matches!(
+        attempt.action_class,
+        ActionClass::FileRead
+            | ActionClass::FileWrite
+            | ActionClass::FileDelete
+            | ActionClass::ConfigChange
+    ) {
+        attempt.clone()
+    } else {
+        let (norm_target, _) = normalize_attempt_target(attempt.action_class, &attempt.target);
+        let mut cloned = attempt.clone();
+        if !norm_target.is_empty() {
+            cloned.target = norm_target;
+        }
+        cloned
+    };
+
+    let mut granted_rule_ids = BTreeSet::new();
+    let mut lifted = BTreeMap::new();
+    for rule_meta in active_rules {
+        let liftable = !rule_meta.is_final && matches!(rule_meta.mode, Mode::Ask | Mode::Block);
+        if !liftable {
+            continue;
+        }
+        if let Some(grant) = grants.iter().find(|g| {
+            g.rule_id == rule_meta.rule_id
+                && grant_satisfies_rule(rule_meta, g)
+                && g.matches(&match_attempt, now)
+        }) {
+            granted_rule_ids.insert(rule_meta.rule_id.clone());
+            lifted.insert(rule_meta.rule_id.clone(), grant.grant_id.clone());
+        }
     }
+    (granted_rule_ids, lifted)
+}
+
+fn extract_approver_kind(note: &str) -> Option<&str> {
+    let trimmed = note.trim();
+    let after = trimmed.strip_prefix("approver:")?;
+    let kind = after
+        .trim_start()
+        .split(|c: char| c.is_ascii_whitespace() || matches!(c, ',' | ';' | '['))
+        .next()
+        .unwrap_or("")
+        .trim();
+    (!kind.is_empty()).then_some(kind)
+}
+
+fn is_non_self_exception_role(kind: &str) -> bool {
+    matches!(
+        kind.to_ascii_lowercase().as_str(),
+        "sponsor" | "admin" | "quorum"
+    )
+}
+
+fn grant_satisfies_rule(rule: &CompiledRuleMeta, grant: &Grant) -> bool {
+    if rule.is_final || grant.grade < rule.min_grade {
+        return false;
+    }
+    if rule.mode == Mode::Block {
+        if grant.grade < ApprovalGrade::G1 {
+            return false;
+        }
+        let Some(kind) = extract_approver_kind(&grant.note) else {
+            return false;
+        };
+        if kind.eq_ignore_ascii_case("self") || !is_non_self_exception_role(kind) {
+            return false;
+        }
+        if rule.approver != "self" && !kind.eq_ignore_ascii_case(&rule.approver) {
+            return false;
+        }
+        return true;
+    }
+    if rule.approver != "self" {
+        if grant.note.trim().eq_ignore_ascii_case("self") {
+            return false;
+        }
+        let Some(kind) = extract_approver_kind(&grant.note) else {
+            return false;
+        };
+        return !kind.eq_ignore_ascii_case("self") && kind.eq_ignore_ascii_case(&rule.approver);
+    }
+    true
 }

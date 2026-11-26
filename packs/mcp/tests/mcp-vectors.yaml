@@ -1,0 +1,46 @@
+format: grdr.policy-tests.v1
+pack_id: grdr.mcp
+vectors:
+  - id: vec.mcp.unpinned-server.positive
+    expect_verdict: StepUp
+    expect_rule: mcp.unpinned-server
+    action: mcp.connect
+    target: "stdio://custom-server"
+    server_pinned: false
+  - id: vec.mcp.unpinned-server.pending
+    expect_verdict: Defer
+    expect_rule: mcp.unpinned-server
+    action: mcp.connect
+    target: "stdio://pending-server"
+  - id: vec.mcp.write-tool.positive
+    expect_verdict: StepUp
+    expect_rule: mcp.unpinned-write-tool
+    action: mcp.call
+    target: "github.create_issue"
+    server_pinned: true
+    tool_pinned: false
+    args_extracted: true
+  - id: vec.mcp.unextracted-args.positive
+    expect_verdict: StepUp
+    expect_rule: mcp.unextracted-args
+    action: mcp.call
+    target: "github.create_issue"
+    server_pinned: true
+    tool_pinned: true
+    args_extracted: false
+  - id: vec.mcp.readonly-pinned.negative
+    expect_verdict: Allow
+    action: mcp.call
+    target: "docs.search"
+    server_pinned: true
+    tool_pinned: true
+    args_extracted: true
+    read_only_hint: true
+  - id: vec.mcp.read-and-send.positive
+    expect_verdict: StepUp
+    expect_rule: mcp.unpinned-write-tool
+    action: mcp.call
+    target: "mail.read_and_send"
+    server_pinned: true
+    tool_pinned: false
+    args_extracted: true

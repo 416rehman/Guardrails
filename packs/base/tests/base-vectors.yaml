@@ -1,0 +1,17 @@
+format: grdr.policy-tests.v1
+pack_id: grdr.base
+vectors:
+  - id: vec.base.allow-workspace-read
+    expect_verdict: Allow
+    action: file.read
+    target: "src/lib.rs"
+  - id: vec.base.allow-exec-status
+    expect_verdict: Allow
+    action: exec
+    target: "git status"
+  - id: vec.base.frozen-session.positive
+    expect_verdict: Deny
+    expect_rule: base.frozen-session
+    action: exec
+    target: "git status"
+    session_frozen: true

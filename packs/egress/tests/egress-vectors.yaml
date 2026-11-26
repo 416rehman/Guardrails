@@ -1,0 +1,37 @@
+format: grdr.policy-tests.v1
+pack_id: grdr.egress
+vectors:
+  - id: vec.egress.metadata-ssrf.positive
+    expect_verdict: Deny
+    expect_rule: egress.metadata-ssrf
+    action: net.request
+    target: "169.254.169.254/latest/meta-data"
+    port: 80
+  - id: vec.egress.metadata-ssrf-connect.positive
+    expect_verdict: Deny
+    expect_rule: egress.metadata-ssrf-connect
+    action: net.connect
+    target: "169.254.169.254"
+    port: 80
+  - id: vec.egress.metadata-ssrf-exec.positive
+    expect_verdict: Deny
+    expect_rule: egress.metadata-ssrf-exec
+    action: exec
+    target: "curl http://fd00:ec2::254/latest/meta-data"
+  - id: vec.egress.external-upload.positive
+    expect_verdict: StepUp
+    expect_rule: egress.external-upload
+    action: net.request
+    target: "https://webhook.site/abc"
+    port: 443
+  - id: vec.egress.nonstandard-port.positive
+    expect_verdict: StepUp
+    expect_rule: egress.nonstandard-port
+    action: net.connect
+    target: "db.internal"
+    port: 5432
+  - id: vec.egress.docs.negative
+    expect_verdict: Allow
+    action: net.connect
+    target: "docs.rs"
+    port: 443

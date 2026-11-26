@@ -1,0 +1,33 @@
+id = "grdr.mcp"
+version = "1.0.0"
+kind = "policy"
+per_person_scoring = false
+commands = []
+executables = []
+urls = []
+env_vars_to_set = []
+mcp_servers_to_start = []
+
+[[reads]]
+path = "mcp.identity_pinned"
+data_class = "structural"
+
+[[reads]]
+path = "mcp.manifest_pinned"
+data_class = "structural"
+
+[[reads]]
+path = "mcp.write_capable"
+data_class = "structural"
+
+[[reads]]
+path = "context.args"
+data_class = "structural"
+
+[[reads]]
+path = "resource.classes"
+data_class = "structural"
+
+[[reads]]
+path = "context.grants"
+data_class = "structural"

@@ -1,204 +1,68 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
-//! Normative 9-row verdict derivation and control-point degradation tables.
-
-use std::collections::BTreeSet;
-
-use serde::{Deserialize, Serialize};
+//! Independent normative 9-row verdict derivation and control-point degradation (`docs/design/12` s.4).
 
 use grdr_model::{ApprovalGrade, Mode, Verdict};
+pub use grdr_model::{
+    BoundaryObserver, ControlPointCaps, DeriveInput, DeterminingForbid, ExecutedVerb,
+    FailureDisposition, HoldCapability, InputValidity, LossBehaviour, NotEvaluableRuleRef,
+    ObligationSupport, PendingRuleRef, RemedyCapability, RuleMutability, TimelockAllowance,
+    VerdictDiscriminant,
+};
 
-const MAX_MODIFY_RETRIES: u8 = 2;
+const REF_MAX_MODIFY_RETRIES: u8 = 2;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum InputValidity {
-    Valid,
-    Malformed,
-    EvalError,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum FailureDisposition {
-    Open,
-    Closed,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum HoldCapability {
-    NoHold,
-    CanHold { deadline_ms: u64 },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ExecutedVerb {
-    Allow,
-    Deny,
-    DenyWithRetryToken,
-    Hold,
-    Modify,
-    ObserveOnly,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum VerdictDiscriminant {
-    Allow,
-    Modify,
-    StepUp,
-    Defer,
-    Deny,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RuleMutability {
-    Liftable,
-    Final,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RemedyCapability {
-    Plain,
-    ModifyTransform,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum LossBehaviour {
-    AllowOnLoss,
-    FailClosed,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum TimelockAllowance {
-    Unavailable,
-    DisclosedTimeLock,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum BoundaryObserver {
-    None,
-    ScopedBoundary,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ObligationSupport {
-    Unsupported,
-    Supported,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ControlPointCaps {
-    pub verbs: BTreeSet<VerdictDiscriminant>,
-    pub hold: HoldCapability,
-    pub failure_mode: FailureDisposition,
-    pub snapshot: ObligationSupport,
-    pub modify: ObligationSupport,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DeterminingForbid {
-    pub rule_id: String,
-    pub mode: Mode,
-    pub min_grade: ApprovalGrade,
-    pub mutability: RuleMutability,
-    pub remedy: RemedyCapability,
-    pub on_loss: LossBehaviour,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PendingRuleRef {
-    pub rule_id: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct NotEvaluableRuleRef {
-    pub rule_id: String,
-    pub on_loss: LossBehaviour,
-    pub grant_lifted: ObligationSupport,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DeriveInput {
-    pub validity: InputValidity,
-    pub modify_attempts: u8,
-    pub device_max_grade: ApprovalGrade,
-    pub timelock: TimelockAllowance,
-    pub base_permit: ObligationSupport,
-    pub observer: BoundaryObserver,
-    pub snapshot_required: ObligationSupport,
-    pub control_snapshot: ObligationSupport,
-    pub control_modify: ObligationSupport,
-    pub determining_forbids: Vec<DeterminingForbid>,
-    pub pending_rules: Vec<PendingRuleRef>,
-    pub not_evaluable_rules: Vec<NotEvaluableRuleRef>,
-}
-
+/// Independently derives the 9-row verdict from normalized evaluation state.
 pub fn derive_verdict(input: &DeriveInput) -> Verdict {
     if input.validity != InputValidity::Valid {
         return Verdict::Deny;
     }
-
     if !input.determining_forbids.is_empty() {
-        let all_modify = input
-            .determining_forbids
-            .iter()
-            .all(|f| f.remedy == RemedyCapability::ModifyTransform);
-        if all_modify
-            && input.control_modify == ObligationSupport::Supported
-            && input.modify_attempts < MAX_MODIFY_RETRIES
-        {
+        let can_rewrite = input.control_modify == ObligationSupport::Supported
+            && input.modify_attempts < REF_MAX_MODIFY_RETRIES
+            && input
+                .determining_forbids
+                .iter()
+                .all(|forbid| forbid.remedy == RemedyCapability::ModifyTransform);
+        if can_rewrite {
             return Verdict::Modify;
         }
-
-        let any_non_ask_or_unliftable = input.determining_forbids.iter().any(|f| {
-            f.mode != Mode::Ask
-                || !grade_satisfiable(f.min_grade, input.device_max_grade, input.timelock)
+        let blocked = input.determining_forbids.iter().any(|forbid| {
+            forbid.mode != Mode::Ask
+                || !ref_grade_satisfiable(forbid.min_grade, input.device_max_grade, input.timelock)
         });
-        if any_non_ask_or_unliftable {
-            return Verdict::Deny;
-        }
-        return Verdict::StepUp;
+        return if blocked {
+            Verdict::Deny
+        } else {
+            Verdict::StepUp
+        };
     }
-
     if !input.pending_rules.is_empty() {
         return Verdict::Defer;
     }
-
-    let unlifted_ne: Vec<&NotEvaluableRuleRef> = input
-        .not_evaluable_rules
-        .iter()
-        .filter(|r| r.grant_lifted == ObligationSupport::Unsupported)
-        .collect();
-    if !unlifted_ne.is_empty()
-        && input.observer != BoundaryObserver::ScopedBoundary
-        && unlifted_ne
-            .iter()
-            .any(|r| r.on_loss == LossBehaviour::FailClosed)
-    {
-        return Verdict::StepUp;
-    }
-
-    if input.base_permit == ObligationSupport::Supported {
-        if input.snapshot_required == ObligationSupport::Supported
-            && input.control_snapshot == ObligationSupport::Unsupported
-        {
-            return Verdict::Deny;
+    if input.observer != BoundaryObserver::ScopedBoundary {
+        for ne in &input.not_evaluable_rules {
+            if ne.grant_lifted == ObligationSupport::Supported {
+                continue;
+            }
+            match ne.on_loss {
+                LossBehaviour::FailClosed | LossBehaviour::Block => return Verdict::StepUp,
+                LossBehaviour::AllowOnLoss => {}
+            }
         }
-        return Verdict::Allow;
     }
-
-    Verdict::Deny
+    if input.base_permit != ObligationSupport::Supported {
+        return Verdict::Deny;
+    }
+    if input.snapshot_required == ObligationSupport::Supported
+        && input.control_snapshot == ObligationSupport::Unsupported
+    {
+        return Verdict::Deny;
+    }
+    Verdict::Allow
 }
 
+/// Independently degrades a normative verdict onto concrete control-point capabilities.
 pub fn degrade_verdict(
     verdict: Verdict,
     caps: &ControlPointCaps,
@@ -206,90 +70,64 @@ pub fn degrade_verdict(
     timelock: TimelockAllowance,
 ) -> ExecutedVerb {
     let can_deny = caps.verbs.contains(&VerdictDiscriminant::Deny);
+    let deny_or_observe = if can_deny {
+        ExecutedVerb::Deny
+    } else {
+        ExecutedVerb::ObserveOnly
+    };
+    let can_hold = matches!(caps.hold, HoldCapability::CanHold { deadline_ms } if deadline_ms > 0)
+        && caps.failure_mode == FailureDisposition::Closed;
     match verdict {
         Verdict::Allow => ExecutedVerb::Allow,
-        Verdict::Deny => {
-            if can_deny {
-                ExecutedVerb::Deny
-            } else {
-                ExecutedVerb::ObserveOnly
-            }
-        }
+        Verdict::Deny => deny_or_observe,
         Verdict::Modify => {
             if caps.modify == ObligationSupport::Supported
                 && caps.verbs.contains(&VerdictDiscriminant::Modify)
             {
                 ExecutedVerb::Modify
-            } else if can_deny {
-                if min_grade_available || timelock == TimelockAllowance::DisclosedTimeLock {
-                    ExecutedVerb::DenyWithRetryToken
-                } else {
-                    ExecutedVerb::Deny
-                }
             } else {
-                ExecutedVerb::ObserveOnly
+                deny_or_observe
             }
         }
         Verdict::StepUp => {
             if !min_grade_available && timelock == TimelockAllowance::Unavailable {
-                return if can_deny {
-                    ExecutedVerb::Deny
-                } else {
-                    ExecutedVerb::ObserveOnly
-                };
+                return deny_or_observe;
             }
-            match caps.hold {
-                HoldCapability::CanHold { deadline_ms }
-                    if deadline_ms > 0
-                        && caps.failure_mode == FailureDisposition::Closed
-                        && caps.verbs.contains(&VerdictDiscriminant::StepUp) =>
-                {
-                    ExecutedVerb::Hold
-                }
-                _ => {
-                    if can_deny {
-                        ExecutedVerb::DenyWithRetryToken
-                    } else {
-                        ExecutedVerb::ObserveOnly
-                    }
-                }
+            if can_hold && caps.verbs.contains(&VerdictDiscriminant::StepUp) {
+                ExecutedVerb::Hold
+            } else if can_deny {
+                ExecutedVerb::DenyWithRetryToken
+            } else {
+                ExecutedVerb::ObserveOnly
             }
         }
-        Verdict::Defer => match caps.hold {
-            HoldCapability::CanHold { deadline_ms }
-                if deadline_ms > 0 && caps.failure_mode == FailureDisposition::Closed =>
-            {
+        Verdict::Defer => {
+            if can_hold && caps.verbs.contains(&VerdictDiscriminant::Defer) {
                 ExecutedVerb::Hold
+            } else {
+                deny_or_observe
             }
-            _ => {
-                if can_deny {
-                    ExecutedVerb::Deny
-                } else {
-                    ExecutedVerb::ObserveOnly
-                }
-            }
-        },
+        }
     }
 }
 
-fn grade_satisfiable(
+fn ref_grade_satisfiable(
     required: ApprovalGrade,
     device_max: ApprovalGrade,
     timelock: TimelockAllowance,
 ) -> bool {
-    if device_max >= required {
-        return true;
-    }
-    timelock == TimelockAllowance::DisclosedTimeLock && required == ApprovalGrade::G1
+    device_max >= required
+        || (timelock == TimelockAllowance::DisclosedTimeLock && required == ApprovalGrade::G1)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
 
-    #[test]
-    fn derive_verdict_covers_all_nine_normative_rows() {
-        let base = DeriveInput {
+    fn valid_base_input() -> DeriveInput {
+        DeriveInput {
             validity: InputValidity::Valid,
             modify_attempts: 0,
             device_max_grade: ApprovalGrade::G2,
@@ -302,8 +140,12 @@ mod tests {
             determining_forbids: vec![],
             pending_rules: vec![],
             not_evaluable_rules: vec![],
-        };
+        }
+    }
 
+    #[test]
+    fn derive_verdict_covers_all_nine_normative_rows() {
+        let base = valid_base_input();
         assert_eq!(derive_verdict(&base), Verdict::Allow);
 
         let mut malformed = base.clone();
@@ -326,6 +168,11 @@ mod tests {
         assert_eq!(derive_verdict(&modify), Verdict::Modify);
         modify.modify_attempts = 2;
         assert_eq!(derive_verdict(&modify), Verdict::Deny);
+
+        let mut modify_unavail = modify.clone();
+        modify_unavail.modify_attempts = 0;
+        modify_unavail.control_modify = ObligationSupport::Unsupported;
+        assert_eq!(derive_verdict(&modify_unavail), Verdict::Deny);
 
         let mut ask = base.clone();
         ask.determining_forbids.push(DeterminingForbid {
@@ -371,6 +218,16 @@ mod tests {
         assert_eq!(derive_verdict(&ne_closed), Verdict::StepUp);
         ne_closed.observer = BoundaryObserver::ScopedBoundary;
         assert_eq!(derive_verdict(&ne_closed), Verdict::Allow);
+
+        let mut ne_block = base.clone();
+        ne_block.not_evaluable_rules.push(NotEvaluableRuleRef {
+            rule_id: "secrets.honeytoken".into(),
+            on_loss: LossBehaviour::Block,
+            grant_lifted: ObligationSupport::Unsupported,
+        });
+        assert_eq!(derive_verdict(&ne_block), Verdict::StepUp);
+        ne_block.not_evaluable_rules[0].grant_lifted = ObligationSupport::Supported;
+        assert_eq!(derive_verdict(&ne_block), Verdict::Allow);
 
         let mut ne_unmet_snapshot = ne_closed;
         ne_unmet_snapshot.snapshot_required = ObligationSupport::Supported;
@@ -418,6 +275,15 @@ mod tests {
             ),
             ExecutedVerb::Deny
         );
+        assert_eq!(
+            degrade_verdict(
+                Verdict::Modify,
+                &caps_hook,
+                true,
+                TimelockAllowance::Unavailable
+            ),
+            ExecutedVerb::Deny
+        );
 
         let caps_hold = ControlPointCaps {
             verbs: BTreeSet::from([
@@ -448,6 +314,50 @@ mod tests {
                 TimelockAllowance::Unavailable
             ),
             ExecutedVerb::Hold
+        );
+
+        let no_defer_hold = ControlPointCaps {
+            verbs: BTreeSet::from([
+                VerdictDiscriminant::Allow,
+                VerdictDiscriminant::Deny,
+                VerdictDiscriminant::StepUp,
+            ]),
+            ..caps_hold
+        };
+        assert_eq!(
+            degrade_verdict(
+                Verdict::Defer,
+                &no_defer_hold,
+                true,
+                TimelockAllowance::Unavailable
+            ),
+            ExecutedVerb::Deny
+        );
+
+        let zero_hold = ControlPointCaps {
+            hold: HoldCapability::CanHold { deadline_ms: 0 },
+            ..caps_hold
+        };
+        assert_eq!(
+            degrade_verdict(
+                Verdict::Defer,
+                &zero_hold,
+                true,
+                TimelockAllowance::Unavailable
+            ),
+            ExecutedVerb::Deny
+        );
+
+        let sensor = ControlPointCaps {
+            verbs: BTreeSet::from([VerdictDiscriminant::Allow]),
+            hold: HoldCapability::NoHold,
+            failure_mode: FailureDisposition::Open,
+            snapshot: ObligationSupport::Unsupported,
+            modify: ObligationSupport::Unsupported,
+        };
+        assert_eq!(
+            degrade_verdict(Verdict::Deny, &sensor, true, TimelockAllowance::Unavailable),
+            ExecutedVerb::ObserveOnly
         );
     }
 }

@@ -212,6 +212,11 @@ GRDR-POL-0002 = { owner = "grdr-core", file = "crates/grdr-core/src/policy.rs" }
 GRDR-POL-0003 = { owner = "grdr-core", file = "crates/grdr-core/src/policy.rs" }
 GRDR-POL-0004 = { owner = "grdr-core", file = "crates/grdr-core/src/policy.rs" }
 GRDR-POL-0005 = { owner = "grdr-core", file = "crates/grdr-core/src/policy.rs" }
+GRDR-POL-0006 = { owner = "grdr-core", file = "crates/grdr-core/src/policy.rs" }
+GRDR-POL-0007 = { owner = "grdr-core", file = "crates/grdr-core/src/policy.rs" }
+GRDR-POL-0008 = { owner = "grdr-core", file = "crates/grdr-core/src/policy.rs" }
+GRDR-POL-0009 = { owner = "grdr-core", file = "crates/grdr-core/src/policy.rs" }
+GRDR-POL-0010 = { owner = "grdr-core", file = "crates/grdr-core/src/policy.rs" }
 GRDR-POLICY-0001 = { owner = "grdr-model", file = "crates/grdr-model/src/error.rs" }
 GRDR-POLICY-0002 = { owner = "grdr-model", file = "crates/grdr-model/src/error.rs" }
 GRDR-POLREF-0001 = { owner = "grdr-policy-ref", file = "crates/grdr-policy-ref/src/lib.rs" }
