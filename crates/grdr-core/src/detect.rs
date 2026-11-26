@@ -1,11 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+//! Sigma detection engine, bounded correlations, config integrity, response execution, and L0 compilers (`D-09`, `D-54`).
+
+pub mod builtins;
+pub mod condition;
+mod config_formats;
+pub mod config_integrity;
+mod config_parse;
+mod config_toml;
+mod config_toml_lex;
+pub mod corr;
+pub mod engine;
+pub mod eval;
+pub mod l0;
+mod l0_format;
+pub mod response;
+pub mod sigma;
+mod sigma_fields;
+pub mod types;
+pub mod yaml;
+pub mod yaml_scalar;
+
 use std::collections::BTreeMap;
 
 use jiff::Timestamp;
-use uuid::Uuid;
 
+use grdr_crypto::{domain_sha256_digest, encode_lower_hex};
 use grdr_model::{
     DecisionReceipt, Finding, FindingClass, FindingLifecycle, FindingSeverity, Incident, Mode,
     Verdict,
@@ -13,6 +34,9 @@ use grdr_model::{
 
 use crate::analyze::classify_target;
 use crate::session::SessionRuleState;
+
+const RECEIPT_FINDING_DOMAIN: &str = "grdr.detect.receipt_finding.v1";
+const INCIDENT_ID_DOMAIN: &str = "grdr.detect.incident_id.v1";
 
 struct IncidentAcc {
     session_id: String,
@@ -27,16 +51,47 @@ struct IncidentAcc {
     last_seen: Timestamp,
 }
 
+fn deterministic_receipt_finding_id(receipt: &DecisionReceipt) -> String {
+    let mut buf = Vec::new();
+    for field in [
+        receipt.receipt_id.as_bytes(),
+        receipt.attempt_id.as_bytes(),
+        receipt.session_id.as_bytes(),
+        receipt.device_id.as_bytes(),
+    ] {
+        let len = u32::try_from(field.len()).unwrap_or(u32::MAX);
+        buf.extend_from_slice(&len.to_le_bytes());
+        buf.extend_from_slice(field);
+    }
+    buf.extend_from_slice(&receipt.decided_at.as_nanosecond().to_le_bytes());
+    let digest = domain_sha256_digest(RECEIPT_FINDING_DOMAIN, &buf);
+    let hex = encode_lower_hex(&digest);
+    format!("fnd_{}", hex.get(..24).unwrap_or(&hex))
+}
+
+fn deterministic_incident_id(device_id: &str, session_id: &str) -> String {
+    let mut buf = Vec::new();
+    for part in [device_id.as_bytes(), session_id.as_bytes()] {
+        let len = u32::try_from(part.len()).unwrap_or(u32::MAX);
+        buf.extend_from_slice(&len.to_le_bytes());
+        buf.extend_from_slice(part);
+    }
+    let digest = domain_sha256_digest(INCIDENT_ID_DOMAIN, &buf);
+    let hex = encode_lower_hex(&digest);
+    format!("inc_{}", hex.get(..24).unwrap_or(&hex))
+}
+
 pub fn finding_from_receipt(receipt: &DecisionReceipt, device_name: &str) -> Option<Finding> {
     let analysis = classify_target(receipt.action_class, &receipt.target);
     let is_tamper = analysis
         .risk_tags
         .iter()
         .any(|tag| tag == "agent-control-file" || tag == "hook-bypass" || tag == "exec.malformed");
+    let finding_id = deterministic_receipt_finding_id(receipt);
 
     match receipt.verdict {
         Verdict::Deny => Some(Finding {
-            id: format!("fnd_{}", Uuid::now_v7().simple()),
+            id: finding_id,
             session_id: receipt.session_id.clone(),
             device_id: receipt.device_id.clone(),
             device_name: device_name.into(),
@@ -63,7 +118,7 @@ pub fn finding_from_receipt(receipt: &DecisionReceipt, device_name: &str) -> Opt
             detected_at: receipt.decided_at,
         }),
         Verdict::StepUp => Some(Finding {
-            id: format!("fnd_{}", Uuid::now_v7().simple()),
+            id: finding_id,
             session_id: receipt.session_id.clone(),
             device_id: receipt.device_id.clone(),
             device_name: device_name.into(),
@@ -85,7 +140,7 @@ pub fn finding_from_receipt(receipt: &DecisionReceipt, device_name: &str) -> Opt
             if receipt.mode_applied == Some(Mode::Watch) && analysis.risk_score >= 40 =>
         {
             Some(Finding {
-                id: format!("fnd_{}", Uuid::now_v7().simple()),
+                id: finding_id,
                 session_id: receipt.session_id.clone(),
                 device_id: receipt.device_id.clone(),
                 device_name: device_name.into(),
@@ -160,7 +215,7 @@ pub fn correlate_incidents(
             };
             let title = format!("{} session incident ({finding_count})", acc.agent_name);
             Incident {
-                id: format!("inc-{}-{}", acc.device_id, acc.session_id),
+                id: deterministic_incident_id(&acc.device_id, &acc.session_id),
                 session_id: acc.session_id,
                 device_id: acc.device_id,
                 device_name: acc.device_name,
@@ -259,5 +314,9 @@ mod tests {
         assert_eq!(inc.labels, vec![SessionLabel::CredentialAccessed]);
         assert_eq!(inc.first_seen, t1);
         assert_eq!(inc.last_seen, t2);
+        assert_ne!(
+            deterministic_incident_id("a-b", "c"),
+            deterministic_incident_id("a", "b-c")
+        );
     }
 }

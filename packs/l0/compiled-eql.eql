@@ -1,0 +1,1 @@
+process where ((CommandLine : "*-EncodedCommand*" or CommandLine : "*base64 -d*" or CommandLine : "*FromBase64String*") and (ParentImage : "*claude" or ParentImage : "*codex" or ParentImage : "*cursor" or ParentImage : "*gemini" or ParentImage : "*opencode" or ParentImage : "*aider"))

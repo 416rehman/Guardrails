@@ -1030,15 +1030,21 @@ dependencies = [
 name = "grdr-core"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "cedar-policy",
  "grdr-crypto",
  "grdr-fastpath",
  "grdr-model",
  "grdr-schema",
+ "idna",
+ "ipnet",
  "jiff 1.0.2",
+ "regex",
  "serde",
  "serde_json",
  "thiserror",
+ "unicode-normalization",
+ "url",
  "uuid",
 ]
 
@@ -1171,6 +1177,9 @@ dependencies = [
  "clap",
  "grdr-crypto",
  "grdr-model",
+ "grdr-os-clock",
+ "grdr-ports",
+ "grdr-schema",
  "grdr-wire",
  "jiff 1.0.2",
  "serde",
@@ -1179,6 +1188,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "unicode-normalization",
  "zeroize",
 ]
 
@@ -1193,6 +1203,21 @@ dependencies = [
  "serde_json",
  "thiserror",
  "uuid",
+]
+
+[[package]]
+name = "grdr-intel"
+version = "0.1.0"
+dependencies = [
+ "grdr-crypto",
+ "grdr-model",
+ "grdr-schema",
+ "idna",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "url",
+ "zeroize",
 ]
 
 [[package]]
@@ -1381,6 +1406,7 @@ name = "grdr-ports"
 version = "0.1.0"
 dependencies = [
  "grdr-model",
+ "grdr-schema",
  "jiff 1.0.2",
  "serde",
  "serde_json",
@@ -1467,10 +1493,14 @@ dependencies = [
 name = "grdr-review"
 version = "0.1.0"
 dependencies = [
+ "cedar-policy",
+ "grdr-crypto",
  "grdr-model",
+ "grdr-schema",
  "serde",
  "serde_json",
  "thiserror",
+ "unicode-normalization",
 ]
 
 [[package]]

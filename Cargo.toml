@@ -31,6 +31,7 @@ grdr-fastpath-ffi = { version = "0.1.0", path = "crates/grdr-fastpath-ffi" }
 grdr-ffi = { version = "0.1.0", path = "crates/grdr-ffi" }
 grdr-identity = { version = "0.1.0", path = "crates/grdr-identity" }
 grdr-integrations = { version = "0.1.0", path = "crates/grdr-integrations" }
+grdr-intel = { version = "0.1.0", path = "crates/grdr-intel" }
 grdr-ipc-os = { version = "0.1.0", path = "crates/grdr-ipc-os" }
 grdr-jobs = { version = "0.1.0", path = "crates/grdr-jobs" }
 grdr-lake = { version = "0.1.0", path = "crates/grdr-lake" }
@@ -60,8 +61,12 @@ grdr-ui-model = { version = "0.1.0", path = "crates/grdr-ui-model" }
 grdr-update = { version = "0.1.0", path = "crates/grdr-update" }
 grdr-wasm = { version = "0.1.0", path = "crates/grdr-wasm" }
 grdr-wire = { version = "0.1.0", path = "crates/grdr-wire" }
+hex = "0.4"
+idna = "1.1"
+ipnet = "2.12"
 jiff = { version = "1.0", features = ["serde"] }
 prost = { version = "0.14", default-features = false, features = ["derive", "std"] }
+regex = "1.13"
 reqwest = { version = "0.13", default-features = false, features = ["json", "charset"] }
 rusqlite = { version = "0.43", default-features = false, features = ["bundled"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -75,6 +80,8 @@ tower = "0.5"
 tower-http = { version = "0.7", features = ["cors", "fs"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+unicode-normalization = "0.1"
+url = "2"
 uuid = { version = "1.11", features = ["v7", "serde"] }
 zeroize = { version = "1.9", default-features = false, features = ["alloc"] }
 

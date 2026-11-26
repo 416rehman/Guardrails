@@ -1,0 +1,34 @@
+title: "Standard-Library Module Shadowing"
+id: 9b13d3f1-4a12-5023-8994-e83441a01b36
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Detects standard-library module name written to working directory before interpreter run (row 36)."
+logsource:
+  product: grdr
+  category: process
+  service: sensor
+detection:
+  selection:
+    actor.lineage: "agent"
+    target.classes: "stdlib-shadow"
+  condition: selection
+x_grdr:
+  row: 36
+  origin: official
+  rule_id: grdr.det.core.r36.stdlib-module-shadowing
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: notify
+  stage: K3
+  atlas: [T0053]
+  owasp_asi: [ASI02]
+  mode_default: "none"
+  response:
+    mode: simulate
+    verbs: [capture-evidence]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-36-pos
+    negative: fix-36-neg

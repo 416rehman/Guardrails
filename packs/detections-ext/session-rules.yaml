@@ -1,0 +1,64 @@
+format: grdr.session-rules.v1
+pack_id: grdr.det.ext.session
+rules:
+  - id: session.ext.cred-net-escalation
+    when_label: credential-accessed
+    action_classes: [net.request, net.connect]
+    verdict: step-up
+    min_grade: G1
+    reason: "Outbound network connection attempted after sensitive credential access in this session."
+    next_step: "Review destination and grant a scoped approval in Respond before retrying."
+  - id: session.ext.secret-to-sink
+    when_label: secret-read
+    action_classes: [data.flow, llm.request, mcp.call]
+    verdict: deny
+    min_grade: G2
+    reason: "Outbound sink attempted after reading credential material; blocked until declassified."
+    next_step: "Issue a digest-bound declassification grant or strip credential material."
+  - id: session.ext.honeytoken-block
+    when_label: honeytoken-touched
+    action_classes: [exec, file.read, file.write, net.request, net.connect, data.flow, llm.request, mcp.call]
+    verdict: deny
+    min_grade: G3
+    reason: "Canary honeytoken credential touched; outbound sinks and execution blocked."
+    next_step: "Contain the session immediately and rotate all credentials."
+  - id: session.ext.taint-pause-restore
+    when_label: mass-change
+    action_classes: [file.write, file.delete, exec, net.request, data.flow]
+    verdict: deny
+    min_grade: G3
+    reason: "Workspace mass-change circuit breaker tripped; execution paused pending baseline restore."
+    next_step: "Freeze session and restore workspace baseline."
+  - id: session.untrusted-web-exec
+    when_label: untrusted-web-fetched
+    action_classes: [exec, elevate]
+    min_risk_score: 45
+    verdict: step-up
+    min_grade: G2
+    reason: "High-risk command execution attempted after external web content was fetched in this session."
+    next_step: "Verify the command was not driven by untrusted fetched content and approve in Respond."
+  - id: session.repeated-denials-escalation
+    when_label: repeated-denials
+    action_classes: [exec, elevate, file.delete]
+    verdict: step-up
+    min_grade: G2
+    reason: "Session crossed the repeated-denials threshold and requires step-up approval for privileged actions."
+    next_step: "Inspect prior blocked attempts in Sessions and approve or freeze the session in Respond."
+  - id: grdr.approval-streak
+    when_label: credential-accessed
+    action_classes: [cred.use, config.change]
+    count_threshold: 12
+    window_secs: 600
+    verdict: step-up
+    min_grade: G2
+    reason: "Approval fatigue streak exceeded threshold within rolling window."
+    next_step: "Require elevated out-of-band confirmation."
+  - id: grdr.destructive.mass-change
+    when_label: mass-change
+    action_classes: [file.delete, file.write]
+    count_threshold: 200
+    window_secs: 60
+    verdict: deny
+    min_grade: G3
+    reason: "Workspace bulk mutation rate crossed mass-change circuit breaker."
+    next_step: "Freeze session and restore workspace baseline."

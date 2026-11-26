@@ -1,0 +1,46 @@
+title: "Agent Writes Script or Binary Then Executes Same Digest"
+id: 9b13d3f1-4a12-5023-8994-e83441a01b35
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Temporal ordered correlation: agent writes artefact digest d, then executes d (row 35)."
+logsource:
+  product: grdr
+  category: process
+  service: sensor
+detection:
+  selection:
+    actor.lineage: "agent"
+    action_class:
+      - "file.write"
+      - "exec"
+    artefact.sha256|exists: true
+  condition: selection
+correlation:
+  type: temporal_ordered
+  group-by:
+    - root_session_id
+    - artefact.sha256
+  timespan: 10m
+  rules:
+    - write-digest
+    - exec-digest
+x_grdr:
+  row: 35
+  origin: official
+  rule_id: grdr.det.core.r35.write-then-exec-digest
+  version: "1.0.0"
+  finding_class: overeager
+  ceiling: record
+  stage: K3
+  atlas: [T0053]
+  owasp_asi: [ASI02]
+  mode_default: "none"
+  response:
+    mode: simulate
+    verbs: [capture-evidence]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-35-pos
+    negative: fix-35-neg

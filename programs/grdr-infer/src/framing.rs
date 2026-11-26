@@ -6,11 +6,13 @@
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
-use grdr_crypto::{constant_time_eq, fill_random, hmac_sha256};
+use grdr_crypto::{constant_time_eq, domain_hmac_sha256, encode_lower_hex, fill_random};
 
 use crate::InferError;
 
 pub const MAX_FRAMED_RECORD_BYTES: usize = 64 * 1024;
+pub const MAX_RECORD_ID_BYTES: usize = 64;
+pub const MAX_SCOPE_ID_BYTES: usize = 128;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -55,6 +57,25 @@ impl SessionMacKey {
     #[must_use]
     pub fn from_entropy(bytes: [u8; 32]) -> Self {
         Self(Zeroizing::new(bytes))
+    }
+
+    /// Derives a request-scoped MAC key cryptographically bound to `(session_id, request_id)`.
+    pub fn derive_request_key(
+        &self,
+        session_id: &str,
+        request_id: &str,
+    ) -> Result<Self, InferError> {
+        validate_scope_id(session_id, "session_id")?;
+        validate_scope_id(request_id, "request_id")?;
+        let mut msg = Vec::with_capacity(
+            16_usize
+                .saturating_add(session_id.len())
+                .saturating_add(request_id.len()),
+        );
+        append_len_prefixed(&mut msg, session_id.as_bytes());
+        append_len_prefixed(&mut msg, request_id.as_bytes());
+        let derived = domain_hmac_sha256(self.0.as_ref(), "grdr.infer.request_key.v1", &msg);
+        Ok(Self(Zeroizing::new(derived)))
     }
 
     pub fn seal_record(
@@ -111,9 +132,9 @@ impl SessionMacKey {
             .strip_suffix("</rec>")
             .ok_or_else(|| InferError::FrameTampered("missing closing </rec> delimiter".into()))?;
 
-        if mac_hex.len() != 64 || !mac_hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        if mac_hex.len() != 64 || !is_lower_hex(mac_hex) {
             return Err(InferError::FrameTampered(
-                "invalid HMAC tag length or format".into(),
+                "invalid HMAC tag length or lowercase hex format".into(),
             ));
         }
         if escaped_body.contains('<') || escaped_body.contains('>') {
@@ -141,15 +162,16 @@ impl SessionMacKey {
         data_class: FramedDataClass,
         escaped: &str,
     ) -> String {
-        let mut msg = Vec::new();
-        msg.extend_from_slice(b"grdr.infer.rec.v1\0");
-        msg.extend_from_slice(record_id.as_bytes());
-        msg.push(0);
-        msg.extend_from_slice(data_class.as_str().as_bytes());
-        msg.push(0);
-        msg.extend_from_slice(escaped.as_bytes());
-        let tag = hmac_sha256(self.0.as_ref(), &msg);
-        hex_lower(&tag)
+        let mut msg = Vec::with_capacity(
+            32_usize
+                .saturating_add(record_id.len())
+                .saturating_add(escaped.len()),
+        );
+        append_len_prefixed(&mut msg, record_id.as_bytes());
+        append_len_prefixed(&mut msg, data_class.as_str().as_bytes());
+        append_len_prefixed(&mut msg, escaped.as_bytes());
+        let tag = domain_hmac_sha256(self.0.as_ref(), "grdr.infer.rec.v2", &msg);
+        encode_lower_hex(&tag)
     }
 }
 
@@ -201,41 +223,56 @@ pub fn unescape_record_text(escaped: &str) -> Result<String, InferError> {
             "u0026" => out.push('&'),
             "u005c" => out.push('\\'),
             other => {
-                return Err(InferError::FrameTampered(format!(
-                    "unexpected escape sequence `\\{other}`"
-                )));
+                let _ = other;
+                return Err(InferError::FrameTampered(
+                    "unexpected escape sequence inside record".into(),
+                ));
             }
         }
     }
     Ok(out)
 }
 
+pub(crate) fn is_valid_scope_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_SCOPE_ID_BYTES
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':'))
+}
+
 fn validate_record_id(record_id: &str) -> Result<(), InferError> {
     if record_id.is_empty()
-        || record_id.len() > 64
+        || record_id.len() > MAX_RECORD_ID_BYTES
         || !record_id
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
         return Err(InferError::InvalidInput(format!(
-            "invalid record_id `{record_id}`"
+            "invalid record_id: must be 1..={MAX_RECORD_ID_BYTES} safe ASCII characters"
         )));
     }
     Ok(())
 }
 
-fn hex_lower(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(bytes.len().saturating_mul(2));
-    for byte in bytes {
-        let hi = usize::from(byte >> 4);
-        let lo = usize::from(byte & 0x0f);
-        if let (Some(&c1), Some(&c2)) = (HEX.get(hi), HEX.get(lo)) {
-            out.push(char::from(c1));
-            out.push(char::from(c2));
-        }
+fn validate_scope_id(value: &str, label: &str) -> Result<(), InferError> {
+    if !is_valid_scope_id(value) {
+        return Err(InferError::InvalidInput(format!(
+            "invalid {label}: must be 1..={MAX_SCOPE_ID_BYTES} safe ASCII characters"
+        )));
     }
-    out
+    Ok(())
+}
+
+fn append_len_prefixed(buf: &mut Vec<u8>, bytes: &[u8]) {
+    let len = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+    buf.extend_from_slice(&len.to_be_bytes());
+    buf.extend_from_slice(bytes);
+}
+
+fn is_lower_hex(hex: &str) -> bool {
+    hex.bytes()
+        .all(|b| b.is_ascii_digit() || matches!(b, b'a'..=b'f'))
 }
 
 #[cfg(test)]
@@ -263,6 +300,40 @@ mod tests {
         tampered.envelope_text = tampered.envelope_text.replace("hello", "pwned");
         assert!(matches!(
             key.open_and_verify("rec-1", &tampered),
+            Err(InferError::FrameTampered(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_uppercase_mac_hex_and_binds_request_key_scope() {
+        let root_key = SessionMacKey::generate().unwrap();
+        let req_a = root_key.derive_request_key("sess-a", "req-1").unwrap();
+        let req_b = root_key.derive_request_key("sess-b", "req-1").unwrap();
+        let framed = req_a
+            .seal_record("rec-1", FramedDataClass::Untrusted, "payload")
+            .unwrap();
+        assert!(matches!(
+            req_b.open_and_verify("rec-1", &framed),
+            Err(InferError::FrameTampered(_))
+        ));
+
+        let prefix = "<rec id=\"rec-1\" class=\"untrusted\" mac=\"";
+        let start = framed.envelope_text.find(prefix).unwrap() + prefix.len();
+        let end = start + 64;
+        let mut upper = framed.envelope_text.clone();
+        let upper_mac = framed
+            .envelope_text
+            .get(start..end)
+            .unwrap_or("")
+            .to_ascii_uppercase();
+        upper.replace_range(start..end, &upper_mac);
+        let upper_framed = FramedRecord {
+            record_id: framed.record_id,
+            data_class: framed.data_class,
+            envelope_text: upper,
+        };
+        assert!(matches!(
+            req_a.open_and_verify("rec-1", &upper_framed),
             Err(InferError::FrameTampered(_))
         ));
     }

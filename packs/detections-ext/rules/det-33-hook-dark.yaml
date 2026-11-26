@@ -1,0 +1,39 @@
+title: "Hook Dark or Hook Silent"
+id: 9b13d3f1-4a12-5023-8994-e83441a01b33
+status: stable
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Detects agent activity observed at OS sensor when expected hook heartbeat went dark (row 33)."
+logsource:
+  product: grdr
+  category: process
+  service: sensor
+detection:
+  selection:
+    telemetry.source: "sensor"
+    hook.matched: "false"
+  condition: selection
+falsepositives:
+  - "Non-hooked housekeeping process outside agent lineage"
+tags:
+  - atlas.t0138
+  - owasp.asi10
+x_grdr:
+  row: 33
+  origin: official
+  rule_id: grdr.det.core.r33.hook-dark
+  version: "1.0.0"
+  finding_class: tamper
+  ceiling: notify
+  stage: K9
+  atlas: [T0138]
+  owasp_asi: [ASI10]
+  mode_default: "built-in"
+  response:
+    mode: simulate
+    verbs: [capture-evidence]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-33-pos
+    negative: fix-33-neg

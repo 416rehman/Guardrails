@@ -16,13 +16,18 @@ use crate::InferError;
 
 pub const MAX_BOUNDED_RISK_SCORE: u16 = 250;
 pub const MAX_ADVISORY_QUOTE_BYTES: usize = 512;
+pub const MAX_ADVISORY_LABELS: usize = 16;
+pub const MAX_ADVISORY_FINDINGS: usize = 32;
+pub const MAX_EVALUATOR_ID_BYTES: usize = 128;
+pub const MAX_RAW_JUDGE_JSON_BYTES: usize = 64 * 1024;
 
 /// Closed restrict-only advisory actions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AdvisoryAction {
     NoChange,
-    TightenToStepUp,
+    AddAdvisoryLabel,
+    RaiseReviewPriority,
     EscalateFinding,
 }
 
@@ -54,6 +59,7 @@ pub enum UnavailableReason {
     TamperedFrame,
     QuoteNotGrounded,
     PermissiveOutputRejected,
+    InputLimitExceeded,
 }
 
 /// Risk contribution bounded at `<= 250` on the total risk scale.
@@ -134,13 +140,24 @@ impl<'de> Deserialize<'de> for VerifiedAdvisory {
         }
 
         let wire = WireVerified::deserialize(deserializer)?;
-        if wire.evaluator_id.trim().is_empty() {
-            return Err(serde::de::Error::custom("evaluator_id cannot be empty"));
+        if !validate_evaluator_id(&wire.evaluator_id) {
+            return Err(serde::de::Error::custom("invalid evaluator_id"));
+        }
+        if wire.labels.len() > MAX_ADVISORY_LABELS || wire.findings.len() > MAX_ADVISORY_FINDINGS {
+            return Err(serde::de::Error::custom(
+                "advisory labels or findings exceed allowed bounds",
+            ));
+        }
+        if requires_grounded_finding(wire.action, wire.risk_score, wire.labels.is_empty())
+            && wire.findings.is_empty()
+        {
+            return Err(serde::de::Error::custom(
+                "non-empty advisory signal requires at least one grounded finding",
+            ));
         }
         for candidate in &wire.findings {
-            if candidate.record_id.trim().is_empty()
-                || candidate.exact_quote.is_empty()
-                || candidate.exact_quote.len() > MAX_ADVISORY_QUOTE_BYTES
+            if !is_valid_record_id(&candidate.record_id)
+                || !is_valid_exact_quote(&candidate.exact_quote)
                 || candidate.confidence_bps > 10_000
             {
                 return Err(serde::de::Error::custom(
@@ -185,12 +202,14 @@ impl BoundedRiskScore {
 
 impl AdvisoryAction {
     pub fn parse_strict(raw: &str) -> Result<Self, InferError> {
-        let normalized = raw.trim().to_ascii_lowercase();
-        match normalized.as_str() {
+        match raw {
             "no_change" => Ok(Self::NoChange),
-            "tighten_to_step_up" => Ok(Self::TightenToStepUp),
+            "add_advisory_label" => Ok(Self::AddAdvisoryLabel),
+            "raise_review_priority" => Ok(Self::RaiseReviewPriority),
             "escalate_finding" => Ok(Self::EscalateFinding),
-            other => Err(InferError::PermissiveOutputRejected(other.to_owned())),
+            _ => Err(InferError::PermissiveOutputRejected(
+                "disallowed advisory action".into(),
+            )),
         }
     }
 }
@@ -207,21 +226,21 @@ impl AdvisorySeverityCap {
 }
 
 impl FindingCandidate {
-    /// Verifies that `exact_quote` is non-empty, within bounds, and grounded inside `verified_text`.
+    /// Verifies that `exact_quote` is non-empty, safe, within bounds, and grounded inside `verified_text`.
     pub fn verify_grounded(
         &self,
         expected_record_id: &str,
         verified_text: &str,
     ) -> Result<(), InferError> {
-        if self.record_id != expected_record_id {
-            return Err(InferError::UngroundedQuote(format!(
-                "record_id mismatch: expected `{expected_record_id}`, got `{}`",
-                self.record_id
-            )));
-        }
-        if self.exact_quote.is_empty() || self.exact_quote.len() > MAX_ADVISORY_QUOTE_BYTES {
+        if self.record_id != expected_record_id || !is_valid_record_id(&self.record_id) {
             return Err(InferError::UngroundedQuote(
-                "exact_quote must be non-empty and within byte bound".into(),
+                "candidate record_id does not match verified record".into(),
+            ));
+        }
+        if !is_valid_exact_quote(&self.exact_quote) {
+            return Err(InferError::UngroundedQuote(
+                "exact_quote must be non-empty, visible, control-free, and within byte bound"
+                    .into(),
             ));
         }
         if self.confidence_bps > 10_000 {
@@ -239,11 +258,33 @@ impl FindingCandidate {
     }
 }
 
+#[must_use]
+pub fn validate_evaluator_id(evaluator_id: &str) -> bool {
+    !evaluator_id.trim().is_empty()
+        && evaluator_id.len() <= MAX_EVALUATOR_ID_BYTES
+        && evaluator_id
+            .chars()
+            .all(crate::confusables::is_safe_quote_char)
+}
+
+#[must_use]
+pub const fn requires_grounded_finding(
+    action: AdvisoryAction,
+    risk_score: BoundedRiskScore,
+    labels_empty: bool,
+) -> bool {
+    !matches!(action, AdvisoryAction::NoChange) || risk_score.get() > 0 || !labels_empty
+}
+
 pub fn parse_raw_judge_json(
     raw_json: &str,
     expected_record_id: &str,
     verified_text: &str,
 ) -> ModelAdvisorySignal {
+    if raw_json.len() > MAX_RAW_JUDGE_JSON_BYTES {
+        return ModelAdvisorySignal::CouldNotLook(UnavailableReason::MalformedOutput);
+    }
+
     let parsed: RawJudgeResponse = match serde_json::from_str(raw_json) {
         Ok(val) => val,
         Err(_) => return ModelAdvisorySignal::CouldNotLook(UnavailableReason::MalformedOutput),
@@ -256,8 +297,19 @@ pub fn parse_raw_judge_json(
         }
     };
 
-    if parsed.evaluator_id.trim().is_empty() {
+    if !validate_evaluator_id(&parsed.evaluator_id)
+        || parsed.labels.len() > MAX_ADVISORY_LABELS
+        || parsed.findings.len() > MAX_ADVISORY_FINDINGS
+    {
         return ModelAdvisorySignal::CouldNotLook(UnavailableReason::MalformedOutput);
+    }
+
+    let risk_score = BoundedRiskScore::clamped(parsed.risk_score);
+    let labels: BTreeSet<AdvisoryLabel> = parsed.labels.into_iter().collect();
+    if requires_grounded_finding(action, risk_score, labels.is_empty())
+        && parsed.findings.is_empty()
+    {
+        return ModelAdvisorySignal::CouldNotLook(UnavailableReason::QuoteNotGrounded);
     }
 
     for candidate in &parsed.findings {
@@ -269,14 +321,28 @@ pub fn parse_raw_judge_json(
         }
     }
 
-    let labels: BTreeSet<AdvisoryLabel> = parsed.labels.into_iter().collect();
     ModelAdvisorySignal::Advisory(VerifiedAdvisory {
         action,
-        risk_score: BoundedRiskScore::clamped(parsed.risk_score),
+        risk_score,
         labels,
         findings: parsed.findings,
         evaluator_id: parsed.evaluator_id,
     })
+}
+
+fn is_valid_record_id(record_id: &str) -> bool {
+    !record_id.trim().is_empty()
+        && record_id.len() <= 64
+        && record_id
+            .chars()
+            .all(crate::confusables::is_safe_quote_char)
+}
+
+fn is_valid_exact_quote(quote: &str) -> bool {
+    !quote.trim().is_empty()
+        && quote.len() <= MAX_ADVISORY_QUOTE_BYTES
+        && quote.chars().all(crate::confusables::is_safe_quote_char)
+        && quote.chars().any(crate::confusables::is_visible_quote_char)
 }
 
 #[cfg(test)]
@@ -293,6 +359,9 @@ mod tests {
             "modify",
             "declassify",
             "Allow",
+            "tighten_to_step_up",
+            "step_up",
+            "deny",
         ] {
             let payload = serde_json::json!({
                 "action": forbidden,

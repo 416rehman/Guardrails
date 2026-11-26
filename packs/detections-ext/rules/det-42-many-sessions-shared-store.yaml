@@ -1,0 +1,44 @@
+title: "Many Sessions Writing to Shared Destination Prefix"
+id: 9b13d3f1-4a12-5023-8994-e83441a01b42
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Organisation-wide value_count correlation across 20 distinct sessions targeting one destination prefix in 1h (row 42)."
+logsource:
+  product: grdr
+  category: dataflow
+  service: any
+detection:
+  selection:
+    action_class:
+      - "net.request"
+      - "data.flow"
+    destination.prefix|exists: true
+  condition: selection
+correlation:
+  type: value_count
+  group-by:
+    - destination.prefix
+  timespan: 1h
+  condition:
+    field: session_id
+    gte: 20
+x_grdr:
+  row: 42
+  origin: official
+  rule_id: grdr.det.core.r42.many-sessions-shared-store
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: notify
+  stage: K7
+  atlas: [T0118]
+  owasp_asi: [ASI07]
+  mode_default: "none"
+  response:
+    mode: simulate
+    verbs: [capture-evidence]
+    max_scope: organisation
+    max_share_bp: 500
+  tests:
+    positive: fix-42-pos
+    negative: fix-42-neg

@@ -14,6 +14,9 @@ renders = "none"
 clap = { workspace = true }
 grdr-crypto = { workspace = true }
 grdr-model = { workspace = true }
+grdr-os-clock = { workspace = true }
+grdr-ports = { workspace = true }
+grdr-schema = { workspace = true }
 grdr-wire = { workspace = true }
 jiff = { workspace = true }
 serde = { workspace = true }
@@ -22,6 +25,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+unicode-normalization = { workspace = true }
 zeroize = { workspace = true }
 
 [lints]

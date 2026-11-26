@@ -11,14 +11,21 @@ surface = "public"
 renders = "none"
 
 [dependencies]
+base64 = { workspace = true }
 cedar-policy = { workspace = true }
 grdr-crypto = { workspace = true }
 grdr-fastpath = { workspace = true }
 grdr-model = { workspace = true }
 grdr-schema = { workspace = true }
+idna = { workspace = true }
+ipnet = { workspace = true }
 jiff = { workspace = true }
+regex = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
+unicode-normalization = { workspace = true }
+url = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]

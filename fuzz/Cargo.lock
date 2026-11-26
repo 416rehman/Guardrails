@@ -890,14 +890,21 @@ dependencies = [
 name = "grdr-core"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "cedar-policy",
  "grdr-crypto",
  "grdr-fastpath",
  "grdr-model",
  "grdr-schema",
+ "idna",
+ "ipnet",
  "jiff 1.0.3",
+ "regex",
  "serde",
+ "serde_json",
  "thiserror",
+ "unicode-normalization",
+ "url",
  "uuid",
 ]
 
@@ -1030,8 +1037,10 @@ name = "grdr-ports"
 version = "0.1.0"
 dependencies = [
  "grdr-model",
+ "grdr-schema",
  "jiff 1.0.3",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

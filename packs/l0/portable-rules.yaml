@@ -1,0 +1,21 @@
+title: "Encoded or Nested Payload Executed Into Interpreter"
+id: 9b13d3f1-4a12-5023-8994-e83441a01b37
+status: test
+logsource:
+  category: process_creation
+detection:
+  selection:
+    CommandLine|contains:
+      - "-EncodedCommand"
+      - "base64 -d"
+      - "FromBase64String"
+    ParentImage|endswith:
+      - "claude"
+      - "codex"
+      - "cursor"
+      - "gemini"
+      - "opencode"
+      - "aider"
+  condition: selection
+x_grdr:
+  derived_from: "grdr.det.core.r37.encoded-payload-exec"
