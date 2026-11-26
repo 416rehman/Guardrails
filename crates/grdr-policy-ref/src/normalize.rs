@@ -227,10 +227,14 @@ fn canonicalize_path_ref(raw: &str) -> String {
     let without_scheme = trimmed
         .strip_prefix("file:///")
         .map(|rest| format!("/{rest}"))
-        .or_else(|| trimmed.strip_prefix("file://").map(str::to_string))
+        .or_else(|| {
+            trimmed
+                .strip_prefix("file://")
+                .map(|rest| rest.trim().to_string())
+        })
         .unwrap_or_else(|| trimmed.to_string());
     let slashed = without_scheme.replace('\\', "/");
-    let (prefix, rest) = extract_path_root_ref(&slashed);
+    let (mut prefix, rest) = extract_path_root_ref(&slashed);
 
     let mut stack: Vec<&str> = Vec::new();
     for seg in rest.split('/') {
@@ -242,17 +246,79 @@ fn canonicalize_path_ref(raw: &str) -> String {
             other => stack.push(other),
         }
     }
-    if prefix.is_empty() && stack.is_empty() {
+    let head = resolve_boundary_segments_ref(&mut prefix, &mut stack);
+    let slice = stack.get(head..).unwrap_or(&[]);
+
+    if prefix.is_empty() && slice.is_empty() {
         return ".".into();
     }
-    let joined = stack.join("/");
+    let joined = slice.join("/");
     if prefix.is_empty() {
-        joined
-    } else if joined.is_empty() {
-        prefix
+        let final_joined = joined.trim();
+        if final_joined.is_empty() {
+            ".".into()
+        } else {
+            final_joined.to_string()
+        }
     } else {
-        format!("{prefix}{joined}")
+        let final_joined = joined.trim_end();
+        if final_joined.is_empty() {
+            prefix
+        } else {
+            format!("{prefix}{final_joined}")
+        }
     }
+}
+
+fn resolve_boundary_segments_ref(prefix: &mut String, stack: &mut Vec<&str>) -> usize {
+    let mut head: usize = 0;
+    loop {
+        let mut changed = false;
+        while stack.len() > head {
+            let Some(tail) = stack.last().copied() else {
+                break;
+            };
+            let trimmed_tail = if prefix.is_empty() && stack.len().saturating_sub(head) == 1 {
+                tail.trim()
+            } else {
+                tail.trim_end()
+            };
+            match trimmed_tail {
+                "" | "." => {
+                    let _ = stack.pop();
+                    changed = true;
+                }
+                ".." => {
+                    let _ = stack.pop();
+                    if stack.len() > head {
+                        let _ = stack.pop();
+                    }
+                    changed = true;
+                }
+                _ => break,
+            }
+        }
+        if prefix.is_empty()
+            && let Some(first) = stack.get(head).copied()
+        {
+            match first.trim_start() {
+                "" => {
+                    *prefix = "/".into();
+                    head = head.saturating_add(1);
+                    changed = true;
+                }
+                "." | ".." => {
+                    head = head.saturating_add(1);
+                    changed = true;
+                }
+                _ => {}
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    head
 }
 
 fn extract_path_root_ref(slashed: &str) -> (String, &str) {

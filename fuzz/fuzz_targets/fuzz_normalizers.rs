@@ -14,9 +14,18 @@ fuzz_target!(|data: &[u8]| {
     }
     let text = String::from_utf8_lossy(data);
     let cmd = normalize_command(&text);
-    if cmd.status == CommandParseStatus::Resolved && !cmd.canonical_text.is_empty() {
+    assert!(cmd.segments.iter().all(|seg| !seg.is_empty()));
+    let segments_free_of_shell_meta = !cmd.segments.is_empty()
+        && cmd
+            .segments
+            .iter()
+            .all(|seg| !seg.contains(['\\', '\'', '"', ';', '&', '|', '\n', '\r']));
+    if cmd.status == CommandParseStatus::Resolved && segments_free_of_shell_meta {
         let again = normalize_command(&cmd.canonical_text);
+        assert_eq!(again.status, CommandParseStatus::Resolved);
+        assert!(!again.opaque);
         assert_eq!(again.canonical_text, cmd.canonical_text);
+        assert_eq!(again.segments, cmd.segments);
     }
 
     let canon_path = canonicalize_path(&text);
@@ -32,6 +41,10 @@ fuzz_target!(|data: &[u8]| {
                 .any(|t| t == "exec.malformed")
         );
         assert!(exec_analysis.risk_score >= 85);
+    } else if cmd.status == CommandParseStatus::Unresolved {
+        assert_eq!(exec_analysis.command_status, CommandParseStatus::Unresolved);
+        assert!(exec_analysis.risk_tags.iter().any(|t| t == "exec.opaque"));
+        assert!(exec_analysis.risk_score >= 65);
     }
 
     for class in [
