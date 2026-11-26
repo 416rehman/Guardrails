@@ -27,16 +27,8 @@ pub const LANDLOCK_ACCESS_FS_READ_FILE: u64 = 1 << 2;
 pub const LANDLOCK_ACCESS_FS_READ_DIR: u64 = 1 << 3;
 pub const LANDLOCK_ACCESS_FS_REMOVE_DIR: u64 = 1 << 4;
 pub const LANDLOCK_ACCESS_FS_REMOVE_FILE: u64 = 1 << 5;
-#[cfg(target_os = "linux")]
-const LANDLOCK_ACCESS_FS_MAKE_CHAR: u64 = 1 << 6;
 pub const LANDLOCK_ACCESS_FS_MAKE_DIR: u64 = 1 << 7;
 pub const LANDLOCK_ACCESS_FS_MAKE_REG: u64 = 1 << 8;
-#[cfg(target_os = "linux")]
-const LANDLOCK_ACCESS_FS_MAKE_SOCK: u64 = 1 << 9;
-#[cfg(target_os = "linux")]
-const LANDLOCK_ACCESS_FS_MAKE_FIFO: u64 = 1 << 10;
-#[cfg(target_os = "linux")]
-const LANDLOCK_ACCESS_FS_MAKE_BLOCK: u64 = 1 << 11;
 pub const LANDLOCK_ACCESS_FS_MAKE_SYM: u64 = 1 << 12;
 #[cfg(target_os = "linux")]
 const LANDLOCK_ACCESS_FS_REFER: u64 = 1 << 13;
@@ -317,7 +309,7 @@ pub fn create_bwrap_seccomp_pipe(
 #[cfg(target_os = "linux")]
 #[allow(
     unsafe_code,
-    reason = "register fork pre_exec hook applying PR_SET_NO_NEW_PRIVS, FD_CLOEXEC clearing for bwrap seccomp pipe, Landlock, and seccomp-BPF before child exec"
+    reason = "register fork pre_exec hook applying child containment before exec"
 )]
 pub fn install_linux_pre_exec(
     cmd: &mut Command,
@@ -339,59 +331,80 @@ pub fn install_linux_pre_exec(
             .collect()
     });
 
-    // SAFETY: closure runs post-fork pre-exec in child; all allocations occur pre-fork and only async-signal-safe syscalls run inside.
+    // SAFETY: closure runs post-fork pre-exec in child; all allocations occur pre-fork and only async-signal-safe syscalls run inside run_child_pre_exec.
     unsafe {
         cmd.pre_exec(move || {
-            if let Some(fd) = bwrap_seccomp_fd {
-                // SAFETY: fd is the child copy of the O_CLOEXEC seccomp pipe read end; clearing FD_CLOEXEC inside this forked child avoids FD leaks in parent sibling threads.
-                let fcntl_rc = unsafe { libc::fcntl(fd, libc::F_SETFD, 0) };
-                if fcntl_rc != 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-            }
-            if no_new_privs {
-                // SAFETY: PR_SET_NO_NEW_PRIVS takes fixed integer constants (1, 0, 0, 0) and enables no_new_privs.
-                let rc = unsafe {
-                    libc::prctl(
-                        libc::PR_SET_NO_NEW_PRIVS,
-                        1 as libc::c_ulong,
-                        0 as libc::c_ulong,
-                        0 as libc::c_ulong,
-                        0 as libc::c_ulong,
-                    )
-                };
-                if rc != 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-            }
-            if let Some(abi) = landlock_abi
-                && !landlock_entries.is_empty()
-            {
-                apply_landlock_pre_exec(abi, &landlock_entries)?;
-            }
-            if let Some(filters) = &sock_filters {
-                let len = u16::try_from(filters.len())
-                    .map_err(|_| std::io::Error::from_raw_os_error(libc::EINVAL))?;
-                let prog = libc::sock_fprog {
-                    len,
-                    filter: filters.as_ptr().cast_mut(),
-                };
-                // SAFETY: PR_SET_SECCOMP with SECCOMP_MODE_FILTER passes valid stack sock_fprog while PR_SET_NO_NEW_PRIVS is active.
-                let sec_rc = unsafe {
-                    libc::prctl(
-                        libc::PR_SET_SECCOMP,
-                        libc::SECCOMP_MODE_FILTER as libc::c_ulong,
-                        (&raw const prog) as usize as libc::c_ulong,
-                        0 as libc::c_ulong,
-                        0 as libc::c_ulong,
-                    )
-                };
-                if sec_rc != 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-            }
-            Ok(())
+            run_child_pre_exec(
+                no_new_privs,
+                landlock_abi,
+                &landlock_entries,
+                sock_filters.as_deref(),
+                bwrap_seccomp_fd,
+            )
         });
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[allow(
+    unsafe_code,
+    reason = "apply FD_CLOEXEC clear, PR_SET_NO_NEW_PRIVS, Landlock, and seccomp-BPF in pre_exec child"
+)]
+fn run_child_pre_exec(
+    no_new_privs: bool,
+    landlock_abi: Option<u32>,
+    landlock_entries: &[LandlockEntry],
+    sock_filters: Option<&[libc::sock_filter]>,
+    bwrap_seccomp_fd: Option<libc::c_int>,
+) -> std::io::Result<()> {
+    if let Some(fd) = bwrap_seccomp_fd {
+        // SAFETY: fd is the child copy of the O_CLOEXEC seccomp pipe read end; clearing FD_CLOEXEC inside this forked child avoids FD leaks in parent sibling threads.
+        let fcntl_rc = unsafe { libc::fcntl(fd, libc::F_SETFD, 0) };
+        if fcntl_rc != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+    }
+    if no_new_privs {
+        // SAFETY: PR_SET_NO_NEW_PRIVS takes fixed integer constants (1, 0, 0, 0) and enables no_new_privs.
+        let rc = unsafe {
+            libc::prctl(
+                libc::PR_SET_NO_NEW_PRIVS,
+                1 as libc::c_ulong,
+                0 as libc::c_ulong,
+                0 as libc::c_ulong,
+                0 as libc::c_ulong,
+            )
+        };
+        if rc != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+    }
+    if let Some(abi) = landlock_abi
+        && !landlock_entries.is_empty()
+    {
+        apply_landlock_pre_exec(abi, landlock_entries)?;
+    }
+    if let Some(filters) = sock_filters {
+        let len = u16::try_from(filters.len())
+            .map_err(|_| std::io::Error::from_raw_os_error(libc::EINVAL))?;
+        let prog = libc::sock_fprog {
+            len,
+            filter: filters.as_ptr().cast_mut(),
+        };
+        // SAFETY: PR_SET_SECCOMP with SECCOMP_MODE_FILTER passes valid stack sock_fprog while PR_SET_NO_NEW_PRIVS is active.
+        let sec_rc = unsafe {
+            libc::prctl(
+                libc::PR_SET_SECCOMP,
+                libc::SECCOMP_MODE_FILTER as libc::c_ulong,
+                (&raw const prog) as usize as libc::c_ulong,
+                0 as libc::c_ulong,
+                0 as libc::c_ulong,
+            )
+        };
+        if sec_rc != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
     }
     Ok(())
 }
@@ -416,19 +429,8 @@ pub fn install_linux_pre_exec(
     reason = "create and enforce Landlock ruleset inside child pre_exec hook"
 )]
 fn apply_landlock_pre_exec(abi: u32, entries: &[LandlockEntry]) -> std::io::Result<()> {
-    let mut handled_fs = LANDLOCK_ACCESS_FS_EXECUTE
-        | LANDLOCK_ACCESS_FS_WRITE_FILE
-        | LANDLOCK_ACCESS_FS_READ_FILE
-        | LANDLOCK_ACCESS_FS_READ_DIR
-        | LANDLOCK_ACCESS_FS_REMOVE_DIR
-        | LANDLOCK_ACCESS_FS_REMOVE_FILE
-        | LANDLOCK_ACCESS_FS_MAKE_CHAR
-        | LANDLOCK_ACCESS_FS_MAKE_DIR
-        | LANDLOCK_ACCESS_FS_MAKE_REG
-        | LANDLOCK_ACCESS_FS_MAKE_SOCK
-        | LANDLOCK_ACCESS_FS_MAKE_FIFO
-        | LANDLOCK_ACCESS_FS_MAKE_BLOCK
-        | LANDLOCK_ACCESS_FS_MAKE_SYM;
+    let handled_v1 = (1u64 << 13).saturating_sub(1);
+    let mut handled_fs = handled_v1;
     if abi >= 2 {
         handled_fs |= LANDLOCK_ACCESS_FS_REFER;
     }

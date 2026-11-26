@@ -505,18 +505,3 @@ pub(crate) fn launch_and_wait_windows_contained(
     }
     Ok((i32::try_from(exit_code).unwrap_or(1), mechs))
 }
-
-#[cfg(not(windows))]
-pub(crate) fn launch_and_wait_windows_contained(
-    _app_utf16: Vec<u16>,
-    _cmd_utf16: Vec<u16>,
-    _env_utf16: Vec<u16>,
-    _workdir_utf16: Option<Vec<u16>>,
-    _memory_limit_bytes: u64,
-    _active_process_limit: u32,
-    _token_mode: WindowsTokenMode,
-) -> Result<(i32, Vec<EnforcedMechanism>), SandboxError> {
-    Err(SandboxError::ContainmentSetup(
-        "Win32 job containment attempted on non-Windows host".into(),
-    ))
-}

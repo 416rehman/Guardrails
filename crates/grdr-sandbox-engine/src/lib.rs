@@ -9,7 +9,8 @@ pub mod linux_sys;
 pub mod macos;
 pub mod policy;
 pub mod windows;
-pub mod windows_sys_rt;
+#[cfg(windows)]
+mod windows_sys_rt;
 
 use std::path::PathBuf;
 use std::process::Command;
