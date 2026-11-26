@@ -247,6 +247,7 @@ pub fn execute_windows(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
     use crate::policy::{LinuxNamespaceMode, PrivilegePolicy, WindowsTokenMode};
 
     #[test]
