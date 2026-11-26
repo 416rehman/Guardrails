@@ -504,12 +504,13 @@ mod tests {
             epoch: 4,
             prev_epoch_final_hash: Some(GENESIS_PREV_HASH.into()),
         };
+        let raw_salts = generate_five_way_salts().unwrap();
         let salts = [
-            &[9u8; 32][..],
-            &[8u8; 32][..],
-            &[7u8; 32][..],
-            &[6u8; 32][..],
-            &[5u8; 32][..],
+            &raw_salts[0][..],
+            &raw_salts[1][..],
+            &raw_salts[2][..],
+            &raw_salts[3][..],
+            &raw_salts[4][..],
         ];
         let payloads = [&b"u"[..], &b"s"[..], &b"d"[..], &b"a"[..], &b"b"[..]];
         let comm = build_five_way_commitments(salts, payloads).unwrap();

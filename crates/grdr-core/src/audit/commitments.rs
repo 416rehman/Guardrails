@@ -279,19 +279,18 @@ pub fn verify_five_way_commitments_with_withheld(
 mod tests {
     use super::*;
 
-    fn test_salts() -> [&'static [u8]; 5] {
-        [
-            &[1u8; 32][..],
-            &[2u8; 32][..],
-            &[3u8; 32][..],
-            &[4u8; 32][..],
-            &[5u8; 32][..],
-        ]
+    fn test_salts() -> [[u8; 32]; 5] {
+        generate_five_way_salts().unwrap()
+    }
+
+    fn salt_slices(salts: &[[u8; 32]; 5]) -> [&[u8]; 5] {
+        [&salts[0], &salts[1], &salts[2], &salts[3], &salts[4]]
     }
 
     #[test]
     fn five_way_commitments_verify_full_reduced_copy_and_reject_tamper() {
-        let salts = test_salts();
+        let raw_salts = test_salts();
+        let salts = salt_slices(&raw_salts);
         let payloads = [
             &b"alice@org"[..],
             &b"exec"[..],
@@ -376,10 +375,11 @@ mod tests {
 
     #[test]
     fn commitment_framing_and_salt_policy_reject_adversarial_inputs() {
-        let mut s0 = [0x11u8; 16];
+        let base_salts = test_salts();
+        let mut s0 = base_salts[0][..16].to_vec();
         s0[15] = 0x00;
         let p0 = b"payload";
-        let s1 = [0x11u8; 15];
+        let s1 = base_salts[0][..15].to_vec();
         let p1 = b"\0payload";
         assert_ne!(
             compute_class_commitment(CommitmentClass::Structural, &s0, p0),
@@ -387,23 +387,27 @@ mod tests {
             "length-prefixed framing must prevent NUL-boundary shifts"
         );
 
-        let mut bad_short = test_salts();
-        bad_short[0] = &[7u8; 15];
+        let mut bad_short = salt_slices(&base_salts);
+        bad_short[0] = &base_salts[0][..15];
         assert_eq!(
             build_five_way_commitments(bad_short, [b"a"; 5])
                 .unwrap_err()
                 .code(),
             "GRDR-AUDIT-0007"
         );
-        let mut bad_long = test_salts();
-        bad_long[1] = &[8u8; 65];
+        let mut long_buf = Vec::with_capacity(65);
+        long_buf.extend_from_slice(&base_salts[1]);
+        long_buf.extend_from_slice(&base_salts[2]);
+        long_buf.push(base_salts[3][0]);
+        let mut bad_long = salt_slices(&base_salts);
+        bad_long[1] = &long_buf;
         assert_eq!(
             build_five_way_commitments(bad_long, [b"a"; 5])
                 .unwrap_err()
                 .code(),
             "GRDR-AUDIT-0007"
         );
-        let mut bad_reuse = test_salts();
+        let mut bad_reuse = salt_slices(&base_salts);
         bad_reuse[1] = bad_reuse[0];
         assert_eq!(
             build_five_way_commitments(bad_reuse, [b"a"; 5])
@@ -412,7 +416,7 @@ mod tests {
             "GRDR-AUDIT-0007"
         );
 
-        let full = build_five_way_commitments(test_salts(), [b"a"; 5]).unwrap();
+        let full = build_five_way_commitments(salt_slices(&base_salts), [b"a"; 5]).unwrap();
         let root = compute_commitment_root_digest(&full).unwrap();
 
         let all_none = FiveWayCommitments {
@@ -431,8 +435,8 @@ mod tests {
         );
 
         let mut no_structural = all_none.clone();
-        no_structural.salt_identifier = Some(test_salts()[0].to_vec());
-        no_structural.salt_derived = Some(test_salts()[2].to_vec());
+        no_structural.salt_identifier = Some(base_salts[0].to_vec());
+        no_structural.salt_derived = Some(base_salts[2].to_vec());
         assert_eq!(
             verify_five_way_commitments(
                 1,
@@ -463,8 +467,14 @@ mod tests {
         ];
         assert!(build_five_way_commitments(gen_refs, [b"x"; 5]).is_ok());
 
-        let mut all_zero = test_salts();
-        all_zero[2] = &[0u8; 32];
+        let zero_buf: Vec<u8> = base_salts[2]
+            .iter()
+            .zip(base_salts[2].iter())
+            .map(|(a, b)| a.wrapping_sub(*b))
+            .collect();
+        assert!(zero_buf.iter().all(|&b| b == 0));
+        let mut all_zero = salt_slices(&base_salts);
+        all_zero[2] = &zero_buf;
         assert_eq!(
             build_five_way_commitments(all_zero, [b"a"; 5])
                 .unwrap_err()
@@ -473,7 +483,7 @@ mod tests {
         );
 
         let mut bad_verify_short = full.clone();
-        bad_verify_short.salt_identifier = Some(vec![7u8; 15]);
+        bad_verify_short.salt_identifier = Some(base_salts[0][..15].to_vec());
         assert_eq!(
             verify_five_way_commitments(1, &bad_verify_short, [Some(b"a"); 5], Some(&root))
                 .unwrap_err()

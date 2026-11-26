@@ -520,7 +520,8 @@ mod tests {
     use grdr_core::audit::{
         AuditLane, GENESIS_PREV_HASH, LaneEntryKind, build_five_way_commitments,
         compute_chain_hash, compute_commitment_root_digest, compute_lane_entry_hash,
-        lane_genesis_hash, merkle_consistency_proof, merkle_inclusion_proof, merkle_root_hex,
+        generate_five_way_salts, lane_genesis_hash, merkle_consistency_proof,
+        merkle_inclusion_proof, merkle_root_hex,
     };
     use grdr_model::{ActionAttempt, ActionClass, ControlPoint, KillSwitchState};
     use jiff::Timestamp;
@@ -709,12 +710,13 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("lane.jsonl");
 
+        let raw_salts = generate_five_way_salts().unwrap();
         let salts = [
-            &[1u8; 32][..],
-            &[2u8; 32][..],
-            &[3u8; 32][..],
-            &[4u8; 32][..],
-            &[5u8; 32][..],
+            &raw_salts[0][..],
+            &raw_salts[1][..],
+            &raw_salts[2][..],
+            &raw_salts[3][..],
+            &raw_salts[4][..],
         ];
         let payloads = [
             &b"alice@org"[..],
