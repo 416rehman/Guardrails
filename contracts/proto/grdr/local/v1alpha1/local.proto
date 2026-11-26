@@ -1,0 +1,242 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Local daemon IPC services: Status, Explain, Propose, Query, BrokerService, and McpRelayService (11, 15, 17).
+syntax = "proto3";
+
+package grdr.local.v1alpha1;
+
+import "google/protobuf/timestamp.proto";
+import "grdr/assurance/v1alpha1/assurance.proto";
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/message_ref.proto";
+import "grdr/common/v1alpha1/options.proto";
+
+// Local health condition entry exposed by `grdr status` and tray clients (11 section 11).
+message HealthCondition {
+  // Registered health condition code (for example spool-shedding, handover).
+  string code = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Condition severity tier.
+  grdr.common.v1alpha1.FindingSeverity severity = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Localised human summary token reference.
+  grdr.common.v1alpha1.MessageRef summary = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // First-seen timestamp.
+  google.protobuf.Timestamp first_seen_at = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Request for local daemon health, version, and active assurance status.
+message GetStatusRequest {}
+
+// Local daemon snapshot status response.
+message GetStatusResponse {
+  // Overall endpoint state (`protected`, `degraded`, `safe_mode`).
+  string summary_state = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // True when update metadata or certificates exceeded freshness window.
+  bool stale = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Active install privilege profile.
+  grdr.common.v1alpha1.InstallProfile install_profile = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Running daemon software version.
+  string daemon_version = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Active endpoint health conditions.
+  repeated HealthCondition conditions = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Active session assurance snapshots.
+  repeated grdr.assurance.v1alpha1.AssuranceRecord assurance_records = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
+}
+
+// Request explaining a local decision or receipt reference (`grdr why`).
+message ExplainRequest {
+  // Receipt identifier or digest prefix to explain.
+  string reference = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Structured explanation response for a decision receipt.
+message ExplainResponse {
+  // Matched receipt identifier.
+  string receipt_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Enforced policy verdict.
+  grdr.common.v1alpha1.Verdict verdict = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Localised explanation message reference.
+  grdr.common.v1alpha1.MessageRef explanation = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Rule identifier when triggered.
+  optional string rule_id = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Non-authoritative proposal request from CLI, tray, or desktop awaiting step-up verification (D-31).
+message ProposeRequest {
+  // Proposal kind (mode_change, grant_request, containment_toggle, capture_level_change).
+  string proposal_kind = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Target rule, pack, or setting identifier.
+  string target_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Proposed new mode or setting value.
+  string desired_value = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Caller-supplied rationale text.
+  string rationale = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
+}
+
+// Response registering a pending proposal (never directly activating a widening change).
+message ProposeResponse {
+  // Created proposal identifier.
+  string proposal_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Minimum approval grade needed to enact the change.
+  grdr.common.v1alpha1.ApprovalGrade required_grade = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // True when waiting on `grdr-approve` step-up.
+  bool requires_step_up = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
+}
+
+// Local SQLite history metadata query request scoped to caller principal.
+message LocalQueryRequest {
+  // Target entity name (sessions, attempts, receipts, findings).
+  string entity = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Maximum rows to return.
+  uint32 limit = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Local query response returning bounded serialized rows without secret fields.
+message LocalQueryResponse {
+  // Returned JSON-encoded metadata summaries.
+  repeated string rows_json = 1 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT,
+    (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  reserved 900 to 999;
+}
+
+// Request opening a credit-flow-controlled local notification subscription.
+message SubscribeRequest {
+  // Topic filter (decisions, health, approvals).
+  repeated string topics = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Initial flow-control receive credit count.
+  uint32 credit = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Local notification event delivered under credit flow control.
+message SubscribeResponse {
+  // Notification topic name.
+  string topic = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Localised message reference describing the update.
+  grdr.common.v1alpha1.MessageRef message = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Monotonic stream sequence number.
+  uint64 seq = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Credential broker release/inject request routed from helper spokes through the daemon (15 section 15).
+message RequestLeaseRequest {
+  // Helper identifier making the request.
+  string helper = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Framed upstream token exchange or helper payload.
+  bytes protocol_frame = 2 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT,
+    (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY
+  ];
+  // Signed boot-key attestation for caller lineage verification.
+  bytes attestation = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Credential broker response indicating lease grant or denial (never plaintext secret in metadata logs).
+message RequestLeaseResponse {
+  // Issued lease identifier (Empty if denied).
+  string lease_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Lease expiration timestamp.
+  google.protobuf.Timestamp expires_at = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Opaque protocol frame returned to helper process.
+  bytes response_frame = 3 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT,
+    (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY
+  ];
+  reserved 900 to 999;
+}
+
+// Request opening an unopened MCP relay session through the daemon toward `grdr-proxy` (17).
+message OpenRelayRequest {
+  // Target MCP server identifier.
+  string mcp_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // SHA-256 digest of server launch specification.
+  string launch_digest = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Response confirming relay session handle establishment.
+message OpenRelayResponse {
+  // Relay stream identifier.
+  string relay_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Chunked MCP JSON-RPC relay frame bounded below 2 MiB IPC limit.
+message SendFrameRequest {
+  // Relay stream identifier.
+  string relay_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Raw frame chunk bytes.
+  bytes payload = 2 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT,
+    (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY
+  ];
+  // True on the final chunk of an MCP frame.
+  bool end_of_frame = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Instruction disposition returned by MCP relay inspection.
+enum RelayDisposition {
+  // Unspecified relay disposition.
+  RELAY_DISPOSITION_UNSPECIFIED = 0;
+  // Forward frame unchanged.
+  RELAY_DISPOSITION_FORWARD = 1 [(grdr.common.v1alpha1.wire_name) = "forward"];
+  // Replace frame bytes with sanitised/modified payload.
+  RELAY_DISPOSITION_REPLACE = 2 [(grdr.common.v1alpha1.wire_name) = "replace"];
+  // Return synthetic JSON-RPC error or elicitation reply directly to client.
+  RELAY_DISPOSITION_REPLY = 3 [(grdr.common.v1alpha1.wire_name) = "reply"];
+  // Drop frame silently or terminate stream.
+  RELAY_DISPOSITION_DROP = 4 [(grdr.common.v1alpha1.wire_name) = "drop"];
+}
+
+// Relay disposition returned after proxy inspection.
+message SendFrameResponse {
+  // Instruction deciding frame fate.
+  RelayDisposition disposition = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Replacement or synthetic reply bytes when disposition is REPLACE or REPLY.
+  optional bytes payload = 2 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT,
+    (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY
+  ];
+  reserved 900 to 999;
+}
+
+// Local control and read service exposed on `grdr-daemon`'s `local` socket/pipe.
+service LocalService {
+  // Returns current device health, assurance, and stale flags.
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+  // Returns explanation details for a receipt reference.
+  rpc Explain(ExplainRequest) returns (ExplainResponse);
+  // Submits a non-authoritative widening or mode-change proposal.
+  rpc Propose(ProposeRequest) returns (ProposeResponse);
+  // Queries bounded local endpoint metadata tables.
+  rpc LocalQuery(LocalQueryRequest) returns (LocalQueryResponse);
+  // Subscribes to credit-paced local notifications.
+  rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
+}
+
+// Endpoint credential broker IPC service mediated exclusively by the daemon.
+service BrokerService {
+  // Requests a scoped credential lease after kernel peer and lineage validation.
+  rpc RequestLease(RequestLeaseRequest) returns (RequestLeaseResponse);
+}
+
+// Unopened MCP framing relay between `grdr-mcp` and `grdr-proxy` via the daemon.
+service McpRelayService {
+  // Opens a relay channel bound to a pinned MCP server launch digest.
+  rpc OpenRelay(OpenRelayRequest) returns (OpenRelayResponse);
+  // Sends a chunked MCP JSON-RPC frame for inspection and routing.
+  rpc SendFrame(SendFrameRequest) returns (SendFrameResponse);
+}

@@ -1,0 +1,14 @@
+# Allowlisted foreign protobuf descriptor imports pinned by FileDescriptorProto SHA-256 (SL10, RFC 0006 R14a).
+schema = "grdr.foreign_files.v1alpha1"
+
+[[foreign_file]]
+path = "google/protobuf/descriptor.proto"
+sha256 = "7b591d4fc12f40a79cb8c09fdc6b238ece23b83030a73b480eb1a81c4e2f857f"
+
+[[foreign_file]]
+path = "google/protobuf/timestamp.proto"
+sha256 = "033fd3e582c180a6d4f9c88a8d3f6db91031c656427a4fe05425dd10e7bc27ef"
+
+[[foreign_file]]
+path = "google/protobuf/duration.proto"
+sha256 = "98d1f9c489034075e1807610d04d32d4ca6ac6dcaf8b797974bd512b24945d96"

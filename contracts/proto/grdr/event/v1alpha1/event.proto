@@ -1,0 +1,90 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Canonical Event union binding Envelope to category payloads across all five lanes (docs/design/04).
+syntax = "proto3";
+
+package grdr.event.v1alpha1;
+
+import "grdr/assurance/v1alpha1/assurance.proto";
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/options.proto";
+import "grdr/decision/v1alpha1/decision.proto";
+import "grdr/event/v1alpha1/action.proto";
+import "grdr/event/v1alpha1/envelope.proto";
+import "grdr/event/v1alpha1/rollup.proto";
+import "grdr/finding/v1alpha1/finding.proto";
+import "grdr/inventory/v1alpha1/inventory.proto";
+
+// Session lifecycle, identity correlation, or lease transition event.
+message SessionLifecycleEvent {
+  // Lifecycle event kind (session.start, session.end, identity.lifecycle, credential.lease).
+  string kind = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Target session identifier (ses_...).
+  string session_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Associated containment or credential mode when transitioning.
+  optional grdr.common.v1alpha1.ContainmentMode containment_mode = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Optional lease identifier on credential lease transitions.
+  optional string lease_id = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Health state transition or telemetry gap record (P9).
+message HealthEvent {
+  // Health code from schema health table (for example spool-shedding or collector-loss).
+  string code = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Condition severity level.
+  grdr.common.v1alpha1.FindingSeverity severity = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Reason classification when representing a telemetry gap.
+  optional grdr.common.v1alpha1.GapReason gap_reason = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Number of dropped or expired records when reporting a gap.
+  uint64 dropped_count = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // First and last missing sequence numbers when gap_reason is set.
+  optional uint64 gap_start_seq = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Inclusive end of missing sequence range.
+  optional uint64 gap_end_seq = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Custom reason label when gap_reason is GAP_REASON_OTHER.
+  optional string gap_reason_other = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Configuration or pack revision change event.
+message ConfigEvent {
+  // Changed configuration key or pack identifier.
+  string target_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Previous configuration digest or mode.
+  string previous_digest = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // New configuration digest or mode.
+  string next_digest = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Whether the change widened policy or capture scope.
+  bool widened = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
+}
+
+// Top-level Guardrails telemetry event pairing one Envelope with one typed category payload.
+message Event {
+  // Shared header envelope across all lanes.
+  Envelope envelope = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Category-specific event payload; untyped arbitrary JSON/Any is forbidden.
+  oneof payload {
+    // Individual action intent or outcome.
+    Action action = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+    // Merkle-summarised roll-up of repeated allowed events.
+    ActionRollup action_rollup = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+    // Policy evaluation decision record and signed receipt.
+    grdr.decision.v1alpha1.DecisionRecord decision = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+    // Emitted security finding.
+    grdr.finding.v1alpha1.Finding finding = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+    // Session or instance assurance state snapshot.
+    grdr.assurance.v1alpha1.AssuranceRecord assurance = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+    // Agent/MCP/artifact inventory observation event.
+    grdr.inventory.v1alpha1.InventoryChange inventory = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+    // Session or identity lifecycle transition.
+    SessionLifecycleEvent session_event = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+    // Sensor health or explicit loss/gap notification.
+    HealthEvent health_event = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+    // Config or signed pack revision event.
+    ConfigEvent config_event = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  }
+  reserved 900 to 999;
+}

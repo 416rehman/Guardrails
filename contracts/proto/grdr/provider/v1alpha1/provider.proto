@@ -1,0 +1,64 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Third-party VerdictProvider service protocol hosted over peer-checked local IPC (07, 26).
+syntax = "proto3";
+
+package grdr.provider.v1alpha1;
+
+import "google/protobuf/duration.proto";
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/options.proto";
+import "grdr/event/v1alpha1/action.proto";
+
+// Registration metadata probe verifying a provider's declared capabilities and failure mode.
+message GetCapabilitiesRequest {}
+
+// Declared capability descriptor returned by an external verdict provider.
+message GetCapabilitiesResponse {
+  // Reverse-DNS provider identifier matching signed `providers.d/` registration.
+  string provider_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Action classes evaluated by this provider.
+  repeated grdr.common.v1alpha1.ActionClass action_classes = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Maximum capture level this provider is permitted to inspect.
+  grdr.common.v1alpha1.CaptureLevel max_capture_level = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Declared failure handling mode when provider times out.
+  grdr.common.v1alpha1.OnFailure on_failure = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Minimised action evaluation request delivered only after built-in rules do not deny (07 section 7).
+message EvaluateVerdictRequest {
+  // Unique correlation request identifier.
+  string request_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Action class under review.
+  grdr.common.v1alpha1.ActionClass action_class = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Minimised action payload censored to the provider's permitted capture ceiling.
+  grdr.event.v1alpha1.Action action = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Enforced evaluation timeout deadline (150 ms default, 1000 ms max).
+  google.protobuf.Duration deadline = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Provider response; providers may object (DENY/STEP_UP) or single-writer MODIFY, never widen an ALLOW.
+message EvaluateVerdictResponse {
+  // Matching request identifier.
+  string request_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Provider objection or rewrite verdict.
+  grdr.common.v1alpha1.Verdict verdict = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Registered reason code namespaced under `provider/<id>/<reason_code>`.
+  string reason_code = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Non-widening operator/developer reason text.
+  string reason = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Proposed safe rewrite when verdict is VERDICT_MODIFY and provider holds exclusive modify lease.
+  optional grdr.event.v1alpha1.Action rewritten_action = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// External verdict provider interface connected via local peer-authenticated IPC (07, 26).
+service VerdictProviderService {
+  // Returns provider registration metadata and maximum capture ceiling.
+  rpc GetCapabilities(GetCapabilitiesRequest) returns (GetCapabilitiesResponse);
+  // Evaluates a minimised action payload within bounded deadline.
+  rpc EvaluateVerdict(EvaluateVerdictRequest) returns (EvaluateVerdictResponse);
+}

@@ -6,156 +6,333 @@ syntax = "proto3";
 
 package grdr.api.operator.v1alpha1;
 
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/options.proto";
 import "grdr/common/v1alpha1/types.proto";
 
+// OperatorRuntimeConfig record.
 message OperatorRuntimeConfig {
-  string revision_id = 1;
-  uint64 version = 2;
-  string capture_level = 3;
-  string privacy_profile = 4;
-  string retention_preset = 5;
-  uint32 hot_days = 6;
-  uint32 activity_days = 7;
-  uint32 decision_days = 8;
-  uint32 audit_days = 9;
-  bool otlp_enabled = 10;
-  string release_channel = 11;
-  string summary = 12;
+  // Field revision_id.
+  string revision_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field version.
+  uint64 version = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field capture_level.
+  string capture_level = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field privacy_profile.
+  string privacy_profile = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field retention_preset.
+  string retention_preset = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field hot_days.
+  uint32 hot_days = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field activity_days.
+  uint32 activity_days = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field decision_days.
+  uint32 decision_days = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field audit_days.
+  uint32 audit_days = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field otlp_enabled.
+  bool otlp_enabled = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field release_channel.
+  string release_channel = 11 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field summary.
+  string summary = 12 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// ConfigDiffEntry record.
 message ConfigDiffEntry {
-  string field = 1;
-  string previous = 2;
-  string next = 3;
+  // Field field.
+  string field = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field previous.
+  string previous = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field next.
+  string next = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// ConfigRevisionEntry record.
 message ConfigRevisionEntry {
-  string revision_id = 1;
-  uint64 version = 2;
-  string state = 3;
-  string author = 4;
-  string summary = 5;
-  string created_at = 6;
-  optional string applied_at = 7;
-  repeated ConfigDiffEntry diff_lines = 8;
-  OperatorRuntimeConfig config = 9;
+  reserved 900 to 999;
+
+  // Field revision_id.
+  string revision_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field version.
+  uint64 version = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field state.
+  grdr.common.v1alpha1.ConfigRevisionLifecycle state = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field author.
+  string author = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
+  // Field summary.
+  string summary = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field created_at.
+  string created_at = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field applied_at.
+  optional string applied_at = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field diff_lines.
+  repeated ConfigDiffEntry diff_lines = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field config.
+  OperatorRuntimeConfig config = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
 }
 
+// CompatCheckEntry record.
 message CompatCheckEntry {
-  string component = 1;
-  string current_version = 2;
-  string target_version = 3;
-  string supported_range = 4;
-  string status = 5;
-  repeated string agreed_capabilities = 6;
-  repeated string warnings = 7;
-  string remediation = 8;
+  // Field component.
+  string component = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field current_version.
+  string current_version = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field target_version.
+  string target_version = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field supported_range.
+  string supported_range = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field status.
+  grdr.common.v1alpha1.CompatOutcomeKind status = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field agreed_capabilities.
+  repeated string agreed_capabilities = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field warnings.
+  repeated string warnings = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field remediation.
+  string remediation = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// TargetHealthEntry record.
 message TargetHealthEntry {
-  string id = 1;
-  string name = 2;
-  uint32 tier = 3;
-  string kind = 4;
-  string status = 5;
-  string circuit_state = 6;
-  uint32 failure_count = 7;
-  uint32 latency_ms = 8;
-  string detail = 9;
-  string last_checked_at = 10;
+  // Field id.
+  string id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field name.
+  string name = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field tier.
+  uint32 tier = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field kind.
+  string kind = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field status.
+  grdr.common.v1alpha1.TargetHealthStatus status = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field circuit_state.
+  string circuit_state = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field failure_count.
+  uint32 failure_count = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field latency_ms.
+  uint32 latency_ms = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field detail.
+  string detail = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field last_checked_at.
+  string last_checked_at = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// BackupDrillRecord record.
 message BackupDrillRecord {
-  string drill_id = 1;
-  string kind = 2;
-  string status = 3;
-  string snapshot_digest = 4;
-  uint32 record_count = 5;
-  uint32 verified_tables = 6;
-  uint32 duration_ms = 7;
-  string executed_at = 8;
-  string actor = 9;
-  string note = 10;
+  reserved 900 to 999;
+
+  // Field drill_id.
+  string drill_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field kind.
+  string kind = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field status.
+  grdr.common.v1alpha1.BackupDrillStatus status = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field snapshot_digest.
+  string snapshot_digest = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field record_count.
+  uint32 record_count = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field verified_tables.
+  uint32 verified_tables = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field duration_ms.
+  uint32 duration_ms = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field executed_at.
+  string executed_at = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field actor.
+  string actor = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
+  // Field note.
+  string note = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY, (grdr.common.v1alpha1.sealable) = true];
 }
 
+// GetOperatorStateRequest record.
 message GetOperatorStateRequest {}
 
+// GetOperatorStateResponse record.
 message GetOperatorStateResponse {
-  OperatorRuntimeConfig runtime_config = 1;
-  repeated ConfigRevisionEntry revisions = 2;
-  repeated CompatCheckEntry preflight_matrix = 3;
-  string target_version = 4;
-  bool overall_compatible = 5;
-  repeated TargetHealthEntry targets = 6;
-  repeated BackupDrillRecord drills = 7;
-  grdr.common.v1alpha1.RevisionMeta revision = 8;
+  // Field runtime_config.
+  OperatorRuntimeConfig runtime_config = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field revisions.
+  repeated ConfigRevisionEntry revisions = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field preflight_matrix.
+  repeated CompatCheckEntry preflight_matrix = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field target_version.
+  string target_version = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field overall_compatible.
+  bool overall_compatible = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field targets.
+  repeated TargetHealthEntry targets = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field drills.
+  repeated BackupDrillRecord drills = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field revision.
+  grdr.common.v1alpha1.RevisionMeta revision = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// StageConfigRevisionRequest record.
 message StageConfigRevisionRequest {
-  string capture_level = 1;
-  string privacy_profile = 2;
-  string retention_preset = 3;
-  bool otlp_enabled = 4;
-  string release_channel = 5;
-  string summary = 6;
+  // Field capture_level.
+  string capture_level = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field privacy_profile.
+  string privacy_profile = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field retention_preset.
+  string retention_preset = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field otlp_enabled.
+  bool otlp_enabled = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field release_channel.
+  string release_channel = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field summary.
+  string summary = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// StageConfigRevisionResponse record.
 message StageConfigRevisionResponse {
-  ConfigRevisionEntry revision = 1;
+  // Field revision.
+  ConfigRevisionEntry revision = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// ApplyConfigRevisionRequest record.
 message ApplyConfigRevisionRequest {
-  string revision_id = 1;
+  // Field revision_id.
+  string revision_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// ApplyConfigRevisionResponse record.
 message ApplyConfigRevisionResponse {
-  OperatorRuntimeConfig runtime_config = 1;
-  ConfigRevisionEntry applied_revision = 2;
+  // Field runtime_config.
+  OperatorRuntimeConfig runtime_config = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field applied_revision.
+  ConfigRevisionEntry applied_revision = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// RollbackConfigRevisionRequest record.
 message RollbackConfigRevisionRequest {
-  optional string target_revision_id = 1;
-  string reason = 2;
+  // Field target_revision_id.
+  optional string target_revision_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field reason.
+  string reason = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
 }
 
+// RollbackConfigRevisionResponse record.
 message RollbackConfigRevisionResponse {
-  OperatorRuntimeConfig runtime_config = 1;
-  ConfigRevisionEntry rolled_back_revision = 2;
+  // Field runtime_config.
+  OperatorRuntimeConfig runtime_config = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field rolled_back_revision.
+  ConfigRevisionEntry rolled_back_revision = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// RunUpgradePreflightRequest record.
 message RunUpgradePreflightRequest {
-  string target_version = 1;
+  // Field target_version.
+  string target_version = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// RunUpgradePreflightResponse record.
 message RunUpgradePreflightResponse {
-  string target_version = 1;
-  bool overall_compatible = 2;
-  repeated CompatCheckEntry preflight_matrix = 3;
+  // Field target_version.
+  string target_version = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field overall_compatible.
+  bool overall_compatible = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field preflight_matrix.
+  repeated CompatCheckEntry preflight_matrix = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// ResetTargetBreakerRequest record.
 message ResetTargetBreakerRequest {
-  string target_id = 1;
+  // Field target_id.
+  string target_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// ResetTargetBreakerResponse record.
 message ResetTargetBreakerResponse {
-  TargetHealthEntry target = 1;
+  // Field target.
+  TargetHealthEntry target = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// RunBackupDrillRequest record.
 message RunBackupDrillRequest {
-  string kind = 1;
-  optional string note = 2;
+  // Field kind.
+  string kind = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field note.
+  optional string note = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY, (grdr.common.v1alpha1.sealable) = true];
+  reserved 900 to 999;
 }
 
+// RunBackupDrillResponse record.
 message RunBackupDrillResponse {
-  BackupDrillRecord drill = 1;
+  // Field drill.
+  BackupDrillRecord drill = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// Service interface for OperatorService.
 service OperatorService {
-  rpc GetOperatorState(GetOperatorStateRequest) returns (GetOperatorStateResponse);
-  rpc StageConfigRevision(StageConfigRevisionRequest) returns (StageConfigRevisionResponse);
-  rpc ApplyConfigRevision(ApplyConfigRevisionRequest) returns (ApplyConfigRevisionResponse);
-  rpc RollbackConfigRevision(RollbackConfigRevisionRequest) returns (RollbackConfigRevisionResponse);
-  rpc RunUpgradePreflight(RunUpgradePreflightRequest) returns (RunUpgradePreflightResponse);
-  rpc ResetTargetBreaker(ResetTargetBreakerRequest) returns (ResetTargetBreakerResponse);
-  rpc RunBackupDrill(RunBackupDrillRequest) returns (RunBackupDrillResponse);
+  // Invokes GetOperatorState.
+  rpc GetOperatorState(GetOperatorStateRequest) returns (GetOperatorStateResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "operator:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_STANDARD;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+  // Invokes StageConfigRevision.
+  rpc StageConfigRevision(StageConfigRevisionRequest) returns (StageConfigRevisionResponse) {
+    option (grdr.common.v1alpha1.scope) = "operator:write";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_INTERACTIVE;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_PROPOSE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+  // Invokes ApplyConfigRevision.
+  rpc ApplyConfigRevision(ApplyConfigRevisionRequest) returns (ApplyConfigRevisionResponse) {
+    option (grdr.common.v1alpha1.scope) = "operator:write";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_CRITICAL_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_CRITICAL;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_CONSEQUENCE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+  // Invokes RollbackConfigRevision.
+  rpc RollbackConfigRevision(RollbackConfigRevisionRequest) returns (RollbackConfigRevisionResponse) {
+    option (grdr.common.v1alpha1.scope) = "operator:write";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_CRITICAL_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_CRITICAL;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_CONSEQUENCE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+  // Invokes RunUpgradePreflight.
+  rpc RunUpgradePreflight(RunUpgradePreflightRequest) returns (RunUpgradePreflightResponse) {
+    option (grdr.common.v1alpha1.scope) = "operator:write";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_INTERACTIVE;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_CONSEQUENCE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+  // Invokes ResetTargetBreaker.
+  rpc ResetTargetBreaker(ResetTargetBreakerRequest) returns (ResetTargetBreakerResponse) {
+    option (grdr.common.v1alpha1.scope) = "operator:write";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_INTERACTIVE;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_CONSEQUENCE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+  // Invokes RunBackupDrill.
+  rpc RunBackupDrill(RunBackupDrillRequest) returns (RunBackupDrillResponse) {
+    option (grdr.common.v1alpha1.scope) = "operator:backup";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_BULK;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_CONSEQUENCE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
 }

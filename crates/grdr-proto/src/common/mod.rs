@@ -3,6 +3,7 @@
 
 pub mod enums;
 pub mod enums_ext;
+pub mod enums_open;
 pub mod enums_surfaces;
 pub mod methods;
 pub mod methods_surfaces;
@@ -12,6 +13,7 @@ pub mod types;
 
 pub use enums::*;
 pub use enums_ext::*;
+pub use enums_open::*;
 pub use enums_surfaces::*;
 pub use methods::*;
 pub use methods_surfaces::*;

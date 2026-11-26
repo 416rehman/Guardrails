@@ -1,0 +1,77 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Local device event feed headers, roll-up summaries, and explicit loss/gap records (04 section 15, P9).
+syntax = "proto3";
+
+package grdr.feed.v1alpha1;
+
+import "google/protobuf/timestamp.proto";
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/options.proto";
+import "grdr/event/v1alpha1/envelope.proto";
+
+// Stream or segment header opening a signed local event feed (L1).
+message FeedHeader {
+  // Feed contract version string (for example "grdr.feed.v1alpha1").
+  string schema_version = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Originating endpoint device identifier.
+  string device_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Owning organisation identifier when enrolled.
+  string org_id = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Endpoint epoch number.
+  uint64 epoch = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Audit shipping lane emitted in this feed segment.
+  grdr.common.v1alpha1.Lane lane = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // First sequence number contained in the segment.
+  uint64 first_seq = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Segment creation timestamp.
+  google.protobuf.Timestamp opened_at = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Active per-boot writer signing key identifier.
+  string writer_key_id = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Link hash continuing from the prior segment or previous epoch.
+  string prev_epoch_final_hash = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Feed summary committing a batch of events to one RFC 6962 Merkle root and chain head.
+message FeedSummaryRecord {
+  // Enclosing chain envelope at the tail of the batch.
+  grdr.event.v1alpha1.Envelope envelope = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Count of events included in this batch.
+  uint64 event_count = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // RFC 6962 Merkle root covering batch commitment digests.
+  string merkle_root = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Final chain link hash at the end of the batch.
+  string head_digest = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Explicit gap record documenting shed, expired, or lost sequence ranges on a lane (P9).
+message GapRecord {
+  // Endpoint device identifier.
+  string device_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Organisation identifier.
+  string org_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Monotonic epoch number.
+  uint64 epoch = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Affected audit lane.
+  grdr.common.v1alpha1.Lane lane = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Inclusive start sequence number of lost/expired range.
+  uint64 start_seq = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Inclusive end sequence number of lost/expired range.
+  uint64 end_seq = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Standardised reason for telemetry loss.
+  grdr.common.v1alpha1.GapReason reason = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Custom gap reason when GAP_REASON_OTHER is selected.
+  optional string reason_other = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Count of missing entries over [start_seq, end_seq].
+  uint64 dropped_count = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // UTC timestamp when gap was sealed into the chain.
+  google.protobuf.Timestamp detected_at = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Preceding chain link digest prior to the gap record.
+  string prev_chain_hash = 11 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Chain digest computed for this gap record to preserve downstream verification.
+  string gap_digest = 12 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}

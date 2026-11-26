@@ -1,0 +1,54 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Frozen sensor bootstrap protocol enabling arbitrary-age sensors to locate upgrades (22 section 7.6).
+syntax = "proto3";
+
+package grdr.bootstrap.v1;
+
+import "google/protobuf/timestamp.proto";
+import "grdr/common/v1alpha1/options.proto";
+
+// Compatibility disposition returned by frozen BootstrapService/Hello.
+enum BootstrapDisposition {
+  // Unspecified disposition.
+  BOOTSTRAP_DISPOSITION_UNSPECIFIED = 0;
+  // Sensor major wire version is current and may connect directly to FleetService.
+  BOOTSTRAP_DISPOSITION_CURRENT = 1 [(grdr.common.v1alpha1.wire_name) = "current"];
+  // Sensor wire major is retired; upgrade through target_path before retry.
+  BOOTSTRAP_DISPOSITION_UPGRADE_REQUIRED = 2 [(grdr.common.v1alpha1.wire_name) = "upgrade_required"];
+  // Platform or architecture has reached end-of-support.
+  BOOTSTRAP_DISPOSITION_DECOMMISSIONED = 3 [(grdr.common.v1alpha1.wire_name) = "decommissioned"];
+}
+
+// Minimal unauthenticated-or-enrolled bootstrap version advertisement.
+message HelloRequest {
+  // Calling sensor semantic version.
+  string client_version = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Target operating system (linux, macos, windows).
+  string platform = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // CPU architecture (x86_64, aarch64).
+  string arch = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Frozen upgrade pointer and herd-paced backoff schedule (22 section 7.6).
+message HelloResponse {
+  // Upgrade or compatibility disposition.
+  BootstrapDisposition disposition = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Relative update repository target path for verified download.
+  string target_path = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Earliest timestamp the sensor should initiate download to smooth fleet thundering herds.
+  google.protobuf.Timestamp not_before = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Minimum backoff floor in milliseconds before next retry.
+  uint32 retry_after_ms = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Minimum compatible sensor version accepted by current servers.
+  string min_version = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Frozen permanently compatible bootstrap service for arbitrary-age sensors.
+service BootstrapService {
+  // Negotiates sensor version compatibility and directs legacy endpoints to verified upgrades.
+  rpc Hello(HelloRequest) returns (HelloResponse);
+}

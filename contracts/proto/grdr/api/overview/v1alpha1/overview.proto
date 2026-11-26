@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
-// Control-plane health, overview posture, verification keys, and audit exports.
+// Control-plane health, overview status, verification keys, and audit exports.
 syntax = "proto3";
 
 package grdr.api.overview.v1alpha1;
 
+import "grdr/common/v1alpha1/options.proto";
 import "grdr/common/v1alpha1/enums.proto";
 import "grdr/common/v1alpha1/resources.proto";
 import "grdr/common/v1alpha1/types.proto";
@@ -13,39 +14,42 @@ import "grdr/common/v1alpha1/types.proto";
 // Storage engine metadata returned in health responses.
 message StorageMode {
   // Active backing storage engine kind.
-  grdr.common.v1alpha1.StorageKind kind = 1;
+  grdr.common.v1alpha1.StorageKind kind = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // SQLite database path when kind is STORAGE_KIND_SQLITE.
-  optional string path = 2;
+  optional string path = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // High-level insight tile displayed on the console overview.
 message InsightTile {
   // Stable tile identifier.
-  string id = 1;
+  string id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Concise headline summary.
-  string headline = 2;
+  string headline = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
   // Primary formatted metric value.
-  string metric = 3;
+  string metric = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Comparison context against baseline or target.
-  string comparison = 4;
+  string comparison = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Suggested navigation label.
-  string action_label = 5;
+  string action_label = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Target console route path.
-  string route = 6;
+  string route = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Visual status tone indicator.
-  string tone = 7;
+  string tone = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Guided setup checklist item on the console overview.
 message SetupStep {
   // Stable step identifier.
-  string id = 1;
+  string id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Step display label.
-  string label = 2;
+  string label = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // True when step completion criteria are met.
-  bool done = 3;
+  bool done = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Detailed guidance or completion summary.
-  string detail = 4;
+  string detail = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for GetHealth.
@@ -54,13 +58,14 @@ message GetHealthRequest {}
 // Response for GetHealth.
 message GetHealthResponse {
   // Overall server health status.
-  grdr.common.v1alpha1.ServerHealth status = 1;
+  grdr.common.v1alpha1.ServerHealth status = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
   // Running server crate version.
-  string version = 2;
+  string version = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Backing storage configuration.
-  StorageMode storage_mode = 3;
+  StorageMode storage_mode = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // RFC 3339 server clock timestamp.
-  string timestamp = 4;
+  string timestamp = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for GetOverview.
@@ -69,31 +74,32 @@ message GetOverviewRequest {}
 // Response for GetOverview.
 message GetOverviewResponse {
   // Overall server health status.
-  grdr.common.v1alpha1.ServerHealth server_status = 1;
+  grdr.common.v1alpha1.ServerHealth server_status = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Total enrolled endpoint devices.
-  uint64 total_devices = 2;
+  uint64 total_devices = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
   // Currently online endpoint devices.
-  uint64 online_devices = 3;
+  uint64 online_devices = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Total discovered AI coding agents.
-  uint64 total_agents = 4;
+  uint64 total_agents = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
   // Total discovered MCP servers.
-  uint64 total_mcp_servers = 5;
+  uint64 total_mcp_servers = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
   // Active monitored sessions.
-  uint64 active_sessions = 6;
+  uint64 active_sessions = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Pending step-up approvals.
-  uint64 pending_approvals = 7;
+  uint64 pending_approvals = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Open security findings.
-  uint64 open_findings = 8;
+  uint64 open_findings = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Open correlated security incidents.
-  uint64 open_incidents = 9;
+  uint64 open_incidents = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Current emergency kill-switch state.
-  grdr.common.v1alpha1.KillSwitchState kill_switch = 10;
+  grdr.common.v1alpha1.KillSwitchState kill_switch = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Operational summary insight tiles.
-  repeated InsightTile tiles = 11;
+  repeated InsightTile tiles = 11 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Onboarding setup checklist steps.
-  repeated SetupStep setup_steps = 12;
+  repeated SetupStep setup_steps = 12 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Revision and ETag metadata.
-  grdr.common.v1alpha1.RevisionMeta revision = 13;
+  grdr.common.v1alpha1.RevisionMeta revision = 13 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for ListKeys.
@@ -102,9 +108,10 @@ message ListKeysRequest {}
 // Response for ListKeys.
 message ListKeysResponse {
   // Trusted Ed25519 verification keys published by the server and devices.
-  repeated grdr.common.v1alpha1.TrustedKeyInfo keys = 1;
+  repeated grdr.common.v1alpha1.TrustedKeyInfo keys = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Revision and ETag metadata.
-  grdr.common.v1alpha1.RevisionMeta revision = 2;
+  grdr.common.v1alpha1.RevisionMeta revision = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Request for ExportOcsf.
@@ -112,12 +119,14 @@ message ExportOcsfRequest {}
 
 // Response for ExportOcsf containing an OCSF JSON payload.
 message ExportOcsfResponse {
+  reserved 900 to 999;
+
   // Suggested download filename.
-  string filename = 1;
+  string filename = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // MIME content type.
-  string content_type = 2;
+  string content_type = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Serialized OCSF 1.9 JSON array payload.
-  string payload = 3;
+  string payload = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY, (grdr.common.v1alpha1.sealable) = true];
 }
 
 // Request for ExportAuditJsonl.
@@ -125,40 +134,52 @@ message ExportAuditJsonlRequest {}
 
 // Response for ExportAuditJsonl containing NDJSON audit lines.
 message ExportAuditJsonlResponse {
+  reserved 900 to 999;
+
   // Suggested download filename.
-  string filename = 1;
+  string filename = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // MIME content type.
-  string content_type = 2;
+  string content_type = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Newline-delimited JSON audit records.
-  string payload = 3;
+  string payload = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY, (grdr.common.v1alpha1.sealable) = true];
 }
 
 // Real-time event broadcast message streamed to console subscribers.
 message LiveEvent {
   // Unique event identifier.
-  string id = 1;
+  string id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Topic category such as verdict, approval, checkin, or kill_switch.
-  string topic = 2;
+  string topic = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Concise operator-facing event summary.
-  string summary = 3;
+  string summary = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
   // Associated enforcement verdict when applicable.
-  optional grdr.common.v1alpha1.Verdict verdict = 4;
+  optional grdr.common.v1alpha1.Verdict verdict = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
   // RFC 3339 emission timestamp.
-  string timestamp = 5;
+  string timestamp = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// IssueLiveTicketRequest record.
 message IssueLiveTicketRequest {}
 
+// IssueLiveTicketResponse record.
 message IssueLiveTicketResponse {
-  string ticket = 1;
-  uint32 expires_in_seconds = 2;
+  // Field ticket.
+  string ticket = 1 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT,
+    (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  // Field expires_in_seconds.
+  uint32 expires_in_seconds = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
 // Control-plane overview, health, key distribution, and export operations.
 service OverviewService {
   // Issues a short-lived single-use SSE stream ticket bound to authenticated caller.
   rpc IssueLiveTicket(IssueLiveTicketRequest) returns (IssueLiveTicketResponse) {
-    option idempotency_level = IDEMPOTENCY_UNSPECIFIED;
+    option idempotency_level = IDEMPOTENCY_UNKNOWN;
     option (grdr.common.v1alpha1.scope) = "overview:read";
     option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_READ;
     option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_STANDARD;

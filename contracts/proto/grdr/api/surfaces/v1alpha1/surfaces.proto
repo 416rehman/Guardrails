@@ -6,375 +6,805 @@ syntax = "proto3";
 
 package grdr.api.surfaces.v1alpha1;
 
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/options.proto";
 import "grdr/api/overview/v1alpha1/overview.proto";
 import "grdr/common/v1alpha1/types.proto";
 
+// ExplainReceiptRequest record.
 message ExplainReceiptRequest {
-  string reference = 1;
+  // Field reference.
+  string reference = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// WhyExplanation record.
 message WhyExplanation {
-  string reference = 1;
-  string receipt_id = 2;
-  string attempt_id = 3;
-  string heading = 4;
-  string verdict = 5;
-  string status_code = 6;
-  string component = 7;
-  string action_class = 8;
-  string rule_id = 9;
-  string rule_title = 10;
-  string pack_id = 11;
-  string agent_name = 12;
-  string device_id = 13;
-  string device_name = 14;
-  string session_id = 15;
-  string target_quoted = 16;
-  string reason = 17;
-  string agent_told = 18;
-  string timestamp = 19;
-  optional string key_id = 20;
-  string signature_status = 21;
-  string primary_action_label = 22;
-  string primary_action_route = 23;
-  optional string approval_id = 24;
-  optional string approver_label = 25;
+  reserved 900 to 999;
+
+  // Field reference.
+  string reference = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field receipt_id.
+  string receipt_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field attempt_id.
+  string attempt_id = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field heading.
+  string heading = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field verdict.
+  string verdict = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field status_code.
+  string status_code = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field component.
+  string component = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field action_class.
+  string action_class = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field rule_id.
+  string rule_id = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field rule_title.
+  string rule_title = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field pack_id.
+  string pack_id = 11 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field agent_name.
+  string agent_name = 12 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field device_id.
+  string device_id = 13 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field device_name.
+  string device_name = 14 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
+  // Field session_id.
+  string session_id = 15 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field target_quoted.
+  string target_quoted = 16 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_ARGUMENT, (grdr.common.v1alpha1.sealable) = true];
+  // Field reason.
+  string reason = 17 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field agent_told.
+  string agent_told = 18 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY, (grdr.common.v1alpha1.sealable) = true];
+  // Field timestamp.
+  string timestamp = 19 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field key_id.
+  optional string key_id = 20 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field signature_status.
+  string signature_status = 21 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field primary_action_label.
+  string primary_action_label = 22 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field primary_action_route.
+  string primary_action_route = 23 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field approval_id.
+  optional string approval_id = 24 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field approver_label.
+  optional string approver_label = 25 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
 }
 
+// ExplainReceiptResponse record.
 message ExplainReceiptResponse {
-  WhyExplanation explanation = 1;
+  // Field explanation.
+  WhyExplanation explanation = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// ReviewCluster record.
 message ReviewCluster {
-  string id = 1;
-  string bucket = 2;
-  uint32 score = 3;
-  string rule_id = 4;
-  string rule_title = 5;
-  string observable_digest = 6;
-  string agent_name = 7;
-  string device_id = 8;
-  string device_name = 9;
-  string session_id = 10;
-  string receipt_ref = 11;
-  uint32 occurrence_count = 12;
-  string latest_timestamp = 13;
-  string target_preview = 14;
-  string current_mode = 15;
-  string suggested_mode = 16;
-  string risk_label = 17;
-  string status = 18;
-  string reason = 19;
-  string note = 20;
+  reserved 900 to 999;
+
+  // Field id.
+  string id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field bucket.
+  string bucket = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field score.
+  uint32 score = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field rule_id.
+  string rule_id = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field rule_title.
+  string rule_title = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field observable_digest.
+  string observable_digest = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field agent_name.
+  string agent_name = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field device_id.
+  string device_id = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field device_name.
+  string device_name = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
+  // Field session_id.
+  string session_id = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field receipt_ref.
+  string receipt_ref = 11 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field occurrence_count.
+  uint32 occurrence_count = 12 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field latest_timestamp.
+  string latest_timestamp = 13 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field target_preview.
+  string target_preview = 14 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_ARGUMENT, (grdr.common.v1alpha1.sealable) = true];
+  // Field current_mode.
+  string current_mode = 15 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field suggested_mode.
+  string suggested_mode = 16 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field risk_label.
+  string risk_label = 17 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field status.
+  grdr.common.v1alpha1.ReviewClusterStatus status = 18 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field reason.
+  string reason = 19 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field note.
+  string note = 20 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY, (grdr.common.v1alpha1.sealable) = true];
 }
 
+// ListReviewQueueRequest record.
 message ListReviewQueueRequest {
-  string bucket = 1;
-  string search = 2;
+  // Field bucket.
+  string bucket = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field search.
+  string search = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// ListReviewQueueResponse record.
 message ListReviewQueueResponse {
-  repeated ReviewCluster clusters = 1;
-  uint32 worth_a_look_count = 2;
-  uint32 routine_count = 3;
-  uint32 noise_count = 4;
-  grdr.common.v1alpha1.RevisionMeta revision = 5;
+  // Field clusters.
+  repeated ReviewCluster clusters = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field worth_a_look_count.
+  uint32 worth_a_look_count = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field routine_count.
+  uint32 routine_count = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field noise_count.
+  uint32 noise_count = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field revision.
+  grdr.common.v1alpha1.RevisionMeta revision = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// DecideReviewClusterRequest record.
 message DecideReviewClusterRequest {
-  string id = 1;
-  string decision = 2;
-  optional string target_mode = 3;
-  optional string note = 4;
-  optional string actor = 5;
+  reserved 900 to 999;
+
+  // Field id.
+  string id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field decision.
+  string decision = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field target_mode.
+  optional string target_mode = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field note.
+  optional string note = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY, (grdr.common.v1alpha1.sealable) = true];
+  // Field actor.
+  optional string actor = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
 }
 
+// DecideReviewClusterResponse record.
 message DecideReviewClusterResponse {
-  ReviewCluster cluster = 1;
+  // Field cluster.
+  ReviewCluster cluster = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// FrameworkCoverageSummary record.
 message FrameworkCoverageSummary {
-  string framework_id = 1;
-  string display_title = 2;
-  uint32 total_controls = 3;
-  uint32 addressed_controls = 4;
-  uint32 coverage_percent = 5;
+  // Field framework_id.
+  string framework_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field display_title.
+  string display_title = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field total_controls.
+  uint32 total_controls = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field addressed_controls.
+  uint32 addressed_controls = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field coverage_percent.
+  uint32 coverage_percent = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
 }
 
+// ComplianceEvidenceEntry record.
 message ComplianceEvidenceEntry {
-  string id = 1;
-  string capability = 2;
-  string statement = 3;
-  string result = 4;
-  string responsibility = 5;
-  repeated string control_refs = 6;
-  repeated string sample_ids = 7;
-  string period_end = 8;
-  string signature_status = 9;
+  // Field id.
+  string id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field capability.
+  string capability = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field statement.
+  string statement = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field result.
+  string result = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field responsibility.
+  string responsibility = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field control_refs.
+  repeated string control_refs = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field sample_ids.
+  repeated string sample_ids = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field period_end.
+  string period_end = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field signature_status.
+  string signature_status = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// RetentionStateSummary record.
 message RetentionStateSummary {
-  string organisation = 1;
-  string privacy_profile = 2;
-  repeated string presets = 3;
-  uint32 content_days = 4;
-  uint32 activity_days = 5;
-  uint32 decision_days = 6;
-  uint32 audit_days = 7;
-  uint32 hot_days = 8;
-  uint32 backup_days_max = 9;
-  repeated string legal_basis = 10;
-  string conflict_note = 11;
+  // Field organisation.
+  string organisation = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field privacy_profile.
+  string privacy_profile = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field presets.
+  repeated string presets = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field content_days.
+  uint32 content_days = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field activity_days.
+  uint32 activity_days = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field decision_days.
+  uint32 decision_days = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field audit_days.
+  uint32 audit_days = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field hot_days.
+  uint32 hot_days = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field backup_days_max.
+  uint32 backup_days_max = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field legal_basis.
+  repeated string legal_basis = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field conflict_note.
+  string conflict_note = 11 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// LegalHoldEntry record.
 message LegalHoldEntry {
-  string hold_id = 1;
-  string matter_ref = 2;
-  string reason = 3;
-  string lifecycle = 4;
-  string created_by = 5;
-  repeated string approvers = 6;
-  string created_at = 7;
-  string review_by = 8;
-  string notice_mode = 9;
-  string scope_summary = 10;
+  reserved 900 to 999;
+
+  // Field hold_id.
+  string hold_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field matter_ref.
+  string matter_ref = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field reason.
+  string reason = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field lifecycle.
+  string lifecycle = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field created_by.
+  string created_by = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
+  // Field approvers.
+  repeated string approvers = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
+  // Field created_at.
+  string created_at = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field review_by.
+  string review_by = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field notice_mode.
+  string notice_mode = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field scope_summary.
+  string scope_summary = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
 }
 
+// SubjectRequestEntry record.
 message SubjectRequestEntry {
-  string request_id = 1;
-  string kind = 2;
-  string subject_ref = 3;
-  string status = 4;
-  repeated string hold_ids = 5;
-  string requested_at = 6;
-  string detail = 7;
+  reserved 900 to 999;
+
+  // Field request_id.
+  string request_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field kind.
+  string kind = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field subject_ref.
+  string subject_ref = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
+  // Field status.
+  grdr.common.v1alpha1.SubjectRequestStatus status = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field hold_ids.
+  repeated string hold_ids = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field requested_at.
+  string requested_at = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field detail.
+  string detail = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
 }
 
+// ComplianceConnectorEntry record.
 message ComplianceConnectorEntry {
-  string id = 1;
-  string name = 2;
-  string kind = 3;
-  string stability = 4;
-  string circuit_state = 5;
-  uint32 queued_items = 6;
-  uint32 delivered_items = 7;
-  string capture_ceiling = 8;
-  string assurance_label = 9;
-  optional string last_delivery_at = 10;
-  string summary = 11;
+  // Field id.
+  string id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field name.
+  string name = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field kind.
+  string kind = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field stability.
+  string stability = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field circuit_state.
+  string circuit_state = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field queued_items.
+  uint32 queued_items = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field delivered_items.
+  uint32 delivered_items = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field capture_ceiling.
+  string capture_ceiling = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field assurance_label.
+  string assurance_label = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field last_delivery_at.
+  optional string last_delivery_at = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field summary.
+  string summary = 11 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// ReidentificationRequestEntry record.
 message ReidentificationRequestEntry {
-  string request_id = 1;
-  string pseudonym_id = 2;
-  string requester = 3;
-  string reason = 4;
-  string legal_basis = 5;
-  string status = 6;
-  repeated string approvers = 7;
-  uint32 required_approvals = 8;
-  optional string resolved_identity = 9;
-  string created_at = 10;
-  optional string resolved_at = 11;
+  // Field request_id.
+  string request_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field pseudonym_id.
+  string pseudonym_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
+  // Field requester.
+  string requester = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
+  // Field reason.
+  string reason = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field legal_basis.
+  string legal_basis = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field status.
+  grdr.common.v1alpha1.ReidRequestStatus status = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field approvers.
+  repeated string approvers = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
+  // Field required_approvals.
+  uint32 required_approvals = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field resolved_identity.
+  optional string resolved_identity = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
+  // Field created_at.
+  string created_at = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field resolved_at.
+  optional string resolved_at = 11 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// DisclosureLedgerEntry record.
 message DisclosureLedgerEntry {
-  string id = 1;
-  string kind = 2;
-  string actor = 3;
-  string target_ref = 4;
-  string legal_basis = 5;
-  string timestamp = 6;
-  string quarter = 7;
-  string summary = 8;
+  reserved 900 to 999;
+
+  // Field id.
+  string id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field kind.
+  string kind = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field actor.
+  string actor = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
+  // Field target_ref.
+  string target_ref = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field legal_basis.
+  string legal_basis = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field timestamp.
+  string timestamp = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field quarter.
+  string quarter = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field summary.
+  string summary = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
 }
 
+// DisclosureMetrics record.
 message DisclosureMetrics {
-  string quarter = 1;
-  uint32 total_reidentifications = 2;
-  uint32 total_holds = 3;
-  uint32 total_erasures = 4;
-  uint32 total_exports = 5;
+  // Field quarter.
+  string quarter = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field total_reidentifications.
+  uint32 total_reidentifications = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field total_holds.
+  uint32 total_holds = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field total_erasures.
+  uint32 total_erasures = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field total_exports.
+  uint32 total_exports = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
 }
 
+// FirstRunState record.
 message FirstRunState {
-  string selected_profile = 1;
-  bool confirmed = 2;
-  bool step_up_enabled = 3;
-  repeated grdr.api.overview.v1alpha1.SetupStep steps = 4;
+  // Field selected_profile.
+  string selected_profile = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field confirmed.
+  bool confirmed = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field step_up_enabled.
+  bool step_up_enabled = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field steps.
+  repeated grdr.api.overview.v1alpha1.SetupStep steps = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// GetComplianceWorkspaceRequest record.
 message GetComplianceWorkspaceRequest {}
 
+// GetComplianceWorkspaceResponse record.
 message GetComplianceWorkspaceResponse {
-  repeated FrameworkCoverageSummary frameworks = 1;
-  repeated ComplianceEvidenceEntry evidence_items = 2;
-  RetentionStateSummary retention = 3;
-  repeated LegalHoldEntry legal_holds = 4;
-  repeated SubjectRequestEntry subject_requests = 5;
-  repeated ComplianceConnectorEntry connectors = 6;
-  repeated ReidentificationRequestEntry reid_requests = 7;
-  repeated DisclosureLedgerEntry disclosures = 8;
-  DisclosureMetrics disclosure_metrics = 9;
-  FirstRunState first_run = 10;
-  grdr.common.v1alpha1.RevisionMeta revision = 11;
+  // Field frameworks.
+  repeated FrameworkCoverageSummary frameworks = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field evidence_items.
+  repeated ComplianceEvidenceEntry evidence_items = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field retention.
+  RetentionStateSummary retention = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field legal_holds.
+  repeated LegalHoldEntry legal_holds = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field subject_requests.
+  repeated SubjectRequestEntry subject_requests = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field connectors.
+  repeated ComplianceConnectorEntry connectors = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field reid_requests.
+  repeated ReidentificationRequestEntry reid_requests = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field disclosures.
+  repeated DisclosureLedgerEntry disclosures = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field disclosure_metrics.
+  DisclosureMetrics disclosure_metrics = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field first_run.
+  FirstRunState first_run = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field revision.
+  grdr.common.v1alpha1.RevisionMeta revision = 11 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// UpdateCompliancePolicyRequest record.
 message UpdateCompliancePolicyRequest {
-  string privacy_profile = 1;
-  repeated string presets = 2;
-  optional string override_legal_basis = 3;
-  optional string capture_level = 4;
+  // Field privacy_profile.
+  string privacy_profile = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field presets.
+  repeated string presets = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field override_legal_basis.
+  optional string override_legal_basis = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field capture_level.
+  optional string capture_level = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// UpdateCompliancePolicyResponse record.
 message UpdateCompliancePolicyResponse {
-  RetentionStateSummary retention = 1;
+  // Field retention.
+  RetentionStateSummary retention = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// CreateLegalHoldRequest record.
 message CreateLegalHoldRequest {
-  string matter_ref = 1;
-  string reason = 2;
-  string pseudonym_or_session = 3;
+  reserved 900 to 999;
+
+  // Field matter_ref.
+  string matter_ref = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field reason.
+  string reason = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field pseudonym_or_session.
+  string pseudonym_or_session = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
 }
 
+// CreateLegalHoldResponse record.
 message CreateLegalHoldResponse {
-  LegalHoldEntry hold = 1;
+  // Field hold.
+  LegalHoldEntry hold = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// ApproveLegalHoldRequest record.
 message ApproveLegalHoldRequest {
-  string hold_id = 1;
-  optional string note = 2;
+  // Field hold_id.
+  string hold_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field note.
+  optional string note = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY, (grdr.common.v1alpha1.sealable) = true];
+  reserved 900 to 999;
 }
 
+// ApproveLegalHoldResponse record.
 message ApproveLegalHoldResponse {
-  LegalHoldEntry hold = 1;
+  // Field hold.
+  LegalHoldEntry hold = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// ExportComplianceArtifactRequest record.
 message ExportComplianceArtifactRequest {
-  string format = 1;
-  optional string framework_id = 2;
+  // Field format.
+  string format = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field framework_id.
+  optional string framework_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// ExportComplianceArtifactResponse record.
 message ExportComplianceArtifactResponse {
-  string format = 1;
-  string filename = 2;
-  string content_type = 3;
-  string payload = 4;
-  string oscal_version = 5;
-  string digest = 6;
+  reserved 900 to 999;
+
+  // Field format.
+  string format = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field filename.
+  string filename = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field content_type.
+  string content_type = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field payload.
+  string payload = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY, (grdr.common.v1alpha1.sealable) = true];
+  // Field oscal_version.
+  string oscal_version = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field digest.
+  string digest = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
 }
 
+// PushGrcEvidenceRequest record.
 message PushGrcEvidenceRequest {
-  string target = 1;
+  // Field target.
+  string target = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
+  reserved 900 to 999;
 }
 
+// PushGrcEvidenceResponse record.
 message PushGrcEvidenceResponse {
-  string target = 1;
-  string envelope_id = 2;
-  string outbox_state = 3;
-  string circuit_state = 4;
-  string summary = 5;
-  string payload_preview = 6;
+  reserved 900 to 999;
+
+  // Field target.
+  string target = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
+  // Field envelope_id.
+  string envelope_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field outbox_state.
+  string outbox_state = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field circuit_state.
+  string circuit_state = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field summary.
+  string summary = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field payload_preview.
+  string payload_preview = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY, (grdr.common.v1alpha1.sealable) = true];
 }
 
+// RequestReidentificationRequest record.
 message RequestReidentificationRequest {
-  string pseudonym_id = 1;
-  string reason = 2;
-  string legal_basis = 3;
+  reserved 900 to 999;
+
+  // Field pseudonym_id.
+  string pseudonym_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER, (grdr.common.v1alpha1.sealable) = true];
+  // Field reason.
+  string reason = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field legal_basis.
+  string legal_basis = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
 }
 
+// RequestReidentificationResponse record.
 message RequestReidentificationResponse {
-  ReidentificationRequestEntry request = 1;
+  // Field request.
+  ReidentificationRequestEntry request = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// ApproveReidentificationRequest record.
 message ApproveReidentificationRequest {
-  string request_id = 1;
-  optional string note = 2;
+  // Field request_id.
+  string request_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field note.
+  optional string note = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT, (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY, (grdr.common.v1alpha1.sealable) = true];
+  reserved 900 to 999;
 }
 
+// ApproveReidentificationResponse record.
 message ApproveReidentificationResponse {
-  ReidentificationRequestEntry request = 1;
+  // Field request.
+  ReidentificationRequestEntry request = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// CompleteFirstRunRequest record.
 message CompleteFirstRunRequest {
-  string profile = 1;
-  bool confirm_protection = 2;
-  bool step_up_enabled = 3;
+  // Field profile.
+  string profile = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field confirm_protection.
+  bool confirm_protection = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field step_up_enabled.
+  bool step_up_enabled = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// CompleteFirstRunResponse record.
 message CompleteFirstRunResponse {
-  FirstRunState first_run = 1;
+  // Field first_run.
+  FirstRunState first_run = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// ProviderOrgEntry record.
 message ProviderOrgEntry {
-  string org_id = 1;
-  string name = 2;
-  string org_set = 3;
-  string ring = 4;
-  uint32 devices_count = 5;
-  uint32 open_findings = 6;
-  uint32 pending_approvals = 7;
-  uint32 coverage_pct = 8;
-  string floor_version = 9;
-  uint32 delegated_overrides = 10;
-  string status = 11;
+  // Field org_id.
+  string org_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field name.
+  string name = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field org_set.
+  string org_set = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field ring.
+  string ring = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field devices_count.
+  uint32 devices_count = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field open_findings.
+  uint32 open_findings = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field pending_approvals.
+  uint32 pending_approvals = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field coverage_pct.
+  uint32 coverage_pct = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field floor_version.
+  string floor_version = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field delegated_overrides.
+  uint32 delegated_overrides = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field status.
+  grdr.common.v1alpha1.ProviderOrgStatus status = 11 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
 }
 
+// ProviderRingSummary record.
 message ProviderRingSummary {
-  string ring = 1;
-  uint32 org_count = 2;
-  string target_version = 3;
-  string health_state = 4;
-  uint32 soak_hours = 5;
+  // Field ring.
+  string ring = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field org_count.
+  uint32 org_count = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field target_version.
+  string target_version = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field health_state.
+  string health_state = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field soak_hours.
+  uint32 soak_hours = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// GetProviderWorkspaceRequest record.
 message GetProviderWorkspaceRequest {
-  optional string org_set = 1;
+  // Field org_set.
+  optional string org_set = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// GetProviderWorkspaceResponse record.
 message GetProviderWorkspaceResponse {
-  optional string acting_as_org_id = 1;
-  optional string acting_as_org_name = 2;
-  optional string acting_as_reason = 3;
-  repeated ProviderOrgEntry orgs = 4;
-  repeated ProviderRingSummary rings = 5;
-  grdr.common.v1alpha1.RevisionMeta revision = 6;
+  // Field acting_as_org_id.
+  optional string acting_as_org_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field acting_as_org_name.
+  optional string acting_as_org_name = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field acting_as_reason.
+  optional string acting_as_reason = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Field orgs.
+  repeated ProviderOrgEntry orgs = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field rings.
+  repeated ProviderRingSummary rings = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field revision.
+  grdr.common.v1alpha1.RevisionMeta revision = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// SwitchProviderOrgRequest record.
 message SwitchProviderOrgRequest {
-  optional string org_id = 1;
-  optional string reason = 2;
+  // Field org_id.
+  optional string org_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field reason.
+  optional string reason = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
 }
 
+// SwitchProviderOrgResponse record.
 message SwitchProviderOrgResponse {
-  optional string acting_as_org_id = 1;
-  optional string acting_as_org_name = 2;
-  optional string acting_as_reason = 3;
+  // Field acting_as_org_id.
+  optional string acting_as_org_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field acting_as_org_name.
+  optional string acting_as_org_name = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field acting_as_reason.
+  optional string acting_as_reason = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
 }
 
+// AdvanceProviderRingRequest record.
 message AdvanceProviderRingRequest {
-  string ring = 1;
-  string target_version = 2;
+  // Field ring.
+  string ring = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Field target_version.
+  string target_version = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// AdvanceProviderRingResponse record.
 message AdvanceProviderRingResponse {
-  ProviderRingSummary ring = 1;
+  // Field ring.
+  ProviderRingSummary ring = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
 }
 
+// Service interface for SurfaceService.
 service SurfaceService {
-  rpc ExplainReceipt(ExplainReceiptRequest) returns (ExplainReceiptResponse);
-  rpc ListReviewQueue(ListReviewQueueRequest) returns (ListReviewQueueResponse);
-  rpc DecideReviewCluster(DecideReviewClusterRequest) returns (DecideReviewClusterResponse);
-  rpc GetComplianceWorkspace(GetComplianceWorkspaceRequest) returns (GetComplianceWorkspaceResponse);
-  rpc UpdateCompliancePolicy(UpdateCompliancePolicyRequest) returns (UpdateCompliancePolicyResponse);
-  rpc CreateLegalHold(CreateLegalHoldRequest) returns (CreateLegalHoldResponse);
-  rpc ApproveLegalHold(ApproveLegalHoldRequest) returns (ApproveLegalHoldResponse);
-  rpc ExportComplianceArtifact(ExportComplianceArtifactRequest) returns (ExportComplianceArtifactResponse);
-  rpc PushGrcEvidence(PushGrcEvidenceRequest) returns (PushGrcEvidenceResponse);
-  rpc RequestReidentification(RequestReidentificationRequest) returns (RequestReidentificationResponse);
-  rpc ApproveReidentification(ApproveReidentificationRequest) returns (ApproveReidentificationResponse);
-  rpc CompleteFirstRun(CompleteFirstRunRequest) returns (CompleteFirstRunResponse);
-  rpc GetProviderWorkspace(GetProviderWorkspaceRequest) returns (GetProviderWorkspaceResponse);
-  rpc SwitchProviderOrg(SwitchProviderOrgRequest) returns (SwitchProviderOrgResponse);
-  rpc AdvanceProviderRing(AdvanceProviderRingRequest) returns (AdvanceProviderRingResponse);
+  // Invokes ExplainReceipt.
+  rpc ExplainReceipt(ExplainReceiptRequest) returns (ExplainReceiptResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "overview:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_STANDARD;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+  // Invokes ListReviewQueue.
+  rpc ListReviewQueue(ListReviewQueueRequest) returns (ListReviewQueueResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "review:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_STANDARD;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+  // Invokes DecideReviewCluster.
+  rpc DecideReviewCluster(DecideReviewClusterRequest) returns (DecideReviewClusterResponse) {
+    option (grdr.common.v1alpha1.scope) = "review:write";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_INTERACTIVE;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_CONSEQUENCE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+  // Invokes GetComplianceWorkspace.
+  rpc GetComplianceWorkspace(GetComplianceWorkspaceRequest) returns (GetComplianceWorkspaceResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "compliance:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_STANDARD;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+  // Invokes UpdateCompliancePolicy.
+  rpc UpdateCompliancePolicy(UpdateCompliancePolicyRequest) returns (UpdateCompliancePolicyResponse) {
+    option (grdr.common.v1alpha1.scope) = "compliance:write";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_CRITICAL_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_CRITICAL;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_PROPOSE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+  // Invokes CreateLegalHold.
+  rpc CreateLegalHold(CreateLegalHoldRequest) returns (CreateLegalHoldResponse) {
+    option (grdr.common.v1alpha1.scope) = "compliance:hold";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_CRITICAL_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_CRITICAL;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_CONSEQUENCE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+  // Invokes ApproveLegalHold.
+  rpc ApproveLegalHold(ApproveLegalHoldRequest) returns (ApproveLegalHoldResponse) {
+    option (grdr.common.v1alpha1.scope) = "compliance:hold";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_CRITICAL_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_CRITICAL;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_QUORUM;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+  // Invokes ExportComplianceArtifact.
+  rpc ExportComplianceArtifact(ExportComplianceArtifactRequest) returns (ExportComplianceArtifactResponse) {
+    option (grdr.common.v1alpha1.scope) = "compliance:export";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_SENSITIVE_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_BULK;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+  // Invokes PushGrcEvidence.
+  rpc PushGrcEvidence(PushGrcEvidenceRequest) returns (PushGrcEvidenceResponse) {
+    option (grdr.common.v1alpha1.scope) = "compliance:export";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_INTERACTIVE;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_CONSEQUENCE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+  // Invokes RequestReidentification.
+  rpc RequestReidentification(RequestReidentificationRequest) returns (RequestReidentificationResponse) {
+    option (grdr.common.v1alpha1.scope) = "privacy:quorum";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_CRITICAL_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_CRITICAL;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_PROPOSE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+  // Invokes ApproveReidentification.
+  rpc ApproveReidentification(ApproveReidentificationRequest) returns (ApproveReidentificationResponse) {
+    option (grdr.common.v1alpha1.scope) = "privacy:quorum";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_CRITICAL_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_CRITICAL;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_QUORUM;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+  // Invokes CompleteFirstRun.
+  rpc CompleteFirstRun(CompleteFirstRunRequest) returns (CompleteFirstRunResponse) {
+    option (grdr.common.v1alpha1.scope) = "policy:write";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_INTERACTIVE;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_CONSEQUENCE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+  // Invokes GetProviderWorkspace.
+  rpc GetProviderWorkspace(GetProviderWorkspaceRequest) returns (GetProviderWorkspaceResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (grdr.common.v1alpha1.scope) = "provider:read";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_STANDARD;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_NONE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+  // Invokes SwitchProviderOrg.
+  rpc SwitchProviderOrg(SwitchProviderOrgRequest) returns (SwitchProviderOrgResponse) {
+    option (grdr.common.v1alpha1.scope) = "provider:act_as";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_SENSITIVE_READ;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_INTERACTIVE;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_CONSEQUENCE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
+  // Invokes AdvanceProviderRing.
+  rpc AdvanceProviderRing(AdvanceProviderRingRequest) returns (AdvanceProviderRingResponse) {
+    option (grdr.common.v1alpha1.scope) = "provider:write";
+    option (grdr.common.v1alpha1.audit) = AUDIT_CLASS_CRITICAL_MUTATION;
+    option (grdr.common.v1alpha1.rate_class) = RATE_CLASS_CRITICAL;
+    option (grdr.common.v1alpha1.confirm) = CONFIRM_CLASS_PROPOSE;
+    option (grdr.common.v1alpha1.mcp_exposed) = false;
+  }
 }

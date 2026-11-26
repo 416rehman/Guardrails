@@ -1,0 +1,186 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Canonical telemetry envelope, source provenance, 5-way salted commitments, and proofs (D-39, D-52).
+syntax = "proto3";
+
+package grdr.event.v1alpha1;
+
+import "google/protobuf/timestamp.proto";
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/ids.proto";
+import "grdr/common/v1alpha1/options.proto";
+import "grdr/common/v1alpha1/redaction.proto";
+import "grdr/entity/v1alpha1/entity.proto";
+
+// Originating control point, transport channel, and harness provenance.
+message Source {
+  // Control point emitting the observation.
+  grdr.common.v1alpha1.ControlPoint control_point = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 2;
+  // Acquisition channel inside the control point.
+  grdr.common.v1alpha1.ChannelKind channel = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Custom channel label when channel is CHANNEL_KIND_OTHER.
+  optional string channel_other = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Trust provenance of this observation (observed, claimed, inferred, derived).
+  grdr.common.v1alpha1.ProvenanceKind provenance = 5 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Guardrails binary component name.
+  string component = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Adapter dialect identifier when translated from host signals.
+  optional string adapter = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Observed agent harness version string.
+  optional string agent_version = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Attribution lineage chain binding an event to an agent type, instance, and sessions.
+message ActorChain {
+  // Catalogued agent type identifier (agt_...).
+  string agent_type_id = 1 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Concrete agent instance identifier (agi_...).
+  string agent_instance_id = 2 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Nested session lineage stack ordered root-to-leaf (ses_...).
+  repeated string sessions = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Originating tool call identifier when inside a tool execution (tc_...).
+  optional string tool_call_id = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Operating system process key when kernel sensors observe the actor.
+  optional string process_key = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Attribution evidence grade and confidence score for session graph edges.
+message Attribution {
+  // Deterministic evidence types supporting attribution.
+  repeated grdr.common.v1alpha1.AttributionEvidenceKind evidence = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Custom attribution evidence string when ATTRIBUTION_EVIDENCE_KIND_OTHER is present.
+  optional string evidence_other = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Discrete attribution grade (0 to 4).
+  uint32 grade = 3 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Bounded integer attribution confidence score (0 to 100).
+  uint32 score = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
+}
+
+// Five-way salted cryptographic commitments enabling redacted verification without breaking hashes (D-39).
+message FiveWayCommitments {
+  // Salted commitment over DATA_CLASS_IDENTIFIER fields (d_identifier).
+  string d_identifier = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Salted commitment over DATA_CLASS_STRUCTURAL fields (d_structural).
+  string d_structural = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Salted commitment over DATA_CLASS_DERIVED fields (d_derived).
+  string d_derived = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Salted commitment over DATA_CLASS_CONTENT + CONTENT_KIND_ARGUMENT fields (d_argument).
+  string d_argument = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Salted commitment over DATA_CLASS_CONTENT + CONTENT_KIND_BODY fields (d_body).
+  string d_body = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Salt for identifier commitment (withheld on reduced/redacted copies).
+  optional bytes salt_identifier = 6 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  // Salt for structural commitment (present unless structural class is withheld).
+  optional bytes salt_structural = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Salt for derived commitment (present unless derived class is withheld).
+  optional bytes salt_derived = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Salt for argument commitment (withheld when content.argument is redacted).
+  optional bytes salt_argument = 9 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT,
+    (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_ARGUMENT,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  // Salt for body commitment (withheld when content.body is redacted).
+  optional bytes salt_body = 10 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_CONTENT,
+    (grdr.common.v1alpha1.content_kind) = CONTENT_KIND_BODY,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  reserved 900 to 999;
+}
+
+// RFC 6962 Merkle tree summary and inclusion proof covering elided roll-up leaves (D-52).
+message MerkleRollupProof {
+  // RFC 6962 Merkle tree root digest ("sha256:...").
+  string merkle_root = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Number of elided leaf records committed under merkle_root.
+  uint64 leaf_count = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Ordered sibling proof hashes enabling inclusion verification for sampled leaves.
+  repeated string audit_path = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Zero-based leaf index proven by audit_path when verifying a sampled leaf.
+  optional uint64 leaf_index = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Per-lane hash chain linkage, 5-way commitments, batch signature, and witness seams (D-39).
+message Integrity {
+  // Previous chain link hash in the same (device_id, epoch, lane) chain.
+  string prev = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Current chain link digest committed over envelope, commitments, and prev.
+  string digest = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Five-way per-class salted commitments allowing independent erasure without chain breaks.
+  FiveWayCommitments commitments = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Optional batch head Ed25519 or P-256 signature.
+  optional string signature = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Verification key identifier matching signature.
+  optional string signer_key_id = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Reserved checkpoint reference for lake/witness verifiability (21 section 14).
+  optional string checkpoint_ref = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Reserved tile-log inclusion proof for third-party verification.
+  optional bytes inclusion_proof = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Hot envelope header common to every telemetry event across all five audit lanes.
+message Envelope {
+  // Unique ULID-style event identifier (evt_...).
+  string event_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER];
+  // Owning tenant identifier (org_...).
+  string organisation_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER];
+  // Originating endpoint device identifier (dev_...).
+  string device_id = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER];
+  // Monotonic device boot or re-key epoch counter.
+  uint64 epoch = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Audit shipping lane (decision, spine, bulk, evidence, local).
+  grdr.common.v1alpha1.Lane lane = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Strict gapless per-(device, epoch, lane) sequence number.
+  uint64 seq = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // UTC timestamp of observation.
+  google.protobuf.Timestamp observed_time = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Endpoint monotonic nanosecond offset within the epoch.
+  uint64 monotonic_ns = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Canonical dot-separated event category (for example "action.exec").
+  string event_class = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Correlated W3C trace context.
+  grdr.common.v1alpha1.TraceContext trace = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER];
+  // Pseudonymised principal associated with this event.
+  grdr.entity.v1alpha1.Principal principal = 11 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER];
+  // Attributed agent lineage chain.
+  ActorChain actor_chain = 12 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER];
+  // Broad actor classification (human, agent, system, external).
+  grdr.common.v1alpha1.ActorKind actor_kind = 13 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Attribution confidence and supporting evidence.
+  Attribution attribution = 14 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Source sensor or hook provenance.
+  Source source = 15 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Cryptographic integrity linkage and five-way commitments.
+  Integrity integrity = 16 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Capture matrix level governing payload emission.
+  grdr.common.v1alpha1.CaptureLevel capture_level = 17 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Redaction metadata listing any withheld classes or fields.
+  grdr.common.v1alpha1.Redaction redaction = 18 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}

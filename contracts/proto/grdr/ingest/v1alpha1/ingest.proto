@@ -1,0 +1,102 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Idempotent telemetry spool ingestion and lane flow control (docs/design/20, 22).
+syntax = "proto3";
+
+package grdr.ingest.v1alpha1;
+
+import "google/protobuf/timestamp.proto";
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/options.proto";
+import "grdr/event/v1alpha1/event.proto";
+import "grdr/feed/v1alpha1/feed.proto";
+import "grdr/fleet/v1alpha1/fleet.proto";
+
+// Delivery acknowledgement state for a pushed sequence window on a single lane.
+enum LaneAckStatus {
+  // Unspecified ack status.
+  LANE_ACK_STATUS_UNSPECIFIED = 0;
+  // Batch accepted and committed durably to server bus/log.
+  LANE_ACK_STATUS_DURABLE = 1 [(grdr.common.v1alpha1.wire_name) = "durable"];
+  // Duplicate batch previously accepted; endpoint may safely trim spool.
+  LANE_ACK_STATUS_DUPLICATE = 2 [(grdr.common.v1alpha1.wire_name) = "duplicate"];
+  // Sequence gap detected relative to expected_seq; endpoint must backfill or emit gap record.
+  LANE_ACK_STATUS_OUT_OF_ORDER = 3 [(grdr.common.v1alpha1.wire_name) = "out_of_order"];
+  // Rejected temporarily due to admission shedding; keep in spool and retry with backoff.
+  LANE_ACK_STATUS_SHED = 4 [(grdr.common.v1alpha1.wire_name) = "shed"];
+}
+
+// Per-lane durable watermark acknowledgement returned by PushBatch (20 section 4).
+message LaneAck {
+  // Acknowledged lane.
+  grdr.common.v1alpha1.Lane lane = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Highest contiguous sequence accepted in memory/bus.
+  uint64 acked_through = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Highest sequence committed durably to persistent storage.
+  uint64 durable_through = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Acknowledgement disposition status.
+  LaneAckStatus status = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Next contiguous sequence expected by the server on this lane.
+  uint64 expected_seq = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Server-directed admission, backfill credit, and sampling parameters (20, 22).
+message FlowControl {
+  // Floor delay in milliseconds before retry (plus jitter on the device).
+  uint32 retry_after_ms = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Approved compressed backfill byte credit for older backlog drain.
+  uint64 backfill_credit_bytes = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Adaptive bulk sampling rate in permille (1000 = 100%).
+  uint32 bulk_sample_permille = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Updated fleet schedule when server schedule revision changed.
+  optional grdr.fleet.v1alpha1.Schedule schedule = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Signed per-(device, epoch, lane) telemetry batch uploaded by `grdr-uplink`.
+message PushBatchRequest {
+  // Originating endpoint device identifier.
+  string device_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Device boot/key epoch number.
+  uint64 epoch = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Shipping lane.
+  grdr.common.v1alpha1.Lane lane = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // First and last sequence numbers carried in this batch.
+  uint64 first_seq = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Inclusive final sequence number carried in this batch.
+  uint64 last_seq = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Ordered canonical events within [first_seq, last_seq].
+  repeated grdr.event.v1alpha1.Event events = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Any explicit P9 gap records bridging dropped/expired spool ranges.
+  repeated grdr.feed.v1alpha1.GapRecord gaps = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Signature of batch head digest signed by device per-boot key.
+  string head_signature = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Per-boot key identifier.
+  string signer_key_id = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Server acknowledgement bound to the ingest response signing key (22 section 4.4).
+message PushBatchResponse {
+  // Per-lane durable watermark acknowledgements.
+  repeated LaneAck acks = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Server flow-control directives and optional schedule refresh.
+  FlowControl flow_control = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Monotonic server epoch preventing replay across snapshot restores.
+  uint64 server_epoch = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Authoritative signed server UTC timestamp (used for clock skew detection).
+  google.protobuf.Timestamp server_time = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Certified short-lived response key identifier.
+  string response_key_id = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Signature binding acks, server_epoch, and request digest under fleet trust root.
+  bytes response_signature = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Unary Connect/gRPC telemetry batch ingest service hosted by server `ingest` target.
+service IngestService {
+  // Appends a signed endpoint lane batch idempotently on (device, epoch, lane, seq).
+  rpc PushBatch(PushBatchRequest) returns (PushBatchResponse);
+}

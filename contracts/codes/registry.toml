@@ -25,12 +25,16 @@ GRDR-API-0099 = { owner = "grdr-server", file = "programs/grdr-server/src/connec
 GRDR-API-0401 = { owner = "grdr-model", file = "crates/grdr-model/src/error.rs" }
 GRDR-API-0404 = { owner = "grdr-model", file = "crates/grdr-model/src/error.rs" }
 GRDR-API-0409 = { owner = "grdr-model", file = "crates/grdr-model/src/error.rs" }
-GRDR-AUDIT-0001 = { owner = "grdr-core", file = "crates/grdr-core/src/audit.rs" }
-GRDR-AUDIT-0002 = { owner = "grdr-core", file = "crates/grdr-core/src/audit.rs" }
-GRDR-AUDIT-0003 = { owner = "grdr-core", file = "crates/grdr-core/src/audit.rs", shared_with = ["grdr"] }
-GRDR-AUDIT-0004 = { owner = "grdr-core", file = "crates/grdr-core/src/audit.rs" }
-GRDR-AUDIT-0005 = { owner = "grdr-core", file = "crates/grdr-core/src/audit.rs" }
-GRDR-AUDIT-0006 = { owner = "grdr-core", file = "crates/grdr-core/src/audit.rs" }
+GRDR-AUDIT-0001 = { owner = "grdr-core", file = "crates/grdr-core/src/audit/mod.rs" }
+GRDR-AUDIT-0002 = { owner = "grdr-core", file = "crates/grdr-core/src/audit/mod.rs" }
+GRDR-AUDIT-0003 = { owner = "grdr-core", file = "crates/grdr-core/src/audit/mod.rs", shared_with = ["grdr"] }
+GRDR-AUDIT-0004 = { owner = "grdr-core", file = "crates/grdr-core/src/audit/mod.rs" }
+GRDR-AUDIT-0005 = { owner = "grdr-core", file = "crates/grdr-core/src/audit/mod.rs" }
+GRDR-AUDIT-0006 = { owner = "grdr-core", file = "crates/grdr-core/src/audit/mod.rs" }
+GRDR-AUDIT-0007 = { owner = "grdr-core", file = "crates/grdr-core/src/audit/mod.rs", shared_with = ["grdr"] }
+GRDR-AUDIT-0008 = { owner = "grdr-core", file = "crates/grdr-core/src/audit/mod.rs", shared_with = ["grdr"] }
+GRDR-AUDIT-0009 = { owner = "grdr-core", file = "crates/grdr-core/src/audit/mod.rs", shared_with = ["grdr"] }
+GRDR-AUDIT-0010 = { owner = "grdr-core", file = "crates/grdr-core/src/audit/mod.rs", shared_with = ["grdr"] }
 GRDR-AUTH-0403 = { owner = "grdr-server", file = "programs/grdr-server/src/rpc/mod.rs" }
 GRDR-BLOB-0001 = { owner = "grdr-ports", file = "crates/grdr-ports/src/tenant.rs" }
 GRDR-BLOB-0002 = { owner = "grdr-ports", file = "crates/grdr-ports/src/blob.rs" }
@@ -170,6 +174,10 @@ GRDR-LINT-0002 = { owner = "grdr-schema-lint", file = "crates/grdr-schema-lint/s
 GRDR-LINT-0003 = { owner = "grdr-schema-lint", file = "crates/grdr-schema-lint/src/cedar_lint.rs" }
 GRDR-LINT-0004 = { owner = "grdr-schema-lint", file = "crates/grdr-schema-lint/src/lib.rs" }
 GRDR-LINT-0005 = { owner = "grdr-schema-lint", file = "crates/grdr-schema-lint/src/lib.rs" }
+GRDR-LINT-0006 = { owner = "grdr-schema-lint", file = "crates/grdr-schema-lint/src/lib.rs" }
+GRDR-LINT-0007 = { owner = "grdr-schema-lint", file = "crates/grdr-schema-lint/src/lib.rs" }
+GRDR-LINT-0008 = { owner = "grdr-schema-lint", file = "crates/grdr-schema-lint/src/lib.rs" }
+GRDR-LINT-0009 = { owner = "grdr-schema-lint", file = "crates/grdr-schema-lint/src/lib.rs" }
 GRDR-LLM-0001 = { owner = "grdr-llm-proto", file = "crates/grdr-llm-proto/src/lib.rs" }
 GRDR-LLM-0002 = { owner = "grdr-llm-proto", file = "crates/grdr-llm-proto/src/lib.rs" }
 GRDR-LSTORE-0001 = { owner = "grdr-store-local", file = "crates/grdr-store-local/src/lib.rs" }
@@ -232,6 +240,7 @@ GRDR-PREFLIGHT-0006 = { owner = "grdr", file = "programs/grdr/src/server_preflig
 GRDR-PROTO-0001 = { owner = "grdr-proto", file = "crates/grdr-proto/src/lib.rs" }
 GRDR-PROTO-0002 = { owner = "grdr-proto", file = "crates/grdr-proto/src/lib.rs" }
 GRDR-PROTO-0003 = { owner = "grdr-proto", file = "crates/grdr-proto/src/lib.rs" }
+GRDR-PROTO-0004 = { owner = "grdr-proto", file = "crates/grdr-proto/src/lib.rs" }
 GRDR-PROXY-0001 = { owner = "grdr-proxy", file = "programs/grdr-proxy/src/lib.rs" }
 GRDR-PROXY-0002 = { owner = "grdr-proxy", file = "programs/grdr-proxy/src/lib.rs" }
 GRDR-PROXY-0003 = { owner = "grdr-proxy", file = "programs/grdr-proxy/src/lib.rs" }

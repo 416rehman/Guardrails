@@ -1,0 +1,93 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Canonical digests, trace contexts, path references, and executable identities (D-35, P8).
+syntax = "proto3";
+
+package grdr.common.v1alpha1;
+
+import "google/protobuf/timestamp.proto";
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/options.proto";
+
+// Algorithm-tagged cryptographic digest reference.
+message Digest {
+  // Hash or MAC algorithm identifier.
+  HashAlgorithm algorithm = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
+  // Optional open algorithm label when algorithm is HASH_ALGORITHM_OTHER.
+  optional string algorithm_other = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
+  // Raw digest bytes (32 bytes for SHA-256 / HMAC-SHA256).
+  bytes value = 3 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// W3C Trace Context correlation metadata for telemetry envelopes.
+message TraceContext {
+  // 16-byte or 32-hex W3C trace identifier.
+  string trace_id = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
+  // 8-byte or 16-hex W3C span identifier.
+  string span_id = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
+  // Optional parent span identifier.
+  optional string parent_span_id = 3 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Privacy-minimised filesystem path reference with reserved sealed twin slot.
+message PathRef {
+  // Path classification (workspace, home, system, temp, sensitive, external).
+  PathClass path_class = 1 [(data_class) = DATA_CLASS_STRUCTURAL, (policy_readable) = true];
+  // Templated path prefix with home/workspace variables rather than user names.
+  string prefix_template = 2 [(data_class) = DATA_CLASS_STRUCTURAL, (policy_readable) = true];
+  // HMAC-SHA256 digest of the canonicalised full path under the device/org key.
+  string path_digest = 3 [(data_class) = DATA_CLASS_IDENTIFIER];
+  // Clear or redacted target path gated by capture level and sealable under D-35.
+  optional string display_path = 4 [
+    (data_class) = DATA_CLASS_CONTENT,
+    (content_kind) = CONTENT_KIND_ARGUMENT,
+    (sealable) = true
+  ];
+  reserved 900 to 999;
+}
+
+// Executable identity reference keyed by basename and content/identity digest.
+message ExecutableRef {
+  // Basename or catalogue executable label.
+  string name = 1 [(data_class) = DATA_CLASS_STRUCTURAL, (policy_readable) = true];
+  // Typed executable identity such as exe_sha256:... digest.
+  string identity = 2 [(data_class) = DATA_CLASS_STRUCTURAL, (policy_readable) = true];
+  // Signing subject or bundle identifier when verified on the endpoint.
+  optional string signer = 3 [(data_class) = DATA_CLASS_STRUCTURAL, (policy_readable) = true];
+  // Full executable path gated by capture level and sealable under D-35.
+  optional string executable_path = 4 [
+    (data_class) = DATA_CLASS_CONTENT,
+    (content_kind) = CONTENT_KIND_ARGUMENT,
+    (sealable) = true
+  ];
+  reserved 900 to 999;
+}
+
+// Policy-safe target locator shared across events, verdicts, and findings.
+message TargetRef {
+  // Domain-separated digest of the canonical target value.
+  string target_digest = 1 [(data_class) = DATA_CLASS_IDENTIFIER];
+  // Structural host, scheme, or path class safe for metadata tier.
+  string classification = 2 [(data_class) = DATA_CLASS_STRUCTURAL, (policy_readable) = true];
+  // Raw or redacted target string gated by capture level and sealable under D-35.
+  optional string value = 3 [
+    (data_class) = DATA_CLASS_CONTENT,
+    (content_kind) = CONTENT_KIND_ARGUMENT,
+    (sealable) = true
+  ];
+  reserved 900 to 999;
+}
+
+// Timestamp plus monotonic clock reading emitted together per ADR-0047.
+message ClockReading {
+  // UTC wall-clock observation timestamp.
+  google.protobuf.Timestamp observed_at = 1 [(data_class) = DATA_CLASS_STRUCTURAL];
+  // Endpoint boot-relative monotonic nanoseconds for intra-epoch ordering.
+  uint64 monotonic_ns = 2 [(data_class) = DATA_CLASS_STRUCTURAL];
+  // Boot or clock epoch identifier.
+  uint64 epoch = 3 [(data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}

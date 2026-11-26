@@ -1,0 +1,135 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Policy verdicts, signed decision receipts, single-use grants, and sensor expectations (docs/design/04, 07, 12).
+syntax = "proto3";
+
+package grdr.decision.v1alpha1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/ids.proto";
+import "grdr/common/v1alpha1/options.proto";
+
+// Deterministic verdict derived by policy evaluation before control-point degradation.
+message Verdict {
+  // Five-value verdict code (ALLOW, MODIFY, STEP_UP, DEFER, DENY).
+  grdr.common.v1alpha1.Verdict code = 1 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Matched rule identifier if any rule triggered.
+  optional string rule_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Owning policy pack identifier.
+  optional string pack_id = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Rule mode evaluated (Off, Watch, Ask, Block).
+  optional grdr.common.v1alpha1.Mode mode_applied = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Registered machine-readable reason code (GRDR-*).
+  string reason_code = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Required approval grade when code is VERDICT_STEP_UP.
+  optional grdr.common.v1alpha1.ApprovalGrade min_grade = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
+}
+
+// Signed capability grant issued by human approval or local time lock (D-31).
+message Grant {
+  // Unique grant identifier (grt_...).
+  string grant_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Linked rule identifier.
+  string rule_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Target session identifier.
+  string session_id = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Target endpoint device identifier.
+  string device_id = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Permitted action class.
+  grdr.common.v1alpha1.ActionClass action_class = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Canonicalised exact target digest (argv, cwd, env delta, script digests).
+  string target_digest = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER];
+  // Grant scope bound (exact single-use, session, directory, rule).
+  grdr.common.v1alpha1.GrantScope scope = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Approver assurance grade recorded at issuance.
+  grdr.common.v1alpha1.ApprovalGrade grade = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Issuance timestamp.
+  google.protobuf.Timestamp issued_at = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Mandatory expiry timestamp.
+  google.protobuf.Timestamp expires_at = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Optional remaining call counter.
+  optional uint32 remaining_uses = 11 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Signature covering canonical grant payload.
+  string signature = 12 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Signed decision receipt linking an action attempt digest to enforced policy outcome.
+message Receipt {
+  // Unique receipt identifier (rcp_...).
+  string receipt_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Parent decision identifier (dec_...).
+  string decision_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Evaluated action identifier (act_...).
+  string attempt_id = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Linked session identifier.
+  string session_id = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Owning device identifier.
+  string device_id = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Action digest bound to this receipt.
+  string action_digest = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Primary enforced verdict.
+  Verdict verdict = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Counterfactual Watch-mode verdict if rule had enforced Block/Ask.
+  optional Verdict would_be = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Consumed grant identifier if an approval grant authorised execution.
+  optional string grant_id = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Cryptographic digest over canonical receipt payload.
+  string receipt_digest = 10 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Per-boot or org key signature bytes.
+  string signature = 11 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Signing key identifier.
+  string signer_key_id = 12 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Reserved third-party SCITT/transparency receipt seam (design/21 section 14).
+  optional bytes transparency = 13 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Timestamp when decision completed.
+  google.protobuf.Timestamp decided_at = 14 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Kernel reconciliation expectation opened when a hook allows or rewrites an effect (07 section 9).
+message Expectation {
+  // Unique expectation identifier.
+  string expectation_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Linked session identifier.
+  string session_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Linked tool call identifier.
+  string tool_call_id = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Observed agent process key.
+  string agent_process_key = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Expected action class.
+  grdr.common.v1alpha1.ActionClass action_class = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Canonical effect descriptor or command digest expected at the OS sensor.
+  string effect_digest = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Optional grant inherited by child subprocesses.
+  optional string grant_id = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Maximum time window before expectation becomes unfulfilled.
+  google.protobuf.Duration valid_window = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Target reference used for reconciliation matching.
+  grdr.common.v1alpha1.TargetRef target = 9 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Complete decision audit record emitted on the decision lane.
+message DecisionRecord {
+  // Decision identifier (dec_...).
+  string decision_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Action identifier evaluated.
+  string action_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Signed decision receipt.
+  Receipt receipt = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Rule identifiers that matched during evaluation.
+  repeated string matched_rules = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Session labels added or transitioned by this evaluation.
+  repeated grdr.common.v1alpha1.SessionLabel added_labels = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Optional sensor reconciliation expectation emitted for post-hook enforcement.
+  optional Expectation expectation = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}

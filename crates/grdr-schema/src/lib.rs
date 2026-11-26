@@ -2,15 +2,24 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 #![deny(clippy::arithmetic_side_effects)]
 
+pub mod brand;
+pub mod capture;
 pub mod cedar;
 pub mod limits;
 mod limits_parse;
 mod limits_types;
+pub mod registry;
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+
+pub use brand::{
+    AuditLane, BrandIdentity, CommitmentClass, ContentKind, DataClass, FiveWayCommitments,
+    brand_identity, is_valid_brand_domain, is_valid_brand_identity, is_valid_brand_namespace,
+    parse_brand_identity_toml, schema_base_uri,
+};
 
 pub const DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
 
@@ -119,10 +128,14 @@ pub fn schema_for(kind: SchemaKind) -> SchemaDocument {
     }
 }
 
+fn schema_doc_id(filename: &str) -> String {
+    format!("{}/{filename}", schema_base_uri())
+}
+
 pub fn policy_pack_schema() -> SchemaDocument {
     SchemaDocument {
         schema_uri: DRAFT_2020_12.into(),
-        id: "https://guardrails.dev/schemas/v1/policy-pack.json".into(),
+        id: schema_doc_id("policy-pack.json"),
         title: "PolicyPack".into(),
         version: "1.0.0".into(),
         properties: vec![
@@ -141,7 +154,7 @@ pub fn policy_pack_schema() -> SchemaDocument {
 pub fn decision_receipt_schema() -> SchemaDocument {
     SchemaDocument {
         schema_uri: DRAFT_2020_12.into(),
-        id: "https://guardrails.dev/schemas/v1/decision-receipt.json".into(),
+        id: schema_doc_id("decision-receipt.json"),
         title: "DecisionReceipt".into(),
         version: "1.0.0".into(),
         properties: vec![
@@ -162,7 +175,7 @@ pub fn decision_receipt_schema() -> SchemaDocument {
 pub fn action_attempt_schema() -> SchemaDocument {
     SchemaDocument {
         schema_uri: DRAFT_2020_12.into(),
-        id: "https://guardrails.dev/schemas/v1/action-attempt.json".into(),
+        id: schema_doc_id("action-attempt.json"),
         title: "ActionAttempt".into(),
         version: "1.0.0".into(),
         properties: vec![
@@ -182,7 +195,7 @@ pub fn action_attempt_schema() -> SchemaDocument {
 pub fn ocsf_event_schema() -> SchemaDocument {
     SchemaDocument {
         schema_uri: DRAFT_2020_12.into(),
-        id: "https://guardrails.dev/schemas/v1/ocsf-1.9-event.json".into(),
+        id: schema_doc_id("ocsf-1.9-event.json"),
         title: "OcsfEvent".into(),
         version: "1.9.0".into(),
         properties: vec![
@@ -335,5 +348,46 @@ mod tests {
             e,
             SchemaValidationError::MissingRequiredField { field } if field == "attempt_id"
         )));
+
+        let brand = brand_identity();
+        assert_eq!(brand.namespace, "grdr");
+        assert_eq!(brand.domain, "guardrailshq.com");
+        assert_eq!(
+            pack_schema.id,
+            "https://guardrailshq.com/schemas/v1/policy-pack.json"
+        );
+        assert!(default_capture_level_is_metadata());
+
+        assert!(DataClass::Structural < DataClass::Derived);
+        assert!(DataClass::Derived < DataClass::Identifier);
+        assert!(DataClass::Identifier < DataClass::Content);
+        assert!(CommitmentClass::Structural < CommitmentClass::Derived);
+        assert!(CommitmentClass::Derived < CommitmentClass::Identifier);
+        assert!(CommitmentClass::Identifier < CommitmentClass::ContentArgument);
+        assert!(CommitmentClass::ContentArgument < CommitmentClass::ContentBody);
+
+        assert_eq!(AuditLane::parse("spine"), Some(AuditLane::Spine));
+        assert_eq!(AuditLane::parse("evidence"), Some(AuditLane::Evidence));
+        assert_eq!(AuditLane::parse(" spine"), None);
+        assert_eq!(AuditLane::parse("spine "), None);
+        assert_eq!(AuditLane::parse("event\n"), None);
+        assert_eq!(AuditLane::parse("\tevent"), None);
+        assert_ne!(AuditLane::Spine, AuditLane::Evidence);
+        assert!(
+            serde_json::from_str::<FiveWayCommitments>(
+                r#"{"d_identifier":"sha256:00","d_structural":"sha256:00","d_derived":"sha256:00","d_argument":"sha256:00","d_body":"sha256:00","extra":1}"#,
+            )
+            .is_err()
+        );
+
+        let quoted =
+            "[identity]\nnamespace = \"acme\" # tail\ndomain = \"acme.example#frag\" # inline\n";
+        let parsed = parse_brand_identity_toml(quoted);
+        assert_eq!(parsed.namespace, "acme");
+        assert!(!is_valid_brand_domain(&parsed.domain));
+    }
+
+    fn default_capture_level_is_metadata() -> bool {
+        capture::default_capture_level().name == "metadata"
     }
 }

@@ -218,3 +218,227 @@ macro_rules! proto_enum_codec {
         }
     };
 }
+
+pub mod bytes_b64_serde {
+    use serde::de::{self, SeqAccess, Visitor};
+    use serde::{Deserializer, Serializer};
+    use std::fmt;
+
+    const B64_ALPHA: &[u8; 64] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    pub(crate) fn encode_b64(input: &[u8]) -> String {
+        let mut out = String::with_capacity(input.len().div_ceil(3).saturating_mul(4));
+        let alpha =
+            |idx: usize| -> char { char::from(B64_ALPHA.get(idx).copied().unwrap_or(b'A')) };
+        for chunk in input.chunks(3) {
+            let b0 = usize::from(chunk.first().copied().unwrap_or(0));
+            let b1 = usize::from(chunk.get(1).copied().unwrap_or(0));
+            let b2 = usize::from(chunk.get(2).copied().unwrap_or(0));
+            let triple = (b0 << 16) | (b1 << 8) | b2;
+            out.push(alpha((triple >> 18) & 0x3f));
+            out.push(alpha((triple >> 12) & 0x3f));
+            if chunk.len() > 1 {
+                out.push(alpha((triple >> 6) & 0x3f));
+            } else {
+                out.push('=');
+            }
+            if chunk.len() > 2 {
+                out.push(alpha(triple & 0x3f));
+            } else {
+                out.push('=');
+            }
+        }
+        out
+    }
+
+    fn decode_val(b: u8) -> Option<u8> {
+        match b {
+            b'A'..=b'Z' => Some(b.saturating_sub(b'A')),
+            b'a'..=b'z' => Some(b.saturating_sub(b'a').saturating_add(26)),
+            b'0'..=b'9' => Some(b.saturating_sub(b'0').saturating_add(52)),
+            b'+' | b'-' => Some(62),
+            b'/' | b'_' => Some(63),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn decode_b64(raw: &str) -> Result<Vec<u8>, String> {
+        let s = raw.trim_end_matches('=');
+        let pad_len = raw.len().saturating_sub(s.len());
+        if pad_len > 2 || s.contains('=') || s.len() % 4 == 1 {
+            return Err("invalid base64 length or padding".into());
+        }
+        if pad_len > 0 && !raw.len().is_multiple_of(4) {
+            return Err("invalid padded base64 length".into());
+        }
+        let mut vals = Vec::with_capacity(s.len());
+        for &b in s.as_bytes() {
+            vals.push(decode_val(b).ok_or_else(|| "invalid base64 character".to_owned())?);
+        }
+        let mut out = Vec::with_capacity(vals.len().saturating_mul(3) / 4);
+        for chunk in vals.chunks(4) {
+            let (Some(&c0), Some(&c1)) = (chunk.first(), chunk.get(1)) else {
+                return Err("invalid base64 chunk".into());
+            };
+            let v0 = u32::from(c0);
+            let v1 = u32::from(c1);
+            out.push(((v0 << 2) | (v1 >> 4)) as u8);
+            if let Some(&c2) = chunk.get(2) {
+                let v2 = u32::from(c2);
+                out.push((((v1 & 0x0f) << 4) | (v2 >> 2)) as u8);
+                if let Some(&c3) = chunk.get(3) {
+                    let v3 = u32::from(c3);
+                    out.push((((v2 & 0x03) << 6) | v3) as u8);
+                } else if (v2 & 0x03) != 0 {
+                    return Err("non-canonical trailing base64 bits".into());
+                }
+            } else if (v1 & 0x0f) != 0 {
+                return Err("non-canonical trailing base64 bits".into());
+            }
+        }
+        Ok(out)
+    }
+
+    pub fn serialize<S: Serializer>(bytes: &[u8], s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&encode_b64(bytes))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
+        struct BytesVisitor;
+        impl<'de> Visitor<'de> for BytesVisitor {
+            type Value = Vec<u8>;
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("base64 string or byte array")
+            }
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Vec<u8>, E> {
+                decode_b64(v).map_err(E::custom)
+            }
+            fn visit_bytes<E: de::Error>(self, v: &[u8]) -> Result<Vec<u8>, E> {
+                Ok(v.to_vec())
+            }
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<u8>, A::Error> {
+                let mut out = Vec::new();
+                while let Some(b) = seq.next_element::<u8>()? {
+                    out.push(b);
+                }
+                Ok(out)
+            }
+        }
+        d.deserialize_any(BytesVisitor)
+    }
+
+    pub mod opt {
+        use super::*;
+
+        pub fn serialize<S: Serializer>(value: &Option<Vec<u8>>, s: S) -> Result<S::Ok, S::Error> {
+            match value {
+                Some(bytes) => super::serialize(bytes, s),
+                None => s.serialize_none(),
+            }
+        }
+
+        pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Vec<u8>>, D::Error> {
+            struct OptBytesVisitor;
+            impl<'de> Visitor<'de> for OptBytesVisitor {
+                type Value = Option<Vec<u8>>;
+                fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    f.write_str("optional base64 string or byte array")
+                }
+                fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+                    Ok(None)
+                }
+                fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+                    Ok(None)
+                }
+                fn visit_some<D2: Deserializer<'de>>(
+                    self,
+                    d2: D2,
+                ) -> Result<Self::Value, D2::Error> {
+                    super::deserialize(d2).map(Some)
+                }
+            }
+            d.deserialize_option(OptBytesVisitor)
+        }
+    }
+
+    pub mod vec {
+        use super::*;
+        use serde::ser::SerializeSeq;
+
+        pub fn serialize<S: Serializer>(values: &[Vec<u8>], s: S) -> Result<S::Ok, S::Error> {
+            let mut seq = s.serialize_seq(Some(values.len()))?;
+            for v in values {
+                seq.serialize_element(&encode_b64(v))?;
+            }
+            seq.end()
+        }
+
+        pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<Vec<u8>>, D::Error> {
+            struct VecBytesVisitor;
+            impl<'de> Visitor<'de> for VecBytesVisitor {
+                type Value = Vec<Vec<u8>>;
+                fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    f.write_str("sequence of base64 strings or byte arrays")
+                }
+                fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+                    let mut out = Vec::new();
+                    while let Some(elem) = seq.next_element::<B64Elem>()? {
+                        out.push(elem.0);
+                    }
+                    Ok(out)
+                }
+            }
+            struct B64Elem(Vec<u8>);
+            impl<'de> serde::Deserialize<'de> for B64Elem {
+                fn deserialize<D2: Deserializer<'de>>(d2: D2) -> Result<Self, D2::Error> {
+                    super::deserialize(d2).map(B64Elem)
+                }
+            }
+            d.deserialize_seq(VecBytesVisitor)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bytes_b64_serde;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    struct BoxBytes {
+        #[serde(with = "bytes_b64_serde")]
+        data: Vec<u8>,
+    }
+
+    #[test]
+    fn bytes_b64_roundtrips_boundaries_and_rejects_malformed_inputs() {
+        for raw in [
+            vec![],
+            vec![0xff],
+            vec![0x14, 0xfb],
+            vec![0x14, 0xfb, 0x9c],
+            vec![1, 2, 3, 4, 5],
+        ] {
+            let b = BoxBytes { data: raw.clone() };
+            let json = serde_json::to_string(&b).unwrap();
+            let decoded: BoxBytes = serde_json::from_str(&json).unwrap();
+            assert_eq!(decoded.data, raw);
+        }
+
+        for bad in [
+            "\"==\"",
+            "\"AA=\"",
+            "\"AAAA==\"",
+            "\"AB==\"",
+            "\"AAB=\"",
+            "\"!!==\"",
+        ] {
+            let payload = format!("{{\"data\":{bad}}}");
+            assert!(
+                serde_json::from_str::<BoxBytes>(&payload).is_err(),
+                "expected invalid b64 rejection for {bad}"
+            );
+        }
+    }
+}

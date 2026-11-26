@@ -1,0 +1,138 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+// Workload SPIFFE identities, local attestations, agent ceilings, leases, and correlation (design/15).
+syntax = "proto3";
+
+package grdr.identity.v1alpha1;
+
+import "google/protobuf/timestamp.proto";
+import "grdr/common/v1alpha1/enums.proto";
+import "grdr/common/v1alpha1/options.proto";
+
+// External identity directory or workload system linkage on an agent instance.
+message ExternalId {
+  // Upstream identity system name (okta, entra, aws_iam, github_app, spiffe_federation).
+  string system = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Opaque external subject or workload identifier.
+  string external_id = 2 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  // Directory join method (`scim`, `oidc_id_jag`, `pod_svid`, `manual`).
+  string join_method = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Workload SPIFFE-style identity and authority ceiling seams reserved in base schema (15-01).
+message AgentIdentity {
+  // Workload SPIFFE URI scoped to organisation trust domain (`spiffe://org_<id>/...`).
+  string spiffe_id = 1 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Linked concrete agent instance identifier (agi_...).
+  string agent_instance_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Verification grade of identity binding (`observed`, `self_asserted`, `idp_issued`, `attested`).
+  grdr.common.v1alpha1.IdentityProof identity_proof = 3 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Federated external identity records.
+  repeated ExternalId external_ids = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER];
+  // Human or team sponsor pseudonym responsible for the workload identity.
+  optional string sponsor = 5 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  // Instance lifecycle status.
+  grdr.common.v1alpha1.AgentLifecycle lifecycle = 6 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Effective sandbox containment mode.
+  grdr.common.v1alpha1.ContainmentMode containment_mode = 7 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Active credential delivery mode (`vendor_login`, `gateway`, `key_helper`, `federated`).
+  grdr.common.v1alpha1.CredentialMode credential_mode = 8 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  // Reference identifier of the narrow authority ceiling policy bound to this identity.
+  optional string ceiling_ref = 9 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL,
+    (grdr.common.v1alpha1.policy_readable) = true
+  ];
+  reserved 900 to 999;
+}
+
+// Per-boot hardware or service-signed attestation proving local workload lineage (15-03).
+message LocalAttestation {
+  // Endpoint device identifier.
+  string device_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Target agent instance identifier.
+  string agent_instance_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Attribution signals supporting the local attestation (`session-container`, etc.).
+  repeated grdr.common.v1alpha1.AttributionEvidenceKind evidence = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Resulting identity proof tier (User profile never yields ATTESTED).
+  grdr.common.v1alpha1.IdentityProof proof = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Ephemeral per-boot signing key identifier.
+  string boot_key_id = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Signature over canonical attestation payload.
+  string signature = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Attestation issuance timestamp.
+  google.protobuf.Timestamp attested_at = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Optional open attestation evidence label when OTHER is selected.
+  optional string evidence_other = 8 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  reserved 900 to 999;
+}
+
+// Authority ceiling bounding scopes an agent identity may ever hold across delegation hops.
+message Ceiling {
+  // Ceiling identifier referenced by AgentIdentity.ceiling_ref.
+  string ceiling_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Maximum credential sensitivity classes permitted.
+  repeated string allowed_credential_classes = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Maximum lease duration in seconds (at most 900 s per D-27).
+  uint32 max_ttl_seconds = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // True when active sandbox containment is mandatory before credential release.
+  bool requires_containment = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// Short-lived device/gateway credential lease bounded to <=15 minutes (design/15).
+message Lease {
+  // Unique lease identifier.
+  string lease_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Holder agent instance identifier.
+  string agent_instance_id = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Scoped credential classes granted by this lease.
+  repeated string scope_classes = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Issuance mechanism.
+  grdr.common.v1alpha1.CredentialMode mode = 4 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Kernel-peer verification result at lease creation.
+  bool peer_verified = 5 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // Lease issuance timestamp.
+  google.protobuf.Timestamp issued_at = 6 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Mandatory expiry timestamp.
+  google.protobuf.Timestamp expires_at = 7 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  reserved 900 to 999;
+}
+
+// RFC 8693 `act` chain correlation linking agent session to human delegator.
+message Correlation {
+  // Session identifier inside the trace.
+  string session_id = 1 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Outward attribution grade reached (`tag`, `receipt`, `credential`).
+  string grade = 2 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_DERIVED];
+  // External forge, cloud request, or commit object identifier.
+  string external_object_id = 3 [(grdr.common.v1alpha1.data_class) = DATA_CLASS_STRUCTURAL];
+  // Pseudonym of delegating principal.
+  string delegator_pseudonym = 4 [
+    (grdr.common.v1alpha1.data_class) = DATA_CLASS_IDENTIFIER,
+    (grdr.common.v1alpha1.sealable) = true
+  ];
+  reserved 900 to 999;
+}

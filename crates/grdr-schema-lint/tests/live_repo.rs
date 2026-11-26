@@ -156,10 +156,6 @@ fn p7_pack_lint_validates_data_class_order_manifest_subset_and_allow_list_group_
                 path: "receipt.action_class".into(),
                 data_class: PackDataClass::Structural,
             },
-            FieldReadDecl {
-                path: "session.device_id".into(),
-                data_class: PackDataClass::Identifier,
-            },
         ],
         commands: vec![],
         executables: vec![],
@@ -168,16 +164,10 @@ fn p7_pack_lint_validates_data_class_order_manifest_subset_and_allow_list_group_
         mcp_servers_to_start: vec![],
         evidence_queries: vec![EvidenceQueryDecl {
             id: "q.preexec".into(),
-            reads: vec![
-                FieldReadDecl {
-                    path: "receipt.action_class".into(),
-                    data_class: PackDataClass::Structural,
-                },
-                FieldReadDecl {
-                    path: "session.device_id".into(),
-                    data_class: PackDataClass::Identifier,
-                },
-            ],
+            reads: vec![FieldReadDecl {
+                path: "receipt.action_class".into(),
+                data_class: PackDataClass::Structural,
+            }],
             max_class: PackDataClass::Derived,
             group_by: vec!["capability".into()],
         }],
@@ -185,6 +175,29 @@ fn p7_pack_lint_validates_data_class_order_manifest_subset_and_allow_list_group_
         per_person_scoring: false,
     };
     assert!(lint_pack_manifest(&valid, IdentityMode::Pseudonymous).is_ok());
+
+    let mut identifier_pack = valid.clone();
+    identifier_pack.reads.push(FieldReadDecl {
+        path: "session.device_id".into(),
+        data_class: PackDataClass::Identifier,
+    });
+    assert!(
+        lint_pack_manifest(&identifier_pack, IdentityMode::Pseudonymous).is_ok(),
+        "PackDataClass currently permits Identifier reads matching EvidenceDataClass and signed grdr.compliance"
+    );
+
+    let mut content_pack = valid.clone();
+    content_pack.reads.push(FieldReadDecl {
+        path: "action.command".into(),
+        data_class: PackDataClass::Content,
+    });
+    assert!(
+        matches!(
+            lint_pack_manifest(&content_pack, IdentityMode::Pseudonymous),
+            Err(LintError::PackViolation { ref detail, .. }) if detail.contains("exceeds `derived`")
+        ),
+        "compliance packs capped at Derived must reject Content reads"
+    );
 
     let mut undeclared_read = valid.clone();
     if let Some(q) = undeclared_read.evidence_queries.first_mut() {

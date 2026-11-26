@@ -1,0 +1,53 @@
+# Canonical capture levels and commitment data-class matrix (docs/design/04, RFC 0006 R13).
+# Do not invent classes outside common.v1alpha1.options (DataClass + ContentKind).
+schema = "grdr.capture.v1alpha1"
+default = "metadata"
+
+# Commitment classes ordered from lowest to highest privacy sensitivity.
+classes = [
+  "structural",
+  "derived",
+  "identifier",
+  "content.argument",
+  "content.body",
+]
+
+[[levels]]
+name = "metadata"
+rank = 1
+description = "Default remote upload ceiling: structural, derived, and pseudonymised identifier metadata only; all content leaves withheld locally."
+structural = "full"
+derived = "full"
+identifier = "pseudonymous"
+"content.argument" = "withheld"
+"content.body" = "withheld"
+
+[[levels]]
+name = "redacted_arguments"
+rank = 2
+description = "Default local flight-recorder level: redacted tool arguments retained locally; bodies stay withheld unless authorised."
+structural = "full"
+derived = "full"
+identifier = "pseudonymous"
+"content.argument" = "redacted"
+"content.body" = "withheld"
+
+[[levels]]
+name = "redacted_content"
+rank = 3
+description = "Redacted tool arguments and bodies captured only under explicit org policy or content grant."
+structural = "full"
+derived = "full"
+identifier = "pseudonymous"
+"content.argument" = "redacted"
+"content.body" = "redacted"
+
+[[levels]]
+name = "full_content"
+rank = 4
+description = "Full content capture permitted only under explicit org widening confirmation or active content grant."
+structural = "full"
+derived = "full"
+identifier = "full"
+"content.argument" = "full"
+"content.body" = "full"

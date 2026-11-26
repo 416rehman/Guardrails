@@ -11,21 +11,30 @@ use crate::proto_enum_codec;
 #[repr(i32)]
 pub enum DataClass {
     Unspecified = 0,
-    Public = 1,
-    Metadata = 2,
-    Identifier = 3,
-    Pseudonym = 4,
-    Content = 5,
-    Secret = 6,
+    Identifier = 1,
+    Structural = 2,
+    Derived = 3,
+    Content = 4,
 }
 proto_enum_codec!(DataClass, data_class_serde, [
     DataClass::Unspecified => "DATA_CLASS_UNSPECIFIED",
-    DataClass::Public => "DATA_CLASS_PUBLIC" | "public",
-    DataClass::Metadata => "DATA_CLASS_METADATA" | "metadata",
     DataClass::Identifier => "DATA_CLASS_IDENTIFIER" | "identifier",
-    DataClass::Pseudonym => "DATA_CLASS_PSEUDONYM" | "pseudonym",
+    DataClass::Structural => "DATA_CLASS_STRUCTURAL" | "structural",
+    DataClass::Derived => "DATA_CLASS_DERIVED" | "derived",
     DataClass::Content => "DATA_CLASS_CONTENT" | "content",
-    DataClass::Secret => "DATA_CLASS_SECRET" | "secret",
+]);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
+#[repr(i32)]
+pub enum ContentKind {
+    Unspecified = 0,
+    Argument = 1,
+    Body = 2,
+}
+proto_enum_codec!(ContentKind, content_kind_serde, [
+    ContentKind::Unspecified => "CONTENT_KIND_UNSPECIFIED",
+    ContentKind::Argument => "CONTENT_KIND_ARGUMENT" | "argument",
+    ContentKind::Body => "CONTENT_KIND_BODY" | "body",
 ]);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
@@ -200,3 +209,5 @@ pub struct RevisionMeta {
     #[serde(alias = "high_water_mark")]
     pub high_water_mark: u64,
 }
+
+pub use crate::canonical::common_types::ClockReading;
