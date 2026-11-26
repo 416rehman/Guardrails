@@ -177,6 +177,7 @@ fn check_live_packs_and_mutations() -> Result<(), Box<dyn Error>> {
         || summary.response_actions_count == 0
         || summary.compliance_capabilities_count != registry.capabilities.len()
         || summary.compliance_frameworks_count != registry.frameworks.len()
+        || summary.credential_locator_vectors_passed < 7
         || expected_signed_packs == 0
         || summary.signed_packs_verified != expected_signed_packs
     {

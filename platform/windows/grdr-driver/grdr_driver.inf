@@ -1,0 +1,63 @@
+; SPDX-License-Identifier: Apache-2.0
+; SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+[Version]
+Signature   = "$Windows NT$"
+Class       = "ActivityMonitor"
+ClassGuid   = {b86dff51-a31e-4bac-b3cf-e8cfe75c9fc2}
+Provider    = %ManufacturerName%
+DriverVer   = 11/26/2026,0.1.0.0
+CatalogFile = grdr_driver.cat
+PnpLockdown = 1
+
+[DestinationDirs]
+DefaultDestDir = 12
+Grdr.DriverFiles = 12
+
+[DefaultInstall.NT$ARCH$]
+OptionDesc = %ServiceDescription%
+CopyFiles  = Grdr.DriverFiles
+
+[DefaultInstall.NT$ARCH$.Services]
+AddService = %ServiceName%,,Grdr.Service
+
+[DefaultUninstall.NT$ARCH$]
+LegacyUninstall = 1
+DelFiles        = Grdr.DriverFiles
+
+[DefaultUninstall.NT$ARCH$.Services]
+DelService = %ServiceName%,0x200
+
+[Grdr.DriverFiles]
+grdr_driver.sys
+
+[Grdr.Service]
+DisplayName      = %ServiceName%
+Description      = %ServiceDescription%
+ServiceBinary    = %12%\grdr_driver.sys
+Dependencies     = "FltMgr"
+ServiceType      = 2
+StartType        = 3
+ErrorControl     = 1
+LoadOrderGroup   = "FSFilter Activity Monitor"
+AddReg           = Grdr.AddRegistry
+
+[Grdr.AddRegistry]
+HKR,,"SupportedFeatures",0x00010001,0x3
+HKR,"Instances","DefaultInstance",0x00000000,%DefaultInstance%
+HKR,"Instances\"%DefaultInstance%,"Altitude",0x00000000,%InstanceAltitude%
+HKR,"Instances\"%DefaultInstance%,"Flags",0x00010001,0x0
+
+[SourceDisksFiles]
+grdr_driver.sys = 1,,
+
+[SourceDisksNames]
+1 = %DiskId1%,,,
+
+[Strings]
+ManufacturerName   = "Guardrails ADR"
+ServiceName        = "grdr-driver"
+ServiceDescription = "Guardrails ADR Optional Kernel Filter Driver"
+DefaultInstance    = "GuardrailsInstance"
+InstanceAltitude   = "325900"
+DiskId1            = "Guardrails Driver Installation Disk"

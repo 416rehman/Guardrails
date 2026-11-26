@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 
 use grdr_crypto::{AeadKey, fill_random};
-use grdr_model::{InstallProfile, SessionLabel};
+use grdr_model::InstallProfile;
 use jiff::Timestamp;
 
 use crate::{
@@ -188,21 +188,23 @@ fn broker_enforces_containment_gating_ceiling_intersection_and_leases() {
         Err(IdentityError::ProductionRequiresContainment)
     ));
 
-    req.requested_mode = CredentialMode::Release;
-    req.containment = ContainmentStatus::Contained;
-    let release_tok = broker
-        .request_credential(&cloud_binding, &req, now)
-        .expect("contained release");
-    assert_eq!(release_tok.mode, CredentialMode::Release);
-    assert_eq!(
-        release_tok.session_label,
-        Some(SessionLabel::CredentialAccessed)
-    );
-    assert!(release_tok.token_value.starts_with("grdr_rel_"));
+    // Inject works cleanly; raw unbacked Release without a CredentialIssuer fails honestly.
+    assert!(matches!(
+        broker.request_credential(
+            &cloud_binding,
+            &BrokerRequest {
+                requested_mode: CredentialMode::Release,
+                containment: ContainmentStatus::Contained,
+                ..req.clone()
+            },
+            now
+        ),
+        Err(IdentityError::ReleaseUnsupportedByUpstream)
+    ));
 
-    assert_eq!(broker.revoke_by_session("ses_1"), 2);
+    assert_eq!(broker.revoke_by_session("ses_1"), 1);
     assert_eq!(
-        broker.lease(&release_tok.lease_id).expect("lease").state,
+        broker.lease(&inject_tok.lease_id).expect("lease").state,
         LeaseState::Revoked
     );
 }
@@ -374,21 +376,26 @@ fn rejects_empty_ceiling_prefix_bypass_role_violation_and_debug_leakage() {
         act_chain_depth: 1,
         dpop_jkt: None,
     };
+    // Requesting Release without a real CredentialIssuer refuses placeholder issuance;
+    // inject tokens still honor lease caps and per-window rate limits cleanly.
     assert!(matches!(
         broker.request_credential(&unrevocable, &req_short_ttl, now),
         Err(IdentityError::ReleaseUnsupportedByUpstream)
     ));
 
-    // Random release tokens must not repeat across identical requests.
-    let revocable = CredentialBinding {
+    let inject_req = BrokerRequest {
+        requested_mode: CredentialMode::Inject,
+        ..req_short_ttl.clone()
+    };
+    let inject_binding = CredentialBinding {
         upstream_revocable: true,
         ..unrevocable
     };
     let tok1 = broker
-        .request_credential(&revocable, &req_short_ttl, now)
+        .request_credential(&inject_binding, &inject_req, now)
         .expect("tok1");
     let tok2 = broker
-        .request_credential(&revocable, &req_short_ttl, now)
+        .request_credential(&inject_binding, &inject_req, now)
         .expect("tok2");
     assert_ne!(tok1.token_value, tok2.token_value);
 
@@ -398,30 +405,28 @@ fn rejects_empty_ceiling_prefix_bypass_role_violation_and_debug_leakage() {
         max_leases_per_window: 2,
         ..BrokerPolicy::default()
     });
-    let mut r_cap = req_short_ttl.clone();
+    let mut r_cap = inject_req.clone();
     r_cap.session_id = "cap_1".into();
     let l1 = capped_broker
-        .request_credential(&revocable, &r_cap, now)
+        .request_credential(&inject_binding, &r_cap, now)
         .expect("l1");
     assert_eq!(capped_broker.revoke_by_session("cap_1"), 1);
     let _ = capped_broker
-        .request_credential(&revocable, &r_cap, now)
+        .request_credential(&inject_binding, &r_cap, now)
         .expect("l2");
     assert!(matches!(
-        capped_broker.request_credential(&revocable, &r_cap, now),
+        capped_broker.request_credential(&inject_binding, &r_cap, now),
         Err(IdentityError::RateLimitExceeded(_))
     ));
-    let mut r_cap2 = req_short_ttl;
+    let mut r_cap2 = inject_req;
     r_cap2.session_id = "cap_2".into();
     let _ = capped_broker
-        .request_credential(&revocable, &r_cap2, now)
+        .request_credential(&inject_binding, &r_cap2, now)
         .expect("l3");
-    // Wait until cap_1 lease stays active? Actually cap_1 revoked, so cap_2 replaced it.
-    // Fill remaining active slot so 2 active leases prevent 3rd session insertion.
     r_cap2.session_id = "cap_3".into();
     assert!(
         capped_broker
-            .request_credential(&revocable, &r_cap2, now)
+            .request_credential(&inject_binding, &r_cap2, now)
             .is_err()
     );
     let _ = l1;

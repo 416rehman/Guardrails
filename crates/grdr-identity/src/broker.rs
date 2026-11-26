@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
+#![deny(clippy::arithmetic_side_effects)]
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -9,20 +10,32 @@ use grdr_crypto::{fill_random, sha256_hex};
 use grdr_model::SessionLabel;
 use jiff::Timestamp;
 use uuid::Uuid;
+use zeroize::Zeroizing;
 
 use crate::IdentityError;
 use crate::broker_types::{
     BrokerPolicy, BrokerRequest, BrokeredToken, Ceiling, ContainmentStatus, CredentialBinding,
     CredentialClass, CredentialMode, LeaseRecord, LeaseState,
 };
+use crate::issuer::CredentialIssuer;
 use crate::spiffe::AgentLifecycle;
 
 #[derive(Debug, Clone)]
 pub struct CredentialBroker {
     policy: BrokerPolicy,
-    leases: BTreeMap<String, LeaseRecord>,
+    pub(crate) leases: BTreeMap<String, LeaseRecord>,
     recent_issuances: BTreeMap<String, Vec<Timestamp>>,
+    pub(crate) revocation_handles: BTreeMap<String, Zeroizing<String>>,
+    pub(crate) pending_revocations: BTreeMap<String, Zeroizing<String>>,
     sequence: u64,
+}
+
+struct ValidatedLeaseCtx {
+    effective_ttl: i64,
+    jti: String,
+    lease_id: String,
+    scope_digest: String,
+    expires_at: Timestamp,
 }
 
 impl Ceiling {
@@ -91,6 +104,8 @@ impl CredentialBroker {
             policy,
             leases: BTreeMap::new(),
             recent_issuances: BTreeMap::new(),
+            revocation_handles: BTreeMap::new(),
+            pending_revocations: BTreeMap::new(),
             sequence: 0,
         }
     }
@@ -101,6 +116,70 @@ impl CredentialBroker {
         req: &BrokerRequest,
         now: Timestamp,
     ) -> Result<BrokeredToken, IdentityError> {
+        let ctx = self.prepare_validated_lease(binding, req, now)?;
+        if req.requested_mode == CredentialMode::Release {
+            return Err(IdentityError::ReleaseUnsupportedByUpstream);
+        }
+        let token_value = Zeroizing::new(mint_token_with_entropy::<20>(&binding.phantom_prefix)?);
+        self.commit_lease(binding, req, &ctx, now, None, None, token_value, None)
+    }
+
+    pub async fn request_release_with_issuer<I: CredentialIssuer>(
+        &mut self,
+        binding: &CredentialBinding,
+        req: &BrokerRequest,
+        issuer: &I,
+        subject_token: Option<&str>,
+        now: Timestamp,
+    ) -> Result<BrokeredToken, IdentityError> {
+        if req.requested_mode != CredentialMode::Release {
+            return Err(IdentityError::IssuerError(
+                "request_release_with_issuer requires CredentialMode::Release".to_string(),
+            ));
+        }
+        let ctx = self.prepare_validated_lease(binding, req, now)?;
+        if !issuer.supports_revocation() && issuer.min_ttl_secs() > ctx.effective_ttl {
+            return Err(IdentityError::ReleaseUnsupportedByUpstream);
+        }
+        let mut issued = issuer
+            .issue_credential(binding, req, ctx.effective_ttl, subject_token)
+            .await?;
+        let mut bounded_ctx = ctx;
+        if issued.expires_at < bounded_ctx.expires_at {
+            bounded_ctx.expires_at = issued.expires_at;
+        }
+        let token_value = Zeroizing::new(std::mem::take(&mut *issued.secret_material));
+        self.commit_lease(
+            binding,
+            req,
+            &bounded_ctx,
+            now,
+            issued.upstream_public_id,
+            issued.revocation_handle,
+            token_value,
+            Some(SessionLabel::CredentialAccessed),
+        )
+    }
+
+    #[must_use]
+    pub fn lease(&self, lease_id: &str) -> Option<&LeaseRecord> {
+        self.leases.get(lease_id)
+    }
+
+    #[must_use]
+    pub fn active_leases(&self, now: Timestamp) -> Vec<&LeaseRecord> {
+        self.leases
+            .values()
+            .filter(|l| l.state == LeaseState::Active && l.expires_at > now)
+            .collect()
+    }
+
+    fn prepare_validated_lease(
+        &mut self,
+        binding: &CredentialBinding,
+        req: &BrokerRequest,
+        now: Timestamp,
+    ) -> Result<ValidatedLeaseCtx, IdentityError> {
         if req.attribution_grade < self.policy.min_attribution_grade {
             return Err(IdentityError::InsufficientAttribution {
                 found: req.attribution_grade,
@@ -155,9 +234,9 @@ impl CredentialBroker {
             return Err(IdentityError::RateLimitExceeded(req.session_id.clone()));
         }
 
-        self.sequence = self.sequence.saturating_add(1);
+        let next_seq = self.sequence.saturating_add(1);
         let jti = format!("jti_{}", Uuid::now_v7());
-        let lease_id = format!("lse_{}_{}", self.sequence, Uuid::now_v7());
+        let lease_id = format!("lse_{next_seq}_{}", Uuid::now_v7());
         let scope_digest = sha256_hex(
             format!(
                 "{}|{}|{}|{}|{}",
@@ -174,38 +253,55 @@ impl CredentialBroker {
                 IdentityError::VaultState(format!("invalid lease expiry timestamp: {e}"))
             })?;
 
-        let (token_value, session_label) = match req.requested_mode {
-            CredentialMode::Inject => (
-                mint_token_with_entropy::<20>(&binding.phantom_prefix)?,
-                None,
-            ),
-            CredentialMode::Release => (
-                mint_token_with_entropy::<32>("grdr_rel_")?,
-                Some(SessionLabel::CredentialAccessed),
-            ),
-        };
+        Ok(ValidatedLeaseCtx {
+            effective_ttl,
+            jti,
+            lease_id,
+            scope_digest,
+            expires_at,
+        })
+    }
 
+    #[allow(clippy::too_many_arguments)]
+    fn commit_lease(
+        &mut self,
+        binding: &CredentialBinding,
+        req: &BrokerRequest,
+        ctx: &ValidatedLeaseCtx,
+        now: Timestamp,
+        upstream_public_id: Option<String>,
+        revocation_handle: Option<Zeroizing<String>>,
+        token_value: Zeroizing<String>,
+        session_label: Option<SessionLabel>,
+    ) -> Result<BrokeredToken, IdentityError> {
+        self.sequence = self.sequence.saturating_add(1);
+        let has_revocation_handle = revocation_handle.is_some();
+        if let Some(handle) = revocation_handle {
+            self.revocation_handles.insert(ctx.lease_id.clone(), handle);
+        }
         let lease = LeaseRecord {
-            lease_id: lease_id.clone(),
+            lease_id: ctx.lease_id.clone(),
             credential_id: binding.credential_id.clone(),
             session_id: req.session_id.clone(),
             instance_spiffe_id: req.instance_spiffe_id.as_str().to_owned(),
             device_id: req.device_id.clone(),
             mode: req.requested_mode,
-            scope_digest: scope_digest.clone(),
+            scope_digest: ctx.scope_digest.clone(),
             issued_at: now,
-            expires_at,
+            expires_at: ctx.expires_at,
             state: LeaseState::Active,
+            upstream_public_id,
+            has_revocation_handle,
         };
-        self.leases.insert(lease_id.clone(), lease);
+        self.leases.insert(ctx.lease_id.clone(), lease);
         self.recent_issuances
             .entry(req.session_id.clone())
             .or_default()
             .push(now);
 
         Ok(BrokeredToken {
-            jti,
-            lease_id,
+            jti: ctx.jti.clone(),
+            lease_id: ctx.lease_id.clone(),
             mode: req.requested_mode,
             token_value,
             non_transferable: true,
@@ -213,46 +309,11 @@ impl CredentialBroker {
             bound_instance_spiffe_id: req.instance_spiffe_id.as_str().to_owned(),
             bound_device_id: req.device_id.clone(),
             dpop_jkt: req.dpop_jkt.clone(),
-            scope_digest,
+            scope_digest: ctx.scope_digest.clone(),
             issued_at: now,
-            expires_at,
+            expires_at: ctx.expires_at,
             session_label,
         })
-    }
-
-    pub fn revoke_by_session(&mut self, session_id: &str) -> usize {
-        self.revoke_matching(|lease| lease.session_id == session_id)
-    }
-
-    pub fn revoke_by_instance(&mut self, instance_spiffe_id: &str) -> usize {
-        self.revoke_matching(|lease| lease.instance_spiffe_id == instance_spiffe_id)
-    }
-
-    fn revoke_matching<F>(&mut self, mut predicate: F) -> usize
-    where
-        F: FnMut(&LeaseRecord) -> bool,
-    {
-        let mut count: usize = 0;
-        for lease in self.leases.values_mut() {
-            if lease.state == LeaseState::Active && predicate(lease) {
-                lease.state = LeaseState::Revoked;
-                count = count.saturating_add(1);
-            }
-        }
-        count
-    }
-
-    #[must_use]
-    pub fn lease(&self, lease_id: &str) -> Option<&LeaseRecord> {
-        self.leases.get(lease_id)
-    }
-
-    #[must_use]
-    pub fn active_leases(&self, now: Timestamp) -> Vec<&LeaseRecord> {
-        self.leases
-            .values()
-            .filter(|l| l.state == LeaseState::Active && l.expires_at > now)
-            .collect()
     }
 
     fn enforce_containment(
@@ -315,6 +376,8 @@ impl CredentialBroker {
         }
         self.leases
             .retain(|_, lease| lease.state == LeaseState::Active && lease.expires_at > now);
+        self.revocation_handles
+            .retain(|id, _| self.leases.contains_key(id));
     }
 }
 

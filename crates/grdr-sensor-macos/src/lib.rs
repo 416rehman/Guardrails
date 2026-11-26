@@ -4,8 +4,14 @@
 
 pub mod assurance;
 pub mod es_tree;
+pub mod ffi;
+pub mod macos_probes;
 pub mod network_ext;
 pub mod seatbelt;
+pub mod transcript_tail;
+
+#[cfg(target_os = "macos")]
+mod macos_sys;
 
 use std::collections::VecDeque;
 
@@ -24,6 +30,17 @@ pub use es_tree::{
     EsClientStatus, EsEventPayload, EsTreeFollower, HealthGapEvent, ProcessTreeKey,
     SupervisorWatchdogOutcome, synthesize_denied_exec_audit,
 };
+pub use ffi::{
+    GRDR_MACOS_ABI_VERSION, GrdrMacEsFollower, grdr_macos_abi_version, grdr_macos_apply_es_event,
+    grdr_macos_eval_ne_flow, grdr_macos_follower_free, grdr_macos_follower_new,
+    grdr_macos_free_string, grdr_macos_plan_seatbelt, grdr_macos_probe_capabilities,
+};
+pub use macos_probes::{
+    FseventsDirectoryWatch, MacOsExtensionEntry, MacOsExtensionState, MacOsLiveCapabilities,
+    MacOsProcessIdentity, apply_seatbelt_profile, build_slot_broker_from_probes,
+    inspect_macos_process, parse_scutil_nc_list, parse_systemextensionsctl_output,
+    probe_host_capabilities,
+};
 pub use network_ext::{
     EgressDefaultPolicy, FilterGrade, NeFlowRecord, NeFlowVerdict, SlotBrokerState, SlotCapability,
     SlotProbeReport, SlotRung, evaluate_ne_flow,
@@ -32,6 +49,7 @@ pub use seatbelt::{
     MacOsContainmentMode, SeatbeltLaunchPlan, SeatbeltProfileSpec, canonicalize_macos_path,
     generate_sbpl_profile, plan_macos_launch,
 };
+pub use transcript_tail::{TranscriptCanaryOutcome, TranscriptTailer, TranscriptToolUseEntry};
 
 pub const CODE_MACSENS_SEATBELT: &str = "GRDR-MACSENS-0001";
 pub const CODE_MACSENS_NETWORK_EXT: &str = "GRDR-MACSENS-0002";

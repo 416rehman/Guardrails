@@ -1,0 +1,284 @@
+format: grdr.credential-locators.v1
+pack_id: grdr.credential-locator
+locators:
+  - id: dotenv-file
+    credential_class: model
+    store_kind: dotenv
+    path_globs:
+      - ".env"
+      - ".env.*"
+    content_regex: '(?i)(?:api[_-]?key|secret|token|password)\s*=\s*([^\s#]{8,})'
+    prefix: "env_"
+    length_class: short
+    public_part_extractor: key_name
+    readable_expiry: false
+    honeytoken: false
+
+  - id: git-credentials
+    credential_class: forge
+    store_kind: plaintext_file
+    path_globs:
+      - "~/.git-credentials"
+      - "**/.git-credentials"
+    content_regex: 'https://([^:\s/@]+):([^@\s]+)@([^\s/]+)'
+    prefix: "git_"
+    length_class: medium
+    public_part_extractor: url_host_and_user
+    readable_expiry: false
+    honeytoken: false
+
+  - id: aws-shared-credentials
+    credential_class: cloud
+    store_kind: ini_profile
+    path_globs:
+      - "~/.aws/credentials"
+      - "%USERPROFILE%/.aws/credentials"
+    content_regex: '(?:aws_access_key_id\s*=\s*|)(AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16})'
+    prefix: "AKIA"
+    length_class: fixed_20
+    public_part_extractor: access_key_prefix
+    readable_expiry: false
+    honeytoken: false
+
+  - id: gcp-adc
+    credential_class: cloud
+    store_kind: json_oauth
+    path_globs:
+      - "~/.config/gcloud/application_default_credentials.json"
+      - "%APPDATA%/gcloud/application_default_credentials.json"
+    content_regex: '"(?:refresh_token|client_secret)"\s*:\s*"([^"]{8,})"'
+    prefix: "gcp_adc_"
+    length_class: variable
+    public_part_extractor: json_client_id
+    readable_expiry: false
+    honeytoken: false
+
+  - id: gcp-service-account-key
+    credential_class: cloud
+    store_kind: service_account_json
+    path_globs:
+      - "*-service-account.json"
+      - "**/*-service-account.json"
+    content_regex: '"private_key_id"\s*:\s*"([0-9a-f]{16,64})"'
+    prefix: "gcp_sa_"
+    length_class: asymmetric_pem
+    public_part_extractor: json_client_email
+    readable_expiry: false
+    honeytoken: false
+
+  - id: azure-cli-store
+    credential_class: cloud
+    store_kind: json_token_cache
+    path_globs:
+      - "~/.azure/msal_token_cache.json"
+      - "~/.azure/accessTokens.json"
+      - "%USERPROFILE%/.azure/*"
+    content_regex: '"secret"\s*:\s*"([^"]{12,})"'
+    prefix: "az_"
+    length_class: variable
+    public_part_extractor: json_client_id
+    readable_expiry: true
+    honeytoken: false
+
+  - id: docker-config-auth
+    credential_class: publish
+    store_kind: docker_config
+    path_globs:
+      - "~/.docker/config.json"
+      - "%USERPROFILE%/.docker/config.json"
+    content_regex: '"auth"\s*:\s*"([A-Za-z0-9+/=]{12,})"'
+    prefix: "dckr_"
+    length_class: variable
+    public_part_extractor: registry_host
+    readable_expiry: false
+    honeytoken: false
+
+  - id: kubeconfig-static
+    credential_class: production
+    store_kind: kubeconfig
+    path_globs:
+      - "~/.kube/config"
+      - "%USERPROFILE%/.kube/config"
+    content_regex: '(?i)(?:token|client-key-data|password):\s*([^\s]{12,})'
+    prefix: "kube_"
+    length_class: variable
+    public_part_extractor: cluster_context
+    readable_expiry: false
+    honeytoken: false
+
+  - id: npmrc-token
+    credential_class: publish
+    store_kind: ini_token
+    path_globs:
+      - "~/.npmrc"
+      - "**/.npmrc"
+    content_regex: '_authToken=([^\s]+)'
+    prefix: "npm_"
+    length_class: medium
+    public_part_extractor: registry_host
+    readable_expiry: false
+    honeytoken: false
+
+  - id: pypirc-token
+    credential_class: publish
+    store_kind: ini_token
+    path_globs:
+      - "~/.pypirc"
+      - "%USERPROFILE%/.pypirc"
+    content_regex: '(?i)password\s*=\s*(pypi-[^\s]+|[^\s]{12,})'
+    prefix: "pypi-"
+    length_class: variable
+    public_part_extractor: key_name
+    readable_expiry: false
+    honeytoken: false
+
+  - id: netrc-credentials
+    credential_class: forge
+    store_kind: netrc
+    path_globs:
+      - "~/.netrc"
+      - "%USERPROFILE%/_netrc"
+    content_regex: '(?i)machine\s+([^\s]+).*?password\s+([^\s]+)'
+    prefix: "netrc_"
+    length_class: variable
+    public_part_extractor: url_host_and_user
+    readable_expiry: false
+    honeytoken: false
+
+  - id: gpg-keyring
+    credential_class: ssh
+    store_kind: keyring_dir
+    path_globs:
+      - "~/.gnupg/*"
+      - "%APPDATA%/gnupg/*"
+    content_regex: 'BEGIN PGP PRIVATE KEY BLOCK'
+    prefix: "pgp_"
+    length_class: asymmetric_pem
+    public_part_extractor: file_basename
+    readable_expiry: true
+    honeytoken: false
+
+  - id: ssh-private-key
+    credential_class: ssh
+    store_kind: private_key_file
+    path_globs:
+      - "~/.ssh/id_*"
+      - "%USERPROFILE%/.ssh/id_*"
+      - "*.pem"
+      - "*.key"
+    content_regex: 'BEGIN (?:OPENSSH|RSA|EC|DSA) PRIVATE KEY'
+    prefix: "ssh_"
+    length_class: asymmetric_pem
+    public_part_extractor: file_basename
+    readable_expiry: false
+    honeytoken: false
+
+  - id: gh-cli-hosts
+    credential_class: forge
+    store_kind: yaml_hosts
+    path_globs:
+      - "~/.config/gh/hosts.yml"
+      - "%APPDATA%/GitHub CLI/hosts.yml"
+    content_regex: '(?i)oauth_token:\s*([^\s]+)'
+    prefix: "gho_"
+    length_class: medium
+    public_part_extractor: yaml_host_user
+    readable_expiry: false
+    honeytoken: false
+
+  - id: agent-claude-store
+    credential_class: model
+    store_kind: agent_store
+    path_globs:
+      - "~/.claude/.credentials.json"
+      - "~/.claude.json"
+      - "%USERPROFILE%/.claude/.credentials.json"
+    content_regex: '"(?:accessToken|oauthToken|setupToken)"\s*:\s*"([^"]{8,})"'
+    prefix: "sk-ant-"
+    length_class: long
+    public_part_extractor: json_account_uuid
+    readable_expiry: true
+    honeytoken: false
+
+  - id: agent-codex-store
+    credential_class: model
+    store_kind: agent_store
+    path_globs:
+      - "~/.codex/auth.json"
+      - "%USERPROFILE%/.codex/auth.json"
+    content_regex: '"(?:OPENAI_API_KEY|access_token|refresh_token)"\s*:\s*"([^"]{8,})"'
+    prefix: "sk-"
+    length_class: long
+    public_part_extractor: json_account_uuid
+    readable_expiry: true
+    honeytoken: false
+
+  - id: agent-copilot-store
+    credential_class: model
+    store_kind: agent_store
+    path_globs:
+      - "~/.copilot/config.json"
+      - "**/providers.json"
+      - "%APPDATA%/GitHub Copilot/*"
+    content_regex: '"(?:token|apiKey|oauth_token)"\s*:\s*"([^"]{8,})"'
+    prefix: "ghu_"
+    length_class: medium
+    public_part_extractor: file_basename
+    readable_expiry: true
+    honeytoken: false
+
+  - id: agent-opencode-store
+    credential_class: model
+    store_kind: agent_store
+    path_globs:
+      - "~/.local/share/opencode/auth.json"
+      - "%LOCALAPPDATA%/opencode/auth.json"
+    content_regex: '"(?:key|token|access)"\s*:\s*"([^"]{8,})"'
+    prefix: "opencode_"
+    length_class: variable
+    public_part_extractor: file_basename
+    readable_expiry: true
+    honeytoken: false
+
+  - id: mcp-config-env
+    credential_class: model
+    store_kind: mcp_env
+    path_globs:
+      - "**/.mcp.json"
+      - "**/claude_desktop_config.json"
+      - "**/mcp.json"
+    content_regex: '"(?:API_KEY|TOKEN|SECRET|PASSWORD)"\s*:\s*"([^"]{8,})"'
+    prefix: "mcp_"
+    length_class: variable
+    public_part_extractor: key_name
+    readable_expiry: false
+    honeytoken: false
+
+  - id: shell-profile-export
+    credential_class: model
+    store_kind: shell_profile
+    path_globs:
+      - "~/.bashrc"
+      - "~/.zshrc"
+      - "~/.profile"
+      - "~/.bash_profile"
+      - "%USERPROFILE%/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
+    content_regex: '(?i)(?:export\s+|\$env:)(?:[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD))\s*=\s*["'']?([^\s"''#]{8,})'
+    prefix: "env_"
+    length_class: variable
+    public_part_extractor: key_name
+    readable_expiry: false
+    honeytoken: false
+
+  - id: honeytoken-trap
+    credential_class: production
+    store_kind: honeytoken
+    path_globs:
+      - "**/honeytoken*"
+      - "**/.grdr-honeytoken"
+    content_regex: 'GRDR_HONEY_[A-Z0-9_]+'
+    prefix: "GRDR_HONEY_"
+    length_class: medium
+    public_part_extractor: file_basename
+    readable_expiry: false
+    honeytoken: true

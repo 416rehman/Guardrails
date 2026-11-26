@@ -67,7 +67,7 @@ ipnet = "2.12"
 jiff = { version = "1.0", features = ["serde"] }
 prost = { version = "0.14", default-features = false, features = ["derive", "std"] }
 regex = "1.13"
-reqwest = { version = "0.13", default-features = false, features = ["json", "charset"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "charset"] }
 rusqlite = { version = "0.43", default-features = false, features = ["bundled"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

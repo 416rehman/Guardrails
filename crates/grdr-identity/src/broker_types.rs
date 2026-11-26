@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
+#![deny(clippy::arithmetic_side_effects)]
 
 use std::collections::BTreeSet;
 
 use grdr_model::SessionLabel;
 use jiff::Timestamp;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use zeroize::Zeroizing;
 
 use crate::spiffe::{AgentLifecycle, SpiffeId};
 
@@ -107,14 +110,20 @@ pub struct LeaseRecord {
     pub issued_at: Timestamp,
     pub expires_at: Timestamp,
     pub state: LeaseState,
+    pub upstream_public_id: Option<String>,
+    pub has_revocation_handle: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BrokeredToken {
     pub jti: String,
     pub lease_id: String,
     pub mode: CredentialMode,
-    pub token_value: String,
+    #[serde(
+        serialize_with = "serialize_zeroizing_string",
+        deserialize_with = "deserialize_zeroizing_string"
+    )]
+    pub token_value: Zeroizing<String>,
     pub non_transferable: bool,
     pub bound_session_id: String,
     pub bound_instance_spiffe_id: String,
@@ -124,6 +133,43 @@ pub struct BrokeredToken {
     pub issued_at: Timestamp,
     pub expires_at: Timestamp,
     pub session_label: Option<SessionLabel>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionRevocationReport {
+    pub revoked: usize,
+    pub pending_lease_ids: Vec<String>,
+}
+
+impl std::fmt::Debug for BrokeredToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BrokeredToken")
+            .field("jti", &self.jti)
+            .field("lease_id", &self.lease_id)
+            .field("mode", &self.mode)
+            .field("token_value", &"<redacted>")
+            .field("non_transferable", &self.non_transferable)
+            .field("bound_session_id", &self.bound_session_id)
+            .field("bound_instance_spiffe_id", &self.bound_instance_spiffe_id)
+            .field("bound_device_id", &self.bound_device_id)
+            .field("scope_digest", &self.scope_digest)
+            .field("issued_at", &self.issued_at)
+            .field("expires_at", &self.expires_at)
+            .finish_non_exhaustive()
+    }
+}
+
+fn serialize_zeroizing_string<S: Serializer>(
+    value: &Zeroizing<String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(value.as_str())
+}
+
+fn deserialize_zeroizing_string<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Zeroizing<String>, D::Error> {
+    String::deserialize(deserializer).map(Zeroizing::new)
 }
 
 impl Default for BrokerPolicy {

@@ -1,0 +1,5 @@
+module GrdrSensorMacOSBridge [system] {
+    header "GrdrSensorMacOS.h"
+    link "grdr_sensor_macos"
+    export *
+}

@@ -1,0 +1,98 @@
+format: grdr.credential-hygiene.v1
+pack_id: grdr.credential-locator
+rules:
+  - id: H1
+    name: long_lived_model_token
+    default_mode: Watch
+    finding_class: policy_violation
+    page: false
+    requires: sensor
+    description: "Long-lived model token (1-year setup-token or non-expiring Codex access token)."
+
+  - id: H2
+    name: plaintext_credential_readable_by_agent
+    default_mode: Watch
+    finding_class: policy_violation
+    page: false
+    requires: sensor
+    description: "Plaintext credential file on disk readable by an agent lineage."
+
+  - id: H3
+    name: secret_in_mcp_env_config
+    default_mode: Watch
+    finding_class: policy_violation
+    page: false
+    requires: sensor
+    description: "Secret-shaped value stored in an MCP server env block."
+
+  - id: H4
+    name: unencrypted_ssh_private_key
+    default_mode: Watch
+    finding_class: policy_violation
+    page: false
+    requires: sensor
+    description: "Unencrypted SSH private key lacking passphrase protection."
+
+  - id: H5
+    name: credential_exported_in_shell_profile
+    default_mode: Watch
+    finding_class: policy_violation
+    page: false
+    requires: sensor
+    description: "Credential exported in shell startup profile (.bashrc, .zshrc, or PowerShell profile)."
+
+  - id: H6
+    name: static_cloud_keys_despite_federation
+    default_mode: Watch
+    finding_class: policy_violation
+    page: false
+    requires: server
+    description: "Static cloud keys present where workload identity federation is configured."
+
+  - id: H7
+    name: unauthenticated_local_credential_endpoint
+    default_mode: Watch
+    finding_class: policy_violation
+    page: false
+    requires: sensor
+    description: "Unauthenticated local credential helper server (IMDS-like or aws_signing_helper serve)."
+
+  - id: H8
+    name: shared_credential_agent_and_human
+    default_mode: Watch
+    finding_class: policy_violation
+    page: false
+    requires: readable_by
+    description: "Single credential id shared by both agent and human actor kinds."
+
+  - id: H9
+    name: instance_without_active_sponsor
+    default_mode: Watch
+    finding_class: policy_violation
+    page: false
+    requires: server
+    description: "Active agent instance lacks an active human or service sponsor."
+
+  - id: H10
+    name: production_credential_readable_uncontained
+    default_mode: Watch
+    finding_class: policy_violation
+    page: false
+    requires: server
+    description: "Production credential readable by uncontained agent sessions."
+
+  - id: H11
+    name: model_credential_mode_drift
+    default_mode: Watch
+    finding_class: policy_violation
+    page: false
+    requires: sensor
+    description: "Agent model credential configuration drifted from compiled credential_mode."
+
+  - id: H12
+    name: agent_pod_automount_service_account_token
+    default_mode: Watch
+    finding_class: policy_violation
+    page: false
+    requires: kubernetes
+    description: "Kubernetes agent pod mounts default service-account token instead of disabling automount."
