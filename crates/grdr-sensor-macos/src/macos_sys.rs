@@ -117,9 +117,9 @@ impl Drop for CfGuard {
         if !self.0.is_null() {
             #[allow(unsafe_code, reason = "Release owned CoreFoundation object reference.")]
             // SAFETY: Non-null CFTypeRef created/retained by CoreFoundation or Security framework.
-            unsafe {
+            let () = unsafe {
                 CFRelease(self.0);
-            }
+            };
             self.0 = null();
         }
     }
@@ -316,21 +316,25 @@ fn darwin_read_guest_seccode_info(raw_pid: c_int) -> SecCodeOutcome {
         reason = "Read signing status, flags, TeamIdentifier, and Identifier from verified SecCode dictionary."
     )]
     // SAFETY: info_dict is a valid CFDictionaryRef and kSecCodeInfo* keys are Apple constant CFStringRefs.
-    unsafe {
+    let outcome = unsafe {
         let status_flags = cfnumber_to_u32(CFDictionaryGetValue(info_dict, kSecCodeInfoStatus));
         if (status_flags.unwrap_or(0) & CS_VALID) == 0 {
-            return empty;
+            empty
+        } else {
+            let code_flags = cfnumber_to_u32(CFDictionaryGetValue(info_dict, kSecCodeInfoFlags));
+            let adhoc_signed = code_flags.is_some_and(|f| (f & CS_ADHOC) != 0);
+            let team_id =
+                cfstring_to_rust(CFDictionaryGetValue(info_dict, kSecCodeInfoTeamIdentifier));
+            let signing_id =
+                cfstring_to_rust(CFDictionaryGetValue(info_dict, kSecCodeInfoIdentifier));
+            SecCodeOutcome {
+                team_id,
+                signing_id,
+                adhoc_signed,
+            }
         }
-        let code_flags = cfnumber_to_u32(CFDictionaryGetValue(info_dict, kSecCodeInfoFlags));
-        let adhoc_signed = code_flags.is_some_and(|f| (f & CS_ADHOC) != 0);
-        let team_id = cfstring_to_rust(CFDictionaryGetValue(info_dict, kSecCodeInfoTeamIdentifier));
-        let signing_id = cfstring_to_rust(CFDictionaryGetValue(info_dict, kSecCodeInfoIdentifier));
-        SecCodeOutcome {
-            team_id,
-            signing_id,
-            adhoc_signed,
-        }
-    }
+    };
+    outcome
 }
 
 pub(crate) fn darwin_apply_seatbelt_profile(profile_sbpl: &str) -> Result<(), MacOsSensorError> {
@@ -351,11 +355,12 @@ pub(crate) fn darwin_apply_seatbelt_profile(profile_sbpl: &str) -> Result<(), Ma
                 reason = "Extract Seatbelt error string before calling sandbox_free_error."
             )]
             // SAFETY: err_buf is a non-null NUL-terminated C string from sandbox_init_with_parameters.
-            unsafe {
+            let msg_owned = unsafe {
                 let s = CStr::from_ptr(err_buf).to_string_lossy().into_owned();
                 sandbox_free_error(err_buf);
                 s
-            }
+            };
+            msg_owned
         } else {
             format!("sandbox_init_with_parameters returned {rc}")
         };
@@ -364,9 +369,9 @@ pub(crate) fn darwin_apply_seatbelt_profile(profile_sbpl: &str) -> Result<(), Ma
     if !err_buf.is_null() {
         #[allow(unsafe_code, reason = "Release non-null Seatbelt diagnostic buffer.")]
         // SAFETY: err_buf came from sandbox_init_with_parameters.
-        unsafe {
+        let () = unsafe {
             sandbox_free_error(err_buf);
-        }
+        };
     }
     Ok(())
 }

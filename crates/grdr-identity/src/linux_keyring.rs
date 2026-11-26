@@ -85,7 +85,7 @@ pub(crate) fn lookup_user_key_serial(description: &str) -> Result<Option<i32>, I
             reason = "Fallback key search in KEY_SPEC_USER_KEYRING via KEYCTL_SEARCH."
         )]
         // SAFETY: KEY_TYPE_USER and CString desc are NUL-terminated for SYS_keyctl KEYCTL_SEARCH.
-        serial = unsafe {
+        let fallback_serial = unsafe {
             libc::syscall(
                 libc::SYS_keyctl,
                 KEYCTL_SEARCH,
@@ -95,6 +95,7 @@ pub(crate) fn lookup_user_key_serial(description: &str) -> Result<Option<i32>, I
                 DEST_UNLINKED,
             )
         };
+        serial = fallback_serial;
         if serial < 0 {
             let search_err = std::io::Error::last_os_error();
             let search_raw = search_err.raw_os_error();
