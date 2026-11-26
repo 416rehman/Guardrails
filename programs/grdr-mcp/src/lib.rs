@@ -7,8 +7,16 @@
 //! poisoning/shadowing rejection, MCP 2025/2026 headers, and D-14 fail-closed bounds.
 
 pub mod decision;
+pub mod floor_fallback;
+pub mod http_upstream;
+pub mod ipc_client;
+mod ipc_transport;
+pub mod oauth;
 pub mod pinning;
 pub mod revisions;
+pub mod sse_filter;
+pub mod ssrf;
+pub mod stdio_duplex;
 pub mod transport;
 
 use grdr_model::CodedError;
@@ -20,6 +28,7 @@ pub const CODE_MCP_HEADER_MISMATCH: &str = "GRDR-MCP-0004";
 pub const CODE_MCP_SESSION_MISMATCH: &str = "GRDR-MCP-0005";
 pub const CODE_MCP_FLOOR_UNTRUSTED: &str = "GRDR-MCP-0006";
 pub const CODE_MCP_BROKER_TRANSPORT: &str = "GRDR-MCP-0007";
+pub const CODE_MCP_OAUTH_SSRF: &str = "GRDR-MCP-0008";
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum McpBrokerError {
@@ -40,6 +49,10 @@ pub enum McpBrokerError {
     FloorUntrusted,
     #[error("GRDR-MCP-0007: MCP transport or daemon broker error: {0}")]
     Transport(String),
+    #[error("GRDR-MCP-0007: fail-closed MCP security error: {0}")]
+    FailClosed(String),
+    #[error("GRDR-MCP-0008: MCP OAuth or SSRF validation failed: {0}")]
+    OAuthOrSsrf(String),
 }
 
 impl From<McpBrokerError> for CodedError {
@@ -51,7 +64,10 @@ impl From<McpBrokerError> for CodedError {
             McpBrokerError::HeaderMismatch(_) => CODE_MCP_HEADER_MISMATCH,
             McpBrokerError::SessionBinding(_) => CODE_MCP_SESSION_MISMATCH,
             McpBrokerError::FloorUntrusted => CODE_MCP_FLOOR_UNTRUSTED,
-            McpBrokerError::Transport(_) => CODE_MCP_BROKER_TRANSPORT,
+            McpBrokerError::Transport(_) | McpBrokerError::FailClosed(_) => {
+                CODE_MCP_BROKER_TRANSPORT
+            }
+            McpBrokerError::OAuthOrSsrf(_) => CODE_MCP_OAUTH_SSRF,
         };
         CodedError::new(
             code,

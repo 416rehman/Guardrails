@@ -5,13 +5,17 @@
 
 //! Fail-closed OWASP Agent Control Standard, Microsoft agent-hooks, and ACP conductor adapter.
 
+pub mod acs_hmac;
 pub mod adapters;
+pub mod conductor;
+pub mod conductor_fs;
 pub mod envelope;
+pub mod floor_fallback;
+pub mod ipc_client;
+mod ipc_transport;
 
 use std::future::Future;
-use std::net::{IpAddr, Ipv4Addr};
 use std::pin::Pin;
-use std::time::Duration;
 
 use jiff::Timestamp;
 use uuid::Uuid;
@@ -19,10 +23,12 @@ use uuid::Uuid;
 use grdr_core::policy::ReceiptDigestInput;
 use grdr_core::policy::compute_receipt_digest;
 use grdr_model::{
-    ActionAttempt, ActionClass, CodedError, ControlPoint, DecideInput, DecisionReceipt,
-    ProvenanceSource, Verdict,
+    ActionAttempt, ActionClass, CodedError, ControlPoint, DecisionReceipt, ProvenanceSource,
+    Verdict,
 };
 use grdr_strings::sanitize_untrusted_text;
+
+pub use ipc_client::PeerDaemonClient;
 
 pub const CODE_ACP_INVALID_PAYLOAD: &str = "GRDR-ACP-0001";
 pub const CODE_ACP_UNSUPPORTED_VERSION: &str = "GRDR-ACP-0002";
@@ -31,7 +37,6 @@ pub const CODE_ACP_REPLAY_OR_SKEW: &str = "GRDR-ACP-0004";
 pub const CODE_ACP_DAEMON_UNAVAILABLE: &str = "GRDR-ACP-0005";
 pub const CODE_ACP_TRANSPORT: &str = "GRDR-ACP-0006";
 
-pub const DEFAULT_DAEMON_PORT: u16 = 8765;
 pub const DEFAULT_DECIDE_TIMEOUT_MS: u64 = 2_000;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -56,14 +61,6 @@ pub type EvalFuture<'a> =
 /// Asynchronous boundary delegating authorization decisions to `grdr-daemon`.
 pub trait DecisionClient: Send + Sync {
     fn decide<'a>(&'a self, attempt: &'a ActionAttempt) -> EvalFuture<'a>;
-}
-
-/// Loopback HTTP client speaking `POST /local/v1/decide` to `grdr-daemon`.
-#[derive(Debug, Clone)]
-pub struct LoopbackDaemonClient {
-    http: reqwest::Client,
-    endpoint_url: String,
-    timeout: Duration,
 }
 
 /// Normalized adapter inputs built from any supported protocol dialect.
@@ -96,70 +93,11 @@ impl From<AcpError> for CodedError {
     }
 }
 
-impl LoopbackDaemonClient {
-    pub fn from_loopback_port(port: u16, timeout_ms: u64) -> Result<Self, AcpError> {
-        let host = IpAddr::V4(Ipv4Addr::LOCALHOST);
-        Self::new(format!("http://{host}:{port}"), timeout_ms)
-    }
-
-    pub fn new(base_url: impl Into<String>, timeout_ms: u64) -> Result<Self, AcpError> {
-        let trimmed = base_url.into().trim().trim_end_matches('/').to_owned();
-        if !is_loopback_http_url(&trimmed) {
-            return Err(AcpError::Transport(format!(
-                "daemon base URL must target loopback HTTP, got `{trimmed}`"
-            )));
-        }
-        let bounded_ms = timeout_ms.clamp(50, 15_000);
-        let http = reqwest::Client::builder()
-            .timeout(Duration::from_millis(bounded_ms))
-            .no_proxy()
-            .build()
-            .map_err(|e| AcpError::Transport(e.to_string()))?;
-        Ok(Self {
-            http,
-            endpoint_url: format!("{trimmed}/local/v1/decide"),
-            timeout: Duration::from_millis(bounded_ms),
-        })
-    }
-}
-
-impl DecisionClient for LoopbackDaemonClient {
-    fn decide<'a>(&'a self, attempt: &'a ActionAttempt) -> EvalFuture<'a> {
-        Box::pin(async move {
-            let input = DecideInput {
-                session_id: Some(attempt.session_id.clone()),
-                device_id: Some(attempt.device_id.clone()),
-                device_name: Some(attempt.device_name.clone()),
-                agent_name: attempt.agent_name.clone(),
-                action_class: attempt.action_class,
-                control_point: Some(attempt.control_point),
-                target: attempt.target.clone(),
-                summary: Some(attempt.summary.clone()),
-            };
-            let send = self.http.post(&self.endpoint_url).json(&input).send();
-            let resp = tokio::time::timeout(self.timeout, send)
-                .await
-                .map_err(|_| AcpError::DaemonUnavailable("daemon request timed out".into()))?
-                .map_err(|e| AcpError::DaemonUnavailable(e.to_string()))?;
-
-            if !resp.status().is_success() {
-                return Err(AcpError::DaemonUnavailable(format!(
-                    "daemon returned HTTP {}",
-                    resp.status()
-                )));
-            }
-            resp.json::<DecisionReceipt>()
-                .await
-                .map_err(|e| AcpError::DaemonUnavailable(format!("invalid receipt JSON: {e}")))
-        })
-    }
-}
-
 #[must_use]
 pub fn classify_action_kind(raw_kind: &str, tool_or_stage: &str) -> ActionClass {
     let normalized = raw_kind.trim().to_ascii_lowercase();
     match normalized.as_str() {
-        "exec" | "shell" | "bash" | "command" | "process" => ActionClass::Exec,
+        "exec" | "execute" | "shell" | "bash" | "command" | "process" => ActionClass::Exec,
         "file_read" | "read" | "fs_read" => ActionClass::FileRead,
         "file_write" | "write" | "edit" | "fs_write" => ActionClass::FileWrite,
         "file_delete" | "delete" | "unlink" => ActionClass::FileDelete,
@@ -225,15 +163,25 @@ pub fn build_attempt(call: &NormalizedControlCall, now: Timestamp) -> ActionAtte
     }
 }
 
-/// Fail-closed synthetic receipt emitted when verification or daemon evaluation fails.
+/// Construct an ACP receipt whose digest commits to the final verdict, rule id, and reason.
 #[must_use]
-pub fn fail_closed_receipt(
+pub fn build_acp_receipt(
     attempt: &ActionAttempt,
+    verdict: Verdict,
+    rule_id: Option<&str>,
     reason: &str,
+    next_step: &str,
+    receipt_id_override: Option<&str>,
     now: Timestamp,
 ) -> DecisionReceipt {
     let attempt_id = attempt.id.clone();
-    let receipt_id = format!("rcp_{}", Uuid::now_v7().simple());
+    let receipt_id = receipt_id_override
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map_or_else(
+            || format!("rcp_{}", Uuid::now_v7().simple()),
+            str::to_string,
+        );
     let clean_reason = sanitize_untrusted_text(reason);
     let digest = compute_receipt_digest(&ReceiptDigestInput {
         attempt_id: &attempt_id,
@@ -241,8 +189,8 @@ pub fn fail_closed_receipt(
         agent_name: &attempt.agent_name,
         action_class: attempt.action_class,
         target: &attempt.target,
-        verdict: Verdict::Deny,
-        rule_id: Some("acp.fail-closed"),
+        verdict,
+        rule_id,
         decided_at: now,
     });
     DecisionReceipt {
@@ -254,20 +202,38 @@ pub fn fail_closed_receipt(
         action_class: attempt.action_class,
         control_point: attempt.control_point,
         target: attempt.target.clone(),
-        verdict: Verdict::Deny,
+        verdict,
         would_be: None,
-        rule_id: Some("acp.fail-closed".into()),
+        rule_id: rule_id.map(str::to_string),
         pack_id: Some("grdr-acp".into()),
         mode_applied: None,
         grant_id: None,
         reason: clean_reason,
-        next_step: "Check daemon connection and wire credentials; failing closed.".into(),
+        next_step: sanitize_untrusted_text(next_step),
         receipt_digest: digest,
         decided_at: now,
         key_id: None,
         signature: None,
         signature_verified: None,
     }
+}
+
+/// Fail-closed synthetic receipt emitted when verification or daemon evaluation fails.
+#[must_use]
+pub fn fail_closed_receipt(
+    attempt: &ActionAttempt,
+    reason: &str,
+    now: Timestamp,
+) -> DecisionReceipt {
+    build_acp_receipt(
+        attempt,
+        Verdict::Deny,
+        Some("acp.fail-closed"),
+        reason,
+        "Check daemon connection and wire credentials; failing closed.",
+        None,
+        now,
+    )
 }
 
 fn sanitize_non_empty(raw: &str, fallback: &str) -> String {
@@ -278,21 +244,4 @@ fn sanitize_non_empty(raw: &str, fallback: &str) -> String {
     } else {
         trimmed.to_owned()
     }
-}
-
-fn is_loopback_http_url(raw_url: &str) -> bool {
-    let Ok(parsed) = url::Url::parse(raw_url) else {
-        return false;
-    };
-    if parsed.scheme() != "http" || !parsed.username().is_empty() || parsed.password().is_some() {
-        return false;
-    }
-    let Some(host) = parsed.host_str() else {
-        return false;
-    };
-    let clean = host
-        .strip_prefix('[')
-        .and_then(|s| s.strip_suffix(']'))
-        .unwrap_or(host);
-    clean.eq_ignore_ascii_case("localhost") || clean == "127.0.0.1" || clean == "::1"
 }

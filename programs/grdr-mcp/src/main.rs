@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
-#![forbid(unsafe_code)]
-#![deny(clippy::arithmetic_side_effects)]
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::process::Stdio;
@@ -12,9 +10,12 @@ use tokio::io::BufReader;
 use tokio::sync::Mutex;
 use tracing_subscriber::EnvFilter;
 
-use grdr_mcp::decision::{DEFAULT_DAEMON_PORT, DEFAULT_DECIDE_TIMEOUT_MS, LoopbackDaemonSource};
+use grdr_mcp::decision::{DEFAULT_DECIDE_TIMEOUT_MS, IpcDaemonDecisionSource};
+use grdr_mcp::http_upstream::HttpUpstreamConfig;
+use grdr_mcp::ssrf::SsrfPolicy;
 use grdr_mcp::transport::{McpBrokerService, build_http_router, mediate_stdio_lines};
 use grdr_sandbox_engine::{ContainmentMode, SandboxSpec, prepare_contained_command};
+use grdr_wire::peer_auth::Profile;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -22,9 +23,15 @@ use grdr_sandbox_engine::{ContainmentMode, SandboxSpec, prepare_contained_comman
     about = "Guardrails stdio and Streamable HTTP MCP broker"
 )]
 struct Cli {
-    /// Loopback port where grdr-daemon exposes /local/v1/decide.
-    #[arg(long, default_value_t = DEFAULT_DAEMON_PORT)]
-    daemon_port: u16,
+    /// Optional non-Protected daemon Decide IPC endpoint override.
+    #[arg(long)]
+    daemon_endpoint: Option<String>,
+    /// Optional non-Protected daemon Local IPC endpoint override.
+    #[arg(long)]
+    local_endpoint: Option<String>,
+    /// Enforce Protected profile (prohibits endpoint or floor directory overrides).
+    #[arg(long)]
+    protected: bool,
     /// Timeout in milliseconds before falling back to signed floor or fail-closed deny.
     #[arg(long, default_value_t = DEFAULT_DECIDE_TIMEOUT_MS)]
     timeout_ms: u64,
@@ -37,6 +44,9 @@ struct Cli {
     /// Guardrails session id binding MCP invocations.
     #[arg(long, default_value = "sess-mcp")]
     session_id: String,
+    /// Expose built-in progressive read-only inspection tools cleanly.
+    #[arg(long)]
+    progressive_tools: bool,
     #[command(subcommand)]
     mode: BrokerMode,
 }
@@ -48,10 +58,16 @@ enum BrokerMode {
         #[arg(required = true, trailing_var_arg = true)]
         command: Vec<String>,
     },
-    /// Serve Streamable HTTP MCP endpoint on loopback.
+    /// Serve Streamable HTTP MCP endpoint on loopback forwarding to a vetted upstream URL.
     Http {
         #[arg(long, default_value_t = 18090)]
         port: u16,
+        /// Vetted upstream Streamable HTTP MCP endpoint URL.
+        #[arg(long)]
+        upstream_url: Option<String>,
+        /// Allow loopback HTTP upstreams only in non-Protected development/test mode.
+        #[arg(long)]
+        allow_loopback_upstream: bool,
     },
 }
 
@@ -63,9 +79,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let cli = Cli::parse();
-    let source = LoopbackDaemonSource::from_loopback_port(cli.daemon_port, cli.timeout_ms)?;
+    let profile = if cli.protected {
+        Profile::Protected
+    } else {
+        Profile::User
+    };
+    let source = IpcDaemonDecisionSource::new(
+        profile,
+        cli.daemon_endpoint,
+        cli.local_endpoint,
+        None,
+        cli.timeout_ms,
+    )?;
     let mut service =
-        McpBrokerService::new(source, cli.server_name, cli.agent_name, cli.session_id);
+        McpBrokerService::new(source, cli.server_name, cli.agent_name, cli.session_id)
+            .with_progressive_tools(cli.progressive_tools);
 
     match cli.mode {
         BrokerMode::Stdio { command } => {
@@ -112,7 +140,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Ok(())
         }
-        BrokerMode::Http { port } => {
+        BrokerMode::Http {
+            port,
+            upstream_url,
+            allow_loopback_upstream,
+        } => {
+            if let Some(url) = upstream_url {
+                let policy = if allow_loopback_upstream && !cli.protected {
+                    SsrfPolicy::AllowLoopbackTestOnly
+                } else {
+                    SsrfPolicy::StrictPublicOnly
+                };
+                service = service.with_upstream(HttpUpstreamConfig::new(url, policy));
+            }
             let addr = SocketAddr::from((IpAddr::V4(Ipv4Addr::LOCALHOST), port));
             let listener = tokio::net::TcpListener::bind(addr).await?;
             let actual_port = listener.local_addr()?.port();

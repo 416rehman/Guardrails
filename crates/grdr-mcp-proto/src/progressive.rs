@@ -64,6 +64,36 @@ pub fn progressive_read_tools() -> Vec<ToolDescriptor> {
     ]
 }
 
+#[must_use]
+pub fn is_progressive_read_tool(name: &str) -> bool {
+    let trimmed = name.trim();
+    progressive_read_tools().iter().any(|t| t.name == trimmed)
+}
+
+#[must_use]
+pub fn build_oauth_step_up_response(
+    id: serde_json::Value,
+    resource_metadata_url: &str,
+    scope: &str,
+    message: &str,
+) -> crate::McpResponse {
+    crate::McpResponse {
+        jsonrpc: crate::JSONRPC_VERSION.to_string(),
+        id,
+        result: None,
+        error: Some(crate::McpRpcError {
+            code: crate::JSONRPC_ERR_STEP_UP_OAUTH,
+            message: message.to_string(),
+            data: Some(json!({
+                "kind": "oauth_step_up",
+                "input_required": true,
+                "resource_metadata": resource_metadata_url,
+                "scope": scope,
+            })),
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

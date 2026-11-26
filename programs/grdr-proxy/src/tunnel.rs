@@ -2,27 +2,31 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
 //! Authenticated CONNECT and SOCKS5 tunnel listener supporting upstream
-//! `HTTP_PROXY`/`HTTPS_PROXY` chaining, SSRF vetting, daemon authorization, and D-30 cut.
+//! `HTTP_PROXY` chaining, SSRF vetting, daemon authorization, TLS peek enforcement, and D-30 cut.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use jiff::Timestamp;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use grdr_model::{ActionAttempt, ActionClass, ControlPoint, ProvenanceSource, Verdict};
+use grdr_os_clock::{Clock, SystemClock};
+use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::Semaphore;
 use tokio::time::timeout;
 use url::Url;
 use uuid::Uuid;
 
-use grdr_model::{ActionAttempt, ActionClass, ControlPoint, ProvenanceSource, Verdict};
-
 use crate::egress::resolve_and_vet_target;
 use crate::router::ProxyGatewayState;
+use crate::tls_policy::MitmRoutingDecision;
 use crate::tunnel_io::{
     MAX_CONNECT_HEADERS, MAX_CONNECT_LINE_BYTES, TUNNEL_HANDSHAKE_TIMEOUT, connect_via_chain,
-    parse_host_port, read_bounded_crlf_line, read_socks5_rfc1929_token, send_tunnel_bytes,
+    parse_host_port, peek_and_verify_initial_tls, read_bounded_crlf_line, send_tunnel_bytes,
 };
+use crate::tunnel_socks::handle_socks5;
 use crate::{ProxyDecisionClient, ProxyError};
+
+const MAX_CONCURRENT_TUNNELS: usize = 256;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpstreamProxyConfig {
@@ -51,26 +55,57 @@ struct ParsedConnectHead {
 }
 
 impl UpstreamProxyConfig {
-    /// Parses `HTTPS_PROXY` or `HTTP_PROXY` environment variables for proxy chaining (D-16)
-    /// without mutating host OS proxy settings.
+    /// Parses `HTTPS_PROXY` or `HTTP_PROXY` environment variables for proxy chaining (D-16).
+    /// Rejects credentialed proxy URLs and non-HTTP schemes that would silently downgrade TLS.
     #[must_use]
     pub fn from_env_map(env_vars: &BTreeMap<String, String>) -> Option<Self> {
-        let raw = env_vars
+        Self::try_from_env_map(env_vars).ok().flatten()
+    }
+
+    pub fn try_from_env_map(
+        env_vars: &BTreeMap<String, String>,
+    ) -> Result<Option<Self>, ProxyError> {
+        let Some(raw) = env_vars
             .get("HTTPS_PROXY")
             .or_else(|| env_vars.get("https_proxy"))
             .or_else(|| env_vars.get("HTTP_PROXY"))
-            .or_else(|| env_vars.get("http_proxy"))?
-            .trim();
-        if raw.is_empty() {
-            return None;
+            .or_else(|| env_vars.get("http_proxy"))
+            .map(String::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        else {
+            return Ok(None);
+        };
+        let parsed = Url::parse(raw)
+            .map_err(|e| ProxyError::Sr39Rejected(format!("invalid upstream proxy URL: {e}")))?;
+        if !parsed.username().is_empty() || parsed.password().is_some() {
+            return Err(ProxyError::Sr39Rejected(
+                "chained proxy URL must not embed credentials".into(),
+            ));
         }
-        let parsed = Url::parse(raw).ok()?;
-        let host = parsed.host_str()?.to_owned();
-        let port = parsed.port_or_known_default()?;
+        if parsed.scheme() != "http" {
+            return Err(ProxyError::Sr39Rejected(format!(
+                "chained proxy scheme `{}` unsupported without TLS tunnel wrapper",
+                parsed.scheme()
+            )));
+        }
+        let raw_host = parsed
+            .host_str()
+            .ok_or_else(|| ProxyError::Sr39Rejected("chained proxy missing host".into()))?;
+        let host = raw_host
+            .strip_prefix('[')
+            .and_then(|s| s.strip_suffix(']'))
+            .unwrap_or(raw_host)
+            .to_owned();
+        let port = parsed
+            .port_or_known_default()
+            .ok_or_else(|| ProxyError::Sr39Rejected("chained proxy missing port".into()))?;
         if host.is_empty() || port == 0 {
-            return None;
+            return Err(ProxyError::Sr39Rejected(
+                "chained proxy host or port invalid".into(),
+            ));
         }
-        Some(Self { host, port })
+        Ok(Some(Self { host, port }))
     }
 }
 
@@ -79,14 +114,19 @@ pub async fn run_tunnel_listener<C: ProxyDecisionClient + 'static>(
     state: Arc<ProxyGatewayState<C>>,
     upstream_chain: Option<UpstreamProxyConfig>,
 ) -> Result<(), ProxyError> {
+    let sem = Arc::new(Semaphore::new(MAX_CONCURRENT_TUNNELS));
     loop {
         let (stream, _) = listener
             .accept()
             .await
             .map_err(|e| ProxyError::Transport(e.to_string()))?;
+        let Ok(permit) = Arc::clone(&sem).acquire_owned().await else {
+            return Err(ProxyError::Transport("tunnel semaphore closed".into()));
+        };
         let state_clone = Arc::clone(&state);
         let chain_clone = upstream_chain.clone();
         tokio::spawn(async move {
+            let _permit = permit;
             if let Err(err) = handle_tunnel_connection(stream, state_clone, chain_clone).await {
                 tracing::debug!(error = %err, "tunnel connection closed");
             }
@@ -173,7 +213,7 @@ async fn handle_http_connect<C: ProxyDecisionClient + 'static>(
         return Err(err);
     }
 
-    let Ok(upstream_stream) =
+    let Ok(mut upstream_stream) =
         connect_via_chain(&parsed.host, parsed.port, upstream_chain.as_ref(), &state).await
     else {
         send_tunnel_bytes(
@@ -191,7 +231,36 @@ async fn handle_http_connect<C: ProxyDecisionClient + 'static>(
         .await
         .map_err(|e| ProxyError::Transport(e.to_string()))?;
 
+    let tls_decision = peek_and_verify_initial_tls(
+        &mut client,
+        &mut upstream_stream,
+        &parsed.host,
+        parsed.port,
+        &reg.session_id,
+        &state,
+    )
+    .await?;
+    enforce_tunnel_tls_decision(&parsed.host, tls_decision)?;
+
     bridge_with_egress_cut(client, upstream_stream, &reg.session_id, &state).await
+}
+
+pub(crate) fn enforce_tunnel_tls_decision(
+    host: &str,
+    decision: Option<MitmRoutingDecision>,
+) -> Result<(), ProxyError> {
+    if let Some(MitmRoutingDecision::InterceptTls {
+        provider_family,
+        sni_host,
+        ..
+    }) = decision
+    {
+        return Err(ProxyError::PolicyDenied(format!(
+            "GRDR-PROXY-0003: TLS interception required for {provider_family} ({}); raw CONNECT passthrough forbidden",
+            sni_host.as_deref().unwrap_or(host)
+        )));
+    }
+    Ok(())
 }
 
 async fn read_connect_head(client: &mut TcpStream) -> Result<ParsedConnectHead, ProxyError> {
@@ -203,6 +272,18 @@ async fn read_connect_head(client: &mut TcpStream) -> Result<ParsedConnectHead, 
     let Some(authority) = parts.next() else {
         return Err(ProxyError::Sr39Rejected("missing CONNECT authority".into()));
     };
+    let Some(version) = parts.next() else {
+        return Err(ProxyError::Sr39Rejected(
+            "missing CONNECT HTTP version".into(),
+        ));
+    };
+    if parts.next().is_some()
+        || !(version.eq_ignore_ascii_case("HTTP/1.1") || version.eq_ignore_ascii_case("HTTP/1.0"))
+    {
+        return Err(ProxyError::Sr39Rejected(
+            "malformed CONNECT request-line version or trailing tokens".into(),
+        ));
+    }
     if !method.eq_ignore_ascii_case("CONNECT") {
         return Err(ProxyError::Sr39Rejected(
             "tunnel port supports CONNECT or SOCKS5 only".into(),
@@ -278,165 +359,19 @@ fn record_connect_token(slot: &mut Option<String>, candidate: &str) -> Result<()
     Ok(())
 }
 
-async fn handle_socks5<C: ProxyDecisionClient + 'static>(
-    mut client: TcpStream,
-    state: Arc<ProxyGatewayState<C>>,
-    upstream_chain: Option<UpstreamProxyConfig>,
-) -> Result<(), ProxyError> {
-    let (reg, host, port) = timeout(
-        TUNNEL_HANDSHAKE_TIMEOUT,
-        socks5_handshake(&mut client, &state),
-    )
-    .await
-    .map_err(|_| ProxyError::Sr39Rejected("SOCKS5 handshake timed out".into()))??;
-
-    if let Err(err) = authorize_and_vet(&state, &reg.session_id, &host, port).await {
-        send_tunnel_bytes(&mut client, &[0x05, 0x02, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await;
-        return Err(err);
-    }
-
-    let Ok(upstream_stream) = connect_via_chain(&host, port, upstream_chain.as_ref(), &state).await
-    else {
-        send_tunnel_bytes(&mut client, &[0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await;
-        return Err(ProxyError::Transport(
-            "upstream SOCKS5 connect failed".into(),
-        ));
-    };
-
-    client
-        .write_all(&[0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
-        .await
-        .map_err(|e| ProxyError::Transport(e.to_string()))?;
-
-    bridge_with_egress_cut(client, upstream_stream, &reg.session_id, &state).await
-}
-
-async fn socks5_handshake<C: ProxyDecisionClient + 'static>(
-    client: &mut TcpStream,
-    state: &ProxyGatewayState<C>,
-) -> Result<(crate::sr39::SessionRegistration, String, u16), ProxyError> {
-    let mut greeting = [0_u8; 2];
-    client
-        .read_exact(&mut greeting)
-        .await
-        .map_err(|e| ProxyError::Transport(e.to_string()))?;
-    let [greet_ver, raw_n_methods] = greeting;
-    if greet_ver != 0x05 || raw_n_methods == 0 {
-        return Err(ProxyError::Sr39Rejected(
-            "expected valid SOCKS5 greeting".into(),
-        ));
-    }
-    let n_methods = usize::from(raw_n_methods);
-    let mut methods = vec![0_u8; n_methods];
-    client
-        .read_exact(&mut methods)
-        .await
-        .map_err(|e| ProxyError::Transport(e.to_string()))?;
-    if !methods.contains(&0x02) {
-        send_tunnel_bytes(client, &[0x05, 0xff]).await;
-        return Err(ProxyError::Sr39Rejected(
-            "SOCKS5 requires RFC 1929 token authentication (0x02)".into(),
-        ));
-    }
-    client
-        .write_all(&[0x05, 0x02])
-        .await
-        .map_err(|e| ProxyError::Transport(e.to_string()))?;
-
-    let token = read_socks5_rfc1929_token(client).await?;
-    let reg = match state.registry.lock().await.verify_tunnel_token(&token) {
-        Ok(reg) => {
-            client
-                .write_all(&[0x01, 0x00])
-                .await
-                .map_err(|e| ProxyError::Transport(e.to_string()))?;
-            reg
-        }
-        Err(err) => {
-            send_tunnel_bytes(client, &[0x01, 0x01]).await;
-            return Err(err);
-        }
-    };
-
-    let mut req_head = [0_u8; 4];
-    client
-        .read_exact(&mut req_head)
-        .await
-        .map_err(|e| ProxyError::Transport(e.to_string()))?;
-    let [req_ver, req_cmd, _rsv, req_atyp] = req_head;
-    if req_ver != 0x05 || req_cmd != 0x01 {
-        send_tunnel_bytes(client, &[0x05, 0x07, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await;
-        return Err(ProxyError::Sr39Rejected(
-            "SOCKS5 supports CONNECT (0x01) command only".into(),
-        ));
-    }
-
-    let host = match req_atyp {
-        0x01 => {
-            let mut ip = [0_u8; 4];
-            client
-                .read_exact(&mut ip)
-                .await
-                .map_err(|e| ProxyError::Transport(e.to_string()))?;
-            std::net::Ipv4Addr::from(ip).to_string()
-        }
-        0x03 => {
-            let mut len_b = [0_u8; 1];
-            client
-                .read_exact(&mut len_b)
-                .await
-                .map_err(|e| ProxyError::Transport(e.to_string()))?;
-            let [domain_len_u8] = len_b;
-            let domain_len = usize::from(domain_len_u8);
-            let mut domain = vec![0_u8; domain_len];
-            client
-                .read_exact(&mut domain)
-                .await
-                .map_err(|e| ProxyError::Transport(e.to_string()))?;
-            String::from_utf8(domain)
-                .map_err(|_| ProxyError::Sr39Rejected("invalid UTF-8 SOCKS5 host".into()))?
-        }
-        0x04 => {
-            let mut ip = [0_u8; 16];
-            client
-                .read_exact(&mut ip)
-                .await
-                .map_err(|e| ProxyError::Transport(e.to_string()))?;
-            std::net::Ipv6Addr::from(ip).to_string()
-        }
-        _ => {
-            send_tunnel_bytes(client, &[0x05, 0x08, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await;
-            return Err(ProxyError::Sr39Rejected(
-                "unsupported SOCKS5 address type".into(),
-            ));
-        }
-    };
-
-    let mut port_bytes = [0_u8; 2];
-    client
-        .read_exact(&mut port_bytes)
-        .await
-        .map_err(|e| ProxyError::Transport(e.to_string()))?;
-    let port = u16::from_be_bytes(port_bytes);
-    if host.is_empty() || port == 0 {
-        send_tunnel_bytes(client, &[0x05, 0x02, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await;
-        return Err(ProxyError::Sr39Rejected(
-            "SOCKS5 target host or port invalid".into(),
-        ));
-    }
-    Ok((reg, host, port))
-}
-
-async fn authorize_and_vet<C: ProxyDecisionClient + 'static>(
+pub(crate) async fn authorize_and_vet<C: ProxyDecisionClient + 'static>(
     state: &ProxyGatewayState<C>,
     session_id: &str,
     host: &str,
     port: u16,
 ) -> Result<(), ProxyError> {
-    if state.registry.lock().await.is_session_cut(session_id) {
+    if state.is_globally_killed() || state.registry.lock().await.is_session_cut(session_id) {
         return Err(ProxyError::SessionEgressCut(session_id.to_owned()));
     }
     resolve_and_vet_target(host, port, &state.egress_config).await?;
+    let now = SystemClock::new()
+        .now_wall()
+        .map_err(|e| ProxyError::Transport(format!("wall clock unavailable: {e}")))?;
     let attempt = ActionAttempt {
         id: format!("att_{}", Uuid::now_v7().simple()),
         session_id: session_id.to_owned(),
@@ -447,7 +382,7 @@ async fn authorize_and_vet<C: ProxyDecisionClient + 'static>(
         control_point: ControlPoint::Proxy,
         target: format!("{host}:{port}"),
         summary: format!("CONNECT/SOCKS5 tunnel to {host}:{port}"),
-        timestamp: Timestamp::now(),
+        timestamp: now,
         provenance: ProvenanceSource::Mediated,
         ..Default::default()
     };
@@ -458,7 +393,7 @@ async fn authorize_and_vet<C: ProxyDecisionClient + 'static>(
     Ok(())
 }
 
-async fn bridge_with_egress_cut<C: ProxyDecisionClient + 'static>(
+pub(crate) async fn bridge_with_egress_cut<C: ProxyDecisionClient + 'static>(
     mut client: TcpStream,
     mut upstream: TcpStream,
     session_id: &str,
@@ -472,7 +407,9 @@ async fn bridge_with_egress_cut<C: ProxyDecisionClient + 'static>(
         }
         _ = async {
             loop {
-                if state.registry.lock().await.is_session_cut(&session_owned) {
+                if state.is_globally_killed()
+                    || state.registry.lock().await.is_session_cut(&session_owned)
+                {
                     break;
                 }
                 if watch_rx.changed().await.is_err() {

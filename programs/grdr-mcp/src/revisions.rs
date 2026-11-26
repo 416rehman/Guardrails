@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use grdr_crypto::fill_random;
+use grdr_crypto::{constant_time_eq, fill_random};
 use grdr_mcp_proto::{McpMethod, McpRequest, McpResponse, McpRpcError};
 use grdr_model::{DecisionReceipt, Verdict};
 use grdr_strings::sanitize_untrusted_text;
@@ -20,6 +20,7 @@ use crate::McpBrokerError;
 
 pub const JSONRPC_ERR_HEADER_MISMATCH: i64 = -32020;
 pub const JSONRPC_ERR_ELICITATION_REQUIRED: i64 = -32042;
+pub const JSONRPC_ERR_POLICY_DENIED: i64 = -32001;
 pub const MCP_HEADER_PROTOCOL_VERSION: &str = "mcp-protocol-version";
 pub const MCP_HEADER_SESSION_ID: &str = "mcp-session-id";
 pub const MCP_HEADER_METHOD: &str = "mcp-method";
@@ -44,39 +45,6 @@ pub struct SessionBindingState {
 pub struct McpSessionStore {
     sessions: BTreeMap<String, SessionBindingState>,
     order: VecDeque<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum RawRpcId {
-    Int(i64),
-    Str(String),
-}
-
-#[derive(Debug, Deserialize)]
-struct RawToolArgsHint {
-    path: Option<String>,
-    file_path: Option<String>,
-    uri: Option<String>,
-    url: Option<String>,
-    command: Option<String>,
-    repo: Option<String>,
-    sql: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RawHttpMcpParams {
-    name: Option<String>,
-    uri: Option<String>,
-    arguments: Option<RawToolArgsHint>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RawHttpMcpFrame {
-    jsonrpc: String,
-    id: Option<RawRpcId>,
-    method: String,
-    params: Option<RawHttpMcpParams>,
 }
 
 impl McpProtocolRevision {
@@ -110,6 +78,14 @@ impl McpSessionStore {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn close_session(&mut self, session_id: &str) -> bool {
+        let removed = self.sessions.remove(session_id).is_some();
+        if removed {
+            self.order.retain(|id| id != session_id);
+        }
+        removed
     }
 
     pub fn issue_session(
@@ -218,33 +194,45 @@ pub fn verify_revision_consistency_headers(
         .and_then(|v| v.to_str().ok())
         .map(str::trim)
         .filter(|s| !s.is_empty());
+    let expected_name = expected_mcp_name(req);
     if let Some(actual_name) = hdr_name
-        && req.tool_name.as_deref() != Some(actual_name)
+        && expected_name != Some(actual_name)
     {
         return Err(McpBrokerError::HeaderMismatch(format!(
             "Mcp-Name `{actual_name}` disagrees with JSON-RPC target name"
         )));
     }
-    if revision == McpProtocolRevision::Rev2026_07_28
-        && req.method == McpMethod::ToolsCall
-        && hdr_name.is_none()
-    {
-        return Err(McpBrokerError::HeaderMismatch(
-            "MCP 2026-07-28 tools/call requires Mcp-Name header".into(),
-        ));
+    let requires_name = matches!(
+        req.method,
+        McpMethod::ToolsCall
+            | McpMethod::ResourcesRead
+            | McpMethod::ResourcesSubscribe
+            | McpMethod::PromptsGet
+    );
+    if revision == McpProtocolRevision::Rev2026_07_28 && requires_name && hdr_name.is_none() {
+        return Err(McpBrokerError::HeaderMismatch(format!(
+            "MCP 2026-07-28 {} requires Mcp-Name header",
+            expected_method
+        )));
     }
     Ok(())
 }
 
-fn mcp_method_wire_name(method: &McpMethod) -> &str {
-    match method {
-        McpMethod::Initialize => "initialize",
-        McpMethod::ToolsList => "tools/list",
-        McpMethod::ToolsCall => "tools/call",
-        McpMethod::ResourcesRead => "resources/read",
-        McpMethod::PromptsGet => "prompts/get",
-        McpMethod::Custom(s) => s.as_str(),
+fn expected_mcp_name(req: &McpRequest) -> Option<&str> {
+    if let Some(name) = req.tool_name.as_deref() {
+        return Some(name);
     }
+    if matches!(
+        req.method,
+        McpMethod::ResourcesRead | McpMethod::ResourcesSubscribe
+    ) {
+        return req.target_hint.as_deref();
+    }
+    None
+}
+
+fn mcp_method_wire_name(method: &McpMethod) -> &str {
+    method.as_wire()
 }
 
 fn find_constant_time_session<'a>(
@@ -260,16 +248,6 @@ fn find_constant_time_session<'a>(
     matched
 }
 
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter()
-        .zip(b.iter())
-        .fold(0_u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
-}
-
 #[must_use]
 pub fn header_mismatch_rpc_error(id: Option<Value>, detail: &str) -> McpResponse {
     McpResponse {
@@ -280,6 +258,51 @@ pub fn header_mismatch_rpc_error(id: Option<Value>, detail: &str) -> McpResponse
             code: JSONRPC_ERR_HEADER_MISMATCH,
             message: format!("HeaderMismatch: {}", sanitize_untrusted_text(detail)),
             data: Some(serde_json::json!({ "kind": "HeaderMismatch" })),
+        }),
+    }
+}
+
+/// Formats mediated denials or step-ups across MCP methods:
+/// - `tools/call` emits `isError: true` with `_meta["grdr/decision"]` (or `-32042` on URL elicitation),
+/// - all other MCP methods return standard JSON-RPC error envelopes (`-32042` / `-32001`).
+#[must_use]
+pub fn format_mediated_method_response(
+    id: Option<Value>,
+    method: &McpMethod,
+    revision: McpProtocolRevision,
+    receipt: &DecisionReceipt,
+    manifest_pinned: bool,
+    degraded: bool,
+) -> McpResponse {
+    if *method == McpMethod::ToolsCall {
+        return format_mediated_tool_response(id, revision, receipt, manifest_pinned, degraded);
+    }
+    let req_id = id.unwrap_or(Value::Null);
+    let reason = sanitize_untrusted_text(&receipt.reason);
+    let next_step = sanitize_untrusted_text(&receipt.next_step);
+    let decision_meta = serde_json::json!({
+        "verdict": verdict_str(receipt.verdict),
+        "receipt_id": receipt.receipt_id,
+        "rule_id": receipt.rule_id,
+        "reason": reason,
+        "next_step": next_step,
+        "manifest_pinned": manifest_pinned,
+        "degraded": degraded,
+        "input_required": receipt.verdict == Verdict::StepUp,
+    });
+    let code = if receipt.verdict == Verdict::StepUp && revision.supports_url_elicitation_32042() {
+        JSONRPC_ERR_ELICITATION_REQUIRED
+    } else {
+        JSONRPC_ERR_POLICY_DENIED
+    };
+    McpResponse {
+        jsonrpc: "2.0".into(),
+        id: req_id,
+        result: None,
+        error: Some(McpRpcError {
+            code,
+            message: format!("Guardrails {}: {reason}", verdict_str(receipt.verdict)),
+            data: Some(decision_meta),
         }),
     }
 }
@@ -404,78 +427,5 @@ pub fn parse_http_mcp_request(raw: &str) -> Result<McpRequest, McpBrokerError> {
             "HTTP MCP payload exceeds {MAX_HTTP_MCP_BODY_BYTES} byte limit"
         )));
     }
-    let frame: RawHttpMcpFrame = serde_json::from_str(raw).map_err(|e| {
-        McpBrokerError::Transport(format!("GRDR-MCP-0001: invalid JSON-RPC frame: {e}"))
-    })?;
-    if frame.jsonrpc != "2.0" {
-        return Err(McpBrokerError::Transport(format!(
-            "GRDR-MCP-0001: expected jsonrpc 2.0, got {}",
-            frame.jsonrpc
-        )));
-    }
-    let raw_method = frame.method.trim();
-    if raw_method.is_empty() {
-        return Err(McpBrokerError::Transport(
-            "GRDR-MCP-0002: missing method name".into(),
-        ));
-    }
-    let method = McpMethod::from_wire(raw_method);
-    let id = frame.id.map(|raw_id| match raw_id {
-        RawRpcId::Int(n) => Value::from(n),
-        RawRpcId::Str(s) => Value::String(s),
-    });
-
-    let (tool_name, target_hint) = match method {
-        McpMethod::ToolsCall => {
-            let params = frame.params.ok_or_else(|| {
-                McpBrokerError::Transport("GRDR-MCP-0001: tools/call requires params object".into())
-            })?;
-            let name = params
-                .name
-                .as_deref()
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .ok_or_else(|| {
-                    McpBrokerError::Transport(
-                        "GRDR-MCP-0003: tool call missing target tool name".into(),
-                    )
-                })?
-                .to_owned();
-            let hint = params.arguments.and_then(|args| {
-                [
-                    args.path,
-                    args.file_path,
-                    args.uri,
-                    args.url,
-                    args.command,
-                    args.repo,
-                    args.sql,
-                ]
-                .into_iter()
-                .flatten()
-                .map(|v| v.trim().to_owned())
-                .find(|v| !v.is_empty())
-            });
-            (Some(name), hint)
-        }
-        McpMethod::ResourcesRead => {
-            let uri = frame
-                .params
-                .and_then(|p| p.uri)
-                .as_deref()
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_owned);
-            (None, uri)
-        }
-        _ => (None, None),
-    };
-
-    Ok(McpRequest {
-        id,
-        method,
-        tool_name,
-        arguments: Value::Object(serde_json::Map::new()),
-        target_hint,
-    })
+    grdr_mcp_proto::parse_mcp_request(raw).map_err(|e| McpBrokerError::Transport(e.to_string()))
 }

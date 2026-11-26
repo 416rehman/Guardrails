@@ -845,6 +845,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92d699e522242e69e3003b94ecc1f960f3a5e015aa7c5d7486e65ad01dd94f5e"
 
 [[package]]
+name = "futures-macro"
+version = "0.3.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9fb9654ba8355388abeb8dcb4fc62f511300867002afc858860463bdd9fe0c44"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.10",
+]
+
+[[package]]
 name = "futures-task"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -857,6 +868,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d50a92467f8ba5dd6e3ee5d4bd04d73ab2e4e1c44474a0674821dfce14b79bc"
 dependencies = [
  "futures-core",
+ "futures-macro",
  "futures-task",
  "pin-project-lite",
  "slab",
@@ -1066,6 +1078,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "grdr-ipc-os"
+version = "0.1.0"
+dependencies = [
+ "grdr-model",
+ "grdr-wire",
+ "jiff 1.0.3",
+ "libc",
+ "serde",
+ "thiserror",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "grdr-llm-proto"
 version = "0.1.0"
 dependencies = [
@@ -1112,6 +1137,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "grdr-os-clock"
+version = "0.1.0"
+dependencies = [
+ "grdr-model",
+ "grdr-ports",
+ "jiff 1.0.3",
+ "libc",
+ "serde",
+ "thiserror",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "grdr-os-service"
+version = "0.1.0"
+dependencies = [
+ "grdr-model",
+ "jiff 1.0.3",
+ "libc",
+ "serde",
+ "thiserror",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "grdr-peer-os"
+version = "0.1.0"
+dependencies = [
+ "grdr-model",
+ "grdr-wire",
+ "jiff 1.0.3",
+ "libc",
+ "serde",
+ "thiserror",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "grdr-policy-ref"
 version = "0.1.0"
 dependencies = [
@@ -1146,14 +1209,24 @@ name = "grdr-proxy"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64",
  "clap",
+ "futures-util",
  "grdr-core",
  "grdr-crypto",
+ "grdr-fastpath",
  "grdr-identity",
+ "grdr-ipc-os",
  "grdr-llm-proto",
+ "grdr-mcp-proto",
  "grdr-model",
+ "grdr-os-clock",
+ "grdr-os-service",
+ "grdr-peer-os",
  "grdr-strings",
+ "grdr-wire",
  "jiff 1.0.3",
+ "prost",
  "reqwest",
  "serde",
  "serde_json",
@@ -1161,6 +1234,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "unicode-normalization",
  "url",
  "uuid",
  "zeroize",

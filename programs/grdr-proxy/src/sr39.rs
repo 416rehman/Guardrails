@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use axum::http::HeaderMap;
 use url::Url;
 
-use grdr_crypto::fill_random;
+use grdr_crypto::{constant_time_eq, fill_random};
 use grdr_identity::{AgentLifecycle, ContainmentStatus};
 
 use crate::{ProxyError, TenantHeaderPolicy};
@@ -71,15 +71,28 @@ impl RouteUpstream {
     ) -> Result<Self, ProxyError> {
         let parsed = Url::parse(upstream_url.trim())
             .map_err(|e| ProxyError::Sr39Rejected(format!("invalid upstream URL: {e}")))?;
+        if !parsed.username().is_empty()
+            || parsed.password().is_some()
+            || parsed.query().is_some()
+            || parsed.fragment().is_some()
+        {
+            return Err(ProxyError::Sr39Rejected(
+                "upstream URL must not contain credentials, query, or fragment".into(),
+            ));
+        }
         let scheme = parsed.scheme();
         if scheme != "http" && scheme != "https" {
             return Err(ProxyError::Sr39Rejected(format!(
                 "unsupported upstream scheme `{scheme}`"
             )));
         }
-        let host = parsed
+        let raw_host = parsed
             .host_str()
-            .ok_or_else(|| ProxyError::Sr39Rejected("upstream URL missing host".into()))?
+            .ok_or_else(|| ProxyError::Sr39Rejected("upstream URL missing host".into()))?;
+        let host = raw_host
+            .strip_prefix('[')
+            .and_then(|s| s.strip_suffix(']'))
+            .unwrap_or(raw_host)
             .to_owned();
         let port = parsed
             .port_or_known_default()
@@ -280,7 +293,13 @@ fn is_allowed_loopback_host(host_header: &str, expected_port: u16) -> bool {
         let Some((ip6, tail)) = rest.split_once(']') else {
             return false;
         };
-        let port = tail.strip_prefix(':');
+        let port = if tail.is_empty() {
+            None
+        } else if let Some(p) = tail.strip_prefix(':') {
+            Some(p)
+        } else {
+            return false;
+        };
         (ip6, port)
     } else if let Some((h, p)) = lower.rsplit_once(':') {
         (h, Some(p))
@@ -296,14 +315,4 @@ fn is_allowed_loopback_host(host_header: &str, expected_port: u16) -> bool {
         Some(raw_port) => raw_port.parse::<u16>().ok() == Some(expected_port),
         None => expected_port == 80 || expected_port == 443,
     }
-}
-
-pub(crate) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter()
-        .zip(b.iter())
-        .fold(0_u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
 }

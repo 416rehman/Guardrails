@@ -17,8 +17,10 @@ use grdr_identity::{
     CredentialMode, SpiffeId,
 };
 
+use grdr_crypto::constant_time_eq;
+
 use crate::ProxyError;
-use crate::sr39::{SessionRegistration, constant_time_eq};
+use crate::sr39::SessionRegistration;
 
 #[derive(Clone)]
 pub struct VaultedUpstreamSecret {

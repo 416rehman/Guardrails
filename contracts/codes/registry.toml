@@ -222,8 +222,12 @@ GRDR-LINT-0006 = { owner = "grdr-schema-lint", file = "crates/grdr-schema-lint/s
 GRDR-LINT-0007 = { owner = "grdr-schema-lint", file = "crates/grdr-schema-lint/src/lib.rs" }
 GRDR-LINT-0008 = { owner = "grdr-schema-lint", file = "crates/grdr-schema-lint/src/lib.rs" }
 GRDR-LINT-0009 = { owner = "grdr-schema-lint", file = "crates/grdr-schema-lint/src/lib.rs" }
-GRDR-LLM-0001 = { owner = "grdr-llm-proto", file = "crates/grdr-llm-proto/src/lib.rs" }
-GRDR-LLM-0002 = { owner = "grdr-llm-proto", file = "crates/grdr-llm-proto/src/lib.rs" }
+GRDR-LLM-0001 = { owner = "grdr-llm-proto", file = "crates/grdr-llm-proto/src/error.rs" }
+GRDR-LLM-0002 = { owner = "grdr-llm-proto", file = "crates/grdr-llm-proto/src/error.rs" }
+GRDR-LLM-0003 = { owner = "grdr-llm-proto", file = "crates/grdr-llm-proto/src/error.rs" }
+GRDR-LLM-0004 = { owner = "grdr-llm-proto", file = "crates/grdr-llm-proto/src/error.rs" }
+GRDR-LLM-0005 = { owner = "grdr-llm-proto", file = "crates/grdr-llm-proto/src/error.rs" }
+GRDR-LLM-0006 = { owner = "grdr-llm-proto", file = "crates/grdr-llm-proto/src/error.rs" }
 GRDR-LSTORE-0001 = { owner = "grdr-store-local", file = "crates/grdr-store-local/src/lib.rs" }
 GRDR-LSTORE-0002 = { owner = "grdr-store-local", file = "crates/grdr-store-local/src/lib.rs" }
 GRDR-LSTORE-0003 = { owner = "grdr-store-local", file = "crates/grdr-store-local/src/lib.rs" }
@@ -251,6 +255,7 @@ GRDR-MCP-0004 = { owner = "grdr-mcp-proto", file = "crates/grdr-mcp-proto/src/li
 GRDR-MCP-0005 = { owner = "grdr-mcp-proto", file = "crates/grdr-mcp-proto/src/lib.rs", shared_with = ["grdr-mcp"] }
 GRDR-MCP-0006 = { owner = "grdr-mcp", file = "programs/grdr-mcp/src/lib.rs" }
 GRDR-MCP-0007 = { owner = "grdr-mcp", file = "programs/grdr-mcp/src/lib.rs" }
+GRDR-MCP-0008 = { owner = "grdr-mcp", file = "programs/grdr-mcp/src/lib.rs" }
 GRDR-MIGRATE-0001 = { owner = "grdr", file = "programs/grdr/src/server_migrate.rs" }
 GRDR-MIGRATE-0002 = { owner = "grdr", file = "programs/grdr/src/server_migrate.rs" }
 GRDR-MIGRATE-0003 = { owner = "grdr", file = "programs/grdr/src/server_migrate.rs" }
@@ -304,6 +309,8 @@ GRDR-PROXY-0003 = { owner = "grdr-proxy", file = "programs/grdr-proxy/src/lib.rs
 GRDR-PROXY-0004 = { owner = "grdr-proxy", file = "programs/grdr-proxy/src/lib.rs" }
 GRDR-PROXY-0005 = { owner = "grdr-proxy", file = "programs/grdr-proxy/src/lib.rs" }
 GRDR-PROXY-0006 = { owner = "grdr-proxy", file = "programs/grdr-proxy/src/lib.rs" }
+GRDR-PROXY-0007 = { owner = "grdr-proxy", file = "programs/grdr-proxy/src/lib.rs" }
+GRDR-PROXY-0008 = { owner = "grdr-proxy", file = "programs/grdr-proxy/src/lib.rs" }
 GRDR-QUERY-0001 = { owner = "grdr-model", file = "crates/grdr-model/src/query_ir.rs" }
 GRDR-QUERY-0002 = { owner = "grdr-model", file = "crates/grdr-model/src/query_ir.rs" }
 GRDR-REL-0001 = { owner = "grdr-rel-sqlite", file = "crates/grdr-rel-sqlite/src/schema.rs" }

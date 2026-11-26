@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
-//! Bounded wire framing, RFC 1929 auth parsing, and chained CONNECT dialing for `grdr-proxy`.
+//! Bounded wire framing, RFC 1929 auth parsing, chained CONNECT dialing, and TLS ClientHello peeking.
 
 use std::net::{Ipv6Addr, SocketAddr};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -12,6 +12,11 @@ use tokio::time::timeout;
 
 use crate::egress::{resolve_and_vet_chained_proxy, resolve_and_vet_target};
 use crate::router::ProxyGatewayState;
+use crate::tls_hello::{expected_tls_record_total_len, peek_tls_client_hello};
+use crate::tls_policy::{
+    CallerClass, EchPolicy, LocalCaTrust, MitmDenyReason, MitmRoutingDecision, PinningHealth,
+    SelectiveMitmInput, SwgOverrideMode, evaluate_selective_mitm_policy,
+};
 use crate::tunnel::UpstreamProxyConfig;
 use crate::{ProxyDecisionClient, ProxyError};
 
@@ -19,6 +24,7 @@ pub const MAX_CONNECT_LINE_BYTES: usize = 4_096;
 pub const MAX_CONNECT_HEADERS: usize = 64;
 pub const MAX_CHAIN_RESPONSE_HEAD_BYTES: usize = 8_192;
 pub const TUNNEL_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+const TLS_PEEK_CAP_BYTES: usize = 16_384;
 
 pub async fn read_bounded_crlf_line(
     stream: &mut TcpStream,
@@ -233,5 +239,143 @@ fn format_authority(host: &str, port: u16) -> String {
         format!("[{host}]:{port}")
     } else {
         format!("{host}:{port}")
+    }
+}
+
+/// Peeks the complete initial TLS ClientHello record (up to 16 KiB) before bridging,
+/// rejecting SNI mismatches, ECH violations, truncated ClientHellos, and un-terminated MITM hosts.
+pub async fn peek_and_verify_initial_tls<C: ProxyDecisionClient + 'static>(
+    client: &mut TcpStream,
+    upstream: &mut TcpStream,
+    connect_host: &str,
+    connect_port: u16,
+    session_id: &str,
+    state: &ProxyGatewayState<C>,
+) -> Result<Option<MitmRoutingDecision>, ProxyError> {
+    let mut watch_rx = state.cut_watch.subscribe();
+    let deadline = Instant::now()
+        .checked_add(TUNNEL_HANDSHAKE_TIMEOUT)
+        .unwrap_or_else(Instant::now);
+    let mut peek_buf = vec![0_u8; TLS_PEEK_CAP_BYTES];
+
+    loop {
+        if state.is_globally_killed() || state.registry.lock().await.is_session_cut(session_id) {
+            let _ = client.shutdown().await;
+            let _ = upstream.shutdown().await;
+            return Err(ProxyError::SessionEgressCut(session_id.to_owned()));
+        }
+        let rem = deadline
+            .checked_duration_since(Instant::now())
+            .filter(|d| !d.is_zero())
+            .ok_or_else(|| ProxyError::Sr39Rejected("TLS ClientHello peek timed out".into()))?;
+
+        let n = tokio::select! {
+            changed = watch_rx.changed() => {
+                if changed.is_err()
+                    || state.is_globally_killed()
+                    || state.registry.lock().await.is_session_cut(session_id)
+                {
+                    let _ = client.shutdown().await;
+                    let _ = upstream.shutdown().await;
+                    return Err(ProxyError::SessionEgressCut(session_id.to_owned()));
+                }
+                continue;
+            }
+            step = timeout(rem, client.peek(&mut peek_buf)) => {
+                let res = step.map_err(|_| {
+                    ProxyError::Sr39Rejected("TLS ClientHello peek timed out".into())
+                })?;
+                res.map_err(|e| ProxyError::Transport(e.to_string()))?
+            }
+        };
+
+        if n == 0 || peek_buf.first().copied() != Some(0x16) {
+            if connect_port == 443 || connect_port == 8443 {
+                let _ = client.shutdown().await;
+                let _ = upstream.shutdown().await;
+                return Err(ProxyError::Sr39Rejected(format!(
+                    "GRDR-PROXY-0008: unencrypted non-TLS traffic forbidden on port {connect_port}"
+                )));
+            }
+            let swg = state.swg_detection.lock().await.clone();
+            let non_tls_decision = evaluate_selective_mitm_policy(
+                &SelectiveMitmInput {
+                    connect_host: connect_host.to_owned(),
+                    caller_class: CallerClass::ManagedAgent,
+                    local_ca_trust: LocalCaTrust::Trusted,
+                    pinning_health: PinningHealth::Healthy,
+                    ech_policy: EchPolicy::PassthroughOnEch,
+                    swg_override: SwgOverrideMode::RespectStandDown,
+                    swg,
+                    client_hello: None,
+                },
+                &state.swg_manifest,
+            );
+            if let MitmRoutingDecision::Deny(_, msg) = non_tls_decision {
+                let _ = client.shutdown().await;
+                let _ = upstream.shutdown().await;
+                return Err(ProxyError::PolicyDenied(msg));
+            }
+            return Ok(None);
+        }
+        let slice = peek_buf.get(..n).unwrap_or(&[]);
+        let need_more = match expected_tls_record_total_len(slice) {
+            Some(total) if total <= TLS_PEEK_CAP_BYTES => n < total,
+            None => n < 5,
+            Some(_) => false,
+        };
+        if need_more {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            continue;
+        }
+        let Some(hello) = peek_tls_client_hello(slice)? else {
+            return Ok(None);
+        };
+        let swg = state.swg_detection.lock().await.clone();
+        let decision = evaluate_selective_mitm_policy(
+            &SelectiveMitmInput {
+                connect_host: connect_host.to_owned(),
+                caller_class: CallerClass::ManagedAgent,
+                local_ca_trust: LocalCaTrust::Trusted,
+                pinning_health: PinningHealth::Healthy,
+                ech_policy: EchPolicy::PassthroughOnEch,
+                swg_override: SwgOverrideMode::RespectStandDown,
+                swg,
+                client_hello: Some(hello),
+            },
+            &state.swg_manifest,
+        );
+        match &decision {
+            MitmRoutingDecision::Deny(MitmDenyReason::SniMismatch, msg) => {
+                let _ = client.shutdown().await;
+                let _ = upstream.shutdown().await;
+                return Err(ProxyError::SniMismatch(msg.clone()));
+            }
+            MitmRoutingDecision::Deny(
+                MitmDenyReason::EchBlocked | MitmDenyReason::NonTlsTrafficRequired,
+                msg,
+            ) => {
+                let _ = client.shutdown().await;
+                let _ = upstream.shutdown().await;
+                return Err(ProxyError::PolicyDenied(msg.clone()));
+            }
+            MitmRoutingDecision::InterceptTls {
+                provider_family,
+                alpn_protocols,
+                ..
+            } => {
+                tracing::warn!(
+                    session_id,
+                    host = connect_host,
+                    provider = %provider_family,
+                    alpn_count = alpn_protocols.len(),
+                    "blocking raw CONNECT passthrough on InterceptTls-required LLM host"
+                );
+                let _ = client.shutdown().await;
+                let _ = upstream.shutdown().await;
+                return Ok(Some(decision));
+            }
+            MitmRoutingDecision::Passthrough(_) => return Ok(Some(decision)),
+        }
     }
 }
