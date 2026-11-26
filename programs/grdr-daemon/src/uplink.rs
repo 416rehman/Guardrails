@@ -177,7 +177,11 @@ mod tests {
 
     #[test]
     fn checkin_verifies_raw_bytes_device_id_and_freshness_and_omits_username() {
-        let base = std::env::temp_dir().join(format!("grdr-uplink-unit-{}", std::process::id()));
+        let base = crate::dir_guard::private_ephemeral_base_dir().join(format!(
+            ".grdr-uplink-unit-{}-{}",
+            std::process::id(),
+            uuid::Uuid::now_v7().simple()
+        ));
         let _ = std::fs::remove_dir_all(&base);
         let state =
             DaemonState::initialize(base.join("data"), base.join("state"), InstallProfile::User)

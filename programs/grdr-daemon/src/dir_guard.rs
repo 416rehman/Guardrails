@@ -40,6 +40,23 @@ pub(crate) struct LocalCallerClaims<'a> {
     pub uid: Option<u32>,
 }
 
+pub(crate) fn private_ephemeral_base_dir() -> PathBuf {
+    #[cfg(unix)]
+    {
+        for key in ["XDG_RUNTIME_DIR", "HOME"] {
+            if let Some(val) = std::env::var_os(key)
+                && !val.is_empty()
+            {
+                let candidate = PathBuf::from(val);
+                if candidate.is_absolute() {
+                    return candidate;
+                }
+            }
+        }
+    }
+    std::env::temp_dir()
+}
+
 pub(crate) fn ensure_dir_secure(dir: &Path, public_readable: bool) -> Result<(), String> {
     check_no_ancestor_symlinks(dir).map_err(|e| format!("{}: {e}", redact_path_label(dir)))?;
     if !public_readable {

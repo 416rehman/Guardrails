@@ -470,10 +470,11 @@ mod tests {
 
     #[test]
     fn rejects_forged_and_mismatched_engine_grant_claims_and_enforces_floor() {
-        let base = std::env::temp_dir().join(format!(
-            "grdr-daemon-grant-test-{}",
+        let base = crate::dir_guard::private_ephemeral_base_dir().join(format!(
+            ".grdr-daemon-grant-test-{}",
             uuid::Uuid::now_v7().simple()
         ));
+        let _ = std::fs::remove_dir_all(&base);
         let data_dir = base.join("data");
         let state_dir = base.join("state");
         let state = DaemonState::initialize(data_dir, state_dir, InstallProfile::User)
@@ -624,10 +625,11 @@ mod tests {
 
     #[test]
     fn protected_state_dir_0755_and_once_plus_revoked_grant_anti_replay_across_restart() {
-        let base = std::env::temp_dir().join(format!(
-            "grdr-daemon-restart-test-{}",
+        let base = crate::dir_guard::private_ephemeral_base_dir().join(format!(
+            ".grdr-daemon-restart-test-{}",
             uuid::Uuid::now_v7().simple()
         ));
+        let _ = std::fs::remove_dir_all(&base);
         let data_dir = base.join("data");
         let state_dir = base.join("state");
         let state = DaemonState::initialize(

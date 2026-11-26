@@ -38,7 +38,19 @@ static TEST_SEQ: AtomicU64 = AtomicU64::new(1);
 
 fn temp_state_dir(tag: &str) -> Result<PathBuf, Box<dyn Error>> {
     let n = TEST_SEQ.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("grdr-hook-{tag}-{}-{n}", std::process::id()));
+    #[cfg(unix)]
+    let base = ["XDG_RUNTIME_DIR", "HOME"]
+        .into_iter()
+        .find_map(|key| {
+            std::env::var_os(key).and_then(|val| {
+                let path = PathBuf::from(val);
+                (!path.as_os_str().is_empty() && path.is_absolute()).then_some(path)
+            })
+        })
+        .unwrap_or_else(std::env::temp_dir);
+    #[cfg(not(unix))]
+    let base = std::env::temp_dir();
+    let dir = base.join(format!(".grdr-hook-{tag}-{}-{n}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     create_private_dir_all(&dir)?;
     Ok(dir)

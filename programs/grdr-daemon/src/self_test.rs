@@ -26,7 +26,8 @@ pub(crate) fn run_ephemeral_self_test(state_override: Option<&Path>) -> Result<(
         DaemonError::InitFailed(format!("ephemeral self-test nonce RNG failed: {e}"))
     })?;
     let short: String = nonce.chars().take(16).collect();
-    let base = std::env::temp_dir().join(format!("grdr-daem-self-{short}"));
+    let base =
+        crate::dir_guard::private_ephemeral_base_dir().join(format!(".grdr-daem-self-{short}"));
     create_private_dir_all(&base).map_err(|e| DaemonError::InitFailed(e.to_string()))?;
     let state_dir = state_override
         .map(ToOwned::to_owned)
