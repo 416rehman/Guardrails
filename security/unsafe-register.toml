@@ -694,3 +694,129 @@ lines = "391-405"
 invariant = "Opens process token with TOKEN_QUERY on open process handle, wraps non-null token in ScopedWinHandle, and handles ACCESS_DENIED gracefully."
 owner = "endpoint"
 verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-sensor-linux"
+file = "crates/grdr-sensor-linux/src/probe.rs"
+symbol = "probe_landlock_os"
+lines = "489-514"
+invariant = "Passes zeroed integer args with LANDLOCK_CREATE_RULESET_VERSION flag so Linux kernel reads only ABI version without mutating memory or allocating descriptors."
+owner = "sensor-linux"
+verification = ["cargo test -p grdr-sensor-linux"]
+
+[[entry]]
+crate = "grdr-sensor-linux"
+file = "crates/grdr-sensor-linux/src/probe.rs"
+symbol = "probe_fanotify_os"
+lines = "526-551"
+invariant = "Invokes fanotify_init with plain integer flags and O_CLOEXEC/O_RDONLY, immediately closing any valid fd before returning."
+owner = "sensor-linux"
+verification = ["cargo test -p grdr-sensor-linux"]
+
+[[entry]]
+crate = "grdr-sandbox-engine"
+file = "crates/grdr-sandbox-engine/src/linux_sys.rs"
+symbol = "SeccompPipeGuard::drop"
+lines = "92-99"
+invariant = "Closes exclusively owned Linux pipe read descriptor when valid (>= 0)."
+owner = "sandbox"
+verification = ["cargo test -p grdr-sandbox-engine"]
+
+[[entry]]
+crate = "grdr-sandbox-engine"
+file = "crates/grdr-sandbox-engine/src/linux_sys.rs"
+symbol = "probe_landlock_abi"
+lines = "104-119"
+invariant = "Passes zeroed integer args with LANDLOCK_CREATE_RULESET_VERSION flag to query ABI version read-only."
+owner = "sandbox"
+verification = ["cargo test -p grdr-sandbox-engine"]
+
+[[entry]]
+crate = "grdr-sandbox-engine"
+file = "crates/grdr-sandbox-engine/src/linux_sys.rs"
+symbol = "create_bwrap_seccomp_pipe"
+lines = "253-300"
+invariant = "Allocates pipe2 with O_CLOEXEC via stack [c_int; 2], writes bounded seccomp BPF bytes to write end, closes write end (and read end on error), and wraps read end in SeccompPipeGuard."
+owner = "sandbox"
+verification = ["cargo test -p grdr-sandbox-engine"]
+
+[[entry]]
+crate = "grdr-sandbox-engine"
+file = "crates/grdr-sandbox-engine/src/linux_sys.rs"
+symbol = "install_linux_pre_exec"
+lines = "322-397"
+invariant = "Pre-allocates CStrings and sock_filter buffers pre-fork so pre_exec child closure runs only async-signal-safe fcntl/prctl/Landlock syscalls with explicit widths."
+owner = "sandbox"
+verification = ["cargo test -p grdr-sandbox-engine"]
+
+[[entry]]
+crate = "grdr-sandbox-engine"
+file = "crates/grdr-sandbox-engine/src/linux_sys.rs"
+symbol = "apply_landlock_pre_exec"
+lines = "418-541"
+invariant = "Uses O_PATH|O_CLOEXEC (plus O_NOFOLLOW for user paths), inspects fstat(fd) S_IFDIR to mask non-directories to file-only Landlock rights, and closes every fd on all paths."
+owner = "sandbox"
+verification = ["cargo test -p grdr-sandbox-engine"]
+
+[[entry]]
+crate = "grdr-sandbox-engine"
+file = "crates/grdr-sandbox-engine/src/windows_sys_rt.rs"
+symbol = "ScopedWinHandle::drop"
+lines = "67-74"
+invariant = "Closes exclusively owned Win32 HANDLE when non-null and not INVALID_HANDLE_VALUE."
+owner = "sandbox"
+verification = ["cargo test -p grdr-sandbox-engine"]
+
+[[entry]]
+crate = "grdr-sandbox-engine"
+file = "crates/grdr-sandbox-engine/src/windows_sys_rt.rs"
+symbol = "ScopedAttrList::drop"
+lines = "90-97"
+invariant = "Invokes DeleteProcThreadAttributeList on initialized 8-byte aligned attribute list buffer before drop."
+owner = "sandbox"
+verification = ["cargo test -p grdr-sandbox-engine"]
+
+[[entry]]
+crate = "grdr-sandbox-engine"
+file = "crates/grdr-sandbox-engine/src/windows_sys_rt.rs"
+symbol = "last_win32_error"
+lines = "102-105"
+invariant = "Calls thread-local GetLastError with zero pointer arguments or aliasing assumptions."
+owner = "sandbox"
+verification = ["cargo test -p grdr-sandbox-engine"]
+
+[[entry]]
+crate = "grdr-sandbox-engine"
+file = "crates/grdr-sandbox-engine/src/windows_sys_rt.rs"
+symbol = "create_process_attr_list"
+lines = "112-181"
+invariant = "Queries attribute buffer size via InitializeProcThreadAttributeList, allocates aligned Vec<u64>, initializes ScopedAttrList, and binds caller-owned u64 mitigation mask plus optional handle allowlist."
+owner = "sandbox"
+verification = ["cargo test -p grdr-sandbox-engine"]
+
+[[entry]]
+crate = "grdr-sandbox-engine"
+file = "crates/grdr-sandbox-engine/src/windows_sys_rt.rs"
+symbol = "create_configured_job"
+lines = "188-260"
+invariant = "Owns anonymous CreateJobObjectW handle via ScopedWinHandle and configures exact stack-sized JOBOBJECT_EXTENDED_LIMIT_INFORMATION and JOBOBJECT_BASIC_UI_RESTRICTIONS."
+owner = "sandbox"
+verification = ["cargo test -p grdr-sandbox-engine"]
+
+[[entry]]
+crate = "grdr-sandbox-engine"
+file = "crates/grdr-sandbox-engine/src/windows_sys_rt.rs"
+symbol = "create_restricted_primary_token"
+lines = "267-307"
+invariant = "Opens current process token via OpenProcessToken, derives restricted primary token with DISABLE_MAX_PRIVILEGE and LUA_TOKEN, and guards both handles."
+owner = "sandbox"
+verification = ["cargo test -p grdr-sandbox-engine"]
+
+[[entry]]
+crate = "grdr-sandbox-engine"
+file = "crates/grdr-sandbox-engine/src/windows_sys_rt.rs"
+symbol = "launch_and_wait_windows_contained"
+lines = "314-507"
+invariant = "Validates NUL/double-NUL UTF-16 buffers, passes mandatory explicit lpApplicationName and PROC_THREAD_ATTRIBUTE_HANDLE_LIST when inheritable stdio handles exist, launches CREATE_SUSPENDED, assigns Job Object before ResumeThread, checks WaitForSingleObject == WAIT_OBJECT_0 and != STILL_ACTIVE."
+owner = "sandbox"
+verification = ["cargo test -p grdr-sandbox-engine"]

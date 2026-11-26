@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
+
 #![forbid(unsafe_code)]
 #![deny(clippy::arithmetic_side_effects)]
 
 //! Dedicated D-21 containment launcher (`Delegate`, `WrapTools`, `WrapAgent`).
 
+pub mod executor;
+pub mod floor_fallback;
 pub mod gate;
+pub mod ipc_transport;
 pub mod planner;
 
 use grdr_model::CodedError;
