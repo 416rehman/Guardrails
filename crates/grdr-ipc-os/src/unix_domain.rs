@@ -498,7 +498,16 @@ mod tests {
 
     #[test]
     fn unix_acceptor_and_connector_exchange_frames_with_deadlines() {
-        let dir = std::env::temp_dir().join(format!("grdr-ipc-u-{}", std::process::id()));
+        let base = ["XDG_RUNTIME_DIR", "HOME"]
+            .into_iter()
+            .find_map(|key| {
+                std::env::var_os(key).and_then(|val| {
+                    let path = std::path::PathBuf::from(val);
+                    (!path.as_os_str().is_empty() && path.is_absolute()).then_some(path)
+                })
+            })
+            .unwrap_or_else(std::env::temp_dir);
+        let dir = base.join(format!(".grdr-ipc-u-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let sock_path = dir.join("decide.sock");
         let _ = std::fs::remove_file(&sock_path);

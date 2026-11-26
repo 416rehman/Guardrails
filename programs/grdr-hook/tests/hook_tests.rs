@@ -230,10 +230,12 @@ fn run_signed_floor_fallback() -> Result<(), Box<dyn Error>> {
         None,
     )?;
 
-    let missing_sock = if cfg!(windows) {
+    let missing_sock_buf;
+    let missing_sock: &str = if cfg!(windows) {
         r"\\.\pipe\grdr-nonexistent-test-pipe-9999"
     } else {
-        "/tmp/grdr-nonexistent-hook-test.sock"
+        missing_sock_buf = state_dir.join("no.sock").to_string_lossy().into_owned();
+        &missing_sock_buf
     };
 
     let mut deny_child = Command::new(exe)
@@ -531,10 +533,12 @@ fn run_dialect_and_codec_checks() -> Result<(), Box<dyn Error>> {
         }],
         None,
     )?;
-    let missing_sock = if cfg!(windows) {
+    let missing_sock_buf;
+    let missing_sock: &str = if cfg!(windows) {
         r"\\.\pipe\grdr-nonexistent-test-pipe-9998"
     } else {
-        "/tmp/grdr-nonexistent-hook-test-2.sock"
+        missing_sock_buf = dir.join("no.sock").to_string_lossy().into_owned();
+        &missing_sock_buf
     };
     let out = Command::new(exe)
         .args([
