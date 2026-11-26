@@ -11,7 +11,6 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": true,
-    "baseUrl": ".",
     "paths": {
       "@grdr/tokens/tokens.css": ["./packages/tokens/src/tokens.css"],
       "@grdr/i18n": ["./packages/i18n/src/index.ts"],
