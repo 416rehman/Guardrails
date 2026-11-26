@@ -19,3 +19,7 @@ pub mod lanes;
 pub mod rfc9421;
 pub mod schedule;
 mod staging_fs;
+pub mod watermark;
+pub mod worker;
+mod worker_ipc;
+mod worker_verify;

@@ -292,6 +292,11 @@ impl Dialer {
         })
     }
 
+    /// Check destination host against `NetworkMode::Isolated` BEFORE any DNS query (P16).
+    pub fn check_host_allowed(&self, host: &str, reason: &str) -> Result<(), UplinkError> {
+        self.enforce_host_allowed(host, reason)
+    }
+
     /// Build an HTTPS `reqwest::Client` pinning resolved target and proxy IPs cleanly.
     pub fn build_http_client_for_plan(
         &self,
@@ -300,26 +305,33 @@ impl Dialer {
         self.ensure_proxy_credential_compatible()?;
         let verified_proxy_ip = self.validate_proxy_policy()?;
         let mut builder = Client::builder()
+            .https_only(true)
             .connect_timeout(Duration::from_millis(HTTP_CLIENT_CONNECT_TIMEOUT_MS))
             .timeout(Duration::from_millis(HTTP_CLIENT_REQUEST_TIMEOUT_MS))
             .redirect(reqwest::redirect::Policy::none());
 
         if let Some(p) = plan {
+            if p.port == 0 || p.host.trim().is_empty() {
+                return Err(UplinkError::InvalidEndpoint {
+                    detail: "dial plan requires non-empty host and non-zero port".to_string(),
+                });
+            }
+            let _ = self.validate_candidate_ips("target", &p.host, Some(p.selected_ip), &[])?;
             builder = builder.resolve(&p.host, SocketAddr::new(p.selected_ip, p.port));
         }
 
         builder = match (&self.network_mode, &self.proxy) {
             (NetworkMode::Isolated { .. }, ProxySelection::System { .. }) => {
-                return Err(UplinkError::EgressUnlisted {
-                    host: "system-proxy".to_string(),
-                    reason: "ambient system proxy disallowed in isolated mode".to_string(),
-                });
+                return Err(err_unlisted(
+                    "system-proxy",
+                    "ambient system proxy disallowed in isolated mode",
+                ));
             }
             (NetworkMode::Isolated { .. }, ProxySelection::Pac { .. }) => {
-                return Err(UplinkError::EgressUnlisted {
-                    host: "pac-proxy".to_string(),
-                    reason: "PAC proxy disallowed in isolated mode".to_string(),
-                });
+                return Err(err_unlisted(
+                    "pac-proxy",
+                    "PAC proxy disallowed in isolated mode",
+                ));
             }
             (_, ProxySelection::Direct) => builder.no_proxy(),
             (_, ProxySelection::Explicit { host, port, .. }) => {
@@ -327,9 +339,11 @@ impl Dialer {
                 let proxy_ip = plan
                     .and_then(|p| p.selected_proxy_ip)
                     .or(verified_proxy_ip)
-                    .ok_or_else(|| UplinkError::EgressUnlisted {
-                        host: parsed_proxy.host.clone(),
-                        reason: "explicit proxy lacks validated IP address".to_string(),
+                    .ok_or_else(|| {
+                        err_unlisted(
+                            &parsed_proxy.host,
+                            "explicit proxy lacks validated IP address",
+                        )
                     })?;
                 if parsed_proxy.host_ip.is_none() {
                     builder = builder.resolve(&parsed_proxy.host, SocketAddr::new(proxy_ip, *port));
@@ -339,15 +353,15 @@ impl Dialer {
                 } else {
                     parsed_proxy.host
                 };
-                let proxy_url = format!("https://{formatted_host}:{port}");
-                let proxy =
-                    reqwest::Proxy::all(&proxy_url).map_err(|e| UplinkError::Transport {
+                let proxy = reqwest::Proxy::all(format!("https://{formatted_host}:{port}"))
+                    .map_err(|e| UplinkError::Transport {
                         detail: format!("invalid HTTPS proxy configuration: {e}"),
                     })?;
                 builder.proxy(proxy)
             }
-            (NetworkMode::Standard, ProxySelection::System { .. })
-            | (NetworkMode::Standard, ProxySelection::Pac { .. }) => builder,
+            (NetworkMode::Standard, ProxySelection::System { .. } | ProxySelection::Pac { .. }) => {
+                builder
+            }
         };
 
         builder.build().map_err(|e| UplinkError::Transport {
@@ -374,21 +388,36 @@ impl Dialer {
         if matches!(self.network_mode, NetworkMode::Isolated { .. }) {
             match &self.proxy {
                 ProxySelection::Pac { .. } => {
-                    return Err(UplinkError::EgressUnlisted {
-                        host: "pac-proxy".to_string(),
-                        reason: "PAC proxy discovery is disallowed in isolated mode".to_string(),
-                    });
+                    return Err(err_unlisted(
+                        "pac-proxy",
+                        "PAC proxy discovery is disallowed in isolated mode",
+                    ));
                 }
                 ProxySelection::System { .. } => {
-                    return Err(UplinkError::EgressUnlisted {
-                        host: "system-proxy".to_string(),
-                        reason: "ambient system proxy is disallowed in isolated mode".to_string(),
-                    });
+                    return Err(err_unlisted(
+                        "system-proxy",
+                        "ambient system proxy is disallowed in isolated mode",
+                    ));
                 }
                 ProxySelection::Direct | ProxySelection::Explicit { .. } => {}
             }
         }
-
+        if let ProxySelection::Pac { pac_url, .. } = &self.proxy {
+            let parsed_pac = parse_https_target(pac_url)?;
+            if parsed_pac
+                .host_ip
+                .is_some_and(is_disallowed_private_or_link_local)
+                && matches!(
+                    self.private_policy,
+                    PrivateAddressPolicy::BlockPrivateAndLinkLocal
+                )
+            {
+                return Err(err_unlisted(
+                    &parsed_pac.host,
+                    "private or special-use PAC endpoint blocked by SSRF guard",
+                ));
+            }
+        }
         if let ProxySelection::Explicit {
             host,
             port,
@@ -409,15 +438,13 @@ impl Dialer {
                 &canonical_host,
                 "explicit proxy host not in isolated allow_list",
             )?;
-            let selected = self.validate_candidate_ips(
+            return Ok(Some(self.validate_candidate_ips(
                 "explicit proxy",
                 &canonical_host,
                 host_ip,
                 resolved_ips,
-            )?;
-            return Ok(Some(selected));
+            )?));
         }
-
         Ok(None)
     }
 
@@ -428,10 +455,7 @@ impl Dialer {
                 if allow_list.iter().any(|rule| rule.matches_host(host)) {
                     Ok(())
                 } else {
-                    Err(UplinkError::EgressUnlisted {
-                        host: host.to_string(),
-                        reason: reason.to_string(),
-                    })
+                    Err(err_unlisted(host, reason))
                 }
             }
         }
@@ -449,55 +473,48 @@ impl Dialer {
             candidates.push(ip);
         }
         candidates.extend_from_slice(resolved_ips);
-
         if candidates.is_empty() {
-            return Err(UplinkError::EgressUnlisted {
-                host: host.to_string(),
-                reason: format!("{label} DNS hostname requires resolved IPs prior to dial"),
-            });
+            return Err(err_unlisted(
+                host,
+                &format!("{label} DNS hostname requires resolved IPs prior to dial"),
+            ));
         }
 
         for ip in &candidates {
             match &self.network_mode {
                 NetworkMode::Isolated { allow_list } => {
-                    let ip_explicitly_allowed = allow_list.iter().any(|rule| rule.matches_ip(*ip));
-                    let host_allowed = allow_list.iter().any(|rule| rule.matches_host(host));
-                    if !ip_explicitly_allowed && is_disallowed_private_or_link_local(*ip) {
-                        return Err(UplinkError::EgressUnlisted {
-                            host: host.to_string(),
-                            reason: format!(
-                                "resolved address {ip} for {label} is private/link-local and not CIDR-allowlisted"
-                            ),
-                        });
+                    let ip_ok = allow_list.iter().any(|rule| rule.matches_ip(*ip));
+                    let host_ok = allow_list.iter().any(|rule| rule.matches_host(host));
+                    if !ip_ok && is_disallowed_private_or_link_local(*ip) {
+                        return Err(err_unlisted(
+                            host,
+                            &format!("resolved address {ip} for {label} is private/link-local"),
+                        ));
                     }
-                    if !ip_explicitly_allowed && !host_allowed {
-                        return Err(UplinkError::EgressUnlisted {
-                            host: ip.to_string(),
-                            reason: format!(
-                                "resolved IP for {label} not permitted in isolated mode"
-                            ),
-                        });
+                    if !ip_ok && !host_ok {
+                        return Err(err_unlisted(
+                            &ip.to_string(),
+                            &format!("resolved IP for {label} not permitted in isolated mode"),
+                        ));
                     }
                 }
                 NetworkMode::Standard => match self.private_policy {
                     PrivateAddressPolicy::BlockPrivateAndLinkLocal
                         if is_disallowed_private_or_link_local(*ip) =>
                     {
-                        return Err(UplinkError::EgressUnlisted {
-                            host: ip.to_string(),
-                            reason: format!("private or special-use {label} blocked by SSRF guard"),
-                        });
+                        return Err(err_unlisted(
+                            &ip.to_string(),
+                            &format!("private or special-use {label} blocked by SSRF guard"),
+                        ));
                     }
                     #[cfg(test)]
                     PrivateAddressPolicy::AllowLoopbackForLocalRelay
                         if is_disallowed_private_or_link_local(*ip) && !ip.is_loopback() =>
                     {
-                        return Err(UplinkError::EgressUnlisted {
-                            host: ip.to_string(),
-                            reason: format!(
-                                "non-loopback private or special-use {label} egress blocked"
-                            ),
-                        });
+                        return Err(err_unlisted(
+                            &ip.to_string(),
+                            &format!("non-loopback {label} egress blocked"),
+                        ));
                     }
                     _ => {}
                 },
@@ -507,9 +524,13 @@ impl Dialer {
         candidates
             .first()
             .copied()
-            .ok_or_else(|| UplinkError::EgressUnlisted {
-                host: host.to_string(),
-                reason: format!("{label} lacks validated IP"),
-            })
+            .ok_or_else(|| err_unlisted(host, &format!("{label} lacks validated IP")))
+    }
+}
+
+fn err_unlisted(host: &str, reason: &str) -> UplinkError {
+    UplinkError::EgressUnlisted {
+        host: host.to_string(),
+        reason: reason.to_string(),
     }
 }

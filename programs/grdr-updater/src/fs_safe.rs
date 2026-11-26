@@ -6,14 +6,15 @@
 
 use std::fs::OpenOptions;
 use std::io::{Read as _, Write as _};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, Path, PathBuf, Prefix};
 
 use grdr_crypto::fill_random;
+#[cfg(unix)]
+use grdr_peer_os::fs_open::open_nofollow_dir;
+use grdr_peer_os::fs_open::{OpenNofollowAccess, open_nofollow_file};
 
 use crate::error::UpdaterError;
 
-#[cfg(windows)]
-const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
 #[cfg(windows)]
 const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0400;
 
@@ -56,28 +57,58 @@ pub fn atomic_write_bytes(path: &Path, bytes: &[u8]) -> Result<(), UpdaterError>
         u64::from_le_bytes(nonce)
     ));
 
-    let mut file = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(&tmp_path)
-        .map_err(|e| UpdaterError::Io {
+    let mut opts = OpenOptions::new();
+    opts.create_new(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        opts.mode(0o600);
+    }
+    let write_res: Result<(), UpdaterError> = (|| {
+        let mut file = opts.open(&tmp_path).map_err(|e| UpdaterError::Io {
             detail: format!("failed to create staging file {}: {e}", tmp_path.display()),
         })?;
-    file.write_all(bytes).map_err(|e| UpdaterError::Io {
-        detail: format!("failed to write staging file: {e}"),
-    })?;
-    file.sync_all().map_err(|e| UpdaterError::Io {
-        detail: format!("failed to sync staging file: {e}"),
-    })?;
-    drop(file);
+        file.write_all(bytes).map_err(|e| UpdaterError::Io {
+            detail: format!("failed to write staging file: {e}"),
+        })?;
+        file.sync_all().map_err(|e| UpdaterError::Io {
+            detail: format!("failed to sync staging file: {e}"),
+        })?;
+        Ok(())
+    })();
+    if let Err(err) = write_res {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(err);
+    }
 
-    std::fs::rename(&tmp_path, path).map_err(|e| UpdaterError::Io {
-        detail: format!(
-            "failed to rename {} into {}: {e}",
-            tmp_path.display(),
-            path.display()
-        ),
-    })?;
+    if let Err(err) = std::fs::rename(&tmp_path, path) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(UpdaterError::Io {
+            detail: format!(
+                "failed to rename {} into {}: {err}",
+                tmp_path.display(),
+                path.display()
+            ),
+        });
+    }
+    sync_parent_dir(parent)?;
+    Ok(())
+}
+
+fn sync_parent_dir(parent: &Path) -> Result<(), UpdaterError> {
+    #[cfg(unix)]
+    {
+        let dir = std::fs::File::open(parent).map_err(|e| UpdaterError::Io {
+            detail: format!("failed to open parent dir {}: {e}", parent.display()),
+        })?;
+        dir.sync_all().map_err(|e| UpdaterError::Io {
+            detail: format!("failed to sync parent dir {}: {e}", parent.display()),
+        })?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = parent;
+    }
     Ok(())
 }
 
@@ -94,11 +125,10 @@ pub fn read_bounded_bytes(path: &Path, max_bytes: u64) -> Result<Vec<u8>, Update
         });
     }
 
-    let mut opts = OpenOptions::new();
-    opts.read(true);
-    apply_nofollow_flags(&mut opts);
-    let file = opts.open(path).map_err(|e| UpdaterError::Io {
-        detail: format!("failed to open {}: {e}", path.display()),
+    let file = open_nofollow_file(path, OpenNofollowAccess::ReadOnly, 0o600).map_err(|e| {
+        UpdaterError::PathUnsafe {
+            detail: e.to_string(),
+        }
     })?;
     let fd_meta = file.metadata().map_err(|e| UpdaterError::Io {
         detail: format!("failed to stat opened {}: {e}", path.display()),
@@ -172,9 +202,22 @@ pub fn ensure_safe_dir(dir: &Path) -> Result<(), UpdaterError> {
                 }
             }
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                std::fs::create_dir(&acc).map_err(|e| UpdaterError::Io {
-                    detail: format!("failed to create state dir {}: {e}", acc.display()),
-                })?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::DirBuilderExt as _;
+                    std::fs::DirBuilder::new()
+                        .mode(0o700)
+                        .create(&acc)
+                        .map_err(|e| UpdaterError::Io {
+                            detail: format!("failed to create state dir {}: {e}", acc.display()),
+                        })?;
+                }
+                #[cfg(not(unix))]
+                {
+                    std::fs::create_dir(&acc).map_err(|e| UpdaterError::Io {
+                        detail: format!("failed to create state dir {}: {e}", acc.display()),
+                    })?;
+                }
             }
             Err(err) => {
                 return Err(UpdaterError::Io {
@@ -183,15 +226,94 @@ pub fn ensure_safe_dir(dir: &Path) -> Result<(), UpdaterError> {
             }
         }
     }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+        let (my_uid, _) = grdr_peer_os::unix_peer::current_effective_ids().ok_or_else(|| {
+            UpdaterError::PathUnsafe {
+                detail: "unable to determine effective UID for state dir ownership check"
+                    .to_string(),
+            }
+        })?;
+        let dir_file = open_nofollow_dir(dir).map_err(|e| UpdaterError::PathUnsafe {
+            detail: e.to_string(),
+        })?;
+        let leaf_meta = dir_file.metadata().map_err(|e| UpdaterError::Io {
+            detail: format!("failed to inspect state dir {}: {e}", dir.display()),
+        })?;
+        if leaf_meta.uid() != my_uid {
+            return Err(UpdaterError::PathUnsafe {
+                detail: format!("state dir {} owned by unexpected uid", dir.display()),
+            });
+        }
+        dir_file
+            .set_permissions(std::fs::Permissions::from_mode(0o700))
+            .map_err(|e| UpdaterError::Io {
+                detail: format!("failed to enforce 0o700 mode on {}: {e}", dir.display()),
+            })?;
+        let re_meta = dir_file.metadata().map_err(|e| UpdaterError::Io {
+            detail: format!("failed to re-stat state dir {}: {e}", dir.display()),
+        })?;
+        if (re_meta.mode() & 0o077) != 0 || is_symlink_or_reparse(&re_meta) {
+            return Err(UpdaterError::PathUnsafe {
+                detail: format!("state dir {} permissions are not private", dir.display()),
+            });
+        }
+    }
+    #[cfg(windows)]
+    {
+        grdr_peer_os::fs_open::create_private_dir_all(dir).map_err(|e| {
+            UpdaterError::PathUnsafe {
+                detail: e.to_string(),
+            }
+        })?;
+    }
     Ok(())
 }
 
-/// Verify `candidate_path` resolves strictly inside `canonical_root` with zero symlinks.
+/// Check without following symlinks or reparse points whether `path` exists cleanly.
+pub fn path_exists_nofollow(path: &Path) -> Result<bool, UpdaterError> {
+    reject_parent_traversal(path)?;
+    reject_network_or_device_prefix(path)?;
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) => {
+            if is_symlink_or_reparse(&meta) {
+                return Err(UpdaterError::PathUnsafe {
+                    detail: format!("refusing symlinked path {}", path.display()),
+                });
+            }
+            Ok(true)
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(err) => Err(UpdaterError::Io {
+            detail: format!("failed to inspect {}: {err}", path.display()),
+        }),
+    }
+}
+
+/// Verify `candidate_path` is confined lexically inside `canonical_root` BEFORE resolving via `canonicalize`.
 pub fn confine_path_under_root(
     canonical_root: &Path,
     candidate_path: &Path,
 ) -> Result<PathBuf, UpdaterError> {
     reject_parent_traversal(candidate_path)?;
+    reject_network_or_device_prefix(candidate_path)?;
+    if !candidate_path.is_absolute() {
+        return Err(UpdaterError::PathUnsafe {
+            detail: format!("relative path disallowed in {}", candidate_path.display()),
+        });
+    }
+    let norm_root = normalize_lexical_components(canonical_root);
+    let norm_cand = normalize_lexical_components(candidate_path);
+    if norm_root.is_empty() || !norm_cand.starts_with(&norm_root) {
+        return Err(UpdaterError::PathUnsafe {
+            detail: format!(
+                "path {} falls outside confined root {}",
+                candidate_path.display(),
+                canonical_root.display()
+            ),
+        });
+    }
     ensure_not_symlink(candidate_path)?;
     let canonical_target =
         std::fs::canonicalize(candidate_path).map_err(|e| UpdaterError::PathUnsafe {
@@ -210,6 +332,74 @@ pub fn confine_path_under_root(
         });
     }
     Ok(canonical_target)
+}
+
+fn reject_network_or_device_prefix(path: &Path) -> Result<(), UpdaterError> {
+    let raw = path.to_string_lossy();
+    if raw.contains('\0') || raw.starts_with("\\\\") || raw.starts_with("//") {
+        let is_verbatim_disk = path.components().next().is_some_and(|c| {
+            matches!(
+                c,
+                Component::Prefix(p) if matches!(p.kind(), Prefix::VerbatimDisk(_))
+            )
+        });
+        if !is_verbatim_disk {
+            return Err(UpdaterError::PathUnsafe {
+                detail: format!(
+                    "UNC or network path prefix disallowed in {}",
+                    path.display()
+                ),
+            });
+        }
+    }
+    for comp in path.components() {
+        if let Component::Prefix(pfx) = comp
+            && matches!(
+                pfx.kind(),
+                Prefix::UNC(..) | Prefix::VerbatimUNC(..) | Prefix::DeviceNS(..)
+            )
+        {
+            return Err(UpdaterError::PathUnsafe {
+                detail: format!("UNC or device prefix disallowed in {}", path.display()),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn normalize_lexical_components(path: &Path) -> Vec<String> {
+    let mut parts = Vec::new();
+    for comp in path.components() {
+        match comp {
+            Component::Prefix(pfx) => {
+                let raw = pfx.as_os_str().to_string_lossy();
+                let clean = raw.strip_prefix(r"\\?\").unwrap_or(&raw);
+                parts.push(clean.to_ascii_lowercase());
+            }
+            Component::RootDir => parts.push("/".to_string()),
+            Component::CurDir => {}
+            Component::ParentDir => parts.push("..".to_string()),
+            Component::Normal(seg) => {
+                let text = seg.to_string_lossy();
+                if cfg!(windows) {
+                    parts.push(text.to_ascii_lowercase());
+                } else {
+                    parts.push(text.into_owned());
+                }
+            }
+        }
+    }
+    if parts.len() >= 3
+        && parts.first().map(String::as_str) == Some("/")
+        && parts.get(1).map(String::as_str) == Some("private")
+        && matches!(
+            parts.get(2).map(String::as_str),
+            Some("var" | "tmp" | "etc")
+        )
+    {
+        parts.remove(1);
+    }
+    parts
 }
 
 /// Reject `..` parent directory segments cleanly.
@@ -251,81 +441,6 @@ fn is_symlink_or_reparse(meta: &std::fs::Metadata) -> bool {
     #[cfg(not(windows))]
     {
         meta.file_type().is_symlink()
-    }
-}
-
-fn apply_nofollow_flags(opts: &mut OpenOptions) {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt as _;
-        opts.custom_flags(unix_o_nofollow());
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::OpenOptionsExt as _;
-        opts.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
-    }
-}
-
-#[cfg(unix)]
-const fn unix_o_nofollow() -> i32 {
-    #[cfg(any(
-        target_os = "macos",
-        target_os = "ios",
-        target_os = "tvos",
-        target_os = "watchos",
-        target_os = "freebsd",
-        target_os = "dragonfly",
-        target_os = "openbsd"
-    ))]
-    {
-        0x0100
-    }
-    #[cfg(target_os = "netbsd")]
-    {
-        0x0001_0000
-    }
-    #[cfg(all(
-        any(target_os = "linux", target_os = "android"),
-        any(
-            target_arch = "aarch64",
-            target_arch = "arm",
-            target_arch = "powerpc",
-            target_arch = "powerpc64",
-            target_arch = "m68k"
-        )
-    ))]
-    {
-        0o100_000
-    }
-    #[cfg(all(
-        any(target_os = "linux", target_os = "android"),
-        any(
-            target_arch = "mips",
-            target_arch = "mips64",
-            target_arch = "sparc",
-            target_arch = "sparc64"
-        )
-    ))]
-    {
-        0x20000
-    }
-    #[cfg(all(
-        any(target_os = "linux", target_os = "android"),
-        not(any(
-            target_arch = "aarch64",
-            target_arch = "arm",
-            target_arch = "powerpc",
-            target_arch = "powerpc64",
-            target_arch = "m68k",
-            target_arch = "mips",
-            target_arch = "mips64",
-            target_arch = "sparc",
-            target_arch = "sparc64"
-        ))
-    ))]
-    {
-        0o400_000
     }
 }
 

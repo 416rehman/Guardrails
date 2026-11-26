@@ -18,7 +18,7 @@ use crate::rfc9421::{
 
 pub use crate::auth_certs::{
     KeyUse, MAX_RESPONSE_CERT_LIFETIME_S, MAX_TRANSPORT_CERT_LIFETIME_S, RequestKind,
-    ResponseKeyCertificate, TransportKeyCertificate,
+    ResponseKeyCertificate, TransportKeyCertificate, max_response_cert_lifetime_s,
 };
 pub use crate::rfc9421::{
     Rfc9421RequestHeaders, VerifiedResponseMeta, compute_rfc9530_sha256_digest,
@@ -65,17 +65,39 @@ pub struct ResponseVerifier {
     server_anchor_mono_ms: u64,
 }
 
+impl FleetTrustAnchor {
+    /// Validate non-empty deployment id and pinned 32-byte Ed25519 fleet keys.
+    pub fn validate(&self) -> Result<(), UplinkError> {
+        if self.deployment_id.trim().is_empty() || self.fleet_public_keys.is_empty() {
+            return Err(UplinkError::AckUnverified {
+                reason: "fleet trust anchor requires non-empty deployment_id and pinned keys"
+                    .to_string(),
+            });
+        }
+        for (key_id, pub_b64) in &self.fleet_public_keys {
+            validate_rfc9421_token("fleet_key_id", key_id)?;
+            let raw = STANDARD
+                .decode(pub_b64)
+                .map_err(|_| UplinkError::AckUnverified {
+                    reason: format!("invalid base64 pinned fleet key '{key_id}'"),
+                })?;
+            if raw.len() != 32 {
+                return Err(UplinkError::AckUnverified {
+                    reason: format!("pinned fleet key '{key_id}' must be 32 bytes"),
+                });
+            }
+        }
+        Ok(())
+    }
+}
+
 impl EphemeralTransportSigner {
     /// Construct a per-epoch uplink signer enforcing exact `key_id` and public-key match.
     pub fn new(
         transport_keypair: SigningKeypair,
         cert: TransportKeyCertificate,
     ) -> Result<Self, UplinkError> {
-        if cert.use_kind != KeyUse::Transport {
-            return Err(UplinkError::CertificateInvalid {
-                reason: "ephemeral signer requires KeyUse::Transport certificate".to_string(),
-            });
-        }
+        cert.validate(None)?;
         if cert.transport_key_id != transport_keypair.key_id()
             || cert.transport_public_key_b64 != transport_keypair.public_key_b64()
         {
@@ -84,8 +106,6 @@ impl EphemeralTransportSigner {
                     .to_string(),
             });
         }
-        validate_rfc9421_token("device_id", &cert.device_id)?;
-        validate_rfc9421_token("transport_key_id", &cert.transport_key_id)?;
         let cert_b64 = cert.to_header_b64()?;
         Ok(Self {
             transport_keypair,
@@ -250,6 +270,7 @@ impl ResponseVerifier {
             || expires_s.saturating_sub(created_s) > MAX_RESPONSE_SIGNATURE_TTL_S
             || monotonic_now_s > expires_s.saturating_add(MAX_CLOCK_SKEW_S)
             || created_s < monotonic_now_s.saturating_sub(MAX_CLOCK_SKEW_S)
+            || created_s > monotonic_now_s.saturating_add(MAX_CLOCK_SKEW_S)
         {
             return Err(UplinkError::AckUnverified {
                 reason: "response signature outside valid created/expires bounds".to_string(),
@@ -257,13 +278,35 @@ impl ResponseVerifier {
         }
 
         let validated_new_cert = match response.response_cert {
-            Some(cert) => Some(self.validate_cert_without_mutating(cert)?),
+            Some(cert) => {
+                let checked = self.validate_cert_without_mutating(cert)?;
+                let effective_now_s = monotonic_now_s.max(created_s);
+                if effective_now_s < checked.not_before_unix_s
+                    || effective_now_s > checked.not_after_unix_s
+                {
+                    return Err(UplinkError::AckUnverified {
+                        reason: format!(
+                            "ResponseKeyCertificate '{}' is outside validity window",
+                            checked.response_key_id
+                        ),
+                    });
+                }
+                if checked.response_key_id != keyid {
+                    return Err(UplinkError::AckUnverified {
+                        reason: format!(
+                            "ResponseKeyCertificate keyid '{}' does not match signer '{keyid}'",
+                            checked.response_key_id
+                        ),
+                    });
+                }
+                Some(checked)
+            }
             None => None,
         };
 
         let signing_cert = match validated_new_cert.as_ref() {
-            Some(cert) if cert.response_key_id == keyid => cert,
-            _ => self
+            Some(cert) => cert,
+            None => self
                 .cached_certs
                 .get(&keyid)
                 .ok_or_else(|| UplinkError::AckUnverified {
@@ -320,7 +363,7 @@ impl ResponseVerifier {
         if let Some(new_cert) = validated_new_cert {
             self.commit_cert_to_cache(new_cert);
         }
-        if created_s > self.server_time_anchor_s {
+        if created_s > monotonic_now_s {
             self.server_time_anchor_s = created_s;
             self.server_anchor_mono_ms = now_mono_ms;
         }
@@ -336,6 +379,14 @@ impl ResponseVerifier {
         &self,
         cert: &ResponseKeyCertificate,
     ) -> Result<ResponseKeyCertificate, UplinkError> {
+        if cert.cert_version != 1 {
+            return Err(UplinkError::AckUnverified {
+                reason: format!(
+                    "unsupported ResponseKeyCertificate version {}",
+                    cert.cert_version
+                ),
+            });
+        }
         if cert.deployment_id != self.anchor.deployment_id {
             return Err(UplinkError::AckUnverified {
                 reason: format!(
@@ -389,13 +440,14 @@ impl ResponseVerifier {
             reason: "ResponseKeyCertificate fleet signature invalid".to_string(),
         })?;
 
+        let max_lifetime_s = max_response_cert_lifetime_s();
         if cert.not_after_unix_s <= cert.not_before_unix_s
-            || cert.not_after_unix_s.saturating_sub(cert.not_before_unix_s)
-                > MAX_RESPONSE_CERT_LIFETIME_S
+            || cert.not_after_unix_s.saturating_sub(cert.not_before_unix_s) > max_lifetime_s
         {
             return Err(UplinkError::AckUnverified {
-                reason: "ResponseKeyCertificate lifetime invalid or exceeds 7-day maximum"
-                    .to_string(),
+                reason: format!(
+                    "ResponseKeyCertificate lifetime invalid or exceeds {max_lifetime_s}s maximum"
+                ),
             });
         }
         Ok(cert.clone())

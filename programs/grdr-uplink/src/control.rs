@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{OfflineReason, UplinkError};
 use crate::staging_fs::{
-    ensure_ancestors_safe, ensure_not_symlink_if_exists, open_part_nofollow_append,
-    open_regular_nofollow_read,
+    ensure_private_staging_dir, open_part_nofollow_append, open_regular_nofollow_read,
+    set_private_file_handle_permissions, sync_parent_dir,
 };
 
 /// Initial `Subscribe` heartbeat interval (25s).
@@ -249,8 +249,7 @@ impl OpaqueArtifactStager {
     /// Compute deterministic resume offset for an existing non-symlink `.part` file.
     pub fn resume_offset(&self, expected_sha256: &str) -> Result<u64, UplinkError> {
         validate_sha256_hex(expected_sha256)?;
-        ensure_ancestors_safe(&self.staging_root)?;
-        ensure_not_symlink_if_exists(&self.staging_root)?;
+        ensure_private_staging_dir(&self.staging_root)?;
         let part_path = self.part_path(expected_sha256);
         if !part_path.exists() {
             return Ok(0);
@@ -268,11 +267,7 @@ impl OpaqueArtifactStager {
         declared_max_bytes: u64,
     ) -> Result<u64, UplinkError> {
         validate_sha256_hex(expected_sha256)?;
-        ensure_ancestors_safe(&self.staging_root)?;
-        std::fs::create_dir_all(&self.staging_root).map_err(|e| UplinkError::Io {
-            detail: format!("failed to create staging root: {e}"),
-        })?;
-        ensure_not_symlink_if_exists(&self.staging_root)?;
+        ensure_private_staging_dir(&self.staging_root)?;
 
         let part_path = self.part_path(expected_sha256);
         let (mut file, fd_meta) = open_part_nofollow_append(&part_path)?;
@@ -309,8 +304,12 @@ impl OpaqueArtifactStager {
         declared_max_bytes: u64,
     ) -> Result<StagedArtifact, UplinkError> {
         validate_sha256_hex(expected_sha256)?;
-        ensure_ancestors_safe(&self.staging_root)?;
-        ensure_not_symlink_if_exists(&self.staging_root)?;
+        if declared_max_bytes == 0 {
+            return Err(UplinkError::StagingError {
+                detail: "declared_max_bytes must be non-zero".to_string(),
+            });
+        }
+        ensure_private_staging_dir(&self.staging_root)?;
         let part_path = self.part_path(expected_sha256);
         let (mut file, _fd_meta) = open_regular_nofollow_read(&part_path)?;
 
@@ -337,6 +336,10 @@ impl OpaqueArtifactStager {
                 hasher.update(chunk);
             }
         }
+        set_private_file_handle_permissions(&file, &part_path)?;
+        let part_meta = file.metadata().map_err(|e| UplinkError::Io {
+            detail: format!("failed to inspect verified staged handle: {e}"),
+        })?;
         drop(file);
 
         let actual_hex = hasher.finalize_hex();
@@ -349,13 +352,21 @@ impl OpaqueArtifactStager {
         }
 
         let final_path = self.final_path(expected_sha256);
-        ensure_not_symlink_if_exists(&final_path)?;
+        crate::staging_fs::ensure_not_symlink_if_exists(&final_path)?;
         std::fs::rename(&part_path, &final_path).map_err(|e| UplinkError::Io {
             detail: format!(
                 "failed to promote staged artifact {}: {e}",
                 final_path.display()
             ),
         })?;
+        let (promoted_file, promoted_meta) = open_regular_nofollow_read(&final_path)?;
+        if promoted_meta.len() != part_meta.len() {
+            return Err(UplinkError::StagingError {
+                detail: "promoted staged artifact length mismatch".to_string(),
+            });
+        }
+        set_private_file_handle_permissions(&promoted_file, &final_path)?;
+        sync_parent_dir(&final_path)?;
         Ok(StagedArtifact {
             path: final_path,
             expected_sha256: expected_sha256.to_string(),

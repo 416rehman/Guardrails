@@ -7,19 +7,19 @@ license = "Apache-2.0"
 [package.metadata.grdr]
 layer = 4
 privilege = "untrusted"
-surface = "internal"
-renders = "agent"
+surface = "cli"
+renders = "text,json"
 
 [dependencies]
 clap = { workspace = true }
-grdr-agents = { workspace = true }
-grdr-core = { workspace = true }
 grdr-crypto = { workspace = true }
-grdr-model = { workspace = true }
+grdr-fastpath = { workspace = true }
+grdr-ipc-os = { workspace = true }
+grdr-os-clock = { workspace = true }
+grdr-peer-os = { workspace = true }
+grdr-wire = { workspace = true, default-features = false }
 jiff = { workspace = true }
-reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "charset"] }
-serde_json = { workspace = true }
-uuid = { workspace = true }
+thiserror = { workspace = true }
 
 [lints]
 workspace = true

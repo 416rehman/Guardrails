@@ -4,21 +4,30 @@
 //! Dual-root TUF + DSSE verification, signed artifact typestate witness, CDN lag
 //! gating, and compatibility range verification (`D-22`, `D-36`, `D-37`, `D-71`).
 
-use grdr_compat::{
-    CompatMatrix, NegotiationOutcome, NegotiationRequest, ProtocolCapability, SemVer,
-    negotiate_compatibility,
-};
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
+
+use grdr_compat::{CompatMatrix, ProtocolCapability, SemVer};
+use grdr_crypto::SigningKeypair;
 use grdr_model::api::TrustedKeyInfo;
 use grdr_os_clock::Clock;
 use grdr_update::{
     DsseEnvelope, DsseLimits, FreshnessStatement, PackKind, RootMetadata, SignedMetadata,
     SnapshotMetadata, TargetsMetadata, TimestampMetadata, TufRole, TufRootKind, UpdateTrust,
-    canonical_sha256, verify_dsse_envelope_with_limits,
+    canonical_sha256,
 };
-use serde::Deserialize;
 
+use crate::dsse_guard::{decode_ed25519_pubkey_b64_strict, verify_dsse_envelope_strict};
 use crate::error::UpdaterError;
-use crate::p7_delta::{enforce_p7_json_purity, max_bytes_for_pack, validate_safe_target_path};
+use crate::p7_delta::{
+    SignedPackCompatHeader, enforce_p7_json_purity, max_bytes_for_pack, validate_safe_target_path,
+};
+use crate::tuf_journal::{
+    TufJournalState, check_persisted_versions, load_or_init_tuf_state, persist_tuf_journal,
+    record_persisted_versions, verify_freshness_statement_strict,
+};
+
+pub use crate::p7_delta::{ComponentVersionCheck, check_bundle_compatibility};
 
 /// Maximum allowed CDN replication lag tolerance before refusing stale manifests (24 hours).
 pub const DEFAULT_MAX_CDN_LAG_S: i64 = 86_400;
@@ -31,22 +40,6 @@ const DEFAULT_HOST_CAPABILITIES: [ProtocolCapability; 6] = [
     ProtocolCapability::Ocsf19Export,
     ProtocolCapability::StepUpApproval,
 ];
-
-/// Component version pair extracted from verified signed metadata/payloads.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
-pub struct ComponentVersionCheck {
-    pub component: String,
-    pub version: SemVer,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SignedPackCompatHeader {
-    #[serde(default)]
-    components: Vec<ComponentVersionCheck>,
-    #[serde(default)]
-    required_capabilities: Vec<ProtocolCapability>,
-}
 
 /// CDN replication freshness classification relative to trusted clock.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -89,6 +82,12 @@ pub struct StagedUpdateBundle<'a> {
     pub compat_matrix: &'a CompatMatrix,
 }
 
+struct VerifierPersistence {
+    state_root: PathBuf,
+    signer: SigningKeypair,
+    state: TufJournalState,
+}
+
 /// Dual-root TUF + DSSE + compatibility gate verifier (`ARCH-004`).
 pub struct DualRootVerifier {
     trust: UpdateTrust,
@@ -97,6 +96,7 @@ pub struct DualRootVerifier {
     max_cdn_lag_s: i64,
     dsse_limits: DsseLimits,
     host_capabilities: Vec<ProtocolCapability>,
+    persistence: Option<VerifierPersistence>,
 }
 
 impl VerifiedUpdateArtifact {
@@ -159,6 +159,31 @@ impl DualRootVerifier {
         Self::with_timestamp(project_root, deployment_root, now)
     }
 
+    /// Construct and persist TUF root + monotonic metadata version watermarks under `state_root`.
+    pub fn open_or_init(
+        state_root: &Path,
+        signer: &SigningKeypair,
+        project_root: SignedMetadata<RootMetadata>,
+        deployment_root: Option<SignedMetadata<RootMetadata>>,
+        clock: &dyn Clock,
+    ) -> Result<Self, UpdaterError> {
+        let now = clock.now_wall().map_err(|e| UpdaterError::ClockFailed {
+            detail: e.to_string(),
+        })?;
+        let state = load_or_init_tuf_state(state_root, signer, project_root, deployment_root)?;
+        let mut verifier = Self::with_timestamp(
+            state.project_root.clone(),
+            state.deployment_root.clone(),
+            now,
+        )?;
+        verifier.persistence = Some(VerifierPersistence {
+            state_root: state_root.to_path_buf(),
+            signer: signer.clone(),
+            state,
+        });
+        Ok(verifier)
+    }
+
     /// Construct deterministically at explicit `jiff::Timestamp`.
     pub fn with_timestamp(
         project_root: SignedMetadata<RootMetadata>,
@@ -185,6 +210,7 @@ impl DualRootVerifier {
             max_cdn_lag_s: DEFAULT_MAX_CDN_LAG_S,
             dsse_limits: DsseLimits::default(),
             host_capabilities: DEFAULT_HOST_CAPABILITIES.to_vec(),
+            persistence: None,
         })
     }
 
@@ -202,7 +228,7 @@ impl DualRootVerifier {
         self
     }
 
-    /// Perform TUF root/chain rotation cleanly via `UpdateTrust`.
+    /// Perform TUF root/chain rotation cleanly via `UpdateTrust`, persisting signed state if enabled.
     pub fn rotate_root(
         &mut self,
         kind: TufRootKind,
@@ -210,14 +236,21 @@ impl DualRootVerifier {
         now: jiff::Timestamp,
     ) -> Result<(), UpdaterError> {
         let next_meta = next_root.signed.clone();
-        self.trust.rotate_root(kind, next_root, now).map_err(|e| {
-            UpdaterError::TufVerification {
+        self.trust
+            .rotate_root(kind, next_root.clone(), now)
+            .map_err(|e| UpdaterError::TufVerification {
                 detail: e.to_string(),
-            }
-        })?;
+            })?;
         match kind {
             TufRootKind::Project => self.project_root = next_meta,
             TufRootKind::Deployment => self.deployment_root = Some(next_meta),
+        }
+        if let Some(pers) = &mut self.persistence {
+            match kind {
+                TufRootKind::Project => pers.state.project_root = next_root,
+                TufRootKind::Deployment => pers.state.deployment_root = Some(next_root),
+            }
+            persist_tuf_journal(&pers.state_root, &pers.signer, &pers.state)?;
         }
         Ok(())
     }
@@ -237,7 +270,6 @@ impl DualRootVerifier {
             });
         }
         enforce_pack_authority(bundle.root_kind, bundle.pack_kind)?;
-        let cdn_status = self.assess_cdn_lag(bundle.snapshot_published_unix_s, now.as_second())?;
 
         let max_bytes = max_bytes_for_pack(bundle.pack_kind);
         let actual_bytes = u64::try_from(bundle.artifact_bytes.len()).unwrap_or(u64::MAX);
@@ -247,6 +279,17 @@ impl DualRootVerifier {
                 actual_bytes,
                 max_bytes,
             });
+        }
+
+        if let Some(pers) = &self.persistence {
+            check_persisted_versions(
+                &pers.state,
+                bundle.root_kind,
+                bundle.timestamp.signed.version,
+                bundle.snapshot.signed.version,
+                bundle.targets.signed.version,
+                bundle.binaries_targets.as_ref().map(|b| b.signed.version),
+            )?;
         }
 
         match bundle.root_kind {
@@ -273,6 +316,42 @@ impl DualRootVerifier {
             }
         }
 
+        let effective_published_s = if let Some(freshness) = bundle.freshness {
+            let dep_root =
+                self.deployment_root
+                    .as_ref()
+                    .ok_or_else(|| UpdaterError::TufVerification {
+                        detail: "FreshnessStatement requires pinned deployment root".to_string(),
+                    })?;
+            verify_freshness_statement_strict(
+                dep_root,
+                freshness,
+                &bundle.snapshot.signed,
+                self.project_root.version,
+                now,
+            )?;
+            let signed_s = freshness.signed.issued_at.as_second();
+            if signed_s.abs_diff(bundle.snapshot_published_unix_s) > 300 {
+                return Err(UpdaterError::StaleOrRollback {
+                    detail: "snapshot_published_unix_s disagrees with signed FreshnessStatement"
+                        .to_string(),
+                });
+            }
+            signed_s
+        } else {
+            bundle.snapshot_published_unix_s
+        };
+
+        if effective_published_s > bundle.snapshot.signed.expires.as_second()
+            || effective_published_s > bundle.timestamp.signed.expires.as_second()
+        {
+            return Err(UpdaterError::StaleOrRollback {
+                detail: "snapshot published timestamp exceeds signed snapshot/timestamp expiration"
+                    .to_string(),
+            });
+        }
+        let cdn_status = self.assess_cdn_lag(effective_published_s, now.as_second())?;
+
         let target_meta = if bundle.pack_kind == PackKind::Binary {
             bundle
                 .binaries_targets
@@ -296,15 +375,13 @@ impl DualRootVerifier {
             })?;
         let (trusted_keys, threshold) =
             self.trusted_keys_for_role(bundle.root_kind, target_descriptor.role)?;
-        verify_dsse_envelope_with_limits(
+        verify_dsse_envelope_strict(
             bundle.dsse_envelope,
+            bundle.pack_kind,
             &trusted_keys,
             threshold,
             &self.dsse_limits,
-        )
-        .map_err(|e| UpdaterError::TufVerification {
-            detail: format!("DSSE limit verification failed: {e}"),
-        })?;
+        )?;
 
         let verified_target = self
             .trust
@@ -342,18 +419,28 @@ impl DualRootVerifier {
                     }
                 })?;
             let mut specs = signed_compat.components;
-            if !specs.iter().any(|c| c.component == bundle.component_name) {
-                specs.push(ComponentVersionCheck {
-                    component: bundle.component_name.to_string(),
-                    version: parsed_target_ver,
-                });
-            }
+            specs.push(ComponentVersionCheck {
+                component: bundle.component_name.to_string(),
+                version: parsed_target_ver,
+            });
             check_bundle_compatibility(
                 bundle.compat_matrix,
                 &specs,
                 &signed_compat.required_capabilities,
                 &self.host_capabilities,
             )?;
+        }
+
+        if let Some(pers) = &mut self.persistence {
+            record_persisted_versions(
+                &mut pers.state,
+                bundle.root_kind,
+                bundle.timestamp.signed.version,
+                bundle.snapshot.signed.version,
+                bundle.targets.signed.version,
+                bundle.binaries_targets.as_ref().map(|b| b.signed.version),
+            );
+            persist_tuf_journal(&pers.state_root, &pers.signer, &pers.state)?;
         }
 
         Ok(VerifiedUpdateArtifact {
@@ -417,11 +504,33 @@ impl DualRootVerifier {
             .ok_or_else(|| UpdaterError::TufVerification {
                 detail: format!("missing role {:?} in TUF root", role),
             })?;
+        let mut seen_kids = BTreeSet::new();
+        let mut seen_pks = BTreeSet::new();
         let mut keys = Vec::new();
         for key_id in &role_def.key_ids {
+            if !seen_kids.insert(key_id.as_str()) {
+                return Err(UpdaterError::TufVerification {
+                    detail: format!("duplicate key_id '{key_id}' in role {role:?}"),
+                });
+            }
             if let Some(info) = root.keys.get(key_id) {
+                let raw_pk = decode_ed25519_pubkey_b64_strict(&info.public_key_b64)?;
+                if !seen_pks.insert(raw_pk) {
+                    return Err(UpdaterError::TufVerification {
+                        detail: format!("duplicate Ed25519 public key in role {role:?}"),
+                    });
+                }
                 keys.push(info.clone());
             }
+        }
+        let key_count = u32::try_from(keys.len()).unwrap_or(u32::MAX);
+        if role_def.threshold == 0 || key_count < role_def.threshold {
+            return Err(UpdaterError::TufVerification {
+                detail: format!(
+                    "role {role:?} unique key count {key_count} below threshold {}",
+                    role_def.threshold
+                ),
+            });
         }
         Ok((keys, role_def.threshold))
     }
@@ -438,67 +547,4 @@ pub fn enforce_pack_authority(
         });
     }
     Ok(())
-}
-
-/// Gate activation against `grdr-compat` ranges and non-tautological `host_capabilities` (`D-71`).
-pub fn check_bundle_compatibility(
-    matrix: &CompatMatrix,
-    specs: &[ComponentVersionCheck],
-    required_capabilities: &[ProtocolCapability],
-    host_capabilities: &[ProtocolCapability],
-) -> Result<Vec<String>, UpdaterError> {
-    for req_cap in required_capabilities {
-        if !host_capabilities.contains(req_cap) {
-            return Err(UpdaterError::CompatibilityRejected {
-                component: specs
-                    .first()
-                    .map_or_else(String::new, |s| s.component.clone()),
-                code: "GRDR-COMPAT-0003".to_string(),
-                reason: format!("host missing bundle required capability {:?}", req_cap),
-            });
-        }
-    }
-
-    let mut out_warnings = Vec::new();
-    for spec in specs {
-        let req = NegotiationRequest {
-            component: spec.component.clone(),
-            client_version: spec.version,
-            advertised_capabilities: host_capabilities.to_vec(),
-        };
-        match negotiate_compatibility(matrix, &req) {
-            NegotiationOutcome::Compatible { .. } => {}
-            NegotiationOutcome::CompatibleWithWarnings { warnings, .. } => {
-                if let Some(entry) = matrix
-                    .entries
-                    .iter()
-                    .find(|e| e.component == spec.component)
-                {
-                    for cap in &entry.required_capabilities {
-                        if !host_capabilities.contains(cap) {
-                            return Err(UpdaterError::CompatibilityRejected {
-                                component: spec.component.clone(),
-                                code: "GRDR-COMPAT-0003".to_string(),
-                                reason: format!(
-                                    "host missing matrix required capability {:?}",
-                                    cap
-                                ),
-                            });
-                        }
-                    }
-                }
-                for w in warnings {
-                    out_warnings.push(format!("{}: {w}", spec.component));
-                }
-            }
-            NegotiationOutcome::Incompatible { code, reason, .. } => {
-                return Err(UpdaterError::CompatibilityRejected {
-                    component: spec.component.clone(),
-                    code: code.to_string(),
-                    reason,
-                });
-            }
-        }
-    }
-    Ok(out_warnings)
 }

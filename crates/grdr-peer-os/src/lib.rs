@@ -3,7 +3,18 @@
 #![deny(clippy::arithmetic_side_effects)]
 
 pub mod decision;
+pub mod fs_open;
 pub mod path_check;
+mod scm_probe;
+pub mod unix_path;
+pub mod unix_peer;
+#[cfg(windows)]
+mod win_acl;
+pub mod win_peer;
+#[cfg(windows)]
+mod win_proc;
+#[cfg(windows)]
+mod win_token;
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -206,17 +217,37 @@ fn read_os_exe_identity(pid: u32) -> Result<ExeIdentity, PeerError> {
     })
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "macos")]
+fn read_os_peer_observation(pid: u32) -> Result<PeerObservation, PeerError> {
+    unix_peer::read_macos_peer_observation(pid)
+}
+
+#[cfg(target_os = "macos")]
+fn read_os_exe_identity(pid: u32) -> Result<ExeIdentity, PeerError> {
+    unix_peer::read_macos_exe_identity(pid)
+}
+
+#[cfg(target_os = "windows")]
+fn read_os_peer_observation(pid: u32) -> Result<PeerObservation, PeerError> {
+    win_proc::read_windows_peer_observation(pid)
+}
+
+#[cfg(target_os = "windows")]
+fn read_os_exe_identity(pid: u32) -> Result<ExeIdentity, PeerError> {
+    win_proc::read_windows_exe_identity(pid)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 fn read_os_peer_observation(pid: u32) -> Result<PeerObservation, PeerError> {
     Err(PeerError::Unverifiable(format!(
-        "kernel peer handle reader for pid {pid} requires an active OS IPC handle"
+        "kernel peer handle reader for pid {pid} requires a Tier-1 OS backend"
     )))
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 fn read_os_exe_identity(pid: u32) -> Result<ExeIdentity, PeerError> {
     Err(PeerError::Unverifiable(format!(
-        "executable identity lookup for pid {pid} requires an active OS IPC handle"
+        "executable identity lookup for pid {pid} requires a Tier-1 OS backend"
     )))
 }
 
@@ -433,7 +464,7 @@ mod tests {
             Err(PeerError::PidReuse)
         );
         assert!(matches!(
-            collect_parent_chain(&reader2, 300, MAX_PARENT_CHAIN_DEPTH + 1),
+            collect_parent_chain(&reader2, 300, MAX_PARENT_CHAIN_DEPTH.saturating_add(1)),
             Err(PeerError::Unverifiable(_))
         ));
     }

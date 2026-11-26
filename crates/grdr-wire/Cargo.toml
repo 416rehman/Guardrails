@@ -10,13 +10,23 @@ privilege = "none"
 surface = "public"
 renders = "none"
 
+[features]
+default = ["json-envelope"]
+json-envelope = ["dep:serde_json"]
+
 [dependencies]
 grdr-crypto = { workspace = true }
+grdr-fastpath = { workspace = true }
 grdr-model = { workspace = true }
+grdr-schema = { workspace = true }
 jiff = { workspace = true }
+prost = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
+serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

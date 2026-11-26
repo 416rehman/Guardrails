@@ -2,541 +2,513 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 #![deny(clippy::arithmetic_side_effects)]
 
-use std::io::{self, Read, Write};
-use std::path::PathBuf;
+//! Stateless, key-free policy evaluation child (`grdr-engine`).
+//! Receives `WireFrame` protobuf messages from `grdr-daemon` over inherited stdin/stdout pipes,
+//! maintains a bounded per-session `SessionRuleState` LRU map, and returns unsigned
+//! `EngineResultFrame` verdicts and authored records for daemon signing and spooling.
+
+mod session_store;
+
 use std::process::ExitCode;
+use std::time::Duration;
 
-use clap::{Parser, Subcommand};
-use jiff::Timestamp;
-use uuid::Uuid;
-
-use grdr_core::policy::{essentials_pack, evaluate_with_session};
-use grdr_core::session::SessionRuleState;
-use grdr_crypto::SigningKeypair;
+use clap::Parser;
+use grdr_core::policy::{
+    essentials_pack, evaluate_with_session, render_rule_cedar, validate_cedar_rule,
+};
+use grdr_ipc_os::inherited_stdio_pipe;
+use grdr_ipc_os::proto_io::ProtoIpcStream;
 use grdr_model::{
-    ActionAttempt, ActionClass, CodedError, ControlPoint, DecisionReceipt, Grant, KillSwitchState,
-    PolicyPack, SigningKeypairExt as _, TrustedKeyInfo, Verdict,
+    ActionAttempt, ActionClass, ControlPoint, DecisionReceipt, Grant, KillScope, KillSwitchState,
+    Mode, PolicyPack, Verdict,
 };
-use grdr_ports::{DecisionEnginePort, StorePort};
-use grdr_proto::{EngineCommand, EngineReply, EvaluateAttemptPayload, IpcMessage, VerdictReply};
-use grdr_store_local::LocalStore;
-use grdr_wire::{
-    MAX_FRAME_BYTES, ReplayWindow, WireEnvelope, decode_frame, encode_frame, generate_nonce,
-    sign_envelope,
+use grdr_os_clock::{Clock, SystemClock};
+use grdr_os_service::current_process_rss_bytes;
+use grdr_wire::frame::{
+    DEFAULT_INITIAL_CREDIT, IPC_FRAME_HEADER_LEN, IpcFrameError, WireFrame, WirePayload,
+    embedded_max_frame_bytes,
 };
+use grdr_wire::limits::embedded_limits;
+use grdr_wire::messages::{
+    BundleLoadFrame, EndpointServiceKind, EngineAuthoredRecord, EngineForwardFrame,
+    EngineResultFrame, HandoverStage, HeartbeatFrame, WireActionClass, WireControlPoint,
+    WireVerdict,
+};
+use grdr_wire::peer_auth::{
+    Evidence, OsPeerClaims, Profile, Refusal, ServerIdentityPolicy, accept,
+};
+use jiff::Timestamp;
+use thiserror::Error;
+
+use crate::session_store::{BoundedSessionMap, DEFAULT_MAX_ENGINE_SESSIONS};
+
+const DAEMON_HEARTBEAT_TIMEOUT_MS: u64 = 5_000;
+const CREDIT_REPLENISH_BATCH: u32 = DEFAULT_INITIAL_CREDIT / 2;
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+enum EngineError {
+    #[error("GRDR-ENGINE-0001: IPC framing error: {0}")]
+    IpcFrame(String),
+    #[error("GRDR-ENGINE-0002: inherited peer handshake rejected: {0}")]
+    PeerRejected(String),
+    #[error("GRDR-ENGINE-0003: invalid policy bundle payload: {0}")]
+    InvalidBundle(String),
+    #[error("GRDR-ENGINE-0004: invalid engine command sequence: {0}")]
+    ProtocolError(String),
+    #[error("GRDR-ENGINE-0005: daemon heartbeat watchdog timeout after {elapsed_ms} ms")]
+    DaemonHeartbeatLost { elapsed_ms: u64 },
+    #[error("GRDR-ENGINE-0006: engine self-test failed: {0}")]
+    SelfTestFailed(String),
+}
 
 #[derive(Debug, Parser)]
 #[command(
     name = "grdr-engine",
-    about = "Sandboxed Guardrails ADR standalone evaluation engine"
+    about = "Stateless Guardrails ADR policy evaluator"
 )]
-struct Cli {
-    #[arg(long, env = "GRDR_ENGINE_DATA_DIR")]
-    data_dir: Option<PathBuf>,
-
-    #[command(subcommand)]
-    command: SubcommandMode,
+struct Args {
+    #[arg(long)]
+    self_test: bool,
+    #[arg(long, default_value_t = DEFAULT_MAX_ENGINE_SESSIONS)]
+    max_sessions: usize,
+    #[arg(long, default_value = "local-endpoint")]
+    device_id: String,
 }
 
-#[derive(Debug, Subcommand)]
-enum SubcommandMode {
-    /// Read bounded grdr-wire IPC frames on stdin and emit signed replies on stdout
-    Stdio {
-        #[arg(long)]
-        peer_key_file: Option<PathBuf>,
-    },
-    /// Evaluate a single normalized action attempt and emit a signed DecisionReceipt JSON
-    Eval {
-        #[arg(long, default_value = "exec")]
-        action: String,
-        #[arg(long, default_value = "claude-code")]
-        agent: String,
-        #[arg(long)]
-        target: String,
-        #[arg(long, default_value = "sess-engine")]
-        session_id: String,
-    },
-    /// Print the engine verifying public key JSON
-    Keygen,
-}
-
-struct SandboxEngine {
+struct StatelessEngine {
+    default_device_id: String,
     packs: Vec<PolicyPack>,
     grants: Vec<Grant>,
     kill_switch: KillSwitchState,
-    session_state: SessionRuleState,
-    signing_key: SigningKeypair,
-    store: Option<LocalStore>,
-    signed_receipts: u64,
+    sessions: BoundedSessionMap,
+    epoch: u64,
+    last_daemon_hb_mono_ms: u64,
 }
 
-impl SandboxEngine {
-    fn open(data_dir: Option<PathBuf>) -> Result<Self, CodedError> {
-        let (signing_key, store, packs, grants, kill_switch) = match data_dir {
-            Some(dir) => {
-                let store = LocalStore::open(dir).map_err(CodedError::from)?;
-                let kp = store
-                    .load_or_create_signing_key()
-                    .map_err(CodedError::from)?;
-                let snapshot = StorePort::load_snapshot(&store)?;
-                match snapshot {
-                    Some(snap) => {
-                        let packs = if snap.packs.is_empty() {
-                            vec![essentials_pack()]
-                        } else {
-                            snap.packs
-                        };
-                        (kp, Some(store), packs, snap.grants, snap.kill_switch)
-                    }
-                    None => (
-                        kp,
-                        Some(store),
-                        vec![essentials_pack()],
-                        Vec::new(),
-                        KillSwitchState::Inactive,
-                    ),
-                }
-            }
-            None => {
-                let kp = SigningKeypair::generate().map_err(|e| {
-                    CodedError::new(
-                        "GRDR-ENGINE-0001",
-                        format!("Failed generating ephemeral keypair: {e}"),
-                        "Check OS entropy or pass --data-dir.",
-                    )
-                })?;
-                (
-                    kp,
-                    None,
-                    vec![essentials_pack()],
-                    Vec::new(),
-                    KillSwitchState::Inactive,
-                )
-            }
-        };
-
-        Ok(Self {
-            packs,
-            grants,
-            kill_switch,
-            session_state: SessionRuleState::default(),
-            signing_key,
-            store,
-            signed_receipts: 0,
-        })
+impl StatelessEngine {
+    fn new(default_device_id: String, max_sessions: usize, now_mono_ms: u64) -> Self {
+        Self {
+            default_device_id,
+            packs: vec![essentials_pack()],
+            grants: Vec::new(),
+            kill_switch: KillSwitchState::Inactive,
+            sessions: BoundedSessionMap::new(max_sessions),
+            epoch: 1,
+            last_daemon_hb_mono_ms: now_mono_ms,
+        }
     }
 
-    fn process_framed_stream(
+    fn apply_bundle(
         &mut self,
-        input: &[u8],
-        trusted_peers: &[TrustedKeyInfo],
-    ) -> Result<Vec<u8>, CodedError> {
-        let mut cursor = 0usize;
-        let mut out = Vec::new();
-        let mut replay = ReplayWindow::new(4096, 300);
-        let now = Timestamp::now();
-
-        while cursor < input.len() {
-            let Some(slice) = input.get(cursor..) else {
-                break;
-            };
-            let (envelope, consumed): (WireEnvelope<IpcMessage<EngineCommand>>, usize) =
-                decode_frame(slice).map_err(|e| {
-                    CodedError::new(
-                        "GRDR-ENGINE-0002",
-                        e.to_string(),
-                        "Send valid GRDR v1 framed WireEnvelope messages.",
-                    )
-                })?;
-            cursor = cursor.saturating_add(consumed);
-
-            let peer_keys = if trusted_peers.is_empty() {
-                vec![self.signing_key.public_info()]
-            } else {
-                trusted_peers.to_vec()
-            };
-            replay
-                .verify_and_record(&envelope, &peer_keys, now)
-                .map_err(|e| {
-                    CodedError::new(
-                        "GRDR-ENGINE-0003",
-                        e.to_string(),
-                        "Check sender key trust, timestamp skew, and nonce uniqueness.",
-                    )
-                })?;
-
-            envelope.payload.validate().map_err(|e| {
-                CodedError::new(
-                    "GRDR-ENGINE-0004",
-                    e.to_string(),
-                    "Use protocol version 1 with non-empty correlation_id.",
-                )
-            })?;
-
-            let corr_id = envelope.payload.correlation_id.clone();
-            let (reply, should_exit) = self.handle_command(envelope.payload.body);
-            let nonce = generate_nonce().map_err(|e| {
-                CodedError::new(
-                    "GRDR-ENGINE-0005",
-                    e.to_string(),
-                    "Check OS CSPRNG availability.",
-                )
-            })?;
-            let reply_env = sign_envelope(
-                &self.signing_key,
-                nonce,
-                Timestamp::now(),
-                IpcMessage::new(corr_id, reply),
-            )
-            .map_err(|e| CodedError::new("GRDR-ENGINE-0005", e.to_string(), "Retry."))?;
-            let frame = encode_frame(&reply_env)
-                .map_err(|e| CodedError::new("GRDR-ENGINE-0005", e.to_string(), "Retry."))?;
-            out.extend_from_slice(&frame);
-
-            if should_exit {
-                break;
-            }
+        bundle: &BundleLoadFrame,
+        now_wall: Timestamp,
+    ) -> Result<(), EngineError> {
+        if bundle.epoch < self.epoch {
+            return Err(EngineError::InvalidBundle(format!(
+                "bundle epoch {} regressed below current epoch {}",
+                bundle.epoch, self.epoch
+            )));
         }
 
-        Ok(out)
-    }
+        let limits = embedded_limits().map_err(|err| EngineError::IpcFrame(err.to_string()))?;
+        let max_blob_bytes = limits.max_pack_bundle_bytes.min(limits.max_frame_bytes);
+        let mut loaded_packs = Vec::with_capacity(bundle.pack_blobs.len().saturating_add(1));
+        for raw in &bundle.pack_blobs {
+            if raw.len() > max_blob_bytes {
+                return Err(EngineError::InvalidBundle(format!(
+                    "pack blob {} exceeds {max_blob_bytes} bytes",
+                    raw.len()
+                )));
+            }
+            let pack: PolicyPack = serde_json::from_slice(raw)
+                .map_err(|err| EngineError::InvalidBundle(format!("decode pack: {err}")))?;
+            loaded_packs.push(pack);
+        }
 
-    fn handle_command(&mut self, cmd: EngineCommand) -> (EngineReply, bool) {
-        match cmd {
-            EngineCommand::Ping => (
-                EngineReply::Pong {
-                    version: env!("CARGO_PKG_VERSION").into(),
-                    protocol_version: grdr_proto::PROTO_VERSION,
-                },
-                false,
-            ),
-            EngineCommand::Status => (
-                EngineReply::Status {
-                    loaded_packs: self.packs.len(),
-                    active_grants: self.grants.len(),
-                    signed_receipts: self.signed_receipts,
-                },
-                false,
-            ),
-            EngineCommand::Shutdown => (EngineReply::Ack, true),
-            EngineCommand::EvaluateAttempt(payload) => {
-                let EvaluateAttemptPayload {
-                    attempt_id,
-                    session_id,
-                    device_id,
-                    device_name,
-                    agent_name,
-                    action_class,
-                    control_point,
-                    target,
-                    summary,
-                } = *payload;
-                let attempt = ActionAttempt {
-                    id: attempt_id,
-                    session_id,
-                    device_id,
-                    device_name,
-                    agent_name,
-                    action_class: ActionClass::from_name(&action_class),
-                    control_point: parse_control_point(&control_point),
-                    target,
-                    summary,
-                    timestamp: Timestamp::now(),
-                    ..Default::default()
-                };
-                match self.evaluate(&attempt) {
-                    Ok(receipt) => (
-                        EngineReply::Verdict(Box::new(VerdictReply {
-                            receipt_id: receipt.receipt_id,
-                            attempt_id: receipt.attempt_id,
-                            verdict: format!("{:?}", receipt.verdict).to_lowercase(),
-                            rule_id: receipt.rule_id,
-                            reason: receipt.reason,
-                            next_step: receipt.next_step,
-                            receipt_digest: receipt.receipt_digest,
-                            key_id: receipt.key_id,
-                            signature: receipt.signature,
-                        })),
-                        false,
-                    ),
-                    Err(err) => (
-                        EngineReply::Error {
-                            code: err.code,
-                            message: err.message,
-                        },
-                        false,
-                    ),
-                }
+        let mut loaded_grants = Vec::with_capacity(bundle.grant_blobs.len());
+        for raw in &bundle.grant_blobs {
+            if raw.len() > max_blob_bytes {
+                return Err(EngineError::InvalidBundle(format!(
+                    "grant blob {} exceeds {max_blob_bytes} bytes",
+                    raw.len()
+                )));
+            }
+            let grant: Grant = serde_json::from_slice(raw)
+                .map_err(|err| EngineError::InvalidBundle(format!("decode grant: {err}")))?;
+            loaded_grants.push(grant);
+        }
+
+        let essentials = essentials_pack();
+        let mut next_packs = Vec::with_capacity(loaded_packs.len().saturating_add(1));
+        next_packs.push(essentials.clone());
+        for pack in loaded_packs {
+            if pack.id != essentials.id {
+                next_packs.push(pack);
             }
         }
-    }
-}
+        validate_packs_before_swap(&next_packs)?;
 
-impl DecisionEnginePort for SandboxEngine {
-    fn load_packs(&mut self, packs: Vec<PolicyPack>) -> Result<(), CodedError> {
-        self.packs = packs;
+        self.packs = next_packs;
+        self.grants = loaded_grants;
+        self.kill_switch = if bundle.kill_switch_active {
+            KillSwitchState::Frozen {
+                scope: KillScope::Device,
+                target_id: "*".to_string(),
+                reason: bundle.kill_switch_reason.clone(),
+                issued_at: now_wall,
+                expires_at: Timestamp::MAX,
+            }
+        } else {
+            KillSwitchState::Inactive
+        };
+        self.epoch = bundle.epoch;
         Ok(())
     }
 
-    fn add_grant(&mut self, grant: Grant) -> Result<(), CodedError> {
-        self.grants.push(grant);
-        Ok(())
-    }
-
-    fn evaluate(&mut self, attempt: &ActionAttempt) -> Result<DecisionReceipt, CodedError> {
-        let mut receipt = evaluate_with_session(
-            attempt,
+    fn evaluate_forward(
+        &mut self,
+        fwd: &EngineForwardFrame,
+        now_wall: Timestamp,
+    ) -> Result<EngineResultFrame, EngineError> {
+        let attempt = build_attempt(fwd, &self.default_device_id, now_wall)?;
+        let session_entry = self.sessions.get_or_insert_mut(&fwd.session_id);
+        let unsigned_receipt = evaluate_with_session(
+            &attempt,
             &self.packs,
             &mut self.grants,
             &self.kill_switch,
-            &mut self.session_state,
-            attempt.timestamp,
+            &mut session_entry.state,
+            now_wall,
         );
-        let _ = self.signing_key.sign_receipt(&mut receipt);
-        self.signed_receipts = self.signed_receipts.saturating_add(1);
-        if let Some(store) = &self.store {
-            StorePort::append_receipt(store, &receipt)?;
-        }
-        Ok(receipt)
-    }
-}
+        let labels: Vec<String> = session_entry
+            .state
+            .labels_vec()
+            .into_iter()
+            .map(|lbl| lbl.as_str().to_string())
+            .collect();
 
-fn parse_control_point(raw: &str) -> ControlPoint {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "mcp" | "mcp-broker" => ControlPoint::McpBroker,
-        "proxy" => ControlPoint::Proxy,
-        "sandbox" => ControlPoint::Sandbox,
-        "sensor" => ControlPoint::Sensor,
-        "browser" => ControlPoint::Browser,
-        "gateway" => ControlPoint::Gateway,
-        "connector" => ControlPoint::Connector,
-        _ => ControlPoint::Hook,
+        let authored_records = encode_authored_records(&attempt, &unsigned_receipt)?;
+        Ok(EngineResultFrame {
+            request_id: fwd.request_id.clone(),
+            attempt_id: unsigned_receipt.attempt_id,
+            verdict: map_verdict_to_wire(unsigned_receipt.verdict) as i32,
+            rule_id: unsigned_receipt.rule_id.unwrap_or_default(),
+            reason: unsigned_receipt.reason,
+            labels,
+            obligations: if unsigned_receipt.next_step.is_empty() {
+                Vec::new()
+            } else {
+                vec![unsigned_receipt.next_step]
+            },
+            authored_records,
+            session_step: session_entry.eval_count,
+            consumed_grant_id: unsigned_receipt.grant_id.unwrap_or_default(),
+        })
     }
-}
-
-fn load_trusted_peers(path: Option<PathBuf>) -> Result<Vec<TrustedKeyInfo>, CodedError> {
-    let Some(p) = path else {
-        return Ok(Vec::new());
-    };
-    let raw = std::fs::read_to_string(&p).map_err(|e| {
-        CodedError::new(
-            "GRDR-ENGINE-0006",
-            format!("Failed reading peer key file {}: {e}", p.display()),
-            "Pass a valid TrustedKeyInfo JSON file.",
-        )
-    })?;
-    let key: TrustedKeyInfo = serde_json::from_str(&raw).map_err(|e| {
-        CodedError::new(
-            "GRDR-ENGINE-0006",
-            format!("Invalid peer key JSON: {e}"),
-            "Check TrustedKeyInfo JSON format.",
-        )
-    })?;
-    Ok(vec![key])
 }
 
 fn main() -> ExitCode {
-    let cli = Cli::parse();
-    let mut engine = match SandboxEngine::open(cli.data_dir) {
-        Ok(e) => e,
-        Err(err) => {
-            eprintln!("{}", err.display_line());
-            return ExitCode::from(1);
-        }
-    };
+    let args = Args::parse();
+    if args.self_test {
+        return match run_self_test(&args.device_id, args.max_sessions) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(err) => {
+                eprintln!("{err}");
+                ExitCode::FAILURE
+            }
+        };
+    }
 
-    match cli.command {
-        SubcommandMode::Keygen => {
-            if let Ok(json) = serde_json::to_string_pretty(&engine.signing_key.public_info()) {
-                println!("{json}");
-                return ExitCode::SUCCESS;
-            }
-            ExitCode::from(1)
+    match run_inherited_loop(&args.device_id, args.max_sessions) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::FAILURE
         }
-        SubcommandMode::Eval {
-            action,
-            agent,
-            target,
-            session_id,
-        } => {
-            let attempt = ActionAttempt {
-                id: format!("att_{}", Uuid::now_v7().simple()),
-                session_id,
-                device_id: "engine-local".into(),
-                device_name: "engine-host".into(),
-                agent_name: agent,
-                action_class: ActionClass::from_name(&action),
-                control_point: ControlPoint::Sandbox,
-                target,
-                summary: "Standalone engine evaluation".into(),
-                timestamp: Timestamp::now(),
-                ..Default::default()
-            };
-            match engine.evaluate(&attempt) {
-                Ok(receipt) => {
-                    if let Ok(json) = serde_json::to_string_pretty(&receipt) {
-                        println!("{json}");
-                    }
-                    match receipt.verdict {
-                        Verdict::Deny => ExitCode::from(2),
-                        Verdict::StepUp | Verdict::Defer => ExitCode::from(3),
-                        Verdict::Allow | Verdict::Modify => ExitCode::SUCCESS,
-                    }
-                }
-                Err(err) => {
-                    eprintln!("{}", err.display_line());
-                    ExitCode::from(1)
-                }
+    }
+}
+
+fn validate_packs_before_swap(packs: &[PolicyPack]) -> Result<(), EngineError> {
+    for pack in packs {
+        for rule in &pack.rules {
+            if !rule.enabled || rule.mode == Mode::Off {
+                continue;
             }
+            let cedar_src = rule
+                .cedar
+                .as_deref()
+                .filter(|s| !s.trim().is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| render_rule_cedar(rule));
+            validate_cedar_rule(&cedar_src).map_err(|err| {
+                EngineError::InvalidBundle(format!(
+                    "Cedar validation failed for rule `{}` in pack `{}`: {err}",
+                    rule.id, pack.id
+                ))
+            })?;
         }
-        SubcommandMode::Stdio { peer_key_file } => {
-            let peers = match load_trusted_peers(peer_key_file) {
-                Ok(p) => p,
-                Err(err) => {
-                    eprintln!("{}", err.display_line());
-                    return ExitCode::from(1);
+    }
+    Ok(())
+}
+
+fn run_self_test(device_id: &str, max_sessions: usize) -> Result<(), EngineError> {
+    let clock = SystemClock::new();
+    let now_wall = clock
+        .now_wall()
+        .map_err(|e| EngineError::SelfTestFailed(format!("wall clock failed: {e}")))?;
+    let now_mono =
+        mono_ms_checked(&clock).map_err(|e| EngineError::SelfTestFailed(e.to_string()))?;
+    let mut engine = StatelessEngine::new(device_id.to_string(), max_sessions, now_mono);
+    let res = engine
+        .evaluate_forward(
+            &EngineForwardFrame {
+                request_id: "self-1".to_string(),
+                attempt_id: "att-1".to_string(),
+                agent: "claude-code".to_string(),
+                control_point: WireControlPoint::Hook as i32,
+                action_class: WireActionClass::Exec as i32,
+                session_id: "self-session".to_string(),
+                target: "git status".to_string(),
+                summary: "Bash".to_string(),
+                command_line: "git status".to_string(),
+                received_mono_ms: 1,
+                epoch: 1,
+                tool_name: "Bash".to_string(),
+                device_id: device_id.to_string(),
+            },
+            now_wall,
+        )
+        .map_err(|e| EngineError::SelfTestFailed(e.to_string()))?;
+    if res.authored_records.is_empty() {
+        return Err(EngineError::SelfTestFailed(
+            "expected unsigned authored records from StatelessEngine".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn run_inherited_loop(device_id: &str, max_sessions: usize) -> Result<(), EngineError> {
+    let max_frame_bytes =
+        embedded_max_frame_bytes().map_err(|err| EngineError::IpcFrame(err.to_string()))?;
+    let pipe = inherited_stdio_pipe().map_err(|err| EngineError::IpcFrame(err.to_string()))?;
+    let hb_dur = Duration::from_millis(DAEMON_HEARTBEAT_TIMEOUT_MS);
+    let stream = ProtoIpcStream::with_timeouts(pipe, hb_dur, hb_dur);
+
+    let policy = ServerIdentityPolicy {
+        profile: Profile::Inherited,
+        allowed_client_uids: vec![],
+        allowed_windows_sids: vec![],
+        minimum_integrity_rid: 0,
+        reject_app_container: false,
+        require_start_time_before_connect: false,
+        require_open_as_self_pipe_check: false,
+        require_kernel_peer_token: false,
+    };
+    let pending = accept(stream, &OsPeerClaims::Inherited, 0, &policy)
+        .map_err(|err| EngineError::PeerRejected(err.to_string()))?;
+    let (mut chan, _hello) = pending
+        .first_frame(
+            EndpointServiceKind::ProviderEngine,
+            "",
+            1,
+            HandoverStage::Normal,
+            max_frame_bytes,
+        )
+        .map_err(|err| EngineError::PeerRejected(err.to_string()))?;
+
+    let clock = SystemClock::new();
+    let initial_mono = mono_ms_checked(&clock)?;
+    let mut engine = StatelessEngine::new(device_id.to_string(), max_sessions, initial_mono);
+
+    loop {
+        let now_mono = mono_ms_checked(&clock)?;
+        let since_hb = now_mono.saturating_sub(engine.last_daemon_hb_mono_ms);
+        if since_hb > DAEMON_HEARTBEAT_TIMEOUT_MS {
+            return Err(EngineError::DaemonHeartbeatLost {
+                elapsed_ms: since_hb,
+            });
+        }
+
+        let frame = match chan.recv_frame() {
+            Ok(f) => f,
+            Err(Refusal::ProtocolRejected(Evidence::FrameError { detail })) => {
+                if detail.contains("GRDR-WIRE-0036") {
+                    return Ok(());
                 }
-            };
-            let mut buf = Vec::new();
-            let cap = u64::try_from(MAX_FRAME_BYTES).unwrap_or(4 * 1024 * 1024);
-            if let Err(err) = io::stdin().take(cap).read_to_end(&mut buf) {
-                eprintln!("GRDR-ENGINE-0002: stdin read failed: {err}");
-                return ExitCode::from(1);
+                if detail.contains("GRDR-WIRE-0037") {
+                    let elapsed_ms =
+                        mono_ms_checked(&clock)?.saturating_sub(engine.last_daemon_hb_mono_ms);
+                    return Err(EngineError::DaemonHeartbeatLost { elapsed_ms });
+                }
+                return Err(EngineError::IpcFrame(detail));
             }
-            match engine.process_framed_stream(&buf, &peers) {
-                Ok(out) => {
-                    if let Err(err) = io::stdout().write_all(&out) {
-                        eprintln!("GRDR-ENGINE-0005: stdout write failed: {err}");
-                        return ExitCode::from(1);
-                    }
-                    ExitCode::SUCCESS
+            Err(err) => {
+                return Err(EngineError::IpcFrame(err.to_string()));
+            }
+        };
+
+        let now_wall = clock
+            .now_wall()
+            .map_err(|e| EngineError::ProtocolError(format!("wall clock failed: {e}")))?;
+        match frame.payload {
+            Some(WirePayload::Heartbeat(hb)) => {
+                engine.last_daemon_hb_mono_ms = mono_ms_checked(&clock)?;
+                let reply = WireFrame::with_payload(
+                    frame.stream_id,
+                    0,
+                    WirePayload::Heartbeat(HeartbeatFrame {
+                        seq: hb.seq,
+                        monotonic_ms: engine.last_daemon_hb_mono_ms,
+                        rss_bytes: current_process_rss_bytes(),
+                        queue_depth: 0,
+                        epoch: engine.epoch,
+                    }),
+                );
+                send_with_credit_grant(&mut chan, reply)?;
+            }
+            Some(WirePayload::CreditGrant(_)) => {
+                engine.last_daemon_hb_mono_ms = mono_ms_checked(&clock)?;
+            }
+            Some(WirePayload::BundleLoad(bundle)) => {
+                engine.last_daemon_hb_mono_ms = mono_ms_checked(&clock)?;
+                engine.apply_bundle(&bundle, now_wall)?;
+                if let Some(delta) = chan.credit().recommended_inbound_grant() {
+                    chan.send_credit_grant(delta.max(CREDIT_REPLENISH_BATCH))
+                        .map_err(|err| EngineError::IpcFrame(err.to_string()))?;
                 }
-                Err(err) => {
-                    eprintln!("{}", err.display_line());
-                    ExitCode::from(1)
-                }
+            }
+            Some(WirePayload::EngineForward(fwd)) => {
+                engine.last_daemon_hb_mono_ms = mono_ms_checked(&clock)?;
+                let res = engine.evaluate_forward(&fwd, now_wall)?;
+                let reply =
+                    WireFrame::with_payload(frame.stream_id, 0, WirePayload::EngineResult(res));
+                send_with_credit_grant(&mut chan, reply)?;
+            }
+            Some(_) => {
+                return Err(EngineError::ProtocolError(
+                    "unsupported payload on engine provider channel".to_string(),
+                ));
+            }
+            None => {
+                let _ = (IPC_FRAME_HEADER_LEN, IpcFrameError::EmptyPayload);
+                return Err(EngineError::ProtocolError("empty wire payload".to_string()));
             }
         }
     }
 }
 
-// Validate signed framed stdio processing end-to-end.
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use grdr_wire::verify_envelope;
-
-    #[test]
-    fn sandbox_engine_satisfies_decision_port_contract() {
-        let mut engine = SandboxEngine::open(None).unwrap();
-        assert!(
-            grdr_ports_testkit::assert_decision_engine_contract(
-                &mut engine,
-                vec![essentials_pack()],
-                vec![],
-            )
-            .is_ok()
-        );
+fn send_with_credit_grant<S: grdr_wire::peer_auth::FrameStream>(
+    chan: &mut grdr_wire::peer_auth::AuthenticatedChannel<S>,
+    frame: WireFrame,
+) -> Result<(), EngineError> {
+    if let Some(delta) = chan.credit().recommended_inbound_grant() {
+        chan.send_credit_grant(delta.max(CREDIT_REPLENISH_BATCH))
+            .map_err(|err| EngineError::IpcFrame(err.to_string()))?;
     }
+    chan.send_frame(frame)
+        .map_err(|err| EngineError::IpcFrame(err.to_string()))
+}
 
-    #[test]
-    fn processes_framed_wire_stream_and_writes_signed_wal() {
-        let dir = std::env::temp_dir().join(format!("grdr-engine-test-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+fn encode_authored_records(
+    attempt: &ActionAttempt,
+    unsigned_receipt: &DecisionReceipt,
+) -> Result<Vec<EngineAuthoredRecord>, EngineError> {
+    let receipt_json = serde_json::to_vec(unsigned_receipt)
+        .map_err(|err| EngineError::ProtocolError(format!("serialize unsigned receipt: {err}")))?;
+    let attempt_json = serde_json::to_vec(attempt)
+        .map_err(|err| EngineError::ProtocolError(format!("serialize attempt: {err}")))?;
+    Ok(vec![
+        EngineAuthoredRecord {
+            lane: "decision".to_string(),
+            record_type: "unsigned_receipt".to_string(),
+            session_id: attempt.session_id.clone(),
+            payload: receipt_json,
+        },
+        EngineAuthoredRecord {
+            lane: "spine".to_string(),
+            record_type: "action_attempt".to_string(),
+            session_id: attempt.session_id.clone(),
+            payload: attempt_json,
+        },
+    ])
+}
 
-        let mut engine = SandboxEngine::open(Some(dir.clone())).unwrap();
-        let peer_kp = engine.signing_key.clone();
-        let peer_info = peer_kp.public_info();
-        let now = Timestamp::now();
+fn build_attempt(
+    fwd: &EngineForwardFrame,
+    default_device_id: &str,
+    now: Timestamp,
+) -> Result<ActionAttempt, EngineError> {
+    let action_class = decode_action_class(fwd.action_class)?;
+    let control_point = decode_control_point(fwd.control_point)?;
+    let resolved_target = if matches!(action_class, ActionClass::Exec | ActionClass::Elevate)
+        && !fwd.command_line.trim().is_empty()
+    {
+        fwd.command_line.clone()
+    } else if !fwd.target.trim().is_empty() {
+        fwd.target.clone()
+    } else if !fwd.command_line.trim().is_empty() {
+        fwd.command_line.clone()
+    } else {
+        fwd.summary.clone()
+    };
+    let summary = if !fwd.summary.trim().is_empty() {
+        fwd.summary.clone()
+    } else if !fwd.tool_name.trim().is_empty() {
+        fwd.tool_name.clone()
+    } else {
+        resolved_target.clone()
+    };
+    let device_id = if fwd.device_id.trim().is_empty() {
+        default_device_id.to_string()
+    } else {
+        fwd.device_id.clone()
+    };
+    Ok(ActionAttempt {
+        id: if fwd.attempt_id.is_empty() {
+            fwd.request_id.clone()
+        } else {
+            fwd.attempt_id.clone()
+        },
+        session_id: if fwd.session_id.is_empty() {
+            "default".to_string()
+        } else {
+            fwd.session_id.clone()
+        },
+        device_id,
+        device_name: "localhost".to_string(),
+        agent_name: fwd.agent.clone(),
+        action_class,
+        control_point,
+        target: resolved_target,
+        summary,
+        timestamp: now,
+        ..ActionAttempt::default()
+    })
+}
 
-        let n1 = generate_nonce().unwrap();
-        let n2 = generate_nonce().unwrap();
-        let n3 = generate_nonce().unwrap();
+fn decode_action_class(raw: i32) -> Result<ActionClass, EngineError> {
+    WireActionClass::from_wire_i32(raw)
+        .and_then(WireActionClass::to_model)
+        .ok_or_else(|| EngineError::ProtocolError(format!("invalid WireActionClass {raw}")))
+}
 
-        let f1 = encode_frame(
-            &sign_envelope(
-                &peer_kp,
-                n1,
-                now,
-                IpcMessage::new("c1", EngineCommand::Ping),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        let f2 = encode_frame(
-            &sign_envelope(
-                &peer_kp,
-                n2,
-                now,
-                IpcMessage::new(
-                    "c2",
-                    EngineCommand::EvaluateAttempt(Box::new(EvaluateAttemptPayload {
-                        attempt_id: "att-e1".into(),
-                        session_id: "sess-e1".into(),
-                        device_id: "dev-e1".into(),
-                        device_name: "host-e1".into(),
-                        agent_name: "claude-code".into(),
-                        action_class: "file.write".into(),
-                        control_point: "hook".into(),
-                        target: ".claude/settings.json".into(),
-                        summary: "Write protected settings".into(),
-                    })),
-                ),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        let f3 = encode_frame(
-            &sign_envelope(
-                &peer_kp,
-                n3,
-                now,
-                IpcMessage::new("c3", EngineCommand::Status),
-            )
-            .unwrap(),
-        )
-        .unwrap();
+fn decode_control_point(raw: i32) -> Result<ControlPoint, EngineError> {
+    WireControlPoint::from_wire_i32(raw)
+        .and_then(WireControlPoint::to_model)
+        .ok_or_else(|| EngineError::ProtocolError(format!("invalid WireControlPoint {raw}")))
+}
 
-        let mut stream = Vec::new();
-        stream.extend_from_slice(&f1);
-        stream.extend_from_slice(&f2);
-        stream.extend_from_slice(&f3);
-
-        let reply_bytes = engine
-            .process_framed_stream(&stream, std::slice::from_ref(&peer_info))
-            .unwrap();
-        let mut cursor = 0usize;
-        let mut replies = Vec::new();
-        while cursor < reply_bytes.len() {
-            let Some(chunk) = reply_bytes.get(cursor..) else {
-                break;
-            };
-            let (env, used): (WireEnvelope<IpcMessage<EngineReply>>, usize) =
-                decode_frame(chunk).unwrap();
-            verify_envelope(&env, std::slice::from_ref(&peer_info)).unwrap();
-            replies.push(env.payload);
-            cursor = cursor.saturating_add(used);
-        }
-
-        assert_eq!(replies.len(), 3);
-        assert!(matches!(replies[0].body, EngineReply::Pong { .. }));
-        assert!(matches!(
-            &replies[1].body,
-            EngineReply::Verdict(reply) if reply.verdict == "deny"
-        ));
-        assert!(matches!(
-            replies[2].body,
-            EngineReply::Status {
-                signed_receipts: 1,
-                ..
-            }
-        ));
-
-        let store = engine.store.as_ref().unwrap();
-        let wal = store.read_receipts().unwrap();
-        assert_eq!(wal.len(), 1);
-        assert_eq!(wal[0].verdict, Verdict::Deny);
-
-        let _ = std::fs::remove_dir_all(&dir);
+const fn map_verdict_to_wire(verdict: Verdict) -> WireVerdict {
+    match verdict {
+        Verdict::Allow => WireVerdict::Allow,
+        Verdict::Modify | Verdict::StepUp | Verdict::Defer => WireVerdict::Ask,
+        Verdict::Deny => WireVerdict::Block,
     }
+}
+
+fn mono_ms_checked(clock: &SystemClock) -> Result<u64, EngineError> {
+    let dur = clock
+        .boot_uptime()
+        .map_err(|e| EngineError::ProtocolError(format!("monotonic clock failed: {e}")))?;
+    Ok(u64::try_from(dur.as_millis()).unwrap_or(u64::MAX))
 }

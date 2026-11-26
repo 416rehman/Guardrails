@@ -4,7 +4,7 @@
 //! Priority push lanes (`decision > spine > evidence > bulk`), battery/metered
 //! deferrals, priority preemption, and dual watermarks (`acked_through` vs `durable_through`).
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
@@ -102,14 +102,7 @@ pub struct PackedPushBatch {
     pub health_warnings: Vec<UplinkHealthCondition>,
 }
 
-/// Dual watermark tracker separating de-duplication (`acked`) from spool deletion (`durable`).
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WatermarkTracker {
-    acked_through: u64,
-    durable_through: u64,
-    server_epoch: Option<String>,
-    pending_backfill_from_seq: Option<u64>,
-}
+pub use crate::watermark::{LaneWatermarks, WatermarkTracker};
 
 /// Priority queue packer with credits, preemption, and battery/metered policies.
 #[derive(Clone, Debug)]
@@ -127,77 +120,10 @@ pub struct LaneBatcher {
     sent_unacked: BTreeMapReplayBuffer,
 }
 
-/// Track sent-but-not-yet-durable records so epoch changes or unverified acks retain spool safety.
+/// Track sent-but-not-yet-durable records keyed by `(Lane, seq)` so lanes never collide.
 #[derive(Clone, Debug, Default)]
 struct BTreeMapReplayBuffer {
-    records: std::collections::BTreeMap<u64, QueuedRecord>,
-}
-
-impl WatermarkTracker {
-    /// Create a fresh dual-watermark tracker at sequence `0`.
-    #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            acked_through: 0,
-            durable_through: 0,
-            server_epoch: None,
-            pending_backfill_from_seq: None,
-        }
-    }
-
-    /// Reconcile a cryptographically verified `PushAck` into `acked_through` / `durable_through`.
-    pub fn apply_verified_ack(
-        &mut self,
-        acked_through: u64,
-        durable_through: u64,
-        epoch: &str,
-    ) -> WatermarkAdvance {
-        let clamped_durable = durable_through.min(acked_through);
-        if let Some(prev_epoch) = &self.server_epoch
-            && prev_epoch != epoch
-        {
-            self.server_epoch = Some(epoch.to_string());
-            let backfill_start = self.durable_through.saturating_add(1);
-            self.acked_through = self.durable_through.max(clamped_durable);
-            self.durable_through = self.durable_through.max(clamped_durable);
-            self.pending_backfill_from_seq = Some(backfill_start);
-            return WatermarkAdvance::ServerEpochChanged {
-                backfill_from_seq: backfill_start,
-            };
-        }
-
-        if self.server_epoch.is_none() {
-            self.server_epoch = Some(epoch.to_string());
-        }
-        self.acked_through = self.acked_through.max(acked_through);
-        self.durable_through = self.durable_through.max(clamped_durable);
-        WatermarkAdvance::Advanced {
-            acked_through: self.acked_through,
-            durable_through: self.durable_through,
-        }
-    }
-
-    /// Reject an unverified ack without advancing either watermark (preserves spool durability).
-    pub fn reject_unverified_ack(&mut self) -> WatermarkAdvance {
-        WatermarkAdvance::RejectedUnverified
-    }
-
-    /// Sequence number below which records need not be resent under current `server_epoch`.
-    #[must_use]
-    pub const fn acked_through(&self) -> u64 {
-        self.acked_through
-    }
-
-    /// Sequence number below which local spool segments are eligible for deletion.
-    #[must_use]
-    pub const fn durable_through(&self) -> u64 {
-        self.durable_through
-    }
-
-    /// Consume any pending backfill cursor triggered by a `server_epoch` change.
-    pub fn take_backfill_cursor(&mut self) -> Option<u64> {
-        self.pending_backfill_from_seq.take()
-    }
+    records: BTreeMap<(Lane, u64), QueuedRecord>,
 }
 
 impl LaneBatcher {
@@ -291,18 +217,33 @@ impl LaneBatcher {
             .fold(0usize, |acc, rec| acc.saturating_add(rec.payload.len()))
     }
 
-    /// Re-queue records strictly above `durable_through` after a `server_epoch` change.
+    /// Re-queue records strictly above `durable_through` across all lanes after a `server_epoch` change.
     ///
     /// Decision lane items are re-queued ahead of lower lanes; lower lanes obey `backfill_credit_bytes`.
     pub fn requeue_backfill(&mut self, durable_through: u64) -> usize {
         let mut candidates: Vec<QueuedRecord> = self
             .sent_unacked
             .records
-            .range(durable_through.saturating_add(1)..)
+            .iter()
+            .filter(|((_, seq), _)| *seq > durable_through)
             .map(|(_, r)| r.clone())
             .collect();
-        candidates.sort_by_key(|r| (r.lane, r.seq));
+        self.requeue_candidates(candidates.as_mut_slice())
+    }
 
+    /// Re-queue records strictly above `durable_through` strictly for `lane`.
+    pub fn requeue_backfill_for_lane(&mut self, lane: Lane, durable_through: u64) -> usize {
+        let mut candidates: Vec<QueuedRecord> = self
+            .sent_unacked
+            .records
+            .range((lane, durable_through.saturating_add(1))..=(lane, u64::MAX))
+            .map(|(_, r)| r.clone())
+            .collect();
+        self.requeue_candidates(candidates.as_mut_slice())
+    }
+
+    fn requeue_candidates(&mut self, candidates: &mut [QueuedRecord]) -> usize {
+        candidates.sort_by_key(|r| (r.lane, r.seq));
         let mut remaining_non_decision_credit = self.backfill_credit_bytes;
         let mut requeued = 0usize;
         for record in candidates {
@@ -313,19 +254,35 @@ impl LaneBatcher {
                 }
                 remaining_non_decision_credit = remaining_non_decision_credit.saturating_sub(len);
             }
-            if self.enqueue(record).is_ok() {
+            if self.enqueue(record.clone()).is_ok() {
                 requeued = requeued.saturating_add(1);
             }
         }
         requeued
     }
 
-    /// Purge records up to verified `durable_through` once the server proves durable persistence.
+    /// Purge records up to verified `durable_through` across all lanes once durable persistence is proven.
     pub fn prune_durable(&mut self, durable_through: u64) -> usize {
-        let keys: Vec<u64> = self
+        let keys: Vec<(Lane, u64)> = self
             .sent_unacked
             .records
-            .range(..=durable_through)
+            .keys()
+            .filter(|(_, seq)| *seq <= durable_through)
+            .copied()
+            .collect();
+        let count = keys.len();
+        for key in keys {
+            self.sent_unacked.records.remove(&key);
+        }
+        count
+    }
+
+    /// Purge records up to verified `durable_through` strictly for `lane`.
+    pub fn prune_durable_for_lane(&mut self, lane: Lane, durable_through: u64) -> usize {
+        let keys: Vec<(Lane, u64)> = self
+            .sent_unacked
+            .records
+            .range((lane, 0)..=(lane, durable_through))
             .map(|(k, _)| *k)
             .collect();
         let count = keys.len();
@@ -417,12 +374,23 @@ impl LaneBatcher {
         }
 
         for r in &records {
-            if self.sent_unacked.records.len() >= MAX_RETAINED_UNACKED_RECORDS
-                && let Some(oldest_seq) = self.sent_unacked.records.keys().next().copied()
-            {
-                self.sent_unacked.records.remove(&oldest_seq);
+            if self.sent_unacked.records.len() >= MAX_RETAINED_UNACKED_RECORDS {
+                let evict_key = [Lane::Bulk, Lane::Evidence, Lane::Spine]
+                    .into_iter()
+                    .find_map(|lane| {
+                        self.sent_unacked
+                            .records
+                            .range((lane, 0)..=(lane, u64::MAX))
+                            .next()
+                            .map(|(k, _)| *k)
+                    });
+                if let Some(key) = evict_key {
+                    self.sent_unacked.records.remove(&key);
+                } else if r.lane != Lane::Decision {
+                    break;
+                }
             }
-            self.sent_unacked.records.insert(r.seq, r.clone());
+            self.sent_unacked.records.insert((r.lane, r.seq), r.clone());
         }
 
         let preemption = if had_decision && had_lower_queued {

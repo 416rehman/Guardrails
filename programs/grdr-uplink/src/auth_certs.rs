@@ -13,8 +13,8 @@ use crate::rfc9421::validate_rfc9421_token;
 
 /// Maximum lifetime permitted on an ephemeral per-epoch transport key certificate (24 hours).
 pub const MAX_TRANSPORT_CERT_LIFETIME_S: i64 = 86_400;
-/// Maximum lifetime permitted on a `ResponseKeyCertificate` (7 days).
-pub const MAX_RESPONSE_CERT_LIFETIME_S: i64 = 604_800;
+/// Maximum lifetime permitted on a `ResponseKeyCertificate` (24 hours per `limits.toml`).
+pub const MAX_RESPONSE_CERT_LIFETIME_S: i64 = 86_400;
 
 /// Explicit purpose binding preventing transport keys from forging identity certs and vice versa.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -100,6 +100,60 @@ impl TransportKeyCertificate {
         Ok(cert)
     }
 
+    /// Validate structural invariants, version, key usage, bounds, and signature shape.
+    pub fn validate(&self, now_unix_s: Option<i64>) -> Result<(), UplinkError> {
+        if self.cert_version != 1 {
+            return Err(UplinkError::CertificateInvalid {
+                reason: format!("unsupported transport cert_version {}", self.cert_version),
+            });
+        }
+        if self.use_kind != KeyUse::Transport {
+            return Err(UplinkError::CertificateInvalid {
+                reason: "ephemeral signer requires KeyUse::Transport certificate".to_string(),
+            });
+        }
+        validate_rfc9421_token("device_id", &self.device_id)?;
+        validate_rfc9421_token("deployment_id", &self.deployment_id)?;
+        validate_rfc9421_token("transport_key_id", &self.transport_key_id)?;
+        validate_rfc9421_token("device_key_id", &self.device_key_id)?;
+        if self.not_after_unix_s <= self.not_before_unix_s
+            || self.not_after_unix_s.saturating_sub(self.not_before_unix_s)
+                > MAX_TRANSPORT_CERT_LIFETIME_S
+        {
+            return Err(UplinkError::CertificateInvalid {
+                reason: "transport cert lifetime invalid or exceeds 24h maximum".to_string(),
+            });
+        }
+        if let Some(now_s) = now_unix_s
+            && (now_s < self.not_before_unix_s || now_s > self.not_after_unix_s)
+        {
+            return Err(UplinkError::CertificateInvalid {
+                reason: "transport key certificate outside valid epoch window".to_string(),
+            });
+        }
+        let pub_raw = STANDARD
+            .decode(&self.transport_public_key_b64)
+            .map_err(|_| UplinkError::CertificateInvalid {
+                reason: "invalid base64 transport public key".to_string(),
+            })?;
+        if pub_raw.len() != 32 {
+            return Err(UplinkError::CertificateInvalid {
+                reason: "transport Ed25519 public key must be 32 bytes".to_string(),
+            });
+        }
+        let sig_raw = STANDARD
+            .decode(self.device_signature_b64.trim())
+            .map_err(|_| UplinkError::CertificateInvalid {
+                reason: "missing or invalid base64 device signature on transport cert".to_string(),
+            })?;
+        if sig_raw.len() != 64 {
+            return Err(UplinkError::CertificateInvalid {
+                reason: "transport cert device signature must be 64 bytes".to_string(),
+            });
+        }
+        Ok(())
+    }
+
     /// Encode this certificate as base64 JSON for the `Grdr-Cert` header.
     pub fn to_header_b64(&self) -> Result<String, UplinkError> {
         let json = serde_json::to_vec(self).map_err(|e| UplinkError::CertificateInvalid {
@@ -137,11 +191,12 @@ impl ResponseKeyCertificate {
         not_before_unix_s: i64,
         not_after_unix_s: i64,
     ) -> Result<Self, UplinkError> {
+        let max_ttl = max_response_cert_lifetime_s();
         if not_after_unix_s <= not_before_unix_s
-            || not_after_unix_s.saturating_sub(not_before_unix_s) > MAX_RESPONSE_CERT_LIFETIME_S
+            || not_after_unix_s.saturating_sub(not_before_unix_s) > max_ttl
         {
             return Err(UplinkError::CertificateInvalid {
-                reason: "response cert lifetime invalid or exceeds 7-day ceiling".to_string(),
+                reason: format!("response cert lifetime invalid or exceeds {max_ttl}s ceiling"),
             });
         }
         let mut cert = Self {
@@ -176,4 +231,15 @@ impl ResponseKeyCertificate {
             reason: format!("canonical response cert encode failed: {e}"),
         })
     }
+}
+
+/// Resolve response key certificate lifetime cap from embedded `contracts/limits.toml`.
+#[must_use]
+pub fn max_response_cert_lifetime_s() -> i64 {
+    grdr_wire::limits::embedded_limits()
+        .ok()
+        .map(|l| i64::from(l.fleet_response_key_hours))
+        .filter(|&h| h > 0)
+        .map(|h| h.saturating_mul(3_600))
+        .unwrap_or(MAX_RESPONSE_CERT_LIFETIME_S)
 }

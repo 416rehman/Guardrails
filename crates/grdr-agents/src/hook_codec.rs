@@ -62,8 +62,10 @@ pub fn parse_hook_stdin(
     device_name: &str,
 ) -> Result<ActionAttempt, String> {
     let clean_raw = raw.trim_start_matches('\u{FEFF}');
-    let parsed: GenericHookPayload =
+    let root: Value =
         serde_json::from_str(clean_raw).map_err(|e| format!("invalid hook JSON: {e}"))?;
+    let parsed: GenericHookPayload =
+        serde_json::from_value(root).map_err(|e| format!("invalid hook payload: {e}"))?;
 
     let effective_harness = match harness {
         HarnessKind::Auto => infer_harness(&parsed),
@@ -284,6 +286,7 @@ mod tests {
         assert_eq!(mcp.target, "mcp__github__create_issue");
 
         assert!(parse_hook_stdin(HarnessKind::Auto, "{not-valid-json", "devbox").is_err());
+        assert!(parse_hook_stdin(HarnessKind::Auto, r#"{" " :4e022222}"#, "devbox").is_err());
 
         let with_bom = parse_claude_hook_stdin(
             "\u{FEFF}{\"session_id\":\"s-bom\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status\"}}",

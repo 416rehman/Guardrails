@@ -2,20 +2,45 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 #![deny(clippy::arithmetic_side_effects)]
 
-use std::collections::{HashSet, VecDeque};
+pub mod endpoint;
+pub mod floor_bin;
+mod floor_cursor;
+pub mod frame;
+pub mod limits;
+pub mod messages;
+pub mod peer_auth;
+pub mod peer_policy;
+pub mod peer_types;
 
+#[cfg(feature = "json-envelope")]
+use std::collections::HashMap;
+
+#[cfg(feature = "json-envelope")]
+use grdr_crypto::{SigningKeypair, verify_bytes};
+use grdr_crypto::{fill_random, sha256_hex};
+#[cfg(feature = "json-envelope")]
+use grdr_model::TrustedKeyInfo;
+#[cfg(feature = "json-envelope")]
 use jiff::Timestamp;
+#[cfg(feature = "json-envelope")]
 use serde::de::DeserializeOwned;
+#[cfg(feature = "json-envelope")]
 use serde::{Deserialize, Serialize};
 
-use grdr_crypto::{SigningKeypair, fill_random, sha256_hex, verify_bytes};
-use grdr_model::TrustedKeyInfo;
-
 pub const WIRE_PROTOCOL_VERSION: u16 = 1;
-pub const MAX_FRAME_BYTES: usize = 4 * 1024 * 1024;
+/// Runtime authoritative cap comes from `limits::embedded_limits()?.max_frame_bytes`;
+/// kept public only for sibling crates (`grdr-acp`, `grdr-infer`).
+pub const MAX_FRAME_BYTES: usize = 1_048_576;
+#[cfg(feature = "json-envelope")]
 const FRAME_MAGIC: [u8; 4] = *b"GRDR";
+#[cfg(feature = "json-envelope")]
 const HEADER_LEN: usize = 10;
+#[cfg(feature = "json-envelope")]
 const DOMAIN_WIRE_ENVELOPE: &str = "wire_envelope_v1";
+#[cfg(feature = "json-envelope")]
+const MAX_NONCE_LEN: usize = 256;
+#[cfg(feature = "json-envelope")]
+const MAX_REPLAY_SKEW_S: i64 = 31_536_000;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum WireError {
@@ -27,16 +52,17 @@ pub enum WireError {
     InvalidMagic,
     #[error("GRDR-WIRE-0004: unsupported wire protocol version {0}")]
     UnsupportedVersion(u16),
-    #[error("GRDR-WIRE-0005: wire JSON codec error: {0}")]
+    #[error("GRDR-WIRE-0005: wire codec error: {0}")]
     Codec(String),
     #[error("GRDR-WIRE-0006: wire signature verification error: {0}")]
     Crypto(String),
-    #[error("GRDR-WIRE-0007: duplicate nonce `{nonce}` replayed for key `{key_id}`")]
+    #[error("GRDR-WIRE-0007: duplicate nonce replayed")]
     ReplayDetected { key_id: String, nonce: String },
     #[error("GRDR-WIRE-0008: wire envelope timestamp outside allowed skew window")]
     ExpiredTimestamp,
 }
 
+#[cfg(feature = "json-envelope")]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WireEnvelope<T> {
     pub version: u16,
@@ -47,6 +73,7 @@ pub struct WireEnvelope<T> {
     pub signature: String,
 }
 
+#[cfg(feature = "json-envelope")]
 #[derive(Serialize)]
 struct CanonicalEnvelope<'a, T> {
     version: u16,
@@ -56,21 +83,53 @@ struct CanonicalEnvelope<'a, T> {
     payload: &'a T,
 }
 
+#[cfg(feature = "json-envelope")]
 #[derive(Debug)]
 pub struct ReplayWindow {
     max_entries: usize,
     max_skew_seconds: i64,
-    order: VecDeque<(String, String)>,
-    seen: HashSet<(String, String)>,
+    seen: HashMap<(String, String), i64>,
 }
 
+impl WireError {
+    #[must_use]
+    pub const fn code(&self) -> &'static str {
+        match self {
+            Self::FrameTooLarge { .. } => "GRDR-WIRE-0001",
+            Self::TruncatedFrame { .. } => "GRDR-WIRE-0002",
+            Self::InvalidMagic => "GRDR-WIRE-0003",
+            Self::UnsupportedVersion(_) => "GRDR-WIRE-0004",
+            Self::Codec(_) => "GRDR-WIRE-0005",
+            Self::Crypto(_) => "GRDR-WIRE-0006",
+            Self::ReplayDetected { .. } => "GRDR-WIRE-0007",
+            Self::ExpiredTimestamp => "GRDR-WIRE-0008",
+        }
+    }
+}
+
+pub fn generate_nonce() -> Result<String, WireError> {
+    let mut raw = [0u8; 16];
+    fill_random(&mut raw).map_err(|_| WireError::Crypto("csprng unavailable".into()))?;
+    Ok(sha256_hex(&raw))
+}
+
+pub fn fill_random_bytes(buf: &mut [u8]) -> Result<(), WireError> {
+    fill_random(buf).map_err(|_| WireError::Crypto("csprng unavailable".into()))
+}
+
+#[must_use]
+pub fn sha256_hex_bytes(data: &[u8]) -> String {
+    sha256_hex(data)
+}
+
+#[cfg(feature = "json-envelope")]
 impl ReplayWindow {
+    #[must_use]
     pub fn new(max_entries: usize, max_skew_seconds: i64) -> Self {
         Self {
             max_entries: max_entries.max(1),
-            max_skew_seconds: max_skew_seconds.max(1),
-            order: VecDeque::new(),
-            seen: HashSet::new(),
+            max_skew_seconds: max_skew_seconds.clamp(1, MAX_REPLAY_SKEW_S),
+            seen: HashMap::new(),
         }
     }
 
@@ -80,37 +139,35 @@ impl ReplayWindow {
         trusted_keys: &[TrustedKeyInfo],
         now: Timestamp,
     ) -> Result<(), WireError> {
-        let delta = envelope.sent_at.as_second().saturating_sub(now.as_second());
+        let sent_sec = envelope.sent_at.as_second();
+        let now_sec = now.as_second();
+        let delta = sent_sec.saturating_sub(now_sec);
         if delta.saturating_abs() > self.max_skew_seconds {
             return Err(WireError::ExpiredTimestamp);
         }
         verify_envelope(envelope, trusted_keys)?;
 
+        let cutoff = now_sec.saturating_sub(self.max_skew_seconds);
+        self.seen.retain(|_, ts| *ts >= cutoff);
+
         let key = (envelope.sender_key_id.clone(), envelope.nonce.clone());
-        if self.seen.contains(&key) {
+        if self.seen.contains_key(&key) {
             return Err(WireError::ReplayDetected {
                 key_id: key.0,
                 nonce: key.1,
             });
         }
-
-        if self.order.len() >= self.max_entries
-            && let Some(evicted) = self.order.pop_front()
-        {
-            self.seen.remove(&evicted);
+        if self.seen.len() >= self.max_entries {
+            return Err(WireError::Crypto(
+                "replay window saturated with active entries".into(),
+            ));
         }
-        self.order.push_back(key.clone());
-        self.seen.insert(key);
+        self.seen.insert(key, sent_sec);
         Ok(())
     }
 }
 
-pub fn generate_nonce() -> Result<String, WireError> {
-    let mut raw = [0u8; 16];
-    fill_random(&mut raw).map_err(|e| WireError::Crypto(e.to_string()))?;
-    Ok(sha256_hex(&raw))
-}
-
+#[cfg(feature = "json-envelope")]
 pub fn sign_envelope<T: Serialize>(
     keypair: &SigningKeypair,
     nonce: impl Into<String>,
@@ -137,6 +194,7 @@ pub fn sign_envelope<T: Serialize>(
     })
 }
 
+#[cfg(feature = "json-envelope")]
 pub fn verify_envelope<T: Serialize>(
     envelope: &WireEnvelope<T>,
     trusted_keys: &[TrustedKeyInfo],
@@ -144,17 +202,19 @@ pub fn verify_envelope<T: Serialize>(
     if envelope.version != WIRE_PROTOCOL_VERSION {
         return Err(WireError::UnsupportedVersion(envelope.version));
     }
-    if envelope.nonce.trim().is_empty() {
-        return Err(WireError::Crypto("envelope nonce cannot be empty".into()));
+    if envelope.sender_key_id.trim().is_empty() {
+        return Err(WireError::Crypto("sender_key_id cannot be empty".into()));
+    }
+    if envelope.nonce.trim().is_empty() || envelope.nonce.len() > MAX_NONCE_LEN {
+        return Err(WireError::Crypto(
+            "envelope nonce must be non-empty and bounded".into(),
+        ));
     }
     let Some(trusted) = trusted_keys
         .iter()
         .find(|k| k.key_id == envelope.sender_key_id)
     else {
-        return Err(WireError::Crypto(format!(
-            "untrusted sender key_id `{}`",
-            envelope.sender_key_id
-        )));
+        return Err(WireError::Crypto("untrusted sender key_id".into()));
     };
     let canonical = CanonicalEnvelope {
         version: envelope.version,
@@ -170,30 +230,34 @@ pub fn verify_envelope<T: Serialize>(
         &bytes,
         &envelope.signature,
     )
-    .map_err(|e| WireError::Crypto(e.to_string()))
+    .map_err(|_| WireError::Crypto("envelope signature rejected".into()))
 }
 
+#[cfg(feature = "json-envelope")]
 pub fn encode_frame<T: Serialize>(envelope: &WireEnvelope<T>) -> Result<Vec<u8>, WireError> {
     if envelope.version != WIRE_PROTOCOL_VERSION {
         return Err(WireError::UnsupportedVersion(envelope.version));
     }
+    let max_frame_bytes = limits::embedded_limits()
+        .map_err(|err| WireError::Codec(err.to_string()))?
+        .max_frame_bytes;
     let body = serde_json::to_vec(envelope).map_err(|e| WireError::Codec(e.to_string()))?;
-    if body.len() > MAX_FRAME_BYTES {
+    if body.len() > max_frame_bytes {
         return Err(WireError::FrameTooLarge {
             size: body.len(),
-            max: MAX_FRAME_BYTES,
+            max: max_frame_bytes,
         });
     }
     let len_u32 = u32::try_from(body.len()).map_err(|_| WireError::FrameTooLarge {
         size: body.len(),
-        max: MAX_FRAME_BYTES,
+        max: max_frame_bytes,
     })?;
 
     let total = HEADER_LEN
         .checked_add(body.len())
         .ok_or(WireError::FrameTooLarge {
             size: body.len(),
-            max: MAX_FRAME_BYTES,
+            max: max_frame_bytes,
         })?;
     let mut frame = Vec::with_capacity(total);
     frame.extend_from_slice(&FRAME_MAGIC);
@@ -203,9 +267,13 @@ pub fn encode_frame<T: Serialize>(envelope: &WireEnvelope<T>) -> Result<Vec<u8>,
     Ok(frame)
 }
 
+#[cfg(feature = "json-envelope")]
 pub fn decode_frame<T: DeserializeOwned>(
     bytes: &[u8],
 ) -> Result<(WireEnvelope<T>, usize), WireError> {
+    let max_frame_bytes = limits::embedded_limits()
+        .map_err(|err| WireError::Codec(err.to_string()))?
+        .max_frame_bytes;
     let Some(header) = bytes.get(..HEADER_LEN) else {
         return Err(WireError::TruncatedFrame {
             needed: HEADER_LEN,
@@ -233,13 +301,13 @@ pub fn decode_frame<T: DeserializeOwned>(
     let len_bytes: [u8; 4] = len_slice.try_into().map_err(|_| WireError::InvalidMagic)?;
     let payload_len =
         usize::try_from(u32::from_be_bytes(len_bytes)).map_err(|_| WireError::FrameTooLarge {
-            size: MAX_FRAME_BYTES,
-            max: MAX_FRAME_BYTES,
+            size: max_frame_bytes,
+            max: max_frame_bytes,
         })?;
-    if payload_len > MAX_FRAME_BYTES {
+    if payload_len > max_frame_bytes {
         return Err(WireError::FrameTooLarge {
             size: payload_len,
-            max: MAX_FRAME_BYTES,
+            max: max_frame_bytes,
         });
     }
 
@@ -247,7 +315,7 @@ pub fn decode_frame<T: DeserializeOwned>(
         .checked_add(payload_len)
         .ok_or(WireError::FrameTooLarge {
             size: payload_len,
-            max: MAX_FRAME_BYTES,
+            max: max_frame_bytes,
         })?;
     let Some(payload) = bytes.get(HEADER_LEN..total_needed) else {
         return Err(WireError::TruncatedFrame {
@@ -262,11 +330,14 @@ pub fn decode_frame<T: DeserializeOwned>(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "json-envelope")]
     use super::*;
-    use grdr_model::{ActionClass, DecideInput, SigningKeypairExt as _};
 
+    #[cfg(feature = "json-envelope")]
     #[test]
     fn signs_frames_verifies_and_rejects_replay_or_tampering() {
+        use grdr_model::{ActionClass, DecideInput, SigningKeypairExt as _};
+
         let kp = SigningKeypair::generate().unwrap();
         let trusted = vec![kp.public_info()];
         let now = Timestamp::from_second(1_700_000_000).unwrap();
@@ -292,26 +363,39 @@ mod tests {
         let mut window = ReplayWindow::new(2, 60);
         window.verify_and_record(&decoded, &trusted, now).unwrap();
 
-        // Replaying the same nonce fails cleanly.
         let replay_err = window
             .verify_and_record(&decoded, &trusted, now)
             .unwrap_err();
         assert!(matches!(replay_err, WireError::ReplayDetected { .. }));
 
-        // Tampered payload fails Ed25519 verification.
+        let n2 = generate_nonce().unwrap();
+        let env2 = sign_envelope(&kp, n2, now, decoded.payload.clone()).unwrap();
+        window.verify_and_record(&env2, &trusted, now).unwrap();
+        let n3 = generate_nonce().unwrap();
+        let env3 = sign_envelope(&kp, n3, now, decoded.payload.clone()).unwrap();
+        assert!(matches!(
+            window.verify_and_record(&env3, &trusted, now),
+            Err(WireError::Crypto(_))
+        ));
+
         decoded.payload.target = "cat /etc/shadow".into();
         let tamper_err = window
             .verify_and_record(&decoded, &trusted, now)
             .unwrap_err();
         assert!(matches!(tamper_err, WireError::Crypto(_)));
 
-        // Out-of-window timestamp fails skew check.
         let stale = Timestamp::from_second(1_700_000_200).unwrap();
-        let n3 = generate_nonce().unwrap();
-        let env_stale = sign_envelope(&kp, n3, now, decoded.payload.clone()).unwrap();
+        let n4 = generate_nonce().unwrap();
+        let env_stale = sign_envelope(&kp, n4, now, decoded.payload.clone()).unwrap();
         assert_eq!(
             window.verify_and_record(&env_stale, &trusted, stale),
             Err(WireError::ExpiredTimestamp)
+        );
+        assert_eq!(
+            MAX_FRAME_BYTES,
+            limits::embedded_limits()
+                .expect("embedded limits")
+                .max_frame_bytes
         );
     }
 }

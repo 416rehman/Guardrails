@@ -12,6 +12,8 @@ use grdr_crypto::{SigningKeypair, sha256_digest};
 
 use crate::error::UplinkError;
 
+use serde::{Deserialize, Serialize};
+
 /// Request signature validity window in seconds (5 minutes).
 pub const REQUEST_SIGNATURE_TTL_S: i64 = 300;
 /// Maximum permitted response signature TTL (`expires - created`, 15 minutes).
@@ -20,7 +22,7 @@ pub const MAX_RESPONSE_SIGNATURE_TTL_S: i64 = 900;
 pub const REQUIRED_RESPONSE_COVERED: &str = "(\"content-digest\")";
 
 /// Signed RFC 9421 headers emitted on outbound `grdr-uplink` HTTP requests.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rfc9421RequestHeaders {
     pub content_digest: String,
     pub signature_input: String,
@@ -50,7 +52,7 @@ pub fn validate_rfc9421_token(field_name: &str, value: &str) -> Result<(), Uplin
     if value.is_empty()
         || value
             .bytes()
-            .any(|b| matches!(b, b'\r' | b'\n' | b'"' | b'\0') || b < 0x20 || b == 0x7f)
+            .any(|b| matches!(b, b'\r' | b'\n' | b'"' | b'\\' | b'\0') || b < 0x20 || b == 0x7f)
     {
         return Err(UplinkError::SignatureCreationFailed {
             detail: format!("unsafe character in RFC 9421 field '{field_name}'"),

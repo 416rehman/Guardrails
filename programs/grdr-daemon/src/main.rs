@@ -2,380 +2,367 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 #![deny(clippy::arithmetic_side_effects)]
 
-mod routes;
+//! Privileged Guardrails ADR daemon (`grdr-daemon`): OS peer-authenticated IPC listeners,
+//! inherited child supervision (`grdr-engine`/`grdr-uplink`/`grdr-updater`), key/spool/recorder
+//! ownership, and signed binary floor cache (`docs/design/11`). Zero HTTP/TCP listeners.
+
+mod child_loop;
+mod dir_guard;
+mod floor_compiler;
+mod grant_ops;
+mod ipc_server;
+mod ladder_codec;
+mod local_dispatch;
+mod peer_transport;
+mod receipt_audit;
+mod self_test;
 mod state;
+mod supervisor;
 mod uplink;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use clap::{Parser, ValueEnum};
-use tokio::net::TcpListener;
-use tracing::{error, info};
-use tracing_subscriber::EnvFilter;
-
 use grdr_model::InstallProfile;
+use grdr_os_clock::SystemClock;
+use grdr_os_service::unix_control::{
+    install_signal_handlers, send_systemd_notify, shutdown_requested, take_reload_requested,
+};
+use grdr_os_service::win_scm::{ScmState, register_scm_handler, report_scm_state};
+use grdr_wire::messages::EndpointServiceKind;
+use grdr_wire::peer_auth::Profile;
+use thiserror::Error;
 
-use crate::state::DaemonState;
+use crate::child_loop::{
+    build_updater_args, build_uplink_args, collect_pinned_keys, kill_slot, supervise_children,
+};
+use crate::ipc_server::{ListenerConfig, bind_endpoint, serve_bound_until};
+use crate::self_test::{run_ephemeral_self_test, run_readonly_self_test};
+use crate::state::{DaemonState, now_wall};
+use crate::supervisor::{ChildRole, RestartSpec, SupervisedChild};
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
-enum ProfileArg {
-    User,
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub(crate) enum DaemonError {
+    #[error("GRDR-DAEM-0001: daemon initialization failed: {0}")]
+    InitFailed(String),
+    #[error("GRDR-DAEM-0002: daemon supervision loop error: {0}")]
+    RuntimeFailed(String),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum CliProfile {
     Protected,
+    User,
 }
 
 #[derive(Debug, Parser)]
-#[command(name = "grdr-daemon", about = "Guardrails ADR endpoint agent daemon")]
+#[command(
+    name = "grdr-daemon",
+    about = "Guardrails ADR privileged endpoint daemon"
+)]
 struct Args {
-    #[arg(long, env = "GRDR_DAEMON_BIND", default_value = "127.0.0.1:8788")]
-    bind: String,
-
-    #[arg(long, env = "GRDR_SERVER_URL")]
-    server: Option<String>,
-
-    #[arg(long, value_enum, default_value_t = ProfileArg::User)]
-    profile: ProfileArg,
-
-    #[arg(long, env = "GRDR_DEVICE_NAME")]
-    device_name: Option<String>,
-
-    #[arg(long, default_value_t = 15)]
-    interval_secs: u64,
-
-    #[arg(long, default_value_t = false)]
-    scan_once: bool,
-
-    #[arg(long, env = "GRDR_FLOOR_TABLE")]
-    floor_table: Option<PathBuf>,
-
-    #[arg(long, env = "GRDR_DAEMON_DATA_DIR")]
+    #[arg(long, value_enum, default_value = "user")]
+    profile: CliProfile,
+    #[arg(long)]
     data_dir: Option<PathBuf>,
+    #[arg(long)]
+    state_dir: Option<PathBuf>,
+    #[arg(long)]
+    decide_endpoint: Option<String>,
+    #[arg(long)]
+    local_endpoint: Option<String>,
+    #[arg(long)]
+    engine_bin: Option<PathBuf>,
+    #[arg(long)]
+    uplink_bin: Option<PathBuf>,
+    #[arg(long)]
+    updater_bin: Option<PathBuf>,
+    #[arg(long)]
+    server: Option<String>,
+    #[arg(long)]
+    isolated: bool,
+    #[arg(long)]
+    deployment_id: Option<String>,
+    #[arg(long)]
+    pinned_key: Vec<String>,
+    #[arg(long)]
+    self_test: bool,
 }
 
-#[tokio::main]
-async fn main() -> ExitCode {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .init();
-
+fn main() -> ExitCode {
+    let _ = tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_target(false)
+        .try_init();
     let args = Args::parse();
-    let profile = match args.profile {
-        ProfileArg::User => InstallProfile::User,
-        ProfileArg::Protected => InstallProfile::Protected,
-    };
 
-    let floor_path = args
-        .floor_table
-        .or_else(|| Some(state::default_floor_table_path()));
-    let state = match DaemonState::init_with_store(
-        profile,
-        args.device_name,
-        args.server.clone(),
-        floor_path,
-        args.data_dir,
-    ) {
-        Ok(state) => state,
+    let res = if args.self_test {
+        run_self_test(&args)
+    } else {
+        run_daemon(&args)
+    };
+    match res {
+        Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
-            error!(error = %err, "Failed to initialize endpoint agent daemon");
-            return ExitCode::FAILURE;
+            eprintln!("{err}");
+            ExitCode::FAILURE
         }
-    };
-    let status = state.status().await;
-    info!(
-        device_id = %status.device_id,
-        agents = status.agent_count,
-        mcp_servers = status.mcp_count,
-        "Initial endpoint agent discovery completed"
-    );
+    }
+}
 
-    if args.scan_once {
-        if let Some(server_url) = args.server.as_deref() {
-            let client = reqwest::Client::new();
-            if let Err(err) = uplink::sync_once(&state, &client, server_url).await {
-                error!(error = %err, "Check-in sync failed during --scan-once");
-                return ExitCode::FAILURE;
-            }
-        }
-        return ExitCode::SUCCESS;
+fn run_self_test(args: &Args) -> Result<(), DaemonError> {
+    if args.profile == CliProfile::Protected {
+        return Err(DaemonError::InitFailed(
+            "Protected profile prohibits --self-test".to_string(),
+        ));
+    }
+    if let Some(ref existing_data) = args.data_dir {
+        let state_dir = args
+            .state_dir
+            .clone()
+            .unwrap_or_else(|| existing_data.join("state"));
+        return run_readonly_self_test(existing_data, &state_dir);
+    }
+    run_ephemeral_self_test(args.state_dir.as_deref())
+}
+
+fn run_daemon(args: &Args) -> Result<(), DaemonError> {
+    install_signal_handlers().map_err(|e| DaemonError::InitFailed(e.to_string()))?;
+    if let Err(err) = register_scm_handler("Guardrails") {
+        tracing::debug!(error = %err, "SCM handler registration skipped");
+    }
+    if let Err(err) = report_scm_state(ScmState::StartPending, 0) {
+        tracing::debug!(error = %err, "SCM start-pending report skipped");
     }
 
-    if let Some(server_url) = args.server {
-        let bg_state = state.clone();
-        tokio::spawn(uplink::run_sync_loop(
-            bg_state,
-            server_url,
-            args.interval_secs,
+    let (install_profile, profile) = match args.profile {
+        CliProfile::Protected => (InstallProfile::Protected, Profile::Protected),
+        CliProfile::User => (InstallProfile::User, Profile::User),
+    };
+    if profile == Profile::Protected
+        && (args.decide_endpoint.is_some()
+            || args.local_endpoint.is_some()
+            || args.data_dir.is_some()
+            || args.state_dir.is_some()
+            || args.engine_bin.is_some()
+            || args.uplink_bin.is_some()
+            || args.updater_bin.is_some()
+            || args.server.is_some())
+    {
+        return Err(DaemonError::InitFailed(
+            "Protected profile prohibits CLI directory, binary, server, or endpoint overrides"
+                .to_string(),
         ));
     }
 
-    let app = routes::build_router(state);
-    let listener = match TcpListener::bind(&args.bind).await {
-        Ok(listener) => listener,
-        Err(err) => {
-            error!(bind = %args.bind, error = %err, "Failed to bind daemon loopback listener");
-            return ExitCode::FAILURE;
-        }
-    };
+    let data_dir = args
+        .data_dir
+        .clone()
+        .unwrap_or_else(|| default_data_dir(profile));
+    let state_dir = args
+        .state_dir
+        .clone()
+        .unwrap_or_else(|| data_dir.join("state"));
+    let state = DaemonState::initialize(data_dir.clone(), state_dir.clone(), install_profile)
+        .map_err(DaemonError::InitFailed)?;
+    let is_protected = profile == Profile::Protected;
+    let device_id = state.device_id();
 
-    info!(bind = %args.bind, "Endpoint agent daemon listening on loopback");
-    if let Err(err) = axum::serve(listener, app).await {
-        error!(error = %err, "Daemon server exited unexpectedly");
-        return ExitCode::FAILURE;
+    if let Some(ref engine_path) = args.engine_bin {
+        let spec = RestartSpec {
+            role: ChildRole::Engine,
+            bin_path: engine_path.clone(),
+            extra_args: vec!["--device-id".to_string(), device_id.clone()],
+            work_dir: state_dir.join("engine-work"),
+            ladder_path: data_dir.join("engine-ladder.bin"),
+            protected_profile: is_protected,
+        };
+        let mut child = SupervisedChild::spawn(&spec, now_wall())
+            .map_err(|e| DaemonError::InitFailed(e.to_string()))?;
+        let partial = child.sandbox_partial_reason.clone();
+        let bundle = state.current_bundle().map_err(DaemonError::InitFailed)?;
+        child
+            .send_bundle(bundle)
+            .map_err(|e| DaemonError::InitFailed(e.to_string()))?;
+        if let Ok(mut guard) = state.inner.lock() {
+            guard.sandbox_partial_reason = partial;
+        }
+        if let Ok(mut slot) = state.engine.lock() {
+            slot.spec = Some(spec);
+            slot.last_ladder_rung = child.ladder.rung();
+            slot.child = Some(child);
+        }
     }
 
-    ExitCode::SUCCESS
+    if let Some(ref uplink_path) = args.uplink_bin {
+        let pinned_keys = collect_pinned_keys(&state, &args.pinned_key);
+        let uplink_args = build_uplink_args(
+            &state_dir,
+            &device_id,
+            args.server.as_deref(),
+            args.isolated,
+            args.deployment_id.as_deref(),
+            &pinned_keys,
+        );
+        let spec = RestartSpec {
+            role: ChildRole::Uplink,
+            bin_path: uplink_path.clone(),
+            extra_args: uplink_args,
+            work_dir: state_dir.clone(),
+            ladder_path: data_dir.join("uplink-ladder.bin"),
+            protected_profile: is_protected,
+        };
+        let child = SupervisedChild::spawn(&spec, now_wall())
+            .map_err(|e| DaemonError::InitFailed(e.to_string()))?;
+        if let Ok(mut slot) = state.uplink_child.lock() {
+            slot.spec = Some(spec);
+            slot.last_ladder_rung = child.ladder.rung();
+            slot.child = Some(child);
+        }
+    }
+
+    if let Some(ref updater_path) = args.updater_bin {
+        let spec = RestartSpec {
+            role: ChildRole::Updater,
+            bin_path: updater_path.clone(),
+            extra_args: build_updater_args(&state_dir, &data_dir),
+            work_dir: state_dir.clone(),
+            ladder_path: data_dir.join("updater-ladder.bin"),
+            protected_profile: is_protected,
+        };
+        let child = SupervisedChild::spawn(&spec, now_wall())
+            .map_err(|e| DaemonError::InitFailed(e.to_string()))?;
+        if let Ok(mut slot) = state.updater_child.lock() {
+            slot.spec = Some(spec);
+            slot.last_ladder_rung = child.ladder.rung();
+            slot.child = Some(child);
+        }
+    }
+
+    // Bind endpoints once child pipelines are live and immediately enter accept threads before READY=1.
+    let decide_bound = bind_endpoint(&ListenerConfig {
+        service: EndpointServiceKind::Decide,
+        profile,
+        endpoint_override: args.decide_endpoint.clone(),
+    })
+    .map_err(|e| DaemonError::InitFailed(e.to_string()))?;
+    let local_bound = bind_endpoint(&ListenerConfig {
+        service: EndpointServiceKind::Local,
+        profile,
+        endpoint_override: args.local_endpoint.clone(),
+    })
+    .map_err(|e| DaemonError::InitFailed(e.to_string()))?;
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let d_state = state.clone();
+    let d_stop = Arc::clone(&stop);
+    let decide_thread =
+        std::thread::spawn(move || serve_bound_until(decide_bound, d_state, d_stop));
+    let l_state = state.clone();
+    let l_stop = Arc::clone(&stop);
+    let local_thread = std::thread::spawn(move || serve_bound_until(local_bound, l_state, l_stop));
+
+    notify_systemd_msg("READY=1\n")?;
+    if let Err(err) = report_scm_state(ScmState::Running, 0) {
+        tracing::debug!(error = %err, "SCM running report skipped");
+    }
+
+    let clock = SystemClock::new();
+    let mut hb_seq = 1u64;
+    let mut loop_err: Option<DaemonError> = None;
+    while !shutdown_requested() && !stop.load(Ordering::SeqCst) {
+        if decide_thread.is_finished() || local_thread.is_finished() {
+            stop.store(true, Ordering::SeqCst);
+            loop_err = Some(DaemonError::RuntimeFailed(
+                "IPC listener thread exited unexpectedly".to_string(),
+            ));
+            break;
+        }
+        if take_reload_requested() {
+            if let Err(err) = notify_systemd_msg("RELOADING=1\n") {
+                tracing::warn!(error = %err, "systemd RELOADING notify failed");
+            }
+            if let Err(err) = state.recompile_floor(None) {
+                tracing::warn!(error = %err, "SIGHUP floor recompile failed");
+            }
+            if let Err(err) = notify_systemd_msg("READY=1\n") {
+                tracing::warn!(error = %err, "systemd READY notify failed");
+            }
+        }
+        supervise_children(&state, &clock, hb_seq);
+        hb_seq = hb_seq.saturating_add(1);
+        std::thread::sleep(Duration::from_secs(1));
+    }
+
+    stop.store(true, Ordering::SeqCst);
+    if let Err(err) = report_scm_state(ScmState::StopPending, 0) {
+        tracing::debug!(error = %err, "SCM stop-pending report skipped");
+    }
+    kill_slot(&state.engine);
+    kill_slot(&state.uplink_child);
+    kill_slot(&state.updater_child);
+    let d_res = decide_thread
+        .join()
+        .map_err(|_| DaemonError::RuntimeFailed("decide listener panicked".to_string()))?;
+    let l_res = local_thread
+        .join()
+        .map_err(|_| DaemonError::RuntimeFailed("local listener panicked".to_string()))?;
+    d_res.map_err(|e| DaemonError::RuntimeFailed(e.to_string()))?;
+    l_res.map_err(|e| DaemonError::RuntimeFailed(e.to_string()))?;
+    if let Err(err) = report_scm_state(ScmState::Stopped, 0) {
+        tracing::debug!(error = %err, "SCM stopped report skipped");
+    }
+    if let Some(err) = loop_err {
+        return Err(err);
+    }
+    Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use axum::body::Body;
-    use axum::http::{Request, StatusCode};
-    use grdr_model::eval::add_seconds;
-    use grdr_model::{
-        ActionClass, ApprovalGrade, DecideInput, DecisionReceipt, Grant, GrantScope, Verdict,
-    };
-    use tower::ServiceExt as _;
-
-    #[tokio::test]
-    async fn daemon_evaluates_offline_decisions_with_essentials_pack() {
-        let state = DaemonState::init_with_store(
-            InstallProfile::User,
-            Some("test-host".into()),
-            None,
-            None,
-            None,
-        )
-        .unwrap();
-        let app = routes::build_router(state.clone());
-
-        let block_req = DecideInput {
-            session_id: Some("s-local".into()),
-            device_id: None,
-            device_name: None,
-            agent_name: "claude-code".into(),
-            action_class: ActionClass::FileWrite,
-            control_point: None,
-            target: ".claude/settings.json".into(),
-            summary: None,
-        };
-        let resp = app
-            .clone()
-            .oneshot(
-                Request::post("/local/v1/decide")
-                    .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&block_req).unwrap()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let receipt: DecisionReceipt = serde_json::from_slice(&body).unwrap();
-        assert_eq!(receipt.verdict, Verdict::Deny);
-        assert_eq!(state.status().await.pending_events, 1);
+fn notify_systemd_msg(msg: &str) -> Result<(), DaemonError> {
+    if let Ok(notify_sock) = std::env::var("NOTIFY_SOCKET")
+        && !notify_sock.trim().is_empty()
+    {
+        send_systemd_notify(&notify_sock, msg)
+            .map_err(|e| DaemonError::RuntimeFailed(format!("systemd notify: {e}")))?;
     }
+    Ok(())
+}
 
-    #[tokio::test]
-    async fn daemon_consumes_once_grant_on_first_matching_decision() {
-        let state = DaemonState::init_with_store(
-            InstallProfile::User,
-            Some("test-host".into()),
-            None,
-            None,
-            None,
-        )
-        .unwrap();
-        let now = jiff::Timestamp::now();
+fn default_data_dir(profile: Profile) -> PathBuf {
+    if profile != Profile::Protected
+        && let Ok(d) = std::env::var("GRDR_STATE_DIR")
+        && !d.trim().is_empty()
+    {
+        return PathBuf::from(d);
+    }
+    #[cfg(windows)]
+    {
+        if profile != Profile::Protected
+            && let Ok(local) = std::env::var("LOCALAPPDATA")
+            && !local.trim().is_empty()
         {
-            let mut guard = state.inner.write().await;
-            let device_id = guard.device_id.clone();
-            guard.grants.push(Grant {
-                grant_id: "grn_daemon_once".into(),
-                rule_id: "essentials.credential-stores".into(),
-                session_id: "sess-local".into(),
-                device_id,
-                action_class: ActionClass::FileRead,
-                target_pattern: "/home/dev/.ssh/id_rsa".into(),
-                scope: GrantScope::Once,
-                grade: ApprovalGrade::G1,
-                granted_at: now,
-                expires_at: Some(add_seconds(now, 300)),
-                remaining_uses: Some(1),
-                note: "Daemon once grant".into(),
-                key_id: None,
-                signature: None,
-            });
+            return PathBuf::from(local).join("Guardrails").join("data");
         }
-        let app = routes::build_router(state);
-
-        let req = DecideInput {
-            session_id: Some("sess-local".into()),
-            device_id: None,
-            device_name: None,
-            agent_name: "claude-code".into(),
-            action_class: ActionClass::FileRead,
-            control_point: None,
-            target: "/home/dev/.ssh/id_rsa".into(),
-            summary: None,
-        };
-
-        let first_resp = app
-            .clone()
-            .oneshot(
-                Request::post("/local/v1/decide")
-                    .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&req).unwrap()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(first_resp.status(), StatusCode::OK);
-        let first_body = axum::body::to_bytes(first_resp.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let first_receipt: DecisionReceipt = serde_json::from_slice(&first_body).unwrap();
-        assert_eq!(first_receipt.verdict, Verdict::Allow);
-        assert_eq!(first_receipt.grant_id.as_deref(), Some("grn_daemon_once"));
-
-        let second_resp = app
-            .oneshot(
-                Request::post("/local/v1/decide")
-                    .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&req).unwrap()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(second_resp.status(), StatusCode::OK);
-        let second_body = axum::body::to_bytes(second_resp.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let second_receipt: DecisionReceipt = serde_json::from_slice(&second_body).unwrap();
-        assert_eq!(second_receipt.verdict, Verdict::StepUp);
-        assert!(second_receipt.grant_id.is_none());
+        if profile != Profile::Protected
+            && let Ok(program_data) = std::env::var("ProgramData")
+            && !program_data.trim().is_empty()
+        {
+            return PathBuf::from(program_data).join("Guardrails").join("data");
+        }
+        PathBuf::from(r"C:\ProgramData\Guardrails\data")
     }
-
-    #[tokio::test]
-    async fn daemon_rejects_tampered_server_packs_and_writes_signed_floor_bundle() {
-        use grdr_crypto::SigningKeypair;
-        use grdr_model::{
-            Device, DeviceCheckinResponse, Mode, SignatureStatus, SignedFloorBundle,
-            SigningKeypairExt as _, verify_floor_table,
-        };
-
-        let floor_dir =
-            std::env::temp_dir().join(format!("grdr-daemon-floor-{}", std::process::id()));
-        let floor_path = floor_dir.join("floor.json");
-        let _ = std::fs::remove_dir_all(&floor_dir);
-
-        let daemon = DaemonState::init_with_store(
-            InstallProfile::User,
-            Some("test-host".into()),
-            None,
-            Some(floor_path.clone()),
-            None,
-        )
-        .unwrap();
-
-        let bundle_raw = std::fs::read_to_string(&floor_path).unwrap();
-        let key_raw = std::fs::read_to_string(floor_path.with_extension("pub")).unwrap();
-        let bundle: SignedFloorBundle = serde_json::from_str(&bundle_raw).unwrap();
-        let pinned_key: grdr_model::TrustedKeyInfo = serde_json::from_str(&key_raw).unwrap();
-        assert_eq!(
-            verify_floor_table(&bundle.table, &[pinned_key]),
-            SignatureStatus::Verified
-        );
-
-        let server_kp = SigningKeypair::generate().unwrap();
-        let mut tampered_pack = grdr_model::eval::essentials_pack();
-        server_kp.sign_pack(&mut tampered_pack).unwrap();
-        tampered_pack.rules[0].mode = Mode::Off;
-
-        let mut guard = daemon.inner.write().await;
-        let original_pack_version = guard.packs[0].version.clone();
-        tampered_pack.version = "9.9.9-tampered".into();
-        let resp = DeviceCheckinResponse {
-            device: Device {
-                id: guard.device_id.clone(),
-                hostname: guard.hostname.clone(),
-                os: "linux".into(),
-                arch: "x86_64".into(),
-                install_profile: InstallProfile::User,
-                daemon_version: "0.1.0".into(),
-                online: true,
-                hook_effective: false,
-                agents: vec![],
-                mcp_servers: vec![],
-                artifacts: vec![],
-                user_id: None,
-                user_display: None,
-                last_seen: jiff::Timestamp::now(),
-                public_key: None,
-            },
-            packs: vec![tampered_pack],
-            grants: vec![],
-            kill_switch: grdr_model::KillSwitchState::Inactive,
-            server_time: jiff::Timestamp::now(),
-            trusted_keys: vec![server_kp.public_info()],
-        };
-        uplink::apply_verified_checkin(&mut guard, resp);
-        assert_eq!(guard.packs[0].version, original_pack_version);
-
-        drop(guard);
-        let _ = std::fs::remove_dir_all(&floor_dir);
-    }
-
-    #[tokio::test]
-    async fn daemon_persists_signing_key_and_pending_events_across_restart() {
-        let data_dir =
-            std::env::temp_dir().join(format!("grdr-daemon-store-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&data_dir);
-
-        let key_id_first = {
-            let daemon = DaemonState::init_with_store(
-                InstallProfile::User,
-                Some("persist-host".into()),
-                None,
-                None,
-                Some(data_dir.clone()),
-            )
-            .unwrap();
-            let _ = daemon
-                .decide_local(DecideInput {
-                    session_id: Some("sess-persist".into()),
-                    device_id: None,
-                    device_name: None,
-                    agent_name: "claude-code".into(),
-                    action_class: ActionClass::FileWrite,
-                    control_point: None,
-                    target: ".claude/settings.json".into(),
-                    summary: None,
-                })
-                .await;
-            let guard = daemon.inner.read().await;
-            assert_eq!(guard.pending_receipts.len(), 1);
-            guard.signing_key.key_id().to_string()
-        };
-
-        let restarted = DaemonState::init_with_store(
-            InstallProfile::User,
-            Some("persist-host".into()),
-            None,
-            None,
-            Some(data_dir.clone()),
-        )
-        .unwrap();
-        let guard = restarted.inner.read().await;
-        assert_eq!(guard.signing_key.key_id(), key_id_first);
-        assert_eq!(guard.pending_receipts.len(), 1);
-        assert_eq!(restarted.status().await.pending_events, 1);
-
-        drop(guard);
-        let _ = std::fs::remove_dir_all(&data_dir);
+    #[cfg(not(windows))]
+    {
+        if profile != Profile::Protected
+            && let Ok(home) = std::env::var("HOME")
+            && !home.trim().is_empty()
+        {
+            return PathBuf::from(home).join(".local/state/guardrails/data");
+        }
+        PathBuf::from("/var/lib/guardrails")
     }
 }

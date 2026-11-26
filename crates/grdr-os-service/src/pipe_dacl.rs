@@ -12,6 +12,7 @@ const WINDOWS_PIPE_PREFIX: &str = r"\\.\pipe\";
 const MAX_PIPE_LEAF_LEN: usize = 240;
 const WINDOWS_SID_MAX_AUTHORITY: u64 = 0x0000_FFFF_FFFF_FFFF;
 const WINDOWS_SID_MAX_SUBAUTHORITIES: usize = 15;
+const BROAD_SIDS: &[&str] = &["S-1-1-0", "S-1-5-7", "S-1-5-11", "S-1-5-32-545"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -25,11 +26,26 @@ pub enum NamedPipeAccessRight {
     FileGenericWrite,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PipeMandatoryLabel {
+    Low,
+    #[default]
+    Medium,
+    High,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PipeSecurityProfile {
-    ProtectedService { service_sid: String },
-    UserSession { user_sid: String },
+    ProtectedService {
+        service_sid: String,
+        #[serde(default)]
+        mandatory_label: PipeMandatoryLabel,
+    },
+    UserSession {
+        user_sid: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,6 +59,7 @@ pub struct NamedPipeDaclSpec {
 }
 
 impl NamedPipeAccessRight {
+    #[must_use]
     pub const fn access_mask_bit(self) -> u32 {
         match self {
             Self::FileReadData => 0x0000_0001,
@@ -55,25 +72,44 @@ impl NamedPipeAccessRight {
         }
     }
 
+    /// Exact SDDL right representation with zero broad generic aliases (`FA`/`FW`/`FR`).
+    #[must_use]
     pub const fn sddl_code(self) -> &'static str {
         match self {
-            Self::FileReadData => "FR",
-            Self::FileWriteData => "FW",
-            Self::FileReadAttributes => "FA",
+            Self::FileReadData => "0x00000001",
+            Self::FileWriteData => "0x00000002",
+            Self::FileReadAttributes => "0x00000080",
             Self::ReadControl => "RC",
-            Self::Synchronize => "SY",
-            Self::FileCreatePipeInstance => "FC",
+            Self::Synchronize => "0x00100000",
+            Self::FileCreatePipeInstance => "0x00000004",
             Self::FileGenericWrite => "GW",
         }
     }
 
+    #[must_use]
     pub const fn is_forbidden_for_clients(self) -> bool {
         matches!(self, Self::FileCreatePipeInstance | Self::FileGenericWrite)
     }
 }
 
+impl PipeMandatoryLabel {
+    #[must_use]
+    pub const fn sddl_code(self) -> &'static str {
+        match self {
+            Self::Low => "LW",
+            Self::Medium => "ME",
+            Self::High => "HI",
+        }
+    }
+}
+
 pub fn validate_windows_sid(raw_sid: &str) -> Result<&str, ServiceError> {
     let sid = raw_sid.trim();
+    if BROAD_SIDS.contains(&sid) {
+        return Err(ServiceError::DaclViolation(format!(
+            "broad Windows SID `{sid}` is prohibited for pipe ownership or session DACL"
+        )));
+    }
     let rest = sid.strip_prefix("S-1-").ok_or_else(|| {
         ServiceError::DaclViolation(format!(
             "invalid Windows SID `{raw_sid}`: must start with S-1-"
@@ -143,17 +179,28 @@ pub fn build_named_pipe_dacl(
     let access_mask: u32 = rights.iter().fold(0u32, |acc, r| acc | r.access_mask_bit());
 
     let raw_owner_sid = match profile {
-        PipeSecurityProfile::ProtectedService { service_sid } => service_sid,
+        PipeSecurityProfile::ProtectedService { service_sid, .. } => service_sid,
         PipeSecurityProfile::UserSession { user_sid } => user_sid,
     };
     let owner_sid = validate_windows_sid(raw_owner_sid)?;
 
-    let client_ace_target = match profile {
-        PipeSecurityProfile::ProtectedService { .. } => "AU",
-        PipeSecurityProfile::UserSession { user_sid } => validate_windows_sid(user_sid)?,
+    let (client_ace, label_code) = match profile {
+        PipeSecurityProfile::ProtectedService {
+            mandatory_label, ..
+        } => (
+            format!("(A;;0x{access_mask:08x};;;AU)"),
+            mandatory_label.sddl_code(),
+        ),
+        PipeSecurityProfile::UserSession { user_sid } => {
+            let sid = validate_windows_sid(user_sid)?;
+            (
+                format!("(A;;0x{access_mask:08x};;;{sid})"),
+                PipeMandatoryLabel::Medium.sddl_code(),
+            )
+        }
     };
     let sddl = format!(
-        "O:{owner_sid}D:P(A;;GA;;;SY)(A;;GA;;;{owner_sid})(A;;0x{access_mask:08x};;;{client_ace_target})"
+        "O:{owner_sid}D:P(A;;GA;;;SY)(A;;GA;;;{owner_sid}){client_ace}S:(ML;;NW;;;{label_code})"
     );
 
     Ok(NamedPipeDaclSpec {
@@ -191,23 +238,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rejects_sddl_injection_bad_pipe_names_and_derives_exact_mask() {
+    fn rejects_sddl_injection_broad_sids_bad_pipe_names_and_derives_exact_mask() {
         let injected = PipeSecurityProfile::ProtectedService {
             service_sid: "S-1-5-80-1)(A;;GA;;;WD".into(),
+            mandatory_label: PipeMandatoryLabel::Medium,
         };
         assert!(matches!(
             build_named_pipe_dacl(r"\\.\pipe\grdr-decide", &injected, &[]),
             Err(ServiceError::DaclViolation(_))
         ));
 
+        for broad in ["S-1-1-0", "S-1-5-7", "S-1-5-11", "S-1-5-32-545"] {
+            assert!(validate_windows_sid(broad).is_err());
+        }
+
         let profile = PipeSecurityProfile::ProtectedService {
             service_sid: "S-1-5-80-12345".into(),
+            mandatory_label: PipeMandatoryLabel::Medium,
+        };
+        let decide_profile = PipeSecurityProfile::ProtectedService {
+            service_sid: "S-1-5-80-12345".into(),
+            mandatory_label: PipeMandatoryLabel::Low,
         };
         assert!(matches!(
             build_named_pipe_dacl(r"\\.\pipe\..\evil", &profile, &[]),
             Err(ServiceError::DaclViolation(_))
         ));
-
         assert!(matches!(
             build_named_pipe_dacl(
                 r"\\.\pipe\grdr-decide",
@@ -218,7 +274,7 @@ mod tests {
         ));
 
         let ro_spec = build_named_pipe_dacl(
-            r"\\.\pipe\grdr-decide",
+            r"\\.\pipe\grdr-local",
             &profile,
             &[
                 NamedPipeAccessRight::FileReadData,
@@ -228,6 +284,23 @@ mod tests {
         )
         .unwrap();
         assert!(ro_spec.sddl.contains("0x00120001"));
+        assert!(ro_spec.sddl.contains(";;;AU)"));
+        assert!(!ro_spec.sddl.contains(";;;WD"));
+        assert!(ro_spec.sddl.contains("S:(ML;;NW;;;ME)"));
+        let low_spec =
+            build_named_pipe_dacl(r"\\.\pipe\grdr-decide", &decide_profile, &[]).unwrap();
+        assert!(low_spec.sddl.contains(";;;AU)"));
+        assert!(!low_spec.sddl.contains(";;;WD"));
+        assert!(low_spec.sddl.contains("S:(ML;;NW;;;LW)"));
+        assert_eq!(
+            NamedPipeAccessRight::FileReadAttributes.sddl_code(),
+            "0x00000080"
+        );
+        assert_eq!(
+            NamedPipeAccessRight::FileWriteData.sddl_code(),
+            "0x00000002"
+        );
+        assert_eq!(NamedPipeAccessRight::Synchronize.sddl_code(), "0x00100000");
 
         assert!(validate_windows_sid("S-1-281474976710656-1").is_err());
         assert!(validate_windows_sid("S-1-5-4294967296").is_err());

@@ -21,6 +21,7 @@ grdr-os-service = { workspace = true }
 grdr-peer-os = { workspace = true }
 grdr-store-local = { workspace = true }
 grdr-update = { workspace = true }
+grdr-wire = { workspace = true }
 jiff = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -18,14 +18,14 @@ pub const DEFAULT_HEARTBEAT_INTERVAL_MS: u64 = 300_000;
 pub const DEFAULT_EVIDENCE_INTERVAL_MS: u64 = 900_000;
 pub const DEFAULT_BULK_INTERVAL_MS: u64 = 3_600_000;
 pub const DEFAULT_JITTER_FRACTION: f64 = 0.15;
-pub const DEFAULT_MAX_REQUEST_BYTES: u32 = 524_288;
+pub const DEFAULT_MAX_REQUEST_BYTES: u32 = 262_144;
 pub const DEFAULT_MAX_EVENTS_PER_BATCH: u32 = 1_000;
 pub const DEFAULT_EVIDENCE_CREDIT_BYTES: u64 = 2_097_152;
 pub const DEFAULT_BACKFILL_CREDIT_BYTES: u64 = 1_048_576;
 pub const DEFAULT_CONTROL_BACKOFF_CAP_MS: u64 = 120_000;
 pub const DEFAULT_DATA_BACKOFF_CAP_MS: u64 = 900_000;
 pub const DEFAULT_BACKOFF_BASE_MS: u64 = 1_000;
-pub const DEFAULT_RECONNECT_SPREAD_MS: u64 = 30_000;
+pub const DEFAULT_RECONNECT_SPREAD_MS: u64 = 60_000;
 pub const DEFAULT_SCHEDULE_TTL_MS: i64 = 86_400_000;
 pub const MIN_CREDIT_BYTES: u64 = 65_536;
 pub const MAX_CREDIT_BYTES: u64 = 16_777_216;
@@ -128,6 +128,22 @@ impl FleetSchedule {
     /// Compiled conservative defaults used at bootstrap or when a server schedule expires.
     #[must_use]
     pub fn compiled_defaults(issued_at_unix_ms: i64) -> Self {
+        let limits = grdr_wire::limits::embedded_limits().ok();
+        let max_request_bytes = limits
+            .as_ref()
+            .and_then(|l| u32::try_from(l.max_batch_bytes).ok())
+            .filter(|&v| v > 0)
+            .unwrap_or(DEFAULT_MAX_REQUEST_BYTES);
+        let max_events_per_batch = limits
+            .as_ref()
+            .and_then(|l| u32::try_from(l.max_batch_events).ok())
+            .filter(|&v| v > 0)
+            .unwrap_or(DEFAULT_MAX_EVENTS_PER_BATCH);
+        let reconnect_spread_ms = limits
+            .as_ref()
+            .map(|l| l.reconnect_spread_ms)
+            .filter(|&v| v > 0)
+            .unwrap_or(DEFAULT_RECONNECT_SPREAD_MS);
         Self {
             fleet_profile_id: "compiled-default".to_string(),
             heartbeat_interval_ms: DEFAULT_HEARTBEAT_INTERVAL_MS,
@@ -135,13 +151,13 @@ impl FleetSchedule {
             bulk_interval_ms: DEFAULT_BULK_INTERVAL_MS,
             jitter_fraction: DEFAULT_JITTER_FRACTION,
             phase_salt: format!("epoch-{issued_at_unix_ms}"),
-            max_request_bytes: DEFAULT_MAX_REQUEST_BYTES,
-            max_events_per_batch: DEFAULT_MAX_EVENTS_PER_BATCH,
+            max_request_bytes,
+            max_events_per_batch,
             evidence_credit_bytes: DEFAULT_EVIDENCE_CREDIT_BYTES,
             backfill_credit_bytes: DEFAULT_BACKFILL_CREDIT_BYTES,
             control_backoff_cap_ms: DEFAULT_CONTROL_BACKOFF_CAP_MS,
             data_backoff_cap_ms: DEFAULT_DATA_BACKOFF_CAP_MS,
-            reconnect_spread_ms: DEFAULT_RECONNECT_SPREAD_MS,
+            reconnect_spread_ms,
             issued_at_unix_ms,
             valid_until_unix_ms: issued_at_unix_ms.saturating_add(DEFAULT_SCHEDULE_TTL_MS),
         }
@@ -376,8 +392,16 @@ pub fn next_tick_ms(
     } else {
         current_epoch_tick.saturating_add(safe_interval)
     };
-    let clamped_jitter = jitter_fraction.clamp(0.0, 0.50);
-    let unit = prng_unit.clamp(0.0, 1.0);
+    let clamped_jitter = if jitter_fraction.is_finite() {
+        jitter_fraction.clamp(0.0, 0.50)
+    } else {
+        DEFAULT_JITTER_FRACTION
+    };
+    let unit = if prng_unit.is_finite() {
+        prng_unit.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     let max_jitter_ms = (safe_interval as f64) * clamped_jitter;
     let delta_ms = (max_jitter_ms * unit).floor().max(0.0) as u64;
     base_tick.saturating_add(delta_ms)

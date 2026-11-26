@@ -244,7 +244,11 @@ pub fn full_jitter_backoff_ms(
     let shift = attempt.min(20);
     let factor = 1u64.checked_shl(shift).unwrap_or(u64::MAX);
     let exp_window = base_ms.saturating_mul(factor).min(safe_cap);
-    let unit = prng_unit.clamp(0.0, 1.0);
+    let unit = if prng_unit.is_finite() {
+        prng_unit.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     let jitter_delay = ((exp_window as f64) * unit).floor().max(0.0) as u64;
 
     if let Some(floor_ms) = retry_after_ms {
@@ -258,6 +262,10 @@ pub fn full_jitter_backoff_ms(
 /// Unplanned stream reconnect delay drawn uniformly from `[0, spread_ms]`.
 #[must_use]
 pub fn reconnect_spread_delay_ms(spread_ms: u64, prng_unit: f64) -> u64 {
-    let unit = prng_unit.clamp(0.0, 1.0);
+    let unit = if prng_unit.is_finite() {
+        prng_unit.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     ((spread_ms as f64) * unit).floor().max(0.0) as u64
 }

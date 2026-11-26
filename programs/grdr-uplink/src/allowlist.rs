@@ -431,6 +431,9 @@ fn is_disallowed_v6(v6: Ipv6Addr) -> bool {
     let site_local = (s0 & 0xffc0) == 0xfec0;
     let unique_local = (s0 & 0xfe00) == 0xfc00;
     let doc_net = s0 == 0x2001 && s1 == 0x0db8;
+    let orchid_v2 = s0 == 0x2001 && (s1 & 0xfff0) == 0x0020;
+    let discard_net = s0 == 0x0100 && s1 == 0 && s2 == 0 && s3 == 0;
+    let ipv4_translated = s0 == 0 && s1 == 0 && s2 == 0 && s3 == 0 && s4 == 0xffff && s5 == 0;
     let teredo = s0 == 0x2001 && s1 == 0x0000;
     let six_to_four = s0 == 0x2002;
     let nat64_well_known = s0 == 0x0064 && s1 == 0xff9b && s2 == 0 && s3 == 0 && s4 == 0 && s5 == 0;
@@ -443,6 +446,9 @@ fn is_disallowed_v6(v6: Ipv6Addr) -> bool {
         || site_local
         || unique_local
         || doc_net
+        || orchid_v2
+        || discard_net
+        || ipv4_translated
         || teredo
         || six_to_four
         || nat64_well_known

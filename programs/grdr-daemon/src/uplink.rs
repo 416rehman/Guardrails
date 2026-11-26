@@ -1,241 +1,261 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
+#![deny(clippy::arithmetic_side_effects)]
 
-use std::time::Duration;
+//! Cryptographically verified device check-in state sync (pre-parse raw signature verification,
+//! device ID, freshness + monotonic server_time checks, floor recompilation, zero P8 username leak).
 
+use grdr_crypto::verify_bytes;
+use grdr_model::{DeviceCheckinRequest, DeviceCheckinResponse, TrustedKeyInfo};
+use grdr_store_local::daemon_codecs::{decode_checkin_response_json, encode_checkin_request_json};
+use grdr_wire::limits::embedded_limits;
 use jiff::Timestamp;
-use tracing::{info, warn};
 
-use grdr_model::proto_conv::{
-    agent_to_proto, artifact_to_proto, attempt_to_proto, install_profile_to_proto, key_to_proto,
-    mcp_to_proto, parse_ts, proto_to_device, proto_to_grant, proto_to_key, proto_to_kill_switch,
-    proto_to_pack, receipt_to_proto,
-};
-use grdr_model::{
-    BatchEventsInput, DeviceCheckinRequest, DeviceCheckinResponse, KillSwitchState,
-    SignatureStatus, SigningKeypairExt as _, verify_grant, verify_pack,
-};
-use grdr_proto::api::inventory::{
-    DeviceCheckinRequest as ProtoCheckinRequest, DeviceCheckinResponse as ProtoCheckinResponse,
-};
-use grdr_proto::api::verdict::IngestBatchRequest as ProtoIngestBatchRequest;
+use crate::receipt_audit::now_wall_checked;
+use crate::state::{DaemonData, DaemonState, UplinkState};
 
-use crate::state::{
-    DaemonData, DaemonState, UplinkState, persist_daemon_snapshot, write_signed_floor_bundle,
-};
+const MAX_CHECKIN_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
+const MAX_CHECKIN_TIME_SKEW_SECS: i64 = 3_600;
 
-pub async fn sync_once(
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckinRejected {
+    pub reason: String,
+}
+
+pub fn build_checkin_payload(state: &DaemonState) -> Result<Vec<u8>, String> {
+    let guard = state
+        .inner
+        .lock()
+        .map_err(|_| "daemon state lock poisoned".to_string())?;
+    let req = build_checkin_request(&guard);
+    encode_checkin_request_json(&req).map_err(|e| e.to_string())
+}
+
+pub fn apply_checkin_reply(
     state: &DaemonState,
-    client: &reqwest::Client,
     server_url: &str,
+    response_json: &[u8],
+    signature_b64: &str,
 ) -> Result<(), String> {
-    let base = server_url.trim_end_matches('/');
-    let (checkin_req, batch_req) = {
-        let guard = state.inner.read().await;
-        let checkin = DeviceCheckinRequest {
-            device_id: Some(guard.device_id.clone()),
-            hostname: guard.hostname.clone(),
-            os: guard.discovery.os.clone(),
-            arch: guard.discovery.arch.clone(),
-            install_profile: guard.install_profile,
-            daemon_version: env!("CARGO_PKG_VERSION").into(),
-            hook_effective: guard.discovery.agents.iter().any(|a| a.hook_installed),
-            agents: guard.discovery.agents.clone(),
-            mcp_servers: guard.discovery.mcp_servers.clone(),
-            artifacts: guard.discovery.artifacts.clone(),
-            user_id: None,
-            user_display: std::env::var("USERNAME")
-                .or_else(|_| std::env::var("USER"))
-                .ok(),
-            device_public_key: Some(guard.signing_key.public_info()),
-        };
-        let batch = if guard.pending_receipts.is_empty() {
-            None
-        } else {
-            Some(BatchEventsInput {
-                device_id: guard.device_id.clone(),
-                attempts: guard.pending_attempts.clone(),
-                receipts: guard.pending_receipts.clone(),
-            })
-        };
-        (checkin, batch)
+    let now = now_wall_checked()?;
+    let outcome = {
+        let mut guard = state
+            .inner
+            .lock()
+            .map_err(|_| "daemon state lock poisoned".to_string())?;
+        let pinned = guard.trusted_keys.clone();
+        match apply_verified_checkin(&mut guard, response_json, &pinned, signature_b64, now) {
+            Ok(()) => {
+                guard.uplink = UplinkState::Connected {
+                    server_url: server_url.to_string(),
+                };
+                Ok(state.prepare_engine_bundle_from_data(&mut guard)?)
+            }
+            Err(rejected) => {
+                guard.uplink = UplinkState::Degraded {
+                    reason: rejected.reason.clone(),
+                };
+                Err(rejected.reason)
+            }
+        }
     };
+    match outcome {
+        Ok(bundle) => state.push_bundle_to_engine_slot(bundle),
+        Err(reason) => Err(reason),
+    }
+}
 
-    let proto_checkin = ProtoCheckinRequest {
-        device_id: checkin_req.device_id,
-        hostname: checkin_req.hostname,
-        os: checkin_req.os,
-        arch: checkin_req.arch,
-        install_profile: install_profile_to_proto(checkin_req.install_profile),
-        daemon_version: checkin_req.daemon_version,
-        hook_effective: checkin_req.hook_effective,
-        agents: checkin_req.agents.iter().map(agent_to_proto).collect(),
-        mcp_servers: checkin_req.mcp_servers.iter().map(mcp_to_proto).collect(),
-        artifacts: checkin_req
-            .artifacts
-            .iter()
-            .map(artifact_to_proto)
-            .collect(),
-        user_id: checkin_req.user_id,
-        user_display: checkin_req.user_display,
-        device_public_key: checkin_req.device_public_key.as_ref().map(key_to_proto),
-    };
+#[must_use]
+pub fn build_checkin_request(data: &DaemonData) -> DeviceCheckinRequest {
+    DeviceCheckinRequest {
+        device_id: Some(data.device_id.clone()),
+        hostname: data.hostname.clone(),
+        os: std::env::consts::OS.to_string(),
+        arch: std::env::consts::ARCH.to_string(),
+        install_profile: data.install_profile,
+        daemon_version: env!("CARGO_PKG_VERSION").to_string(),
+        hook_effective: true,
+        agents: data.discovery.agents.clone(),
+        mcp_servers: data.discovery.mcp_servers.clone(),
+        artifacts: data.discovery.artifacts.clone(),
+        // P8 privacy invariant: never read or transmit USERNAME/USER OS account names.
+        user_id: None,
+        user_display: None,
+        device_public_key: Some(TrustedKeyInfo {
+            key_id: data.signing_key.key_id().to_string(),
+            public_key_b64: data.signing_key.public_key_b64().to_string(),
+        }),
+    }
+}
 
-    let checkin_url = format!("{base}/grdr.api.inventory.v1alpha1.InventoryService/DeviceCheckin");
-    let resp = client
-        .post(&checkin_url)
-        .header("connect-protocol-version", "1")
-        .timeout(Duration::from_secs(5))
-        .json(&proto_checkin)
-        .send()
-        .await
-        .map_err(|e| format!("checkin request failed: {e}"))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("checkin returned {status}: {body}"));
+pub fn apply_verified_checkin(
+    data: &mut DaemonData,
+    raw_response_json: &[u8],
+    pinned_keys: &[TrustedKeyInfo],
+    signature_b64: &str,
+    now: Timestamp,
+) -> Result<(), CheckinRejected> {
+    let max_bytes = embedded_limits().map_or(MAX_CHECKIN_RESPONSE_BYTES, |l| {
+        l.max_frame_bytes.min(MAX_CHECKIN_RESPONSE_BYTES)
+    });
+    if raw_response_json.is_empty() || raw_response_json.len() > max_bytes {
+        return Err(CheckinRejected {
+            reason: "check-in response payload empty or exceeds size limit".to_string(),
+        });
+    }
+    if pinned_keys.is_empty() {
+        return Err(CheckinRejected {
+            reason: "refusing check-in response without pinned trusted keys".to_string(),
+        });
+    }
+    if signature_b64.trim().is_empty() {
+        return Err(CheckinRejected {
+            reason: "refusing unsigned check-in response".to_string(),
+        });
     }
 
-    let parsed_proto: ProtoCheckinResponse = resp
-        .json()
-        .await
-        .map_err(|e| format!("invalid checkin response JSON: {e}"))?;
-    let parsed = proto_checkin_to_model(parsed_proto)?;
+    // Verify raw response bytes BEFORE invoking JSON parser.
+    let verified = pinned_keys.iter().any(|key| {
+        verify_bytes(
+            &key.public_key_b64,
+            "grdr.checkin.v1\0",
+            raw_response_json,
+            signature_b64,
+        )
+        .is_ok()
+    });
+    if !verified {
+        return Err(CheckinRejected {
+            reason: "check-in signature rejected against all pinned keys".to_string(),
+        });
+    }
 
-    let flushed_count = if let Some(batch) = batch_req {
-        let batch_url = format!("{base}/grdr.api.verdict.v1alpha1.VerdictService/IngestBatch");
-        let count = batch.receipts.len();
-        let proto_batch = ProtoIngestBatchRequest {
-            device_id: batch.device_id,
-            attempts: batch.attempts.iter().map(attempt_to_proto).collect(),
-            receipts: batch.receipts.iter().map(receipt_to_proto).collect(),
-        };
-        let batch_resp = client
-            .post(&batch_url)
-            .header("connect-protocol-version", "1")
-            .timeout(Duration::from_secs(5))
-            .json(&proto_batch)
-            .send()
-            .await
-            .map_err(|e| format!("events batch failed: {e}"))?;
-        if !batch_resp.status().is_success() {
-            return Err(format!("events batch returned {}", batch_resp.status()));
-        }
-        count
-    } else {
-        0
-    };
-
+    let resp: DeviceCheckinResponse =
+        decode_checkin_response_json(raw_response_json).map_err(|err| CheckinRejected {
+            reason: format!("decode verified check-in payload: {err}"),
+        })?;
+    if resp.device.id != data.device_id {
+        return Err(CheckinRejected {
+            reason: "check-in response device_id mismatch".to_string(),
+        });
+    }
+    let server_s = resp.server_time.as_second();
+    if let Some(prev_s) = data.last_checkin_server_s
+        && server_s < prev_s
     {
-        let mut guard = state.inner.write().await;
-        apply_verified_checkin(&mut guard, parsed.clone());
-        guard.uplink = UplinkState::Connected {
-            server_url: base.to_owned(),
-            last_sync: Timestamp::now(),
-        };
-        if flushed_count > 0 {
-            let drain_attempts = guard.pending_attempts.len().min(flushed_count);
-            let drain_receipts = guard.pending_receipts.len().min(flushed_count);
-            guard.pending_attempts.drain(..drain_attempts);
-            guard.pending_receipts.drain(..drain_receipts);
-        }
-        if let Err(err) = write_signed_floor_bundle(&guard, Timestamp::now()) {
-            warn!(error = %err, "Failed writing signed fail-safe floor table");
-        }
-        if let Err(err) = persist_daemon_snapshot(&guard) {
-            warn!(error = %err, "Failed persisting daemon local snapshot");
-        }
+        return Err(CheckinRejected {
+            reason: "check-in server_time regressed below prior verified response".to_string(),
+        });
+    }
+    let skew_s = server_s.abs_diff(now.as_second());
+    if skew_s > u64::try_from(MAX_CHECKIN_TIME_SKEW_SECS).unwrap_or(3_600) {
+        return Err(CheckinRejected {
+            reason: format!(
+                "check-in server_time outside {MAX_CHECKIN_TIME_SKEW_SECS}s freshness window"
+            ),
+        });
     }
 
-    info!(
-        device_id = %parsed.device.id,
-        flushed_events = flushed_count,
-        "Synced endpoint state with API server"
-    );
+    data.last_checkin_server_s = Some(server_s);
+    if !resp.trusted_keys.is_empty() {
+        data.trusted_keys = resp.trusted_keys;
+    }
+    if !resp.packs.is_empty() {
+        data.packs = resp.packs;
+    }
+    data.grants = resp.grants;
+    data.kill_switch = resp.kill_switch;
     Ok(())
 }
 
-pub(crate) fn apply_verified_checkin(data: &mut DaemonData, resp: DeviceCheckinResponse) {
-    if resp.trusted_keys.is_empty() {
-        data.packs = resp.packs;
-        data.grants = resp.grants;
-        data.kill_switch = resp.kill_switch;
-        return;
-    }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::DaemonState;
+    use grdr_crypto::SigningKeypair;
+    use grdr_model::{Device, DiscoveryReport, InstallProfile, KillSwitchState};
 
-    let all_packs_valid = !resp.packs.is_empty()
-        && resp
-            .packs
-            .iter()
-            .all(|pack| verify_pack(pack, &resp.trusted_keys) == SignatureStatus::Verified);
+    #[test]
+    fn checkin_verifies_raw_bytes_device_id_and_freshness_and_omits_username() {
+        let base = crate::dir_guard::private_ephemeral_base_dir().join(format!(
+            ".grdr-uplink-unit-{}-{}",
+            std::process::id(),
+            uuid::Uuid::now_v7().simple()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        let state =
+            DaemonState::initialize(base.join("data"), base.join("state"), InstallProfile::User)
+                .expect("init daemon state");
+        let mut guard = state.inner.lock().expect("lock");
+        let req = build_checkin_request(&guard);
+        assert!(req.user_id.is_none());
+        assert!(req.user_display.is_none());
 
-    if all_packs_valid {
-        data.packs = resp.packs;
-    } else {
-        warn!("Rejected unsigned or tampered policy packs from server; keeping cached packs");
-    }
+        let now = Timestamp::from_second(1_760_000_000).expect("ts");
+        let resp = DeviceCheckinResponse {
+            device: Device {
+                id: guard.device_id.clone(),
+                hostname: guard.hostname.clone(),
+                os: "linux".to_string(),
+                arch: "x86_64".to_string(),
+                install_profile: InstallProfile::User,
+                daemon_version: "0.1.0".to_string(),
+                online: true,
+                hook_effective: true,
+                agents: Vec::new(),
+                mcp_servers: Vec::new(),
+                artifacts: Vec::new(),
+                user_id: None,
+                user_display: None,
+                last_seen: now,
+                public_key: None,
+            },
+            packs: Vec::new(),
+            grants: Vec::new(),
+            kill_switch: KillSwitchState::Inactive,
+            server_time: now,
+            trusted_keys: Vec::new(),
+        };
+        let canonical =
+            grdr_store_local::daemon_codecs::encode_checkin_response_json_for_test(&resp);
+        assert!(apply_verified_checkin(&mut guard, &canonical, &[], "AAAA", now).is_err());
 
-    let mut verified_grants = Vec::new();
-    for grant in resp.grants {
-        if verify_grant(&grant, &resp.trusted_keys) == SignatureStatus::Verified {
-            verified_grants.push(grant);
-        } else {
-            warn!(grant_id = %grant.grant_id, "Rejected unsigned or tampered grant from server");
-        }
-    }
-    data.grants = verified_grants;
-    data.trusted_keys = resp.trusted_keys;
-    data.kill_switch = resp.kill_switch;
-}
+        let kp = SigningKeypair::generate().expect("keygen");
+        let sig = kp.sign_bytes("grdr.checkin.v1\0", &canonical);
+        let trusted = [TrustedKeyInfo {
+            key_id: kp.key_id().to_string(),
+            public_key_b64: kp.public_key_b64().to_string(),
+        }];
+        assert!(apply_verified_checkin(&mut guard, &canonical, &trusted, "bad-sig", now).is_err());
+        let stale_now = Timestamp::from_second(1_760_050_000).expect("stale ts");
+        assert!(apply_verified_checkin(&mut guard, &canonical, &trusted, &sig, stale_now).is_err());
+        assert!(apply_verified_checkin(&mut guard, &canonical, &trusted, &sig, now).is_ok());
 
-pub async fn run_sync_loop(state: DaemonState, server_url: String, interval_secs: u64) {
-    let client = reqwest::Client::new();
-    let period = Duration::from_secs(interval_secs.max(3));
+        // Monotonic server_time rejection against replay of older server_time.
+        let older = Timestamp::from_second(1_759_999_990).expect("older ts");
+        let old_resp = DeviceCheckinResponse {
+            server_time: older,
+            ..resp
+        };
+        let old_canonical =
+            grdr_store_local::daemon_codecs::encode_checkin_response_json_for_test(&old_resp);
+        let old_sig = kp.sign_bytes("grdr.checkin.v1\0", &old_canonical);
+        assert!(
+            apply_verified_checkin(&mut guard, &old_canonical, &trusted, &old_sig, now).is_err()
+        );
 
-    loop {
-        if let Err(err) = sync_once(&state, &client, &server_url).await {
-            let mut guard = state.inner.write().await;
-            let last_sync = match &guard.uplink {
-                UplinkState::Connected { last_sync, .. } => Some(*last_sync),
-                UplinkState::Degraded { last_sync, .. } => *last_sync,
-                UplinkState::Standalone | UplinkState::Connecting { .. } => None,
-            };
-            guard.uplink = UplinkState::Degraded {
-                server_url: server_url.clone(),
-                last_sync,
-                error: err.clone(),
-            };
-            warn!(error = %err, "Server sync failed; continuing with offline policy cache");
-        }
-        tokio::time::sleep(period).await;
+        let _ = DiscoveryReport {
+            device_name: String::new(),
+            os: String::new(),
+            arch: String::new(),
+            install_profile: InstallProfile::User,
+            agents: Vec::new(),
+            mcp_servers: Vec::new(),
+            artifacts: Vec::new(),
+            scanned_paths: Vec::new(),
+            warnings: Vec::new(),
+            scanned_at: now,
+        };
+        let _ = std::fs::remove_dir_all(&base);
     }
-}
-
-fn proto_checkin_to_model(resp: ProtoCheckinResponse) -> Result<DeviceCheckinResponse, String> {
-    let device = resp
-        .device
-        .ok_or_else(|| "missing device in checkin response".to_string())
-        .and_then(proto_to_device)?;
-    let mut packs = Vec::with_capacity(resp.packs.len());
-    for p in resp.packs {
-        packs.push(proto_to_pack(p)?);
-    }
-    let mut grants = Vec::with_capacity(resp.grants.len());
-    for g in resp.grants {
-        grants.push(proto_to_grant(g)?);
-    }
-    let kill_switch = resp
-        .kill_switch
-        .map(proto_to_kill_switch)
-        .transpose()?
-        .unwrap_or(KillSwitchState::Inactive);
-    Ok(DeviceCheckinResponse {
-        device,
-        packs,
-        grants,
-        kill_switch,
-        server_time: parse_ts(&resp.server_time)?,
-        trusted_keys: resp.trusted_keys.into_iter().map(proto_to_key).collect(),
-    })
 }

@@ -2,12 +2,18 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 #![deny(clippy::arithmetic_side_effects)]
 
+pub mod duplex_pipe;
 pub mod endpoint;
+pub mod proto_io;
 pub mod transport;
 #[cfg(unix)]
 pub mod unix_domain;
+#[cfg(unix)]
+mod unix_domain_bind;
 #[cfg(windows)]
 pub mod windows_pipe;
+#[cfg(windows)]
+pub mod windows_pipe_server;
 
 use grdr_model::CodedError;
 
@@ -18,8 +24,7 @@ pub use endpoint::{
 };
 pub use transport::{
     Acceptor, Connector, FixedTimestampSource, IpcDeadline, Link, MAX_CALL_DEADLINE_MS,
-    MAX_FIRST_FRAME_DEADLINE_MS, MAX_LOCAL_IPC_FRAME_BYTES, StreamLink, SystemConnector,
-    TimestampSource,
+    MAX_FIRST_FRAME_DEADLINE_MS, StreamLink, SystemConnector, TimestampSource, local_frame_cap,
 };
 #[cfg(unix)]
 pub use unix_domain::{UnixDomainAcceptor, UnixDomainConnector, UnixDomainLink};
@@ -64,5 +69,38 @@ impl From<IpcError> for CodedError {
             err.to_string(),
             "Verify daemon endpoint availability and peer permissions.",
         )
+    }
+}
+
+/// Clone inherited standard input/output OS handles into unbuffered `File` streams
+/// so `PeekNamedPipe` and `poll` readiness strictly reflects unread kernel pipe bytes.
+pub fn inherited_stdio_pipe() -> std::io::Result<proto_io::DuplexPipe<std::fs::File, std::fs::File>>
+{
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsHandle as _;
+        let stdin = std::io::stdin().as_handle().try_clone_to_owned()?;
+        let stdout = std::io::stdout().as_handle().try_clone_to_owned()?;
+        Ok(proto_io::DuplexPipe::new(
+            std::fs::File::from(stdin),
+            std::fs::File::from(stdout),
+        ))
+    }
+    #[cfg(unix)]
+    {
+        use std::os::fd::AsFd as _;
+        let stdin = std::io::stdin().as_fd().try_clone_to_owned()?;
+        let stdout = std::io::stdout().as_fd().try_clone_to_owned()?;
+        Ok(proto_io::DuplexPipe::new(
+            std::fs::File::from(stdin),
+            std::fs::File::from(stdout),
+        ))
+    }
+    #[cfg(not(any(windows, unix)))]
+    {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "inherited stdio handles unsupported on this OS",
+        ))
     }
 }
