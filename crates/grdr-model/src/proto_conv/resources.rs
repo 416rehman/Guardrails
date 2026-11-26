@@ -13,13 +13,13 @@ use super::enums::{
     proto_to_artifact_scope, proto_to_assurance, proto_to_control_point, proto_to_control_strength,
     proto_to_install_profile, proto_to_mode, proto_to_on_failure, proto_to_provenance,
     proto_to_span_kind, proto_to_tamper_grade, proto_to_verdict, proto_to_visibility,
-    provenance_to_proto, span_kind_to_proto, tamper_grade_to_proto, verdict_to_proto,
-    visibility_to_proto,
+    provenance_to_proto, span_kind_to_proto, tamper_grade_to_proto, validate_other_label,
+    verdict_to_proto, visibility_to_proto,
 };
 use crate::{
-    ActionAttempt, ActionClass, ArtifactEntry, AssuranceRecord, ControlPoint, DecisionReceipt,
-    Device, DiscoveredAgent, McpServerEntry, PolicyPack, PolicyRule, RuleMatch, SecondaryAction,
-    SessionSummary, TrustedKeyInfo, TurnSummary, Verdict,
+    ActionAttempt, ActionClass, ArtifactEntry, ArtifactKind, AssuranceRecord, ControlPoint,
+    DecisionReceipt, Device, DiscoveredAgent, McpServerEntry, PolicyPack, PolicyRule, RuleMatch,
+    SecondaryAction, SessionSummary, TrustedKeyInfo, TurnSummary, Verdict,
 };
 
 pub fn parse_ts(raw: &str) -> Result<Timestamp, String> {
@@ -112,6 +112,9 @@ pub fn artifact_to_proto(a: &ArtifactEntry) -> pb::ArtifactEntry {
         id: a.id.clone(),
         name: a.name.clone(),
         kind: artifact_kind_to_proto(a.kind),
+        kind_other: (a.kind == ArtifactKind::Other)
+            .then(|| a.kind_other.clone())
+            .flatten(),
         scope: artifact_scope_to_proto(a.scope),
         source_agent: a.source_agent.clone(),
         path: a.path.clone(),
@@ -134,10 +137,13 @@ pub fn artifact_to_proto(a: &ArtifactEntry) -> pb::ArtifactEntry {
 }
 
 pub fn proto_to_artifact(a: pb::ArtifactEntry) -> Result<ArtifactEntry, String> {
+    let kind = proto_to_artifact_kind(a.kind);
+    let kind_other = validate_other_label(a.kind_other, kind == ArtifactKind::Other, "kind_other")?;
     Ok(ArtifactEntry {
         id: a.id,
         name: a.name,
-        kind: proto_to_artifact_kind(a.kind),
+        kind,
+        kind_other,
         scope: proto_to_artifact_scope(a.scope),
         source_agent: a.source_agent,
         path: a.path,

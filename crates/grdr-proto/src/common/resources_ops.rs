@@ -229,6 +229,9 @@ pub struct Finding {
     #[prost(string, tag = "13")]
     #[serde(alias = "detected_at")]
     pub detected_at: String,
+    #[prost(string, optional, tag = "14")]
+    #[serde(alias = "finding_class_other")]
+    pub finding_class_other: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Eq, prost::Message, Serialize, Deserialize)]
@@ -393,4 +396,45 @@ pub struct OrgPrivacyConfig {
     #[prost(bool, tag = "2")]
     #[serde(alias = "user_risk_scoring")]
     pub user_risk_scoring: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use prost::Message;
+
+    use crate::common::enums_ext::{ArtifactKind, FindingClass};
+    use crate::common::resources::ArtifactEntry;
+
+    use super::Finding;
+
+    #[test]
+    fn other_fields_wire_and_json_round_trip() {
+        let artifact = ArtifactEntry {
+            id: "art-1".into(),
+            kind: ArtifactKind::Other as i32,
+            kind_other: Some("mcp-prompt".into()),
+            detected_at: "2026-06-01T12:00:00Z".into(),
+            ..ArtifactEntry::default()
+        };
+        let wire = artifact.encode_to_vec();
+        let decoded = ArtifactEntry::decode(wire.as_slice()).expect("decode ArtifactEntry");
+        assert_eq!(decoded, artifact);
+        let json = serde_json::to_string(&artifact).expect("json");
+        let from_json: ArtifactEntry = serde_json::from_str(&json).expect("from_json");
+        assert_eq!(from_json, artifact);
+
+        let finding = Finding {
+            id: "fnd-1".into(),
+            finding_class: FindingClass::Other as i32,
+            finding_class_other: Some("supply_chain_drift".into()),
+            detected_at: "2026-06-01T12:00:00Z".into(),
+            ..Finding::default()
+        };
+        let wire_f = finding.encode_to_vec();
+        let decoded_f = Finding::decode(wire_f.as_slice()).expect("decode Finding");
+        assert_eq!(decoded_f, finding);
+        let json_f = serde_json::to_string(&finding).expect("json");
+        let from_json_f: Finding = serde_json::from_str(&json_f).expect("from_json");
+        assert_eq!(from_json_f, finding);
+    }
 }

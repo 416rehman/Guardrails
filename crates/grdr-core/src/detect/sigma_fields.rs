@@ -223,6 +223,7 @@ pub(super) fn parse_finding_class(raw: &str) -> Result<FindingClass, DetectError
         "overeager" => Ok(FindingClass::Overeager),
         "coverage-gap" | "coverage_gap" => Ok(FindingClass::CoverageGap),
         "threat" => Ok(FindingClass::Threat),
+        "other" => Ok(FindingClass::Other),
         other => Err(DetectError::InvalidRule(format!(
             "unknown finding_class `{other}`"
         ))),

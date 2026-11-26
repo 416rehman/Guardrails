@@ -8,6 +8,7 @@ mod connect_error;
 #[cfg(test)]
 mod connect_tests;
 mod demo;
+mod demo_devices;
 mod exports;
 mod routes;
 mod rpc;

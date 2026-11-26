@@ -1,5 +1,5 @@
 format: grdr.session-rules.v1
-pack_id: grdr.det.ext.session
+pack_id: grdr.det.core.session
 rules:
   - id: session.ext.cred-net-escalation
     when_label: credential-accessed

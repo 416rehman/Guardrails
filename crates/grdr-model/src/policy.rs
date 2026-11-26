@@ -195,6 +195,8 @@ pub struct Finding {
     pub device_name: String,
     pub agent_name: String,
     pub class: FindingClass,
+    #[serde(default)]
+    pub finding_class_other: Option<String>,
     pub severity: FindingSeverity,
     pub lifecycle: FindingLifecycle,
     pub rule_id: Option<String>,

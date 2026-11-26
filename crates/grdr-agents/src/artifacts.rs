@@ -457,6 +457,7 @@ fn build_artifact_entry(
         ArtifactKind::Plugin => "plg",
         ArtifactKind::Command => "cmd",
         ArtifactKind::Subagent => "sub",
+        ArtifactKind::Other => "oth",
     };
     let id = format!(
         "art_{}_{}_{}",
@@ -469,6 +470,7 @@ fn build_artifact_entry(
         id,
         name: name.to_string(),
         kind: spec.kind,
+        kind_other: None,
         scope: spec.scope,
         source_agent: spec.source_agent.to_string(),
         path: display_path(root_path),

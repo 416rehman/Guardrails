@@ -34,16 +34,13 @@ const FORBIDDEN_EXECUTION_PATTERNS: &[&str] = &[
     "exec(",
 ];
 
-// Matches grdr_comply::EvidenceDataClass and signed packs/compliance/pack.toml until atomic pack re-signing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PackDataClass {
-    Public,
-    Identifier,
     Structural,
     Derived,
+    Identifier,
     Content,
-    Secret,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

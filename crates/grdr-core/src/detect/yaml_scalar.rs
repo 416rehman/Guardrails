@@ -192,7 +192,7 @@ fn unescape_map_key(raw_key: &str) -> Result<String, DetectError> {
 fn split_top_level_commas(inner: &str, base_depth: usize) -> Result<Vec<String>, DetectError> {
     let mut out = Vec::new();
     let mut current = String::new();
-    let mut depth: usize = 0;
+    let mut expected_closers: Vec<char> = Vec::new();
     let mut quote: Option<char> = None;
     let mut escaped = false;
     for ch in inner.chars() {
@@ -215,31 +215,50 @@ fn split_top_level_commas(inner: &str, base_depth: usize) -> Result<Vec<String>,
                 quote = Some(ch);
                 current.push(ch);
             }
-            '[' | '{' => {
-                depth = depth.saturating_add(1);
-                if base_depth.saturating_add(depth) >= MAX_YAML_NESTING_DEPTH {
+            '[' => {
+                let next_depth = base_depth
+                    .saturating_add(expected_closers.len())
+                    .saturating_add(1);
+                if next_depth >= MAX_YAML_NESTING_DEPTH {
                     return Err(DetectError::InvalidRule(
                         "YAML flow nesting depth exceeded".into(),
                     ));
                 }
+                expected_closers.push(']');
+                current.push(ch);
+            }
+            '{' => {
+                let next_depth = base_depth
+                    .saturating_add(expected_closers.len())
+                    .saturating_add(1);
+                if next_depth >= MAX_YAML_NESTING_DEPTH {
+                    return Err(DetectError::InvalidRule(
+                        "YAML flow nesting depth exceeded".into(),
+                    ));
+                }
+                expected_closers.push('}');
                 current.push(ch);
             }
             ']' | '}' => {
-                if depth == 0 {
+                let Some(expected) = expected_closers.pop() else {
                     return Err(DetectError::InvalidRule(
                         "unexpected closing delimiter in flow YAML".into(),
                     ));
+                };
+                if ch != expected {
+                    return Err(DetectError::InvalidRule(
+                        "mismatched delimiter in flow YAML".into(),
+                    ));
                 }
-                depth = depth.saturating_sub(1);
                 current.push(ch);
             }
-            ',' if depth == 0 => {
+            ',' if expected_closers.is_empty() => {
                 out.push(std::mem::take(&mut current).trim().to_owned());
             }
             other => current.push(other),
         }
     }
-    if quote.is_some() || depth != 0 {
+    if quote.is_some() || !expected_closers.is_empty() {
         return Err(DetectError::InvalidRule(
             "unclosed quote or delimiter inside inline YAML".into(),
         ));

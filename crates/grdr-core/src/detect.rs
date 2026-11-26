@@ -101,6 +101,7 @@ pub fn finding_from_receipt(receipt: &DecisionReceipt, device_name: &str) -> Opt
             } else {
                 FindingClass::PolicyViolation
             },
+            finding_class_other: None,
             severity: if is_tamper || analysis.risk_score >= 70 {
                 FindingSeverity::Critical
             } else {
@@ -124,6 +125,7 @@ pub fn finding_from_receipt(receipt: &DecisionReceipt, device_name: &str) -> Opt
             device_name: device_name.into(),
             agent_name: receipt.agent_name.clone(),
             class: FindingClass::PolicyViolation,
+            finding_class_other: None,
             severity: if analysis.risk_score >= 60 {
                 FindingSeverity::High
             } else {
@@ -146,6 +148,7 @@ pub fn finding_from_receipt(receipt: &DecisionReceipt, device_name: &str) -> Opt
                 device_name: device_name.into(),
                 agent_name: receipt.agent_name.clone(),
                 class: FindingClass::Threat,
+                finding_class_other: None,
                 severity: FindingSeverity::Low,
                 lifecycle: FindingLifecycle::Open,
                 rule_id: receipt.rule_id.clone(),
@@ -275,6 +278,7 @@ mod tests {
                 device_name: "host-1".into(),
                 agent_name: "claude-code".into(),
                 class: FindingClass::PolicyViolation,
+                finding_class_other: None,
                 severity: FindingSeverity::Medium,
                 lifecycle: FindingLifecycle::Acknowledged,
                 rule_id: Some("essentials.credential-stores".into()),
@@ -290,6 +294,7 @@ mod tests {
                 device_name: "host-1".into(),
                 agent_name: "claude-code".into(),
                 class: FindingClass::Tamper,
+                finding_class_other: None,
                 severity: FindingSeverity::Critical,
                 lifecycle: FindingLifecycle::Open,
                 rule_id: Some("essentials.agent-control-files".into()),

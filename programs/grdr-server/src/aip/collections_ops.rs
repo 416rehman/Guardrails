@@ -358,6 +358,7 @@ fn finding_class_str(fc: FindingClass) -> &'static str {
         FindingClass::Overeager => "overeager",
         FindingClass::Tamper => "tamper",
         FindingClass::CoverageGap => "coverage_gap",
+        FindingClass::Other => "other",
     }
 }
 

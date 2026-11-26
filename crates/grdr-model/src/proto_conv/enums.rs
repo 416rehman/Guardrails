@@ -4,13 +4,14 @@
 use grdr_proto::common as pb;
 
 use crate::{
-    ActionClass, ApprovalGrade, ArtifactKind, ArtifactRiskFlag, ArtifactScope, AssuranceLevel,
-    BrowserDlpClass, ControlPoint, ControlStrength, DeploymentKeyStatus, FindingClass,
-    FindingLifecycle, FindingSeverity, GrantScope, IdentityMode, InstallProfile,
-    IntegrationCategory, IntegrationHealthState, KillAction, KillScope, MdmFormat, Mode, OnFailure,
-    ProvenanceSource, RiskTier, SchemaDataClass, ServerHealth, SessionLabel, SpanKind, TamperGrade,
-    Verdict, Visibility,
+    ActionClass, ApprovalGrade, AssuranceLevel, BrowserDlpClass, ControlPoint, ControlStrength,
+    DeploymentKeyStatus, GrantScope, IdentityMode, InstallProfile, IntegrationCategory,
+    IntegrationHealthState, KillAction, KillScope, MdmFormat, Mode, OnFailure, ProvenanceSource,
+    RiskTier, SchemaDataClass, ServerHealth, SessionLabel, SpanKind, TamperGrade, Verdict,
+    Visibility,
 };
+
+pub use super::enums_ops::*;
 
 pub fn proto_to_mode(val: i32) -> Option<Mode> {
     match pb::Mode::try_from(val).ok()? {
@@ -282,44 +283,6 @@ pub fn proto_to_kill_action(val: i32) -> Option<KillAction> {
     }
 }
 
-pub fn finding_class_to_proto(val: FindingClass) -> i32 {
-    match val {
-        FindingClass::Threat => pb::FindingClass::Threat as i32,
-        FindingClass::PolicyViolation => pb::FindingClass::PolicyViolation as i32,
-        FindingClass::Overeager => pb::FindingClass::Overeager as i32,
-        FindingClass::Tamper => pb::FindingClass::Tamper as i32,
-        FindingClass::CoverageGap => pb::FindingClass::CoverageGap as i32,
-    }
-}
-
-pub fn finding_severity_to_proto(val: FindingSeverity) -> i32 {
-    match val {
-        FindingSeverity::Low => pb::FindingSeverity::Low as i32,
-        FindingSeverity::Medium => pb::FindingSeverity::Medium as i32,
-        FindingSeverity::High => pb::FindingSeverity::High as i32,
-        FindingSeverity::Critical => pb::FindingSeverity::Critical as i32,
-    }
-}
-
-pub fn finding_lifecycle_to_proto(val: FindingLifecycle) -> i32 {
-    match val {
-        FindingLifecycle::Open => pb::FindingLifecycle::Open as i32,
-        FindingLifecycle::Acknowledged => pb::FindingLifecycle::Acknowledged as i32,
-        FindingLifecycle::Contained => pb::FindingLifecycle::Contained as i32,
-        FindingLifecycle::Resolved => pb::FindingLifecycle::Resolved as i32,
-    }
-}
-
-pub fn proto_to_finding_lifecycle(val: i32) -> Option<FindingLifecycle> {
-    match pb::FindingLifecycle::try_from(val).ok()? {
-        pb::FindingLifecycle::Open => Some(FindingLifecycle::Open),
-        pb::FindingLifecycle::Acknowledged => Some(FindingLifecycle::Acknowledged),
-        pb::FindingLifecycle::Contained => Some(FindingLifecycle::Contained),
-        pb::FindingLifecycle::Resolved => Some(FindingLifecycle::Resolved),
-        pb::FindingLifecycle::Unspecified => None,
-    }
-}
-
 pub fn span_kind_to_proto(val: SpanKind) -> i32 {
     match val {
         SpanKind::InvokeAgent => pb::SpanKind::InvokeAgent as i32,
@@ -368,61 +331,6 @@ pub fn session_label_to_proto(val: SessionLabel) -> i32 {
         SessionLabel::UntrustedWebFetched => pb::SessionLabel::UntrustedWebFetched as i32,
         SessionLabel::RepeatedDenials => pb::SessionLabel::RepeatedDenials as i32,
         SessionLabel::TaintedExfilRisk => pb::SessionLabel::TaintedExfilRisk as i32,
-    }
-}
-
-pub fn artifact_kind_to_proto(val: ArtifactKind) -> i32 {
-    match val {
-        ArtifactKind::Skill => pb::ArtifactKind::Skill as i32,
-        ArtifactKind::Rule => pb::ArtifactKind::Rule as i32,
-        ArtifactKind::Plugin => pb::ArtifactKind::Plugin as i32,
-        ArtifactKind::Command => pb::ArtifactKind::Command as i32,
-        ArtifactKind::Subagent => pb::ArtifactKind::Subagent as i32,
-    }
-}
-
-pub fn proto_to_artifact_kind(val: i32) -> ArtifactKind {
-    match pb::ArtifactKind::try_from(val).ok() {
-        Some(pb::ArtifactKind::Rule) => ArtifactKind::Rule,
-        Some(pb::ArtifactKind::Plugin) => ArtifactKind::Plugin,
-        Some(pb::ArtifactKind::Command) => ArtifactKind::Command,
-        Some(pb::ArtifactKind::Subagent) => ArtifactKind::Subagent,
-        _ => ArtifactKind::Skill,
-    }
-}
-
-pub fn artifact_scope_to_proto(val: ArtifactScope) -> i32 {
-    match val {
-        ArtifactScope::User => pb::ArtifactScope::User as i32,
-        ArtifactScope::Workspace => pb::ArtifactScope::Workspace as i32,
-        ArtifactScope::Managed => pb::ArtifactScope::Managed as i32,
-    }
-}
-
-pub fn proto_to_artifact_scope(val: i32) -> ArtifactScope {
-    match pb::ArtifactScope::try_from(val).ok() {
-        Some(pb::ArtifactScope::Workspace) => ArtifactScope::Workspace,
-        Some(pb::ArtifactScope::Managed) => ArtifactScope::Managed,
-        _ => ArtifactScope::User,
-    }
-}
-
-pub fn artifact_risk_to_proto(val: ArtifactRiskFlag) -> i32 {
-    match val {
-        ArtifactRiskFlag::HasScripts => pb::ArtifactRiskFlag::HasScripts as i32,
-        ArtifactRiskFlag::RequestsBroadTools => pb::ArtifactRiskFlag::RequestsBroadTools as i32,
-        ArtifactRiskFlag::BidiObfuscation => pb::ArtifactRiskFlag::BidiObfuscation as i32,
-        ArtifactRiskFlag::UnpinnedDigest => pb::ArtifactRiskFlag::UnpinnedDigest as i32,
-    }
-}
-
-pub fn proto_to_artifact_risk(val: i32) -> Option<ArtifactRiskFlag> {
-    match pb::ArtifactRiskFlag::try_from(val).ok()? {
-        pb::ArtifactRiskFlag::HasScripts => Some(ArtifactRiskFlag::HasScripts),
-        pb::ArtifactRiskFlag::RequestsBroadTools => Some(ArtifactRiskFlag::RequestsBroadTools),
-        pb::ArtifactRiskFlag::BidiObfuscation => Some(ArtifactRiskFlag::BidiObfuscation),
-        pb::ArtifactRiskFlag::UnpinnedDigest => Some(ArtifactRiskFlag::UnpinnedDigest),
-        pb::ArtifactRiskFlag::Unspecified => None,
     }
 }
 

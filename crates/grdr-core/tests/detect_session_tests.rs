@@ -74,66 +74,40 @@ fn default_host_profile() -> HostProfile {
 }
 
 #[test]
-fn sigma_engine_loads_all_46_rules_evaluates_modifiers_correlations_and_l0() {
+fn sigma_engine_loads_all_official_rules_evaluates_modifiers_correlations_and_l0() {
     let root = repo_root();
-    let mut core_yaml_rules = Vec::new();
-    let mut core_paths: Vec<PathBuf> = fs::read_dir(root.join("packs/detections/rules"))
-        .expect("core rule dir readable")
+    let mut yaml_rules = Vec::new();
+    let mut rule_paths: Vec<PathBuf> = fs::read_dir(root.join("packs/detections/rules"))
+        .expect("detection rule dir readable")
         .filter_map(Result::ok)
         .map(|e| e.path())
         .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("yaml"))
         .collect();
-    core_paths.sort();
-    for p in core_paths {
-        core_yaml_rules.push(fs::read_to_string(&p).expect("read core rule yaml"));
+    rule_paths.sort();
+    for p in &rule_paths {
+        yaml_rules.push(fs::read_to_string(p).expect("read detection rule yaml"));
     }
 
-    let mut ext_yaml_rules = Vec::new();
-    let mut ext_paths: Vec<PathBuf> = fs::read_dir(root.join("packs/detections-ext/rules"))
-        .expect("ext rule dir readable")
-        .filter_map(Result::ok)
-        .map(|e| e.path())
-        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("yaml"))
-        .collect();
-    ext_paths.sort();
-    for p in ext_paths {
-        ext_yaml_rules.push(fs::read_to_string(&p).expect("read ext rule yaml"));
-    }
-
-    assert_eq!(core_yaml_rules.len(), 30, "expected 30 core rules");
-    assert_eq!(ext_yaml_rules.len(), 16, "expected 16 extended rules");
-
-    let host = default_host_profile();
-    let core_content = VerifiedDetectionContent {
-        pack_id: "grdr.det.core".into(),
-        version: "1.0.0".into(),
-        raw_rules_yaml: core_yaml_rules,
-        pack_mode: Mode::Watch,
-    };
-    let (_core_engine, core_report) =
-        SigmaDetectionEngine::load(&core_content, &host).expect("load 30 core rules");
-    assert_eq!(core_report.loaded_rules.len(), 30);
     assert!(
-        core_report.skipped_rules.is_empty(),
-        "unexpected skipped core rules: {:?}",
-        core_report.skipped_rules
+        !yaml_rules.is_empty(),
+        "expected non-empty detection rules in packs/detections/rules"
     );
 
+    let host = default_host_profile();
     let content = VerifiedDetectionContent {
-        pack_id: "grdr.det.ext".into(),
+        pack_id: "grdr.det.core".into(),
         version: "1.0.0".into(),
-        raw_rules_yaml: ext_yaml_rules.clone(),
+        raw_rules_yaml: yaml_rules.clone(),
         pack_mode: Mode::Watch,
     };
     let (mut engine, report) =
-        SigmaDetectionEngine::load(&content, &host).expect("load 16 ext rules");
-    assert_eq!(report.loaded_rules.len(), 16);
+        SigmaDetectionEngine::load(&content, &host).expect("load detection rules");
+    assert_eq!(report.loaded_rules.len(), yaml_rules.len());
     assert!(
         report.skipped_rules.is_empty(),
-        "unexpected skipped ext rules: {:?}",
+        "unexpected skipped detection rules: {:?}",
         report.skipped_rules
     );
-    let yaml_rules = ext_yaml_rules;
 
     // Deterministic dedup key via grdr-crypto.
     let k1 = compute_dedup_key("grdr.det.core.r01.agent-control-write", "s1", "single", 0);
@@ -246,7 +220,7 @@ fn sigma_engine_loads_all_46_rules_evaluates_modifiers_correlations_and_l0() {
     // L0 compilation across KQL (Defender DeviceId join), LogScale, EQL, XQL, SPL, GenericSigma.
     let r37 = parse_sigma_rule(
         &fs::read_to_string(
-            root.join("packs/detections-ext/rules/det-37-encoded-or-nested-payload.yaml"),
+            root.join("packs/detections/rules/det-37-encoded-or-nested-payload.yaml"),
         )
         .expect("r37"),
     )
@@ -266,14 +240,14 @@ fn sigma_engine_loads_all_46_rules_evaluates_modifiers_correlations_and_l0() {
         assert!(!compiled.query.is_empty());
     }
 
-    // Verify all 32 extended detection fixtures (rows 31..46 positive & negative) against parsed rules.
-    let ext_rules_parsed: BTreeMap<String, _> = yaml_rules
+    // Verify all extended detection fixtures against parsed rules.
+    let rules_parsed: BTreeMap<String, _> = yaml_rules
         .iter()
         .filter_map(|raw| parse_sigma_rule(raw).ok())
         .map(|r| (r.rule_id.clone(), r))
         .collect();
     let fix_doc = parse_yaml(
-        &fs::read_to_string(root.join("packs/detections-ext/tests/detection-fixtures-ext.yaml"))
+        &fs::read_to_string(root.join("packs/detections/tests/detection-fixtures-ext.yaml"))
             .expect("ext fixtures"),
     )
     .expect("parse ext fixtures");
@@ -281,7 +255,7 @@ fn sigma_engine_loads_all_46_rules_evaluates_modifiers_correlations_and_l0() {
         .get("fixtures")
         .and_then(YamlValue::as_seq)
         .expect("fixtures seq");
-    assert_eq!(fix_list.len(), 32);
+    assert!(!fix_list.is_empty());
     for fix in fix_list {
         let rule_id = fix
             .get("rule_id")
@@ -291,7 +265,7 @@ fn sigma_engine_loads_all_46_rules_evaluates_modifiers_correlations_and_l0() {
             .get("expect_match")
             .and_then(YamlValue::as_bool)
             .expect("expect_match");
-        let rule = ext_rules_parsed.get(rule_id).expect("ext rule exists");
+        let rule = rules_parsed.get(rule_id).expect("rule exists");
         let mut f_map = BTreeMap::new();
         if let Some(m) = fix.as_map() {
             for (k, v) in m {

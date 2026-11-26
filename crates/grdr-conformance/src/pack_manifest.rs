@@ -3,7 +3,8 @@
 //! Pack TOML manifest parsing, recursive P7 field inspection, and vocabulary checks.
 
 use std::collections::BTreeMap;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Read;
 use std::path::Path;
 
 use grdr_schema_lint::{
@@ -96,22 +97,183 @@ pub(crate) fn unquote(raw: &str) -> String {
         .to_owned()
 }
 
-pub fn read_regular_bounded_text(path: &Path, max_bytes: u64) -> Result<String, ConformanceError> {
+pub(crate) fn is_symlink_or_reparse(meta: &fs::Metadata) -> bool {
+    if meta.file_type().is_symlink() {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0400;
+        (meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT) != 0
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
+pub(crate) fn read_regular_bounded_bytes(
+    path: &Path,
+    max_bytes: u64,
+) -> Result<Vec<u8>, ConformanceError> {
     let meta = fs::symlink_metadata(path)
         .map_err(|e| conf_err("pack-io", &format!("{}: {e}", path.display())))?;
-    if meta.file_type().is_symlink() || !meta.is_file() {
+    if is_symlink_or_reparse(&meta) || !meta.is_file() {
         return Err(conf_err(
             "pack-io",
             &format!("{}: refusing symlink or non-regular file", path.display()),
         ));
     }
-    if meta.len() > max_bytes {
+    let mut opts = OpenOptions::new();
+    opts.read(true);
+    apply_nofollow_flags(&mut opts);
+    let file = opts
+        .open(path)
+        .map_err(|e| conf_err("pack-io", &format!("{}: {e}", path.display())))?;
+    let handle_meta = file
+        .metadata()
+        .map_err(|e| conf_err("pack-io", &format!("{}: {e}", path.display())))?;
+    if is_symlink_or_reparse(&handle_meta) || !handle_meta.is_file() {
+        return Err(conf_err(
+            "pack-io",
+            &format!(
+                "{}: opened handle failed regular-file check",
+                path.display()
+            ),
+        ));
+    }
+    verify_same_file_identity(path, &meta, &handle_meta)?;
+
+    let mut out = Vec::new();
+    let mut reader = file.take(max_bytes.saturating_add(1));
+    reader
+        .read_to_end(&mut out)
+        .map_err(|e| conf_err("pack-io", &format!("{}: {e}", path.display())))?;
+    if u64::try_from(out.len()).unwrap_or(u64::MAX) > max_bytes {
         return Err(conf_err(
             "pack-io",
             &format!("{}: file exceeds cap {max_bytes}", path.display()),
         ));
     }
-    fs::read_to_string(path).map_err(|e| conf_err("pack-io", &format!("{}: {e}", path.display())))
+    Ok(out)
+}
+
+pub fn read_regular_bounded_text(path: &Path, max_bytes: u64) -> Result<String, ConformanceError> {
+    let bytes = read_regular_bounded_bytes(path, max_bytes)?;
+    String::from_utf8(bytes).map_err(|e| {
+        conf_err(
+            "pack-io",
+            &format!("{}: invalid UTF-8: {e}", path.display()),
+        )
+    })
+}
+
+fn verify_same_file_identity(
+    path: &Path,
+    pre: &fs::Metadata,
+    handle: &fs::Metadata,
+) -> Result<(), ConformanceError> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if pre.dev() != handle.dev() || pre.ino() != handle.ino() {
+            return Err(conf_err(
+                "pack-io",
+                &format!(
+                    "{}: file identity changed between stat and open",
+                    path.display()
+                ),
+            ));
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (path, pre, handle);
+    }
+    Ok(())
+}
+
+fn apply_nofollow_flags(opts: &mut OpenOptions) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.custom_flags(unix_o_nofollow());
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        opts.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+}
+
+#[cfg(unix)]
+const fn unix_o_nofollow() -> i32 {
+    #[cfg(all(
+        any(target_os = "linux", target_os = "android"),
+        any(
+            target_arch = "arm",
+            target_arch = "aarch64",
+            target_arch = "powerpc",
+            target_arch = "powerpc64"
+        )
+    ))]
+    {
+        0o100_000
+    }
+    #[cfg(all(
+        any(target_os = "linux", target_os = "android"),
+        any(
+            target_arch = "mips",
+            target_arch = "mips64",
+            target_arch = "sparc",
+            target_arch = "sparc64"
+        )
+    ))]
+    {
+        0x20000
+    }
+    #[cfg(all(
+        any(target_os = "linux", target_os = "android"),
+        not(any(
+            target_arch = "arm",
+            target_arch = "aarch64",
+            target_arch = "powerpc",
+            target_arch = "powerpc64",
+            target_arch = "mips",
+            target_arch = "mips64",
+            target_arch = "sparc",
+            target_arch = "sparc64"
+        ))
+    ))]
+    {
+        0o400_000
+    }
+    #[cfg(any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "freebsd",
+        target_os = "openbsd",
+        target_os = "dragonfly",
+        target_os = "netbsd"
+    ))]
+    {
+        0x0100
+    }
+    #[cfg(not(any(
+        target_os = "linux",
+        target_os = "android",
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "freebsd",
+        target_os = "openbsd",
+        target_os = "dragonfly",
+        target_os = "netbsd"
+    )))]
+    {
+        0
+    }
 }
 
 pub fn conf_err(scenario_id: &str, detail: &str) -> ConformanceError {
@@ -140,14 +302,23 @@ fn parse_reads_array(val: Option<&TomlVal>) -> Result<Vec<FieldReadDecl>, Confor
         let TomlVal::Table(tbl) = item else {
             return Err(conf_err("pack-toml", "`reads` entries must be tables"));
         };
-        let path = get_str(tbl, "path").unwrap_or_default();
-        if !path.is_empty() {
-            let class_raw = get_str(tbl, "data_class").unwrap_or("derived");
-            out.push(FieldReadDecl {
-                path: path.to_owned(),
-                data_class: parse_class(class_raw)?,
-            });
-        }
+        let path = get_str(tbl, "path")
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| conf_err("pack-toml", "`reads` entry missing non-empty `path`"))?;
+        let class_raw = get_str(tbl, "data_class")
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                conf_err(
+                    "pack-toml",
+                    &format!("`reads` entry `{path}` missing non-empty `data_class`"),
+                )
+            })?;
+        out.push(FieldReadDecl {
+            path: path.to_owned(),
+            data_class: parse_class(class_raw)?,
+        });
     }
     Ok(out)
 }
@@ -170,11 +341,26 @@ fn parse_queries_array(val: Option<&TomlVal>) -> Result<Vec<EvidenceQueryDecl>, 
                 "`evidence_queries` entries must be tables",
             ));
         };
-        let id = get_str(tbl, "id").unwrap_or_default().to_owned();
-        let max_class = match get_str(tbl, "max_class") {
-            Some(raw) => parse_class(raw)?,
-            None => PackDataClass::Derived,
-        };
+        let id = get_str(tbl, "id")
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                conf_err(
+                    "pack-toml",
+                    "`evidence_queries` entry missing non-empty `id`",
+                )
+            })?
+            .to_owned();
+        let max_class_raw = get_str(tbl, "max_class")
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                conf_err(
+                    "pack-toml",
+                    &format!("`evidence_queries` entry `{id}` missing non-empty `max_class`"),
+                )
+            })?;
+        let max_class = parse_class(max_class_raw)?;
         let reads = parse_reads_array(tbl.get("reads"))?;
         let mut group_by = Vec::new();
         collect_strings(tbl.get("group_by"), &mut group_by);
@@ -258,12 +444,10 @@ fn parse_kind(raw: &str) -> Result<PackKind, ConformanceError> {
 
 fn parse_class(raw: &str) -> Result<PackDataClass, ConformanceError> {
     match raw {
-        "public" => Ok(PackDataClass::Public),
         "identifier" => Ok(PackDataClass::Identifier),
         "structural" => Ok(PackDataClass::Structural),
         "derived" => Ok(PackDataClass::Derived),
         "content" => Ok(PackDataClass::Content),
-        "secret" => Ok(PackDataClass::Secret),
         other => Err(conf_err(
             "pack-toml",
             &format!("unknown data class `{other}`"),
@@ -409,5 +593,24 @@ env_vars_to_set = ["LD_PRELOAD=/tmp/p.so"]
         if let Ok(manifest) = parsed {
             assert!(lint_pack_manifest(&manifest, IdentityMode::Pseudonymous).is_ok());
         }
+
+        assert!(parse_pack_manifest_toml(
+            "id = \"x\"\nversion = \"1\"\nkind = \"policy\"\n[[reads]]\ndata_class = \"structural\"\n"
+        ).is_err());
+        assert!(parse_pack_manifest_toml(
+            "id = \"x\"\nversion = \"1\"\nkind = \"policy\"\n[[reads]]\npath = \"\"\ndata_class = \"structural\"\n"
+        ).is_err());
+        assert!(
+            parse_pack_manifest_toml(
+                "id = \"x\"\nversion = \"1\"\nkind = \"policy\"\n[[reads]]\npath = \"a.b\"\n"
+            )
+            .is_err()
+        );
+        assert!(parse_pack_manifest_toml(
+            "id = \"x\"\nversion = \"1\"\nkind = \"compliance\"\n[[evidence_queries]]\nmax_class = \"derived\"\n"
+        ).is_err());
+        assert!(parse_pack_manifest_toml(
+            "id = \"x\"\nversion = \"1\"\nkind = \"compliance\"\n[[evidence_queries]]\nid = \"q1\"\n"
+        ).is_err());
     }
 }

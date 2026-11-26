@@ -178,12 +178,22 @@ fn p7_pack_lint_validates_data_class_order_manifest_subset_and_allow_list_group_
 
     let mut identifier_pack = valid.clone();
     identifier_pack.reads.push(FieldReadDecl {
-        path: "session.device_id".into(),
+        path: "session.user_id".into(),
         data_class: PackDataClass::Identifier,
     });
     assert!(
-        lint_pack_manifest(&identifier_pack, IdentityMode::Pseudonymous).is_ok(),
-        "PackDataClass currently permits Identifier reads matching EvidenceDataClass and signed grdr.compliance"
+        matches!(
+            lint_pack_manifest(&identifier_pack, IdentityMode::Pseudonymous),
+            Err(LintError::PackViolation { ref detail, .. }) if detail.contains("exceeds `derived`")
+        ),
+        "compliance packs capped at Derived must reject Identifier reads in Pseudonymous mode"
+    );
+    assert!(
+        matches!(
+            lint_pack_manifest(&identifier_pack, IdentityMode::Named),
+            Err(LintError::PackViolation { ref detail, .. }) if detail.contains("exceeds `derived`")
+        ),
+        "compliance packs capped at Derived must reject Identifier reads in Named mode"
     );
 
     let mut content_pack = valid.clone();

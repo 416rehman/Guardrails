@@ -173,6 +173,8 @@ pub struct SigmaRule {
     pub rule_id: String,
     pub version: String,
     pub finding_class: FindingClass,
+    #[serde(default)]
+    pub finding_class_other: Option<String>,
     pub severity: FindingSeverity,
     pub ceiling: FindingCeiling,
     pub scope: DeploymentScope,

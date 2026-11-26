@@ -141,6 +141,9 @@ pub struct ArtifactEntry {
     #[prost(string, tag = "16")]
     #[serde(alias = "detected_at")]
     pub detected_at: String,
+    #[prost(string, optional, tag = "17")]
+    #[serde(alias = "kind_other")]
+    pub kind_other: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Eq, prost::Message, Serialize, Deserialize)]

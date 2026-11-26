@@ -1,0 +1,6 @@
+format = "grdr.trust-roots.v1"
+
+[[signers]]
+signer_ref = "grdr-content-release-v1"
+verifier_ed25519_b64 = "yZLUmIo+llGBxrCT49SMCiFp7wpDhnA5NP+EX1pG+Wg="
+status = "active"

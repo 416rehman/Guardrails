@@ -160,7 +160,7 @@ fn s31_live_packs_lint_and_signature() -> Result<ScenarioResult, ConformanceErro
         id: "S31-02".into(),
         category: ScenarioCategory::Airgap,
         title:
-            "Live default signed packs pass P7, Cedar strict modes, Sigma 30, and compliance parity"
+            "Live default signed packs pass P7, Cedar strict modes, Sigma detection fixtures, and compliance parity"
                 .into(),
         outcome: ScenarioOutcome::Pass,
         detail: format!(

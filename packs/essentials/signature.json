@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "domain": "grdr.pack.manifest.v1",
   "signer_ref": "grdr-content-release-v1",
-  "verifier_ed25519_b64": "K6QXib9RtdnlYIN+Nr+dCxKafTDTBVRsFSArrrBV6U8=",
+  "verifier_ed25519_b64": "yZLUmIo+llGBxrCT49SMCiFp7wpDhnA5NP+EX1pG+Wg=",
   "manifest_sha256": "3c1940e6fc06cf174d8932eb79ca9117a9dfb7b9774eca6c98dd76e8193f4eea",
   "files": [
     {
@@ -33,5 +33,5 @@
       "length": 1116
     }
   ],
-  "signature_b64": "3Ah7o60jYrBLMXk8eDBQv4oCmYevrCJmw3dah2O01rgPy3otykUGoRj03qBwwLGQYoU1e+5JwNHVhC5EpGT2Bg=="
+  "signature_b64": "/Bevv62Wsw4gWbElFZK0JQyj3KnGQW2/AFa0PtUF2gU7olpUm+o7e+qwQcwUCRFJCyxUFGhUbK7RAJ/7ZO++DA=="
 }

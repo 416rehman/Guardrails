@@ -426,6 +426,7 @@ fn run_uplink_worker_security_checks() -> Result<(), Box<dyn Error>> {
             id: "a1".to_string(),
             name: "skill".to_string(),
             kind: ArtifactKind::Skill,
+            kind_other: None,
             scope: ArtifactScope::User,
             source_agent: "claude".to_string(),
             path: "/home/alice/.claude/skill.md".to_string(),
@@ -444,18 +445,39 @@ fn run_uplink_worker_security_checks() -> Result<(), Box<dyn Error>> {
         user_display: None,
         device_public_key: None,
     };
+    let wrap_checkin_directive = |req: &DeviceCheckinRequest,
+                                  hdr: &serde_json::Value,
+                                  content_digest: &str,
+                                  signature_input: &str,
+                                  signature: &str|
+     -> Result<Vec<u8>, Box<dyn Error>> {
+        let req_json = serde_json::to_vec(req)?;
+        Ok(serde_json::to_vec(&serde_json::json!({
+            "server_url": "https://cell.fleet.example/v1/checkin",
+            "resolved_ips": ["93.184.216.34"],
+            "request_json": req_json,
+            "request_headers": hdr,
+            "content_digest": content_digest,
+            "signature_input": signature_input,
+            "signature": signature,
+            "response_cert": r_cert,
+            "server_time_unix_s": now_s,
+            "response_payload": b"ok".to_vec()
+        }))?)
+    };
+    let req_headers_val = serde_json::to_value(&req_headers)?;
     let p8_ev = st.handle_command(
         &UplinkCommandFrame {
             command_id: "p8-bad".to_string(),
             action: "check_in".to_string(),
             lane: "checkin".to_string(),
             seq_hint: 0,
-            payload: serde_json::to_vec(&p8_req)?,
+            payload: wrap_checkin_directive(&p8_req, &req_headers_val, &cd, &sig_in, &sig)?,
         },
         &clock,
     );
-    if p8_ev.degraded_reason.is_empty() {
-        return Err("nested artifact P8 leak must be rejected".into());
+    if !p8_ev.degraded_reason.contains("P8 privacy violation") {
+        return Err(format!("nested artifact P8 leak must be rejected: {p8_ev:?}").into());
     }
 
     // Long (>64B) nested path P8 leak and raw hostname leak must both fail closed without 64B truncation.
@@ -470,18 +492,18 @@ fn run_uplink_worker_security_checks() -> Result<(), Box<dyn Error>> {
             action: "check_in".to_string(),
             lane: "checkin".to_string(),
             seq_hint: 0,
-            payload: serde_json::to_vec(&long_p8)?,
+            payload: wrap_checkin_directive(&long_p8, &req_headers_val, &cd, &sig_in, &sig)?,
         },
         &clock,
     );
-    if long_p8_ev.degraded_reason.is_empty() {
-        return Err("P8 path beyond 64 bytes must still be detected and rejected".into());
+    if !long_p8_ev.degraded_reason.contains("P8 privacy violation") {
+        return Err(format!("P8 path beyond 64 bytes must still fail P8: {long_p8_ev:?}").into());
     }
     let host_p8 = DeviceCheckinRequest {
         hostname: "alice-laptop\\ahmad".to_string(),
         user_id: None,
         artifacts: Vec::new(),
-        ..p8_req
+        ..p8_req.clone()
     };
     let host_p8_ev = st.handle_command(
         &UplinkCommandFrame {
@@ -489,12 +511,104 @@ fn run_uplink_worker_security_checks() -> Result<(), Box<dyn Error>> {
             action: "check_in".to_string(),
             lane: "checkin".to_string(),
             seq_hint: 0,
-            payload: serde_json::to_vec(&host_p8)?,
+            payload: wrap_checkin_directive(&host_p8, &req_headers_val, &cd, &sig_in, &sig)?,
         },
         &clock,
     );
-    if host_p8_ev.degraded_reason.is_empty() {
-        return Err("raw Windows account/hostname backslash in hostname must fail P8".into());
+    if !host_p8_ev.degraded_reason.contains("P8 privacy violation") {
+        return Err(format!(
+            "raw Windows account/hostname backslash in hostname must fail P8: {host_p8_ev:?}"
+        )
+        .into());
+    }
+
+    for bad_kind_other in [
+        "/home/alice/skill",
+        "sk-secret12345",
+        "ghp_secret12345",
+        "bad\nkind",
+    ] {
+        let mut bad_other_req = p8_req.clone();
+        if let Some(first) = bad_other_req.artifacts.first_mut() {
+            first.user_id = None;
+            first.path = "skills/custom/tool.md".to_string();
+            first.kind = ArtifactKind::Other;
+            first.kind_other = Some(bad_kind_other.to_string());
+        }
+        let bad_other_ev = st.handle_command(
+            &UplinkCommandFrame {
+                command_id: "p8-kind-other-bad".to_string(),
+                action: "check_in".to_string(),
+                lane: "checkin".to_string(),
+                seq_hint: 0,
+                payload: wrap_checkin_directive(
+                    &bad_other_req,
+                    &req_headers_val,
+                    &cd,
+                    &sig_in,
+                    &sig,
+                )?,
+            },
+            &clock,
+        );
+        if !bad_other_ev
+            .degraded_reason
+            .contains("P8 privacy violation in device checkin artifact entry")
+        {
+            return Err(format!(
+                "P8 secret/PII/control char in artifact.kind_other `{bad_kind_other}` must fail: {bad_other_ev:?}"
+            )
+            .into());
+        }
+    }
+
+    // Valid ArtifactKind::Other + safe kind_other must pass validate_checkin_p8 and check_in verification.
+    let mut ok_other_req = p8_req.clone();
+    if let Some(first) = ok_other_req.artifacts.first_mut() {
+        first.user_id = None;
+        first.path = "skills/custom/tool.md".to_string();
+        first.kind = ArtifactKind::Other;
+        first.kind_other = Some("mcp-prompt".to_string());
+    }
+    let ok_req_json = serde_json::to_vec(&ok_other_req)?;
+    let ok_nonce = generate_nonce()?;
+    let ok_req_hdr = signer.sign_request(
+        "POST",
+        "https://cell.fleet.example/v1/checkin",
+        &ok_req_json,
+        RequestKind::CheckIn,
+        now_s,
+        Some(&ok_nonce),
+    )?;
+    let (ok_cd, ok_sig_in, ok_sig) = sign_fleet_response(
+        &resp_kp,
+        Some(&r_cert),
+        &ok_req_hdr.request_sig_digest_b64,
+        b"ok",
+        now_s,
+    )?;
+    let ok_hdr_val = serde_json::to_value(&ok_req_hdr)?;
+    let ok_other_ev = st.handle_command(
+        &UplinkCommandFrame {
+            command_id: "p8-kind-other-ok".to_string(),
+            action: "check_in".to_string(),
+            lane: "checkin".to_string(),
+            seq_hint: 0,
+            payload: wrap_checkin_directive(
+                &ok_other_req,
+                &ok_hdr_val,
+                &ok_cd,
+                &ok_sig_in,
+                &ok_sig,
+            )?,
+        },
+        &clock,
+    );
+    if !ok_other_ev.degraded_reason.is_empty() {
+        return Err(format!(
+            "valid ArtifactKind::Other + safe kind_other must pass P8 validation: {ok_other_ev:?}"
+        )
+        .into());
     }
 
     // Isolated mode check_in refuses unlisted egress BEFORE DNS (even with zero resolved_ips).
