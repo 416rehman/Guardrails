@@ -10,6 +10,8 @@ pub mod airgap_s31;
 pub mod broker_bounds;
 pub mod containment;
 mod pack_compliance;
+mod pack_cred_locator;
+mod pack_digests;
 mod pack_fixture_eval;
 mod pack_fixtures;
 mod pack_manifest;

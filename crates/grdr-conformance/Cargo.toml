@@ -17,6 +17,7 @@ grdr-comply = { workspace = true }
 grdr-core = { workspace = true }
 grdr-crypto = { workspace = true }
 grdr-export = { workspace = true }
+grdr-identity = { workspace = true }
 grdr-llm-proto = { workspace = true }
 grdr-mcp-proto = { workspace = true }
 grdr-model = { workspace = true }

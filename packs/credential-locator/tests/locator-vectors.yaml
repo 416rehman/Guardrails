@@ -1,0 +1,41 @@
+format: grdr.policy-tests.v1
+pack_id: grdr.credential-locator
+vectors:
+  - id: vec.locator.aws-creds.h2
+    path: "~/.aws/credentials"
+    expect_locator: aws-shared-credentials
+    expect_hygiene: H2
+    expect_honeytoken: false
+
+  - id: vec.locator.mcp-env.h3
+    path: "workspace/.mcp.json"
+    expect_locator: mcp-config-env
+    expect_hygiene: H3
+    expect_honeytoken: false
+
+  - id: vec.locator.ssh-unencrypted.h4
+    path: "~/.ssh/id_ed25519"
+    expect_locator: ssh-private-key
+    expect_hygiene: H4
+    expect_honeytoken: false
+
+  - id: vec.locator.shell-export.h5
+    path: "~/.zshrc"
+    expect_locator: shell-profile-export
+    expect_hygiene: H5
+    expect_honeytoken: false
+
+  - id: vec.locator.kube-uncontained.h10
+    path: "~/.kube/config"
+    expect_locator: kubeconfig-static
+    expect_hygiene: H10
+    expect_honeytoken: false
+
+  - id: vec.locator.honeytoken.trap
+    path: "/tmp/.grdr-honeytoken"
+    expect_locator: honeytoken-trap
+    expect_honeytoken: true
+
+  - id: vec.locator.readme.negative
+    path: "README.md"
+    expect_none: true

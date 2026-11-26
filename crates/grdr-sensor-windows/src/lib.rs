@@ -7,7 +7,24 @@ pub mod dev_drive;
 pub mod driver_seam;
 pub mod etw;
 pub mod powershell;
+pub mod sysmon;
 pub mod wfp;
+pub mod win_containment;
+pub mod win_dev_drive;
+pub mod win_etw;
+pub mod win_process;
+pub mod win_wfp;
+
+#[cfg(windows)]
+mod win_acl_sys;
+#[cfg(windows)]
+mod win_containment_sys;
+#[cfg(windows)]
+mod win_etw_sys;
+#[cfg(windows)]
+mod win_wfp_filters;
+#[cfg(windows)]
+mod win_wfp_sys;
 
 use std::collections::VecDeque;
 
@@ -37,10 +54,33 @@ pub use etw::{
 };
 pub use powershell::{
     CaptureLevel, NormalizedScriptBlock, RawScriptBlockEvent, normalize_script_block_4104,
+    parse_ps4104_event_xml,
 };
+pub use sysmon::{ParsedWindowsEventXml, SysmonNormalizationOutcome, parse_sysmon_event_xml};
 pub use wfp::{
     WfpFilterAction, WfpFilterRule, WfpLayer, WfpPrincipalKey, WfpSublayerPlan,
     plan_service_wfp_filters, plan_session_wfp_filters, validate_sid_syntax,
+};
+pub use win_containment::{
+    AclJournalEntry, AppContainerProvisioned, WinJobObjectHandle, WinRestrictedTokenHandle,
+    WinSecurityCapabilitiesHandle, apply_deny_aces, provision_app_container, remove_app_container,
+    restore_deny_aces,
+};
+pub use win_dev_drive::{
+    EnumeratedVolume, WindowsDriveKind, enumerate_windows_volumes,
+    probe_dev_drive_trust_from_output,
+};
+pub use win_etw::{
+    EtwSessionState, LiveEtwSessionStatus, LiveWindowsEtwSource, ParsedGuid, filetime_to_timestamp,
+    parse_guid_str,
+};
+pub use win_process::{
+    NativeProcessSnapshot, ProcessTreeDelta, WindowsProcessKey, WindowsProcessTree,
+    inspect_process_by_pid, snapshot_native_processes,
+};
+pub use win_wfp::{
+    AppliedWfpRules, WfpCoexistenceReport, WfpEngineAccess, WfpProviderInfo,
+    apply_wfp_sublayer_plan, probe_wfp_coexistence, remove_applied_wfp_filters,
 };
 
 pub const CODE_WINSENS_ETW: &str = "GRDR-WINSENS-0001";
@@ -48,6 +88,7 @@ pub const CODE_WINSENS_WFP: &str = "GRDR-WINSENS-0002";
 pub const CODE_WINSENS_CONTAINMENT: &str = "GRDR-WINSENS-0003";
 pub const CODE_WINSENS_DEV_DRIVE: &str = "GRDR-WINSENS-0004";
 pub const CODE_WINSENS_DRIVER: &str = "GRDR-WINSENS-0005";
+pub const CODE_WINSENS_SYSMON: &str = "GRDR-WINSENS-0006";
 pub const MAX_BUFFERED_FINDINGS: usize = 1_024;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -62,6 +103,8 @@ pub enum WindowsSensorError {
     DevDrive(String),
     #[error("GRDR-WINSENS-0005: Windows kernel driver seam fault: {0}")]
     Driver(String),
+    #[error("GRDR-WINSENS-0006: Sysmon event XML fault: {0}")]
+    Sysmon(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -89,6 +132,7 @@ impl From<WindowsSensorError> for CodedError {
             WindowsSensorError::Containment(_) => CODE_WINSENS_CONTAINMENT,
             WindowsSensorError::DevDrive(_) => CODE_WINSENS_DEV_DRIVE,
             WindowsSensorError::Driver(_) => CODE_WINSENS_DRIVER,
+            WindowsSensorError::Sysmon(_) => CODE_WINSENS_SYSMON,
         };
         CodedError::new(
             code,

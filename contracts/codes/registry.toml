@@ -162,6 +162,11 @@ GRDR-ID-0012 = { owner = "grdr-identity", file = "crates/grdr-identity/src/lib.r
 GRDR-ID-0013 = { owner = "grdr-identity", file = "crates/grdr-identity/src/lib.rs" }
 GRDR-ID-0014 = { owner = "grdr-identity", file = "crates/grdr-identity/src/lib.rs" }
 GRDR-ID-0015 = { owner = "grdr-identity", file = "crates/grdr-identity/src/lib.rs" }
+GRDR-ID-0016 = { owner = "grdr-identity", file = "crates/grdr-identity/src/lib.rs" }
+GRDR-ID-0017 = { owner = "grdr-identity", file = "crates/grdr-identity/src/lib.rs" }
+GRDR-ID-0018 = { owner = "grdr-identity", file = "crates/grdr-identity/src/lib.rs" }
+GRDR-ID-0019 = { owner = "grdr-identity", file = "crates/grdr-identity/src/lib.rs" }
+GRDR-ID-0020 = { owner = "grdr-identity", file = "crates/grdr-identity/src/lib.rs" }
 GRDR-INFER-0001 = { owner = "grdr-infer", file = "programs/grdr-infer/src/lib.rs" }
 GRDR-INFER-0002 = { owner = "grdr-infer", file = "programs/grdr-infer/src/lib.rs" }
 GRDR-INFER-0003 = { owner = "grdr-infer", file = "programs/grdr-infer/src/lib.rs" }
@@ -401,6 +406,7 @@ GRDR-WINSENS-0002 = { owner = "grdr-sensor-windows", file = "crates/grdr-sensor-
 GRDR-WINSENS-0003 = { owner = "grdr-sensor-windows", file = "crates/grdr-sensor-windows/src/lib.rs" }
 GRDR-WINSENS-0004 = { owner = "grdr-sensor-windows", file = "crates/grdr-sensor-windows/src/lib.rs" }
 GRDR-WINSENS-0005 = { owner = "grdr-sensor-windows", file = "crates/grdr-sensor-windows/src/lib.rs" }
+GRDR-WINSENS-0006 = { owner = "grdr-sensor-windows", file = "crates/grdr-sensor-windows/src/lib.rs" }
 GRDR-WIRE-0001 = { owner = "grdr-wire", file = "crates/grdr-wire/src/lib.rs" }
 GRDR-WIRE-0002 = { owner = "grdr-wire", file = "crates/grdr-wire/src/lib.rs" }
 GRDR-WIRE-0003 = { owner = "grdr-wire", file = "crates/grdr-wire/src/lib.rs" }

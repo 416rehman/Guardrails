@@ -1,0 +1,7 @@
+LIBRARY grdr-amsi
+EXPORTS
+    GrdrAmsiScanBuffer
+    DllGetClassObject PRIVATE
+    DllCanUnloadNow PRIVATE
+    DllRegisterServer PRIVATE
+    DllUnregisterServer PRIVATE

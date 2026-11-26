@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleExecutable</key>
+  <string>GrdrNetworkExtension</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.guardrailshq.grdr.network-extension</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>Guardrails ADR Network Extension</string>
+  <key>CFBundlePackageType</key>
+  <string>SYSX</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>15.0</string>
+  <key>NSSystemExtensionUsageDescription</key>
+  <string>Guardrails ADR monitors agent network flows to enforce containment policy.</string>
+  <key>NetworkExtension</key>
+  <dict>
+    <key>NEMachServiceName</key>
+    <string>com.guardrailshq.grdr.network-extension</string>
+    <key>NEProviderClasses</key>
+    <dict>
+      <key>com.apple.networkextension.filter-data</key>
+      <string>NetworkExtension.GrdrFilterDataProvider</string>
+      <key>com.apple.networkextension.dns-proxy</key>
+      <string>NetworkExtension.GrdrDNSProxyProvider</string>
+      <key>com.apple.networkextension.app-proxy</key>
+      <string>NetworkExtension.GrdrTransparentProxyProvider</string>
+    </dict>
+  </dict>
+</dict>
+</plist>

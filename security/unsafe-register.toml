@@ -829,3 +829,687 @@ lines = "314-507"
 invariant = "Validates NUL/double-NUL UTF-16 buffers, passes mandatory explicit lpApplicationName and PROC_THREAD_ATTRIBUTE_HANDLE_LIST when inheritable stdio handles exist, launches CREATE_SUSPENDED, assigns Job Object before ResumeThread, checks WaitForSingleObject == WAIT_OBJECT_0 and != STILL_ACTIVE."
 owner = "sandbox"
 verification = ["cargo test -p grdr-sandbox-engine"]
+
+[[entry]]
+crate = "grdr-identity"
+file = "crates/grdr-identity/src/dpapi.rs"
+symbol = "LocalBlobGuard::drop"
+lines = "34-44"
+invariant = "Zeroizes decrypted DPAPI buffer bytes before calling LocalFree once on non-null LocalAlloc pointer."
+owner = "identity"
+verification = ["cargo test -p grdr-identity"]
+
+[[entry]]
+crate = "grdr-identity"
+file = "crates/grdr-identity/src/dpapi.rs"
+symbol = "protect_bytes"
+lines = "88-112"
+invariant = "Calls Win32 CryptProtectData with CRYPTPROTECT_UI_FORBIDDEN over bounded payload and optional scoped entropy, wrapping output in LocalBlobGuard."
+owner = "identity"
+verification = ["cargo test -p grdr-identity"]
+
+[[entry]]
+crate = "grdr-identity"
+file = "crates/grdr-identity/src/dpapi.rs"
+symbol = "unprotect_bytes"
+lines = "157-184"
+invariant = "Calls Win32 CryptUnprotectData over bounded ciphertext (MAX_DPAPI_PAYLOAD_BYTES + 4096) with CRYPTPROTECT_UI_FORBIDDEN and wraps plaintext in LocalBlobGuard."
+owner = "identity"
+verification = ["cargo test -p grdr-identity"]
+
+[[entry]]
+crate = "grdr-identity"
+file = "crates/grdr-identity/src/dpapi_fs.rs"
+symbol = "LocalFreePtr::drop"
+lines = "47-49"
+invariant = "Releases non-null LocalAlloc buffer allocated by Win32 security descriptor or SID conversion APIs via LocalFree once."
+owner = "identity"
+verification = ["cargo test -p grdr-identity"]
+
+[[entry]]
+crate = "grdr-identity"
+file = "crates/grdr-identity/src/dpapi_fs.rs"
+symbol = "parse_sddl_descriptor"
+lines = "63-70"
+invariant = "Parses NUL-terminated UTF-16 SDDL descriptor into owned LocalFreePtr wrapper via ConvertStringSecurityDescriptorToSecurityDescriptorW."
+owner = "identity"
+verification = ["cargo test -p grdr-identity"]
+
+[[entry]]
+crate = "grdr-identity"
+file = "crates/grdr-identity/src/dpapi_fs.rs"
+symbol = "ensure_real_vault_dir"
+lines = "102-210"
+invariant = "Creates DPAPI vault root directory atomically with protected owner+SYSTEM DACL, opens non-reparse handle checking GetFileInformationByHandle, and enforces DACL via SetSecurityInfo."
+owner = "identity"
+verification = ["cargo test -p grdr-identity"]
+
+[[entry]]
+crate = "grdr-identity"
+file = "crates/grdr-identity/src/dpapi_fs.rs"
+symbol = "write_dpapi_file_secure"
+lines = "253-295"
+invariant = "Creates sibling staging file via CreateFileW with owner+SYSTEM protected SDDL and FILE_FLAG_OPEN_REPARSE_POINT, wraps handle in File, and replaces atomically via MoveFileExW."
+owner = "identity"
+verification = ["cargo test -p grdr-identity"]
+
+[[entry]]
+crate = "grdr-identity"
+file = "crates/grdr-identity/src/dpapi_fs.rs"
+symbol = "current_user_sid_string"
+lines = "394-447"
+invariant = "Opens current process token into OwnedHandle and queries dynamically sized TokenUser buffer under two-call GetTokenInformation pattern before formatting SID."
+owner = "identity"
+verification = ["cargo test -p grdr-identity"]
+
+[[entry]]
+crate = "grdr-identity"
+file = "crates/grdr-identity/src/dpapi_fs.rs"
+symbol = "sid_to_string"
+lines = "453-478"
+invariant = "Converts valid binary PSID to UTF-16 string via ConvertSidToStringSidW, bounds NUL scan to 512 code units, and frees buffer via LocalFreePtr."
+owner = "identity"
+verification = ["cargo test -p grdr-identity"]
+
+[[entry]]
+crate = "grdr-identity"
+file = "crates/grdr-identity/src/linux_keyring.rs"
+symbol = "add_user_key"
+lines = "34-43"
+invariant = "Invokes Linux SYS_add_key syscall with NUL-terminated CStr type/description and bounded secret byte slice returning KEY_SPEC_USER_KEYRING key serial."
+owner = "identity"
+verification = ["cargo test -p grdr-identity"]
+
+[[entry]]
+crate = "grdr-identity"
+file = "crates/grdr-identity/src/linux_keyring.rs"
+symbol = "lookup_user_key_serial"
+lines = "63-97"
+invariant = "Invokes Linux SYS_request_key and fallback SYS_keyctl(KEYCTL_SEARCH) over NUL-terminated CStr type and description strings to resolve key serial."
+owner = "identity"
+verification = ["cargo test -p grdr-identity"]
+
+[[entry]]
+crate = "grdr-identity"
+file = "crates/grdr-identity/src/linux_keyring.rs"
+symbol = "request_user_key"
+lines = "128-136"
+invariant = "Invokes Linux SYS_keyctl(KEYCTL_READ) against bounded Zeroizing buffer up to MAX_KEYRING_BYTES and fails closed if kernel size exceeds buffer."
+owner = "identity"
+verification = ["cargo test -p grdr-identity"]
+
+[[entry]]
+crate = "grdr-identity"
+file = "crates/grdr-identity/src/linux_keyring.rs"
+symbol = "revoke_user_key"
+lines = "160-169"
+invariant = "Invokes Linux SYS_keyctl(KEYCTL_REVOKE) then KEYCTL_UNLINK on resolved i32 key serial inside KEY_SPEC_USER_KEYRING."
+owner = "identity"
+verification = ["cargo test -p grdr-identity"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi.rs"
+symbol = "grdr_macos_abi_version"
+lines = "69-72"
+invariant = "Exports constant C-ABI version integer with no pointer dereferences."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi.rs"
+symbol = "grdr_macos_follower_new"
+lines = "78-89"
+invariant = "Allocates Mutex-guarded EsTreeFollower holder inside catch_unwind and returns opaque Box::into_raw pointer."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi.rs"
+symbol = "grdr_macos_follower_free"
+lines = "99-113"
+invariant = "Checks non-null pointer before reclaiming Mutex-guarded FfiFollowerHolder once via Box::from_raw inside catch_unwind."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi.rs"
+symbol = "grdr_macos_apply_es_event"
+lines = "124-164"
+invariant = "Validates non-null follower and bounded UTF-8 event JSON slice via read_utf8_arg and acquires Mutex lock inside catch_unwind."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi.rs"
+symbol = "grdr_macos_follower_mute_team"
+lines = "175-205"
+invariant = "Validates non-null follower and bounded UTF-8 team identifier via read_utf8_arg and records team muting under Mutex inside catch_unwind."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi.rs"
+symbol = "grdr_macos_eval_es_auth_exec"
+lines = "216-291"
+invariant = "Validates non-null follower, bounded ES AUTH_EXEC JSON slice, and optional floor JSON slice via read_utf8_arg and evaluates fail-closed fastpath verdict under Mutex inside catch_unwind."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi.rs"
+symbol = "grdr_macos_eval_ne_flow"
+lines = "302-335"
+invariant = "Validates bounded flow JSON and optional floor JSON slices via read_utf8_arg (failing closed on null pointer with non-zero length) inside catch_unwind."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi.rs"
+symbol = "parse_floor_specs_ffi"
+lines = "342-361"
+invariant = "Enforces zero-length empty rule set or bounded UTF-8 read_utf8_arg deserialization up to MAX_FFI_FLOOR_RULES."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi.rs"
+symbol = "grdr_macos_plan_seatbelt"
+lines = "406-431"
+invariant = "Validates agent UTF-8 string and SeatbeltProfileSpec JSON slices via read_utf8_arg inside catch_unwind."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi.rs"
+symbol = "grdr_macos_probe_capabilities"
+lines = "437-444"
+invariant = "Probes macOS capabilities inside catch_unwind and returns NUL-sanitized heap CString."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi.rs"
+symbol = "grdr_macos_free_string"
+lines = "454-468"
+invariant = "Null-checks returned C string pointer before reclaiming via CString::from_raw inside catch_unwind."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi.rs"
+symbol = "read_utf8_arg"
+lines = "474-488"
+invariant = "Enforces zero-len early return, non-null pointer, and MAX_FFI_JSON_BYTES ceiling before slice::from_raw_parts and UTF-8 validation."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_sys.rs"
+symbol = "<top-level>"
+lines = "46-113"
+invariant = "CoreFoundation, Security, and libSystem Seatbelt C ABI symbol declarations matching macOS SDK headers."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_sys.rs"
+symbol = "CfGuard::drop"
+lines = "120-122"
+invariant = "Calls CFRelease once on non-null CoreFoundation or Security framework object reference."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_sys.rs"
+symbol = "darwin_inspect_process"
+lines = "144-205"
+invariant = "Calls proc_pidinfo (PROC_PIDTBSDINFO verifying exact byte size and PROC_PIDUNIQIDENTIFIERINFO for p_idversion/p_uniqueid) and proc_pidpath against bounded buffers."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_sys.rs"
+symbol = "darwin_read_guest_seccode_info"
+lines = "238-336"
+invariant = "Resolves live guest SecCodeRef via SecCodeCopyGuestWithAttributes(kSecGuestAttributePid), checks SecCodeCheckValidity and CS_VALID dynamic status, and extracts CS_ADHOC, TeamIdentifier, and Identifier under CfGuard."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_sys.rs"
+symbol = "darwin_apply_seatbelt_profile"
+lines = "350-374"
+invariant = "Calls sandbox_init_with_parameters with NUL-terminated SBPL CString and frees diagnostic error buffer via sandbox_free_error."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_sys.rs"
+symbol = "cfnumber_to_u32"
+lines = "384-402"
+invariant = "Null-checks borrowed CFNumberRef inside live CFDictionaryRef before copying integer via CFNumberGetValue."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_sys.rs"
+symbol = "cfstring_to_rust"
+lines = "409-432"
+invariant = "Null-checks borrowed CFStringRef before calling CFStringGetCString into bounded 512-byte stack buffer."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_acl_sys.rs"
+symbol = "LocalMemGuard::drop"
+lines = "49-51"
+invariant = "Calls LocalFree once on non-null LocalAlloc security descriptor, SID, or ACL buffer."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_acl_sys.rs"
+symbol = "apply_single_deny_ace"
+lines = "85-173"
+invariant = "Opens non-reparse handle via CreateFileW, reads live DACL via GetSecurityInfo, builds explicit DENY_ACCESS ACE, and applies updated ACL via handle SetSecurityInfo."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_acl_sys.rs"
+symbol = "restore_win_deny_aces"
+lines = "203-260"
+invariant = "Opens non-reparse handle via CreateFileW, parses backed-up SDDL via ConvertStringSecurityDescriptorToSecurityDescriptorW, extracts non-null DACL, and restores prior protected/unprotected DACL via SetSecurityInfo."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_acl_sys.rs"
+symbol = "open_non_reparse_acl_handle"
+lines = "298-329"
+invariant = "Opens target path with FILE_FLAG_OPEN_REPARSE_POINT and FILE_FLAG_BACKUP_SEMANTICS into OwnedHandle and checks GetFileInformationByHandle to reject reparse points."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_acl_sys.rs"
+symbol = "read_handle_dacl_sddl"
+lines = "351-436"
+invariant = "Reads DACL security descriptor and control flags from open handle, converts to UTF-16 SDDL under 262144-unit cap (failing on overflow), and frees Win32 buffers via LocalMemGuard."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_containment_sys.rs"
+symbol = "LocalSidGuard::drop"
+lines = "67-69"
+invariant = "Calls LocalFree once on non-null ConvertStringSidToSidW PSID."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_containment_sys.rs"
+symbol = "AppContainerSidGuard::drop"
+lines = "80-82"
+invariant = "Calls FreeSid once on non-null AppContainer PSID."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_containment_sys.rs"
+symbol = "WinJobHandle::from_plan"
+lines = "96-146"
+invariant = "Creates named Win32 Job Object checking GetLastError != ERROR_ALREADY_EXISTS, wraps HANDLE in OwnedHandle, and configures JOBOBJECT_EXTENDED_LIMIT_INFORMATION."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_containment_sys.rs"
+symbol = "WinJobHandle::assign_process"
+lines = "166-182"
+invariant = "Opens target PID handle into OwnedHandle and calls AssignProcessToJobObject on live Job Object handle."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_containment_sys.rs"
+symbol = "WinJobHandle::terminate"
+lines = "194-194"
+invariant = "Calls TerminateJobObject on live OwnedHandle Job Object."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_containment_sys.rs"
+symbol = "WinRestrictedToken::from_plan"
+lines = "218-313"
+invariant = "Opens current process token into OwnedHandle, checks TokenElevationType to gate LUA_TOKEN cleanly, parses sandbox SID under LocalSidGuard, derives write-restricted token, and wraps result in OwnedHandle."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_containment_sys.rs"
+symbol = "<top-level>"
+lines = "327-334"
+invariant = "Send/Sync for WinSecurityCapabilities: uniquely owns immutable LocalAlloc AppContainer PSID released once via LocalFree in Drop."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_containment_sys.rs"
+symbol = "WinSecurityCapabilities::drop"
+lines = "341-343"
+invariant = "Calls LocalFree once on non-null AppContainer PSID."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_containment_sys.rs"
+symbol = "WinSecurityCapabilities::from_app_container_sid"
+lines = "363-363"
+invariant = "Converts validated S-1-15-* AppContainer SID string into owned LocalAlloc PSID via ConvertStringSidToSidW."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_containment_sys.rs"
+symbol = "provision_win_app_container"
+lines = "391-410"
+invariant = "Creates or derives Windows AppContainer profile SID under AppContainerSidGuard."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_containment_sys.rs"
+symbol = "delete_win_app_container"
+lines = "435-435"
+invariant = "Calls DeleteAppContainerProfile with NUL-terminated UTF-16 profile name."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_containment_sys.rs"
+symbol = "sid_to_string"
+lines = "448-470"
+invariant = "Converts binary PSID to UTF-16 string via ConvertSidToStringSidW bounded to 512 code units and frees buffer via LocalFree."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_dev_drive.rs"
+symbol = "win32_enumerate_logical_volumes"
+lines = "133-183"
+invariant = "Calls GetLogicalDriveStringsW, GetDriveTypeW, and GetVolumeInformationW over fixed stack buffers and checks NUL boundaries."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_etw_sys.rs"
+symbol = "WinEtwHandle::shutdown_internal"
+lines = "57-61"
+invariant = "Stops active ETW trace session and closes consumer handle via CloseTrace to unblock ProcessTrace before joining reader thread."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_etw_sys.rs"
+symbol = "EtwPropertiesBuf::allocate"
+lines = "95-109"
+invariant = "Initializes EVENT_TRACE_PROPERTIES inside 8-byte-aligned owned Vec<u64> sized for trailing logger name."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_etw_sys.rs"
+symbol = "start_win_etw_session"
+lines = "129-220"
+invariant = "Starts or restarts real-time ETW trace session via StartTraceW/ControlTraceW, opens consumer via OpenTraceW, and drains via ProcessTrace on dedicated thread keeping Arc alive."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_etw_sys.rs"
+symbol = "query_win_etw_loss"
+lines = "254-278"
+invariant = "Queries active ETW trace session counters via ControlTraceW into owned aligned EtwPropertiesBuf."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_etw_sys.rs"
+symbol = "stop_trace_handle"
+lines = "297-306"
+invariant = "Stops active ETW kernel session via ControlTraceW(EVENT_TRACE_CONTROL_STOP)."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_etw_sys.rs"
+symbol = "enable_etw_providers"
+lines = "325-338"
+invariant = "Calls EnableTraceEx2 with initialized GUID and ENABLE_TRACE_PARAMETERS on live trace session handle."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_etw_sys.rs"
+symbol = "etw_event_record_callback"
+lines = "353-402"
+invariant = "Null-checks EVENT_RECORD and UserContext pointers inside catch_unwind-guarded ProcessTrace callback without unwinding."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_process.rs"
+symbol = "win32_snapshot_processes"
+lines = "155-193"
+invariant = "Calls CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS) into OwnedHandle and walks Process32FirstW/Process32NextW records."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_process.rs"
+symbol = "query_process_identity_fields"
+lines = "218-258"
+invariant = "Opens target process with PROCESS_QUERY_LIMITED_INFORMATION into OwnedHandle and queries GetProcessTimes + bounded QueryFullProcessImageNameW."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_wfp_filters.rs"
+symbol = "LocalAllocSid::drop"
+lines = "63-65"
+invariant = "Frees non-null LocalAlloc PSID once via LocalFree."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_wfp_filters.rs"
+symbol = "LocalAllocSd::drop"
+lines = "79-81"
+invariant = "Frees non-null LocalAlloc self-relative SECURITY_DESCRIPTOR once via LocalFree."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_wfp_filters.rs"
+symbol = "LocalAllocSid::parse"
+lines = "102-102"
+invariant = "Converts NUL-terminated UTF-16 SID string into LocalAllocSid RAII wrapper via ConvertStringSidToSidW."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_wfp_filters.rs"
+symbol = "LocalAllocSd::for_user_match_sid"
+lines = "124-131"
+invariant = "Converts canonical validated SID SDDL into self-relative LocalAllocSd granting FWP_ACTRL_MATCH_FILTER for ALE user conditions."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_wfp_filters.rs"
+symbol = "install_single_filter"
+lines = "239-266"
+invariant = "Calls FwpmFilterAdd0 over initialized FWPM_FILTER0 and stack condition array owned by PrincipalConditionGuard inside active WfpTxGuard."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
+symbol = "WfpEngineGuard::open"
+lines = "60-60"
+invariant = "Opens BFE handle via FwpmEngineOpen0 with RPC_C_AUTHN_WINNT and closes automatically on drop."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
+symbol = "WfpEngineGuard::drop"
+lines = "73-75"
+invariant = "Closes non-null BFE handle once via FwpmEngineClose0."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
+symbol = "WfpEnumGuard::drop"
+lines = "86-88"
+invariant = "Destroys non-null WFP enumeration handle once via FwpmProviderDestroyEnumHandle0."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
+symbol = "WfpTxGuard::begin"
+lines = "98-98"
+invariant = "Begins atomic WFP transaction via FwpmTransactionBegin0 over live BFE handle and aborts automatically if dropped uncommitted."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
+symbol = "WfpTxGuard::commit"
+lines = "111-111"
+invariant = "Commits active WFP transaction once via FwpmTransactionCommit0 and disarms Drop abort."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
+symbol = "WfpTxGuard::drop"
+lines = "125-127"
+invariant = "Aborts uncommitted WFP transaction via FwpmTransactionAbort0 on early return or error."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
+symbol = "probe_win_wfp_coexistence"
+lines = "157-157"
+invariant = "Probes Windows BFE coexistence cleanly, returning non-admin fallback report on ERROR_ACCESS_DENIED."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
+symbol = "remove_win_wfp_filters"
+lines = "292-292"
+invariant = "Deletes installed WFP filters atomically via FwpmFilterDeleteById0 inside WfpTxGuard."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
+symbol = "ensure_tier_provider_and_sublayer"
+lines = "323-379"
+invariant = "Fails closed on non-NOT_FOUND lookup errors and ensures dynamic or persistent Guardrails WFP provider/sublayer with freed lookup outputs."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
+symbol = "enumerate_providers"
+lines = "398-432"
+invariant = "Bounds enumerated provider slice to BFE count and frees allocated table immediately via FwpmFreeMemory0."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
+symbol = "check_sublayer_present"
+lines = "445-457"
+invariant = "Frees non-null FWPM_SUBLAYER0 pointer returned by FwpmSubLayerGetByKey0 via FwpmFreeMemory0."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
+symbol = "read_pwstr"
+lines = "512-520"
+invariant = "Null-checks BFE UTF-16 pointer and caps NUL scan at 512 code units before slice conversion."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]

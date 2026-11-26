@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 
 use grdr_model::{ActionAttempt, ActionClass, ControlPoint};
 
+use crate::WindowsSensorError;
 use crate::etw::is_powershell_host;
+use crate::sysmon::parse_windows_event_xml;
 
 pub const POWERSHELL_SCRIPT_BLOCK_EVENT_ID: u16 = 4104;
 const REDACTED_MAX_BYTES: usize = 256;
@@ -108,6 +110,44 @@ pub fn normalize_script_block_4104(
     }
 }
 
+pub fn parse_ps4104_event_xml(
+    xml: &str,
+    host_image: &str,
+    in_agent_lineage: bool,
+    session_id: &str,
+    agent_name: &str,
+) -> Result<RawScriptBlockEvent, WindowsSensorError> {
+    let parsed = parse_windows_event_xml(xml)?;
+    if parsed.event_id != POWERSHELL_SCRIPT_BLOCK_EVENT_ID {
+        return Err(WindowsSensorError::Sysmon(format!(
+            "expected PowerShell EventID {}, found {}",
+            POWERSHELL_SCRIPT_BLOCK_EVENT_ID, parsed.event_id
+        )));
+    }
+    let script_block_id = parsed
+        .data
+        .get("ScriptBlockId")
+        .cloned()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| format!("sb-{}", parsed.system_pid));
+    let script_text = parsed.data.get("ScriptBlockText").cloned().ok_or_else(|| {
+        WindowsSensorError::Sysmon("missing ScriptBlockText in 4104 EventData".to_string())
+    })?;
+    let script_path = parsed.data.get("Path").filter(|s| !s.is_empty()).cloned();
+
+    Ok(RawScriptBlockEvent {
+        script_block_id,
+        script_path,
+        script_text,
+        host_pid: parsed.system_pid,
+        host_image: host_image.to_string(),
+        in_agent_lineage,
+        session_id: session_id.to_string(),
+        agent_name: agent_name.to_string(),
+        timestamp: parsed.timestamp,
+    })
+}
+
 fn redact_script_arguments(input: &str) -> String {
     const SECRET_PREFIXES: &[&str] = &[
         "sk-",
@@ -143,6 +183,7 @@ fn redact_script_arguments(input: &str) -> String {
     let stripped_quotes = strip_quoted_literals(&sanitized);
     let mut out = Vec::new();
     let mut redact_next = false;
+    let mut saw_sensitive_env = false;
 
     for tok in stripped_quotes.split_whitespace() {
         let lower = tok.to_ascii_lowercase();
@@ -150,12 +191,31 @@ fn redact_script_arguments(input: &str) -> String {
         if redact_next {
             out.push("[REDACTED]".to_string());
             redact_next = false;
+            saw_sensitive_env = false;
             continue;
+        }
+        if saw_sensitive_env {
+            if tok == "=" {
+                out.push(tok.to_string());
+                redact_next = true;
+                saw_sensitive_env = false;
+                continue;
+            }
+            saw_sensitive_env = false;
         }
         if let Some((lhs, _)) = tok.split_once('=') {
             let lhs_low = lhs.to_ascii_lowercase();
-            if SENSITIVE_KEYS.iter().any(|k| lhs_low.contains(k)) {
+            let check_lhs = lhs_low.strip_prefix("$env:").unwrap_or(&lhs_low);
+            if SENSITIVE_KEYS.iter().any(|k| check_lhs.contains(k)) {
                 out.push(format!("{lhs}=[REDACTED]"));
+                continue;
+            }
+        }
+        if let Some(env_name) = lower.strip_prefix("$env:") {
+            let clean_env = env_name.trim_end_matches('=');
+            if SENSITIVE_KEYS.iter().any(|k| clean_env.contains(k)) {
+                out.push(tok.to_string());
+                saw_sensitive_env = true;
                 continue;
             }
         }
@@ -178,10 +238,23 @@ fn redact_script_arguments(input: &str) -> String {
 
 fn strip_quoted_literals(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
+    let chars: Vec<char> = input.chars().collect();
+    let mut i = 0usize;
     let mut quote: Option<char> = None;
+    let mut here_quote: Option<char> = None;
     let mut escaped = false;
 
-    for ch in input.chars() {
+    while let Some(&ch) = chars.get(i) {
+        if let Some(hq) = here_quote {
+            if ch == hq && chars.get(i.saturating_add(1)) == Some(&'@') {
+                here_quote = None;
+                out.push_str("\"[REDACTED]\"");
+                i = i.saturating_add(2);
+                continue;
+            }
+            i = i.saturating_add(1);
+            continue;
+        }
         if let Some(q) = quote {
             if escaped {
                 escaped = false;
@@ -191,13 +264,25 @@ fn strip_quoted_literals(input: &str) -> String {
                 quote = None;
                 out.push_str("\"[REDACTED]\"");
             }
-        } else if ch == '"' || ch == '\'' {
+            i = i.saturating_add(1);
+            continue;
+        }
+        if ch == '@'
+            && let Some(&next_ch) = chars.get(i.saturating_add(1))
+            && (next_ch == '"' || next_ch == '\'')
+        {
+            here_quote = Some(next_ch);
+            i = i.saturating_add(2);
+            continue;
+        }
+        if ch == '"' || ch == '\'' {
             quote = Some(ch);
         } else {
             out.push(ch);
         }
+        i = i.saturating_add(1);
     }
-    if quote.is_some() {
+    if quote.is_some() || here_quote.is_some() {
         out.push_str("\"[REDACTED]\"");
     }
     out
@@ -260,6 +345,24 @@ mod tests {
         assert!(!retained_preview.contains("sk-secret-1234"));
         assert!(!retained_preview.contains("hunter2"));
 
+        let env_and_here = RawScriptBlockEvent {
+            script_text:
+                "$env:OPENAI_API_KEY = aaaabbbbcccc\n$body = @\"\nsk-herestring-secret-99\n\"@"
+                    .to_string(),
+            ..ev.clone()
+        };
+        let env_redacted =
+            normalize_script_block_4104(&env_and_here, CaptureLevel::RedactedArguments, "d1", "h1");
+        if let ScriptBlockNormalization::Accepted {
+            retained_preview, ..
+        } = env_redacted
+        {
+            assert!(!retained_preview.contains("aaaabbbbcccc"));
+            assert!(!retained_preview.contains("sk-herestring-secret-99"));
+        } else {
+            panic!("expected accepted script block for env/here-string");
+        }
+
         let bad = RawScriptBlockEvent {
             host_image: "cmd.exe".into(),
             ..ev
@@ -268,5 +371,25 @@ mod tests {
             normalize_script_block_4104(&bad, CaptureLevel::FullScript, "d1", "h1"),
             ScriptBlockNormalization::RejectedTamper { .. }
         ));
+    }
+
+    #[test]
+    fn parses_ps4104_event_xml_and_validates_event_id() {
+        let xml = r#"<Event><System><EventID>4104</EventID><TimeCreated SystemTime="2026-11-26T10:00:00Z"/><Execution ProcessID="5500"/></System><EventData><Data Name="ScriptBlockText">Get-ChildItem env:</Data><Data Name="ScriptBlockId">sb-4104</Data><Data Name="Path"></Data></EventData></Event>"#;
+        let ev = parse_ps4104_event_xml(
+            xml,
+            r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+            true,
+            "sess-1",
+            "claude",
+        )
+        .expect("4104 XML parse");
+        assert_eq!(ev.host_pid, 5500);
+        assert_eq!(ev.script_block_id, "sb-4104");
+        assert_eq!(ev.script_text, "Get-ChildItem env:");
+        assert_eq!(ev.script_path, None);
+
+        let wrong_id = "<Event><System><EventID>1</EventID></System><EventData/></Event>";
+        assert!(parse_ps4104_event_xml(wrong_id, "pwsh.exe", true, "s", "a").is_err());
     }
 }

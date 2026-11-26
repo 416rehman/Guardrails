@@ -14,12 +14,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::ConformanceError;
 use crate::pack_compliance::validate_compliance_pack;
+use crate::pack_cred_locator::validate_credential_locator_pack;
+use crate::pack_digests::{canonical_manifest_text, collect_pack_digests};
 use crate::pack_fixtures::{
     collect_response_action_ids, execute_detection_fixtures, validate_cra_workspace_refs,
 };
 use crate::pack_manifest::{
-    MAX_PACK_FILE_BYTES, check_no_em_dash_or_vocab, conf_err, is_symlink_or_reparse,
-    parse_pack_manifest_toml, read_regular_bounded_bytes, read_regular_text,
+    check_no_em_dash_or_vocab, conf_err, is_symlink_or_reparse, parse_pack_manifest_toml,
+    read_regular_text,
 };
 use crate::pack_policy_vectors::execute_essentials_vectors;
 use crate::pack_trust::{TRUST_ROOTS_FILENAME, load_pack_trust_roots};
@@ -56,6 +58,7 @@ pub struct PackValidationSummary {
     pub response_actions_count: usize,
     pub compliance_capabilities_count: usize,
     pub compliance_frameworks_count: usize,
+    pub credential_locator_vectors_passed: usize,
     pub signed_packs_verified: usize,
 }
 
@@ -221,12 +224,11 @@ pub fn validate_live_packs(repo_root: &Path) -> Result<PackValidationSummary, Co
     signed_dirs.sort();
     let mut verified_ids = BTreeSet::new();
     for dir in &signed_dirs {
-        let toml_raw = read_regular_text(&dir.join("pack.toml"))?;
-        let manifest = parse_pack_manifest_toml(&toml_raw)?;
-        lint_pack_manifest(&manifest, IdentityMode::Named)
-            .map_err(|e| conf_err("pack-lint", &e.to_string()))?;
-        lint_pack_manifest(&manifest, IdentityMode::Pseudonymous)
-            .map_err(|e| conf_err("pack-lint", &e.to_string()))?;
+        let manifest = parse_pack_manifest_toml(&read_regular_text(&dir.join("pack.toml"))?)?;
+        for mode in [IdentityMode::Named, IdentityMode::Pseudonymous] {
+            lint_pack_manifest(&manifest, mode)
+                .map_err(|e| conf_err("pack-lint", &e.to_string()))?;
+        }
         let sig = verify_signed_pack_dir(dir, &manifest.id)?;
         if sig.version != manifest.version {
             return Err(conf_err(
@@ -254,10 +256,10 @@ pub fn validate_live_packs(repo_root: &Path) -> Result<PackValidationSummary, Co
     let compliance_dir = packs_dir.join("compliance");
 
     let cedar_src = read_regular_text(&essentials_dir.join("rules").join("essentials.cedar"))?;
-    lint_cedar_policy_in_mode("grdr.essentials", &cedar_src, IdentityMode::Named)
-        .map_err(|e| conf_err("cedar-lint", &e.to_string()))?;
-    lint_cedar_policy_in_mode("grdr.essentials", &cedar_src, IdentityMode::Pseudonymous)
-        .map_err(|e| conf_err("cedar-lint", &e.to_string()))?;
+    for mode in [IdentityMode::Named, IdentityMode::Pseudonymous] {
+        lint_cedar_policy_in_mode("grdr.essentials", &cedar_src, mode)
+            .map_err(|e| conf_err("cedar-lint", &e.to_string()))?;
+    }
     let ess_vectors = execute_essentials_vectors(
         &cedar_src,
         &essentials_dir.join("tests/essentials-vectors.yaml"),
@@ -266,6 +268,8 @@ pub fn validate_live_packs(repo_root: &Path) -> Result<PackValidationSummary, Co
 
     let (det_count, det_fixtures, resp_count) = validate_detection_pack(&detections_dir, &vocab)?;
     let (cap_count, fw_count) = validate_compliance_pack(&compliance_dir, &vocab)?;
+    let cred_vectors =
+        validate_credential_locator_pack(&packs_dir.join("credential-locator"), &vocab)?;
     validate_cra_workspace_refs(repo_root)?;
 
     Ok(PackValidationSummary {
@@ -276,6 +280,7 @@ pub fn validate_live_packs(repo_root: &Path) -> Result<PackValidationSummary, Co
         response_actions_count: resp_count,
         compliance_capabilities_count: cap_count,
         compliance_frameworks_count: fw_count,
+        credential_locator_vectors_passed: cred_vectors,
         signed_packs_verified: signed_dirs.len(),
     })
 }
@@ -433,99 +438,4 @@ fn collect_sorted_yaml_files(dir: &Path, domain: &str) -> Result<Vec<PathBuf>, C
     }
     files.sort();
     Ok(files)
-}
-
-fn collect_pack_digests(
-    root: &Path,
-    dir: &Path,
-    depth: usize,
-) -> Result<Vec<PackFileDigest>, ConformanceError> {
-    if depth == 0 {
-        let root_meta =
-            fs::symlink_metadata(root).map_err(|e| conf_err("pack-sig", &e.to_string()))?;
-        if is_symlink_or_reparse(&root_meta) || !root_meta.is_dir() {
-            return Err(conf_err(
-                "pack-sig",
-                "pack root must be a real non-symlink directory",
-            ));
-        }
-    }
-    if depth > 8 {
-        return Err(conf_err("pack-sig", "directory depth exceeded"));
-    }
-    let mut children: Vec<PathBuf> = fs::read_dir(dir)
-        .map_err(|e| conf_err("pack-sig", &e.to_string()))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| conf_err("pack-sig", &e.to_string()))?
-        .into_iter()
-        .map(|e| e.path())
-        .collect();
-    children.sort();
-    let mut out = Vec::new();
-    for p in children {
-        let meta = fs::symlink_metadata(&p).map_err(|e| conf_err("pack-sig", &e.to_string()))?;
-        if is_symlink_or_reparse(&meta) {
-            return Err(conf_err(
-                "pack-sig",
-                "symlinks or reparse points forbidden in pack directory",
-            ));
-        }
-        if meta.is_dir() {
-            out.extend(collect_pack_digests(root, &p, depth.saturating_add(1))?);
-        } else if meta.is_file() {
-            let rel = p
-                .strip_prefix(root)
-                .map_err(|e| conf_err("pack-sig", &e.to_string()))?
-                .to_string_lossy()
-                .replace('\\', "/");
-            if rel == "signature.json" {
-                continue;
-            }
-            let raw = read_regular_bounded_bytes(&p, MAX_PACK_FILE_BYTES)?;
-            out.push(PackFileDigest {
-                path: rel,
-                sha256: sha256_hex(&raw),
-                length: u64::try_from(raw.len()).unwrap_or(u64::MAX),
-            });
-        } else {
-            return Err(conf_err(
-                "pack-sig",
-                &format!(
-                    "non-regular filesystem entry `{}` forbidden in pack directory",
-                    p.display()
-                ),
-            ));
-        }
-    }
-    out.sort_by(|a, b| a.path.cmp(&b.path));
-    Ok(out)
-}
-
-fn validate_manifest_token(val: &str, label: &str) -> Result<(), ConformanceError> {
-    if val.is_empty() || val.chars().any(|ch| ch.is_control() || ch.is_whitespace()) {
-        return Err(conf_err(
-            "pack-sig",
-            &format!("canonical manifest `{label}` contains empty, whitespace, or control chars"),
-        ));
-    }
-    Ok(())
-}
-
-fn canonical_manifest_text(
-    pack_id: &str,
-    version: &str,
-    files: &[PackFileDigest],
-) -> Result<String, ConformanceError> {
-    validate_manifest_token(pack_id, "pack_id")?;
-    validate_manifest_token(version, "version")?;
-    let mut lines = Vec::with_capacity(files.len().saturating_add(3));
-    lines.push(PACK_SIG_DOMAIN.to_owned());
-    lines.push(pack_id.to_owned());
-    lines.push(version.to_owned());
-    for f in files {
-        validate_manifest_token(&f.path, "file.path")?;
-        validate_manifest_token(&f.sha256, "file.sha256")?;
-        lines.push(format!("{} {} {}", f.path, f.sha256, f.length));
-    }
-    Ok(lines.join("\n"))
 }
