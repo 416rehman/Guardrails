@@ -7,31 +7,32 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use axum::Router;
-use axum::body::{Body, to_bytes};
-use axum::extract::{DefaultBodyLimit, State};
-use axum::http::{HeaderMap, StatusCode};
-use axum::response::{IntoResponse, Response};
+use axum::extract::DefaultBodyLimit;
 use axum::routing::post;
-use jiff::Timestamp;
 use serde_json::Value;
-use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncBufRead, AsyncWrite};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use grdr_broker::BrokerOutcome;
 use grdr_mcp_proto::{
-    McpAttemptContext, McpMethod, McpRequest, McpResponse, ToolDescriptor, parse_mcp_request,
+    McpAttemptContext, McpMethod, McpRequest, McpResponse, ToolDescriptor,
+    is_progressive_read_tool, parse_mcp_request, parse_strict_mcp_json, progressive_read_tools,
 };
 use grdr_model::{CompiledFloorTable, TrustedKeyInfo, Verdict};
+use grdr_os_clock::{Clock, SystemClock};
 
 use crate::McpBrokerError;
 use crate::decision::{AsyncDecisionSource, mediate_mcp_request, synthetic_floor_receipt};
+use crate::http_upstream::{
+    HttpUpstreamConfig, handle_http_mcp_delete, handle_http_mcp_get, handle_http_mcp_post,
+};
+use crate::oauth::{OAuthIssuerPinRegistry, TokenDigestRegistry};
 use crate::pinning::PinRegistry;
 use crate::revisions::{
-    MAX_HTTP_MCP_BODY_BYTES, MCP_HEADER_PROTOCOL_VERSION, MCP_HEADER_SESSION_ID,
-    McpProtocolRevision, McpSessionStore, format_mediated_tool_response, has_loopback_host_header,
-    header_mismatch_rpc_error, parse_http_mcp_request, verify_revision_consistency_headers,
+    MAX_HTTP_MCP_BODY_BYTES, McpProtocolRevision, McpSessionStore, format_mediated_method_response,
 };
+use crate::stdio_duplex::run_duplex_mediation;
 
 pub const MAX_STDIO_LINE_BYTES: usize = 1_048_576;
 
@@ -47,6 +48,10 @@ pub struct McpBrokerService<S> {
     pub floor: Option<(CompiledFloorTable, Vec<TrustedKeyInfo>)>,
     pub degraded: bool,
     pub expected_http_port: Option<u16>,
+    pub upstream: Option<HttpUpstreamConfig>,
+    pub tokens: TokenDigestRegistry,
+    pub issuer_pins: OAuthIssuerPinRegistry,
+    pub include_progressive_tools: bool,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -77,11 +82,35 @@ impl<S: AsyncDecisionSource> McpBrokerService<S> {
             floor: None,
             degraded: false,
             expected_http_port: None,
+            upstream: None,
+            tokens: TokenDigestRegistry::new(),
+            issuer_pins: OAuthIssuerPinRegistry::new(),
+            include_progressive_tools: false,
         }
     }
 
+    #[must_use]
+    pub fn with_upstream(mut self, upstream: HttpUpstreamConfig) -> Self {
+        self.upstream = Some(upstream);
+        self
+    }
+
+    #[must_use]
+    pub fn with_progressive_tools(mut self, enabled: bool) -> Self {
+        self.include_progressive_tools = enabled;
+        self
+    }
+
     pub fn record_tools_list(&mut self, tools: &[ToolDescriptor]) -> Result<Value, McpBrokerError> {
-        let inspected = self.pins.inspect_tools_list(&self.server_name, tools)?;
+        let mut combined = tools.to_vec();
+        if self.include_progressive_tools {
+            for ptool in progressive_read_tools() {
+                if !combined.iter().any(|t| t.name == ptool.name) {
+                    combined.push(ptool);
+                }
+            }
+        }
+        let inspected = self.pins.inspect_tools_list(&self.server_name, &combined)?;
         for tool in &inspected.allowed_tools {
             self.descriptors.insert(tool.name.clone(), tool.clone());
         }
@@ -110,6 +139,9 @@ impl<S: AsyncDecisionSource> McpBrokerService<S> {
         req: &McpRequest,
         revision: McpProtocolRevision,
     ) -> Result<Option<McpResponse>, McpBrokerError> {
+        let now = SystemClock::new()
+            .now_wall()
+            .map_err(|e| McpBrokerError::FailClosed(format!("wall clock unavailable: {e}")))?;
         let ctx = McpAttemptContext {
             attempt_id: format!("att_{}", Uuid::now_v7().simple()),
             session_id: self.session_id.clone(),
@@ -117,8 +149,17 @@ impl<S: AsyncDecisionSource> McpBrokerService<S> {
             device_name: "local-host".into(),
             agent_name: self.agent_name.clone(),
             server_name: self.server_name.clone(),
-            timestamp: Timestamp::now(),
+            timestamp: now,
         };
+        if self.include_progressive_tools
+            && req.method == McpMethod::ToolsCall
+            && req
+                .tool_name
+                .as_deref()
+                .is_some_and(is_progressive_read_tool)
+        {
+            self.ensure_progressive_descriptors();
+        }
         let desc = req
             .tool_name
             .as_deref()
@@ -134,8 +175,9 @@ impl<S: AsyncDecisionSource> McpBrokerService<S> {
                 match res.outcome {
                     BrokerOutcome::Forward => Ok(None),
                     BrokerOutcome::Ask { receipt, .. } | BrokerOutcome::Block { receipt, .. } => {
-                        Ok(Some(format_mediated_tool_response(
+                        Ok(Some(format_mediated_method_response(
                             req.id.clone(),
+                            &req.method,
                             revision,
                             &receipt,
                             res.manifest_pinned,
@@ -150,27 +192,34 @@ impl<S: AsyncDecisionSource> McpBrokerService<S> {
                 let receipt = synthetic_floor_receipt(
                     &attempt,
                     Verdict::Deny,
-                    Some("mcp.security-gate"),
+                    Some("mcp.broker-error"),
                     &err.to_string(),
                 );
-                Ok(Some(format_mediated_tool_response(
+                Ok(Some(format_mediated_method_response(
                     req.id.clone(),
+                    &req.method,
                     revision,
                     &receipt,
-                    self.pins.is_manifest_pinned(&self.server_name),
+                    false,
                     self.degraded,
                 )))
             }
+        }
+    }
+
+    fn ensure_progressive_descriptors(&mut self) {
+        for tool in progressive_read_tools() {
+            self.descriptors.entry(tool.name.clone()).or_insert(tool);
         }
     }
 }
 
 pub async fn mediate_stdio_lines<S, R1, W1, R2, W2>(
     service: &mut McpBrokerService<S>,
-    mut client_in: R1,
-    mut client_out: W1,
-    mut child_in: W2,
-    mut child_out: R2,
+    client_in: R1,
+    client_out: W1,
+    child_in: W2,
+    child_out: R2,
 ) -> Result<(), McpBrokerError>
 where
     S: AsyncDecisionSource,
@@ -179,101 +228,14 @@ where
     R2: AsyncBufRead + Unpin,
     W2: AsyncWrite + Unpin,
 {
-    let mut line = String::new();
-    loop {
-        if !read_bounded_line(&mut client_in, &mut line, MAX_STDIO_LINE_BYTES).await? {
-            return Ok(());
-        }
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        if let Some(denial_or_step_up) = service
-            .handle_jsonrpc_request(trimmed, service.default_revision)
-            .await?
-        {
-            let encoded = serde_json::to_string(&denial_or_step_up)
-                .map_err(|e| McpBrokerError::Transport(e.to_string()))?;
-            client_out
-                .write_all(encoded.as_bytes())
-                .await
-                .map_err(|e| McpBrokerError::Transport(e.to_string()))?;
-            client_out
-                .write_all(b"\n")
-                .await
-                .map_err(|e| McpBrokerError::Transport(e.to_string()))?;
-            client_out
-                .flush()
-                .await
-                .map_err(|e| McpBrokerError::Transport(e.to_string()))?;
-            continue;
-        }
-
-        child_in
-            .write_all(trimmed.as_bytes())
-            .await
-            .map_err(|e| McpBrokerError::Transport(e.to_string()))?;
-        child_in
-            .write_all(b"\n")
-            .await
-            .map_err(|e| McpBrokerError::Transport(e.to_string()))?;
-        child_in
-            .flush()
-            .await
-            .map_err(|e| McpBrokerError::Transport(e.to_string()))?;
-
-        let mut resp_line = String::new();
-        if !read_bounded_line(&mut child_out, &mut resp_line, MAX_STDIO_LINE_BYTES).await? {
-            return Err(McpBrokerError::Transport(
-                "wrapped MCP child exited before responding".into(),
-            ));
-        }
-
-        let filtered = filter_child_tools_list_response(service, resp_line.trim())?;
-        client_out
-            .write_all(filtered.as_bytes())
-            .await
-            .map_err(|e| McpBrokerError::Transport(e.to_string()))?;
-        client_out
-            .write_all(b"\n")
-            .await
-            .map_err(|e| McpBrokerError::Transport(e.to_string()))?;
-        client_out
-            .flush()
-            .await
-            .map_err(|e| McpBrokerError::Transport(e.to_string()))?;
-    }
+    run_duplex_mediation(service, client_in, client_out, child_in, child_out).await
 }
 
-async fn read_bounded_line<R: AsyncBufRead + Unpin>(
-    reader: &mut R,
-    out: &mut String,
-    max_bytes: usize,
-) -> Result<bool, McpBrokerError> {
-    out.clear();
-    let limit = u64::try_from(max_bytes).unwrap_or(1_048_576);
-    let read_bytes = reader
-        .take(limit.saturating_add(1))
-        .read_line(out)
-        .await
-        .map_err(|e| McpBrokerError::Transport(e.to_string()))?;
-    if read_bytes == 0 {
-        return Ok(false);
-    }
-    if read_bytes > max_bytes {
-        return Err(McpBrokerError::Transport(format!(
-            "stdio JSON-RPC line exceeds {max_bytes} byte limit"
-        )));
-    }
-    Ok(true)
-}
-
-fn filter_child_tools_list_response<S: AsyncDecisionSource>(
+pub(crate) fn filter_child_tools_list_response<S: AsyncDecisionSource>(
     service: &mut McpBrokerService<S>,
     raw_resp: &str,
 ) -> Result<String, McpBrokerError> {
-    let mut val: Value = serde_json::from_str(raw_resp)
+    let mut val = parse_strict_mcp_json(raw_resp)
         .map_err(|e| McpBrokerError::Transport(format!("invalid JSON from MCP child: {e}")))?;
     match &mut val {
         Value::Object(_) => {
@@ -336,166 +298,12 @@ pub fn build_http_router<S: AsyncDecisionSource + 'static>(
     service: Arc<Mutex<McpBrokerService<S>>>,
 ) -> Router {
     Router::new()
-        .route("/mcp", post(handle_http_mcp_post::<S>))
+        .route(
+            "/mcp",
+            post(handle_http_mcp_post::<S>)
+                .get(handle_http_mcp_get::<S>)
+                .delete(handle_http_mcp_delete::<S>),
+        )
         .layer(DefaultBodyLimit::max(MAX_HTTP_MCP_BODY_BYTES))
         .with_state(service)
-}
-
-async fn handle_http_mcp_post<S: AsyncDecisionSource + 'static>(
-    State(service): State<Arc<Mutex<McpBrokerService<S>>>>,
-    headers: HeaderMap,
-    body: Body,
-) -> Response {
-    if headers.contains_key("origin") {
-        return (
-            StatusCode::FORBIDDEN,
-            axum::Json(serde_json::json!({
-                "error": "GRDR-MCP-0005: browser Origin header rejected on local MCP listener"
-            })),
-        )
-            .into_response();
-    }
-    let expected_port = service.lock().await.expected_http_port;
-    if !has_loopback_host_header(&headers, expected_port) {
-        return (
-            StatusCode::FORBIDDEN,
-            axum::Json(serde_json::json!({
-                "error": "GRDR-MCP-0005: Host header missing or non-loopback on local MCP listener"
-            })),
-        )
-            .into_response();
-    }
-
-    let raw_bytes = match to_bytes(body, MAX_HTTP_MCP_BODY_BYTES).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::PAYLOAD_TOO_LARGE,
-                axum::Json(serde_json::json!({
-                    "error": "GRDR-MCP-0005: HTTP MCP request exceeds bounded body limit"
-                })),
-            )
-                .into_response();
-        }
-    };
-    if raw_bytes.len() > MAX_HTTP_MCP_BODY_BYTES {
-        return (
-            StatusCode::PAYLOAD_TOO_LARGE,
-            axum::Json(serde_json::json!({
-                "error": "GRDR-MCP-0005: HTTP MCP request exceeds bounded body limit"
-            })),
-        )
-            .into_response();
-    }
-    let Ok(body_str) = std::str::from_utf8(&raw_bytes) else {
-        return (
-            StatusCode::BAD_REQUEST,
-            axum::Json(serde_json::json!({ "error": "GRDR-MCP-0001: request must be UTF-8" })),
-        )
-            .into_response();
-    };
-
-    let req: McpRequest = match parse_http_mcp_request(body_str) {
-        Ok(r) => r,
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                axum::Json(serde_json::json!({ "error": e.to_string() })),
-            )
-                .into_response();
-        }
-    };
-
-    let ver_hdr = headers
-        .get(MCP_HEADER_PROTOCOL_VERSION)
-        .and_then(|v| v.to_str().ok());
-    let sid_hdr = headers
-        .get(MCP_HEADER_SESSION_ID)
-        .and_then(|v| v.to_str().ok());
-
-    let mut guard = service.lock().await;
-
-    if req.method == McpMethod::Initialize {
-        let rev = match ver_hdr {
-            Some(v) => match McpProtocolRevision::parse(v) {
-                Ok(parsed) => parsed,
-                Err(err) => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        axum::Json(header_mismatch_rpc_error(req.id, &err.to_string())),
-                    )
-                        .into_response();
-                }
-            },
-            None => guard.default_revision,
-        };
-        let session = match guard.sessions.issue_session(rev) {
-            Ok(s) => s,
-            Err(err) => {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    axum::Json(serde_json::json!({ "error": err.to_string() })),
-                )
-                    .into_response();
-            }
-        };
-        return (
-            StatusCode::OK,
-            [(MCP_HEADER_SESSION_ID, session.session_id.as_str())],
-            axum::Json(serde_json::json!({
-                "jsonrpc": "2.0",
-                "id": req.id.unwrap_or(Value::Null),
-                "result": {
-                    "protocolVersion": rev.as_str(),
-                    "capabilities": { "tools": { "listChanged": false } },
-                    "serverInfo": { "name": guard.server_name, "version": "0.1.0" }
-                }
-            })),
-        )
-            .into_response();
-    }
-
-    let bound_rev = match guard.sessions.verify_headers(sid_hdr, ver_hdr) {
-        Ok(state) => state.revision,
-        Err(err @ McpBrokerError::HeaderMismatch(_)) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                axum::Json(header_mismatch_rpc_error(req.id, &err.to_string())),
-            )
-                .into_response();
-        }
-        Err(err) => {
-            return (
-                StatusCode::FORBIDDEN,
-                axum::Json(serde_json::json!({ "error": err.to_string() })),
-            )
-                .into_response();
-        }
-    };
-
-    if let Err(err) = verify_revision_consistency_headers(bound_rev, &headers, &req) {
-        return (
-            StatusCode::BAD_REQUEST,
-            axum::Json(header_mismatch_rpc_error(req.id, &err.to_string())),
-        )
-            .into_response();
-    }
-
-    match guard.handle_parsed_request(&req, bound_rev).await {
-        Ok(Some(blocked)) => (StatusCode::OK, axum::Json(blocked)).into_response(),
-        Ok(None) => (
-            StatusCode::OK,
-            axum::Json(serde_json::json!({
-                "jsonrpc": "2.0",
-                "id": req.id.unwrap_or(Value::Null),
-                "result": { "mediated": "allow" }
-            })),
-        )
-            .into_response(),
-        Err(err) => (
-            StatusCode::FORBIDDEN,
-            axum::Json(serde_json::json!({ "error": err.to_string() })),
-        )
-            .into_response(),
-    }
 }

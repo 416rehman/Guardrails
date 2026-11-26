@@ -148,6 +148,16 @@ impl SigningKeypair {
     }
 
     #[must_use]
+    pub fn public_key_bytes(&self) -> [u8; 32] {
+        self.verifying_key.to_bytes()
+    }
+
+    #[must_use]
+    pub fn sign_ed25519_raw(&self, message: &[u8]) -> [u8; 64] {
+        self.signing_key.sign(message).to_bytes()
+    }
+
+    #[must_use]
     pub fn sign_bytes(&self, domain: &str, payload: &[u8]) -> String {
         let message = signature_message(domain, payload);
         let sig = self.signing_key.sign(&message);
@@ -350,6 +360,19 @@ pub fn verify_bytes(
         .map_err(|_| CryptoError::VerificationFailed)
 }
 
+pub fn verify_ed25519_raw(
+    public_key: &[u8; 32],
+    message: &[u8],
+    signature: &[u8; 64],
+) -> Result<(), CryptoError> {
+    let verifying_key = VerifyingKey::from_bytes(public_key)
+        .map_err(|e| CryptoError::InvalidKey(format!("invalid Ed25519 public key: {e}")))?;
+    let sig = Signature::from_bytes(signature);
+    verifying_key
+        .verify_strict(message, &sig)
+        .map_err(|_| CryptoError::VerificationFailed)
+}
+
 fn signature_message(domain: &str, payload: &[u8]) -> Vec<u8> {
     // Keep v1 framing for nul-free domains (matches pinned pack signatures) and switch
     // to length-prefixed v2 whenever a domain contains NUL so (domain, payload) pairs stay injective.
@@ -472,6 +495,11 @@ mod tests {
         let nul_sig = kp.sign_bytes("a\0b", b"c");
         assert!(verify_bytes(&kp.public_key_b64(), "a\0b", b"c", &nul_sig).is_ok());
         assert!(verify_bytes(&kp.public_key_b64(), "a", b"b\0c", &nul_sig).is_err());
+
+        let raw_sig = kp.sign_ed25519_raw(b"rfc7515-input");
+        let pk = kp.public_key_bytes();
+        assert!(verify_ed25519_raw(&pk, b"rfc7515-input", &raw_sig).is_ok());
+        assert!(verify_ed25519_raw(&pk, b"tampered", &raw_sig).is_err());
     }
 
     #[test]

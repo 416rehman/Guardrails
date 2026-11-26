@@ -49,6 +49,7 @@ programs/grdr-uplink/**
 programs/grdr-updater/**
 programs/grdr-proxy/**
 programs/grdr-mcp/**
+programs/grdr-acp/**
 programs/grdr-run/**
 programs/grdr-server/src/auth.rs
 programs/grdr-server/src/routes.rs

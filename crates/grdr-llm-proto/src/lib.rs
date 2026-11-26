@@ -1,25 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
+#![forbid(unsafe_code)]
 #![deny(clippy::arithmetic_side_effects)]
+
+pub mod a2a;
+pub mod bedrock_stream;
+pub mod compression;
+pub mod error;
+mod inflate;
+pub mod jws;
+pub mod providers;
+pub mod realtime;
+pub mod schema;
+pub mod stream;
+pub mod strict_json;
+
+pub use error::ProtoError;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use grdr_model::{DecisionReceipt, Verdict};
+use strict_json::{MAX_JSON_DEPTH, MAX_LLM_REQUEST_BYTES, MAX_TOOL_CALLS, parse_strict_json_str};
 
 pub const JSONRPC_ERR_DENIED: i64 = -32001;
 pub const JSONRPC_ERR_STEP_UP: i64 = -32002;
 pub const JSONRPC_ERR_DEFERRED: i64 = -32003;
 
 const STRUCTURAL_TARGET_KEYS: &[&str] = &["path", "file_path", "url", "command", "repo"];
-
-#[derive(Debug, thiserror::Error)]
-pub enum ProtoError {
-    #[error("GRDR-LLM-0001: invalid protocol JSON payload: {0}")]
-    Parse(String),
-    #[error("GRDR-LLM-0002: failed serializing protocol payload: {0}")]
-    Serialize(String),
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum McpRequestKind {
@@ -55,7 +63,7 @@ pub struct LlmRequestMeta {
 }
 
 pub fn parse_mcp_jsonrpc_line(line: &str) -> Result<ParsedMcpMessage, ProtoError> {
-    let val: Value = serde_json::from_str(line).map_err(|e| ProtoError::Parse(e.to_string()))?;
+    let val = parse_strict_json_str(line, MAX_LLM_REQUEST_BYTES, MAX_JSON_DEPTH)?;
     let obj = val
         .as_object()
         .ok_or_else(|| ProtoError::Parse("JSON-RPC frame must be an object".into()))?;
@@ -168,7 +176,7 @@ pub fn parse_llm_request_metadata(
     provider: &str,
     body: &str,
 ) -> Result<LlmRequestMeta, ProtoError> {
-    let val: Value = serde_json::from_str(body).map_err(|e| ProtoError::Parse(e.to_string()))?;
+    let val = parse_strict_json_str(body, MAX_LLM_REQUEST_BYTES, MAX_JSON_DEPTH)?;
     let obj = val
         .as_object()
         .ok_or_else(|| ProtoError::Parse("LLM request body must be a JSON object".into()))?;
@@ -182,6 +190,9 @@ pub fn parse_llm_request_metadata(
 
     let mut tool_names = Vec::new();
     if let Some(tools) = obj.get("tools").and_then(Value::as_array) {
+        if tools.len() > MAX_TOOL_CALLS {
+            return Err(ProtoError::PayloadTooLarge);
+        }
         for tool in tools {
             if let Some(name) = tool
                 .get("name")

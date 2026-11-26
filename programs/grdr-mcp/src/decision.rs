@@ -4,30 +4,28 @@
 //! Daemon + D-14 signed CompiledFloorTable decision resolution driving `grdr-broker::McpBroker`.
 
 use std::future::Future;
-use std::net::{IpAddr, Ipv4Addr};
 use std::pin::Pin;
-use std::time::Duration;
 
 use jiff::Timestamp;
 use uuid::Uuid;
 
 use grdr_broker::{BrokerOutcome, McpBroker};
 use grdr_core::compile::evaluate_compiled_floor;
-use grdr_core::policy::{ReceiptDigestInput, compute_receipt_digest, essentials_pack, evaluate};
+use grdr_core::policy::{ReceiptDigestInput, compute_receipt_digest};
 use grdr_mcp_proto::{
     McpAttemptContext, McpMethod, McpRequest, ToolDescriptor, mcp_call_to_attempt,
 };
 use grdr_model::{
-    ActionAttempt, CodedError, CompiledFloorTable, DecideInput, DecisionReceipt, Grant,
-    KillSwitchState, Mode, PolicyPack, SignatureStatus, TrustedKeyInfo, Verdict,
-    verify_floor_table,
+    ActionAttempt, CodedError, CompiledFloorTable, DecisionReceipt, Grant, Mode, PolicyPack,
+    SignatureStatus, TrustedKeyInfo, Verdict, verify_floor_table,
 };
+use grdr_os_clock::{Clock, SystemClock};
 use grdr_ports::DecisionEnginePort;
 
 use crate::McpBrokerError;
+pub use crate::ipc_client::IpcDaemonDecisionSource;
 use crate::pinning::{PinApprovalState, PinRegistry};
 
-pub const DEFAULT_DAEMON_PORT: u16 = 8765;
 pub const DEFAULT_DECIDE_TIMEOUT_MS: u64 = 1_500;
 
 pub type DecideFuture<'a> =
@@ -35,13 +33,6 @@ pub type DecideFuture<'a> =
 
 pub trait AsyncDecisionSource: Send + Sync {
     fn evaluate_attempt<'a>(&'a self, attempt: &'a ActionAttempt) -> DecideFuture<'a>;
-}
-
-#[derive(Debug, Clone)]
-pub struct LoopbackDaemonSource {
-    http: reqwest::Client,
-    endpoint_url: String,
-    timeout: Duration,
 }
 
 #[derive(Debug, Clone)]
@@ -54,55 +45,6 @@ pub struct MediationResult {
 
 struct PreResolvedEngine {
     receipt: DecisionReceipt,
-}
-
-impl LoopbackDaemonSource {
-    pub fn from_loopback_port(port: u16, timeout_ms: u64) -> Result<Self, McpBrokerError> {
-        let host = IpAddr::V4(Ipv4Addr::LOCALHOST);
-        let endpoint_url = format!("http://{host}:{port}/local/v1/decide");
-        let bounded_ms = timeout_ms.clamp(50, 15_000);
-        let http = reqwest::Client::builder()
-            .timeout(Duration::from_millis(bounded_ms))
-            .no_proxy()
-            .build()
-            .map_err(|e| McpBrokerError::Transport(e.to_string()))?;
-        Ok(Self {
-            http,
-            endpoint_url,
-            timeout: Duration::from_millis(bounded_ms),
-        })
-    }
-}
-
-impl AsyncDecisionSource for LoopbackDaemonSource {
-    fn evaluate_attempt<'a>(&'a self, attempt: &'a ActionAttempt) -> DecideFuture<'a> {
-        Box::pin(async move {
-            let input = DecideInput {
-                session_id: Some(attempt.session_id.clone()),
-                device_id: Some(attempt.device_id.clone()),
-                device_name: Some(attempt.device_name.clone()),
-                agent_name: attempt.agent_name.clone(),
-                action_class: attempt.action_class,
-                control_point: Some(attempt.control_point),
-                target: attempt.target.clone(),
-                summary: Some(attempt.summary.clone()),
-            };
-            let send = self.http.post(&self.endpoint_url).json(&input).send();
-            let resp = tokio::time::timeout(self.timeout, send)
-                .await
-                .map_err(|_| McpBrokerError::Transport("daemon decide timed out".into()))?
-                .map_err(|e| McpBrokerError::Transport(e.to_string()))?;
-            if !resp.status().is_success() {
-                return Err(McpBrokerError::Transport(format!(
-                    "daemon HTTP {}",
-                    resp.status()
-                )));
-            }
-            resp.json::<DecisionReceipt>()
-                .await
-                .map_err(|e| McpBrokerError::Transport(e.to_string()))
-        })
-    }
 }
 
 impl DecisionEnginePort for PreResolvedEngine {
@@ -159,8 +101,11 @@ async fn resolve_with_floor_fallback<S: AsyncDecisionSource>(
     attempt: &ActionAttempt,
     floor: Option<(&CompiledFloorTable, &[TrustedKeyInfo])>,
 ) -> Result<(DecisionReceipt, bool), McpBrokerError> {
-    if let Ok(receipt) = source.evaluate_attempt(attempt).await {
-        return Ok((receipt, false));
+    match source.evaluate_attempt(attempt).await {
+        Ok(receipt) => return Ok((receipt, false)),
+        Err(err @ McpBrokerError::FailClosed(_)) => return Err(err),
+        Err(McpBrokerError::FloorUntrusted) => return Err(McpBrokerError::FloorUntrusted),
+        Err(_) => {}
     }
 
     tracing::warn!(
@@ -204,37 +149,31 @@ async fn resolve_with_floor_fallback<S: AsyncDecisionSource>(
         ));
     }
 
-    if attempt.action_class == grdr_model::ActionClass::McpCall {
-        return Ok((
-            synthetic_floor_receipt(
-                attempt,
-                Verdict::Deny,
-                Some("mcp.degraded-fail-closed"),
-                "D-14 degraded offline floor denies unverified tools/call while daemon is unreachable",
-            ),
-            true,
-        ));
-    }
-
-    let packs = [essentials_pack()];
-    let receipt = evaluate(
-        attempt,
-        &packs,
-        &[],
-        &KillSwitchState::Inactive,
-        Timestamp::now(),
-    );
-    Ok((receipt, true))
+    Ok((
+        synthetic_floor_receipt(
+            attempt,
+            Verdict::Deny,
+            Some("mcp.degraded-fail-closed"),
+            "D-14 degraded offline floor denies unmatched MCP request while daemon is unreachable",
+        ),
+        true,
+    ))
 }
 
 #[must_use]
-pub fn synthetic_floor_receipt(
+pub fn build_mcp_receipt(
     attempt: &ActionAttempt,
     verdict: Verdict,
     rule_id: Option<&str>,
     reason: &str,
+    next_step: &str,
+    receipt_id_override: Option<&str>,
+    now: Timestamp,
 ) -> DecisionReceipt {
-    let now = Timestamp::now();
+    let receipt_id = receipt_id_override
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map_or_else(|| format!("rcp_{}", Uuid::now_v7().simple()), str::to_owned);
     let digest = compute_receipt_digest(&ReceiptDigestInput {
         attempt_id: &attempt.id,
         session_id: &attempt.session_id,
@@ -246,7 +185,7 @@ pub fn synthetic_floor_receipt(
         decided_at: now,
     });
     DecisionReceipt {
-        receipt_id: format!("rcp_{}", Uuid::now_v7().simple()),
+        receipt_id,
         attempt_id: attempt.id.clone(),
         session_id: attempt.session_id.clone(),
         device_id: attempt.device_id.clone(),
@@ -261,11 +200,30 @@ pub fn synthetic_floor_receipt(
         mode_applied: Some(Mode::Block),
         grant_id: None,
         reason: reason.to_owned(),
-        next_step: "inspect MCP policy decision receipt".into(),
+        next_step: next_step.to_owned(),
         receipt_digest: digest,
         decided_at: now,
         key_id: None,
         signature: None,
         signature_verified: None,
     }
+}
+
+#[must_use]
+pub fn synthetic_floor_receipt(
+    attempt: &ActionAttempt,
+    verdict: Verdict,
+    rule_id: Option<&str>,
+    reason: &str,
+) -> DecisionReceipt {
+    let now = SystemClock::new().now_wall().unwrap_or(attempt.timestamp);
+    build_mcp_receipt(
+        attempt,
+        verdict,
+        rule_id,
+        reason,
+        "inspect MCP policy decision receipt",
+        None,
+        now,
+    )
 }

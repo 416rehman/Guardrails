@@ -12,7 +12,7 @@ renders = "none"
 
 [dependencies]
 grdr-model = { workspace = true }
-grdr-wire = { workspace = true, default-features = false }
+grdr-wire = { version = "0.1.0", path = "../grdr-wire", default-features = false }
 jiff = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }

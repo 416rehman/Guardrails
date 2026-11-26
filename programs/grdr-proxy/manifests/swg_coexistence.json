@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "swg_products": [
+    {
+      "id": "zscaler",
+      "header_hints": ["x-zscaler-", "x-zs-"],
+      "env_proxy_indicators": ["zscaler", "zscloud.net", "zscalertwo.net", "zscalerthree.net"],
+      "cert_cn_indicators": ["Zscaler Root CA", "Zscaler Intermediate"],
+      "fail_open_standdown": true
+    },
+    {
+      "id": "netskope",
+      "header_hints": ["x-netskope-", "ns-client"],
+      "env_proxy_indicators": ["goskope.com", "netskope"],
+      "cert_cn_indicators": ["Netskope", "caadmin.netskope.com"],
+      "fail_open_standdown": true
+    },
+    {
+      "id": "cloudflare-gateway",
+      "header_hints": ["cf-warp-", "cf-access-"],
+      "env_proxy_indicators": ["cloudflaregateway", "warp-proxy"],
+      "cert_cn_indicators": ["Cloudflare Gateway CA", "Cloudflare for Teams"],
+      "fail_open_standdown": true
+    },
+    {
+      "id": "paloalto-prisma",
+      "header_hints": ["x-pan-", "x-prisma-"],
+      "env_proxy_indicators": ["prismaaccess", "gpcloudservice"],
+      "cert_cn_indicators": ["Palo Alto Networks", "Prisma Access"],
+      "fail_open_standdown": true
+    },
+    {
+      "id": "cisco-umbrella",
+      "header_hints": ["x-umbrella-", "x-opendns-"],
+      "env_proxy_indicators": ["umbrella.com", "opendns.com"],
+      "cert_cn_indicators": ["Cisco Umbrella"],
+      "fail_open_standdown": true
+    },
+    {
+      "id": "symantec-proxysg",
+      "header_hints": ["x-bluecoat-", "x-symc-"],
+      "env_proxy_indicators": ["bluecoat", "symantecliveupdate"],
+      "cert_cn_indicators": ["Blue Coat", "Symantec Web Security"],
+      "fail_open_standdown": true
+    }
+  ],
+  "excluded_caller_classes": [
+    "browser_managed",
+    "os_system",
+    "pinned_updater",
+    "certificate_transparency"
+  ],
+  "intercept_eligible_hosts": [
+    { "host_suffix": "api.anthropic.com", "provider_family": "anthropic_messages", "route_kind": "llm" },
+    { "host_suffix": "api.openai.com", "provider_family": "openai_chat", "route_kind": "llm" },
+    { "host_suffix": "generativelanguage.googleapis.com", "provider_family": "google_gemini", "route_kind": "llm" },
+    { "host_suffix": "amazonaws.com", "provider_family": "aws_bedrock", "route_kind": "llm" },
+    { "host_suffix": "api.github.com", "provider_family": "generic_http", "route_kind": "mcp_or_api" }
+  ],
+  "bypass_pinned_hosts": [
+    "apple.com",
+    "icloud.com",
+    "microsoftupdate.com",
+    "windowsupdate.com",
+    "ocsp.",
+    "crl.",
+    "digicert.com",
+    "letsencrypt.org"
+  ]
+}

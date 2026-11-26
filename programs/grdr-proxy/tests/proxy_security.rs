@@ -368,12 +368,39 @@ async fn policy_deny_returns_403_otlp_marks_claimed_and_connect_blocks_metadata(
         "summary": format!("used {dynamic_sk}")
     })
     .to_string();
-    let otlp_resp = app
+    let denied_otlp_resp = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/v1/logs")
+                .header("host", "127.0.0.1:18080")
+                .header("content-type", "application/json")
+                .body(Body::from(otlp_payload.clone()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(denied_otlp_resp.status(), StatusCode::FORBIDDEN);
+    assert!(state.otlp_events.lock().await.is_empty());
+
+    let allow_state = Arc::new(
+        ProxyGatewayState::new(
+            StubProxyDecisionClient {
+                verdict: Verdict::Allow,
+            },
+            18080,
+            EgressGuardConfig::default(),
+        )
+        .unwrap(),
+    );
+    let allow_app = build_proxy_router(Arc::clone(&allow_state));
+    let otlp_resp = allow_app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/logs")
+                .header("host", "127.0.0.1:18080")
                 .header("content-type", "application/json")
                 .body(Body::from(otlp_payload))
                 .unwrap(),
@@ -389,7 +416,7 @@ async fn policy_deny_returns_403_otlp_marks_claimed_and_connect_blocks_metadata(
         otlp_json.get("provenance").and_then(Value::as_str),
         Some("claimed")
     );
-    let events = state.otlp_events.lock().await;
+    let events = allow_state.otlp_events.lock().await;
     assert_eq!(events.len(), 1);
     assert!(events[0].attempt.summary.contains("[REDACTED_TOKEN]"));
     drop(events);
@@ -756,6 +783,7 @@ async fn blocking_round_1_ssrf_traversal_chained_407_and_otlp_redactions() {
             Request::builder()
                 .method("POST")
                 .uri("/v1/logs")
+                .header("host", "127.0.0.1:18080")
                 .header("content-type", "application/json")
                 .body(Body::from(otlp_bearer))
                 .unwrap(),
@@ -788,6 +816,7 @@ async fn blocking_round_1_ssrf_traversal_chained_407_and_otlp_redactions() {
             Request::builder()
                 .method("POST")
                 .uri("/v1/logs")
+                .header("host", "127.0.0.1:18080")
                 .header("content-type", "application/json")
                 .body(Body::from(compact_json))
                 .unwrap(),
@@ -815,6 +844,7 @@ async fn blocking_round_1_ssrf_traversal_chained_407_and_otlp_redactions() {
             Request::builder()
                 .method("POST")
                 .uri("/v1/logs")
+                .header("host", "127.0.0.1:18080")
                 .header("content-type", "application/json")
                 .body(Body::from(otlp_pem))
                 .unwrap(),

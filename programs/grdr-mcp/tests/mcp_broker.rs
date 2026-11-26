@@ -441,14 +441,42 @@ async fn stdio_wrapper_filters_poisoned_tools_and_blocks_denied_calls_before_chi
 
 #[tokio::test]
 async fn http_2026_07_28_enforces_mcp_method_and_mcp_name_headers_or_emits_32020() {
-    let svc = Arc::new(Mutex::new(McpBrokerService::new(
-        StubDecisionSource {
-            verdict: Some(Verdict::Allow),
-        },
-        "srv-2026",
-        "agent-2026",
-        "sess-2026",
-    )));
+    use grdr_mcp::http_upstream::HttpUpstreamConfig;
+    use grdr_mcp::ssrf::SsrfPolicy;
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let up_addr = listener.local_addr().unwrap();
+    let upstream_app = axum::Router::new().route(
+        "/mcp",
+        axum::routing::post(|axum::Json(payload): axum::Json<Value>| async move {
+            (
+                StatusCode::OK,
+                axum::Json(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": payload.get("id").cloned().unwrap_or(Value::Null),
+                    "result": { "echoed": payload.get("params").cloned().unwrap_or(Value::Null) }
+                })),
+            )
+        }),
+    );
+    let _srv = tokio::spawn(async move {
+        let _ = axum::serve(listener, upstream_app).await;
+    });
+
+    let svc = Arc::new(Mutex::new(
+        McpBrokerService::new(
+            StubDecisionSource {
+                verdict: Some(Verdict::Allow),
+            },
+            "srv-2026",
+            "agent-2026",
+            "sess-2026",
+        )
+        .with_upstream(HttpUpstreamConfig::new(
+            format!("http://{up_addr}/mcp"),
+            SsrfPolicy::AllowLoopbackTestOnly,
+        )),
+    ));
     let app = build_http_router(svc);
 
     let init_resp = app

@@ -4,20 +4,26 @@
 #![deny(clippy::arithmetic_side_effects)]
 
 use std::io::Read;
+use std::sync::Arc;
 
 use clap::{Parser, ValueEnum};
-use jiff::Timestamp;
-use serde_json::Value;
+use grdr_llm_proto::strict_json::{MAX_JSON_DEPTH, parse_strict_json_str};
+use grdr_os_clock::{Clock, SystemClock};
 use tracing_subscriber::EnvFilter;
+use zeroize::Zeroizing;
 
+use grdr_acp::acs_hmac::MIN_ACS_HMAC_KEY_LEN;
 use grdr_acp::adapters::{AcpProtocolDialect, evaluate_dialect_request, format_dialect_response};
+use grdr_acp::conductor::{AcpConductorConfig, run_bidirectional_stdio_conductor};
+use grdr_acp::conductor_fs::default_workspace_root;
 use grdr_acp::envelope::AcpWireServer;
 use grdr_acp::{
-    DEFAULT_DAEMON_PORT, DEFAULT_DECIDE_TIMEOUT_MS, LoopbackDaemonClient, NormalizedControlCall,
-    build_attempt, fail_closed_receipt,
+    DEFAULT_DECIDE_TIMEOUT_MS, NormalizedControlCall, PeerDaemonClient, build_attempt,
+    fail_closed_receipt,
 };
 use grdr_crypto::SigningKeypair;
 use grdr_model::{ActionClass, TrustedKeyInfo};
+use grdr_wire::peer_auth::Profile;
 
 const MAX_HOOK_STDIN_BYTES: usize = 512 * 1024;
 
@@ -33,6 +39,7 @@ enum DialectArg {
     name = "grdr-acp",
     about = "Signed OWASP ACS, Microsoft agent-hooks, and ACP conductor control adapter"
 )]
+// grdr:allow-s4 clap CLI flag booleans preserve independent CLI switches
 struct Cli {
     /// Serve framed Ed25519 + replay-checked grdr-wire RPC loop over stdin/stdout.
     #[arg(long)]
@@ -43,12 +50,21 @@ struct Cli {
     /// Adapter protocol dialect when running --hook-stdin.
     #[arg(long, value_enum, default_value_t = DialectArg::OwaspAcs)]
     dialect: DialectArg,
-    /// Loopback port where grdr-daemon exposes /local/v1/decide.
-    #[arg(long, default_value_t = DEFAULT_DAEMON_PORT)]
-    daemon_port: u16,
+    /// Serve bidirectional JSON-RPC 2.0 ACP Conductor over stdin/stdout.
+    #[arg(long)]
+    conductor_stdio: bool,
+    /// Optional non-Protected daemon Decide endpoint override (Unix socket path or Windows pipe).
+    #[arg(long)]
+    daemon_endpoint: Option<String>,
+    /// Enforce Protected profile (prohibits endpoint or floor directory overrides).
+    #[arg(long)]
+    protected: bool,
     /// Request timeout in milliseconds before failing closed.
     #[arg(long, default_value_t = DEFAULT_DECIDE_TIMEOUT_MS)]
     timeout_ms: u64,
+    /// Optional env var holding shared HMAC secret for signed OWASP ACS JSON-RPC frames.
+    #[arg(long)]
+    acs_hmac_env: Option<String>,
     /// Trusted peer key id for --stdio-wire.
     #[arg(long)]
     peer_key_id: Option<String>,
@@ -78,7 +94,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let cli = Cli::parse();
-    let client = LoopbackDaemonClient::from_loopback_port(cli.daemon_port, cli.timeout_ms)?;
+    let profile = if cli.protected {
+        Profile::Protected
+    } else {
+        Profile::User
+    };
+    let client = PeerDaemonClient::new(profile, cli.daemon_endpoint, None, cli.timeout_ms)?;
+
+    if cli.conductor_stdio {
+        let acs_hmac_key = match cli.acs_hmac_env.as_deref() {
+            Some(var) => {
+                let raw = std::env::var(var)
+                    .map_err(|_| "GRDR-ACP-0003: --acs-hmac-env variable is missing")?;
+                let secret = Zeroizing::new(raw.into_bytes());
+                if secret.len() < MIN_ACS_HMAC_KEY_LEN {
+                    return Err("GRDR-ACP-0003: ACS HMAC key must be at least 32 bytes".into());
+                }
+                Some(secret)
+            }
+            None => None,
+        };
+        let cfg = AcpConductorConfig {
+            profile,
+            acs_hmac_key,
+            workspace_root: default_workspace_root(),
+            ..AcpConductorConfig::default()
+        };
+        run_bidirectional_stdio_conductor(
+            Arc::new(client),
+            cfg,
+            tokio::io::stdin(),
+            tokio::io::stdout(),
+        )
+        .await?;
+        return Ok(());
+    }
 
     if cli.stdio_wire {
         let Some(pub_b64) = cli.peer_pub_key else {
@@ -104,7 +154,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .take(limit.saturating_add(1))
             .read_to_string(&mut buf)?;
         let dialect: AcpProtocolDialect = cli.dialect.into();
-        let now = Timestamp::now();
+        let now = SystemClock::new().now_wall()?;
         let resp = if read_bytes > MAX_HOOK_STDIN_BYTES {
             let synth = NormalizedControlCall {
                 request_id: "oversized-stdin".into(),
@@ -123,7 +173,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
             format_dialect_response(dialect, &synth, &receipt)
         } else {
-            match serde_json::from_str::<Value>(&buf) {
+            match parse_strict_json_str(&buf, MAX_HOOK_STDIN_BYTES, MAX_JSON_DEPTH) {
                 Ok(parsed) => evaluate_dialect_request(dialect, &parsed, &client, now).await,
                 Err(parse_err) => {
                     let reason = format!("GRDR-ACP-0001: invalid hook stdin JSON: {parse_err}");
