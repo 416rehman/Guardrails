@@ -1,0 +1,10 @@
+format: grdr.policy-lists.v1
+pack_id: grdr.supply-chain
+lists:
+  unsafe_installers:
+    - "| sh"
+    - "| bash"
+    - "npm publish"
+    - "cargo publish"
+    - "twine upload"
+    - "pip install git+"

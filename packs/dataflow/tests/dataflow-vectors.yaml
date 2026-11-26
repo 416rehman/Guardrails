@@ -1,0 +1,26 @@
+format: grdr.policy-tests.v1
+pack_id: grdr.dataflow
+vectors:
+  - id: vec.dataflow.unverified-llm.positive
+    expect_verdict: StepUp
+    expect_rule: dataflow.llm-non-tenant
+    action: llm.request
+    target: "https://api.openai.com/v1/chat/completions"
+    llm_tenant_verified: false
+  - id: vec.dataflow.sensitive-sink.positive
+    expect_verdict: Deny
+    expect_rule: dataflow.sensitive-to-sink
+    action: net.request
+    target: "https://pastebin.com/raw/exfil"
+    port: 443
+    taint_cred: true
+  - id: vec.dataflow.untrusted-web.positive
+    expect_verdict: StepUp
+    expect_rule: dataflow.untrusted-web-exfil
+    action: data.flow
+    target: "egress-outside-profile"
+    taint_web: true
+  - id: vec.dataflow.direct-sink-clean.negative
+    expect_verdict: Allow
+    action: data.flow
+    target: "egress-outside-profile"

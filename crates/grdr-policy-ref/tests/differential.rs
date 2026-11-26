@@ -7,7 +7,7 @@ use grdr_core::session::SessionRuleState;
 use grdr_model::eval::add_seconds;
 use grdr_model::{
     ActionAttempt, ActionClass, ApprovalGrade, ControlPoint, Grant, GrantScope, KillScope,
-    KillSwitchState, Mode, PolicyPack, PolicyRule, RuleMatch,
+    KillSwitchState, Mode, PolicyPack, PolicyRule, RuleMatch, Verdict,
 };
 use grdr_policy_ref::{RefSessionState, evaluate_ref, evaluate_ref_mut, evaluate_ref_with_session};
 use jiff::Timestamp;
@@ -379,12 +379,41 @@ fn differential_grants_final_annotation_grades_and_session_taint_match_core_poli
         key_id: None,
         signature: None,
     };
+    let unattributed_grant = Grant {
+        grant_id: "grn_unattributed".into(),
+        grade: ApprovalGrade::G2,
+        note: "Insufficient G1".into(),
+        ..weak_grant.clone()
+    };
     let strong_grant = Grant {
         grant_id: "grn_strong".into(),
         grade: ApprovalGrade::G2,
+        note: "approver:admin".into(),
         ..weak_grant.clone()
     };
     let del_attempt = sample_attempt("d1", "claude-code", ActionClass::FileDelete, "prod/data.db");
+    assert_eq!(
+        evaluate(
+            &del_attempt,
+            &packs,
+            std::slice::from_ref(&unattributed_grant),
+            &KillSwitchState::Inactive,
+            now
+        )
+        .verdict,
+        Verdict::Deny
+    );
+    assert_eq!(
+        evaluate_ref(
+            &del_attempt,
+            &packs,
+            &[unattributed_grant],
+            &KillSwitchState::Inactive,
+            now
+        )
+        .verdict,
+        Verdict::Deny
+    );
     assert_eq!(
         evaluate(
             &del_attempt,
@@ -505,4 +534,219 @@ fn differential_grants_final_annotation_grades_and_session_taint_match_core_poli
     let ref_ks = evaluate_ref(&safe_attempt, &packs, &[], &ks, now);
     assert_eq!(ref_ks.verdict, core_ks.verdict);
     assert_eq!(ref_ks.rule_id, core_ks.rule_id);
+
+    // Round 4 differential parity: @max_mode, @min_grade, @approver, [epoch:0], multi-Once grants, signals essentials
+    let parity_pack = PolicyPack {
+        id: "custom-p2".into(),
+        name: "Custom Parity".into(),
+        description: String::new(),
+        version: "1.0.0".into(),
+        channel: "custom".into(),
+        rules: vec![
+            PolicyRule {
+                id: "custom.max-mode-ask".into(),
+                title: "Max mode caps Block->Ask".into(),
+                description: String::new(),
+                mode: Mode::Block,
+                min_grade: ApprovalGrade::G1,
+                enabled: true,
+                locked: false,
+                matcher: RuleMatch {
+                    action_classes: vec![ActionClass::FileRead],
+                    target_prefixes: vec!["maxmode/".into()],
+                    target_contains: Vec::new(),
+                    agents: Vec::new(),
+                },
+                hits: 0,
+                would_ask_hits: 0,
+                would_block_hits: 0,
+                reason_template: "Capped to Ask.".into(),
+                cedar: Some(
+                    "@id(\"custom.max-mode-ask\")\n@max_mode(\"Ask\")\n@min_grade(\"G2\")\n@approver(\"sponsor\")\nforbid (principal is Grdr::Session, action == Grdr::Action::\"file.read\", resource) when { resource.classes.contains(\"match:custom.max-mode-ask\") };".into(),
+                ),
+            },
+            PolicyRule {
+                id: "custom.second-ask".into(),
+                title: "Second Ask".into(),
+                description: String::new(),
+                mode: Mode::Ask,
+                min_grade: ApprovalGrade::G1,
+                enabled: true,
+                locked: false,
+                matcher: RuleMatch {
+                    action_classes: vec![ActionClass::FileRead],
+                    target_prefixes: vec!["multi/".into()],
+                    target_contains: Vec::new(),
+                    agents: Vec::new(),
+                },
+                hits: 0,
+                would_ask_hits: 0,
+                would_block_hits: 0,
+                reason_template: "Second ask.".into(),
+                cedar: None,
+            },
+            PolicyRule {
+                id: "custom.multi-ask".into(),
+                title: "Multi Ask".into(),
+                description: String::new(),
+                mode: Mode::Ask,
+                min_grade: ApprovalGrade::G1,
+                enabled: true,
+                locked: false,
+                matcher: RuleMatch {
+                    action_classes: vec![ActionClass::FileRead],
+                    target_prefixes: vec!["multi/".into()],
+                    target_contains: Vec::new(),
+                    agents: Vec::new(),
+                },
+                hits: 0,
+                would_ask_hits: 0,
+                would_block_hits: 0,
+                reason_template: "Multi ask.".into(),
+                cedar: None,
+            },
+        ],
+        key_id: None,
+        signature: None,
+    };
+    let p_packs = vec![essentials_pack(), parity_pack];
+    let mm_att = sample_attempt("mm1", "claude-code", ActionClass::FileRead, "maxmode/f");
+    let mm_self = Grant {
+        grant_id: "g_self_ep".into(),
+        rule_id: "custom.max-mode-ask".into(),
+        session_id: "sess-diff-1".into(),
+        device_id: "dev-diff-1".into(),
+        action_class: ActionClass::FileRead,
+        target_pattern: "maxmode/f".into(),
+        scope: GrantScope::Once,
+        grade: ApprovalGrade::G2,
+        granted_at: now,
+        expires_at: Some(add_seconds(now, 60)),
+        remaining_uses: Some(1),
+        note: "approver:self [epoch:0]".into(),
+        key_id: Some("k1".into()),
+        signature: None,
+    };
+    let mm_g1_sponsor = Grant {
+        grant_id: "g_low".into(),
+        grade: ApprovalGrade::G1,
+        note: "approver:sponsor [epoch:0]".into(),
+        ..mm_self.clone()
+    };
+    let mm_ok = Grant {
+        grant_id: "g_ok".into(),
+        grade: ApprovalGrade::G2,
+        note: "approver:sponsor [epoch:0]".into(),
+        ..mm_self.clone()
+    };
+    assert_eq!(
+        evaluate(
+            &mm_att,
+            &p_packs,
+            std::slice::from_ref(&mm_self),
+            &KillSwitchState::Inactive,
+            now
+        )
+        .verdict,
+        Verdict::StepUp
+    );
+    assert_eq!(
+        evaluate_ref(
+            &mm_att,
+            &p_packs,
+            std::slice::from_ref(&mm_self),
+            &KillSwitchState::Inactive,
+            now
+        )
+        .verdict,
+        Verdict::StepUp
+    );
+    assert_eq!(
+        evaluate(
+            &mm_att,
+            &p_packs,
+            std::slice::from_ref(&mm_g1_sponsor),
+            &KillSwitchState::Inactive,
+            now
+        )
+        .verdict,
+        Verdict::StepUp
+    );
+    assert_eq!(
+        evaluate_ref(
+            &mm_att,
+            &p_packs,
+            &[mm_g1_sponsor],
+            &KillSwitchState::Inactive,
+            now
+        )
+        .verdict,
+        Verdict::StepUp
+    );
+    assert_eq!(
+        evaluate(
+            &mm_att,
+            &p_packs,
+            std::slice::from_ref(&mm_ok),
+            &KillSwitchState::Inactive,
+            now
+        )
+        .verdict,
+        Verdict::Allow
+    );
+    assert_eq!(
+        evaluate_ref(&mm_att, &p_packs, &[mm_ok], &KillSwitchState::Inactive, now).verdict,
+        Verdict::Allow
+    );
+
+    let g_m1 = Grant {
+        grant_id: "g_m1".into(),
+        rule_id: "custom.second-ask".into(),
+        target_pattern: "multi/".into(),
+        note: "approver:self [epoch:0]".into(),
+        ..mm_self
+    };
+    let g_m2 = Grant {
+        grant_id: "g_m2".into(),
+        rule_id: "custom.multi-ask".into(),
+        ..g_m1.clone()
+    };
+    let m_att = sample_attempt("m1", "claude-code", ActionClass::FileRead, "multi/secret");
+    let mut cg = vec![g_m1.clone(), g_m2.clone()];
+    let mut rg = vec![g_m1, g_m2];
+    assert_eq!(
+        evaluate_mut(&m_att, &p_packs, &mut cg, &KillSwitchState::Inactive, now).verdict,
+        Verdict::Allow
+    );
+    assert_eq!(
+        evaluate_ref_mut(&m_att, &p_packs, &mut rg, &KillSwitchState::Inactive, now).verdict,
+        Verdict::Allow
+    );
+    assert_eq!(cg[0].remaining_uses, Some(0));
+    assert_eq!(cg[1].remaining_uses, Some(0));
+    assert_eq!(rg[0].remaining_uses, cg[0].remaining_uses);
+    assert_eq!(rg[1].remaining_uses, cg[1].remaining_uses);
+
+    for (id, cls, tgt) in [
+        ("sig1", ActionClass::Exec, "codex --yolo"),
+        ("sig2", ActionClass::Exec, "codex --disable-sandbox"),
+        ("sig3", ActionClass::FileRead, "~/.gnupg/secring.gpg"),
+        (
+            "sig4",
+            ActionClass::Exec,
+            "Remove-Item -Recurse -Force ./build",
+        ),
+        (
+            "sig5",
+            ActionClass::Elevate,
+            "Start-Process -Verb RunAs powershell",
+        ),
+    ] {
+        let a = sample_attempt(id, "claude-code", cls, tgt);
+        assert_eq!(
+            evaluate(&a, &p_packs, &[], &KillSwitchState::Inactive, now).verdict,
+            evaluate_ref(&a, &p_packs, &[], &KillSwitchState::Inactive, now).verdict,
+            "essentials signal mismatch on {tgt}"
+        );
+    }
 }

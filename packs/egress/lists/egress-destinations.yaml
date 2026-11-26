@@ -1,0 +1,15 @@
+format: grdr.policy-lists.v1
+pack_id: grdr.egress
+lists:
+  blocked_metadata_hosts:
+    - "169.254.169.254"
+    - "169.254.170.2"
+    - "0xa9fea9fe"
+    - "fd00:ec2::254"
+    - "::ffff:169.254.169.254"
+    - "metadata.google.internal"
+  monitored_upload_hosts:
+    - "pastebin"
+    - "webhook.site"
+    - "transfer.sh"
+    - "0x0.st"

@@ -6,15 +6,12 @@
 //!
 //! Linked only to `grdr-model` with zero `grdr-core` or `cedar-policy` dependencies.
 
+mod cedar_stub;
 pub mod derive;
 pub mod eval;
 mod normalize;
 
 use std::collections::BTreeSet;
-
-use serde::{Deserialize, Serialize};
-
-use grdr_model::Mode;
 
 pub use derive::{
     BoundaryObserver, ControlPointCaps, DeriveInput, DeterminingForbid, ExecutedVerb,
@@ -25,6 +22,7 @@ pub use derive::{
 pub use eval::{
     RefSessionState, ReferenceDecision, evaluate_ref, evaluate_ref_mut, evaluate_ref_with_session,
 };
+pub use grdr_model::{ChangePolarity, LayerLock, LayerModeSetting, Mode};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum RefError {
@@ -38,33 +36,9 @@ pub enum RefError {
     InvalidInput { detail: String },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum LayerLock {
-    Default,
-    Locked,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LayerModeSetting {
-    pub mode: Mode,
-    pub lock: LayerLock,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ChangePolarity {
-    Unchanged,
-    Narrowing,
-    Widening,
-}
-
+/// Independently computes effective rule mode `min(override_or_pack, max_mode)`.
 pub fn effective_rule_mode(pack_mode: Mode, max_mode: Mode, rule_override: Option<Mode>) -> Mode {
-    let base = match rule_override {
-        Some(m) => m,
-        None => pack_mode,
-    };
-    if base <= max_mode { base } else { max_mode }
+    rule_override.unwrap_or(pack_mode).min(max_mode)
 }
 
 pub fn resolve_layer_mode(
@@ -86,14 +60,15 @@ pub fn resolve_layer_mode(
     } else {
         ChangePolarity::Unchanged
     };
-    let effective_lock = match (parent.lock, child.lock) {
-        (LayerLock::Locked, _) | (_, LayerLock::Locked) => LayerLock::Locked,
-        (LayerLock::Default, LayerLock::Default) => LayerLock::Default,
+    let lock = if parent.lock == LayerLock::Locked || child.lock == LayerLock::Locked {
+        LayerLock::Locked
+    } else {
+        LayerLock::Default
     };
     Ok((
         LayerModeSetting {
             mode: child.mode,
-            lock: effective_lock,
+            lock,
         },
         polarity,
     ))
@@ -131,6 +106,8 @@ pub fn check_list_containment(
 
 #[cfg(test)]
 mod tests {
+    use grdr_model::Mode;
+
     use super::*;
 
     #[test]

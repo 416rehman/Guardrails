@@ -1,0 +1,11 @@
+format: grdr.policy-lists.v1
+pack_id: grdr.agents
+lists:
+  protected_control_paths:
+    - ".claude/"
+    - ".claude.json"
+    - ".cursor/"
+    - ".codex/"
+    - ".gemini/"
+    - "grdr-data/"
+    - "security/"

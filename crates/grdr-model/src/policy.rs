@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+use std::collections::BTreeSet;
+
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
@@ -277,6 +279,170 @@ pub struct CompiledFloorTable {
     pub signature: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InputValidity {
+    Valid,
+    Malformed,
+    EvalError,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FailureDisposition {
+    Open,
+    Closed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HoldCapability {
+    NoHold,
+    CanHold { deadline_ms: u64 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutedVerb {
+    Allow,
+    Deny,
+    DenyWithRetryToken,
+    Hold,
+    Modify,
+    ObserveOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VerdictDiscriminant {
+    Allow,
+    Modify,
+    StepUp,
+    Defer,
+    Deny,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuleMutability {
+    Liftable,
+    Final,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RemedyCapability {
+    Plain,
+    ModifyTransform,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LossBehaviour {
+    AllowOnLoss,
+    FailClosed,
+    Block,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TimelockAllowance {
+    Unavailable,
+    DisclosedTimeLock,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BoundaryObserver {
+    None,
+    ScopedBoundary,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ObligationSupport {
+    Unsupported,
+    Supported,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ControlPointCaps {
+    pub verbs: BTreeSet<VerdictDiscriminant>,
+    pub hold: HoldCapability,
+    pub failure_mode: FailureDisposition,
+    pub snapshot: ObligationSupport,
+    pub modify: ObligationSupport,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeterminingForbid {
+    pub rule_id: String,
+    pub mode: Mode,
+    pub min_grade: ApprovalGrade,
+    pub mutability: RuleMutability,
+    pub remedy: RemedyCapability,
+    pub on_loss: LossBehaviour,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingRuleRef {
+    pub rule_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NotEvaluableRuleRef {
+    pub rule_id: String,
+    pub on_loss: LossBehaviour,
+    pub grant_lifted: ObligationSupport,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeriveInput {
+    pub validity: InputValidity,
+    pub modify_attempts: u8,
+    pub device_max_grade: ApprovalGrade,
+    pub timelock: TimelockAllowance,
+    pub base_permit: ObligationSupport,
+    pub observer: BoundaryObserver,
+    pub snapshot_required: ObligationSupport,
+    pub control_snapshot: ObligationSupport,
+    pub control_modify: ObligationSupport,
+    pub determining_forbids: Vec<DeterminingForbid>,
+    pub pending_rules: Vec<PendingRuleRef>,
+    pub not_evaluable_rules: Vec<NotEvaluableRuleRef>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LayerKind {
+    Provider,
+    Org,
+    Group,
+    Device,
+    User,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LayerLock {
+    Default,
+    Locked,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LayerModeSetting {
+    pub mode: Mode,
+    pub lock: LayerLock,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChangePolarity {
+    Unchanged,
+    Narrowing,
+    Widening,
+}
+
 impl Default for ActionAttempt {
     fn default() -> Self {
         Self {
@@ -307,60 +473,41 @@ impl Default for ActionAttempt {
 
 impl Grant {
     pub fn is_active(&self, now: Timestamp) -> bool {
-        if self.expires_at.is_some_and(|exp| exp <= now) {
-            return false;
-        }
-        if self.remaining_uses.is_some_and(|uses| uses == 0) {
-            return false;
-        }
-        true
+        let uses_ok = match self.scope {
+            GrantScope::Once => self.remaining_uses.is_some_and(|uses| uses > 0),
+            GrantScope::OneHour => {
+                self.expires_at.is_some() && !self.remaining_uses.is_some_and(|uses| uses == 0)
+            }
+            GrantScope::Session => !self.remaining_uses.is_some_and(|uses| uses == 0),
+        };
+        uses_ok && self.granted_at <= now && !self.expires_at.is_some_and(|exp| exp <= now)
     }
 
     pub fn consume_use(&mut self) {
-        if let Some(uses) = self.remaining_uses.as_mut() {
+        if self.scope == GrantScope::Once {
+            self.remaining_uses = Some(0);
+        } else if let Some(uses) = self.remaining_uses.as_mut() {
             *uses = uses.saturating_sub(1);
         }
     }
 
     pub fn matches(&self, attempt: &ActionAttempt, now: Timestamp) -> bool {
-        if !self.is_active(now) {
-            return false;
-        }
-        if self.action_class != attempt.action_class {
-            return false;
-        }
-        if self.device_id != "*" && self.device_id != attempt.device_id {
-            return false;
-        }
-        if matches!(self.scope, GrantScope::Once | GrantScope::Session)
-            && self.session_id != attempt.session_id
-        {
-            return false;
-        }
-        target_pattern_matches(&self.target_pattern, &attempt.target)
+        let session_ok = !matches!(self.scope, GrantScope::Once | GrantScope::Session)
+            || self.session_id == attempt.session_id;
+        self.is_active(now)
+            && self.action_class == attempt.action_class
+            && (self.device_id == "*" || self.device_id == attempt.device_id)
+            && session_ok
+            && crate::eval::target_pattern_matches(
+                self.action_class,
+                &self.target_pattern,
+                &attempt.target,
+            )
     }
 }
 
 fn default_turn_index() -> u32 {
     1
-}
-
-fn target_pattern_matches(pattern: &str, target: &str) -> bool {
-    if pattern == "*" {
-        return true;
-    }
-    let norm_pattern = pattern.replace('\\', "/");
-    let norm_target = target.replace('\\', "/");
-    if norm_target == norm_pattern {
-        return true;
-    }
-    let trimmed = norm_pattern.trim_end_matches('/');
-    if trimmed.is_empty() {
-        return false;
-    }
-    norm_target
-        .strip_prefix(trimmed)
-        .is_some_and(|rest| rest.starts_with('/'))
 }
 
 #[cfg(test)]
@@ -447,18 +594,64 @@ mod tests {
 
     #[test]
     fn target_pattern_enforces_path_boundaries() {
-        assert!(target_pattern_matches("*", "/anything"));
+        use crate::eval::target_pattern_matches;
         assert!(target_pattern_matches(
+            ActionClass::FileRead,
+            "*",
+            "/anything"
+        ));
+        assert!(target_pattern_matches(
+            ActionClass::FileRead,
             "/home/dev/.ssh",
             "/home/dev/.ssh/id_rsa"
         ));
         assert!(target_pattern_matches(
+            ActionClass::FileRead,
             "/home/dev/.ssh",
             r"\home\dev\.ssh\id_rsa"
         ));
         assert!(!target_pattern_matches(
+            ActionClass::FileRead,
             "/home/dev/.ssh",
             "/home/dev/.ssh-other/id_rsa"
         ));
+        assert!(!target_pattern_matches(
+            ActionClass::FileRead,
+            "/home/dev/.ssh",
+            "/home/dev/.ssh/../.aws/credentials"
+        ));
+        assert!(!target_pattern_matches(
+            ActionClass::FileRead,
+            "/home/dev/.ssh",
+            "/../../../../etc/shadow"
+        ));
+        assert!(!target_pattern_matches(
+            ActionClass::FileRead,
+            "etc",
+            "~/../etc/shadow"
+        ));
+        assert!(!target_pattern_matches(
+            ActionClass::FileRead,
+            "etc",
+            "C:/../etc/shadow"
+        ));
+        assert!(!target_pattern_matches(
+            ActionClass::Exec,
+            "rm -rf /tmp/build",
+            "rm -rf /tmp/build/x && rm -rf /"
+        ));
+        assert!(target_pattern_matches(
+            ActionClass::Exec,
+            "rm -rf /tmp/build",
+            "rm -rf /tmp/build"
+        ));
+        assert!(!target_pattern_matches(
+            ActionClass::NetRequest,
+            "https://evil.com",
+            "https://evil.com.attacker.tld/x"
+        ));
+        let now = Timestamp::from_second(1_700_000_000).unwrap();
+        let once_none = sample_grant(GrantScope::Once, "/home/dev/.ssh/id_rsa", None, None);
+        assert!(!once_none.is_active(now));
     }
 }

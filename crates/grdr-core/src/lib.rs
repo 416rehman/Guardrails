@@ -9,3 +9,5 @@ pub mod detect;
 pub mod discover;
 pub mod policy;
 pub mod session;
+
+pub use policy::{Engine, EngineInput, EngineOutput, EngineSnapshot, InterestSet, VerifiedBundle};

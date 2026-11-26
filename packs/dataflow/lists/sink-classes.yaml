@@ -1,0 +1,10 @@
+format: grdr.policy-lists.v1
+pack_id: grdr.dataflow
+lists:
+  default_sink_classes:
+    - "egress-outside-profile"
+    - "push-outside-org"
+    - "pkg.publish"
+    - "message.send"
+    - "mcp-unpinned-write"
+    - "llm-non-tenant"

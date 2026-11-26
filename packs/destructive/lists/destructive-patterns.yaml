@@ -1,0 +1,10 @@
+format: grdr.policy-lists.v1
+pack_id: grdr.destructive
+lists:
+  destructive_commands:
+    - "rm -rf"
+    - "rm -fr"
+    - "Remove-Item -Recurse -Force"
+    - "git reset --hard"
+    - "mkfs."
+    - "dd if="

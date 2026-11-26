@@ -1,0 +1,22 @@
+format: grdr.policy-tests.v1
+pack_id: grdr.destructive
+vectors:
+  - id: vec.destructive.outside-delete.positive
+    expect_verdict: StepUp
+    expect_rule: destructive.delete-outside-workspace
+    action: file.delete
+    target: "/var/tmp/archive -rf"
+  - id: vec.destructive.workspace-delete.negative
+    expect_verdict: Allow
+    action: file.delete
+    target: "tmp/scratch.txt"
+  - id: vec.destructive.shell-wipe.positive
+    expect_verdict: StepUp
+    expect_rule: destructive.shell-wipe
+    action: exec
+    target: "rm -rf /tmp/data"
+  - id: vec.destructive.opaque-wipe.positive
+    expect_verdict: Deny
+    expect_rule: destructive.opaque-wipe
+    action: exec
+    target: "echo $(rm -rf /tmp/data)"

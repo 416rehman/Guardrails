@@ -1,0 +1,33 @@
+id = "grdr.destructive"
+version = "1.0.0"
+kind = "policy"
+per_person_scoring = false
+commands = []
+executables = []
+urls = []
+env_vars_to_set = []
+mcp_servers_to_start = []
+
+[[reads]]
+path = "resource.classes"
+data_class = "structural"
+
+[[reads]]
+path = "path.in_workspace"
+data_class = "structural"
+
+[[reads]]
+path = "command.classes"
+data_class = "structural"
+
+[[reads]]
+path = "context.facts"
+data_class = "structural"
+
+[[reads]]
+path = "context.recursive"
+data_class = "structural"
+
+[[reads]]
+path = "context.grants"
+data_class = "structural"

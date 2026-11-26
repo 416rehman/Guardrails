@@ -1,0 +1,19 @@
+format: grdr.policy-tests.v1
+pack_id: grdr.cloud
+vectors:
+  - id: vec.cloud.unverified-admin.positive
+    expect_verdict: StepUp
+    expect_rule: cloud.unverified-admin-request
+    action: net.request
+    target: "https://iam.amazonaws.com/?Action=iam:CreateAccessKey"
+    port: 443
+    cloud_verified: false
+  - id: vec.cloud.terraform-destroy.positive
+    expect_verdict: StepUp
+    expect_rule: cloud.destructive-cli
+    action: exec
+    target: "terraform destroy -auto-approve"
+  - id: vec.cloud.plan.negative
+    expect_verdict: Allow
+    action: exec
+    target: "terraform plan"

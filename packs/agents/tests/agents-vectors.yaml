@@ -1,0 +1,30 @@
+format: grdr.policy-tests.v1
+pack_id: grdr.agents
+vectors:
+  - id: vec.agents.control-write.positive
+    expect_verdict: Deny
+    expect_rule: agents.control-files-write
+    action: file.write
+    target: ".claude/settings.json"
+  - id: vec.agents.config-change.positive
+    expect_verdict: Deny
+    expect_rule: agents.control-config-change
+    action: config.change
+    target: ".claude/hooks"
+  - id: vec.agents.deep-spawn.positive
+    expect_verdict: StepUp
+    expect_rule: agents.uncontained-deep-spawn
+    action: agent.spawn
+    target: "worker-sub"
+    child_depth: 3
+  - id: vec.agents.undetermined-control.positive
+    expect_verdict: StepUp
+    expect_rule: agents.undetermined.control-files
+    action: file.write
+    target: ".claude/settings.json"
+    actor_kind: undetermined
+    attribution_grade: G0
+  - id: vec.agents.source-write.negative
+    expect_verdict: Allow
+    action: file.write
+    target: "src/app.rs"

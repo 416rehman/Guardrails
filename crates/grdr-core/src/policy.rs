@@ -2,22 +2,80 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 //! Cedar 4.x policy compilation, evaluation, session integration, and replay.
 
+mod caps;
+mod compile_down;
+mod compile_down_verify;
 mod compiler;
+mod engine;
+mod engine_bundle;
+mod engine_eval;
+mod engine_snapshot;
+mod engine_types;
+mod entities;
+mod essentials_cedar;
+mod layers;
+mod lint;
+mod lint_scan;
+mod matrix;
+mod render;
 mod replay;
 mod request;
+mod request_ctx;
 mod signals;
+mod signals_scan;
+mod verdict;
+mod views;
 
-use cedar_policy::{Authorizer, Decision};
+pub use caps::{
+    AppliedTransform, CryptoEntropy, DeterministicEntropy, Entropy, Obligation,
+    default_control_point_caps,
+};
+pub use compile_down::{
+    ClaudeCodeManagedSettings, CodexRequirements, CompileDownSkip, CompileDownSkipReason,
+    compile_down_claude_code, compile_down_codex, render_claude_settings_json,
+    render_codex_requirements_toml, verify_compile_down_subset,
+};
+pub use compiler::{
+    CompileOptions, CompiledPolicyBundle, CompiledRuleMeta, compile_packs_with_options,
+};
+pub use engine::Engine;
+pub use engine_types::{
+    EngineInput, EngineOutput, EngineSnapshot, InterestSet, SessionSnapshotEntry, VerifiedBundle,
+};
+pub use essentials_cedar::ESSENTIALS_PARITY_CEDAR;
 pub use grdr_model::eval::{essentials_pack, sha256_hex};
 use grdr_model::{
-    ActionAttempt, ActionClass, CommandParseStatus, DecisionReceipt, Grant, KillSwitchState, Mode,
-    PolicyPack, Verdict,
+    ActionAttempt, ActionClass, ApprovalGrade, BoundaryObserver, CommandParseStatus,
+    DecisionReceipt, Grant, InstallProfile, KillSwitchState, Mode, PolicyPack, Verdict,
 };
 use jiff::Timestamp;
+pub use layers::{
+    EffectiveLayerRule, LayerRuleEntry, MergedPolicyLayers, PolicyLayerSpec,
+    check_glob_list_containment, merge_policy_layers,
+};
+pub(crate) use lint::body_has_unless_clause as body_has_unless_clause_for_compile;
+pub(crate) use lint::extract_policy_actions as extract_policy_actions_for_compile;
+pub(crate) use lint_scan::{
+    cedar_body_slice as cedar_body_slice_for_compile,
+    scope_header_slice as scope_header_slice_for_compile,
+    strip_comments_and_strings as strip_comments_for_compile,
+};
+pub use matrix::{degrade_verdict, derive_verdict, effective_timelock_allowance};
+pub use render::{render_rule_cedar, validate_cedar_rule};
+pub use replay::{FourBucketReplayResult, ReplayAttemptRecord, replay_pack_4bucket, replay_rule};
+pub use request::{
+    ActorKind, AssuranceHints, CedarRequest, ContextField, CredUseMode, McpRequestHints,
+    RequestBuildOptions, SessionFreezeState, SkillRequestMeta, VerificationHints,
+    build_cedar_request_with_options,
+};
+pub use verdict::{VerdictEvalConfig, VerdictEvalOutput, resolve_verdict};
+pub use views::{
+    AdvancedRuleAst, PrincipalFilter, RecursionFilter, RuleAnnotations, SimpleRuleView,
+    SnapshotObligation, WorkspaceScope, advanced_to_cedar, canonicalize_cedar_via_roundtrip,
+    lint_cedar_source_extended, parse_cedar_to_advanced, simple_to_advanced,
+};
 
-use compiler::{CompiledRuleMeta, compile_packs};
-pub use compiler::{render_rule_cedar, validate_cedar_rule};
-pub use replay::replay_rule;
+use compiler::compile_packs;
 use request::build_cedar_request;
 
 use crate::analyze::{classify_target, normalize_attempt_target};
@@ -35,6 +93,24 @@ pub enum PolicyError {
     ValidationFailed { rule_id: String, detail: String },
     #[error("GRDR-POL-0005: failed to build Cedar request: {detail}")]
     RequestBuildFailed { detail: String },
+    #[error("GRDR-POL-0006: layer `{layer}` violated locked ceiling on `{rule_id}`: {detail}")]
+    LayerViolation {
+        layer: String,
+        rule_id: String,
+        detail: String,
+    },
+    #[error("GRDR-POL-0007: replay budget exceeded for `{rule_id}`: {detail}")]
+    ReplayBudgetExceeded { rule_id: String, detail: String },
+    #[error("GRDR-POL-0008: unsupported compile-down for {target} (`{rule_id}`): {detail}")]
+    UnsupportedCompileDown {
+        target: String,
+        rule_id: String,
+        detail: String,
+    },
+    #[error("GRDR-POL-0009: corrupt engine snapshot: {detail}")]
+    SnapshotCorrupt { detail: String },
+    #[error("GRDR-POL-0010: privacy policy violation on `{rule_id}`: {detail}")]
+    PrivacyViolation { rule_id: String, detail: String },
 }
 
 pub struct ReceiptDigestInput<'a> {
@@ -66,7 +142,7 @@ pub fn evaluate(
     kill_switch: &KillSwitchState,
     now: Timestamp,
 ) -> DecisionReceipt {
-    evaluate_internal(attempt, packs, grants, kill_switch, None, now)
+    evaluate_internal(attempt, packs, grants, kill_switch, None, now).0
 }
 
 pub fn evaluate_mut(
@@ -76,8 +152,8 @@ pub fn evaluate_mut(
     kill_switch: &KillSwitchState,
     now: Timestamp,
 ) -> DecisionReceipt {
-    let receipt = evaluate(attempt, packs, grants, kill_switch, now);
-    consume_matched_grant(&receipt, grants);
+    let (receipt, consumed_ids) = evaluate_internal(attempt, packs, grants, kill_switch, None, now);
+    consume_matched_grants(&receipt, &consumed_ids, grants);
     receipt
 }
 
@@ -89,7 +165,7 @@ pub fn evaluate_with_session(
     session_state: &mut SessionRuleState,
     now: Timestamp,
 ) -> DecisionReceipt {
-    let (normalized_target, command_status) =
+    let (_normalized_target, command_status) =
         normalize_attempt_target(attempt.action_class, &attempt.target);
     let analysis = classify_target(attempt.action_class, &attempt.target);
 
@@ -112,21 +188,15 @@ pub fn evaluate_with_session(
         return receipt;
     }
 
-    let mut match_attempt = attempt.clone();
-    if !normalized_target.is_empty() {
-        match_attempt.target = normalized_target;
-    }
-
-    let mut receipt = evaluate_internal(
-        &match_attempt,
+    let (mut receipt, consumed_ids) = evaluate_internal(
+        attempt,
         packs,
         grants,
         kill_switch,
         Some(session_state),
         now,
     );
-    receipt.target = attempt.target.clone();
-    consume_matched_grant(&receipt, grants);
+    consume_matched_grants(&receipt, &consumed_ids, grants);
 
     if receipt.verdict == Verdict::Allow {
         if command_status == CommandParseStatus::Unresolved {
@@ -161,7 +231,7 @@ fn evaluate_internal(
     kill_switch: &KillSwitchState,
     session_state: Option<&SessionRuleState>,
     now: Timestamp,
-) -> DecisionReceipt {
+) -> (DecisionReceipt, Vec<String>) {
     let bundle = match compile_packs(
         packs,
         kill_switch,
@@ -171,12 +241,15 @@ fn evaluate_internal(
     ) {
         Ok(compiled) => compiled,
         Err(err) => {
-            return fail_closed_receipt(
-                attempt,
-                "policy.compile-error",
-                format!("Policy bundle failed validation (fail-closed): {err}"),
-                "Fix or replace the invalid policy rule before retrying.",
-                now,
+            return (
+                fail_closed_receipt(
+                    attempt,
+                    "policy.compile-error",
+                    format!("Policy bundle failed validation (fail-closed): {err}"),
+                    "Fix or replace the invalid policy rule before retrying.",
+                    now,
+                ),
+                Vec::new(),
             );
         }
     };
@@ -191,162 +264,60 @@ fn evaluate_internal(
     ) {
         Ok(req) => req,
         Err(err) => {
-            return fail_closed_receipt(
-                attempt,
-                "policy.request-error",
-                format!("Request construction failed (fail-closed): {err}"),
-                "Inspect the normalized attempt fields before retrying.",
-                now,
+            return (
+                fail_closed_receipt(
+                    attempt,
+                    "policy.request-error",
+                    format!("Request construction failed (fail-closed): {err}"),
+                    "Inspect the normalized attempt fields before retrying.",
+                    now,
+                ),
+                Vec::new(),
             );
         }
     };
 
-    let authorizer = Authorizer::new();
-    let response = authorizer.is_authorized(&built.request, &bundle.enforced, &built.entities);
-
-    if let Some(err) = response.diagnostics().errors().next() {
-        return fail_closed_receipt(
-            attempt,
-            "policy.eval-error",
-            format!("Policy evaluation error (fail-closed): {err}"),
-            "Inspect the Cedar rule attributes and context before retrying.",
-            now,
-        );
-    }
-
-    if response.decision() == Decision::Deny {
-        let mut matched: Vec<&CompiledRuleMeta> = response
-            .diagnostics()
-            .reason()
-            .filter_map(|pid| bundle.meta_by_policy_id.get(&pid.to_string()))
-            .collect();
-        matched.sort_by_key(|meta| std::cmp::Reverse(meta.mode));
-
-        if let Some(top) = matched.first().copied() {
-            if top.mode == Mode::Block {
-                let next_step = if top.rule_id == "system.kill-switch" {
-                    "Release the freeze or kill switch on the Respond screen once investigated."
-                } else {
-                    "Choose a workspace-safe path or ask an administrator for an exception."
-                };
-                return build_receipt(
+    let cfg = VerdictEvalConfig {
+        host_profile: InstallProfile::User,
+        device_max_grade: ApprovalGrade::G3,
+        timelock_enabled: false,
+        observer: BoundaryObserver::None,
+        caps: default_control_point_caps(attempt.control_point, None),
+        modify_attempts: 0,
+    };
+    let mut entropy = DeterministicEntropy::from_seed_bytes(attempt.id.as_bytes());
+    let resolved = match resolve_verdict(attempt, &bundle, &built, &cfg, &mut entropy) {
+        Ok(out) => out,
+        Err(err) => {
+            return (
+                fail_closed_receipt(
                     attempt,
-                    ReceiptOutcome {
-                        verdict: Verdict::Deny,
-                        would_be: None,
-                        rule_id: Some(top.rule_id.clone()),
-                        pack_id: Some(top.pack_id.clone()),
-                        mode_applied: Some(Mode::Block),
-                        grant_id: None,
-                        reason: top.reason_template.clone(),
-                        next_step: next_step.into(),
-                    },
+                    "policy.eval-error",
+                    format!("Policy evaluation failed (fail-closed): {err}"),
+                    "Inspect the Cedar rule attributes and context before retrying.",
                     now,
-                );
-            }
-            return build_receipt(
-                attempt,
-                ReceiptOutcome {
-                    verdict: Verdict::StepUp,
-                    would_be: None,
-                    rule_id: Some(top.rule_id.clone()),
-                    pack_id: Some(top.pack_id.clone()),
-                    mode_applied: Some(Mode::Ask),
-                    grant_id: None,
-                    reason: top.reason_template.clone(),
-                    next_step: "Approve the pending request in Respond, then retry.".into(),
-                },
-                now,
+                ),
+                Vec::new(),
             );
         }
+    };
 
-        return build_receipt(
-            attempt,
-            ReceiptOutcome {
-                verdict: Verdict::Deny,
-                would_be: None,
-                rule_id: Some("policy.default-deny".into()),
-                pack_id: Some("system".into()),
-                mode_applied: Some(Mode::Block),
-                grant_id: None,
-                reason: "Action did not match base permit (default-deny).".into(),
-                next_step: "Verify policy pack configuration.".into(),
-            },
-            now,
-        );
-    }
-
-    if let Some(req_no_grants) = built.request_without_grants.as_ref() {
-        let shadow_check =
-            authorizer.is_authorized(req_no_grants, &bundle.enforced, &built.entities);
-        if shadow_check.decision() == Decision::Deny {
-            let mut lifted: Vec<&CompiledRuleMeta> = shadow_check
-                .diagnostics()
-                .reason()
-                .filter_map(|pid| bundle.meta_by_policy_id.get(&pid.to_string()))
-                .filter(|meta| built.lifted_grant_by_rule_id.contains_key(&meta.rule_id))
-                .collect();
-            lifted.sort_by_key(|meta| std::cmp::Reverse(meta.mode));
-            if let Some(top) = lifted.first().copied()
-                && let Some(grant_id) = built.lifted_grant_by_rule_id.get(&top.rule_id)
-            {
-                return build_receipt(
-                    attempt,
-                    ReceiptOutcome {
-                        verdict: Verdict::Allow,
-                        would_be: Some(Verdict::StepUp),
-                        rule_id: Some(top.rule_id.clone()),
-                        pack_id: Some(top.pack_id.clone()),
-                        mode_applied: Some(top.mode),
-                        grant_id: Some(grant_id.clone()),
-                        reason: format!("Allowed by active approval grant {grant_id}."),
-                        next_step: "Action permitted within grant expiry window.".into(),
-                    },
-                    now,
-                );
-            }
-        }
-    }
-
-    let shadow_resp = authorizer.is_authorized(&built.request, &bundle.shadow, &built.entities);
-    let watch_hit = shadow_resp
-        .diagnostics()
-        .reason()
-        .filter_map(|pid| bundle.meta_by_policy_id.get(&pid.to_string()))
-        .next();
-
-    if let Some(watch) = watch_hit {
-        return build_receipt(
-            attempt,
-            ReceiptOutcome {
-                verdict: Verdict::Allow,
-                would_be: Some(Verdict::StepUp),
-                rule_id: Some(watch.rule_id.clone()),
-                pack_id: Some(watch.pack_id.clone()),
-                mode_applied: Some(Mode::Watch),
-                grant_id: None,
-                reason: watch.reason_template.clone(),
-                next_step: "Run replay on Protect to decide whether to promote this rule to Ask."
-                    .into(),
-            },
-            now,
-        );
-    }
-
-    build_receipt(
+    let consumed_grant_ids = resolved.consumed_grant_ids;
+    let receipt = build_receipt(
         attempt,
         ReceiptOutcome {
-            verdict: Verdict::Allow,
-            would_be: None,
-            rule_id: None,
-            pack_id: None,
-            mode_applied: None,
-            grant_id: None,
-            reason: "No policy rule restricted this action.".into(),
-            next_step: "No action needed.".into(),
+            verdict: resolved.verdict,
+            would_be: resolved.would_be,
+            rule_id: resolved.top_rule_id,
+            pack_id: resolved.top_pack_id,
+            mode_applied: resolved.mode_applied,
+            grant_id: resolved.grant_id,
+            reason: resolved.reason,
+            next_step: resolved.next_step,
         },
         now,
-    )
+    );
+    (receipt, consumed_grant_ids)
 }
 
 fn evaluate_synthetic_step_up(
@@ -357,10 +328,22 @@ fn evaluate_synthetic_step_up(
     next_step: &str,
     now: Timestamp,
 ) -> DecisionReceipt {
-    if let Some(grant) = grants
-        .iter_mut()
-        .find(|g| g.rule_id == rule_id && g.matches(attempt, now))
-    {
+    let match_attempt = if matches!(
+        attempt.action_class,
+        ActionClass::FileRead | ActionClass::FileWrite | ActionClass::FileDelete
+    ) {
+        attempt.clone()
+    } else {
+        let (norm, _) = normalize_attempt_target(attempt.action_class, &attempt.target);
+        let mut cloned = attempt.clone();
+        if !norm.is_empty() {
+            cloned.target = norm;
+        }
+        cloned
+    };
+    if let Some(grant) = grants.iter_mut().find(|g| {
+        g.rule_id == rule_id && g.grade >= ApprovalGrade::G1 && g.matches(&match_attempt, now)
+    }) {
         let grant_id = grant.grant_id.clone();
         grant.consume_use();
         return build_receipt(
@@ -395,11 +378,18 @@ fn evaluate_synthetic_step_up(
     )
 }
 
-fn consume_matched_grant(receipt: &DecisionReceipt, grants: &mut [Grant]) {
-    if let Some(grant_id) = receipt.grant_id.as_deref()
-        && let Some(grant) = grants.iter_mut().find(|g| g.grant_id == grant_id)
-    {
-        grant.consume_use();
+fn consume_matched_grants(
+    receipt: &DecisionReceipt,
+    consumed_ids: &[String],
+    grants: &mut [Grant],
+) {
+    let single_id = receipt.grant_id.as_deref();
+    for grant in grants {
+        if single_id == Some(grant.grant_id.as_str())
+            || consumed_ids.iter().any(|id| id == &grant.grant_id)
+        {
+            grant.consume_use();
+        }
     }
 }
 
@@ -427,17 +417,22 @@ fn fail_closed_receipt(
 }
 
 pub fn compute_receipt_digest(input: &ReceiptDigestInput<'_>) -> String {
-    let payload = format!(
-        "{}:{}:{}:{}:{}:{:?}:{}:{}",
+    let mut payload = String::new();
+    for field in [
         input.attempt_id,
         input.session_id,
         input.agent_name,
         input.action_class.as_str(),
         input.target,
-        input.verdict,
         input.rule_id.unwrap_or("none"),
+    ] {
+        engine_types::push_len(&mut payload, field);
+    }
+    payload.push_str(&format!(
+        "{:?}:{}",
+        input.verdict,
         input.decided_at.as_second()
-    );
+    ));
     sha256_hex(payload.as_bytes())
 }
 
@@ -482,6 +477,9 @@ fn build_receipt(
         signature_verified: None,
     }
 }
+
+#[cfg(test)]
+mod tests_wave1;
 
 #[cfg(test)]
 mod tests {
