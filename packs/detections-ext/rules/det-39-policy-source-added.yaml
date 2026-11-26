@@ -1,0 +1,33 @@
+title: "New Higher-Precedence Agent Policy Source"
+id: 9b13d3f1-4a12-5023-8994-e83441a01b39
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Detects unmanaged higher-precedence policy source added outside Guardrails or MDM owner (row 39)."
+logsource:
+  product: grdr
+  category: config
+  service: file-integrity
+detection:
+  selection:
+    config.change_classes: "policy-source-added"
+  condition: selection
+x_grdr:
+  row: 39
+  origin: official
+  rule_id: grdr.det.core.r39.policy-source-added
+  version: "1.0.0"
+  finding_class: tamper
+  ceiling: notify
+  stage: K5
+  atlas: [T0081]
+  owasp_asi: [ASI06]
+  mode_default: "none"
+  response:
+    mode: simulate
+    verbs: [capture-evidence]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-39-pos
+    negative: fix-39-neg

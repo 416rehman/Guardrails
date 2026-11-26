@@ -1,0 +1,34 @@
+title: "Agent Control Server Listening Beyond Loopback"
+id: 9b13d3f1-4a12-5023-8994-e83441a01b40
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Detects catalogued agent control server socket bound to non-loopback address (row 40)."
+logsource:
+  product: grdr
+  category: network
+  service: sensor
+detection:
+  selection:
+    actor.lineage: "agent"
+    net.listen_scope: "non-loopback"
+  condition: selection
+x_grdr:
+  row: 40
+  origin: official
+  rule_id: grdr.det.core.r40.agent-non-loopback-listen
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: notify
+  stage: K6
+  atlas: [T0049]
+  owasp_asi: [ASI04]
+  mode_default: "none"
+  response:
+    mode: simulate
+    verbs: [capture-evidence]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-40-pos
+    negative: fix-40-neg

@@ -3,6 +3,13 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::arithmetic_side_effects)]
 
+pub(crate) mod job_frame;
+pub mod nl2cedar;
+pub mod pipeline;
+pub mod queue;
+pub mod reducer;
+pub(crate) mod span_bind;
+
 use std::collections::BTreeMap;
 
 use grdr_model::{ApprovalGrade, Mode, PolicyPack, PolicyRule};
@@ -38,12 +45,35 @@ pub enum ReviewRequirement {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RuleDeltaKind {
-    Added { mode: Mode, locked: bool },
-    Removed { was_locked: bool },
-    ModeChanged { from: Mode, to: Mode, locked: bool },
-    FloorModified { from_locked: bool, to_locked: bool },
-    EnabledChanged { from: bool, to: bool, locked: bool },
-    ConditionsChanged,
+    Added {
+        mode: Mode,
+        locked: bool,
+    },
+    Removed {
+        was_locked: bool,
+    },
+    ModeChanged {
+        from: Mode,
+        to: Mode,
+        locked: bool,
+    },
+    FloorModified {
+        from_locked: bool,
+        to_locked: bool,
+    },
+    EnabledChanged {
+        from: bool,
+        to: bool,
+        locked: bool,
+    },
+    GradeChanged {
+        from: ApprovalGrade,
+        to: ApprovalGrade,
+        locked: bool,
+    },
+    ConditionsChanged {
+        locked: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -114,7 +144,7 @@ pub fn diff_policy_packs(
         }
     }
 
-    let (overall_risk, requirement) = assess_diff_risk(&deltas, &cand_map);
+    let (overall_risk, requirement) = assess_diff_risk(&deltas, &base_map, &cand_map);
 
     Ok(PolicyDiff {
         pack_id: candidate.id.clone(),
@@ -129,6 +159,7 @@ pub fn diff_policy_packs(
 #[must_use]
 pub fn assess_diff_risk(
     deltas: &[RuleDelta],
+    base_rules: &BTreeMap<&str, &PolicyRule>,
     candidate_rules: &BTreeMap<&str, &PolicyRule>,
 ) -> (ChangeRisk, ReviewRequirement) {
     let mut overall = ChangeRisk::Neutral;
@@ -138,11 +169,17 @@ pub fn assess_diff_risk(
         if delta.risk > overall {
             overall = delta.risk;
         }
-        if delta.risk == ChangeRisk::Widening
-            && let Some(rule) = candidate_rules.get(delta.rule_id.as_str())
-            && rule.min_grade > min_grade
-        {
-            min_grade = rule.min_grade;
+        if delta.risk == ChangeRisk::Widening {
+            if let Some(base_rule) = base_rules.get(delta.rule_id.as_str())
+                && base_rule.min_grade > min_grade
+            {
+                min_grade = base_rule.min_grade;
+            }
+            if let Some(cand_rule) = candidate_rules.get(delta.rule_id.as_str())
+                && cand_rule.min_grade > min_grade
+            {
+                min_grade = cand_rule.min_grade;
+            }
         }
     }
 
@@ -227,12 +264,41 @@ fn collect_rule_changes(base: &PolicyRule, cand: &PolicyRule, out: &mut Vec<Rule
         });
     }
 
-    if base.matcher != cand.matcher || base.cedar != cand.cedar {
+    if base.min_grade != cand.min_grade {
+        let risk = if cand.min_grade < base.min_grade {
+            if base.locked {
+                ChangeRisk::FloorViolation
+            } else {
+                ChangeRisk::Widening
+            }
+        } else {
+            ChangeRisk::Narrowing
+        };
         out.push(RuleDelta {
             rule_id: base.id.clone(),
             title: cand.title.clone(),
-            kind: RuleDeltaKind::ConditionsChanged,
-            risk: ChangeRisk::Widening,
+            kind: RuleDeltaKind::GradeChanged {
+                from: base.min_grade,
+                to: cand.min_grade,
+                locked: base.locked,
+            },
+            risk,
+        });
+    }
+
+    if base.matcher != cand.matcher || base.cedar != cand.cedar {
+        let risk = if base.locked {
+            ChangeRisk::FloorViolation
+        } else {
+            ChangeRisk::Widening
+        };
+        out.push(RuleDelta {
+            rule_id: base.id.clone(),
+            title: cand.title.clone(),
+            kind: RuleDeltaKind::ConditionsChanged {
+                locked: base.locked,
+            },
+            risk,
         });
     }
 }
@@ -279,5 +345,48 @@ mod tests {
         let floor_diff = diff_policy_packs(&base, &weakened_floor).expect("diff ok");
         assert_eq!(floor_diff.overall_risk, ChangeRisk::FloorViolation);
         assert_eq!(floor_diff.requirement, ReviewRequirement::Denied);
+    }
+
+    #[test]
+    fn negative_locked_conditions_change_g3_removal_and_grade_reduction() {
+        let mut base = essentials_pack();
+        if let Some(rule) = base.rules.iter_mut().find(|r| !r.locked) {
+            rule.min_grade = ApprovalGrade::G3;
+        }
+
+        // Editing conditions or cedar on a locked rule must be FloorViolation (Denied).
+        let mut locked_cond = base.clone();
+        if let Some(rule) = locked_cond.rules.iter_mut().find(|r| r.locked) {
+            rule.matcher.target_contains.clear();
+        }
+        let diff_cond = diff_policy_packs(&base, &locked_cond).expect("diff");
+        assert_eq!(diff_cond.overall_risk, ChangeRisk::FloorViolation);
+        assert_eq!(diff_cond.requirement, ReviewRequirement::Denied);
+
+        // Removing a non-locked G3 rule must preserve base_rule.min_grade (G3).
+        let mut removed_g3 = base.clone();
+        removed_g3.rules.retain(|r| r.locked);
+        let diff_rem = diff_policy_packs(&base, &removed_g3).expect("diff");
+        assert_eq!(diff_rem.overall_risk, ChangeRisk::Widening);
+        assert_eq!(
+            diff_rem.requirement,
+            ReviewRequirement::StepUpApproval {
+                min_grade: ApprovalGrade::G3
+            }
+        );
+
+        // Lowering min_grade on non-locked rule from G3 to G1 is Widening requiring G3.
+        let mut lowered_grade = base.clone();
+        if let Some(rule) = lowered_grade.rules.iter_mut().find(|r| !r.locked) {
+            rule.min_grade = ApprovalGrade::G1;
+        }
+        let diff_grade = diff_policy_packs(&base, &lowered_grade).expect("diff");
+        assert_eq!(diff_grade.overall_risk, ChangeRisk::Widening);
+        assert_eq!(
+            diff_grade.requirement,
+            ReviewRequirement::StepUpApproval {
+                min_grade: ApprovalGrade::G3
+            }
+        );
     }
 }

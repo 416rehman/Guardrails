@@ -1,0 +1,1 @@
+index=* | search ((CommandLine="*-EncodedCommand*" OR CommandLine="*base64 -d*" OR CommandLine="*FromBase64String*") AND (ParentImage="*claude" OR ParentImage="*codex" OR ParentImage="*cursor" OR ParentImage="*gemini" OR ParentImage="*opencode" OR ParentImage="*aider"))

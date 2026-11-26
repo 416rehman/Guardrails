@@ -1,0 +1,40 @@
+title: "Non-Agent Process Reads Agent Local Stores"
+id: 9b13d3f1-4a12-5023-8994-e83441a01b32
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Detects non-agent lineage reading an agent's local credential/conversation stores (row 32)."
+logsource:
+  product: grdr
+  category: file
+  service: sensor
+detection:
+  selection:
+    action_class: "file.read"
+    actor.lineage: "non-agent"
+    target.classes: "agent-store"
+  condition: selection
+falsepositives:
+  - "Backup utility authorized over agent state directory"
+tags:
+  - atlas.t0083
+  - owasp.asi03
+x_grdr:
+  row: 32
+  origin: official
+  rule_id: grdr.det.core.r32.non-agent-store-read
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: notify
+  stage: K4
+  atlas: [T0083]
+  owasp_asi: [ASI03]
+  mode_default: "grdr.secrets (Watch)"
+  response:
+    mode: simulate
+    verbs: [capture-evidence]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-32-pos
+    negative: fix-32-neg

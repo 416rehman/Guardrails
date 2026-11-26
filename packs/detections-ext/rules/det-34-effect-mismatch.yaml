@@ -1,0 +1,38 @@
+title: "Executed Effect Mismatch Against Approved Command"
+id: 9b13d3f1-4a12-5023-8994-e83441a01b34
+status: stable
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Detects executed binary or arguments differing from approved request digest (row 34)."
+logsource:
+  product: grdr
+  category: process
+  service: sensor
+detection:
+  selection:
+    effect.mismatch: "true"
+  condition: selection
+falsepositives:
+  - "None expected for verified binary digest mismatches"
+tags:
+  - atlas.t0107
+  - owasp.asi09
+x_grdr:
+  row: 34
+  origin: official
+  rule_id: grdr.det.core.r34.effect-mismatch
+  version: "1.0.0"
+  finding_class: tamper
+  ceiling: contain
+  stage: K3
+  atlas: [T0107]
+  owasp_asi: [ASI09]
+  mode_default: "built-in"
+  response:
+    mode: simulate
+    verbs: [freeze-session, capture-evidence]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-34-pos
+    negative: fix-34-neg

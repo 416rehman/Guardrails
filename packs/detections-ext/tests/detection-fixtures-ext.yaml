@@ -1,0 +1,154 @@
+format: grdr.detection-fixtures-ext.v1
+pack_id: grdr.det.ext
+fixtures:
+  - id: fix-31-pos
+    rule_id: grdr.det.core.r31.monitoring-config-tamper
+    expect_match: true
+    action_class: file.write
+    actor.lineage: agent
+    target.classes: monitoring-config
+  - id: fix-31-neg
+    rule_id: grdr.det.core.r31.monitoring-config-tamper
+    expect_match: false
+    action_class: file.read
+    actor.lineage: agent
+    target.classes: workspace
+  - id: fix-32-pos
+    rule_id: grdr.det.core.r32.non-agent-store-read
+    expect_match: true
+    action_class: file.read
+    actor.lineage: non-agent
+    target.classes: agent-store
+  - id: fix-32-neg
+    rule_id: grdr.det.core.r32.non-agent-store-read
+    expect_match: false
+    action_class: file.read
+    actor.lineage: agent
+    target.classes: agent-store
+  - id: fix-33-pos
+    rule_id: grdr.det.core.r33.hook-dark
+    expect_match: true
+    telemetry.source: sensor
+    hook.matched: "false"
+  - id: fix-33-neg
+    rule_id: grdr.det.core.r33.hook-dark
+    expect_match: false
+    telemetry.source: sensor
+    hook.matched: "true"
+  - id: fix-34-pos
+    rule_id: grdr.det.core.r34.effect-mismatch
+    expect_match: true
+    effect.mismatch: "true"
+  - id: fix-34-neg
+    rule_id: grdr.det.core.r34.effect-mismatch
+    expect_match: false
+    effect.mismatch: "false"
+  - id: fix-35-pos
+    rule_id: grdr.det.core.r35.write-then-exec-digest
+    expect_match: true
+    actor.lineage: agent
+    action_class: exec
+    artefact.sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  - id: fix-35-neg
+    rule_id: grdr.det.core.r35.write-then-exec-digest
+    expect_match: false
+    actor.lineage: agent
+    action_class: file.read
+  - id: fix-36-pos
+    rule_id: grdr.det.core.r36.stdlib-module-shadowing
+    expect_match: true
+    actor.lineage: agent
+    target.classes: stdlib-shadow
+  - id: fix-36-neg
+    rule_id: grdr.det.core.r36.stdlib-module-shadowing
+    expect_match: false
+    actor.lineage: agent
+    target.classes: workspace
+  - id: fix-37-pos
+    rule_id: grdr.det.core.r37.encoded-payload-exec
+    expect_match: true
+    ParentImage: /usr/local/bin/claude
+    CommandLine: "powershell -EncodedCommand ZQBjAGgAbwA="
+  - id: fix-37-neg
+    rule_id: grdr.det.core.r37.encoded-payload-exec
+    expect_match: false
+    ParentImage: /usr/local/bin/claude
+    CommandLine: "git status"
+  - id: fix-38-pos
+    rule_id: grdr.det.core.r38.inline-credential-args
+    expect_match: true
+    exec.inline_password: cli_flag
+  - id: fix-38-neg
+    rule_id: grdr.det.core.r38.inline-credential-args
+    expect_match: false
+    target: "cargo test"
+  - id: fix-39-pos
+    rule_id: grdr.det.core.r39.policy-source-added
+    expect_match: true
+    config.change_classes: policy-source-added
+  - id: fix-39-neg
+    rule_id: grdr.det.core.r39.policy-source-added
+    expect_match: false
+    config.change_classes: none
+  - id: fix-40-pos
+    rule_id: grdr.det.core.r40.agent-non-loopback-listen
+    expect_match: true
+    actor.lineage: agent
+    net.listen_scope: non-loopback
+  - id: fix-40-neg
+    rule_id: grdr.det.core.r40.agent-non-loopback-listen
+    expect_match: false
+    actor.lineage: agent
+    net.listen_scope: loopback
+  - id: fix-41-pos
+    rule_id: grdr.det.core.r41.high-entropy-dns
+    expect_match: true
+    actor.lineage: agent
+    dns.label_entropy_exceeded: "true"
+  - id: fix-41-neg
+    rule_id: grdr.det.core.r41.high-entropy-dns
+    expect_match: false
+    actor.lineage: agent
+    dns.label_entropy_exceeded: "false"
+  - id: fix-42-pos
+    rule_id: grdr.det.core.r42.many-sessions-shared-store
+    expect_match: true
+    action_class: data.flow
+    destination.prefix: "https://webhook.site/"
+  - id: fix-42-neg
+    rule_id: grdr.det.core.r42.many-sessions-shared-store
+    expect_match: false
+    action_class: file.read
+  - id: fix-43-pos
+    rule_id: grdr.det.core.r43.cross-device-suspicious-digest
+    expect_match: true
+    artefact.suspicious: "true"
+    artefact.sha256: "deadbeef01"
+  - id: fix-43-neg
+    rule_id: grdr.det.core.r43.cross-device-suspicious-digest
+    expect_match: false
+    artefact.suspicious: "false"
+  - id: fix-44-pos
+    rule_id: grdr.det.core.r44.skill-drift-remote-fetch
+    expect_match: true
+    skill.remote_fetch: outside-profile
+  - id: fix-44-neg
+    rule_id: grdr.det.core.r44.skill-drift-remote-fetch
+    expect_match: false
+    skill.remote_fetch: inside-profile
+  - id: fix-45-pos
+    rule_id: grdr.det.core.r45.label-late
+    expect_match: true
+    label.late: "true"
+  - id: fix-45-neg
+    rule_id: grdr.det.core.r45.label-late
+    expect_match: false
+    label.late: "false"
+  - id: fix-46-pos
+    rule_id: grdr.det.judge-probing
+    expect_match: true
+    judge.objection: "true"
+  - id: fix-46-neg
+    rule_id: grdr.det.judge-probing
+    expect_match: false
+    judge.objection: "false"

@@ -1,0 +1,1 @@
+dataset = xdr_data | filter ((CommandLine contains "-EncodedCommand" or CommandLine contains "base64 -d" or CommandLine contains "FromBase64String") and (ParentImage ~= "claude$" or ParentImage ~= "codex$" or ParentImage ~= "cursor$" or ParentImage ~= "gemini$" or ParentImage ~= "opencode$" or ParentImage ~= "aider$"))

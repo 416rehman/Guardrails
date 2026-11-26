@@ -6,9 +6,12 @@
 //! Sandboxed, networkless advisory detector host enforcing P2 restrict-only invariants.
 
 pub mod advisory;
+pub mod confusables;
 pub mod detector;
 pub mod framing;
 pub mod ipc;
+pub mod normalize;
+pub(crate) mod quote_extract;
 
 use grdr_model::CodedError;
 
@@ -23,7 +26,7 @@ pub const CODE_INFER_IPC: &str = "GRDR-INFER-0006";
 pub enum InferError {
     #[error("GRDR-INFER-0001: invalid detector input: {0}")]
     InvalidInput(String),
-    #[error("GRDR-INFER-0002: model output attempted non-restrictive action `{0}`")]
+    #[error("GRDR-INFER-0002: model output attempted non-restrictive action: {0}")]
     PermissiveOutputRejected(String),
     #[error("GRDR-INFER-0003: finding quote missing from verified input record")]
     UngroundedQuote(String),

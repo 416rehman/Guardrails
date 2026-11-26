@@ -286,6 +286,7 @@ impl Engine {
                     denial_count: entry.denial_count,
                     step_up_count: entry.step_up_count,
                     event_seq: entry.event_seq,
+                    ..SessionRuleState::default()
                 },
             );
         }

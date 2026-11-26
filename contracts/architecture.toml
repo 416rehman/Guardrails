@@ -11,6 +11,7 @@ schema = "grdr.architecture.v1"
   "grdr-fastpath",
   "grdr-fastpath-ffi",
   "grdr-ffi",
+  "grdr-intel",
   "grdr-llm-proto",
   "grdr-mcp-proto",
   "grdr-model",
@@ -68,13 +69,14 @@ tool = ["grdr-conformance", "grdr-policy-ref", "grdr-schema-lint"]
 "grdr-core" = ["grdr-crypto", "grdr-fastpath", "grdr-model"]
 "grdr-fastpath-ffi" = ["grdr-fastpath"]
 "grdr-ffi" = ["grdr-core", "grdr-fastpath", "grdr-model"]
+"grdr-intel" = ["grdr-crypto", "grdr-model"]
 "grdr-llm-proto" = ["grdr-model"]
 "grdr-mcp-proto" = ["grdr-model"]
 "grdr-messages" = ["grdr-strings"]
 "grdr-model" = ["grdr-crypto"]
 "grdr-peer-os" = ["grdr-os-service"]
 "grdr-ports-testkit" = ["grdr-ports"]
-"grdr-review" = ["grdr-model"]
+"grdr-review" = ["grdr-crypto", "grdr-model"]
 "grdr-sensor-windows" = ["grdr-os-service"]
 "grdr-wasm" = ["grdr-core", "grdr-fastpath", "grdr-model"]
 

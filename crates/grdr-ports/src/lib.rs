@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
+#![forbid(unsafe_code)]
 #![deny(clippy::arithmetic_side_effects)]
 
+pub mod ai;
 pub mod blob;
 pub mod bus;
 pub mod clock;
+pub mod dlp;
 pub mod events;
 pub mod hunt_sql;
 pub mod jobs;
@@ -13,6 +16,13 @@ pub mod tenant;
 
 use serde::{Deserialize, Serialize};
 
+pub use ai::{
+    ANTHROPIC_API_VERSION, AnthropicMessagesWire, BackendProtocol, CODE_AI_BACKEND_UNAVAILABLE,
+    CODE_AI_COMMITMENT_FAILED, CODE_AI_MALFORMED_RESPONSE, CODE_AI_PERMISSIVE_REJECTED,
+    CODE_AI_TOKEN_BUDGET_EXCEEDED, ConformanceReport, JudgeAvailability, JudgeBackend,
+    JudgeRawResponse, JudgeRequestSpec, OpenAiCompatibleWire, TokenUsageLedger,
+    verify_backend_conformance,
+};
 pub use blob::{
     BlobMetadata, BlobObject, BlobPort, BlobVersionCondition, ByteRange, CODE_BLOB_ALREADY_EXISTS,
     CODE_BLOB_INVALID_RANGE, CODE_BLOB_IO, CODE_BLOB_VERSION_CONFLICT,
@@ -22,6 +32,16 @@ pub use bus::{
     CODE_BUS_BEYOND_LOG, CODE_BUS_INVALID_INPUT, CODE_BUS_IO, CODE_BUS_STALE_FENCE,
 };
 pub use clock::Clock;
+pub use dlp::{
+    BaselineLifecycle, CODE_DLP_BASELINE_FAILED, CODE_DLP_DECLASSIFY_MISMATCH, CODE_DLP_HONEYTOKEN,
+    CODE_DLP_IO, CODE_DLP_MASS_CHANGE, CaptureScope, ConfidenceMethod,
+    DEFAULT_MASS_CHANGE_THRESHOLD, DEFAULT_MASS_CHANGE_WINDOW_SECS, DeclassificationGrantSpec,
+    DetectedSpan, DetectorCoverageStatus, DetectorFact, DetectorInput, DetectorOutput,
+    DetectorPort, DeterministicFactKind, ExternalSensitivityLabel, FactOrigin,
+    GoogleDriveLabelReader, HoneytokenRecord, LabelReaderPort, ModelFactKind, MsipLabelReader,
+    OrgLabelTable, ProtectionMarking, PurviewLabelReader, RestoreOutcome, SensitivitySource,
+    SensitivityTier, WorkspaceBaselinePort, WorkspaceSnapshotRef, inspect_with_origin_guard,
+};
 pub use events::{
     CODE_LAKE_HOLD_ACTIVE, CODE_LAKE_INVALID_QUERY, CODE_LAKE_IO, CODE_LAKE_KEY_DESTROYED,
     CODE_LAKE_NOT_FOUND, CODE_LAKE_STALE_FENCE, ContentKeyState, ErasureReceipt, EventsPort,

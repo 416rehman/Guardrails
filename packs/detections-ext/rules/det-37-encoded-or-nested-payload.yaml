@@ -1,0 +1,40 @@
+title: "Encoded or Nested Payload Executed Into Interpreter"
+id: 9b13d3f1-4a12-5023-8994-e83441a01b37
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Detects base64, -EncodedCommand, hex, or gzip decoded payload launched into interpreter (row 37)."
+logsource:
+  product: grdr
+  category: process_creation
+  service: any
+detection:
+  selection:
+    ParentImage|endswith|expand: "%grdr_agent_images%"
+    CommandLine|contains:
+      - "-EncodedCommand"
+      - "base64 -d"
+      - "FromBase64String"
+  condition: selection
+x_grdr:
+  row: 37
+  origin: official
+  rule_id: grdr.det.core.r37.encoded-payload-exec
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: notify
+  scope: device
+  stage: K3
+  atlas: [T0107]
+  owasp_asi: [ASI02]
+  requires:
+    placement: device
+  mode_default: "none"
+  response:
+    mode: simulate
+    verbs: [capture-evidence]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-37-pos
+    negative: fix-37-neg

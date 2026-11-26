@@ -80,6 +80,12 @@ stability = "experimental"
 publish = true
 notes = "Sans-IO review queue scoring and bounded judge output schema."
 
+[crates.grdr-intel]
+layer = 1
+stability = "experimental"
+publish = true
+notes = "Threat intelligence restrict-only PackKind::Intel validator, 24-bit fuse index, codecs, and k=5 sightings."
+
 [crates.grdr-ports]
 layer = 2
 stability = "experimental"

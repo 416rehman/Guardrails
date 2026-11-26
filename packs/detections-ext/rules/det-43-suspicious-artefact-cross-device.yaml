@@ -1,0 +1,42 @@
+title: "Same Suspicious Artefact Digest Seen Across Devices"
+id: 9b13d3f1-4a12-5023-8994-e83441a01b43
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Correlates identical suspicious MCP/skill/package digest appearing across multiple devices (row 43)."
+logsource:
+  product: grdr
+  category: inventory
+  service: any
+detection:
+  selection:
+    artefact.suspicious: "true"
+    artefact.sha256|exists: true
+  condition: selection
+correlation:
+  type: value_count
+  group-by:
+    - artefact.sha256
+  timespan: 1h
+  condition:
+    field: device_id
+    gte: 3
+x_grdr:
+  row: 43
+  origin: official
+  rule_id: grdr.det.core.r43.cross-device-suspicious-digest
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: notify
+  stage: K7
+  atlas: [T0143]
+  owasp_asi: [ASI07]
+  mode_default: "none"
+  response:
+    mode: simulate
+    verbs: [capture-evidence]
+    max_scope: organisation
+    max_share_bp: 500
+  tests:
+    positive: fix-43-pos
+    negative: fix-43-neg

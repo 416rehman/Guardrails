@@ -1,0 +1,34 @@
+title: "High-Entropy DNS Labels From Agent Lineage"
+id: 9b13d3f1-4a12-5023-8994-e83441a01b41
+status: test
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Detects DNS queries with label Shannon entropy exceeding exfiltration threshold (row 41)."
+logsource:
+  product: grdr
+  category: network
+  service: proxy
+detection:
+  selection:
+    actor.lineage: "agent"
+    dns.label_entropy_exceeded: "true"
+  condition: selection
+x_grdr:
+  row: 41
+  origin: official
+  rule_id: grdr.det.core.r41.high-entropy-dns
+  version: "1.0.0"
+  finding_class: threat
+  ceiling: notify
+  stage: K8
+  atlas: [T0025]
+  owasp_asi: [ASI02]
+  mode_default: "none"
+  response:
+    mode: simulate
+    verbs: [capture-evidence]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-41-pos
+    negative: fix-41-neg

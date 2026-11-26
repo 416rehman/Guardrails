@@ -1,0 +1,37 @@
+{
+  "schema": "grdr.l0.coverage.v1",
+  "pack_id": "grdr.l0",
+  "lineage_note": "L0 ParentImage rules match direct children of catalogued agent binaries only; full lineage tracking requires the Guardrails sensor.",
+  "targets": {
+    "kql": {
+      "file": "compiled-kql.kql",
+      "verification": "syntax-checked",
+      "containment": "DefenderDeviceIdJoin"
+    },
+    "logscale": {
+      "file": "compiled-logscale.logscale",
+      "verification": "syntax-checked",
+      "containment": "DetectOnly"
+    },
+    "eql": {
+      "file": "compiled-eql.eql",
+      "verification": "syntax-checked",
+      "containment": "DetectOnly"
+    },
+    "xql": {
+      "file": "compiled-xql.xql",
+      "verification": "syntax-checked",
+      "containment": "DetectOnly"
+    },
+    "spl": {
+      "file": "compiled-spl.spl",
+      "verification": "syntax-checked",
+      "containment": "DetectOnly"
+    },
+    "generic_sigma": {
+      "file": "portable-rules.yaml",
+      "verification": "syntax-checked",
+      "containment": "DetectOnly"
+    }
+  }
+}

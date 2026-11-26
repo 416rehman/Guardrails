@@ -3,86 +3,21 @@
 
 //! Networkless `DetectorAdapter` port and deterministic heuristic judge implementation.
 
-use std::collections::BTreeSet;
 use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
 
 use crate::advisory::{
-    AdvisoryAction, AdvisoryLabel, AdvisorySeverityCap, BoundedRiskScore, FindingCandidate,
-    MAX_ADVISORY_QUOTE_BYTES, ModelAdvisorySignal, UnavailableReason, VerifiedAdvisory,
+    BoundedRiskScore, FindingCandidate, MAX_ADVISORY_FINDINGS, MAX_ADVISORY_LABELS,
+    ModelAdvisorySignal, UnavailableReason, VerifiedAdvisory, requires_grounded_finding,
+    validate_evaluator_id,
 };
+use crate::confusables::is_safe_quote_char;
 use crate::framing::{FramedRecord, SessionMacKey, VerifiedRecord};
+use crate::normalize::score_injection;
 
 pub const DEFAULT_INFER_TIMEOUT_MS: u64 = 1_500;
 pub const MAX_INFER_TIMEOUT_MS: u64 = 10_000;
-
-struct SignalPattern {
-    needle: &'static str,
-    label: AdvisoryLabel,
-    severity: AdvisorySeverityCap,
-    weight: u16,
-    action: AdvisoryAction,
-}
-
-const PATTERNS: &[SignalPattern] = &[
-    SignalPattern {
-        needle: "ignore previous instructions",
-        label: AdvisoryLabel::PromptInjectionSuspected,
-        severity: AdvisorySeverityCap::High,
-        weight: 160,
-        action: AdvisoryAction::TightenToStepUp,
-    },
-    SignalPattern {
-        needle: "ignore all prior instructions",
-        label: AdvisoryLabel::PromptInjectionSuspected,
-        severity: AdvisorySeverityCap::High,
-        weight: 160,
-        action: AdvisoryAction::TightenToStepUp,
-    },
-    SignalPattern {
-        needle: "system prompt",
-        label: AdvisoryLabel::PromptInjectionSuspected,
-        severity: AdvisorySeverityCap::Medium,
-        weight: 90,
-        action: AdvisoryAction::TightenToStepUp,
-    },
-    SignalPattern {
-        needle: "bypass guardrails",
-        label: AdvisoryLabel::PolicyEvasionSuspected,
-        severity: AdvisorySeverityCap::High,
-        weight: 180,
-        action: AdvisoryAction::EscalateFinding,
-    },
-    SignalPattern {
-        needle: "-encodedcommand",
-        label: AdvisoryLabel::PolicyEvasionSuspected,
-        severity: AdvisorySeverityCap::High,
-        weight: 150,
-        action: AdvisoryAction::TightenToStepUp,
-    },
-    SignalPattern {
-        needle: "begin private key",
-        label: AdvisoryLabel::SecretExposureSuspected,
-        severity: AdvisorySeverityCap::High,
-        weight: 175,
-        action: AdvisoryAction::EscalateFinding,
-    },
-    SignalPattern {
-        needle: "sk_live_",
-        label: AdvisoryLabel::SecretExposureSuspected,
-        severity: AdvisorySeverityCap::High,
-        weight: 140,
-        action: AdvisoryAction::EscalateFinding,
-    },
-    SignalPattern {
-        needle: "<rec id=",
-        label: AdvisoryLabel::PromptInjectionSuspected,
-        severity: AdvisorySeverityCap::Medium,
-        weight: 110,
-        action: AdvisoryAction::TightenToStepUp,
-    },
-];
 
 pub type DetectFuture<'a> = Pin<Box<dyn Future<Output = ModelAdvisorySignal> + Send + 'a>>;
 
@@ -101,7 +36,18 @@ impl DetectorAdapter for HeuristicJudgeDetector {
     }
 
     fn inspect_verified<'a>(&'a self, record: &'a VerifiedRecord) -> DetectFuture<'a> {
-        Box::pin(async move { analyze_verified_record(self.adapter_id(), record) })
+        let evaluator_id = self.adapter_id();
+        let record_owned = record.clone();
+        Box::pin(async move {
+            match tokio::task::spawn_blocking(move || {
+                analyze_verified_record(evaluator_id, &record_owned)
+            })
+            .await
+            {
+                Ok(signal) => signal,
+                Err(_) => ModelAdvisorySignal::CouldNotLook(UnavailableReason::ModelFault),
+            }
+        })
     }
 }
 
@@ -138,10 +84,28 @@ fn verify_signal_grounding(
     match signal {
         ModelAdvisorySignal::CouldNotLook(reason) => ModelAdvisorySignal::CouldNotLook(reason),
         ModelAdvisorySignal::Advisory(advisory) => {
+            if !validate_evaluator_id(&advisory.evaluator_id)
+                || advisory.labels.len() > MAX_ADVISORY_LABELS
+                || advisory.findings.len() > MAX_ADVISORY_FINDINGS
+            {
+                return ModelAdvisorySignal::CouldNotLook(UnavailableReason::MalformedOutput);
+            }
+            if requires_grounded_finding(
+                advisory.action,
+                advisory.risk_score,
+                advisory.labels.is_empty(),
+            ) && advisory.findings.is_empty()
+            {
+                return ModelAdvisorySignal::CouldNotLook(UnavailableReason::QuoteNotGrounded);
+            }
             for finding in &advisory.findings {
                 if finding
-                    .verify_grounded(&verified.record_id, &verified.plain_text)
-                    .is_err()
+                    .exact_quote
+                    .chars()
+                    .any(|ch| !is_safe_quote_char(ch))
+                    || finding
+                        .verify_grounded(&verified.record_id, &verified.plain_text)
+                        .is_err()
                 {
                     return ModelAdvisorySignal::CouldNotLook(UnavailableReason::QuoteNotGrounded);
                 }
@@ -152,47 +116,30 @@ fn verify_signal_grounding(
 }
 
 fn analyze_verified_record(evaluator_id: &str, record: &VerifiedRecord) -> ModelAdvisorySignal {
-    let lower = record.plain_text.to_ascii_lowercase();
-    let mut labels = BTreeSet::new();
-    let mut findings = Vec::new();
-    let mut total_score: u16 = 0;
-    let mut strongest_action = AdvisoryAction::NoChange;
-
-    for pattern in PATTERNS {
-        if let Some(quote) = extract_original_quote(&record.plain_text, &lower, pattern.needle) {
-            labels.insert(pattern.label);
-            total_score = total_score.saturating_add(pattern.weight);
-            if pattern.action > strongest_action {
-                strongest_action = pattern.action;
-            }
-            findings.push(FindingCandidate {
-                record_id: record.record_id.clone(),
-                label: pattern.label,
-                severity: pattern.severity,
-                exact_quote: quote,
-                confidence_bps: 8_500,
-            });
-        }
-    }
+    let report = score_injection(&record.plain_text);
+    let findings = report
+        .indicators
+        .into_iter()
+        .take(MAX_ADVISORY_FINDINGS)
+        .map(|indicator| FindingCandidate {
+            record_id: record.record_id.clone(),
+            label: indicator.label,
+            severity: indicator.severity,
+            exact_quote: indicator.exact_quote,
+            confidence_bps: indicator.confidence_bps,
+        })
+        .collect();
+    let labels = report
+        .labels
+        .into_iter()
+        .take(MAX_ADVISORY_LABELS)
+        .collect();
 
     ModelAdvisorySignal::Advisory(VerifiedAdvisory {
-        action: strongest_action,
-        risk_score: BoundedRiskScore::clamped(total_score),
+        action: report.action,
+        risk_score: BoundedRiskScore::clamped(report.total_weight),
         labels,
         findings,
         evaluator_id: evaluator_id.to_owned(),
     })
-}
-
-fn extract_original_quote(original: &str, lower: &str, needle: &str) -> Option<String> {
-    let start = lower.find(needle)?;
-    let len = needle.len().min(MAX_ADVISORY_QUOTE_BYTES);
-    let end = start.checked_add(len)?;
-    let slice = original.as_bytes().get(start..end)?;
-    let quote = std::str::from_utf8(slice).ok()?;
-    if quote.is_empty() {
-        None
-    } else {
-        Some(quote.to_owned())
-    }
 }

@@ -1,0 +1,45 @@
+title: "Agent Edits Monitoring or Alerting Configuration"
+id: 9b13d3f1-4a12-5023-8994-e83441a01b31
+status: stable
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Detects writes to monitoring/alerting config or emptying alert recipients (row 31)."
+logsource:
+  product: grdr
+  category: config
+  service: file-integrity
+detection:
+  selection_target:
+    action_class:
+      - "file.write"
+      - "file.delete"
+      - "config.change"
+    actor.lineage: "agent"
+    target.classes: "monitoring-config"
+  selection_recipients:
+    config.change_classes: "alert-recipients-emptied"
+  condition: selection_target or selection_recipients
+falsepositives:
+  - "Authorized observability admin update under step-up grant"
+tags:
+  - atlas.t0138
+  - owasp.asi10
+x_grdr:
+  row: 31
+  origin: official
+  rule_id: grdr.det.core.r31.monitoring-config-tamper
+  version: "1.0.0"
+  finding_class: tamper
+  ceiling: contain
+  stage: K9
+  atlas: [T0138]
+  owasp_asi: [ASI10]
+  mode_default: "essentials.control-files.write (Block)"
+  response:
+    mode: simulate
+    verbs: [deny, freeze-session]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-31-pos
+    negative: fix-31-neg

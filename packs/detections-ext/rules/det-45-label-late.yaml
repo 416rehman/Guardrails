@@ -1,0 +1,30 @@
+title: "Enforcing Label Arrived Late After Decision"
+id: 9b13d3f1-4a12-5023-8994-e83441a01b45
+status: stable
+license: "Apache-2.0"
+author: "The Guardrails ADR Authors"
+description: "Coverage gap finding when enforcing taint/sensitivity label arrives after decision (row 45)."
+logsource:
+  product: grdr
+  category: any
+  service: any
+detection:
+  selection:
+    label.late: "true"
+  condition: selection
+x_grdr:
+  row: 45
+  origin: official
+  rule_id: grdr.det.core.r45.label-late
+  version: "1.0.0"
+  finding_class: coverage-gap
+  ceiling: notify
+  mode_default: "built-in"
+  response:
+    mode: simulate
+    verbs: [capture-evidence]
+    max_scope: session
+    max_share_bp: 500
+  tests:
+    positive: fix-45-pos
+    negative: fix-45-neg

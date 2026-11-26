@@ -4,6 +4,7 @@
 #![deny(clippy::arithmetic_side_effects)]
 
 use clap::Parser;
+use tokio::io::AsyncWriteExt as _;
 use tracing_subscriber::EnvFilter;
 
 use grdr_crypto::SigningKeypair;
@@ -11,7 +12,7 @@ use grdr_infer::detector::{
     DEFAULT_INFER_TIMEOUT_MS, HeuristicJudgeDetector, evaluate_framed_with_budget,
 };
 use grdr_infer::framing::{FramedDataClass, SessionMacKey};
-use grdr_infer::ipc::InferIpcHost;
+use grdr_infer::ipc::{InferIpcHost, OsClockAdapter};
 use grdr_model::TrustedKeyInfo;
 
 #[derive(Debug, Parser)]
@@ -76,7 +77,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         let mut host =
             InferIpcHost::with_default_detector(host_keypair, vec![caller], cli.max_skew_secs)?;
-        host.serve_stream(tokio::io::stdin(), tokio::io::stdout())
+        let handshake = serde_json::json!({
+            "protocol_version": grdr_wire::WIRE_PROTOCOL_VERSION,
+            "host_public_info": host.host_public_info(),
+        })
+        .to_string();
+        let mut stdout = tokio::io::stdout();
+        stdout.write_all(handshake.as_bytes()).await?;
+        stdout.write_all(b"\n").await?;
+        stdout.flush().await?;
+        let clock = OsClockAdapter::new();
+        host.serve_stream(tokio::io::stdin(), stdout, &clock)
             .await?;
         return Ok(());
     }

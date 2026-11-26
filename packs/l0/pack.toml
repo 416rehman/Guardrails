@@ -1,0 +1,18 @@
+id = "grdr.l0"
+version = "1.0.0"
+kind = "detection"
+per_person_scoring = false
+commands = []
+executables = []
+urls = []
+env_vars_to_set = []
+mcp_servers_to_start = []
+
+[[reads]]
+path = "ParentImage"
+data_class = "structural"
+
+[[reads]]
+path = "CommandLine"
+data_class = "content"
+placement = "device"

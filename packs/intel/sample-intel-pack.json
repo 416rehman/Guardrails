@@ -1,0 +1,72 @@
+{
+  "pack_id": "grdr.intel.core",
+  "kind": "intel",
+  "polarity": "protect",
+  "version": "1.0.0",
+  "channel": "standard",
+  "publisher": "The Guardrails ADR Authors",
+  "guard_domains": [
+    "github.com",
+    "api.github.com",
+    "raw.githubusercontent.com",
+    "crates.io",
+    "registry.npmjs.org",
+    "pypi.org",
+    "s3.amazonaws.com",
+    "storage.googleapis.com",
+    "microsoft.com",
+    "cloudflare.com"
+  ],
+  "records": [
+    {
+      "id": "GRDRI-2026-00001",
+      "title": "OSSF verified credential-stealer npm typosquat",
+      "severity": "critical",
+      "withdrawn": false,
+      "observables": [
+        {
+          "kind": "package-purl",
+          "value": "pkg:npm/guardrails-fake-helper",
+          "version_range": ">=1.0.0, <1.0.9"
+        }
+      ],
+      "evidence": [
+        {
+          "feed": "ossf",
+          "organisation": "OpenSSF Malicious Packages",
+          "method_family": "human_review",
+          "nature": "malicious",
+          "review_state": "published_external_human_review",
+          "disposition": "active",
+          "reference_url": null,
+          "summary": "Exfiltrates SSH and AWS credentials during preinstall."
+        }
+      ]
+    },
+    {
+      "id": "GRDRI-2026-00002",
+      "title": "Known compromised agent tool proxy gateway release",
+      "severity": "high",
+      "withdrawn": false,
+      "observables": [
+        {
+          "kind": "ghsa",
+          "value": "GHSA-0000-0000-0002",
+          "version_range": ">=0.4.0, <0.4.5"
+        }
+      ],
+      "evidence": [
+        {
+          "feed": "ghsa",
+          "organisation": "GitHub Advisory Database",
+          "method_family": "advisory_feed",
+          "nature": "vulnerable",
+          "review_state": "maintainer_verified",
+          "disposition": "active",
+          "reference_url": null,
+          "summary": "SSRF bypass in MCP gateway proxy request handler."
+        }
+      ]
+    }
+  ]
+}
