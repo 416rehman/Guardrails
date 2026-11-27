@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<policyDefinitions xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" revision="1.0" schemaVersion="1.0" xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
+  <policyNamespaces>
+    <target prefix="guardrailsfirefox" namespace="Guardrails.Policies.Firefox" />
+    <using prefix="windows" namespace="Microsoft.Policies.Windows" />
+  </policyNamespaces>
+  <resources minRequiredRevision="1.0" />
+  <categories>
+    <category name="GuardrailsBrowser" displayName="$(string.GuardrailsBrowser)" />
+  </categories>
+  <policies>
+    <policy name="ForceInstallExtensionSettings" class="Machine" displayName="$(string.ForceInstallExtensionSettings)" explainText="$(string.ForceInstallExtensionSettings_Help)" key="SOFTWARE\Policies\Mozilla\Firefox" valueName="ExtensionSettings">
+      <parentCategory ref="GuardrailsBrowser" />
+      <supportedOn ref="windows:SUPPORTED_WindowsVista" />
+      <elements>
+        <multiText id="ExtensionSettingsJson" valueName="ExtensionSettings" />
+      </elements>
+    </policy>
+  </policies>
+</policyDefinitions>

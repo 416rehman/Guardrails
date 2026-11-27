@@ -1,0 +1,41 @@
+{
+  "policies": {
+    "ExtensionSettings": {
+      "adr@guardrails.dev": {
+        "installation_mode": "force_installed",
+        "install_url": "https://guardrails.internal:8443/extensions/guardrails-firefox-0.1.0.xpi",
+        "private_browsing": true
+      }
+    },
+    "DisableDeveloperTools": true,
+    "3rdparty": {
+      "Extensions": {
+        "adr@guardrails.dev": {
+          "organizationId": "org-corp-prod",
+          "serverOrigin": "https://guardrails.internal:8443",
+          "failClosedOnDegraded": false,
+          "blockAnonymousSessions": true,
+          "tenantRestrictions": {
+            "anthropic": [
+              "org-corp-prod"
+            ],
+            "openai_chatgpt": [
+              "ws-corp-enterprise"
+            ],
+            "google_workspace": [
+              "corp.example"
+            ],
+            "github_enterprise": [
+              "corp-enterprise"
+            ]
+          },
+          "appModes": {
+            "chatgpt": "ask",
+            "claude-web": "ask",
+            "perplexity": "block"
+          }
+        }
+      }
+    }
+  }
+}

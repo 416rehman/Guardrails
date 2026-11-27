@@ -1,0 +1,25 @@
+{
+  "schema": "grdr.mdm.intune_oma_uri.v1",
+  "settings": [
+    {
+      "name": "Chrome Force-Install Guardrails Extension (ExtensionSettings)",
+      "omaUri": "./Device/Vendor/MSFT/Policy/Config/Chrome~Policy~googlechrome~Extensions/ExtensionSettings",
+      "dataType": "String",
+      "value": "<enabled/><data id=\"ExtensionSettings\" value='{&quot;grdrkjhmpfghijklmno&quot;:{&quot;installation_mode&quot;:&quot;force_installed&quot;,&quot;update_url&quot;:&quot;https://guardrails.internal:8443/extensions/chrome-update.xml&quot;,&quot;override_update_url&quot;:true}}'/>"
+    },
+    {
+      "name": "Edge Force-Install Guardrails Extension (ExtensionSettings)",
+      "omaUri": "./Device/Vendor/MSFT/Policy/Config/Edge~Policy~microsoft_edge~Extensions/ExtensionSettings",
+      "dataType": "String",
+      "value": "<enabled/><data id=\"ExtensionSettings\" value='{&quot;grdrkjhmpfghijklmno&quot;:{&quot;installation_mode&quot;:&quot;force_installed&quot;,&quot;update_url&quot;:&quot;https://guardrails.internal:8443/extensions/chrome-update.xml&quot;,&quot;override_update_url&quot;:true}}'/>"
+    },
+    {
+      "name": "Disable Chrome Remote Debugging",
+      "omaUri": "./Device/Vendor/MSFT/Policy/Config/Chrome~Policy~googlechrome/RemoteDebuggingAllowed",
+      "dataType": "String",
+      "value": "<disabled/>"
+    }
+  ],
+  "nativeMessagingRegistryKeyWin": "HKLM\\SOFTWARE\\Google\\Chrome\\NativeMessagingHosts\\grdr.browser",
+  "nativeHostExecutableWin": "C:\\Program Files\\Guardrails\\grdr-hook.exe"
+}

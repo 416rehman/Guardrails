@@ -1,0 +1,52 @@
+{
+  "schema": "grdr.mdm.edge_enterprise.v1",
+  "notes": "Apply under HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge and preserve existing non-Guardrails ExtensionSettings entries.",
+  "policies": {
+    "ExtensionSettings": {
+      "grdrkjhmpfghijklmno": {
+        "installation_mode": "force_installed",
+        "update_url": "https://guardrails.internal:8443/extensions/chrome-update.xml",
+        "override_update_url": true,
+        "toolbar_pin": "force_pinned"
+      }
+    },
+    "RemoteDebuggingAllowed": false,
+    "InPrivateModeAvailability": 1,
+    "AgentProfileEnabled": false,
+    "CopilotBrowserUseAllowList": [
+      "copilot.microsoft.com",
+      "m365.cloud.microsoft",
+      "copilot.cloud.microsoft"
+    ],
+    "CopilotBrowserUseBlockList": [
+      "*"
+    ],
+    "ManagedStorage": {
+      "grdrkjhmpfghijklmno": {
+        "organizationId": "org-corp-prod",
+        "serverOrigin": "https://guardrails.internal:8443",
+        "failClosedOnDegraded": false,
+        "blockAnonymousSessions": true,
+        "tenantRestrictions": {
+          "anthropic": [
+            "org-corp-prod"
+          ],
+          "openai_chatgpt": [
+            "ws-corp-enterprise"
+          ],
+          "google_workspace": [
+            "corp.example"
+          ],
+          "github_enterprise": [
+            "corp-enterprise"
+          ]
+        },
+        "appModes": {
+          "chatgpt": "ask",
+          "claude-web": "ask",
+          "perplexity": "block"
+        }
+      }
+    }
+  }
+}

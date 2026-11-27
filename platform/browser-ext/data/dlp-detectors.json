@@ -1,0 +1,71 @@
+{
+  "schema": "grdr.browser.dlp-detectors.v1",
+  "version": "1.0.0",
+  "maxInspectBytes": 65536,
+  "rules": [
+    {
+      "id": "dlp.secret.aws-access-key",
+      "kind": "secret",
+      "severity": "deny",
+      "label": "AWS Access Key ID",
+      "pattern": "\\b(?:AKIA|ASIA)[0-9A-Z]{16}\\b",
+      "flags": ""
+    },
+    {
+      "id": "dlp.secret.github-token",
+      "kind": "secret",
+      "severity": "deny",
+      "label": "GitHub Personal or Fine-Grained Token",
+      "pattern": "\\b(?:gh[pousr]_[A-Za-z0-9]{20,64}|github_pat_[A-Za-z0-9_]{22,120})\\b",
+      "flags": ""
+    },
+    {
+      "id": "dlp.secret.anthropic-key",
+      "kind": "secret",
+      "severity": "deny",
+      "label": "Anthropic API Key",
+      "pattern": "\\bsk-ant-api03-[A-Za-z0-9_-]{20,120}\\b",
+      "flags": ""
+    },
+    {
+      "id": "dlp.secret.openai-key",
+      "kind": "secret",
+      "severity": "deny",
+      "label": "OpenAI API Key",
+      "pattern": "\\bsk-(?:proj|live|svcacct)-[A-Za-z0-9_-]{20,160}\\b",
+      "flags": ""
+    },
+    {
+      "id": "dlp.secret.slack-token",
+      "kind": "secret",
+      "severity": "deny",
+      "label": "Slack API Token",
+      "pattern": "\\bxox[baprs]-[0-9A-Za-z-]{16,120}\\b",
+      "flags": ""
+    },
+    {
+      "id": "dlp.secret.private-key-pem",
+      "kind": "secret",
+      "severity": "deny",
+      "label": "PEM Private Key Block",
+      "pattern": "-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----",
+      "flags": ""
+    },
+    {
+      "id": "dlp.secret.stripe-live",
+      "kind": "secret",
+      "severity": "deny",
+      "label": "Stripe Live Secret Key",
+      "pattern": "\\b(?:sk|rk)_live_[0-9A-Za-z]{16,96}\\b",
+      "flags": ""
+    },
+    {
+      "id": "dlp.pii.us-ssn",
+      "kind": "pii",
+      "severity": "stepup",
+      "label": "US Social Security Number Pattern",
+      "pattern": "\\b(?!000|666|9\\d\\d)\\d{3}-(?!00)\\d{2}-(?!0000)\\d{4}\\b",
+      "flags": ""
+    }
+  ]
+}

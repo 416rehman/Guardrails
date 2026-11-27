@@ -402,6 +402,7 @@ function paginateItems<T>(items: T[], init?: RequestInit) {
 function installFetchMock(opts?: {
   devices?: Device[];
   onListRequest?: (path: string, filter: string) => void;
+  onRpcRequest?: (path: string, body: Record<string, unknown>) => void;
 }) {
   const devicesList = opts?.devices ?? devicesFixture;
   const agentItems = devicesList.flatMap((d) =>
@@ -417,6 +418,13 @@ function installFetchMock(opts?: {
     const path = rawUrl.split("?")[0];
     if (opts?.onListRequest && init?.body) {
       opts.onListRequest(path, parsePageBody(init).filter);
+    }
+    if (opts?.onRpcRequest && typeof init?.body === "string") {
+      try {
+        opts.onRpcRequest(path, JSON.parse(init.body) as Record<string, unknown>);
+      } catch {
+        // Ignore non-JSON body in mock observer.
+      }
     }
 
     if (path === CONNECT_PATHS.getHealth) return mockJsonResponse(healthFixture);
@@ -516,10 +524,26 @@ function installFetchMock(opts?: {
       return mockJsonResponse({ policies: browserPoliciesFixture });
     }
     if (path === CONNECT_PATHS.updateBrowserPolicy) {
+      let patchBody: Record<string, unknown> = {};
+      if (typeof init?.body === "string") {
+        try {
+          patchBody = JSON.parse(init.body) as Record<string, unknown>;
+        } catch {
+          patchBody = {};
+        }
+      }
+      const targetId = typeof patchBody.id === "string" ? patchBody.id : "chatgpt";
+      const base = browserPoliciesFixture.find((p) => p.id === targetId) ?? browserPoliciesFixture[0];
+      const nextUploads = patchBody.blockFileUploads ?? patchBody.block_file_uploads;
+      const nextSecret = patchBody.blockSecretPaste ?? patchBody.block_secret_paste;
+      const nextManaged = patchBody.managedExtensionOnly ?? patchBody.managed_extension_only;
       return mockJsonResponse({
         policy: {
-          ...browserPoliciesFixture[0],
-          mode: "ask",
+          ...base,
+          ...(typeof patchBody.mode === "string" ? { mode: patchBody.mode } : {}),
+          ...(typeof nextUploads === "boolean" ? { block_file_uploads: nextUploads } : {}),
+          ...(typeof nextSecret === "boolean" ? { block_secret_paste: nextSecret } : {}),
+          ...(typeof nextManaged === "boolean" ? { managed_extension_only: nextManaged } : {}),
         },
       });
     }
@@ -579,6 +603,17 @@ const browserPoliciesFixture: BrowserAppPolicy[] = [
     managed_extension_only: true,
     events_24h: 142,
     blocked_24h: 11,
+  },
+  {
+    id: "m365-copilot",
+    name: "Microsoft 365 Copilot",
+    domains: ["copilot.microsoft.com", "m365.cloud.microsoft"],
+    mode: "watch",
+    block_file_uploads: false,
+    block_secret_paste: true,
+    managed_extension_only: false,
+    events_24h: 38,
+    blocked_24h: 2,
   },
 ];
 
@@ -828,7 +863,12 @@ describe("Console and Operator Plane workflows", () => {
   });
 
   it("renders Inventory Connect & MDM, issues wave key, renders MDM payload, and checks readiness", async () => {
-    installFetchMock();
+    const rpcCalls: Array<{ path: string; body: Record<string, unknown> }> = [];
+    installFetchMock({
+      onRpcRequest: (path, body) => {
+        rpcCalls.push({ path, body });
+      },
+    });
     render(<App />);
 
     await waitFor(() => {
@@ -866,10 +906,32 @@ describe("Console and Operator Plane workflows", () => {
 
     await waitFor(() => {
       expect(screen.getAllByText("ChatGPT").length).toBeGreaterThan(0);
+      expect(screen.getByText("Microsoft 365 Copilot")).toBeTruthy();
+      expect(screen.getByText("Header: sec-Restrict-Tenant-Access-Policy")).toBeTruthy();
+      expect(screen.getByText("142 events / 11 blocked")).toBeTruthy();
     });
+
+    const fileUploadSwitches = screen.getAllByRole("switch", { name: "File uploads" });
+    fireEvent.click(fileUploadSwitches[0]);
+    await waitFor(() => {
+      expect(rpcCalls.some((c) => c.path === CONNECT_PATHS.updateBrowserPolicy)).toBe(true);
+    });
+
     fireEvent.click(screen.getByRole("button", { name: "Run browser check" }));
     await waitFor(() => {
       expect(screen.getByText("browser.block.chatgpt")).toBeTruthy();
+      expect(screen.getByText("143 events / 12 blocked")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate MDM payload" }));
+    await waitFor(() => {
+      expect(screen.getByText("guardrails-intune-install.ps1")).toBeTruthy();
+      expect(
+        rpcCalls.some(
+          (c) =>
+            c.path === CONNECT_PATHS.renderMdmConfig && c.body.updateAuthority === "managed",
+        ),
+      ).toBe(true);
     });
   });
 
