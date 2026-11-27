@@ -769,6 +769,33 @@ verification = ["cargo test -p grdr-sandbox-engine"]
 
 [[entry]]
 crate = "grdr-sandbox-engine"
+file = "crates/grdr-sandbox-engine/src/macos.rs"
+symbol = "build_macos_seatbelt_command"
+lines = "193-195"
+invariant = "Pre-allocates validated SBPL CString prior to fork and registers async-signal-safe apply_seatbelt_in_pre_exec hook inside CommandExt::pre_exec."
+owner = "sandbox"
+verification = ["cargo test -p grdr-sandbox-engine"]
+
+[[entry]]
+crate = "grdr-sandbox-engine"
+file = "crates/grdr-sandbox-engine/src/macos_sys.rs"
+symbol = "<top-level>"
+lines = "14-24"
+invariant = "Darwin libSystem C ABI declarations for sandbox_init_with_parameters and sandbox_free_error."
+owner = "sandbox"
+verification = ["cargo test -p grdr-sandbox-engine"]
+
+[[entry]]
+crate = "grdr-sandbox-engine"
+file = "crates/grdr-sandbox-engine/src/macos_sys.rs"
+symbol = "apply_seatbelt_in_pre_exec"
+lines = "31-40"
+invariant = "Invokes sandbox_init_with_parameters on pre-allocated NUL-terminated SBPL CString and releases diagnostic buffer via sandbox_free_error with zero heap allocation in forked child."
+owner = "sandbox"
+verification = ["cargo test -p grdr-sandbox-engine"]
+
+[[entry]]
+crate = "grdr-sandbox-engine"
 file = "crates/grdr-sandbox-engine/src/windows_sys_rt.rs"
 symbol = "ScopedWinHandle::drop"
 lines = "67-74"
@@ -951,8 +978,17 @@ verification = ["cargo test -p grdr-identity"]
 crate = "grdr-sensor-macos"
 file = "crates/grdr-sensor-macos/src/ffi.rs"
 symbol = "grdr_macos_abi_version"
-lines = "69-72"
-invariant = "Exports constant C-ABI version integer with no pointer dereferences."
+lines = "30-33"
+invariant = "Exports constant C-ABI v2 version integer with no pointer dereferences."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi.rs"
+symbol = "grdr_macos_get_brand_info"
+lines = "45-75"
+invariant = "Null-checks out_info and copies bounded brand manifest metadata into fixed GrdrMacBrandInfoC inside catch_unwind."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-macos"]
 
@@ -960,8 +996,8 @@ verification = ["cargo test -p grdr-sensor-macos"]
 crate = "grdr-sensor-macos"
 file = "crates/grdr-sensor-macos/src/ffi.rs"
 symbol = "grdr_macos_follower_new"
-lines = "78-89"
-invariant = "Allocates Mutex-guarded EsTreeFollower holder inside catch_unwind and returns opaque Box::into_raw pointer."
+lines = "84-94"
+invariant = "Allocates Mutex-guarded EsCoordinatorRuntime holder inside catch_unwind and returns opaque Box::into_raw pointer."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-macos"]
 
@@ -969,7 +1005,7 @@ verification = ["cargo test -p grdr-sensor-macos"]
 crate = "grdr-sensor-macos"
 file = "crates/grdr-sensor-macos/src/ffi.rs"
 symbol = "grdr_macos_follower_free"
-lines = "99-113"
+lines = "105-118"
 invariant = "Checks non-null pointer before reclaiming Mutex-guarded FfiFollowerHolder once via Box::from_raw inside catch_unwind."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-macos"]
@@ -977,81 +1013,405 @@ verification = ["cargo test -p grdr-sensor-macos"]
 [[entry]]
 crate = "grdr-sensor-macos"
 file = "crates/grdr-sensor-macos/src/ffi.rs"
-symbol = "grdr_macos_apply_es_event"
-lines = "124-164"
-invariant = "Validates non-null follower and bounded UTF-8 event JSON slice via read_utf8_arg and acquires Mutex lock inside catch_unwind."
-owner = "endpoint"
-verification = ["cargo test -p grdr-sensor-macos"]
-
-[[entry]]
-crate = "grdr-sensor-macos"
-file = "crates/grdr-sensor-macos/src/ffi.rs"
 symbol = "grdr_macos_follower_mute_team"
-lines = "175-205"
-invariant = "Validates non-null follower and bounded UTF-8 team identifier via read_utf8_arg and records team muting under Mutex inside catch_unwind."
+lines = "126-151"
+invariant = "Validates non-null follower and bounded UTF-8 team identifier via read_utf8_arg and updates tree muting under Mutex inside catch_unwind."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-macos"]
 
 [[entry]]
 crate = "grdr-sensor-macos"
 file = "crates/grdr-sensor-macos/src/ffi.rs"
-symbol = "grdr_macos_eval_es_auth_exec"
-lines = "216-291"
-invariant = "Validates non-null follower, bounded ES AUTH_EXEC JSON slice, and optional floor JSON slice via read_utf8_arg and evaluates fail-closed fastpath verdict under Mutex inside catch_unwind."
+symbol = "grdr_macos_follower_register_self_pid"
+lines = "159-180"
+invariant = "Validates non-null follower and positive PID before acquiring Mutex inside catch_unwind."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-macos"]
 
 [[entry]]
 crate = "grdr-sensor-macos"
 file = "crates/grdr-sensor-macos/src/ffi.rs"
-symbol = "grdr_macos_eval_ne_flow"
-lines = "302-335"
-invariant = "Validates bounded flow JSON and optional floor JSON slices via read_utf8_arg (failing closed on null pointer with non-zero length) inside catch_unwind."
+symbol = "grdr_macos_follower_add_protected_path"
+lines = "188-194"
+invariant = "Delegates non-null follower and bounded UTF-8 protected path to register_path_in_follower."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-macos"]
 
 [[entry]]
 crate = "grdr-sensor-macos"
 file = "crates/grdr-sensor-macos/src/ffi.rs"
-symbol = "parse_floor_specs_ffi"
-lines = "342-361"
-invariant = "Enforces zero-length empty rule set or bounded UTF-8 read_utf8_arg deserialization up to MAX_FFI_FLOOR_RULES."
+symbol = "grdr_macos_follower_add_self_path"
+lines = "202-209"
+invariant = "Delegates non-null follower and bounded UTF-8 self-protection path to register_path_in_follower."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-macos"]
 
 [[entry]]
 crate = "grdr-sensor-macos"
 file = "crates/grdr-sensor-macos/src/ffi.rs"
-symbol = "grdr_macos_plan_seatbelt"
-lines = "406-431"
-invariant = "Validates agent UTF-8 string and SeatbeltProfileSpec JSON slices via read_utf8_arg inside catch_unwind."
+symbol = "register_path_in_follower"
+lines = "211-242"
+invariant = "Validates non-null follower, reads bounded UTF-8 path slice via read_utf8_arg, and registers under Mutex inside catch_unwind."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-macos"]
 
 [[entry]]
 crate = "grdr-sensor-macos"
 file = "crates/grdr-sensor-macos/src/ffi.rs"
-symbol = "grdr_macos_probe_capabilities"
-lines = "437-444"
-invariant = "Probes macOS capabilities inside catch_unwind and returns NUL-sanitized heap CString."
+symbol = "grdr_macos_follower_lookup_token"
+lines = "251-284"
+invariant = "Null-checks follower and out_info before querying tracked audit-token lineage under Mutex and writing GrdrMacTokenLookupOutC."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-macos"]
 
 [[entry]]
 crate = "grdr-sensor-macos"
 file = "crates/grdr-sensor-macos/src/ffi.rs"
-symbol = "grdr_macos_free_string"
-lines = "454-468"
-invariant = "Null-checks returned C string pointer before reclaiming via CString::from_raw inside catch_unwind."
+symbol = "grdr_macos_eval_es_event_c"
+lines = "295-324"
+invariant = "Validates follower, event, out_verdict, and bounded GrdrMacFloorRuleC slice via read_floor_rules_c before fixed-struct ES evaluation inside catch_unwind."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-macos"]
 
 [[entry]]
 crate = "grdr-sensor-macos"
 file = "crates/grdr-sensor-macos/src/ffi.rs"
+symbol = "grdr_macos_eval_es_event_bin_c"
+lines = "334-368"
+invariant = "Validates follower, event, out_verdict, and bounded BinaryFloorTable bytes via read_bytes_arg before ES evaluation inside catch_unwind."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi.rs"
+symbol = "grdr_macos_probe_capabilities_c"
+lines = "379-383"
+invariant = "Null-checks out_caps inside probe_capabilities_impl and populates fixed GrdrMacCapabilitiesC."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi.rs"
+symbol = "grdr_macos_probe_capabilities_with_follower_c"
+lines = "394-402"
+invariant = "Validates non-null follower and out_caps before reading live ES client states inside probe_capabilities_impl."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi.rs"
+symbol = "grdr_macos_self_signing_info_c"
+lines = "413-451"
+invariant = "Null-checks out_team_len/out_es_entitled and enforces team_cap bounds prior to writing Security.framework Team ID slice."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi.rs"
+symbol = "probe_capabilities_impl"
+lines = "453-522"
+invariant = "Validates optional follower Mutex lock and writes populated GrdrMacCapabilitiesC to non-null out_caps pointer inside catch_unwind."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi_common.rs"
+symbol = "eval_es_event_inner"
+lines = "41-289"
+invariant = "Validates all UTF-8 and audit-token pointers via read_utf8_arg, locks follower Mutex, evaluates auth/notify event, and writes fixed GrdrMacEsVerdictC."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi_common.rs"
+symbol = "decode_audit_token_c"
+lines = "291-305"
+invariant = "Validates optional team_id slice via read_utf8_arg before constructing EsAuditToken."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi_common.rs"
+symbol = "read_bytes_arg"
+lines = "312-331"
+invariant = "Enforces zero-len early return, non-null pointer, and operational ipc_max_frame_bytes cap before slice::from_raw_parts."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi_common.rs"
 symbol = "read_utf8_arg"
-lines = "474-488"
-invariant = "Enforces zero-len early return, non-null pointer, and MAX_FFI_JSON_BYTES ceiling before slice::from_raw_parts and UTF-8 validation."
+lines = "338-346"
+invariant = "Validates bounded byte slice via read_bytes_arg before UTF-8 validation."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi_common.rs"
+symbol = "read_floor_rules_c"
+lines = "353-401"
+invariant = "Enforces null checks, MAX_FFI_FLOOR_RULES bound, and UTF-8 validation per GrdrMacFloorRuleC element."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi_net.rs"
+symbol = "grdr_macos_eval_ne_flow_c"
+lines = "34-61"
+invariant = "Null-checks flow/out_verdict, decodes bounded GrdrMacNeFlowC and floor slice, and writes fixed GrdrMacNeVerdictC inside catch_unwind."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi_net.rs"
+symbol = "grdr_macos_eval_ne_flow_bin_c"
+lines = "72-102"
+invariant = "Null-checks flow/out_verdict and validates BinaryFloorTable slice via read_bytes_arg inside catch_unwind."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi_net.rs"
+symbol = "grdr_macos_peek_tls_sni_c"
+lines = "111-148"
+invariant = "Null-checks out_sni and validates bounded TCP peek buffer via read_bytes_arg inside catch_unwind."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi_net.rs"
+symbol = "grdr_macos_parse_dns_packet_c"
+lines = "157-214"
+invariant = "Null-checks out_dns and validates bounded DNS packet slice via read_bytes_arg before writing GrdrMacDnsParseOutC."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi_net.rs"
+symbol = "grdr_macos_match_model_host_c"
+lines = "226-245"
+invariant = "Null-checks out_matched and validates bounded host string via read_utf8_arg inside catch_unwind."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi_net.rs"
+symbol = "grdr_macos_plan_seatbelt_c"
+lines = "257-345"
+invariant = "Validates GrdrMacSeatbeltRequestC strings/arrays and writes generated SBPL profile into caller buffer only when capacity suffices."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi_net.rs"
+symbol = "decode_ne_flow_c"
+lines = "350-387"
+invariant = "Validates agent, host, and TLS SNI UTF-8 slices on GrdrMacNeFlowC via read_utf8_arg."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/ffi_net.rs"
+symbol = "read_str_slice_array"
+lines = "396-423"
+invariant = "Enforces MAX_FFI_SEATBELT_PATHS cap, non-null array pointer, and UTF-8 checks on each GrdrMacStrSliceC."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_fsevents.rs"
+symbol = "<top-level>"
+lines = "23-153"
+invariant = "Apple CoreFoundation/CoreServices FSEvents C ABI declarations, CFRunLoopObserver callbacks, and thread-safe CFRunLoopRef Send/Sync wrappers."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_fsevents.rs"
+symbol = "DarwinFseventsStream::drop"
+lines = "209-225"
+invariant = "Signals CFRunLoopStop on retained CFRunLoopRef, releases CF reference, and joins FSEvents worker thread."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_fsevents.rs"
+symbol = "run_fsevents_loop"
+lines = "251-355"
+invariant = "Manages CoreFoundation path array, CFRunLoopObserver readiness sync, retained Arc context callbacks, and FSEventStream teardown on dedicated worker thread."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_fsevents.rs"
+symbol = "build_cf_path_array"
+lines = "361-382"
+invariant = "Constructs CoreFoundation CFMutableArray of valid CFStringRef paths and releases intermediate strings cleanly."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_fsevents.rs"
+symbol = "fail_entry_signal"
+lines = "389-406"
+invariant = "Releases retained CFRunLoopRef before returning initialization error when observer setup fails."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_fsevents.rs"
+symbol = "runloop_entry_callback"
+lines = "409-436"
+invariant = "Synchronizes CFRunLoop entry readiness once via oneshot Sender and invalidates CFRunLoopRef on exit."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_fsevents.rs"
+symbol = "arc_retain"
+lines = "441-451"
+invariant = "Null-checks context pointer before incrementing Arc strong count for CoreFoundation callback retention."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_fsevents.rs"
+symbol = "arc_release"
+lines = "457-467"
+invariant = "Null-checks context pointer before decrementing Arc strong count for CoreFoundation callback release."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_fsevents.rs"
+symbol = "fsevents_callback"
+lines = "475-524"
+invariant = "Bounds callback path batch by MAX_CALLBACK_BATCH, validates non-null C-string pointers, and appends to bounded queue under Mutex."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_seccode.rs"
+symbol = "<top-level>"
+lines = "51-112"
+invariant = "Apple CoreFoundation and Security.framework C ABI declarations matching CFBase/CFData/CFDictionary and SecCode headers."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_seccode.rs"
+symbol = "CfGuard::drop"
+lines = "118-126"
+invariant = "Calls CFRelease once on non-null CoreFoundation or Security framework object reference."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_seccode.rs"
+symbol = "darwin_probe_self_signing"
+lines = "130-145"
+invariant = "Resolves current executable SecCodeRef via SecCodeCopySelf guarded by CfGuard to verify Team ID, entitlements, and ES grant."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_seccode.rs"
+symbol = "darwin_read_guest_seccode_by_audit"
+lines = "168-181"
+invariant = "Constructs bounded CFDataRef for 32-byte audit_token_t and delegates to copy_guest_with_single_attr under CfGuard."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_seccode.rs"
+symbol = "darwin_read_guest_seccode_info"
+lines = "184-203"
+invariant = "Resolves live guest SecCodeRef by PID attribute via CFNumberRef and copy_guest_with_single_attr under CfGuard."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_seccode.rs"
+symbol = "copy_guest_with_single_attr"
+lines = "205-246"
+invariant = "Builds single-entry CFDictionaryRef for SecCodeCopyGuestWithAttributes and guards resulting SecCodeRef with CfGuard."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_seccode.rs"
+symbol = "darwin_inspect_seccode_ref"
+lines = "249-315"
+invariant = "Validates SecCodeRef signature via SecCodeCheckValidity and CS_VALID, reading Team ID, signing ID, cdhash, and entitlements dictionary."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_seccode.rs"
+symbol = "has_entitlement_key"
+lines = "333-355"
+invariant = "Null-checks borrowed CFDictionaryRef and frees temporary CFStringRef lookup key via CfGuard."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_seccode.rs"
+symbol = "cfnumber_to_u32"
+lines = "361-381"
+invariant = "Null-checks borrowed CFNumberRef inside live CFDictionaryRef before copying integer via CFNumberGetValue."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_seccode.rs"
+symbol = "cfstring_to_rust"
+lines = "386-411"
+invariant = "Null-checks borrowed CFStringRef before calling CFStringGetCString into bounded 512-byte stack buffer."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_seccode.rs"
+symbol = "cfdata_to_hex"
+lines = "416-442"
+invariant = "Null-checks borrowed CFDataRef and enforces <=128-byte cap prior to slice::from_raw_parts."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-macos"]
 
@@ -1059,17 +1419,17 @@ verification = ["cargo test -p grdr-sensor-macos"]
 crate = "grdr-sensor-macos"
 file = "crates/grdr-sensor-macos/src/macos_sys.rs"
 symbol = "<top-level>"
-lines = "46-113"
-invariant = "CoreFoundation, Security, and libSystem Seatbelt C ABI symbol declarations matching macOS SDK headers."
+lines = "39-57"
+invariant = "Darwin libSystem C ABI symbol declarations for proc_listpids, sysctl, and Seatbelt bindings."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-macos"]
 
 [[entry]]
 crate = "grdr-sensor-macos"
 file = "crates/grdr-sensor-macos/src/macos_sys.rs"
-symbol = "CfGuard::drop"
-lines = "120-122"
-invariant = "Calls CFRelease once on non-null CoreFoundation or Security framework object reference."
+symbol = "darwin_list_pids"
+lines = "59-97"
+invariant = "Queries Darwin proc_listpids required size then fills bounded Vec<pid_t> capped at MAX_LIST_PIDS."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-macos"]
 
@@ -1077,17 +1437,35 @@ verification = ["cargo test -p grdr-sensor-macos"]
 crate = "grdr-sensor-macos"
 file = "crates/grdr-sensor-macos/src/macos_sys.rs"
 symbol = "darwin_inspect_process"
-lines = "144-205"
-invariant = "Calls proc_pidinfo (PROC_PIDTBSDINFO verifying exact byte size and PROC_PIDUNIQIDENTIFIERINFO for p_idversion/p_uniqueid) and proc_pidpath against bounded buffers."
+lines = "113-184"
+invariant = "Calls proc_pidpath and verifies process identity pre/post SecCode lookup against PID reuse TOCTOU."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-macos"]
 
 [[entry]]
 crate = "grdr-sensor-macos"
 file = "crates/grdr-sensor-macos/src/macos_sys.rs"
-symbol = "darwin_read_guest_seccode_info"
-lines = "238-336"
-invariant = "Resolves live guest SecCodeRef via SecCodeCopyGuestWithAttributes(kSecGuestAttributePid), checks SecCodeCheckValidity and CS_VALID dynamic status, and extracts CS_ADHOC, TeamIdentifier, and Identifier under CfGuard."
+symbol = "read_proc_bsd_info"
+lines = "194-217"
+invariant = "Queries PROC_PIDTBSDINFO via proc_pidinfo verifying exact struct byte return size."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_sys.rs"
+symbol = "read_proc_uniq_info"
+lines = "219-242"
+invariant = "Queries PROC_PIDUNIQIDENTIFIERINFO via proc_pidinfo verifying exact struct byte return size."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-macos"]
+
+[[entry]]
+crate = "grdr-sensor-macos"
+file = "crates/grdr-sensor-macos/src/macos_sys.rs"
+symbol = "darwin_read_procargs2"
+lines = "244-279"
+invariant = "Queries sysctl KERN_ARGMAX and KERN_PROCARGS2 into bounded MAX_PROCARGS_BYTES buffer before safe Rust parsing."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-macos"]
 
@@ -1095,26 +1473,8 @@ verification = ["cargo test -p grdr-sensor-macos"]
 crate = "grdr-sensor-macos"
 file = "crates/grdr-sensor-macos/src/macos_sys.rs"
 symbol = "darwin_apply_seatbelt_profile"
-lines = "350-374"
+lines = "295-330"
 invariant = "Calls sandbox_init_with_parameters with NUL-terminated SBPL CString and frees diagnostic error buffer via sandbox_free_error."
-owner = "endpoint"
-verification = ["cargo test -p grdr-sensor-macos"]
-
-[[entry]]
-crate = "grdr-sensor-macos"
-file = "crates/grdr-sensor-macos/src/macos_sys.rs"
-symbol = "cfnumber_to_u32"
-lines = "384-402"
-invariant = "Null-checks borrowed CFNumberRef inside live CFDictionaryRef before copying integer via CFNumberGetValue."
-owner = "endpoint"
-verification = ["cargo test -p grdr-sensor-macos"]
-
-[[entry]]
-crate = "grdr-sensor-macos"
-file = "crates/grdr-sensor-macos/src/macos_sys.rs"
-symbol = "cfstring_to_rust"
-lines = "409-432"
-invariant = "Null-checks borrowed CFStringRef before calling CFStringGetCString into bounded 512-byte stack buffer."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-macos"]
 

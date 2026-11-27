@@ -1716,10 +1716,10 @@ dependencies = [
  "grdr-model",
  "grdr-ports",
  "grdr-ports-testkit",
+ "grdr-schema",
  "jiff 1.0.2",
  "libc",
  "serde",
- "serde_json",
  "thiserror",
 ]
 

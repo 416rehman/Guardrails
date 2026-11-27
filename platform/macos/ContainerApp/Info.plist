@@ -7,7 +7,7 @@
   <key>CFBundleExecutable</key>
   <string>GuardrailsADR</string>
   <key>CFBundleIdentifier</key>
-  <string>com.guardrailshq.grdr.app</string>
+  <string>com.guardrailshq.grdr</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>

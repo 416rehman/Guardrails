@@ -2,84 +2,90 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 #![deny(clippy::arithmetic_side_effects)]
 
-use std::ffi::{CString, c_char};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::slice;
 use std::sync::Mutex;
 
-use grdr_fastpath::{FastActionClass, FastVerdict, FloorRuleRef, evaluate_floor_entries};
-use grdr_model::ActionClass;
-use serde::{Deserialize, Serialize};
+use grdr_fastpath::{BinaryFloorTable, FastActionClass};
 
-use crate::es_tree::{EsEventPayload, EsTreeFollower};
-use crate::macos_probes::{MacOsLiveCapabilities, probe_host_capabilities};
-use crate::network_ext::{EgressDefaultPolicy, NeFlowRecord, evaluate_ne_flow};
-use crate::seatbelt::{SeatbeltProfileSpec, plan_macos_launch};
-
-pub const GRDR_MACOS_ABI_VERSION: u32 = 1;
-pub const MAX_FFI_JSON_BYTES: usize = 1_048_576;
-const MAX_FFI_FLOOR_RULES: usize = 1_024;
-
-#[repr(C)]
-pub struct GrdrMacEsFollower {
-    _private: [u8; 0],
-}
-
-struct FfiFollowerHolder {
-    inner: Mutex<EsTreeFollower>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct FfiFloorRuleSpec {
-    rule_id: String,
-    action_mask: u32,
-    #[serde(default)]
-    prefixes: Vec<String>,
-    #[serde(default)]
-    contains: Vec<String>,
-    #[serde(default)]
-    agents: Vec<String>,
-    verdict: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct FfiEsApplyResult {
-    verdict: String,
-    session_id: Option<String>,
-    action_class: ActionClass,
-    summary: String,
-    member_count: usize,
-    unmuted_pids: Vec<u32>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct FfiErrorEnvelope {
-    error: String,
-}
-
-pub fn abi_probe_capabilities_json() -> String {
-    let caps: MacOsLiveCapabilities = probe_host_capabilities();
-    serde_json::to_string(&caps).unwrap_or_else(|_| "{}".to_string())
-}
+use crate::brand::MacOsBrandConfig;
+use crate::es_eval::{EsCoordinatorRuntime, FloorEvaluator};
+use crate::es_tree::{EsClientStatus, ProcessTreeKey};
+use crate::ffi_common::{
+    FfiFollowerHolder, eval_es_event_inner, read_bytes_arg, read_floor_rules_c, read_utf8_arg,
+    with_decoded_floor_refs, wrap_status,
+};
+use crate::ffi_types::{
+    GRDR_MACOS_ABI_VERSION, GrdrMacBrandInfoC, GrdrMacCapabilitiesC, GrdrMacEsEventC,
+    GrdrMacEsFollower, GrdrMacEsVerdictC, GrdrMacFfiStatus, GrdrMacFloorRuleC,
+    GrdrMacTokenLookupOutC, copy_str_into_fixed,
+};
+use crate::macos_probes::{
+    DeveloperSigningStatus, probe_local_capabilities, probe_self_signing_team_and_es_entitlement,
+};
+use crate::network_ext::{SlotCapability, SlotRung};
 
 #[allow(
     unsafe_code,
-    reason = "C-ABI version probe exported for Swift extensions."
+    reason = "C-ABI version probe exported for Swift system extensions."
 )]
 #[unsafe(no_mangle)]
 pub extern "C" fn grdr_macos_abi_version() -> u32 {
     GRDR_MACOS_ABI_VERSION
 }
 
+/// Populate fixed C-ABI brand identity strings from brand manifest.
+///
+/// # Safety
+/// `out_info` must point to writable aligned `GrdrMacBrandInfoC`.
 #[allow(
     unsafe_code,
-    reason = "Allocate opaque Mutex-guarded EsTreeFollower handle across C ABI."
+    reason = "Write fixed #[repr(C)] brand metadata fields into caller output pointer."
+)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn grdr_macos_get_brand_info(out_info: *mut GrdrMacBrandInfoC) -> i32 {
+    if out_info.is_null() {
+        return GrdrMacFfiStatus::ErrNullPtr as i32;
+    }
+    wrap_status(catch_unwind(AssertUnwindSafe(|| {
+        let brand = MacOsBrandConfig::try_embedded().map_err(|_| GrdrMacFfiStatus::ErrInternal)?;
+        let own_prefix = brand.own_extension_prefix();
+        let group = brand.app_group_id();
+        let mut info = GrdrMacBrandInfoC {
+            abi_version: GRDR_MACOS_ABI_VERSION,
+            ..Default::default()
+        };
+        info.bundle_id_len = copy_str_into_fixed(&brand.macos_bundle_id, &mut info.bundle_id);
+        info.own_prefix_len = copy_str_into_fixed(&own_prefix, &mut info.own_prefix);
+        info.netext_bundle_id_len =
+            copy_str_into_fixed(&brand.macos_netext_bundle_id, &mut info.netext_bundle_id);
+        info.esext_bundle_id_len =
+            copy_str_into_fixed(&brand.macos_esext_bundle_id, &mut info.esext_bundle_id);
+        info.product_name_len = copy_str_into_fixed(&brand.product_name, &mut info.product_name);
+        info.daemon_label_len =
+            copy_str_into_fixed(&brand.macos_daemon_label, &mut info.daemon_label);
+        info.app_group_id_len = copy_str_into_fixed(&group, &mut info.app_group_id);
+        #[allow(
+            unsafe_code,
+            reason = "Write populated GrdrMacBrandInfoC value to non-null caller pointer."
+        )]
+        // SAFETY: Checked out_info non-null above.
+        unsafe {
+            *out_info = info;
+        }
+        Ok(GrdrMacFfiStatus::Ok)
+    })))
+}
+
+#[allow(
+    unsafe_code,
+    reason = "Allocate opaque Mutex-guarded EsCoordinatorRuntime handle across C ABI."
 )]
 #[unsafe(no_mangle)]
 pub extern "C" fn grdr_macos_follower_new() -> *mut GrdrMacEsFollower {
     match catch_unwind(|| {
         let holder = FfiFollowerHolder {
-            inner: Mutex::new(EsTreeFollower::new()),
+            inner: Mutex::new(EsCoordinatorRuntime::new()),
         };
         Box::into_raw(Box::new(holder)).cast::<GrdrMacEsFollower>()
     }) {
@@ -94,7 +100,7 @@ pub extern "C" fn grdr_macos_follower_new() -> *mut GrdrMacEsFollower {
 /// `ptr` must be null or a pointer returned by `grdr_macos_follower_new` not yet freed.
 #[allow(
     unsafe_code,
-    reason = "Free opaque Mutex-guarded EsTreeFollower allocated across C ABI."
+    reason = "Free opaque Mutex-guarded EsCoordinatorRuntime allocated across C ABI."
 )]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn grdr_macos_follower_free(ptr: *mut GrdrMacEsFollower) {
@@ -112,540 +118,631 @@ pub unsafe extern "C" fn grdr_macos_follower_free(ptr: *mut GrdrMacEsFollower) {
     }));
 }
 
-/// Apply one JSON-serialized `EsEventPayload` to an opaque `EsTreeFollower`.
-/// Free the returned string with `grdr_macos_free_string`.
+/// Mute an Apple Team ID across an opaque `GrdrMacEsFollower`.
 ///
 /// # Safety
-/// `follower` must point to a live `GrdrMacEsFollower` and `event_json_ptr` must cover `event_json_len` readable bytes.
-#[allow(
-    unsafe_code,
-    reason = "C-ABI Endpoint Security tree update entry point."
-)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn grdr_macos_apply_es_event(
-    follower: *mut GrdrMacEsFollower,
-    event_json_ptr: *const u8,
-    event_json_len: usize,
-) -> *mut c_char {
-    if follower.is_null() {
-        return error_json("null follower pointer");
-    }
-    let res = catch_unwind(AssertUnwindSafe(|| {
-        #[allow(
-            unsafe_code,
-            reason = "Read UTF-8 JSON bytes and mutable follower handle from C ABI."
-        )]
-        // SAFETY: Checked non-null follower and bounded JSON slice matching caller preconditions.
-        let raw = unsafe { read_utf8_arg(event_json_ptr, event_json_len) }?;
-        let payload: EsEventPayload =
-            serde_json::from_str(raw).map_err(|e| format!("invalid EsEventPayload JSON: {e}"))?;
-        #[allow(
-            unsafe_code,
-            reason = "Lock Mutex-guarded EsTreeFollower owned by caller across C ABI."
-        )]
-        // SAFETY: Non-null aligned FfiFollowerHolder pointer created by grdr_macos_follower_new.
-        let holder = unsafe { &*follower.cast::<FfiFollowerHolder>() };
-        let mut state = holder
-            .inner
-            .lock()
-            .map_err(|_| "EsTreeFollower mutex poisoned".to_string())?;
-        let outcome = state.apply_event(&payload);
-        let result = FfiEsApplyResult {
-            verdict: "allow".to_string(),
-            session_id: outcome.session_id,
-            action_class: outcome.action_class,
-            summary: outcome.summary,
-            member_count: state.member_count(),
-            unmuted_pids: outcome.unmuted_targets.into_iter().map(|k| k.pid).collect(),
-        };
-        serde_json::to_string(&result).map_err(|e| format!("serialize apply result failed: {e}"))
-    }));
-    wrap_ffi_result(res)
-}
-
-/// Mute an Apple Team ID across an opaque `GrdrMacEsFollower` over the C ABI.
-/// Free the returned string with `grdr_macos_free_string`.
-///
-/// # Safety
-/// `follower` must point to a live `GrdrMacEsFollower` and `team_id_ptr` must cover `team_id_len` readable bytes.
-#[allow(
-    unsafe_code,
-    reason = "C-ABI incumbent Team ID muting entry point for Endpoint Security."
-)]
+/// `follower` must point to a live `GrdrMacEsFollower` and `team_id_ptr` must cover `team_id_len` bytes.
+#[allow(unsafe_code, reason = "C-ABI incumbent Team ID muting entry point.")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn grdr_macos_follower_mute_team(
     follower: *mut GrdrMacEsFollower,
     team_id_ptr: *const u8,
     team_id_len: usize,
-) -> *mut c_char {
+) -> i32 {
     if follower.is_null() {
-        return error_json("null follower pointer");
+        return GrdrMacFfiStatus::ErrNullPtr as i32;
     }
-    let res = catch_unwind(AssertUnwindSafe(|| {
+    wrap_status(catch_unwind(AssertUnwindSafe(|| {
         #[allow(unsafe_code, reason = "Read UTF-8 Team ID bytes across C ABI.")]
-        // SAFETY: Checked non-null follower and bounded slice validated by read_utf8_arg.
+        // SAFETY: Bounded slice verified via read_utf8_arg.
         let team = unsafe { read_utf8_arg(team_id_ptr, team_id_len) }?;
         if team.is_empty() {
-            return Err("muted team ID must not be empty".to_string());
+            return Err(GrdrMacFfiStatus::ErrInvalidArg);
         }
-        #[allow(
-            unsafe_code,
-            reason = "Lock Mutex-guarded EsTreeFollower owned by caller across C ABI."
-        )]
-        // SAFETY: Non-null aligned FfiFollowerHolder pointer created by grdr_macos_follower_new.
+        #[allow(unsafe_code, reason = "Lock opaque EsCoordinatorRuntime holder.")]
+        // SAFETY: Valid FfiFollowerHolder pointer created by grdr_macos_follower_new.
         let holder = unsafe { &*follower.cast::<FfiFollowerHolder>() };
-        let mut state = holder
+        let mut rt = holder
             .inner
             .lock()
-            .map_err(|_| "EsTreeFollower mutex poisoned".to_string())?;
-        state.mute_incumbent_team(team);
-        Ok("{\"ok\":true}".to_string())
-    }));
-    wrap_ffi_result(res)
+            .map_err(|_| GrdrMacFfiStatus::ErrLockPoisoned)?;
+        rt.tree.mute_incumbent_team(team);
+        Ok(GrdrMacFfiStatus::Ok)
+    })))
 }
 
-/// Evaluate an `AUTH_EXEC` event against tracked tree state and compiled floor rules.
-/// Free the returned string with `grdr_macos_free_string`.
+/// Register a self-protection PID inside `GrdrMacEsFollower`.
 ///
 /// # Safety
-/// `follower`, `event_json_ptr`, and optional `floor_json_ptr` must be valid for their byte lengths.
-#[allow(
-    unsafe_code,
-    reason = "C-ABI AUTH_EXEC fastpath verdict entry point for Endpoint Security."
-)]
+/// `follower` must point to a live `GrdrMacEsFollower`.
+#[allow(unsafe_code, reason = "C-ABI self-protection PID registration.")]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn grdr_macos_eval_es_auth_exec(
+pub unsafe extern "C" fn grdr_macos_follower_register_self_pid(
     follower: *mut GrdrMacEsFollower,
-    event_json_ptr: *const u8,
-    event_json_len: usize,
-    floor_json_ptr: *const u8,
-    floor_json_len: usize,
-    default_deny: u8,
-) -> *mut c_char {
+    pid: u32,
+) -> i32 {
     if follower.is_null() {
-        return error_json("null follower pointer");
+        return GrdrMacFfiStatus::ErrNullPtr as i32;
     }
-    let res = catch_unwind(AssertUnwindSafe(|| {
-        #[allow(unsafe_code, reason = "Read ES event JSON bytes across C ABI.")]
-        // SAFETY: Checked non-null follower and event slice validated by read_utf8_arg.
-        let raw = unsafe { read_utf8_arg(event_json_ptr, event_json_len) }?;
-        let payload: EsEventPayload =
-            serde_json::from_str(raw).map_err(|e| format!("invalid EsEventPayload JSON: {e}"))?;
-        let floor_specs = {
-            #[allow(unsafe_code, reason = "Validate floor rule slice across C ABI.")]
-            // SAFETY: floor_json_ptr and floor_json_len checked by parse_floor_specs_ffi.
-            unsafe {
-                parse_floor_specs_ffi(floor_json_ptr, floor_json_len)
-            }
-        }?;
-
-        #[allow(
-            unsafe_code,
-            reason = "Lock Mutex-guarded EsTreeFollower owned by caller across C ABI."
-        )]
-        // SAFETY: Non-null aligned FfiFollowerHolder pointer created by grdr_macos_follower_new.
+    if pid == 0 {
+        return GrdrMacFfiStatus::ErrInvalidArg as i32;
+    }
+    wrap_status(catch_unwind(AssertUnwindSafe(|| {
+        #[allow(unsafe_code, reason = "Lock opaque EsCoordinatorRuntime holder.")]
+        // SAFETY: Valid FfiFollowerHolder pointer created by grdr_macos_follower_new.
         let holder = unsafe { &*follower.cast::<FfiFollowerHolder>() };
-        let mut state = holder
+        let mut rt = holder
             .inner
             .lock()
-            .map_err(|_| "EsTreeFollower mutex poisoned".to_string())?;
-        let outcome = state.apply_event(&payload);
+            .map_err(|_| GrdrMacFfiStatus::ErrLockPoisoned)?;
+        rt.register_self_pid(pid);
+        Ok(GrdrMacFfiStatus::Ok)
+    })))
+}
 
-        let mut verdict = "allow".to_string();
-        if let EsEventPayload::AuthExec {
-            target,
-            executable_path,
-            ..
-        } = &payload
-            && let Some(sid) = outcome.session_id.as_deref()
-        {
-            let deny_reason = with_floor_refs(&floor_specs, FastActionClass::Exec, |refs| {
-                let hit = evaluate_floor_entries(refs, FastActionClass::Exec, "", executable_path);
-                match hit {
-                    Some(h) if matches!(h.verdict, FastVerdict::Deny | FastVerdict::StepUp) => {
-                        Some(format!("floor rule `{}`", h.rule_id))
-                    }
-                    None if default_deny != 0 => {
-                        Some("default_deny with no matching exec allow rule".to_string())
-                    }
-                    _ => None,
+/// Register a protected path guarded against agent modification in `ProtectedPathGuard`.
+///
+/// # Safety
+/// `follower` must be live and `path_ptr` must cover `path_len` bytes.
+#[allow(unsafe_code, reason = "C-ABI protected path registration.")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn grdr_macos_follower_add_protected_path(
+    follower: *mut GrdrMacEsFollower,
+    path_ptr: *const u8,
+    path_len: usize,
+) -> i32 {
+    register_path_in_follower(follower, path_ptr, path_len, false)
+}
+
+/// Register a self-protection path guarded against agent modification in `SelfProtection`.
+///
+/// # Safety
+/// `follower` must be live and `path_ptr` must cover `path_len` bytes.
+#[allow(unsafe_code, reason = "C-ABI self-protection path registration.")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn grdr_macos_follower_add_self_path(
+    follower: *mut GrdrMacEsFollower,
+    path_ptr: *const u8,
+    path_len: usize,
+) -> i32 {
+    register_path_in_follower(follower, path_ptr, path_len, true)
+}
+
+fn register_path_in_follower(
+    follower: *mut GrdrMacEsFollower,
+    path_ptr: *const u8,
+    path_len: usize,
+    self_path: bool,
+) -> i32 {
+    if follower.is_null() {
+        return GrdrMacFfiStatus::ErrNullPtr as i32;
+    }
+    wrap_status(catch_unwind(AssertUnwindSafe(|| {
+        #[allow(unsafe_code, reason = "Read UTF-8 path bytes across C ABI.")]
+        // SAFETY: Bounded slice verified via read_utf8_arg.
+        let path = unsafe { read_utf8_arg(path_ptr, path_len) }?;
+        if path.trim().is_empty() {
+            return Err(GrdrMacFfiStatus::ErrInvalidArg);
+        }
+        #[allow(unsafe_code, reason = "Lock opaque EsCoordinatorRuntime holder.")]
+        // SAFETY: Valid FfiFollowerHolder pointer created by grdr_macos_follower_new.
+        let holder = unsafe { &*follower.cast::<FfiFollowerHolder>() };
+        let mut rt = holder
+            .inner
+            .lock()
+            .map_err(|_| GrdrMacFfiStatus::ErrLockPoisoned)?;
+        if self_path {
+            rt.add_self_path(path);
+        } else {
+            rt.add_protected_path(path);
+        }
+        Ok(GrdrMacFfiStatus::Ok)
+    })))
+}
+
+/// Look up whether a `(pid, pidversion)` belongs to a governed agent tree.
+///
+/// # Safety
+/// `follower` and `out_info` must be valid aligned non-null pointers.
+#[allow(
+    unsafe_code,
+    reason = "C-ABI governed audit-token lineage lookup for Network Extension providers."
+)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn grdr_macos_follower_lookup_token(
+    follower: *const GrdrMacEsFollower,
+    pid: u32,
+    pidversion: u32,
+    out_info: *mut GrdrMacTokenLookupOutC,
+) -> i32 {
+    if follower.is_null() || out_info.is_null() {
+        return GrdrMacFfiStatus::ErrNullPtr as i32;
+    }
+    wrap_status(catch_unwind(AssertUnwindSafe(|| {
+        #[allow(unsafe_code, reason = "Lock opaque EsCoordinatorRuntime holder.")]
+        // SAFETY: Valid FfiFollowerHolder pointer created by grdr_macos_follower_new.
+        let holder = unsafe { &*follower.cast::<FfiFollowerHolder>() };
+        let rt = holder
+            .inner
+            .lock()
+            .map_err(|_| GrdrMacFfiStatus::ErrLockPoisoned)?;
+        let key = ProcessTreeKey { pid, pidversion };
+        let mut out = GrdrMacTokenLookupOutC::default();
+        if let Some(member) = rt.tree.lookup_member(key) {
+            out.governed = 1;
+            out.root_pid = member.agent_root_pid;
+            out.session_id_len = copy_str_into_fixed(&member.session_id, &mut out.session_id);
+            let agent = rt.agent_for_session(&member.session_id);
+            out.agent_name_len = copy_str_into_fixed(agent, &mut out.agent_name);
+        }
+        #[allow(unsafe_code, reason = "Write GrdrMacTokenLookupOutC to caller buffer.")]
+        // SAFETY: Checked out_info non-null above.
+        unsafe {
+            *out_info = out;
+        }
+        Ok(GrdrMacFfiStatus::Ok)
+    })))
+}
+
+/// Evaluate an Endpoint Security event using fixed `GrdrMacEsEventC` and `GrdrMacFloorRuleC` array.
+///
+/// # Safety
+/// `follower`, `event`, `out_verdict`, and optional `floor_rules` (`floor_len` elements) must be valid.
+#[allow(
+    unsafe_code,
+    reason = "Zero-JSON fixed-struct C-ABI Endpoint Security event evaluator."
+)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn grdr_macos_eval_es_event_c(
+    follower: *mut GrdrMacEsFollower,
+    event: *const GrdrMacEsEventC,
+    floor_rules: *const GrdrMacFloorRuleC,
+    floor_len: usize,
+    out_verdict: *mut GrdrMacEsVerdictC,
+) -> i32 {
+    if follower.is_null() || event.is_null() || out_verdict.is_null() {
+        return GrdrMacFfiStatus::ErrNullPtr as i32;
+    }
+    wrap_status(catch_unwind(AssertUnwindSafe(|| {
+        #[allow(
+            unsafe_code,
+            reason = "Read fixed-layout floor rules from caller slice."
+        )]
+        // SAFETY: Validated non-null pointers when lengths are non-zero.
+        let decoded = unsafe { read_floor_rules_c(floor_rules, floor_len) }?;
+        with_decoded_floor_refs(&decoded, FastActionClass::Exec, |refs| {
+            #[allow(
+                unsafe_code,
+                reason = "Evaluate fixed-layout ES event against runtime and floor rules."
+            )]
+            // SAFETY: Validated non-null follower, event, and out_verdict pointers.
+            unsafe {
+                eval_es_event_inner(follower, event, FloorEvaluator::Rules(refs), out_verdict)
+            }
+        })
+    })))
+}
+
+/// Evaluate an Endpoint Security event using fixed `GrdrMacEsEventC` and compiled binary floor table.
+///
+/// # Safety
+/// `follower`, `event`, `out_verdict`, and optional `floor_bin_ptr` (`floor_bin_len` bytes) must be valid.
+#[allow(
+    unsafe_code,
+    reason = "Zero-JSON compiled binary floor table Endpoint Security evaluator."
+)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn grdr_macos_eval_es_event_bin_c(
+    follower: *mut GrdrMacEsFollower,
+    event: *const GrdrMacEsEventC,
+    floor_bin_ptr: *const u8,
+    floor_bin_len: usize,
+    out_verdict: *mut GrdrMacEsVerdictC,
+) -> i32 {
+    if follower.is_null() || event.is_null() || out_verdict.is_null() {
+        return GrdrMacFfiStatus::ErrNullPtr as i32;
+    }
+    wrap_status(catch_unwind(AssertUnwindSafe(|| {
+        if floor_bin_len == 0 {
+            #[allow(
+                unsafe_code,
+                reason = "Evaluate ES event with empty floor table when length is zero."
+            )]
+            // SAFETY: Validated non-null follower, event, and out_verdict pointers.
+            return unsafe {
+                eval_es_event_inner(follower, event, FloorEvaluator::Rules(&[]), out_verdict)
+            };
+        }
+        #[allow(unsafe_code, reason = "Read binary floor table bytes across C ABI.")]
+        // SAFETY: Bounded slice verified by read_bytes_arg.
+        let bin = unsafe { read_bytes_arg(floor_bin_ptr, floor_bin_len) }?;
+        let table = BinaryFloorTable::parse(bin).map_err(|_| GrdrMacFfiStatus::ErrInvalidArg)?;
+        #[allow(
+            unsafe_code,
+            reason = "Evaluate ES event against compiled binary floor table."
+        )]
+        // SAFETY: Validated non-null follower, event, and out_verdict pointers.
+        unsafe {
+            eval_es_event_inner(follower, event, FloorEvaluator::Binary(&table), out_verdict)
+        }
+    })))
+}
+
+/// Probe macOS host extension and slot capabilities into a fixed `GrdrMacCapabilitiesC` struct.
+///
+/// # Safety
+/// `out_caps` must point to writable aligned `GrdrMacCapabilitiesC`.
+#[allow(
+    unsafe_code,
+    reason = "Populate fixed #[repr(C)] macOS capability probe struct."
+)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn grdr_macos_probe_capabilities_c(
+    out_caps: *mut GrdrMacCapabilitiesC,
+) -> i32 {
+    probe_capabilities_impl(None, out_caps)
+}
+
+/// Probe macOS host capabilities combined with live ES client statuses inside `GrdrMacEsFollower`.
+///
+/// # Safety
+/// `follower` and `out_caps` must point to valid live objects.
+#[allow(
+    unsafe_code,
+    reason = "Populate GrdrMacCapabilitiesC from live follower ES client states."
+)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn grdr_macos_probe_capabilities_with_follower_c(
+    follower: *const GrdrMacEsFollower,
+    out_caps: *mut GrdrMacCapabilitiesC,
+) -> i32 {
+    if follower.is_null() {
+        return GrdrMacFfiStatus::ErrNullPtr as i32;
+    }
+    probe_capabilities_impl(Some(follower), out_caps)
+}
+
+/// Probe current process code-signing Team ID and ES entitlement using Security.framework SecCode.
+///
+/// # Safety
+/// `out_team_len` and `out_es_entitled` must be non-null; `out_team_ptr` may be null only when `team_cap == 0`.
+#[allow(
+    unsafe_code,
+    reason = "Write self SecCode signing team ID and ES entitlement flag across C ABI."
+)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn grdr_macos_self_signing_info_c(
+    out_team_ptr: *mut u8,
+    team_cap: usize,
+    out_team_len: *mut usize,
+    out_es_entitled: *mut u8,
+) -> i32 {
+    if out_team_len.is_null() || out_es_entitled.is_null() {
+        return GrdrMacFfiStatus::ErrNullPtr as i32;
+    }
+    wrap_status(catch_unwind(AssertUnwindSafe(|| {
+        let (_status, team, es_entitled) = probe_self_signing_team_and_es_entitlement();
+        let team_bytes = team.as_deref().map_or(&[][..], str::as_bytes);
+        #[allow(
+            unsafe_code,
+            reason = "Write team length and ES entitlement flag to caller pointers."
+        )]
+        // SAFETY: Validated non-null pointers above.
+        unsafe {
+            *out_team_len = team_bytes.len();
+            *out_es_entitled = u8::from(es_entitled);
+        }
+        if !team_bytes.is_empty() {
+            if out_team_ptr.is_null() {
+                return Err(GrdrMacFfiStatus::ErrNullPtr);
+            }
+            if team_cap < team_bytes.len() {
+                return Err(GrdrMacFfiStatus::ErrBufferTooSmall);
+            }
+            #[allow(unsafe_code, reason = "Copy Team ID bytes into caller buffer.")]
+            // SAFETY: out_team_ptr verified non-null with capacity >= team_bytes.len().
+            unsafe {
+                let dst = slice::from_raw_parts_mut(out_team_ptr, team_cap);
+                if let Some(head) = dst.get_mut(..team_bytes.len()) {
+                    head.copy_from_slice(team_bytes);
                 }
-            });
-            if let Some(reason) = deny_reason {
-                state.record_denied_auth_exec(target.key, sid, executable_path, reason);
-                verdict = "deny".to_string();
             }
         }
-
-        let result = FfiEsApplyResult {
-            verdict,
-            session_id: outcome.session_id,
-            action_class: outcome.action_class,
-            summary: outcome.summary,
-            member_count: state.member_count(),
-            unmuted_pids: outcome.unmuted_targets.into_iter().map(|k| k.pid).collect(),
-        };
-        serde_json::to_string(&result).map_err(|e| format!("serialize auth verdict failed: {e}"))
-    }));
-    wrap_ffi_result(res)
+        Ok(GrdrMacFfiStatus::Ok)
+    })))
 }
 
-/// Evaluate a JSON-encoded `NeFlowRecord` against JSON-encoded floor rules.
-/// Free the returned string with `grdr_macos_free_string`.
-///
-/// # Safety
-/// `flow_json_ptr` and optional `floor_json_ptr` must be valid for their declared byte lengths.
-#[allow(
-    unsafe_code,
-    reason = "C-ABI Network Extension flow evaluator entry point."
-)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn grdr_macos_eval_ne_flow(
-    flow_json_ptr: *const u8,
-    flow_json_len: usize,
-    floor_json_ptr: *const u8,
-    floor_json_len: usize,
-    default_deny: u8,
-) -> *mut c_char {
-    let res = catch_unwind(AssertUnwindSafe(|| {
-        #[allow(unsafe_code, reason = "Read flow JSON byte slice across C ABI.")]
-        // SAFETY: flow_json_ptr and flow_json_len validated by read_utf8_arg.
-        let flow_raw = unsafe { read_utf8_arg(flow_json_ptr, flow_json_len) }?;
-        let flow: NeFlowRecord =
-            serde_json::from_str(flow_raw).map_err(|e| format!("invalid NeFlowRecord: {e}"))?;
-
-        let floor_specs = {
-            #[allow(unsafe_code, reason = "Validate floor rule slice across C ABI.")]
-            // SAFETY: floor_json_ptr and floor_json_len validated by parse_floor_specs_ffi.
-            unsafe {
-                parse_floor_specs_ffi(floor_json_ptr, floor_json_len)
+fn probe_capabilities_impl(
+    follower: Option<*const GrdrMacEsFollower>,
+    out_caps: *mut GrdrMacCapabilitiesC,
+) -> i32 {
+    if out_caps.is_null() {
+        return GrdrMacFfiStatus::ErrNullPtr as i32;
+    }
+    wrap_status(catch_unwind(AssertUnwindSafe(|| {
+        let live_es = match follower {
+            Some(ptr) => {
+                #[allow(unsafe_code, reason = "Lock live FfiFollowerHolder to read ES states.")]
+                // SAFETY: Caller verified follower pointer non-null and live.
+                let holder = unsafe { &*ptr.cast::<FfiFollowerHolder>() };
+                let rt = holder
+                    .inner
+                    .lock()
+                    .map_err(|_| GrdrMacFfiStatus::ErrLockPoisoned)?;
+                Some(rt.clients.clone())
             }
-        }?;
-        let policy = if default_deny != 0 {
-            EgressDefaultPolicy::DefaultDeny
-        } else {
-            EgressDefaultPolicy::DefaultAllow
+            None => None,
         };
-        let verdict = with_floor_refs(&floor_specs, FastActionClass::NetConnect, |refs| {
-            evaluate_ne_flow(&flow, refs, policy)
-        });
-        serde_json::to_string(&verdict).map_err(|e| format!("serialize verdict failed: {e}"))
-    }));
-    wrap_ffi_result(res)
-}
-
-#[allow(
-    unsafe_code,
-    reason = "Read and deserialize bounded floor rule JSON slice across C ABI."
-)]
-// SAFETY: Validates non-null pointer whenever floor_json_len > 0 via read_utf8_arg.
-unsafe fn parse_floor_specs_ffi(
-    floor_json_ptr: *const u8,
-    floor_json_len: usize,
-) -> Result<Vec<FfiFloorRuleSpec>, String> {
-    let specs: Vec<FfiFloorRuleSpec> = if floor_json_len == 0 {
-        Vec::new()
-    } else {
-        #[allow(
-            unsafe_code,
-            reason = "Read non-empty floor rule JSON byte slice across C ABI."
-        )]
-        // SAFETY: floor_json_ptr and floor_json_len checked by read_utf8_arg.
-        let floor_raw = unsafe { read_utf8_arg(floor_json_ptr, floor_json_len) }?;
-        serde_json::from_str(floor_raw).map_err(|e| format!("invalid floor JSON: {e}"))?
-    };
-    if specs.len() > MAX_FFI_FLOOR_RULES {
-        return Err(format!("floor rules exceed cap {MAX_FFI_FLOOR_RULES}"));
-    }
-    Ok(specs)
-}
-
-fn with_floor_refs<R>(
-    floor_specs: &[FfiFloorRuleSpec],
-    default_action: FastActionClass,
-    f: impl FnOnce(&[FloorRuleRef<'_>]) -> R,
-) -> R {
-    let mut prefixes: Vec<Vec<&str>> = Vec::with_capacity(floor_specs.len());
-    let mut contains: Vec<Vec<&str>> = Vec::with_capacity(floor_specs.len());
-    let mut agents: Vec<Vec<&str>> = Vec::with_capacity(floor_specs.len());
-    for spec in floor_specs {
-        prefixes.push(spec.prefixes.iter().map(String::as_str).collect());
-        contains.push(spec.contains.iter().map(String::as_str).collect());
-        agents.push(spec.agents.iter().map(String::as_str).collect());
-    }
-    let mut refs: Vec<FloorRuleRef<'_>> = Vec::with_capacity(floor_specs.len());
-    for (idx, spec) in floor_specs.iter().enumerate() {
-        let verdict = match spec.verdict.to_ascii_lowercase().as_str() {
-            "allow" => FastVerdict::Allow,
-            "step_up" => FastVerdict::StepUp,
-            _ => FastVerdict::Deny,
+        let caps = probe_local_capabilities(live_es.as_ref())
+            .map_err(|_| GrdrMacFfiStatus::ErrInternal)?;
+        let brand = MacOsBrandConfig::try_embedded().map_err(|_| GrdrMacFfiStatus::ErrInternal)?;
+        let mut own_count: u8 = 0;
+        let mut foreign_count: u8 = 0;
+        for ext in &caps.system_extensions {
+            if brand.is_own_extension_identifier(&ext.identifier) {
+                own_count = own_count.saturating_add(1);
+            } else {
+                foreign_count = foreign_count.saturating_add(1);
+            }
+        }
+        let slot_code = |cap: SlotCapability| -> u8 {
+            caps.slot_reports
+                .iter()
+                .find(|r| r.capability == cap)
+                .map_or(0, |r| encode_slot_rung(r.rung))
         };
-        let mask = if spec.action_mask == 0 {
-            1u32 << (default_action as u8)
-        } else {
-            spec.action_mask
+        let out = GrdrMacCapabilitiesC {
+            process_probe_available: u8::from(caps.process_probe_available),
+            developer_program_held: u8::from(caps.developer_program_held),
+            signing_status_code: match caps.developer_signing_status {
+                DeveloperSigningStatus::VerifiedWithEntitlements => 0,
+                DeveloperSigningStatus::SignedMissingTeamOrEntitlement => 1,
+                DeveloperSigningStatus::UnsignedOrAdhoc => 2,
+                DeveloperSigningStatus::Unavailable => 3,
+            },
+            content_filter_rung: slot_code(SlotCapability::ContentFilter),
+            dns_proxy_rung: slot_code(SlotCapability::DnsProxy),
+            transparent_proxy_rung: slot_code(SlotCapability::TransparentProxy),
+            es_status_code: match caps.es_status {
+                EsClientStatus::Active => 0,
+                EsClientStatus::MissingEntitlement => 1,
+                EsClientStatus::TooManyClients => 2,
+                EsClientStatus::NotPermittedFda => 3,
+            },
+            own_extension_count: own_count,
+            foreign_extension_count: foreign_count,
+            vpn_proxy_count: u8::try_from(caps.network_services_scutil.len()).unwrap_or(u8::MAX),
         };
-        refs.push(FloorRuleRef {
-            rule_id: &spec.rule_id,
-            action_mask: mask,
-            prefixes: prefixes.get(idx).map(Vec::as_slice).unwrap_or(&[]),
-            contains: contains.get(idx).map(Vec::as_slice).unwrap_or(&[]),
-            agents: agents.get(idx).map(Vec::as_slice).unwrap_or(&[]),
-            verdict,
-        });
-    }
-    f(&refs)
+        #[allow(unsafe_code, reason = "Write GrdrMacCapabilitiesC to caller pointer.")]
+        // SAFETY: Checked out_caps non-null above.
+        unsafe {
+            *out_caps = out;
+        }
+        Ok(GrdrMacFfiStatus::Ok)
+    })))
 }
 
-/// Plan a Seatbelt launch profile from JSON-encoded `SeatbeltProfileSpec`.
-/// Free the returned string with `grdr_macos_free_string`.
-///
-/// # Safety
-/// `agent_ptr` and `spec_json_ptr` must cover their declared byte lengths.
-#[allow(unsafe_code, reason = "C-ABI Seatbelt launch planner entry point.")]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn grdr_macos_plan_seatbelt(
-    agent_ptr: *const u8,
-    agent_len: usize,
-    own_seatbelt: u8,
-    spec_json_ptr: *const u8,
-    spec_json_len: usize,
-) -> *mut c_char {
-    let res = catch_unwind(AssertUnwindSafe(|| {
-        #[allow(unsafe_code, reason = "Read agent name bytes across C ABI.")]
-        // SAFETY: agent_ptr and agent_len checked by read_utf8_arg.
-        let agent = unsafe { read_utf8_arg(agent_ptr, agent_len) }?;
-        #[allow(
-            unsafe_code,
-            reason = "Read SeatbeltProfileSpec JSON bytes across C ABI."
-        )]
-        // SAFETY: spec_json_ptr and spec_json_len checked by read_utf8_arg.
-        let spec_raw = unsafe { read_utf8_arg(spec_json_ptr, spec_json_len) }?;
-        let spec: SeatbeltProfileSpec = serde_json::from_str(spec_raw)
-            .map_err(|e| format!("invalid SeatbeltProfileSpec JSON: {e}"))?;
-        let plan = plan_macos_launch(agent, own_seatbelt != 0, &spec)
-            .map_err(|e| format!("Seatbelt planning error: {e}"))?;
-        serde_json::to_string(&plan).map_err(|e| format!("serialize plan failed: {e}"))
-    }));
-    wrap_ffi_result(res)
-}
-
-#[allow(
-    unsafe_code,
-    reason = "C-ABI host capability probe exported for Swift UI and extensions."
-)]
-#[unsafe(no_mangle)]
-pub extern "C" fn grdr_macos_probe_capabilities() -> *mut c_char {
-    let res = catch_unwind(abi_probe_capabilities_json);
-    match res {
-        Ok(json) => to_c_string_sanitized(&json),
-        Err(_) => error_json("panic caught in grdr_macos_probe_capabilities"),
-    }
-}
-
-/// Free a string pointer previously returned by any `grdr_macos_*` function.
-///
-/// # Safety
-/// `ptr` must be null or a pointer previously allocated by `grdr_macos_*` and not yet freed.
-#[allow(
-    unsafe_code,
-    reason = "Free CString returned across macOS Swift/C ABI."
-)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn grdr_macos_free_string(ptr: *mut c_char) {
-    if ptr.is_null() {
-        return;
-    }
-    let _ = catch_unwind(AssertUnwindSafe(|| {
-        #[allow(
-            unsafe_code,
-            reason = "Reclaim CString ownership allocated by to_c_string_sanitized."
-        )]
-        // SAFETY: Non-null pointer created by CString::into_raw in this crate.
-        let cs = unsafe { CString::from_raw(ptr) };
-        drop(cs);
-    }));
-}
-
-#[allow(
-    unsafe_code,
-    reason = "Validate and read bounded UTF-8 byte buffer passed across C ABI."
-)]
-unsafe fn read_utf8_arg<'a>(ptr: *const u8, len: usize) -> Result<&'a str, String> {
-    if len == 0 {
-        return Ok("");
-    }
-    if ptr.is_null() {
-        return Err("null C-ABI input pointer".to_string());
-    }
-    if len > MAX_FFI_JSON_BYTES {
-        return Err(format!("C-ABI input exceeds {MAX_FFI_JSON_BYTES} bytes"));
-    }
-    #[allow(unsafe_code, reason = "Slice caller-provided readable UTF-8 buffer.")]
-    // SAFETY: Caller guarantees ptr covers len readable bytes.
-    let bytes = unsafe { slice::from_raw_parts(ptr, len) };
-    std::str::from_utf8(bytes).map_err(|_| "C-ABI input is not valid UTF-8".to_string())
-}
-
-fn wrap_ffi_result(
-    res: Result<Result<String, String>, Box<dyn std::any::Any + Send>>,
-) -> *mut c_char {
-    match res {
-        Ok(Ok(json)) => to_c_string_sanitized(&json),
-        Ok(Err(msg)) => error_json(&msg),
-        Err(_) => error_json("panic caught across grdr_macos C ABI"),
-    }
-}
-
-fn error_json(msg: &str) -> *mut c_char {
-    let encoded = serde_json::to_string(&FfiErrorEnvelope {
-        error: msg.to_string(),
-    })
-    .unwrap_or_else(|_| "{\"error\":\"serialization fault\"}".to_string());
-    to_c_string_sanitized(&encoded)
-}
-
-fn to_c_string_sanitized(s: &str) -> *mut c_char {
-    let cleaned = s.replace('\0', " ");
-    match CString::new(cleaned) {
-        Ok(cs) => cs.into_raw(),
-        Err(_) => std::ptr::null_mut(),
+const fn encode_slot_rung(rung: SlotRung) -> u8 {
+    match rung {
+        SlotRung::None => 0,
+        SlotRung::Ingest => 1,
+        SlotRung::Observe => 2,
+        SlotRung::Enforce => 3,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::es_tree::{EsAuditToken, ProcessTreeKey};
-    use crate::network_ext::FlowTransport;
-    use std::ffi::CStr;
+    use crate::ffi_types::{
+        GrdrMacAuditTokenC, GrdrMacEsConcernCode, GrdrMacEsEventKind, GrdrMacProcessKeyC,
+        GrdrMacVerdictCode,
+    };
+    use grdr_fastpath::{BinaryRuleInput, encode_binary_floor};
+    use std::ptr::{null, null_mut};
+
+    fn empty_event() -> GrdrMacEsEventC {
+        GrdrMacEsEventC {
+            kind_code: GrdrMacEsEventKind::AuthExec as u8,
+            concern_code: GrdrMacEsConcernCode::ExecAuthorizer as u8,
+            default_deny: 0,
+            reserved0: 0,
+            access_flags: 0,
+            event_flags: 0,
+            reserved1: 0,
+            seq_num: 1,
+            timestamp_ns: 0,
+            elapsed_ms: 5,
+            kernel_deadline_ms: 10_000,
+            actor: GrdrMacAuditTokenC {
+                key: GrdrMacProcessKeyC {
+                    pid: 100,
+                    pidversion: 1,
+                },
+                uid: 501,
+                reserved: 0,
+                team_id_ptr: null(),
+                team_id_len: 0,
+            },
+            target: GrdrMacAuditTokenC {
+                key: GrdrMacProcessKeyC {
+                    pid: 101,
+                    pidversion: 2,
+                },
+                uid: 501,
+                reserved: 0,
+                team_id_ptr: null(),
+                team_id_len: 0,
+            },
+            path_ptr: null(),
+            path_len: 0,
+            secondary_path_ptr: null(),
+            secondary_path_len: 0,
+            session_id_ptr: null(),
+            session_id_len: 0,
+            agent_name_ptr: null(),
+            agent_name_len: 0,
+        }
+    }
 
     #[test]
-    #[allow(unsafe_code)]
-    fn c_abi_follower_ne_flow_and_seatbelt_roundtrip() {
-        assert_eq!(grdr_macos_abi_version(), 1);
-        let follower = grdr_macos_follower_new();
-        assert!(!follower.is_null());
+    fn validates_fixed_c_abi_es_brand_and_negative_pointer_paths() {
+        assert_eq!(grdr_macos_abi_version(), GRDR_MACOS_ABI_VERSION);
 
-        let event = serde_json::to_vec(&EsEventPayload::RegisterAgentRoot {
-            root: EsAuditToken {
-                key: ProcessTreeKey {
-                    pid: 500,
-                    pidversion: 1,
-                },
-                uid: 501,
-                team_id: None,
-            },
-            session_id: "sess-ffi-mac".into(),
-        })
-        .unwrap();
+        #[allow(
+            unsafe_code,
+            reason = "Exercise unsafe C-ABI entrypoints in unit test."
+        )]
+        // SAFETY: All stack/heap buffers and pointers created within test scope live across calls.
+        unsafe {
+            assert_eq!(
+                grdr_macos_get_brand_info(null_mut()),
+                GrdrMacFfiStatus::ErrNullPtr as i32
+            );
+            let mut brand = GrdrMacBrandInfoC::default();
+            assert_eq!(grdr_macos_get_brand_info(&mut brand), 0);
+            let bundle_id =
+                std::str::from_utf8(&brand.bundle_id[..usize::from(brand.bundle_id_len)]).unwrap();
+            assert_eq!(bundle_id, "com.guardrailshq.grdr");
+            let prefix =
+                std::str::from_utf8(&brand.own_prefix[..usize::from(brand.own_prefix_len)])
+                    .unwrap();
+            assert_eq!(prefix, "com.guardrailshq.grdr.");
 
-        // SAFETY: Valid follower pointer and valid event byte buffer; freed below.
-        let apply_ptr = unsafe { grdr_macos_apply_es_event(follower, event.as_ptr(), event.len()) };
-        assert!(!apply_ptr.is_null());
-        // SAFETY: Valid CString returned by grdr_macos_apply_es_event.
-        let apply_str = unsafe { CStr::from_ptr(apply_ptr) }
-            .to_str()
-            .unwrap()
-            .to_owned();
-        // SAFETY: Reclaim returned CString cleanly once.
-        unsafe { grdr_macos_free_string(apply_ptr) };
-        let parsed: FfiEsApplyResult = serde_json::from_str(&apply_str).unwrap();
-        assert_eq!(parsed.session_id.as_deref(), Some("sess-ffi-mac"));
-        assert_eq!(parsed.member_count, 1);
+            let mut caps = GrdrMacCapabilitiesC::default();
+            assert_eq!(grdr_macos_probe_capabilities_c(&mut caps), 0);
 
-        let flow = serde_json::to_vec(&NeFlowRecord {
-            flow_id: 1,
-            agent_name: "claude-code".into(),
-            governed_process: true,
-            transport: FlowTransport::Udp,
-            remote_port: 443,
-            host_name: Some("api.anthropic.com".into()),
-            tls_sni: None,
-        })
-        .unwrap();
-        // SAFETY: Valid flow byte buffer and empty floor rules; freed below.
-        let flow_ptr =
-            unsafe { grdr_macos_eval_ne_flow(flow.as_ptr(), flow.len(), std::ptr::null(), 0, 0) };
-        assert!(!flow_ptr.is_null());
-        // SAFETY: Valid CString returned by grdr_macos_eval_ne_flow.
-        let flow_str = unsafe { CStr::from_ptr(flow_ptr) }
-            .to_str()
-            .unwrap()
-            .to_owned();
-        // SAFETY: Reclaim returned CString once.
-        unsafe { grdr_macos_free_string(flow_ptr) };
-        assert!(flow_str.contains("drop"));
+            let follower = grdr_macos_follower_new();
+            assert!(!follower.is_null());
 
-        // SAFETY: Passing null floor pointer with non-zero length must fail closed.
-        let invalid_ptr =
-            unsafe { grdr_macos_eval_ne_flow(flow.as_ptr(), flow.len(), std::ptr::null(), 16, 1) };
-        assert!(!invalid_ptr.is_null());
-        // SAFETY: Valid CString returned by grdr_macos_eval_ne_flow.
-        let invalid_str = unsafe { CStr::from_ptr(invalid_ptr) }
-            .to_str()
-            .unwrap()
-            .to_owned();
-        // SAFETY: Reclaim returned CString once.
-        unsafe { grdr_macos_free_string(invalid_ptr) };
-        assert!(invalid_str.contains("\"error\""));
+            assert_eq!(
+                grdr_macos_follower_mute_team(null_mut(), b"TEAM".as_ptr(), 4),
+                GrdrMacFfiStatus::ErrNullPtr as i32
+            );
+            assert_eq!(
+                grdr_macos_follower_mute_team(follower, null(), 4),
+                GrdrMacFfiStatus::ErrNullPtr as i32
+            );
+            assert_eq!(
+                grdr_macos_follower_register_self_pid(follower, 888),
+                GrdrMacFfiStatus::Ok as i32
+            );
+            assert_eq!(
+                grdr_macos_follower_add_protected_path(
+                    follower,
+                    b"/private/var/db/grdr".as_ptr(),
+                    20
+                ),
+                GrdrMacFfiStatus::Ok as i32
+            );
+            assert_eq!(
+                grdr_macos_follower_add_self_path(
+                    follower,
+                    b"/Library/Application Support/Guardrails".as_ptr(),
+                    39
+                ),
+                GrdrMacFfiStatus::Ok as i32
+            );
 
-        // SAFETY: Valid probe pointer returned by grdr_macos_probe_capabilities.
-        let caps_ptr = grdr_macos_probe_capabilities();
-        assert!(!caps_ptr.is_null());
-        // SAFETY: Reclaim returned CString once.
-        unsafe { grdr_macos_free_string(caps_ptr) };
+            let mut reg = empty_event();
+            reg.kind_code = GrdrMacEsEventKind::RegisterRoot as u8;
+            let sid = b"sess-ffi-c-1";
+            let agent = b"claude-code";
+            reg.session_id_ptr = sid.as_ptr();
+            reg.session_id_len = sid.len();
+            reg.agent_name_ptr = agent.as_ptr();
+            reg.agent_name_len = agent.len();
+            let mut v = GrdrMacEsVerdictC::default();
+            assert_eq!(
+                grdr_macos_eval_es_event_c(follower, &reg, null(), 0, &mut v),
+                0
+            );
+            assert_eq!(v.governed_member, 1);
 
-        let team = b"ABCDE12345";
-        // SAFETY: Valid follower pointer and static team ID bytes; freed below.
-        let mute_ptr =
-            unsafe { grdr_macos_follower_mute_team(follower, team.as_ptr(), team.len()) };
-        assert!(!mute_ptr.is_null());
-        // SAFETY: Reclaim mute CString once.
-        unsafe { grdr_macos_free_string(mute_ptr) };
+            let mut lookup = GrdrMacTokenLookupOutC::default();
+            assert_eq!(
+                grdr_macos_follower_lookup_token(follower, 100, 1, &mut lookup),
+                0
+            );
+            assert_eq!(lookup.governed, 1);
+            let looked_agent =
+                std::str::from_utf8(&lookup.agent_name[..usize::from(lookup.agent_name_len)])
+                    .unwrap();
+            assert_eq!(looked_agent, "claude-code");
 
-        let exec_floor =
-            br#"[{"rule_id":"deny-curl","action_mask":1,"prefixes":["/usr/bin/curl"],"verdict":"deny"}]"#;
-        let auth_ev = serde_json::to_vec(&EsEventPayload::AuthExec {
-            old_key: ProcessTreeKey {
-                pid: 500,
-                pidversion: 1,
-            },
-            target: EsAuditToken {
-                key: ProcessTreeKey {
-                    pid: 501,
-                    pidversion: 1,
-                },
-                uid: 501,
-                team_id: None,
-            },
-            executable_path: "/usr/bin/curl".into(),
-        })
-        .unwrap();
-        // SAFETY: Valid follower, auth event JSON, and floor rules JSON; freed below.
-        let auth_ptr = unsafe {
-            grdr_macos_eval_es_auth_exec(
-                follower,
-                auth_ev.as_ptr(),
-                auth_ev.len(),
-                exec_floor.as_ptr(),
-                exec_floor.len(),
-                0,
-            )
-        };
-        assert!(!auth_ptr.is_null());
-        // SAFETY: Valid CString returned by grdr_macos_eval_es_auth_exec.
-        let auth_str = unsafe { CStr::from_ptr(auth_ptr) }
-            .to_str()
-            .unwrap()
-            .to_owned();
-        // SAFETY: Reclaim auth CString once.
-        unsafe { grdr_macos_free_string(auth_ptr) };
-        let auth_parsed: FfiEsApplyResult = serde_json::from_str(&auth_str).unwrap();
-        assert_eq!(auth_parsed.verdict, "deny");
-        assert_eq!(auth_parsed.member_count, 1);
+            let mut bin_buf = vec![0u8; 4_096];
+            let rule = BinaryRuleInput {
+                rule_id: "es.deny.curl",
+                reason: "deny curl",
+                action_mask: FastActionClass::Exec.bit(),
+                principal_mask: 0,
+                label_mask: 0,
+                verdict: grdr_fastpath::FastVerdict::Deny,
+                agents: &[],
+                prefixes: &["/usr/bin/curl"],
+                contains: &[],
+            };
+            let bin_len = encode_binary_floor(&[rule], &mut bin_buf).expect("encode binary table");
 
-        // SAFETY: Reclaim follower handle once.
-        unsafe { grdr_macos_follower_free(follower) };
+            let mut auth_ev = empty_event();
+            let exe = b"/usr/bin/curl";
+            auth_ev.path_ptr = exe.as_ptr();
+            auth_ev.path_len = exe.len();
+            assert_eq!(
+                grdr_macos_eval_es_event_bin_c(
+                    follower,
+                    &auth_ev,
+                    bin_buf.as_ptr(),
+                    bin_len,
+                    &mut v
+                ),
+                0
+            );
+            assert_eq!(v.verdict_code, GrdrMacVerdictCode::Deny as u8);
+            assert_eq!(v.should_cache, 0);
+
+            let mut exit_ev = empty_event();
+            exit_ev.kind_code = GrdrMacEsEventKind::NotifyExit as u8;
+            exit_ev.concern_code = GrdrMacEsConcernCode::Recorder as u8;
+            exit_ev.actor.key = auth_ev.target.key;
+            assert_eq!(
+                grdr_macos_eval_es_event_c(follower, &exit_ev, null(), 0, &mut v),
+                0
+            );
+            assert_eq!(v.synthesized_denied_exec, 1);
+
+            let mut bad_recorder_auth = empty_event();
+            bad_recorder_auth.concern_code = GrdrMacEsConcernCode::Recorder as u8;
+            assert_eq!(
+                grdr_macos_eval_es_event_c(follower, &bad_recorder_auth, null(), 0, &mut v),
+                GrdrMacFfiStatus::ErrInvalidArg as i32
+            );
+
+            let mut sig_ev = empty_event();
+            sig_ev.concern_code = GrdrMacEsConcernCode::SelfProtection as u8;
+            sig_ev.kind_code = GrdrMacEsEventKind::AuthSignal as u8;
+            sig_ev.target.key.pid = 888;
+            assert_eq!(
+                grdr_macos_eval_es_event_c(follower, &sig_ev, null(), 0, &mut v),
+                0
+            );
+            assert_eq!(v.verdict_code, GrdrMacVerdictCode::Deny as u8);
+
+            let mut team_len = 0usize;
+            let mut es_ent = 0u8;
+            let mut team_buf = [0u8; 32];
+            assert_eq!(
+                grdr_macos_self_signing_info_c(
+                    team_buf.as_mut_ptr(),
+                    team_buf.len(),
+                    &mut team_len,
+                    &mut es_ent
+                ),
+                0
+            );
+
+            grdr_macos_follower_free(follower);
+            grdr_macos_follower_free(null_mut());
+        }
     }
 }

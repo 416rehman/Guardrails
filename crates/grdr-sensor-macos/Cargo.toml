@@ -17,9 +17,9 @@ crate-type = ["rlib", "staticlib"]
 grdr-fastpath = { workspace = true }
 grdr-model = { workspace = true }
 grdr-ports = { workspace = true }
+grdr-schema = { workspace = true }
 jiff = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]

@@ -4,7 +4,9 @@
 
 use std::collections::{BTreeSet, VecDeque};
 use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+use std::io::{BufReader, Read, Seek, SeekFrom};
+#[cfg(unix)]
+use std::os::fd::{AsRawFd, RawFd};
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 #[cfg(windows)]
@@ -15,10 +17,10 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 use crate::MacOsSensorError;
+use crate::brand::MacOsLimitsSnapshot;
 
-const MAX_LINE_BYTES: usize = 64 * 1024;
-const MAX_SKIPPED_OVERSIZE_BYTES: usize = 1_048_576;
 const MAX_SEEN_TOOL_USE_IDS: usize = 4_096;
+const MAX_OVERSIZE_SKIP_CHUNKS: usize = 32;
 #[cfg(windows)]
 const WIN_FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0400;
 #[cfg(windows)]
@@ -45,22 +47,96 @@ pub enum TranscriptCanaryOutcome {
     },
 }
 
+pub trait TranscriptDeltaParser {
+    fn parse_raw_delta(
+        &mut self,
+        path_hint: &str,
+        raw_bytes: &[u8],
+    ) -> Result<Vec<TranscriptToolUseEntry>, MacOsSensorError>;
+}
+
+#[derive(Debug)]
+pub struct TranscriptFdHandoff {
+    file: File,
+    start_offset: u64,
+    file_len: u64,
+    max_bytes: usize,
+    truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TranscriptRawDelta {
+    pub raw_bytes: Vec<u8>,
+    pub new_offset: u64,
+    pub truncated: bool,
+    pub skipped_oversize_lines: u32,
+}
+
 #[derive(Debug, Clone)]
 pub struct TranscriptTailer {
     path: PathBuf,
     byte_offset: u64,
+    max_chunk_bytes: usize,
+    skip_cap_bytes: usize,
     pre_hook_ids: BTreeSet<String>,
     fifo_order: VecDeque<String>,
 }
 
+impl TranscriptFdHandoff {
+    pub const fn start_offset(&self) -> u64 {
+        self.start_offset
+    }
+
+    pub const fn file_len(&self) -> u64 {
+        self.file_len
+    }
+
+    pub const fn max_bytes(&self) -> usize {
+        self.max_bytes
+    }
+
+    pub const fn was_truncated(&self) -> bool {
+        self.truncated
+    }
+
+    pub const fn as_file(&self) -> &File {
+        &self.file
+    }
+
+    pub fn into_file(self) -> File {
+        self.file
+    }
+}
+
+#[cfg(unix)]
+impl AsRawFd for TranscriptFdHandoff {
+    fn as_raw_fd(&self) -> RawFd {
+        self.file.as_raw_fd()
+    }
+}
+
 impl TranscriptTailer {
     pub fn new(path: impl Into<PathBuf>) -> Self {
+        let (max_chunk_bytes, skip_cap_bytes) = match MacOsLimitsSnapshot::try_embedded() {
+            Ok(limits) => (
+                limits.transcript_chunk_max_bytes.max(1),
+                limits.transcript_skip_cap_bytes.max(1),
+            ),
+            Err(_) => (65_536, 1_048_576),
+        };
         Self {
             path: path.into(),
             byte_offset: 0,
+            max_chunk_bytes,
+            skip_cap_bytes,
             pre_hook_ids: BTreeSet::new(),
             fifo_order: VecDeque::new(),
         }
+    }
+
+    pub fn with_chunk_cap(mut self, max_chunk_bytes: usize) -> Self {
+        self.max_chunk_bytes = max_chunk_bytes.max(1);
+        self
     }
 
     pub fn path(&self) -> &Path {
@@ -69,6 +145,10 @@ impl TranscriptTailer {
 
     pub const fn byte_offset(&self) -> u64 {
         self.byte_offset
+    }
+
+    pub fn advance_offset(&mut self, new_offset: u64) {
+        self.byte_offset = new_offset;
     }
 
     pub fn record_pre_hook(&mut self, tool_use_id: impl Into<String>) {
@@ -86,130 +166,182 @@ impl TranscriptTailer {
         }
     }
 
-    pub fn poll_reconciled(
-        &mut self,
-        max_lines: usize,
-    ) -> Result<Vec<TranscriptCanaryOutcome>, MacOsSensorError> {
-        if max_lines == 0 {
-            return Ok(Vec::new());
-        }
-        let lstat = match std::fs::symlink_metadata(&self.path) {
-            Ok(meta) => meta,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => {
-                return Err(MacOsSensorError::Source(format!(
-                    "failed inspecting transcript `{}`: {e}",
-                    self.path.display()
-                )));
-            }
+    pub fn open_fd_handoff(&mut self) -> Result<Option<TranscriptFdHandoff>, MacOsSensorError> {
+        let Some(file) = open_verified_regular_transcript(&self.path)? else {
+            return Ok(None);
         };
-        if lstat.file_type().is_symlink() || !lstat.file_type().is_file() {
-            return Err(MacOsSensorError::Source(format!(
-                "refusing symlink or non-regular transcript `{}`",
-                self.path.display()
-            )));
-        }
-        #[cfg(windows)]
-        if (lstat.file_attributes() & WIN_FILE_ATTRIBUTE_REPARSE_POINT) != 0 {
-            return Err(MacOsSensorError::Source(format!(
-                "refusing reparse point transcript `{}`",
-                self.path.display()
-            )));
-        }
-        let mut opts = OpenOptions::new();
-        opts.read(true);
-        #[cfg(unix)]
-        opts.custom_flags(libc::O_NOFOLLOW);
-        #[cfg(windows)]
-        opts.custom_flags(WIN_FILE_FLAG_OPEN_REPARSE_POINT);
-        let file = opts.open(&self.path).map_err(|e| {
-            MacOsSensorError::Source(format!(
-                "failed opening transcript `{}`: {e}",
-                self.path.display()
-            ))
-        })?;
         let fstat = file
             .metadata()
             .map_err(|e| MacOsSensorError::Source(format!("transcript metadata failed: {e}")))?;
-        #[cfg(windows)]
-        if (fstat.file_attributes() & WIN_FILE_ATTRIBUTE_REPARSE_POINT) != 0 {
-            return Err(MacOsSensorError::Source(format!(
-                "refusing opened reparse transcript `{}`",
-                self.path.display()
-            )));
-        }
-        if !fstat.file_type().is_file() {
-            return Err(MacOsSensorError::Source(format!(
-                "refusing non-regular opened transcript `{}`",
-                self.path.display()
-            )));
-        }
         let file_len = fstat.len();
-
+        let mut truncated = false;
         if file_len < self.byte_offset {
             self.byte_offset = 0;
+            truncated = true;
         }
+        Ok(Some(TranscriptFdHandoff {
+            file,
+            start_offset: self.byte_offset,
+            file_len,
+            max_bytes: self.max_chunk_bytes,
+            truncated,
+        }))
+    }
 
-        let mut reader = BufReader::new(file);
+    pub fn read_raw_delta(
+        &mut self,
+        max_bytes: usize,
+    ) -> Result<Option<TranscriptRawDelta>, MacOsSensorError> {
+        if max_bytes == 0 {
+            return Ok(None);
+        }
+        let Some(handoff) = self.open_fd_handoff()? else {
+            return Ok(None);
+        };
+        let cap = max_bytes.min(self.max_chunk_bytes).max(1);
+        let truncated = handoff.was_truncated();
+        let mut reader = BufReader::new(handoff.into_file());
         reader
             .seek(SeekFrom::Start(self.byte_offset))
             .map_err(|e| MacOsSensorError::Source(format!("transcript seek failed: {e}")))?;
 
-        let mut outcomes = Vec::new();
-        let mut line_buf = Vec::with_capacity(512);
-        let max_read = u64::try_from(MAX_LINE_BYTES.saturating_add(1)).unwrap_or(u64::MAX);
-        while outcomes.len() < max_lines {
-            line_buf.clear();
-            let read_bytes = (&mut reader)
-                .take(max_read)
-                .read_until(b'\n', &mut line_buf)
+        let mut skipped_oversize_lines: u32 = 0;
+        for _ in 0..MAX_OVERSIZE_SKIP_CHUNKS {
+            let take_limit = u64::try_from(cap.saturating_add(1)).unwrap_or(u64::MAX);
+            let mut buf = Vec::with_capacity(cap.min(8_192));
+            let n = (&mut reader)
+                .take(take_limit)
+                .read_to_end(&mut buf)
                 .map_err(|e| MacOsSensorError::Source(format!("transcript read failed: {e}")))?;
-            if read_bytes == 0 {
-                break;
+            if n == 0 {
+                return Ok(None);
             }
-            if !line_buf.ends_with(b"\n") {
-                if line_buf.len() <= MAX_LINE_BYTES {
-                    break;
-                }
-                let drained = drain_oversize_line(&mut reader, &mut self.byte_offset, read_bytes)?;
-                if !drained {
-                    break;
-                }
-                continue;
+            if let Some(last_nl) = buf.iter().rposition(|&b| b == b'\n') {
+                let consumed = last_nl.saturating_add(1);
+                buf.truncate(consumed);
+                self.byte_offset = self
+                    .byte_offset
+                    .saturating_add(u64::try_from(consumed).unwrap_or(u64::MAX));
+                return Ok(Some(TranscriptRawDelta {
+                    raw_bytes: buf,
+                    new_offset: self.byte_offset,
+                    truncated,
+                    skipped_oversize_lines,
+                }));
             }
-            self.byte_offset = self
-                .byte_offset
-                .saturating_add(u64::try_from(read_bytes).unwrap_or(u64::MAX));
-            if line_buf.len() > MAX_LINE_BYTES {
-                continue;
+            if n <= cap {
+                return Ok(None);
             }
-            let Ok(line) = std::str::from_utf8(&line_buf) else {
-                continue;
-            };
-            if let Some(entry) = parse_transcript_line(line.trim()) {
-                let matched = self.pre_hook_ids.contains(&entry.tool_use_id);
-                if matched {
-                    outcomes.push(TranscriptCanaryOutcome::MatchedPreHook { entry });
+            let drained =
+                drain_oversize_line(&mut reader, &mut self.byte_offset, n, self.skip_cap_bytes)?;
+            if !drained {
+                return Ok(None);
+            }
+            skipped_oversize_lines = skipped_oversize_lines.saturating_add(1);
+        }
+
+        Err(MacOsSensorError::Source(
+            "transcript exceeded consecutive oversize line skip limit".into(),
+        ))
+    }
+
+    pub fn poll_reconciled_with<P: TranscriptDeltaParser + ?Sized>(
+        &mut self,
+        parser: &mut P,
+        max_bytes: usize,
+    ) -> Result<Vec<TranscriptCanaryOutcome>, MacOsSensorError> {
+        let Some(delta) = self.read_raw_delta(max_bytes)? else {
+            return Ok(Vec::new());
+        };
+        let path_hint = self.path.display().to_string();
+        let entries = parser.parse_raw_delta(&path_hint, &delta.raw_bytes)?;
+        Ok(self.reconcile_entries(entries))
+    }
+
+    pub fn reconcile_entries(
+        &self,
+        entries: Vec<TranscriptToolUseEntry>,
+    ) -> Vec<TranscriptCanaryOutcome> {
+        entries
+            .into_iter()
+            .map(|entry| {
+                if self.pre_hook_ids.contains(&entry.tool_use_id) {
+                    TranscriptCanaryOutcome::MatchedPreHook { entry }
                 } else {
-                    outcomes.push(TranscriptCanaryOutcome::CanaryMissed {
+                    TranscriptCanaryOutcome::CanaryMissed {
                         reason: "canary-missed",
                         entry,
-                    });
+                    }
                 }
-            }
-        }
-        Ok(outcomes)
+            })
+            .collect()
     }
+}
+
+fn open_verified_regular_transcript(path: &Path) -> Result<Option<File>, MacOsSensorError> {
+    let lstat = match std::fs::symlink_metadata(path) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => {
+            return Err(MacOsSensorError::Source(format!(
+                "failed inspecting transcript `{}`: {e}",
+                path.display()
+            )));
+        }
+    };
+    if lstat.file_type().is_symlink() || !lstat.file_type().is_file() {
+        return Err(MacOsSensorError::Source(format!(
+            "refusing symlink or non-regular transcript `{}`",
+            path.display()
+        )));
+    }
+    #[cfg(windows)]
+    if (lstat.file_attributes() & WIN_FILE_ATTRIBUTE_REPARSE_POINT) != 0 {
+        return Err(MacOsSensorError::Source(format!(
+            "refusing reparse point transcript `{}`",
+            path.display()
+        )));
+    }
+    let mut opts = OpenOptions::new();
+    opts.read(true);
+    #[cfg(unix)]
+    opts.custom_flags(libc::O_NOFOLLOW);
+    #[cfg(windows)]
+    opts.custom_flags(WIN_FILE_FLAG_OPEN_REPARSE_POINT);
+    let file = opts.open(path).map_err(|e| {
+        MacOsSensorError::Source(format!(
+            "failed opening transcript `{}`: {e}",
+            path.display()
+        ))
+    })?;
+    let fstat = file
+        .metadata()
+        .map_err(|e| MacOsSensorError::Source(format!("transcript metadata failed: {e}")))?;
+    #[cfg(windows)]
+    if (fstat.file_attributes() & WIN_FILE_ATTRIBUTE_REPARSE_POINT) != 0 {
+        return Err(MacOsSensorError::Source(format!(
+            "refusing opened reparse transcript `{}`",
+            path.display()
+        )));
+    }
+    if !fstat.file_type().is_file() {
+        return Err(MacOsSensorError::Source(format!(
+            "refusing non-regular opened transcript `{}`",
+            path.display()
+        )));
+    }
+    Ok(Some(file))
 }
 
 fn drain_oversize_line(
     reader: &mut BufReader<File>,
     byte_offset: &mut u64,
     initial_bytes: usize,
+    skip_cap_bytes: usize,
 ) -> Result<bool, MacOsSensorError> {
     let mut skipped = initial_bytes;
     let mut scratch = [0u8; 4_096];
-    while skipped <= MAX_SKIPPED_OVERSIZE_BYTES {
+    while skipped <= skip_cap_bytes {
         let n = reader
             .read(&mut scratch)
             .map_err(|e| MacOsSensorError::Source(format!("transcript drain failed: {e}")))?;
@@ -234,53 +366,8 @@ fn drain_oversize_line(
         skipped = skipped.saturating_add(n);
     }
     Err(MacOsSensorError::Source(format!(
-        "transcript single line exceeded {MAX_SKIPPED_OVERSIZE_BYTES} byte hard cap"
+        "transcript single line exceeded {skip_cap_bytes} byte hard cap"
     )))
-}
-
-fn parse_transcript_line(raw: &str) -> Option<TranscriptToolUseEntry> {
-    if raw.is_empty() {
-        return None;
-    }
-    let val: serde_json::Value = serde_json::from_str(raw).ok()?;
-    let kind = val.get("type")?.as_str()?;
-    if kind != "tool_use" {
-        return None;
-    }
-    let tool_use_id = val
-        .get("id")
-        .and_then(|v| v.as_str())
-        .or_else(|| val.get("tool_use_id").and_then(|v| v.as_str()))?
-        .to_string();
-    let session_id = val
-        .get("session_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown")
-        .to_string();
-    let tool_name = val
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown")
-        .to_string();
-    let target = val
-        .get("input")
-        .and_then(|obj| obj.get("command").or_else(|| obj.get("path")))
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let observed_at = val
-        .get("timestamp")
-        .and_then(|v| v.as_str())
-        .and_then(|s| s.parse::<Timestamp>().ok())
-        .unwrap_or(Timestamp::UNIX_EPOCH);
-
-    Some(TranscriptToolUseEntry {
-        tool_use_id,
-        session_id,
-        tool_name,
-        target,
-        observed_at,
-    })
 }
 
 #[cfg(test)]
@@ -288,28 +375,60 @@ mod tests {
     use super::*;
     use std::io::Write;
 
+    struct UnprivilegedEngineMockParser;
+
+    impl TranscriptDeltaParser for UnprivilegedEngineMockParser {
+        fn parse_raw_delta(
+            &mut self,
+            _path_hint: &str,
+            raw_bytes: &[u8],
+        ) -> Result<Vec<TranscriptToolUseEntry>, MacOsSensorError> {
+            let text = std::str::from_utf8(raw_bytes)
+                .map_err(|e| MacOsSensorError::Source(e.to_string()))?;
+            let mut out = Vec::new();
+            for line in text.lines() {
+                if let Some((id, cmd)) = line.split_once('|') {
+                    out.push(TranscriptToolUseEntry {
+                        tool_use_id: id.trim().to_string(),
+                        session_id: "s1".to_string(),
+                        tool_name: "Bash".to_string(),
+                        target: cmd.trim().to_string(),
+                        observed_at: Timestamp::UNIX_EPOCH,
+                    });
+                }
+            }
+            Ok(out)
+        }
+    }
+
     #[test]
-    fn detects_canary_missed_when_tool_use_lacks_pre_hook_and_handles_truncation() {
+    fn hands_off_bounded_fd_and_reconciles_via_unprivileged_parser_port() {
         let dir = std::env::temp_dir().join(format!("grdr-transcript-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("create test dir");
         let path = dir.join("session.jsonl");
         {
-            let mut f = File::create(&path).expect("create jsonl");
-            writeln!(
-                f,
-                "{{\"type\":\"tool_use\",\"id\":\"tu-seen\",\"session_id\":\"s1\",\"name\":\"Bash\",\"input\":{{\"command\":\"ls\"}}}}"
-            )
-            .expect("write seen line");
-            writeln!(
-                f,
-                "{{\"type\":\"tool_use\",\"id\":\"tu-unhooked\",\"session_id\":\"s1\",\"name\":\"Bash\",\"input\":{{\"command\":\"curl evil\"}}}}"
-            )
-            .expect("write missed line");
+            let mut f = File::create(&path).expect("create transcript");
+            writeln!(f, "tu-seen|ls").expect("write seen line");
+            writeln!(f, "tu-unhooked|curl evil").expect("write missed line");
         }
 
+        let mut parser = UnprivilegedEngineMockParser;
         let mut tailer = TranscriptTailer::new(&path);
         tailer.record_pre_hook("tu-seen");
-        let batch = tailer.poll_reconciled(10).expect("poll lines");
+
+        let handoff = tailer
+            .open_fd_handoff()
+            .expect("open handoff")
+            .expect("some handoff");
+        assert_eq!(handoff.start_offset(), 0);
+        assert!(handoff.file_len() > 0);
+        assert!(!handoff.was_truncated());
+        drop(handoff);
+
+        let batch = tailer
+            .poll_reconciled_with(&mut parser, 65_536)
+            .expect("poll reconciled");
         assert_eq!(batch.len(), 2);
         assert!(matches!(
             batch.first(),
@@ -322,14 +441,11 @@ mod tests {
         ));
 
         File::create(&path)
-            .and_then(|mut f| {
-                writeln!(
-                    f,
-                    "{{\"type\":\"tool_use\",\"id\":\"tu-after-rotate\",\"session_id\":\"s1\",\"name\":\"Read\",\"input\":{{\"path\":\"/etc/hosts\"}}}}"
-                )
-            })
+            .and_then(|mut f| writeln!(f, "tu-after-rotate|/etc/hosts"))
             .expect("truncate and write shorter line");
-        let after_rotate = tailer.poll_reconciled(10).expect("poll rotated");
+        let after_rotate = tailer
+            .poll_reconciled_with(&mut parser, 65_536)
+            .expect("poll rotated");
         assert_eq!(after_rotate.len(), 1);
         assert!(matches!(
             after_rotate.first(),
@@ -338,18 +454,14 @@ mod tests {
 
         let oversize_path = dir.join("oversize.jsonl");
         {
-            let mut f = File::create(&oversize_path).expect("create oversize jsonl");
-            let big = "a".repeat(MAX_LINE_BYTES + 128);
+            let mut f = File::create(&oversize_path).expect("create oversize log");
+            let big = "a".repeat(66_000);
             writeln!(f, "{big}").expect("write oversize line");
-            writeln!(
-                f,
-                "{{\"type\":\"tool_use\",\"id\":\"tu-after-big\",\"session_id\":\"s1\",\"name\":\"Read\",\"input\":{{\"path\":\"/etc/passwd\"}}}}"
-            )
-            .expect("write trailing valid line");
+            writeln!(f, "tu-after-big|/etc/passwd").expect("write trailing valid line");
         }
-        let mut big_tailer = TranscriptTailer::new(&oversize_path);
+        let mut big_tailer = TranscriptTailer::new(&oversize_path).with_chunk_cap(4_096);
         let after_big = big_tailer
-            .poll_reconciled(10)
+            .poll_reconciled_with(&mut parser, 4_096)
             .expect("skip bounded oversize");
         assert_eq!(after_big.len(), 1);
         assert!(matches!(
@@ -362,7 +474,7 @@ mod tests {
             let link_path = dir.join("link.jsonl");
             std::os::unix::fs::symlink(&path, &link_path).expect("create unix symlink");
             let mut link_tailer = TranscriptTailer::new(&link_path);
-            assert!(link_tailer.poll_reconciled(10).is_err());
+            assert!(link_tailer.open_fd_handoff().is_err());
         }
 
         let _ = std::fs::remove_dir_all(&dir);

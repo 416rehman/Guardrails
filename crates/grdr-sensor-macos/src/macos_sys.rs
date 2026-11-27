@@ -7,20 +7,21 @@ use std::ptr::{null, null_mut};
 
 use crate::MacOsSensorError;
 use crate::es_tree::ProcessTreeKey;
-use crate::macos_probes::MacOsProcessIdentity;
+use crate::macos_probes::{MacOsProcessIdentity, parse_kern_procargs2};
+use crate::macos_seccode::{
+    SigningTrust, darwin_read_guest_seccode_by_audit, darwin_read_guest_seccode_info,
+};
 
 const PROC_PIDUNIQIDENTIFIERINFO: c_int = 17;
-const CF_STRING_ENCODING_UTF8: u32 = 0x0800_0100;
-const K_CF_NUMBER_SINT32_TYPE: isize = 3;
-const K_CF_NUMBER_SINT64_TYPE: isize = 4;
-const K_SEC_CS_SIGNING_INFORMATION: u32 = 1 << 1;
-const K_SEC_CS_DYNAMIC_INFORMATION: u32 = 1 << 3;
-const CS_VALID: u32 = 0x0000_0001;
-const CS_ADHOC: u32 = 0x0000_0002;
-
-struct CfGuard(*const c_void);
+const DARWIN_PROC_ALL_PIDS: u32 = 1;
+const DARWIN_CTL_KERN: c_int = 1;
+const DARWIN_KERN_ARGMAX: c_int = 8;
+const DARWIN_KERN_PROCARGS2: c_int = 49;
+const MAX_PROCARGS_BYTES: usize = 262_144;
+const MAX_LIST_PIDS: usize = 32_768;
 
 #[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 struct ProcUniqIdentifierInfo {
     p_uuid: [u8; 16],
     p_uniqueid: u64,
@@ -31,78 +32,21 @@ struct ProcUniqIdentifierInfo {
     p_reserve3: u64,
 }
 
-struct SecCodeOutcome {
-    team_id: Option<String>,
-    signing_id: Option<String>,
-    adhoc_signed: bool,
-}
-
-#[link(name = "CoreFoundation", kind = "framework")]
 #[allow(
     unsafe_code,
-    reason = "Apple CoreFoundation bindings for Security framework calls."
+    reason = "Darwin libSystem process enumeration, sysctl argv lookup, and Seatbelt bindings."
 )]
-// SAFETY: Standard Apple CoreFoundation C ABI declarations matching CFBase/CFString/CFNumber/CFDictionary headers.
+// SAFETY: Standard Darwin libSystem C ABI symbols matching <libproc.h>, <sys/sysctl.h>, and <sandbox.h>.
 unsafe extern "C" {
-    static kCFTypeDictionaryKeyCallBacks: u8;
-    static kCFTypeDictionaryValueCallBacks: u8;
-    fn CFRelease(cf: *const c_void);
-    fn CFStringGetCString(
-        the_string: *const c_void,
-        buffer: *mut c_char,
-        buffer_size: isize,
-        encoding: u32,
-    ) -> u8;
-    fn CFNumberCreate(
-        allocator: *const c_void,
-        the_type: isize,
-        value_ptr: *const c_void,
-    ) -> *const c_void;
-    fn CFNumberGetValue(number: *const c_void, the_type: isize, value_ptr: *mut c_void) -> u8;
-    fn CFDictionaryCreate(
-        allocator: *const c_void,
-        keys: *const *const c_void,
-        values: *const *const c_void,
-        num_values: isize,
-        key_callbacks: *const c_void,
-        value_callbacks: *const c_void,
-    ) -> *const c_void;
-    fn CFDictionaryGetValue(the_dict: *const c_void, key: *const c_void) -> *const c_void;
-}
-
-#[link(name = "Security", kind = "framework")]
-#[allow(
-    unsafe_code,
-    non_upper_case_globals,
-    reason = "Apple Security framework bindings for SecCodeCopyGuestWithAttributes and SecCodeCheckValidity."
-)]
-// SAFETY: Standard Apple Security.framework C ABI symbols matching <Security/SecCode.h>.
-unsafe extern "C" {
-    static kSecGuestAttributePid: *const c_void;
-    static kSecCodeInfoTeamIdentifier: *const c_void;
-    static kSecCodeInfoIdentifier: *const c_void;
-    static kSecCodeInfoFlags: *const c_void;
-    static kSecCodeInfoStatus: *const c_void;
-    fn SecCodeCopyGuestWithAttributes(
-        host: *const c_void,
-        attributes: *const c_void,
-        flags: u32,
-        guest: *mut *const c_void,
-    ) -> i32;
-    fn SecCodeCheckValidity(code: *const c_void, flags: u32, requirement: *const c_void) -> i32;
-    fn SecCodeCopySigningInformation(
-        code: *const c_void,
-        flags: u32,
-        information: *mut *const c_void,
-    ) -> i32;
-}
-
-#[allow(
-    unsafe_code,
-    reason = "Apple libSystem Seatbelt sandbox initialization bindings."
-)]
-// SAFETY: Darwin libSystem sandbox_init_with_parameters / sandbox_free_error C ABI.
-unsafe extern "C" {
+    fn proc_listpids(type_: u32, typeinfo: u32, buffer: *mut c_void, buffersize: c_int) -> c_int;
+    fn sysctl(
+        name: *mut c_int,
+        namelen: u32,
+        oldp: *mut c_void,
+        oldlenp: *mut usize,
+        newp: *mut c_void,
+        newlen: usize,
+    ) -> c_int;
     fn sandbox_init_with_parameters(
         profile: *const c_char,
         flags: u64,
@@ -112,17 +56,58 @@ unsafe extern "C" {
     fn sandbox_free_error(errorbuf: *mut c_char);
 }
 
-impl Drop for CfGuard {
-    fn drop(&mut self) {
-        if !self.0.is_null() {
-            #[allow(unsafe_code, reason = "Release owned CoreFoundation object reference.")]
-            // SAFETY: Non-null CFTypeRef created/retained by CoreFoundation or Security framework.
-            let () = unsafe {
-                CFRelease(self.0);
-            };
-            self.0 = null();
+pub(crate) fn darwin_list_pids() -> Result<Vec<u32>, MacOsSensorError> {
+    #[allow(
+        unsafe_code,
+        reason = "Query required buffer size from Darwin proc_listpids."
+    )]
+    // SAFETY: Passing null buffer with zero size returns required byte count per Darwin libproc ABI.
+    let needed = unsafe { proc_listpids(DARWIN_PROC_ALL_PIDS, 0, null_mut(), 0) };
+    if needed <= 0 {
+        return Ok(Vec::new());
+    }
+    let elem_size = std::mem::size_of::<libc::pid_t>();
+    let needed_usize = usize::try_from(needed).unwrap_or(0);
+    let est_count = needed_usize
+        .saturating_add(elem_size.saturating_mul(64))
+        .checked_div(elem_size)
+        .unwrap_or(0)
+        .min(MAX_LIST_PIDS);
+    if est_count == 0 {
+        return Ok(Vec::new());
+    }
+    let mut pids: Vec<libc::pid_t> = vec![0; est_count];
+    let byte_cap = c_int::try_from(est_count.saturating_mul(elem_size)).unwrap_or(c_int::MAX);
+    #[allow(
+        unsafe_code,
+        reason = "Read active Darwin process ID list via proc_listpids."
+    )]
+    // SAFETY: pids buffer holds at least byte_cap writable bytes.
+    let written = unsafe {
+        proc_listpids(
+            DARWIN_PROC_ALL_PIDS,
+            0,
+            pids.as_mut_ptr().cast::<c_void>(),
+            byte_cap,
+        )
+    };
+    if written <= 0 {
+        return Ok(Vec::new());
+    }
+    let count = usize::try_from(written)
+        .unwrap_or(0)
+        .checked_div(elem_size)
+        .unwrap_or(0)
+        .min(pids.len());
+    let mut out = Vec::with_capacity(count);
+    for &raw_pid in pids.get(..count).unwrap_or_default() {
+        if let Ok(pid) = u32::try_from(raw_pid)
+            && pid > 0
+        {
+            out.push(pid);
         }
     }
+    Ok(out)
 }
 
 pub(crate) fn darwin_inspect_process(
@@ -136,60 +121,17 @@ pub(crate) fn darwin_inspect_process(
         ));
     }
 
-    #[allow(
-        unsafe_code,
-        reason = "Zero-initialize Darwin proc_bsdinfo buffer for proc_pidinfo."
-    )]
-    // SAFETY: proc_bsdinfo is a C POD struct valid when zeroed.
-    let mut bsd_info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
-    let bsd_size = c_int::try_from(std::mem::size_of::<libc::proc_bsdinfo>()).unwrap_or(0);
-    #[allow(
-        unsafe_code,
-        reason = "Read macOS process parent PID, UID, and start timestamp via proc_pidinfo."
-    )]
-    // SAFETY: bsd_info points to valid writable storage of bsd_size bytes.
-    let got_info = unsafe {
-        libc::proc_pidinfo(
-            raw_pid,
-            libc::PROC_PIDTBSDINFO,
-            0,
-            (&mut bsd_info as *mut libc::proc_bsdinfo).cast::<c_void>(),
-            bsd_size,
-        )
-    };
-    if got_info != bsd_size {
+    let Some(uniq_before) = read_proc_uniq_info(raw_pid) else {
         return Ok(None);
-    }
+    };
+    let Some(bsd_before) = read_proc_bsd_info(raw_pid) else {
+        return Ok(None);
+    };
 
-    #[allow(
-        unsafe_code,
-        reason = "Zero-initialize Darwin proc_uniqidentifierinfo buffer for proc_pidinfo."
-    )]
-    // SAFETY: ProcUniqIdentifierInfo matches XNU struct proc_uniqidentifierinfo POD layout.
-    let mut uniq_info: ProcUniqIdentifierInfo = unsafe { std::mem::zeroed() };
-    let uniq_size = c_int::try_from(std::mem::size_of::<ProcUniqIdentifierInfo>()).unwrap_or(0);
-    #[allow(
-        unsafe_code,
-        reason = "Read macOS process p_idversion and unique ID via PROC_PIDUNIQIDENTIFIERINFO."
-    )]
-    // SAFETY: uniq_info points to writable storage of uniq_size bytes matching XNU layout.
-    let got_uniq = unsafe {
-        libc::proc_pidinfo(
-            raw_pid,
-            PROC_PIDUNIQIDENTIFIERINFO,
-            0,
-            (&mut uniq_info as *mut ProcUniqIdentifierInfo).cast::<c_void>(),
-            uniq_size,
-        )
-    };
-    let pidversion = if got_uniq == uniq_size {
-        u32::try_from(uniq_info.p_idversion)
-            .ok()
-            .filter(|v| *v != 0)
-            .unwrap_or_else(|| u32::try_from(uniq_info.p_uniqueid & 0xffff_ffff).unwrap_or(0))
-    } else {
-        u32::try_from(bsd_info.pbi_start_tvsec & 0xffff_ffff).unwrap_or(0)
-    };
+    let pidversion = u32::try_from(uniq_before.p_idversion)
+        .ok()
+        .filter(|v| *v != 0)
+        .unwrap_or_else(|| u32::try_from(uniq_before.p_uniqueid & 0xffff_ffff).unwrap_or(0));
 
     let cap = usize::try_from(libc::PROC_PIDPATHINFO_MAXSIZE).unwrap_or(4_096);
     let mut path_buf = vec![0u8; cap];
@@ -211,130 +153,143 @@ pub(crate) fn darwin_inspect_process(
     };
 
     let sec = darwin_read_guest_seccode_info(raw_pid);
+    let argv = darwin_read_procargs2(raw_pid);
+
+    // Eliminate PID-reuse TOCTOU across proc_pidinfo / kSecGuestAttributePid / sysctl lookups.
+    let Some(uniq_after) = read_proc_uniq_info(raw_pid) else {
+        return Ok(None);
+    };
+    let Some(bsd_after) = read_proc_bsd_info(raw_pid) else {
+        return Ok(None);
+    };
+    if uniq_before.p_uniqueid != uniq_after.p_uniqueid
+        || uniq_before.p_idversion != uniq_after.p_idversion
+        || bsd_before.pbi_start_tvsec != bsd_after.pbi_start_tvsec
+    {
+        return Ok(None);
+    }
 
     Ok(Some(MacOsProcessIdentity {
         key: ProcessTreeKey { pid, pidversion },
-        parent_pid: bsd_info.pbi_ppid,
-        uid: bsd_info.pbi_uid,
+        parent_pid: bsd_before.pbi_ppid,
+        uid: bsd_before.pbi_uid,
         executable_path,
         team_id: sec.team_id,
         signing_id: sec.signing_id,
-        adhoc_signed: sec.adhoc_signed,
+        cdhash: sec.cdhash,
+        argv,
+        adhoc_signed: sec.trust != SigningTrust::ValidSigned,
     }))
 }
 
-fn darwin_read_guest_seccode_info(raw_pid: c_int) -> SecCodeOutcome {
-    let empty = SecCodeOutcome {
-        team_id: None,
-        signing_id: None,
-        adhoc_signed: false,
-    };
+#[allow(dead_code)]
+pub(crate) fn darwin_verify_audit_token_cdhash(audit_token_bytes: &[u8; 32]) -> Option<String> {
+    let outcome = darwin_read_guest_seccode_by_audit(audit_token_bytes);
+    if outcome.trust != SigningTrust::ValidSigned {
+        return None;
+    }
+    outcome.cdhash
+}
 
+fn read_proc_bsd_info(raw_pid: c_int) -> Option<libc::proc_bsdinfo> {
     #[allow(
         unsafe_code,
-        reason = "Allocate CFNumberRef wrapping process PID for guest attribute lookup."
+        reason = "Zero-initialize Darwin proc_bsdinfo buffer for proc_pidinfo."
     )]
-    // SAFETY: raw_pid lives on stack for duration of CFNumberCreate; retained object is freed by CfGuard.
-    let cf_pid = unsafe {
-        CFNumberCreate(
-            null(),
-            K_CF_NUMBER_SINT32_TYPE,
-            (&raw_pid as *const c_int).cast::<c_void>(),
+    // SAFETY: proc_bsdinfo is a C POD struct valid when zeroed.
+    let mut bsd_info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+    let bsd_size = c_int::try_from(std::mem::size_of::<libc::proc_bsdinfo>()).unwrap_or(0);
+    #[allow(
+        unsafe_code,
+        reason = "Read macOS process parent PID, UID, and start timestamp via proc_pidinfo."
+    )]
+    // SAFETY: bsd_info points to valid writable storage of bsd_size bytes.
+    let got_info = unsafe {
+        libc::proc_pidinfo(
+            raw_pid,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            (&mut bsd_info as *mut libc::proc_bsdinfo).cast::<c_void>(),
+            bsd_size,
         )
     };
-    if cf_pid.is_null() {
-        return empty;
-    }
-    let _pid_guard = CfGuard(cf_pid);
+    (got_info == bsd_size).then_some(bsd_info)
+}
 
+fn read_proc_uniq_info(raw_pid: c_int) -> Option<ProcUniqIdentifierInfo> {
     #[allow(
         unsafe_code,
-        reason = "Build CFDictionaryRef with kSecGuestAttributePid for SecCodeCopyGuestWithAttributes."
+        reason = "Zero-initialize Darwin proc_uniqidentifierinfo buffer for proc_pidinfo."
     )]
-    // SAFETY: kSecGuestAttributePid is a constant CFStringRef and cf_pid is valid; dictionary freed by CfGuard.
-    let attrs_dict = unsafe {
-        let keys = [kSecGuestAttributePid];
-        let vals = [cf_pid];
-        CFDictionaryCreate(
-            null(),
-            keys.as_ptr(),
-            vals.as_ptr(),
-            1,
-            (&raw const kCFTypeDictionaryKeyCallBacks).cast::<c_void>(),
-            (&raw const kCFTypeDictionaryValueCallBacks).cast::<c_void>(),
+    // SAFETY: ProcUniqIdentifierInfo matches XNU struct proc_uniqidentifierinfo POD layout.
+    let mut uniq_info: ProcUniqIdentifierInfo = unsafe { std::mem::zeroed() };
+    let uniq_size = c_int::try_from(std::mem::size_of::<ProcUniqIdentifierInfo>()).unwrap_or(0);
+    #[allow(
+        unsafe_code,
+        reason = "Read macOS process p_idversion and unique ID via PROC_PIDUNIQIDENTIFIERINFO."
+    )]
+    // SAFETY: uniq_info points to writable storage of uniq_size bytes matching XNU layout.
+    let got_uniq = unsafe {
+        libc::proc_pidinfo(
+            raw_pid,
+            PROC_PIDUNIQIDENTIFIERINFO,
+            0,
+            (&mut uniq_info as *mut ProcUniqIdentifierInfo).cast::<c_void>(),
+            uniq_size,
         )
     };
-    if attrs_dict.is_null() {
-        return empty;
-    }
-    let _attrs_guard = CfGuard(attrs_dict);
+    (got_uniq == uniq_size).then_some(uniq_info)
+}
 
-    let mut guest_code: *const c_void = null();
+fn darwin_read_procargs2(raw_pid: c_int) -> Vec<String> {
+    let mut argmax: c_int = 0;
+    let mut argmax_len = std::mem::size_of::<c_int>();
+    let mut argmax_mib = [DARWIN_CTL_KERN, DARWIN_KERN_ARGMAX];
     #[allow(
         unsafe_code,
-        reason = "Resolve running guest SecCodeRef by PID to avoid path TOCTOU."
+        reason = "Query KERN_ARGMAX buffer size limit via sysctl."
     )]
-    let guest_rc = {
-        // SAFETY: attrs_dict is a valid CFDictionaryRef and guest_code receives retained SecCodeRef.
-        unsafe { SecCodeCopyGuestWithAttributes(null(), attrs_dict, 0, &mut guest_code) }
-    };
-    if guest_rc != 0 || guest_code.is_null() {
-        return empty;
-    }
-    let _code_guard = CfGuard(guest_code);
-
-    #[allow(
-        unsafe_code,
-        reason = "Verify live running guest code signature validity."
-    )]
-    // SAFETY: guest_code is a retained live SecCodeRef checked with default flags and null requirement.
-    let valid_rc = unsafe { SecCodeCheckValidity(guest_code, 0, null()) };
-    if valid_rc != 0 {
-        return empty;
-    }
-
-    let mut info_dict: *const c_void = null();
-    #[allow(
-        unsafe_code,
-        reason = "Copy dynamic and static signing metadata from verified SecCodeRef."
-    )]
-    // SAFETY: guest_code is live and info_dict receives retained CFDictionaryRef released by CfGuard.
-    let info_rc = unsafe {
-        SecCodeCopySigningInformation(
-            guest_code,
-            K_SEC_CS_SIGNING_INFORMATION | K_SEC_CS_DYNAMIC_INFORMATION,
-            &mut info_dict,
+    // SAFETY: argmax_mib is 2 elements and argmax holds argmax_len bytes.
+    let rc_max = unsafe {
+        sysctl(
+            argmax_mib.as_mut_ptr(),
+            2,
+            (&mut argmax as *mut c_int).cast::<c_void>(),
+            &mut argmax_len,
+            null_mut(),
+            0,
         )
     };
-    if info_rc != 0 || info_dict.is_null() {
-        return empty;
-    }
-    let _dict_guard = CfGuard(info_dict);
-
+    let cap = if rc_max == 0 && argmax > 0 {
+        usize::try_from(argmax)
+            .unwrap_or(65_536)
+            .min(MAX_PROCARGS_BYTES)
+    } else {
+        65_536
+    };
+    let mut buf = vec![0u8; cap];
+    let mut buf_len = buf.len();
+    let mut mib = [DARWIN_CTL_KERN, DARWIN_KERN_PROCARGS2, raw_pid];
     #[allow(
         unsafe_code,
-        reason = "Read signing status, flags, TeamIdentifier, and Identifier from verified SecCode dictionary."
+        reason = "Read process argc and argv strings via sysctl KERN_PROCARGS2."
     )]
-    // SAFETY: info_dict is a valid CFDictionaryRef and kSecCodeInfo* keys are Apple constant CFStringRefs.
-    let outcome = unsafe {
-        let status_flags = cfnumber_to_u32(CFDictionaryGetValue(info_dict, kSecCodeInfoStatus));
-        if (status_flags.unwrap_or(0) & CS_VALID) == 0 {
-            empty
-        } else {
-            let code_flags = cfnumber_to_u32(CFDictionaryGetValue(info_dict, kSecCodeInfoFlags));
-            let adhoc_signed = code_flags.is_some_and(|f| (f & CS_ADHOC) != 0);
-            let team_id =
-                cfstring_to_rust(CFDictionaryGetValue(info_dict, kSecCodeInfoTeamIdentifier));
-            let signing_id =
-                cfstring_to_rust(CFDictionaryGetValue(info_dict, kSecCodeInfoIdentifier));
-            SecCodeOutcome {
-                team_id,
-                signing_id,
-                adhoc_signed,
-            }
-        }
+    // SAFETY: mib is 3 elements and buf holds buf_len writable bytes.
+    let rc = unsafe {
+        sysctl(
+            mib.as_mut_ptr(),
+            3,
+            buf.as_mut_ptr().cast::<c_void>(),
+            &mut buf_len,
+            null_mut(),
+            0,
+        )
     };
-    outcome
+    if rc != 0 || buf_len == 0 {
+        return Vec::new();
+    }
+    let slice = buf.get(..buf_len.min(buf.len())).unwrap_or_default();
+    parse_kern_procargs2(slice)
 }
 
 pub(crate) fn darwin_apply_seatbelt_profile(profile_sbpl: &str) -> Result<(), MacOsSensorError> {
@@ -355,12 +310,11 @@ pub(crate) fn darwin_apply_seatbelt_profile(profile_sbpl: &str) -> Result<(), Ma
                 reason = "Extract Seatbelt error string before calling sandbox_free_error."
             )]
             // SAFETY: err_buf is a non-null NUL-terminated C string from sandbox_init_with_parameters.
-            let msg_owned = unsafe {
+            unsafe {
                 let s = CStr::from_ptr(err_buf).to_string_lossy().into_owned();
                 sandbox_free_error(err_buf);
                 s
-            };
-            msg_owned
+            }
         } else {
             format!("sandbox_init_with_parameters returned {rc}")
         };
@@ -374,59 +328,4 @@ pub(crate) fn darwin_apply_seatbelt_profile(profile_sbpl: &str) -> Result<(), Ma
         };
     }
     Ok(())
-}
-
-#[allow(
-    unsafe_code,
-    reason = "Extract u32 value from borrowed CFNumberRef inside verified CFDictionaryRef."
-)]
-// SAFETY: Caller passes null or a borrowed CFNumberRef inside a live retained CFDictionaryRef.
-unsafe fn cfnumber_to_u32(cf_num: *const c_void) -> Option<u32> {
-    if cf_num.is_null() {
-        return None;
-    }
-    let mut out: i64 = 0;
-    #[allow(unsafe_code, reason = "Copy integer value from borrowed CFNumberRef.")]
-    // SAFETY: cf_num is verified non-null and out points to valid i64 stack storage.
-    let ok = unsafe {
-        CFNumberGetValue(
-            cf_num,
-            K_CF_NUMBER_SINT64_TYPE,
-            (&mut out as *mut i64).cast::<c_void>(),
-        )
-    };
-    if ok == 0 {
-        return None;
-    }
-    u32::try_from(out).ok()
-}
-
-#[allow(
-    unsafe_code,
-    reason = "Extract UTF-8 string bytes from borrowed CFStringRef."
-)]
-// SAFETY: Caller passes null or a borrowed CFStringRef value inside a retained CFDictionaryRef.
-unsafe fn cfstring_to_rust(cf_str: *const c_void) -> Option<String> {
-    if cf_str.is_null() {
-        return None;
-    }
-    let mut buf = [0u8; 512];
-    #[allow(
-        unsafe_code,
-        reason = "Copy CFStringRef bytes into fixed stack buffer."
-    )]
-    // SAFETY: cf_str is verified non-null borrowed CFStringRef and buf holds 512 writable bytes.
-    let ok = unsafe {
-        CFStringGetCString(
-            cf_str,
-            buf.as_mut_ptr().cast::<c_char>(),
-            isize::try_from(buf.len()).unwrap_or(512),
-            CF_STRING_ENCODING_UTF8,
-        )
-    };
-    if ok == 0 {
-        return None;
-    }
-    let nul = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-    String::from_utf8(buf.get(..nul)?.to_vec()).ok()
 }

@@ -1,0 +1,14 @@
+# macOS containment delegation defaults (docs/design/09-sensor-macos.md section 4, D-21, P14).
+# Validated against canonical packs/catalogue/catalogue.yaml at compile time by build.rs.
+
+[agent.claude-code]
+native_sandbox = "seatbelt"
+delegation_mode = "delegate"
+
+[agent.codex]
+native_sandbox = "seatbelt"
+delegation_mode = "delegate"
+
+[agent.cursor]
+native_sandbox = "none"
+delegation_mode = "wrap_tools"
