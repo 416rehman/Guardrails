@@ -3,7 +3,9 @@
 
 use std::collections::BTreeMap;
 
-use crate::limits_types::{LIMITS_SCHEMA_V1ALPHA1, LimitsError};
+use crate::limits_types::{
+    BrokerCircuitBreakerLimits, BrokerLimits, LIMITS_SCHEMA_V1ALPHA1, LimitsError,
+};
 
 pub(crate) type SectionMap<'a> = BTreeMap<String, BTreeMap<String, (&'a str, usize)>>;
 
@@ -229,6 +231,18 @@ const ALLOWED_SECTIONS: &[(&str, &[&str])] = &[
             "rollback_circuit_breaker_pct",
         ],
     ),
+    ("broker", &["max_worker_threads"]),
+    (
+        "broker.circuit_breaker",
+        &[
+            "consecutive_failures",
+            "window_ms",
+            "min_calls",
+            "error_rate_bp",
+            "cooldown_ms",
+            "max_outcomes",
+        ],
+    ),
 ];
 
 pub(crate) fn parse_sections(src: &str) -> Result<SectionMap<'_>, LimitsError> {
@@ -445,4 +459,47 @@ fn full_key(section: &str, key: &str) -> String {
     } else {
         format!("{section}.{key}")
     }
+}
+
+pub(crate) fn parse_broker(sections: &SectionMap<'_>) -> Result<BrokerLimits, LimitsError> {
+    let s = "broker.circuit_breaker";
+    Ok(BrokerLimits {
+        max_worker_threads: req_usize(sections, "broker", "max_worker_threads")?,
+        circuit_breaker: BrokerCircuitBreakerLimits {
+            consecutive_failures: req_u32(sections, s, "consecutive_failures")?,
+            window_ms: req_u64(sections, s, "window_ms")?,
+            min_calls: req_usize(sections, s, "min_calls")?,
+            error_rate_bp: req_u64(sections, s, "error_rate_bp")?,
+            cooldown_ms: req_u64(sections, s, "cooldown_ms")?,
+            max_outcomes: req_usize(sections, s, "max_outcomes")?,
+        },
+    })
+}
+
+pub(crate) fn validate_broker(b: &BrokerLimits) -> Result<(), LimitsError> {
+    if b.max_worker_threads == 0 || b.max_worker_threads > 64 {
+        return Err(LimitsError::InvalidBound {
+            key: "broker.max_worker_threads".to_string(),
+            reason: "must be in 1..=64".to_string(),
+        });
+    }
+    let cb = &b.circuit_breaker;
+    if cb.consecutive_failures == 0
+        || cb.window_ms == 0
+        || cb.min_calls == 0
+        || cb.cooldown_ms == 0
+        || cb.max_outcomes == 0
+    {
+        return Err(LimitsError::InvalidBound {
+            key: "broker.circuit_breaker".to_string(),
+            reason: "circuit breaker thresholds and capacities must be > 0".to_string(),
+        });
+    }
+    if cb.error_rate_bp > 10_000 {
+        return Err(LimitsError::InvalidBound {
+            key: "broker.circuit_breaker.error_rate_bp".to_string(),
+            reason: "must be <= 10000".to_string(),
+        });
+    }
+    Ok(())
 }

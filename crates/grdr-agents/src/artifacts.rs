@@ -1,192 +1,198 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
-use std::fs;
-use std::path::{Path, PathBuf};
+//! Dynamic P14 agent artifact route compilation and scan orchestration (`docs/design/05`).
 
-use grdr_crypto::{Sha256Hasher, encode_lower_hex};
+use std::collections::BTreeMap;
+use std::path::Path;
+use std::sync::OnceLock;
+
 use jiff::Timestamp;
 
-use grdr_model::{ArtifactEntry, ArtifactKind, ArtifactRiskFlag, ArtifactScope, slugify_id};
+use grdr_model::{ArtifactEntry, ArtifactKind, ArtifactScope};
+use grdr_ports::{LocalFsPort, validate_safe_rel_path};
 
-use crate::parse::display_path;
+use crate::artifacts_scan::{ArtifactRouteSpec, RouteScanMode, scan_route_set};
+use crate::catalogue::AgentCatalogue;
 
-const MAX_ARTIFACT_BYTES: u64 = 10 * 1024 * 1024;
-const MAX_ARTIFACT_FILES: usize = 2000;
-const SCRIPT_EXTENSIONS: &[&str] = &["sh", "ps1", "py", "js", "mjs", "bat", "cmd"];
-const BROAD_TOOL_PATTERNS: &[&str] = &[
-    "bash(*)",
-    "allowed-tools: *",
-    "allowed_tools: *",
-    "dangerously-skip-permissions",
-    "bypasspermissions",
-    "tools: *",
-];
+static EMBEDDED_ARTIFACT_CATALOGUE: OnceLock<Option<AgentCatalogue>> = OnceLock::new();
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RouteScanMode {
-    SkillDirs,
-    MarkdownFiles,
-    CursorRuleFiles,
-    SingleFile,
-    PluginDirs,
-}
-
-struct ArtifactRouteSpec {
-    relative_path: &'static str,
+fn push_template_route(
+    specs: &mut BTreeMap<(u8, String, u8), ArtifactRouteSpec>,
+    template: &str,
     kind: ArtifactKind,
-    scope: ArtifactScope,
-    source_agent: &'static str,
-    mode: RouteScanMode,
+    agent_name: &str,
+    dir_mode: RouteScanMode,
+) {
+    if validate_safe_rel_path(template, true, false, false).is_err() {
+        return;
+    }
+    let (scope, rel) = if let Some(rest) = template.strip_prefix("$WORKSPACE/") {
+        (ArtifactScope::Workspace, rest.trim_end_matches('/'))
+    } else {
+        (ArtifactScope::User, template.trim_end_matches('/'))
+    };
+    if rel.is_empty() {
+        return;
+    }
+    let scope_rank = match scope {
+        ArtifactScope::User => 0,
+        ArtifactScope::Workspace => 1,
+        ArtifactScope::Managed => 2,
+    };
+    let kind_rank = match kind {
+        ArtifactKind::Skill => 0,
+        ArtifactKind::Plugin => 1,
+        ArtifactKind::Rule => 2,
+        ArtifactKind::Command => 3,
+        ArtifactKind::Subagent => 4,
+        ArtifactKind::Other => 5,
+    };
+    let mode = if kind == ArtifactKind::Rule && rel.ends_with(".cursor/rules") {
+        RouteScanMode::CursorRuleFiles
+    } else if kind == ArtifactKind::Rule
+        && (rel.ends_with(".md")
+            || rel.ends_with(".yml")
+            || rel.ends_with(".yaml")
+            || rel.contains("rules") && rel.rsplit('/').next().is_some_and(|n| n.starts_with('.')))
+    {
+        RouteScanMode::SingleFile
+    } else {
+        dir_mode
+    };
+    let key = (scope_rank, rel.to_owned(), kind_rank);
+    match specs.get_mut(&key) {
+        Some(existing) if existing.source_agent != agent_name => {
+            existing.source_agent = "Shared".into();
+        }
+        None => {
+            specs.insert(
+                key,
+                ArtifactRouteSpec {
+                    relative_path: rel.to_owned(),
+                    kind,
+                    scope,
+                    source_agent: agent_name.to_owned(),
+                    mode,
+                },
+            );
+        }
+        _ => {}
+    }
 }
 
-const HOME_ROUTES: &[ArtifactRouteSpec] = &[
-    ArtifactRouteSpec {
-        relative_path: ".claude/skills",
-        kind: ArtifactKind::Skill,
-        scope: ArtifactScope::User,
-        source_agent: "Claude Code",
-        mode: RouteScanMode::SkillDirs,
-    },
-    ArtifactRouteSpec {
-        relative_path: ".gemini/config/skills",
-        kind: ArtifactKind::Skill,
-        scope: ArtifactScope::User,
-        source_agent: "Gemini CLI",
-        mode: RouteScanMode::SkillDirs,
-    },
-    ArtifactRouteSpec {
-        relative_path: ".codex/skills",
-        kind: ArtifactKind::Skill,
-        scope: ArtifactScope::User,
-        source_agent: "Codex",
-        mode: RouteScanMode::SkillDirs,
-    },
-    ArtifactRouteSpec {
-        relative_path: ".claude/commands",
-        kind: ArtifactKind::Command,
-        scope: ArtifactScope::User,
-        source_agent: "Claude Code",
-        mode: RouteScanMode::MarkdownFiles,
-    },
-    ArtifactRouteSpec {
-        relative_path: ".claude/agents",
-        kind: ArtifactKind::Subagent,
-        scope: ArtifactScope::User,
-        source_agent: "Claude Code",
-        mode: RouteScanMode::MarkdownFiles,
-    },
-    ArtifactRouteSpec {
-        relative_path: ".claude/plugins",
-        kind: ArtifactKind::Plugin,
-        scope: ArtifactScope::User,
-        source_agent: "Claude Code",
-        mode: RouteScanMode::PluginDirs,
-    },
-    ArtifactRouteSpec {
-        relative_path: ".gemini/config/plugins",
-        kind: ArtifactKind::Plugin,
-        scope: ArtifactScope::User,
-        source_agent: "Gemini CLI",
-        mode: RouteScanMode::PluginDirs,
-    },
-    ArtifactRouteSpec {
-        relative_path: ".claude/CLAUDE.md",
-        kind: ArtifactKind::Rule,
-        scope: ArtifactScope::User,
-        source_agent: "Claude Code",
-        mode: RouteScanMode::SingleFile,
-    },
-    ArtifactRouteSpec {
-        relative_path: ".codex/AGENTS.md",
-        kind: ArtifactKind::Rule,
-        scope: ArtifactScope::User,
-        source_agent: "Codex",
-        mode: RouteScanMode::SingleFile,
-    },
-    ArtifactRouteSpec {
-        relative_path: ".gemini/GEMINI.md",
-        kind: ArtifactKind::Rule,
-        scope: ArtifactScope::User,
-        source_agent: "Gemini CLI",
-        mode: RouteScanMode::SingleFile,
-    },
-];
+fn build_routes_from_catalogue(
+    catalogue: &AgentCatalogue,
+) -> (Vec<ArtifactRouteSpec>, Vec<ArtifactRouteSpec>) {
+    let mut specs = BTreeMap::new();
+    for agent in catalogue.agents() {
+        let art = &agent.routes.artifacts;
+        for tmpl in &art.skills {
+            push_template_route(
+                &mut specs,
+                tmpl,
+                ArtifactKind::Skill,
+                &agent.name,
+                RouteScanMode::SkillDirs,
+            );
+        }
+        for tmpl in &art.plugins {
+            push_template_route(
+                &mut specs,
+                tmpl,
+                ArtifactKind::Plugin,
+                &agent.name,
+                RouteScanMode::PluginDirs,
+            );
+        }
+        for tmpl in &art.rules {
+            push_template_route(
+                &mut specs,
+                tmpl,
+                ArtifactKind::Rule,
+                &agent.name,
+                RouteScanMode::MarkdownFiles,
+            );
+        }
+        for tmpl in &art.commands {
+            push_template_route(
+                &mut specs,
+                tmpl,
+                ArtifactKind::Command,
+                &agent.name,
+                RouteScanMode::MarkdownFiles,
+            );
+        }
+        for tmpl in &art.subagents {
+            push_template_route(
+                &mut specs,
+                tmpl,
+                ArtifactKind::Subagent,
+                &agent.name,
+                RouteScanMode::MarkdownFiles,
+            );
+        }
+    }
+    let mut home_routes = Vec::new();
+    let mut ws_routes = Vec::new();
+    for spec in specs.into_values() {
+        if spec.scope == ArtifactScope::User {
+            home_routes.push(spec);
+        } else {
+            ws_routes.push(spec);
+        }
+    }
+    (home_routes, ws_routes)
+}
 
-const WORKSPACE_ROUTES: &[ArtifactRouteSpec] = &[
-    ArtifactRouteSpec {
-        relative_path: "AGENTS.md",
-        kind: ArtifactKind::Rule,
-        scope: ArtifactScope::Workspace,
-        source_agent: "Shared",
-        mode: RouteScanMode::SingleFile,
-    },
-    ArtifactRouteSpec {
-        relative_path: "CLAUDE.md",
-        kind: ArtifactKind::Rule,
-        scope: ArtifactScope::Workspace,
-        source_agent: "Claude Code",
-        mode: RouteScanMode::SingleFile,
-    },
-    ArtifactRouteSpec {
-        relative_path: "GEMINI.md",
-        kind: ArtifactKind::Rule,
-        scope: ArtifactScope::Workspace,
-        source_agent: "Gemini CLI",
-        mode: RouteScanMode::SingleFile,
-    },
-    ArtifactRouteSpec {
-        relative_path: ".cursorrules",
-        kind: ArtifactKind::Rule,
-        scope: ArtifactScope::Workspace,
-        source_agent: "Cursor",
-        mode: RouteScanMode::SingleFile,
-    },
-    ArtifactRouteSpec {
-        relative_path: ".cursor/rules",
-        kind: ArtifactKind::Rule,
-        scope: ArtifactScope::Workspace,
-        source_agent: "Cursor",
-        mode: RouteScanMode::CursorRuleFiles,
-    },
-    ArtifactRouteSpec {
-        relative_path: ".claude/skills",
-        kind: ArtifactKind::Skill,
-        scope: ArtifactScope::Workspace,
-        source_agent: "Claude Code",
-        mode: RouteScanMode::SkillDirs,
-    },
-    ArtifactRouteSpec {
-        relative_path: ".claude/commands",
-        kind: ArtifactKind::Command,
-        scope: ArtifactScope::Workspace,
-        source_agent: "Claude Code",
-        mode: RouteScanMode::MarkdownFiles,
-    },
-    ArtifactRouteSpec {
-        relative_path: ".claude/agents",
-        kind: ArtifactKind::Subagent,
-        scope: ArtifactScope::Workspace,
-        source_agent: "Claude Code",
-        mode: RouteScanMode::MarkdownFiles,
-    },
-];
-
+#[allow(clippy::too_many_arguments)]
 pub fn scan_artifacts_for_roots(
     device_name: &str,
     home: Option<&Path>,
     workspace: Option<&Path>,
     now: Timestamp,
+    fs: &dyn LocalFsPort,
     scanned_paths: &mut Vec<String>,
     warnings: &mut Vec<String>,
 ) -> Vec<ArtifactEntry> {
+    let Some(catalogue) = EMBEDDED_ARTIFACT_CATALOGUE
+        .get_or_init(|| AgentCatalogue::embedded().ok())
+        .as_ref()
+    else {
+        return Vec::new();
+    };
+    scan_artifacts_for_roots_with_catalogue(
+        catalogue,
+        device_name,
+        home,
+        workspace,
+        now,
+        fs,
+        scanned_paths,
+        warnings,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn scan_artifacts_for_roots_with_catalogue(
+    catalogue: &AgentCatalogue,
+    device_name: &str,
+    home: Option<&Path>,
+    workspace: Option<&Path>,
+    now: Timestamp,
+    fs: &dyn LocalFsPort,
+    scanned_paths: &mut Vec<String>,
+    warnings: &mut Vec<String>,
+) -> Vec<ArtifactEntry> {
+    let (home_routes, ws_routes) = build_routes_from_catalogue(catalogue);
     let mut entries = Vec::new();
     if let Some(root) = home {
         scan_route_set(
             root,
-            HOME_ROUTES,
+            &home_routes,
             device_name,
             now,
+            fs,
             scanned_paths,
             warnings,
             &mut entries,
@@ -195,9 +201,10 @@ pub fn scan_artifacts_for_roots(
     if let Some(ws) = workspace {
         scan_route_set(
             ws,
-            WORKSPACE_ROUTES,
+            &ws_routes,
             device_name,
             now,
+            fs,
             scanned_paths,
             warnings,
             &mut entries,
@@ -208,298 +215,12 @@ pub fn scan_artifacts_for_roots(
     entries
 }
 
-fn scan_route_set(
-    base_root: &Path,
-    routes: &[ArtifactRouteSpec],
-    device_name: &str,
-    now: Timestamp,
-    scanned_paths: &mut Vec<String>,
-    warnings: &mut Vec<String>,
-    out: &mut Vec<ArtifactEntry>,
-) {
-    for spec in routes {
-        let target = base_root.join(spec.relative_path);
-        scanned_paths.push(display_path(&target));
-        match spec.mode {
-            RouteScanMode::SingleFile => {
-                if target.is_file() {
-                    let name = target
-                        .file_name()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("rule")
-                        .to_string();
-                    if let Some(entry) = build_artifact_entry(
-                        spec,
-                        &name,
-                        &target,
-                        std::slice::from_ref(&target),
-                        device_name,
-                        now,
-                        warnings,
-                    ) {
-                        out.push(entry);
-                    }
-                }
-            }
-            RouteScanMode::SkillDirs | RouteScanMode::PluginDirs => {
-                let Ok(dir) = fs::read_dir(&target) else {
-                    continue;
-                };
-                for child in dir.flatten() {
-                    let child_path = child.path();
-                    if !child_path.is_dir() {
-                        continue;
-                    }
-                    let dir_name = child.file_name().to_str().unwrap_or("artifact").to_string();
-                    let manifest_ok = if spec.mode == RouteScanMode::SkillDirs {
-                        child_path.join("SKILL.md").is_file()
-                    } else {
-                        true
-                    };
-                    if !manifest_ok {
-                        continue;
-                    }
-                    let mut files = Vec::new();
-                    collect_files_sorted(&child_path, &mut files);
-                    if files.is_empty() {
-                        continue;
-                    }
-                    if let Some(entry) = build_artifact_entry(
-                        spec,
-                        &dir_name,
-                        &child_path,
-                        &files,
-                        device_name,
-                        now,
-                        warnings,
-                    ) {
-                        out.push(entry);
-                    }
-                }
-            }
-            RouteScanMode::MarkdownFiles | RouteScanMode::CursorRuleFiles => {
-                let Ok(dir) = fs::read_dir(&target) else {
-                    continue;
-                };
-                let expected_ext = if spec.mode == RouteScanMode::CursorRuleFiles {
-                    "mdc"
-                } else {
-                    "md"
-                };
-                for child in dir.flatten() {
-                    let child_path = child.path();
-                    if !child_path.is_file() {
-                        continue;
-                    }
-                    let matches_ext = child_path
-                        .extension()
-                        .and_then(|s| s.to_str())
-                        .is_some_and(|ext| ext.eq_ignore_ascii_case(expected_ext));
-                    if !matches_ext {
-                        continue;
-                    }
-                    let name = child_path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("rule")
-                        .to_string();
-                    if let Some(entry) = build_artifact_entry(
-                        spec,
-                        &name,
-                        &child_path,
-                        std::slice::from_ref(&child_path),
-                        device_name,
-                        now,
-                        warnings,
-                    ) {
-                        out.push(entry);
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn collect_files_sorted(root: &Path, out: &mut Vec<PathBuf>) {
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = fs::read_dir(&dir) else {
-            continue;
-        };
-        for item in entries.flatten() {
-            if out.len() >= MAX_ARTIFACT_FILES {
-                return;
-            }
-            let path = item.path();
-            if path.is_symlink() {
-                continue;
-            }
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.is_file() {
-                out.push(path);
-            }
-        }
-    }
-    out.sort();
-}
-
-fn build_artifact_entry(
-    spec: &ArtifactRouteSpec,
-    name: &str,
-    root_path: &Path,
-    files: &[PathBuf],
-    device_name: &str,
-    now: Timestamp,
-    warnings: &mut Vec<String>,
-) -> Option<ArtifactEntry> {
-    let mut tree_hasher = Sha256Hasher::new();
-    let mut total_bytes: u64 = 0;
-    let mut file_count: usize = 0;
-    let mut has_scripts = false;
-    let mut broad_tools = false;
-    let mut bidi = false;
-
-    for file in files {
-        if file_count >= MAX_ARTIFACT_FILES {
-            warnings.push(format!(
-                "Artifact {name} exceeded file limit ({MAX_ARTIFACT_FILES}); digest partial."
-            ));
-            break;
-        }
-        let Ok(meta) = fs::metadata(file) else {
-            continue;
-        };
-        let next_total = total_bytes.saturating_add(meta.len());
-        if next_total > MAX_ARTIFACT_BYTES {
-            warnings.push(format!(
-                "Artifact {name} exceeded size limit; remaining files skipped."
-            ));
-            break;
-        }
-        let Ok(bytes) = fs::read(file) else {
-            continue;
-        };
-        total_bytes = next_total;
-        file_count = file_count.saturating_add(1);
-
-        let rel = file
-            .strip_prefix(root_path)
-            .ok()
-            .and_then(|p| p.to_str())
-            .filter(|s| !s.is_empty())
-            .unwrap_or(name)
-            .replace('\\', "/");
-
-        let mut leaf_hasher = Sha256Hasher::new();
-        leaf_hasher.update(rel.as_bytes());
-        leaf_hasher.update(b"\0");
-        leaf_hasher.update(&bytes);
-        let leaf_digest = leaf_hasher.finalize_digest();
-
-        tree_hasher.update(rel.as_bytes());
-        tree_hasher.update(&leaf_digest);
-
-        if file
-            .extension()
-            .and_then(|s| s.to_str())
-            .is_some_and(|ext| {
-                SCRIPT_EXTENSIONS
-                    .iter()
-                    .any(|candidate| ext.eq_ignore_ascii_case(candidate))
-            })
-        {
-            has_scripts = true;
-        }
-
-        if let Ok(text) = std::str::from_utf8(&bytes) {
-            if contains_bidi_control(text) {
-                bidi = true;
-            }
-            let lower = text.to_ascii_lowercase();
-            if BROAD_TOOL_PATTERNS.iter().any(|pat| lower.contains(pat)) {
-                broad_tools = true;
-            }
-            if lower.contains("```bash")
-                || lower.contains("```sh")
-                || lower.contains("```powershell")
-            {
-                has_scripts = true;
-            }
-        }
-    }
-
-    if file_count == 0 {
-        return None;
-    }
-
-    let digest_bytes = tree_hasher.finalize_digest();
-    let digest_hex = encode_lower_hex(&digest_bytes);
-    let mut risk_flags = Vec::new();
-    if has_scripts {
-        risk_flags.push(ArtifactRiskFlag::HasScripts);
-    }
-    if broad_tools {
-        risk_flags.push(ArtifactRiskFlag::RequestsBroadTools);
-    }
-    if bidi {
-        risk_flags.push(ArtifactRiskFlag::BidiObfuscation);
-    }
-
-    let scope_tag = match spec.scope {
-        ArtifactScope::User => "usr",
-        ArtifactScope::Workspace => "ws",
-        ArtifactScope::Managed => "mng",
-    };
-    let kind_tag = match spec.kind {
-        ArtifactKind::Skill => "skl",
-        ArtifactKind::Rule => "rul",
-        ArtifactKind::Plugin => "plg",
-        ArtifactKind::Command => "cmd",
-        ArtifactKind::Subagent => "sub",
-        ArtifactKind::Other => "oth",
-    };
-    let id = format!(
-        "art_{}_{}_{}",
-        kind_tag,
-        scope_tag,
-        slugify_id(name, 36, "artifact")
-    );
-
-    Some(ArtifactEntry {
-        id,
-        name: name.to_string(),
-        kind: spec.kind,
-        kind_other: None,
-        scope: spec.scope,
-        source_agent: spec.source_agent.to_string(),
-        path: display_path(root_path),
-        content_digest: digest_hex,
-        file_count,
-        total_bytes,
-        usage_count: 0,
-        pinned: false,
-        risk_flags,
-        device_id: slugify_id(device_name, 32, "local-device"),
-        device_name: device_name.to_string(),
-        user_id: None,
-        detected_at: now,
-    })
-}
-
-fn contains_bidi_control(text: &str) -> bool {
-    text.chars().any(|ch| {
-        matches!(
-            ch,
-            '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}'
-        )
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
+    use crate::test_fs::TestLocalFs;
+    use grdr_model::ArtifactRiskFlag;
+    use std::{env, fs};
 
     #[test]
     fn scans_skills_rules_and_flags_risks_with_merkle_drift() {
@@ -535,6 +256,7 @@ mod tests {
             Some(&home),
             Some(&ws),
             now,
+            &TestLocalFs,
             &mut scanned,
             &mut warnings,
         );
@@ -578,6 +300,7 @@ mod tests {
             Some(&home),
             Some(&ws),
             now,
+            &TestLocalFs,
             &mut scanned,
             &mut warnings,
         );

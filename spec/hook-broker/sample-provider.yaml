@@ -1,0 +1,12 @@
+schema: grdr.hook-broker.provider/v1alpha1
+id: com.example.dlp-guard
+enabled: true
+endpoint: unix:///run/grdr/providers/dlp-guard.sock
+capabilities:
+  action_classes: [data.flow, mcp.call, net.request]
+  max_capture_level: argument_preview
+  on_failure: fail_closed
+  trust_model: deterministic_rule
+  may_modify: false
+  timeout_ms: 150
+  priority: 10

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+use crate::limits_parse::validate_broker;
 use crate::limits_types::{
     EndpointLimits, LIMITS_SCHEMA_V1ALPHA1, LimitsConfig, LimitsError, PackLimits, RetryLimits,
     ServerLimits, UplinkLimits,
@@ -17,6 +18,7 @@ pub fn validate_limits(cfg: &LimitsConfig) -> Result<(), LimitsError> {
     validate_uplink(&cfg.uplink)?;
     validate_retry(&cfg.retry)?;
     validate_server(&cfg.server)?;
+    validate_broker(&cfg.broker)?;
     Ok(())
 }
 

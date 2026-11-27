@@ -1,0 +1,51 @@
+schema: grdr.catalogue/v1alpha1
+id: antigravity
+aliases: [agy]
+name: Antigravity
+vendor: Google
+kind: coding-agent
+catalogue_tier: A
+surfaces: [ide, desktop]
+declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request, child.spawn]
+containment_default: guided
+adapter: hook-shim
+routes:
+  binaries: [antigravity, agy]
+  windows_exes: [Antigravity.exe, antigravity.exe, agy.exe]
+  wsl_harnesses: [antigravity, agy]
+  cmdline_markers: [antigravity]
+  npm: []
+  pypi: []
+  vscode_extensions: []
+  state_dirs: [.gemini/antigravity, .antigravity]
+  config_paths: [.gemini/antigravity/mcp_config.json, .agents/hooks.json, $WORKSPACE/.agents/hooks.json]
+  admin_config_paths:
+    macos: "/Library/Application Support/Antigravity/hooks.json"
+    linux: "/etc/antigravity/hooks.json"
+    windows: '%ProgramData%\Antigravity\hooks.json'
+  mcp_config_paths: [.gemini/antigravity/mcp_config.json]
+  mcp_config_key: mcpServers
+  env_markers: [GEMINI_API_KEY]
+  net: [generativelanguage.googleapis.com]
+  artifacts:
+    skills: [.gemini/antigravity/skills, $WORKSPACE/.agents/skills]
+    plugins: []
+    rules: [GEMINI.md, .agents/rules, $WORKSPACE/AGENTS.md]
+    commands: []
+    subagents: []
+    transcripts: [.gemini/antigravity/brain]
+  autonomy_flags: [--yolo]
+hook:
+  supported: true
+  dialect: antigravity
+  config_rel: .agents/hooks.json
+  config_format: json
+  root_key: hooks
+  entry_style: matcher-hooks
+  events: [PreToolUse]
+  all_events: [PreToolUse, PostToolUse]
+  timeout_ms: 250
+  fail_mode: closed
+  mdm_ids:
+    plist_domain: com.google.antigravity
+    registry_subkey: 'Software\Policies\Google\Antigravity'

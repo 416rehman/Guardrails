@@ -1,0 +1,53 @@
+schema: grdr.catalogue/v1alpha1
+id: cursor
+aliases: [cursor-agent]
+name: Cursor
+vendor: Anysphere
+kind: coding-agent
+catalogue_tier: A
+surfaces: [ide, cli]
+declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request, child.spawn]
+containment_default: guided
+adapter: hook-shim
+routes:
+  binaries: [cursor, cursor-agent]
+  windows_exes: [Cursor.exe, cursor.exe, cursor-agent.exe]
+  wsl_harnesses: [cursor-agent]
+  cmdline_markers: [cursor-agent]
+  npm: []
+  pypi: []
+  vscode_extensions: []
+  state_dirs: [.cursor]
+  config_paths: [.cursor/hooks.json, .cursor/mcp.json, .cursor/cli-config.json]
+  admin_config_paths:
+    macos: "/Library/Application Support/Cursor/hooks.json"
+    linux: "/etc/cursor/hooks.json"
+    windows: '%ProgramData%\Cursor\hooks.json'
+  mcp_config_paths: [.cursor/mcp.json, $WORKSPACE/.cursor/mcp.json]
+  mcp_config_key: mcpServers
+  env_markers: [CURSOR_API_KEY]
+  net: [api2.cursor.sh, api3.cursor.sh]
+  artifacts:
+    skills: [.cursor/skills, $WORKSPACE/.cursor/skills]
+    plugins: []
+    rules: [.cursor/rules, $WORKSPACE/.cursorrules, $WORKSPACE/.cursor/rules]
+    commands: [.cursor/commands]
+    subagents: []
+    transcripts: []
+  autonomy_flags: [--yolo, --force]
+hook:
+  supported: true
+  dialect: cursor
+  config_rel: .cursor/hooks.json
+  config_format: json
+  root_key: hooks
+  version_field: 1
+  entry_style: command-item
+  events: [beforeShellExecution, preToolUse]
+  all_events: [beforeShellExecution, preToolUse, afterShellExecution, stop]
+  payload_session_keys: [conversation_id]
+  timeout_ms: 250
+  fail_mode: closed
+  mdm_ids:
+    plist_domain: com.todesktop.230313mzl4w4u92
+    registry_subkey: 'Software\Policies\Cursor'

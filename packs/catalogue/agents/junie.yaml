@@ -1,0 +1,46 @@
+schema: grdr.catalogue/v1alpha1
+id: junie
+aliases: [jetbrains-junie]
+name: JetBrains Junie
+vendor: JetBrains
+kind: coding-agent
+catalogue_tier: B
+surfaces: [ide-extension]
+declared_action_classes: [exec, file.read, file.write, net.request, mcp.call, llm.request]
+containment_default: monitored
+adapter: mcp-broker
+routes:
+  binaries: [junie]
+  windows_exes: [junie.exe]
+  wsl_harnesses: [junie]
+  cmdline_markers: [jetbrains.junie, junie]
+  npm: []
+  pypi: []
+  vscode_extensions: []
+  state_dirs: [.junie]
+  config_paths: [.junie/guidelines.md, .junie/mcp/mcp.json, $WORKSPACE/.junie/guidelines.md]
+  admin_config_paths: {}
+  mcp_config_paths: [.junie/mcp/mcp.json, $WORKSPACE/.junie/mcp/mcp.json]
+  mcp_config_key: mcpServers
+  env_markers: [JUNIE_API_KEY]
+  net: [api.jetbrains.ai]
+  artifacts:
+    skills: []
+    plugins: []
+    rules: [.junie/guidelines.md, $WORKSPACE/.junie/guidelines.md]
+    commands: []
+    subagents: []
+    transcripts: []
+  autonomy_flags: []
+hook:
+  supported: false
+  dialect: junie
+  config_rel: ""
+  config_format: none
+  root_key: ""
+  entry_style: none
+  events: []
+  all_events: []
+  timeout_ms: 250
+  fail_mode: open
+  mdm_ids: {}

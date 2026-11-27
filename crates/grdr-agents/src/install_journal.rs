@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+//! Hook configuration backup journal with tamper-checked non-destructive restore (`docs/design/07`).
+
 use std::ffi::OsStr;
-use std::fs;
 use std::path::{Path, PathBuf};
 
+use grdr_crypto::{Sha256Hasher, encode_lower_hex};
+use grdr_ports::{LocalFsPort, RegularEntryKind};
 use serde::{Deserialize, Serialize};
+
+const MAX_JOURNAL_BYTES: u64 = 1_048_576;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "content", rename_all = "snake_case")]
@@ -17,6 +22,15 @@ pub(crate) enum PriorFile {
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct HookBackupJournal {
     pub(crate) prior: PriorFile,
+    #[serde(default)]
+    pub(crate) post_install_sha256: Option<String>,
+    #[serde(default)]
+    pub(crate) hook_command: Option<String>,
+}
+
+pub(crate) struct JournalRestoreOutcome {
+    pub(crate) restored_content: Option<String>,
+    pub(crate) recorded_hook_command: Option<String>,
 }
 
 pub fn detect_state_dir(home_dir: &Path) -> PathBuf {
@@ -57,53 +71,126 @@ pub(crate) fn resolve_state_dir(
     home_dir.join(".local").join("state").join("grdr")
 }
 
-pub(crate) fn write_journal_if_absent(journal_path: &Path, prior: PriorFile) -> Result<(), String> {
-    if journal_path.is_file() {
-        return Ok(());
+pub(crate) fn write_journal_if_absent(
+    journal_path: &Path,
+    prior: PriorFile,
+    post_install_bytes: &[u8],
+    hook_command: &str,
+    fs: &dyn LocalFsPort,
+) -> Result<bool, String> {
+    fs.check_no_ancestor_symlinks(journal_path)?;
+    match fs.inspect_nofollow(journal_path)? {
+        RegularEntryKind::File => return Ok(false),
+        RegularEntryKind::Missing => {}
+        RegularEntryKind::Dir | RegularEntryKind::UnsafeOrOther => {
+            return Err(format!(
+                "refusing symlink or non-regular backup journal at {}",
+                journal_path.display()
+            ));
+        }
     }
-    let journal = HookBackupJournal { prior };
+    let journal = HookBackupJournal {
+        prior,
+        post_install_sha256: Some(sha256_hex(post_install_bytes)),
+        hook_command: Some(hook_command.to_owned()),
+    };
     let journal_bytes = serde_json::to_vec_pretty(&journal)
         .map_err(|e| format!("failed serializing backup journal: {e}"))?;
-    atomic_write(journal_path, &journal_bytes)
+    fs.atomic_write_nofollow(journal_path, &journal_bytes, true)?;
+    Ok(true)
+}
+
+pub(crate) fn read_journal_hook_command(
+    journal_path: &Path,
+    fs: &dyn LocalFsPort,
+) -> Result<Option<String>, String> {
+    fs.check_no_ancestor_symlinks(journal_path)?;
+    match fs.inspect_nofollow(journal_path)? {
+        RegularEntryKind::Missing => return Ok(None),
+        RegularEntryKind::File => {}
+        RegularEntryKind::Dir | RegularEntryKind::UnsafeOrOther => {
+            return Err(format!(
+                "refusing symlink or non-regular backup journal at {}",
+                journal_path.display()
+            ));
+        }
+    }
+    let raw_journal = fs.read_bounded_regular_string(journal_path, MAX_JOURNAL_BYTES)?;
+    let journal: HookBackupJournal = serde_json::from_str(&raw_journal)
+        .map_err(|e| format!("corrupt backup journal {}: {e}", journal_path.display()))?;
+    Ok(journal.hook_command.filter(|s| !s.trim().is_empty()))
 }
 
 pub(crate) fn restore_from_journal(
     journal_path: &Path,
     config_path: &Path,
-) -> Result<Option<String>, String> {
-    if !journal_path.is_file() {
-        return Ok(None);
+    fs: &dyn LocalFsPort,
+) -> Result<JournalRestoreOutcome, String> {
+    fs.check_no_ancestor_symlinks(journal_path)?;
+    match fs.inspect_nofollow(journal_path)? {
+        RegularEntryKind::Missing => {
+            return Ok(JournalRestoreOutcome {
+                restored_content: None,
+                recorded_hook_command: None,
+            });
+        }
+        RegularEntryKind::File => {}
+        RegularEntryKind::Dir | RegularEntryKind::UnsafeOrOther => {
+            return Err(format!(
+                "refusing symlink or non-regular backup journal at {}",
+                journal_path.display()
+            ));
+        }
     }
-    let raw_journal = fs::read_to_string(journal_path)
-        .map_err(|e| format!("failed reading journal {}: {e}", journal_path.display()))?;
+    let raw_journal = fs.read_bounded_regular_string(journal_path, MAX_JOURNAL_BYTES)?;
     let journal: HookBackupJournal = serde_json::from_str(&raw_journal)
         .map_err(|e| format!("corrupt backup journal {}: {e}", journal_path.display()))?;
 
+    if let Some(expected_sha) = journal.post_install_sha256.as_deref() {
+        let current_matches = match fs.inspect_nofollow(config_path)? {
+            RegularEntryKind::File => {
+                let current_bytes =
+                    fs.read_bounded_regular_bytes(config_path, MAX_JOURNAL_BYTES)?;
+                sha256_hex(&current_bytes) == expected_sha
+            }
+            RegularEntryKind::Missing => false,
+            RegularEntryKind::Dir | RegularEntryKind::UnsafeOrOther => {
+                return Err(format!(
+                    "refusing symlink or non-regular config at {}",
+                    config_path.display()
+                ));
+            }
+        };
+        if !current_matches {
+            fs.remove_regular_file_nofollow(journal_path)?;
+            return Ok(JournalRestoreOutcome {
+                restored_content: None,
+                recorded_hook_command: journal.hook_command.filter(|s| !s.trim().is_empty()),
+            });
+        }
+    }
+
     let preview_json = match journal.prior {
         PriorFile::Present(original) => {
-            atomic_write(config_path, original.as_bytes())?;
+            fs.atomic_write_nofollow(config_path, original.as_bytes(), false)?;
             original
         }
         PriorFile::Absent => {
-            if config_path.is_file() {
-                let _ = fs::remove_file(config_path);
-            }
+            fs.remove_regular_file_nofollow(config_path)?;
             String::new()
         }
     };
-    let _ = fs::remove_file(journal_path);
-    Ok(Some(preview_json))
+    fs.remove_regular_file_nofollow(journal_path)?;
+    Ok(JournalRestoreOutcome {
+        restored_content: Some(preview_json),
+        recorded_hook_command: journal.hook_command.filter(|s| !s.trim().is_empty()),
+    })
 }
 
-pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("failed creating {}: {e}", parent.display()))?;
-    }
-    let tmp = path.with_extension("grdr.tmp");
-    fs::write(&tmp, bytes).map_err(|e| format!("failed writing {}: {e}", tmp.display()))?;
-    fs::rename(&tmp, path).map_err(|e| format!("failed committing {}: {e}", path.display()))?;
-    Ok(())
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256Hasher::new();
+    hasher.update(bytes);
+    encode_lower_hex(&hasher.finalize_digest())
 }
 
 #[cfg(test)]

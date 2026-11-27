@@ -1,0 +1,40 @@
+schema: grdr.spec.provider-manifest/v1alpha1
+required_fields:
+  - schema
+  - id
+  - capabilities
+schema_version: grdr.hook-broker.provider/v1alpha1
+fields:
+  id:
+    type: string
+    pattern: reverse-dns
+  enabled:
+    type: bool
+    default: true
+  endpoint:
+    type: string
+    allowed_transports: [unix-socket, named-pipe, loopback-ipc]
+  capabilities:
+    action_classes:
+      type: list<string>
+      example: [exec, file.write, mcp.call, net.request]
+    max_capture_level:
+      type: enum
+      values: [metadata_only, argument_preview, full_minimised]
+    on_failure:
+      type: enum
+      values: [fail_closed, step_up, ignore]
+    trust_model:
+      type: enum
+      values: [deterministic_rule, model_backed]
+    may_modify:
+      type: bool
+      constraint: "must be false when trust_model == model_backed; max 1 active across providers.d"
+    timeout_ms:
+      type: integer
+      min: 1
+      max: 1000
+      default: 150
+    priority:
+      type: integer
+      default: 100

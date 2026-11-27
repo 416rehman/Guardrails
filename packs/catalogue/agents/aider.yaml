@@ -1,0 +1,46 @@
+schema: grdr.catalogue/v1alpha1
+id: aider
+aliases: [aider-chat]
+name: Aider
+vendor: Aider
+kind: coding-agent
+catalogue_tier: B
+surfaces: [cli]
+declared_action_classes: [exec, file.read, file.write, net.request, llm.request]
+containment_default: monitored
+adapter: provider-proxy
+routes:
+  binaries: [aider]
+  windows_exes: [aider.exe]
+  wsl_harnesses: [aider]
+  cmdline_markers: [aider-chat, aider.main]
+  npm: []
+  pypi: [aider-chat]
+  vscode_extensions: []
+  state_dirs: [.aider]
+  config_paths: [.aider.conf.yml, $WORKSPACE/.aider.conf.yml]
+  admin_config_paths: {}
+  mcp_config_paths: []
+  mcp_config_key: ""
+  env_markers: [AIDER_MODEL, OPENAI_API_KEY, ANTHROPIC_API_KEY]
+  net: [api.openai.com, api.anthropic.com]
+  artifacts:
+    skills: []
+    plugins: []
+    rules: [.aider.conf.yml, $WORKSPACE/CONVENTIONS.md]
+    commands: []
+    subagents: []
+    transcripts: [.aider.chat.history.md]
+  autonomy_flags: [--yes-always, --yes]
+hook:
+  supported: false
+  dialect: aider
+  config_rel: ""
+  config_format: none
+  root_key: ""
+  entry_style: none
+  events: []
+  all_events: []
+  timeout_ms: 250
+  fail_mode: open
+  mdm_ids: {}

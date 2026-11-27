@@ -1,0 +1,46 @@
+schema: grdr.catalogue/v1alpha1
+id: continue
+aliases: [continue-dev, cn]
+name: Continue
+vendor: Continue
+kind: coding-agent
+catalogue_tier: B
+surfaces: [ide-extension, cli]
+declared_action_classes: [exec, file.read, file.write, net.request, mcp.call, llm.request]
+containment_default: monitored
+adapter: mcp-broker
+routes:
+  binaries: [cn]
+  windows_exes: [cn.exe]
+  wsl_harnesses: [cn]
+  cmdline_markers: [continue.continue, continuedev]
+  npm: ['@continuedev/cli']
+  pypi: []
+  vscode_extensions: [continue.continue]
+  state_dirs: [.continue]
+  config_paths: [.continue/config.yaml, .continue/config.json, $WORKSPACE/.continuerules]
+  admin_config_paths: {}
+  mcp_config_paths: [.continue/config.json]
+  mcp_config_key: mcpServers
+  env_markers: [CONTINUE_API_KEY]
+  net: [api.continue.dev]
+  artifacts:
+    skills: []
+    plugins: []
+    rules: [.continue/rules, $WORKSPACE/.continue/rules, $WORKSPACE/.continuerules]
+    commands: []
+    subagents: []
+    transcripts: [.continue/sessions]
+  autonomy_flags: [--auto]
+hook:
+  supported: false
+  dialect: continue
+  config_rel: ""
+  config_format: none
+  root_key: ""
+  entry_style: none
+  events: []
+  all_events: []
+  timeout_ms: 250
+  fail_mode: open
+  mdm_ids: {}

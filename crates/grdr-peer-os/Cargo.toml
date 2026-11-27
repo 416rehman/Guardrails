@@ -12,10 +12,12 @@ renders = "none"
 
 [dependencies]
 grdr-model = { workspace = true }
+grdr-ports = { workspace = true }
 grdr-wire = { version = "0.1.0", path = "../grdr-wire", default-features = false }
 jiff = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 grdr-os-clock = { workspace = true }

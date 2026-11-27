@@ -1,0 +1,48 @@
+schema: grdr.catalogue/v1alpha1
+id: amazon-q
+aliases: [q, amazon-q-cli, aws-q]
+name: Amazon Q Developer
+vendor: Amazon
+kind: coding-agent
+catalogue_tier: B
+surfaces: [cli, ide-extension]
+declared_action_classes: [exec, file.read, file.write, net.request, mcp.call, llm.request]
+containment_default: guided
+adapter: hook-shim
+routes:
+  binaries: [q, qchat]
+  windows_exes: [q.exe]
+  wsl_harnesses: [q]
+  cmdline_markers: [amazon-q, qchat]
+  npm: []
+  pypi: []
+  vscode_extensions: [amazonwebservices.amazon-q-vscode]
+  state_dirs: [.aws/amazonq]
+  config_paths: [.aws/amazonq/mcp.json, .aws/amazonq/hooks.json, $WORKSPACE/.amazonq/mcp.json]
+  admin_config_paths: {}
+  mcp_config_paths: [.aws/amazonq/mcp.json, $WORKSPACE/.amazonq/mcp.json]
+  mcp_config_key: mcpServers
+  env_markers: [AWS_Q_ENABLED]
+  net: [q.us-east-1.amazonaws.com, codewhisperer.us-east-1.amazonaws.com]
+  artifacts:
+    skills: []
+    plugins: []
+    rules: [.amazonq/rules, $WORKSPACE/.amazonq/rules]
+    commands: []
+    subagents: [.aws/amazonq/cli-agents]
+    transcripts: []
+  autonomy_flags: [--trust-all-tools]
+hook:
+  supported: true
+  dialect: amazon-q
+  config_rel: .aws/amazonq/hooks.json
+  config_format: json
+  root_key: hooks
+  entry_style: matcher-hooks
+  events: [PreToolUse]
+  all_events: [PreToolUse, PostToolUse]
+  timeout_ms: 250
+  fail_mode: closed
+  mdm_ids:
+    plist_domain: com.amazon.q-developer
+    registry_subkey: 'Software\Policies\Amazon\QDeveloper'

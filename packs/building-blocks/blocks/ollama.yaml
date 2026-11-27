@@ -1,0 +1,13 @@
+schema: grdr.building-block/v1alpha1
+id: ollama
+name: Ollama Runtime
+role: runtime
+agentic: no
+ecosystems:
+  pypi: [ollama]
+  npm: [ollama]
+  cargo: []
+binaries: [ollama]
+env_markers: [OLLAMA_HOST]
+net: [127.0.0.1:11434]
+classifier_boost_bp: 1000

@@ -1,0 +1,13 @@
+schema: grdr.building-block/v1alpha1
+id: pydantic-ai
+name: PydanticAI
+role: orchestrator
+agentic: yes
+ecosystems:
+  pypi: [pydantic-ai, pydantic-ai-slim]
+  npm: []
+  cargo: []
+binaries: []
+env_markers: [LOGFIRE_TOKEN]
+net: []
+classifier_boost_bp: 4500

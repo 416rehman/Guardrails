@@ -300,3 +300,91 @@ fn os_peer_reader_walks_live_parent_chain_with_monotonic_start_times() {
     let missing = reader.read_parent_chain(u32::MAX - 1, 16);
     assert!(missing.is_err());
 }
+
+#[cfg(windows)]
+#[test]
+fn native_windows_toolhelp_enumerates_live_processes_without_shell_outs() {
+    let procs =
+        grdr_peer_os::enumerate_windows_processes().expect("ToolHelp32 snapshot works on Windows");
+    assert!(
+        !procs.is_empty(),
+        "expected active processes from native ToolHelp32 snapshot"
+    );
+    let my_pid = std::process::id();
+    let me = procs
+        .iter()
+        .find(|p| p.pid == my_pid)
+        .expect("current test pid in snapshot");
+    assert!(!me.image_name.is_empty());
+    assert!(me.started_100ns > 0);
+}
+
+#[test]
+fn os_local_fs_enforces_bounds_atomic_writes_and_symlink_guards() {
+    use grdr_peer_os::OsLocalFs;
+    use grdr_ports::{LocalFsPort, RegularEntryKind};
+
+    let fs = OsLocalFs;
+    let root = std::env::temp_dir().join(format!(
+        "grdr-oslocalfs-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos())
+    ));
+    let sub = root.join("nested");
+    fs.ensure_dir_nofollow(&sub, true)
+        .expect("create private dir");
+    assert_eq!(fs.inspect_nofollow(&sub).unwrap(), RegularEntryKind::Dir);
+
+    let cfg = sub.join("config.json");
+    fs.atomic_write_nofollow(&cfg, br#"{"ok":true}"#, true)
+        .expect("atomic write private file");
+    assert_eq!(fs.inspect_nofollow(&cfg).unwrap(), RegularEntryKind::File);
+    assert_eq!(
+        fs.read_bounded_regular_string(&cfg, 1024).unwrap(),
+        r#"{"ok":true}"#
+    );
+    assert!(fs.read_bounded_regular_bytes(&cfg, 4).is_err());
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+
+        let mode = std::fs::symlink_metadata(&cfg)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o600);
+
+        let victim = root.join("victim.txt");
+        std::fs::write(&victim, b"secret").unwrap();
+        let sym = sub.join("sym.json");
+        symlink(&victim, &sym).unwrap();
+        assert_eq!(
+            fs.inspect_nofollow(&sym).unwrap(),
+            RegularEntryKind::UnsafeOrOther
+        );
+        assert!(fs.read_bounded_regular_bytes(&sym, 1024).is_err());
+        assert!(fs.atomic_write_nofollow(&sym, b"overwrite", false).is_err());
+
+        let sym_dir = root.join("symdir");
+        symlink(&sub, &sym_dir).unwrap();
+        assert!(
+            fs.check_no_ancestor_symlinks(&sym_dir.join("child"))
+                .is_err()
+        );
+        assert!(
+            fs.atomic_write_nofollow(&sym_dir.join("child"), b"x", false)
+                .is_err()
+        );
+    }
+
+    fs.remove_regular_file_nofollow(&cfg).unwrap();
+    assert_eq!(
+        fs.inspect_nofollow(&cfg).unwrap(),
+        RegularEntryKind::Missing
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

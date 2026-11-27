@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 #![no_main]
 
-use grdr_agents::hook_codec::{HarnessKind, parse_hook_stdin};
+use grdr_agents::hook_codec::parse_hook_stdin_with_dialect;
 use grdr_fastpath::{FastActionClass, FastVerdict, FloorRuleRef, evaluate_floor_entries};
 use grdr_wire::floor_bin::{MAX_FLOOR_RULES, verify_and_decode_floor_table};
 use libfuzzer_sys::fuzz_target;
@@ -41,14 +41,8 @@ fuzz_target!(|data: &[u8]| {
 
     let serde_valid =
         serde_json::from_str::<serde_json::Value>(raw.trim_start_matches('\u{FEFF}')).is_ok();
-    for kind in [
-        HarnessKind::Auto,
-        HarnessKind::ClaudeCode,
-        HarnessKind::Cursor,
-        HarnessKind::Codex,
-        HarnessKind::Gemini,
-    ] {
-        let parsed = parse_hook_stdin(kind, raw, "fuzz-device");
+    for dialect in ["auto", "claude-code", "cursor", "codex", "gemini"] {
+        let parsed = parse_hook_stdin_with_dialect(dialect, raw, "fuzz-device");
         if !serde_valid {
             assert!(parsed.is_err());
         }

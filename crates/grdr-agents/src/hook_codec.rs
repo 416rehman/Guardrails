@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+//! Dynamic hook stdin payload normalization driven by P14 agent manifests.
+
+use std::sync::OnceLock;
+
 use jiff::Timestamp;
 use serde::Deserialize;
 use serde_json::Value;
 
 use grdr_model::{ActionAttempt, ActionClass, ControlPoint};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HarnessKind {
-    Auto,
-    ClaudeCode,
-    Cursor,
-    Codex,
-    Gemini,
-}
+use crate::catalogue::{AgentCatalogue, AgentManifest};
+
+const MAX_HOOK_STDIN_BYTES: usize = 1_048_576;
+static EMBEDDED_CODEC_CATALOGUE: OnceLock<Option<AgentCatalogue>> = OnceLock::new();
 
 #[derive(Debug, Deserialize)]
 struct GenericHookPayload {
@@ -31,55 +31,145 @@ struct GenericHookPayload {
     tool_input: Option<Value>,
 }
 
-impl HarnessKind {
-    pub fn from_name(raw: &str) -> Self {
-        match raw.trim().to_ascii_lowercase().as_str() {
-            "claude" | "claude-code" | "claude_code" => Self::ClaudeCode,
-            "cursor" => Self::Cursor,
-            "codex" | "codex-cli" => Self::Codex,
-            "gemini" | "gemini-cli" | "antigravity" => Self::Gemini,
-            _ => Self::Auto,
-        }
-    }
-
-    pub fn as_agent_name(self) -> &'static str {
-        match self {
-            Self::Auto | Self::ClaudeCode => "claude-code",
-            Self::Cursor => "cursor",
-            Self::Codex => "codex",
-            Self::Gemini => "gemini",
-        }
-    }
-}
-
-pub fn parse_claude_hook_stdin(raw: &str, device_name: &str) -> Result<ActionAttempt, String> {
-    parse_hook_stdin(HarnessKind::ClaudeCode, raw, device_name)
-}
-
-pub fn parse_hook_stdin(
-    harness: HarnessKind,
+pub fn parse_hook_stdin_with_dialect(
+    dialect: &str,
     raw: &str,
     device_name: &str,
 ) -> Result<ActionAttempt, String> {
+    let catalogue = EMBEDDED_CODEC_CATALOGUE
+        .get_or_init(|| AgentCatalogue::embedded().ok())
+        .as_ref()
+        .ok_or_else(|| "GRDR-AGENTS-0004: embedded agent catalogue unavailable".to_string())?;
+    parse_hook_stdin_with_catalogue(dialect, raw, device_name, catalogue)
+}
+
+pub fn parse_hook_stdin_with_catalogue(
+    dialect: &str,
+    raw: &str,
+    device_name: &str,
+    catalogue: &AgentCatalogue,
+) -> Result<ActionAttempt, String> {
+    if raw.len() > MAX_HOOK_STDIN_BYTES {
+        return Err(format!(
+            "GRDR-AGENTS-0002: hook stdin payload exceeds {MAX_HOOK_STDIN_BYTES} bytes"
+        ));
+    }
     let clean_raw = raw.trim_start_matches('\u{FEFF}');
     let root: Value =
         serde_json::from_str(clean_raw).map_err(|e| format!("invalid hook JSON: {e}"))?;
     let parsed: GenericHookPayload =
-        serde_json::from_value(root).map_err(|e| format!("invalid hook payload: {e}"))?;
+        serde_json::from_value(root.clone()).map_err(|e| format!("invalid hook payload: {e}"))?;
+    let (agent_label, matched_manifest) = resolve_dialect_label(dialect, &parsed, &root, catalogue);
+    normalize_hook_payload(parsed, &root, matched_manifest, &agent_label, device_name)
+}
 
-    let effective_harness = match harness {
-        HarnessKind::Auto => infer_harness(&parsed),
-        other => other,
+fn manifest_dialect_label(manifest: &AgentManifest) -> String {
+    if manifest.hook.dialect.is_empty() {
+        manifest.id.clone()
+    } else {
+        manifest.hook.dialect.clone()
+    }
+}
+
+fn manifest_has_session_key(
+    manifest: &AgentManifest,
+    root_obj: Option<&serde_json::Map<String, Value>>,
+) -> bool {
+    let Some(obj) = root_obj else {
+        return false;
     };
+    manifest
+        .hook
+        .payload_session_keys
+        .iter()
+        .any(|key| obj.contains_key(key.as_str()))
+}
 
-    let session_id = parsed
-        .session_id
+fn manifest_matches_event(manifest: &AgentManifest, ev: &str) -> bool {
+    manifest.hook.events.iter().any(|e| e == ev) || manifest.hook.all_events.iter().any(|e| e == ev)
+}
+
+fn resolve_dialect_label<'a>(
+    dialect: &str,
+    parsed: &GenericHookPayload,
+    root: &Value,
+    catalogue: &'a AgentCatalogue,
+) -> (String, Option<&'a AgentManifest>) {
+    let trimmed = dialect.trim();
+    if !trimmed.is_empty() && !trimmed.eq_ignore_ascii_case("auto") {
+        if let Some(manifest) = catalogue.resolve(trimmed) {
+            return (manifest_dialect_label(manifest), Some(manifest));
+        }
+        return (trimmed.to_ascii_lowercase(), None);
+    }
+
+    let root_obj = root.as_object();
+    if let Some(ev) = parsed
+        .hook_event_name
         .as_deref()
-        .or(parsed.conversation_id.as_deref())
-        .or(parsed.thread_id.as_deref())
+        .or(parsed.event.as_deref())
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .map(str::to_string)
+    {
+        if let Some(manifest) = catalogue.agents().iter().find(|a| {
+            a.hook.supported
+                && manifest_matches_event(a, ev)
+                && manifest_has_session_key(a, root_obj)
+        }) {
+            return (manifest_dialect_label(manifest), Some(manifest));
+        }
+        if let Some(manifest) = catalogue
+            .agents()
+            .iter()
+            .find(|a| a.hook.supported && manifest_matches_event(a, ev))
+        {
+            return (manifest_dialect_label(manifest), Some(manifest));
+        }
+    }
+
+    if let Some(manifest) = catalogue
+        .agents()
+        .iter()
+        .find(|a| a.hook.supported && manifest_has_session_key(a, root_obj))
+    {
+        return (manifest_dialect_label(manifest), Some(manifest));
+    }
+
+    catalogue
+        .hook_targets()
+        .first()
+        .map(|m| (manifest_dialect_label(m), Some(*m)))
+        .unwrap_or_else(|| ("unknown-agent".to_owned(), None))
+}
+
+fn normalize_hook_payload(
+    parsed: GenericHookPayload,
+    root: &Value,
+    matched_manifest: Option<&AgentManifest>,
+    agent_name: &str,
+    device_name: &str,
+) -> Result<ActionAttempt, String> {
+    let manifest_session = matched_manifest.and_then(|manifest| {
+        let obj = root.as_object()?;
+        manifest.hook.payload_session_keys.iter().find_map(|key| {
+            obj.get(key.as_str())
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        })
+    });
+    let session_id = manifest_session
+        .or_else(|| {
+            parsed
+                .session_id
+                .as_deref()
+                .or(parsed.conversation_id.as_deref())
+                .or(parsed.thread_id.as_deref())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        })
         .unwrap_or_else(|| format!("sess-{}", uuid::Uuid::now_v7().simple()));
 
     let tool = parsed
@@ -101,7 +191,7 @@ pub fn parse_hook_stdin(
         session_id,
         device_id: format!("dev-{device_name}"),
         device_name: device_name.into(),
-        agent_name: effective_harness.as_agent_name().into(),
+        agent_name: agent_name.into(),
         action_class,
         control_point: ControlPoint::Hook,
         target,
@@ -109,30 +199,6 @@ pub fn parse_hook_stdin(
         timestamp: Timestamp::now(),
         ..Default::default()
     })
-}
-
-fn infer_harness(parsed: &GenericHookPayload) -> HarnessKind {
-    if parsed.conversation_id.is_some()
-        || matches!(
-            parsed.hook_event_name.as_deref(),
-            Some("beforeShellExecution" | "beforeReadFile" | "afterFileEdit" | "preToolUse")
-        )
-    {
-        return HarnessKind::Cursor;
-    }
-    if parsed.thread_id.is_some() || parsed.event.is_some() {
-        return HarnessKind::Codex;
-    }
-    if matches!(
-        parsed.hook_event_name.as_deref(),
-        Some("BeforeTool" | "BeforeAgent")
-    ) || matches!(
-        parsed.tool_name.as_deref(),
-        Some("run_command" | "write_to_file" | "view_file" | "replace_file_content")
-    ) {
-        return HarnessKind::Gemini;
-    }
-    HarnessKind::ClaudeCode
 }
 
 fn map_harness_action(
@@ -236,7 +302,8 @@ mod tests {
 
     #[test]
     fn maps_claude_cursor_codex_and_gemini_payloads() {
-        let write = parse_claude_hook_stdin(
+        let write = parse_hook_stdin_with_dialect(
+            "claude-code",
             r#"{"session_id":"s1","tool_name":"Write","tool_input":{"file_path":".claude/settings.json"}}"#,
             "devbox",
         )
@@ -245,8 +312,8 @@ mod tests {
         assert_eq!(write.action_class, ActionClass::FileWrite);
         assert_eq!(write.target, ".claude/settings.json");
 
-        let cursor = parse_hook_stdin(
-            HarnessKind::Auto,
+        let cursor = parse_hook_stdin_with_dialect(
+            "auto",
             r#"{"conversation_id":"cur-1","hook_event_name":"beforeShellExecution","command":"rm -rf /tmp/x"}"#,
             "devbox",
         )
@@ -256,8 +323,8 @@ mod tests {
         assert_eq!(cursor.action_class, ActionClass::Exec);
         assert_eq!(cursor.target, "rm -rf /tmp/x");
 
-        let codex = parse_hook_stdin(
-            HarnessKind::Auto,
+        let codex = parse_hook_stdin_with_dialect(
+            "auto",
             r#"{"thread_id":"th-9","event":"exec","command":"git status"}"#,
             "devbox",
         )
@@ -267,8 +334,8 @@ mod tests {
         assert_eq!(codex.action_class, ActionClass::Exec);
         assert_eq!(codex.target, "git status");
 
-        let gemini = parse_hook_stdin(
-            HarnessKind::Auto,
+        let gemini = parse_hook_stdin_with_dialect(
+            "auto",
             r#"{"session_id":"gem-1","hook_event_name":"BeforeTool","tool_name":"write_to_file","tool_input":{"TargetFile":".gemini/settings.json"}}"#,
             "devbox",
         )
@@ -277,7 +344,8 @@ mod tests {
         assert_eq!(gemini.action_class, ActionClass::FileWrite);
         assert_eq!(gemini.target, ".gemini/settings.json");
 
-        let mcp = parse_claude_hook_stdin(
+        let mcp = parse_hook_stdin_with_dialect(
+            "claude-code",
             r#"{"session_id":"s1","tool_name":"mcp__github__create_issue","tool_input":{}}"#,
             "devbox",
         )
@@ -285,10 +353,11 @@ mod tests {
         assert_eq!(mcp.action_class, ActionClass::McpCall);
         assert_eq!(mcp.target, "mcp__github__create_issue");
 
-        assert!(parse_hook_stdin(HarnessKind::Auto, "{not-valid-json", "devbox").is_err());
-        assert!(parse_hook_stdin(HarnessKind::Auto, r#"{" " :4e022222}"#, "devbox").is_err());
+        assert!(parse_hook_stdin_with_dialect("auto", "{not-valid-json", "devbox").is_err());
+        assert!(parse_hook_stdin_with_dialect("auto", r#"{" " :4e022222}"#, "devbox").is_err());
 
-        let with_bom = parse_claude_hook_stdin(
+        let with_bom = parse_hook_stdin_with_dialect(
+            "claude-code",
             "\u{FEFF}{\"session_id\":\"s-bom\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status\"}}",
             "devbox",
         )

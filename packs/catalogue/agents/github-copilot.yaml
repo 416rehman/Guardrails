@@ -1,0 +1,51 @@
+schema: grdr.catalogue/v1alpha1
+id: github-copilot
+aliases: [copilot, copilot-cli, gh-copilot]
+name: GitHub Copilot
+vendor: GitHub
+kind: coding-agent
+catalogue_tier: A
+surfaces: [ide-extension, cli]
+declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request]
+containment_default: guided
+adapter: hook-shim
+routes:
+  binaries: [copilot, copilot-language-server]
+  windows_exes: [copilot.exe, copilot-language-server.exe]
+  wsl_harnesses: [copilot, copilot-cli, github-copilot]
+  cmdline_markers: ['@github/copilot', copilot-language-server]
+  npm: ['@github/copilot']
+  pypi: []
+  vscode_extensions: [github.copilot, github.copilot-chat]
+  state_dirs: [.copilot, .config/github-copilot]
+  config_paths: [.copilot/hooks.json, .config/github-copilot/hosts.json, $WORKSPACE/.github/hooks/grdr.json]
+  admin_config_paths:
+    macos: "/Library/Application Support/GitHubCopilot/hooks.json"
+    linux: "/etc/github-copilot/hooks.json"
+    windows: '%ProgramData%\GitHubCopilot\hooks.json'
+  mcp_config_paths: [.copilot/mcp-config.json, $WORKSPACE/.vscode/mcp.json, $APPDATA/Code/User/mcp.json]
+  mcp_config_key: servers
+  env_markers: [GITHUB_COPILOT_TOKEN, GH_TOKEN]
+  net: [api.githubcopilot.com, copilot-proxy.githubusercontent.com]
+  artifacts:
+    skills: [$WORKSPACE/.github/skills]
+    plugins: []
+    rules: [.github/copilot-instructions.md, $WORKSPACE/.github/copilot-instructions.md]
+    commands: [$WORKSPACE/.github/prompts]
+    subagents: [$WORKSPACE/.github/agents]
+    transcripts: []
+  autonomy_flags: [--allow-all-tools, --yolo]
+hook:
+  supported: true
+  dialect: copilot
+  config_rel: .copilot/hooks.json
+  config_format: json
+  root_key: hooks
+  entry_style: matcher-hooks
+  events: [preToolUse]
+  all_events: [preToolUse, postToolUse, sessionStart, sessionEnd]
+  timeout_ms: 250
+  fail_mode: closed
+  mdm_ids:
+    plist_domain: com.github.copilot
+    registry_subkey: 'Software\Policies\GitHub\Copilot'

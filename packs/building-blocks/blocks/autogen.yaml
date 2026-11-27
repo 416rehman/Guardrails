@@ -1,0 +1,13 @@
+schema: grdr.building-block/v1alpha1
+id: autogen
+name: Microsoft AutoGen
+role: orchestrator
+agentic: yes
+ecosystems:
+  pypi: [pyautogen, autogen-agentchat, autogen-core]
+  npm: []
+  cargo: []
+binaries: []
+env_markers: [AUTOGEN_USE_DOCKER]
+net: []
+classifier_boost_bp: 4500

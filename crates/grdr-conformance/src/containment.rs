@@ -366,12 +366,14 @@ fn verify_hook_install_preservation_d49() -> Result<(), ConformanceError> {
         detail: e.to_string(),
     })?;
 
+    let fs = grdr_peer_os::OsLocalFs;
     let installed = install_hook_in_state_dir(
         HookTargetKind::ClaudeCode,
         &temp,
         &state_dir,
         "grdr-hook",
         false,
+        &fs,
     )
     .map_err(|e| ConformanceError::ScenarioFailed {
         scenario_id: "D49-HOOK-COEXIST".into(),
@@ -386,12 +388,11 @@ fn verify_hook_install_preservation_d49() -> Result<(), ConformanceError> {
             detail: "hook install did not preserve foreign entry".into(),
         });
     }
-    let _ = uninstall_hook_in_state_dir(HookTargetKind::ClaudeCode, &temp, &state_dir).map_err(
-        |e| ConformanceError::ScenarioFailed {
-            scenario_id: "D49-HOOK-COEXIST".into(),
-            detail: e,
-        },
-    )?;
+    let _ = uninstall_hook_in_state_dir(HookTargetKind::ClaudeCode, &temp, &state_dir, None, &fs)
+        .map_err(|e| ConformanceError::ScenarioFailed {
+        scenario_id: "D49-HOOK-COEXIST".into(),
+        detail: e,
+    })?;
     let restored = std::fs::read_to_string(&settings_path).unwrap_or_default();
     let _ = std::fs::remove_dir_all(&temp);
     if restored != original {

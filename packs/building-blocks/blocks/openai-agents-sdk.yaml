@@ -1,0 +1,13 @@
+schema: grdr.building-block/v1alpha1
+id: openai-agents-sdk
+name: OpenAI Agents SDK
+role: orchestrator
+agentic: yes
+ecosystems:
+  pypi: [openai-agents]
+  npm: ['@openai/agents']
+  cargo: []
+binaries: []
+env_markers: [OPENAI_API_KEY]
+net: [api.openai.com]
+classifier_boost_bp: 4500

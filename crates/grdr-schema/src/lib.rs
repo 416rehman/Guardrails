@@ -17,8 +17,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 pub use brand::{
-    AuditLane, BrandIdentity, CommitmentClass, ContentKind, DataClass, FiveWayCommitments,
-    brand_identity, is_valid_brand_domain, is_valid_brand_identity, is_valid_brand_namespace,
+    AuditLane, BrandDisplayStrings, BrandIdentity, CommitmentClass, ContentKind, DataClass,
+    FiveWayCommitments, brand_identity, is_valid_brand_domain, is_valid_brand_identity,
+    is_valid_brand_namespace, load_embedded_brand_display, parse_brand_display_toml,
     parse_brand_identity_toml, schema_base_uri,
 };
 

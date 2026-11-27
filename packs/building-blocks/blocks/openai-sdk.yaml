@@ -1,0 +1,13 @@
+schema: grdr.building-block/v1alpha1
+id: openai-sdk
+name: OpenAI SDK
+role: llm-sdk
+agentic: no
+ecosystems:
+  pypi: [openai]
+  npm: [openai]
+  cargo: [async-openai]
+binaries: []
+env_markers: [OPENAI_API_KEY]
+net: [api.openai.com]
+classifier_boost_bp: 1000

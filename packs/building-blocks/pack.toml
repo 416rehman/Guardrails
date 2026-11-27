@@ -1,0 +1,17 @@
+id = "grdr.building-blocks"
+version = "1.0.0"
+kind = "intel"
+per_person_scoring = false
+commands = []
+executables = []
+urls = []
+env_vars_to_set = []
+mcp_servers_to_start = []
+
+[[reads]]
+path = "package.name"
+data_class = "structural"
+
+[[reads]]
+path = "process.telemetry"
+data_class = "derived"

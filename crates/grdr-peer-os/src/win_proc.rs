@@ -327,7 +327,7 @@ fn open_limited_query(pid: u32) -> Result<OwnedHandle, (Option<u32>, PeerError)>
 
 #[cfg(windows)]
 #[allow(unsafe_code, reason = "Win32 GetProcessId on held process handle")]
-fn read_process_id(proc_raw: HANDLE) -> Result<u32, PeerError> {
+pub(crate) fn read_process_id(proc_raw: HANDLE) -> Result<u32, PeerError> {
     // SAFETY: `proc_raw` is an open valid process handle.
     let pid = unsafe { GetProcessId(proc_raw) };
     if pid == 0 {
@@ -341,7 +341,7 @@ fn read_process_id(proc_raw: HANDLE) -> Result<u32, PeerError> {
 
 #[cfg(windows)]
 #[allow(unsafe_code, reason = "Win32 GetProcessTimes on held process handle")]
-fn read_process_start_time_100ns(proc_raw: HANDLE) -> Result<u64, PeerError> {
+pub(crate) fn read_process_start_time_100ns(proc_raw: HANDLE) -> Result<u64, PeerError> {
     let zero = FILETIME {
         dwLowDateTime: 0,
         dwHighDateTime: 0,

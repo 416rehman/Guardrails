@@ -4,6 +4,7 @@
 
 pub mod decision;
 pub mod fs_open;
+pub mod local_fs;
 pub mod path_check;
 mod scm_probe;
 pub mod unix_path;
@@ -15,6 +16,8 @@ pub mod win_peer;
 mod win_proc;
 #[cfg(windows)]
 mod win_token;
+#[cfg(windows)]
+mod win_toolhelp;
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -27,6 +30,7 @@ pub use decision::{
     ProcessKey, ServiceProcessCheck, UnixPeerCreds, VerifiedPeer, WindowsPipePeer,
     evaluate_peer_auth,
 };
+pub use local_fs::OsLocalFs;
 pub use path_check::{
     PathCheckOutcome, PathEntryType, PathNodeKind, PathWalkNode, inspect_filesystem_ancestors,
     verify_unix_path_nodes,
@@ -73,8 +77,30 @@ pub trait PeerReader: Send + Sync {
     ) -> PathCheckOutcome;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OsProcessSnapshotEntry {
+    pub pid: u32,
+    pub parent_pid: u32,
+    pub image_name: String,
+    pub executable_path: Option<String>,
+    pub session_id: Option<u32>,
+    pub started_100ns: u64,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OsPeerReader;
+
+#[cfg(windows)]
+pub fn enumerate_windows_processes() -> Result<Vec<OsProcessSnapshotEntry>, PeerError> {
+    win_toolhelp::enumerate_windows_processes_native()
+}
+
+#[cfg(not(windows))]
+pub fn enumerate_windows_processes() -> Result<Vec<OsProcessSnapshotEntry>, PeerError> {
+    Err(PeerError::Unverifiable(
+        "native Windows process snapshot is only available on Windows hosts".to_owned(),
+    ))
+}
 
 impl From<PeerError> for CodedError {
     fn from(err: PeerError) -> Self {

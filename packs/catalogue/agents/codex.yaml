@@ -1,0 +1,52 @@
+schema: grdr.catalogue/v1alpha1
+id: codex
+aliases: [codex-cli, openai-codex]
+name: Codex CLI
+vendor: OpenAI
+kind: coding-agent
+catalogue_tier: A
+surfaces: [cli, ide-extension]
+declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request, child.spawn]
+containment_default: guided
+adapter: hook-shim
+routes:
+  binaries: [codex]
+  windows_exes: [codex.exe]
+  wsl_harnesses: [codex, codex-cli]
+  cmdline_markers: ['@openai/codex', codex-cli]
+  npm: ['@openai/codex']
+  pypi: []
+  vscode_extensions: [openai.chatgpt]
+  state_dirs: [.codex]
+  config_paths: [.codex/config.toml, .codex/hooks.json, $WORKSPACE/.codex/config.toml]
+  admin_config_paths:
+    macos: "/Library/Managed Preferences/codex-requirements.toml"
+    linux: "/etc/codex/requirements.toml"
+    windows: '%ProgramData%\OpenAI\Codex\requirements.toml'
+  mcp_config_paths: [.codex/config.toml, $WORKSPACE/.codex/config.toml]
+  mcp_config_key: mcp_servers
+  env_markers: [OPENAI_API_KEY, CODEX_HOME]
+  net: [api.openai.com, chatgpt.com]
+  artifacts:
+    skills: [.codex/skills, $WORKSPACE/.codex/skills]
+    plugins: []
+    rules: [.codex/AGENTS.md, $WORKSPACE/AGENTS.md]
+    commands: []
+    subagents: []
+    transcripts: [.codex/sessions]
+  autonomy_flags: [--dangerously-bypass-approvals-and-sandbox, --full-auto]
+hook:
+  supported: true
+  dialect: codex
+  config_rel: .codex/hooks.json
+  config_format: json
+  root_key: hooks
+  entry_style: matcher-hooks
+  events: [PreToolUse]
+  all_events: [PreToolUse, PostToolUse, SessionStart, exec]
+  payload_session_keys: [thread_id]
+  timeout_ms: 250
+  fail_mode: closed
+  mdm_ids:
+    plist_domain: com.openai.codex
+    registry_subkey: 'Software\Policies\OpenAI\Codex'

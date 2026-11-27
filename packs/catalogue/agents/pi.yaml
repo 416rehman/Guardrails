@@ -1,0 +1,48 @@
+schema: grdr.catalogue/v1alpha1
+id: pi
+aliases: [pi-agent, pi-coding-agent]
+name: Pi Coding Agent
+vendor: Pi
+kind: coding-agent
+catalogue_tier: B
+surfaces: [cli]
+declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request]
+containment_default: guided
+adapter: hook-shim
+routes:
+  binaries: [pi]
+  windows_exes: [pi.exe]
+  wsl_harnesses: [pi]
+  cmdline_markers: ['@mariozechner/pi-coding-agent', pi-coding-agent]
+  npm: ['@mariozechner/pi-coding-agent']
+  pypi: []
+  vscode_extensions: []
+  state_dirs: [.pi]
+  config_paths: [.pi/agent/settings.json, .pi/settings.json, .pi/hooks.json]
+  admin_config_paths: {}
+  mcp_config_paths: [.pi/agent/mcp.json]
+  mcp_config_key: mcpServers
+  env_markers: [ANTHROPIC_API_KEY, OPENAI_API_KEY]
+  net: [api.anthropic.com, api.openai.com]
+  artifacts:
+    skills: [.pi/agent/skills, $WORKSPACE/.pi/skills]
+    plugins: [.pi/agent/extensions]
+    rules: [AGENTS.md, $WORKSPACE/AGENTS.md]
+    commands: []
+    subagents: []
+    transcripts: [.pi/agent/sessions]
+  autonomy_flags: []
+hook:
+  supported: true
+  dialect: pi
+  config_rel: .pi/hooks.json
+  config_format: json
+  root_key: hooks
+  entry_style: matcher-hooks
+  events: [PreToolUse]
+  all_events: [PreToolUse, PostToolUse]
+  timeout_ms: 250
+  fail_mode: closed
+  mdm_ids:
+    plist_domain: dev.pi.coding-agent
+    registry_subkey: 'Software\Policies\PiAgent'

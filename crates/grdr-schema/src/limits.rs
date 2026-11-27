@@ -2,7 +2,8 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
 use crate::limits_parse::{
-    SectionMap, parse_schema_version, parse_sections, req_f64, req_u16, req_u32, req_u64, req_usize,
+    SectionMap, parse_broker, parse_schema_version, parse_sections, req_f64, req_u16, req_u32,
+    req_u64, req_usize,
 };
 pub use crate::limits_types::*;
 pub use crate::limits_validate::validate_limits;
@@ -23,6 +24,7 @@ pub fn parse_limits_toml(src: &str) -> Result<LimitsConfig, LimitsError> {
         uplink: parse_uplink(&sections)?,
         retry: parse_retry(&sections)?,
         server: parse_server(&sections)?,
+        broker: parse_broker(&sections)?,
     };
     validate_limits(&cfg)?;
     Ok(cfg)

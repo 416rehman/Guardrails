@@ -1,0 +1,48 @@
+schema: grdr.catalogue/v1alpha1
+id: opencode
+aliases: [open-code]
+name: OpenCode
+vendor: SST
+kind: coding-agent
+catalogue_tier: B
+surfaces: [cli]
+declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request]
+containment_default: guided
+adapter: hook-shim
+routes:
+  binaries: [opencode]
+  windows_exes: [opencode.exe]
+  wsl_harnesses: [opencode]
+  cmdline_markers: [opencode-ai, opencode]
+  npm: [opencode-ai]
+  pypi: []
+  vscode_extensions: []
+  state_dirs: [.config/opencode, .local/share/opencode]
+  config_paths: [.config/opencode/opencode.json, .config/opencode/hooks.json, $WORKSPACE/opencode.json]
+  admin_config_paths: {}
+  mcp_config_paths: [.config/opencode/opencode.json, $WORKSPACE/opencode.json]
+  mcp_config_key: mcp
+  env_markers: [ANTHROPIC_API_KEY, OPENAI_API_KEY]
+  net: [api.anthropic.com, api.openai.com]
+  artifacts:
+    skills: [.config/opencode/skills]
+    plugins: [.config/opencode/plugin]
+    rules: [AGENTS.md, $WORKSPACE/AGENTS.md]
+    commands: [.config/opencode/command]
+    subagents: [.config/opencode/agent]
+    transcripts: []
+  autonomy_flags: [--yes]
+hook:
+  supported: true
+  dialect: opencode
+  config_rel: .config/opencode/hooks.json
+  config_format: json
+  root_key: hooks
+  entry_style: matcher-hooks
+  events: [PreToolUse]
+  all_events: [PreToolUse, PostToolUse]
+  timeout_ms: 250
+  fail_mode: closed
+  mdm_ids:
+    plist_domain: dev.opencode.cli
+    registry_subkey: 'Software\Policies\OpenCode'
