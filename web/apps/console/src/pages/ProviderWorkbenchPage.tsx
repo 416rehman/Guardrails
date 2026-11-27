@@ -1,11 +1,15 @@
-import { useState } from "react";
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type ProviderWorkspaceResponse } from "@grdr/api";
+import { capitalizeLabel } from "@grdr/i18n";
 import {
   Badge,
   Banner,
   Button,
   Card,
+  EmptyState,
   GrdrIcon,
   GrdrSelect,
   Heading,
@@ -23,13 +27,22 @@ type ProviderPhase =
   | { kind: "ok"; message: string }
   | { kind: "error"; message: string };
 
+function formatOrgSetLabel(orgSet: string): string {
+  return orgSet
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part) => capitalizeLabel(part))
+    .join(" ");
+}
+
 export function ProviderWorkbenchPage({
   onChanged,
 }: {
   onChanged?: () => Promise<void>;
 }) {
   const [orgSet, setOrgSet] = useState("all");
-  const [promoteVer, setPromoteVer] = useState("1.3.0");
+  const [knownOrgSets, setKnownOrgSets] = useState<string[]>([]);
+  const [customPromoteVer, setCustomPromoteVer] = useState<string | null>(null);
   const [reason, setReason] = useState("Cross-org incident inspection");
   const [phase, setPhase] = useState<ProviderPhase>({ kind: "idle" });
 
@@ -39,6 +52,21 @@ export function ProviderWorkbenchPage({
   });
 
   const ws = provQuery.data;
+
+  useEffect(() => {
+    if (!ws?.orgs.length) return;
+    const nextSets = Array.from(new Set(ws.orgs.map((o) => o.org_set).filter(Boolean))).sort();
+    setKnownOrgSets((prev) => Array.from(new Set([...prev, ...nextSets])).sort());
+  }, [ws]);
+
+  const promoteVer = customPromoteVer ?? ws?.rings[0]?.target_version ?? "";
+  const orgSetOptions = [
+    { value: "all", label: "All org sets" },
+    ...knownOrgSets.map((setName) => ({
+      value: setName,
+      label: formatOrgSetLabel(setName),
+    })),
+  ];
 
   async function actAs(orgId: string | null) {
     setPhase({ kind: "busy" });
@@ -86,6 +114,26 @@ export function ProviderWorkbenchPage({
 
   return (
     <VStack gap={4}>
+      {provQuery.isError && (
+        <Banner
+          status="error"
+          title={
+            provQuery.error instanceof Error
+              ? provQuery.error.message
+              : "Failed loading provider workbench."
+          }
+          collapsible={false}
+          endContent={
+            <Button
+              variant="secondary"
+              size="sm"
+              label="Retry"
+              onClick={() => void provQuery.refetch()}
+            />
+          }
+        />
+      )}
+
       {ws?.acting_as_org_id && (
         <Banner
           status="warning"
@@ -111,31 +159,22 @@ export function ProviderWorkbenchPage({
                 Multi-organization queue, org set filtering, delegated rollout rings, and audited acting-as isolation.
               </Text>
             </VStack>
-            <div style={{ minWidth: 200 }}>
+            <div style={{ minWidth: 200, maxWidth: "100%" }}>
               <GrdrSelect
                 label="Org set"
                 value={orgSet}
                 onChange={setOrgSet}
-                options={[
-                  { value: "all", label: "All org sets" },
-                  { value: "global-enterprise", label: "Global Enterprise" },
-                  { value: "eu-works-council", label: "EU Works Council" },
-                  { value: "apac-partners", label: "APAC Partners" },
-                ]}
+                options={orgSetOptions}
               />
             </div>
           </HStack>
 
           <div className="grid-2">
-            <TextInput
-              label="Acting-as audit reason"
-              value={reason}
-              onChange={setReason}
-            />
+            <TextInput label="Acting-as audit reason" value={reason} onChange={setReason} />
             <TextInput
               label="Floor pack version for ring promotion"
               value={promoteVer}
-              onChange={setPromoteVer}
+              onChange={(val) => setCustomPromoteVer(val)}
             />
           </div>
 
@@ -150,91 +189,134 @@ export function ProviderWorkbenchPage({
 
       <Card padding={3}>
         <VStack gap={2}>
-          <Heading level={2}>Managed organizations</Heading>
-          <div className="table-wrap">
-            <table className="table responsive-table">
-              <thead>
-                <tr>
-                  <th>Organization</th>
-                  <th>Org set</th>
-                  <th>Ring</th>
-                  <th>Coverage</th>
-                  <th>Findings</th>
-                  <th>Floor</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(ws?.orgs ?? []).map((org) => {
-                  const isActive = ws?.acting_as_org_id === org.org_id;
-                  return (
-                    <tr key={org.org_id}>
-                      <td data-label="Organization">
-                        <VStack gap={0}>
-                          <Text size="sm" weight="semibold">
-                            {org.name}
-                          </Text>
-                          <Text size="sm" color="secondary" className="mono">
-                            {org.org_id}
-                          </Text>
-                        </VStack>
-                      </td>
-                      <td data-label="Org set">{org.org_set}</td>
-                      <td data-label="Ring">
-                        <Badge variant="info" label={org.ring} />
-                      </td>
-                      <td data-label="Coverage" className="tabular">{`${org.coverage_pct}%`}</td>
-                      <td data-label="Findings" className="tabular">{org.open_findings}</td>
-                      <td data-label="Floor" className="mono">{`v${org.floor_version}`}</td>
-                      <td data-label="Action">
-                        <Button
-                          variant={isActive ? "primary" : "secondary"}
-                          size="sm"
-                          isDisabled={phase.kind === "busy"}
-                          label={isActive ? "Exit scope" : "Act as org"}
-                          onClick={() => void actAs(isActive ? null : org.org_id)}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <HStack justify="between" align="center" style={{ flexWrap: "wrap", gap: 8 }}>
+            <Heading level={2}>Managed organizations</Heading>
+            <Badge variant="neutral" label={`${ws?.orgs.length ?? 0} orgs`} />
+          </HStack>
+          {provQuery.isLoading ? (
+            <Text size="sm" color="secondary">
+              Loading managed organizations...
+            </Text>
+          ) : (ws?.orgs.length ?? 0) === 0 ? (
+            <EmptyState
+              title="No managed organizations registered"
+              description="Provision tenant organizations in the Operator Portal to manage delegated rollout rings and acting-as sessions."
+              icon={<GrdrIcon name="layers" size={20} />}
+            />
+          ) : (
+            <div className="table-wrap">
+              <table className="table responsive-table">
+                <thead>
+                  <tr>
+                    <th>Organization</th>
+                    <th>Org set</th>
+                    <th>Ring</th>
+                    <th>Status</th>
+                    <th>Devices</th>
+                    <th>Coverage</th>
+                    <th>Findings</th>
+                    <th>Floor</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(ws?.orgs ?? []).map((org) => {
+                    const isActive = ws?.acting_as_org_id === org.org_id;
+                    return (
+                      <tr key={org.org_id}>
+                        <td data-label="Organization">
+                          <VStack gap={0}>
+                            <Text size="sm" weight="semibold">
+                              {org.name}
+                            </Text>
+                            <Text size="sm" color="secondary" className="mono">
+                              {org.org_id}
+                            </Text>
+                          </VStack>
+                        </td>
+                        <td data-label="Org set">{org.org_set}</td>
+                        <td data-label="Ring">
+                          <Badge variant="info" label={org.ring} />
+                        </td>
+                        <td data-label="Status">
+                          <StatusInline
+                            tone={
+                              org.status === "healthy"
+                                ? "allow"
+                                : org.status === "attention"
+                                  ? "ask"
+                                  : "block"
+                            }
+                            dot
+                            label={capitalizeLabel(org.status)}
+                          />
+                        </td>
+                        <td data-label="Devices" className="tabular">
+                          {org.devices_count}
+                        </td>
+                        <td data-label="Coverage" className="tabular">{`${org.coverage_pct}%`}</td>
+                        <td data-label="Findings" className="tabular">
+                          {`${org.open_findings} (${org.pending_approvals} ask)`}
+                        </td>
+                        <td data-label="Floor" className="mono">{`v${org.floor_version}`}</td>
+                        <td data-label="Action">
+                          <Button
+                            variant={isActive ? "primary" : "secondary"}
+                            size="sm"
+                            isDisabled={phase.kind === "busy"}
+                            label={isActive ? "Exit scope" : "Act as org"}
+                            onClick={() => void actAs(isActive ? null : org.org_id)}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </VStack>
       </Card>
 
       <Card padding={3}>
         <VStack gap={2}>
           <Heading level={2}>Delegated rollout rings</Heading>
-          <div className="grid-2">
-            {(ws?.rings ?? []).map((ring) => (
-              <Card key={ring.ring} padding={2}>
-                <HStack justify="between" align="center" style={{ flexWrap: "wrap", gap: 8 }}>
-                  <VStack gap={0}>
-                    <HStack gap={2} align="center">
-                      <GrdrIcon name="layers" size={14} />
-                      <Heading level={3}>{ring.ring}</Heading>
-                      <StatusInline
-                        tone={ring.health_state === "healthy" ? "allow" : "ask"}
-                        label={ring.health_state}
-                      />
-                    </HStack>
-                    <Text size="sm" color="secondary">
-                      {`v${ring.target_version} · ${ring.org_count} orgs · ${ring.soak_hours}h soak`}
-                    </Text>
-                  </VStack>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    label="Promote ring"
-                    isDisabled={phase.kind === "busy"}
-                    onClick={() => void advanceRing(ring.ring)}
-                  />
-                </HStack>
-              </Card>
-            ))}
-          </div>
+          {(ws?.rings.length ?? 0) === 0 ? (
+            <EmptyState
+              title="No rollout rings configured"
+              description="Delegated policy floor rings appear here once organizations are assigned to release rings."
+              icon={<GrdrIcon name="layers" size={20} />}
+            />
+          ) : (
+            <div className="grid-2">
+              {(ws?.rings ?? []).map((ring) => (
+                <Card key={ring.ring} padding={2}>
+                  <HStack justify="between" align="center" style={{ flexWrap: "wrap", gap: 8 }}>
+                    <VStack gap={0}>
+                      <HStack gap={2} align="center">
+                        <GrdrIcon name="layers" size={14} />
+                        <Heading level={3}>{ring.ring}</Heading>
+                        <StatusInline
+                          tone={ring.health_state === "healthy" ? "allow" : "ask"}
+                          label={capitalizeLabel(ring.health_state.replace(/_/g, " "))}
+                        />
+                      </HStack>
+                      <Text size="sm" color="secondary">
+                        {`v${ring.target_version} · ${ring.org_count} orgs · ${ring.soak_hours}h soak`}
+                      </Text>
+                    </VStack>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      label="Promote ring"
+                      isDisabled={phase.kind === "busy" || promoteVer.trim() === ""}
+                      onClick={() => void advanceRing(ring.ring)}
+                    />
+                  </HStack>
+                </Card>
+              ))}
+            </div>
+          )}
         </VStack>
       </Card>
     </VStack>

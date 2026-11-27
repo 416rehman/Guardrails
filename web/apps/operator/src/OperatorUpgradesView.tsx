@@ -1,21 +1,27 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
 import { useEffect, useState } from "react";
-import { api } from "@grdr/api";
-import { formatTimestamp } from "@grdr/i18n";
+import { api, type ConfigRevisionEntry, type OperatorRuntimeConfig } from "@grdr/api";
+import { capitalizeLabel, formatTimestamp } from "@grdr/i18n";
 import {
   Badge,
   Banner,
   Button,
   Card,
   CheckboxInput,
+  Dialog,
+  EmptyState,
   GrdrIcon,
   GrdrSelect,
   Heading,
   HStack,
+  IconButton,
   StatusInline,
   Text,
   TextInput,
   VStack,
 } from "@grdr/ui";
+import { OperatorUpgradePreflight } from "./OperatorUpgradePreflight";
 import type { OperatorSnapshot } from "./queries";
 
 type UpgradePhase =
@@ -24,18 +30,34 @@ type UpgradePhase =
   | { kind: "ok"; message: string }
   | { kind: "error"; message: string };
 
-const CAPABILITY_LABELS: Record<string, string> = {
-  SignedReceipts: "Signed receipts",
-  SessionLabels: "Session labels",
-  FastpathFloor: "Fast-path floor",
-  McpToolPinning: "MCP tool pinning",
-  StepUpApproval: "Step-up approval",
+type UpgradeDialogState =
+  | { kind: "closed" }
+  | {
+      kind: "confirming";
+      action: "apply" | "rollback";
+      revisionId?: string;
+      summary: string;
+      requiresStepUp: boolean;
+      stepUpToken: string;
+    };
+
+const CAPTURE_RANK: Record<string, number> = {
+  "metadata-only": 0,
+  "metrics-only": 1,
+  "redacted-excerpt": 2,
 };
 
-function formatCapabilityList(caps: string[]): string {
-  return caps
-    .map((c) => CAPABILITY_LABELS[c] ?? c.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase())
-    .join(", ");
+function isProtectionWeakened(
+  current: OperatorRuntimeConfig,
+  candidate: OperatorRuntimeConfig | undefined,
+): boolean {
+  if (!candidate) {
+    return current.privacy_profile === "works-council" || current.capture_level === "metadata-only";
+  }
+  const lowersPrivacy = current.privacy_profile === "works-council" && candidate.privacy_profile !== "works-council";
+  const currentRank = CAPTURE_RANK[current.capture_level] ?? 0;
+  const candidateRank = CAPTURE_RANK[candidate.capture_level] ?? 0;
+  return lowersPrivacy || candidateRank > currentRank;
 }
 
 export function OperatorUpgradesView({
@@ -55,8 +77,8 @@ export function OperatorUpgradesView({
   const [otlpEnabled, setOtlpEnabled] = useState(cfg.otlp_enabled);
   const [summary, setSummary] = useState("Promote balanced audit retention with works-council safeguards");
   const [rollbackReason, setRollbackReason] = useState("Revert unverified telemetry tuning");
-  const [targetVersion, setTargetVersion] = useState(opState.target_version || "1.3.0");
-  const [stepUpToken, setStepUpToken] = useState("");
+  const [targetVersion, setTargetVersion] = useState(() => opState.target_version || snapshot.health.version);
+  const [dialog, setDialog] = useState<UpgradeDialogState>({ kind: "closed" });
   const [phase, setPhase] = useState<UpgradePhase>({ kind: "idle" });
 
   useEffect(() => {
@@ -66,6 +88,14 @@ export function OperatorUpgradesView({
     setReleaseChannel(cfg.release_channel);
     setOtlpEnabled(cfg.otlp_enabled);
   }, [cfg]);
+
+  useEffect(() => {
+    setTargetVersion(opState.target_version || snapshot.health.version);
+  }, [opState.target_version, snapshot.health.version]);
+
+  const draftWeakensProtection =
+    (cfg.privacy_profile === "works-council" && privacyProfile === "standard") ||
+    (CAPTURE_RANK[captureLevel] ?? 0) > (CAPTURE_RANK[cfg.capture_level] ?? 0);
 
   async function stageRevision() {
     setPhase({ kind: "busy", op: "stage" });
@@ -78,70 +108,79 @@ export function OperatorUpgradesView({
         release_channel: releaseChannel,
         summary,
       });
-      setPhase({
-        kind: "ok",
-        message: `Staged config revision v${staged.version} (${staged.revision_id})`,
-      });
+      setPhase({ kind: "ok", message: `Staged config revision v${staged.version} (${staged.revision_id})` });
       await onMutated();
     } catch (e) {
-      setPhase({
-        kind: "error",
-        message: e instanceof Error ? e.message : "Failed staging runtime revision",
-      });
+      setPhase({ kind: "error", message: e instanceof Error ? e.message : "Failed staging runtime revision" });
     }
   }
 
-  async function applyRevision(revisionId: string) {
-    setPhase({ kind: "busy", op: revisionId });
-    try {
-      const res = await api.applyConfigRevision({
-        revision_id: revisionId,
-        step_up: stepUpToken.trim().length > 0,
-        step_up_token: stepUpToken.trim() || undefined,
-      });
-      setStepUpToken("");
-      setPhase({
-        kind: "ok",
-        message: `Applied runtime revision v${res.applied_revision.version} (${res.applied_revision.revision_id})`,
-      });
-      await onMutated();
-    } catch (e) {
-      setPhase({
-        kind: "error",
-        message: e instanceof Error ? e.message : "Failed applying revision",
-      });
-    }
+  function openApplyDialog(rev: ConfigRevisionEntry) {
+    setDialog({
+      kind: "confirming",
+      action: "apply",
+      revisionId: rev.revision_id,
+      summary: `Activate v${rev.version} (${rev.revision_id}): ${rev.summary}`,
+      requiresStepUp: isProtectionWeakened(cfg, rev.config),
+      stepUpToken: "",
+    });
   }
 
-  async function rollbackRevision(targetRevisionId?: string) {
-    setPhase({ kind: "busy", op: "rollback" });
+  function openRollbackDialog(targetRevisionId?: string) {
+    const candidateRev = targetRevisionId
+      ? opState.revisions.find((r) => r.revision_id === targetRevisionId)
+      : opState.revisions.find((r) => r.revision_id !== cfg.revision_id);
+    setDialog({
+      kind: "confirming",
+      action: "rollback",
+      revisionId: targetRevisionId,
+      summary: candidateRev
+        ? `Restore configuration v${candidateRev.version} (${candidateRev.revision_id}) with reason "${rollbackReason.trim()}"`
+        : `Rollback active v${cfg.version} with reason "${rollbackReason.trim()}"`,
+      requiresStepUp: isProtectionWeakened(cfg, candidateRev?.config),
+      stepUpToken: "",
+    });
+  }
+
+  async function executeConfirmedDialog() {
+    if (dialog.kind !== "confirming") return;
+    const { action, revisionId, stepUpToken } = dialog;
+    const token = stepUpToken.trim();
+    setDialog({ kind: "closed" });
+    setPhase({ kind: "busy", op: revisionId ?? action });
     try {
-      const res = await api.rollbackConfigRevision({
-        target_revision_id: targetRevisionId,
-        reason: rollbackReason,
-        step_up: stepUpToken.trim().length > 0,
-        step_up_token: stepUpToken.trim() || undefined,
-      });
-      setStepUpToken("");
-      setPhase({
-        kind: "ok",
-        message: `Rolled back active configuration to v${res.rolled_back_revision.version}`,
-      });
+      if (action === "apply" && revisionId) {
+        const res = await api.applyConfigRevision({
+          revision_id: revisionId,
+          step_up: token.length > 0,
+          step_up_token: token || undefined,
+        });
+        setPhase({
+          kind: "ok",
+          message: `Applied runtime revision v${res.applied_revision.version} (${res.applied_revision.revision_id})`,
+        });
+      } else {
+        const res = await api.rollbackConfigRevision({
+          target_revision_id: revisionId,
+          reason: rollbackReason,
+          step_up: token.length > 0,
+          step_up_token: token || undefined,
+        });
+        setPhase({
+          kind: "ok",
+          message: `Rolled back active configuration to v${res.rolled_back_revision.version}`,
+        });
+      }
       await onMutated();
     } catch (e) {
-      setPhase({
-        kind: "error",
-        message: e instanceof Error ? e.message : "Rollback failed",
-      });
+      setPhase({ kind: "error", message: e instanceof Error ? e.message : "Configuration transition failed" });
     }
   }
 
   async function runPreflight() {
     setPhase({ kind: "busy", op: "preflight" });
     try {
-      const res = await api.runUpgradePreflight({
-        target_version: targetVersion,
-      });
+      const res = await api.runUpgradePreflight({ target_version: targetVersion });
       setPhase({
         kind: "ok",
         message: res.overall_compatible
@@ -150,10 +189,7 @@ export function OperatorUpgradesView({
       });
       await onMutated();
     } catch (e) {
-      setPhase({
-        kind: "error",
-        message: e instanceof Error ? e.message : "Preflight check failed",
-      });
+      setPhase({ kind: "error", message: e instanceof Error ? e.message : "Preflight check failed" });
     }
   }
 
@@ -177,20 +213,14 @@ export function OperatorUpgradesView({
               variant="secondary"
               label="Rollback to previous"
               isDisabled={phase.kind === "busy" || opState.revisions.length < 2}
-              onClick={() => void rollbackRevision()}
+              onClick={() => openRollbackDialog()}
             />
           </HStack>
         </div>
 
         <Card padding={3}>
           <VStack gap={3}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                gap: "var(--space-2)",
-              }}
-            >
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "var(--space-2)" }}>
               <GrdrSelect
                 label="Capture ceiling"
                 value={captureLevel}
@@ -231,199 +261,151 @@ export function OperatorUpgradesView({
               />
             </div>
 
-            <HStack gap={3} align="end" style={{ flexWrap: "wrap" }}>
-              <div style={{ flex: 1, minWidth: 220 }}>
-                <TextInput
-                  label="Change summary"
-                  value={summary}
-                  onChange={setSummary}
-                  width="100%"
-                />
+            <div className="op-actions-row">
+              <div style={{ flex: "1 1 220px", minWidth: 0 }}>
+                <TextInput label="Change summary" value={summary} onChange={setSummary} width="100%" />
               </div>
-              <div style={{ flex: 1, minWidth: 220 }}>
-                <TextInput
-                  label="Rollback reason (when reverting)"
-                  value={rollbackReason}
-                  onChange={setRollbackReason}
-                  width="100%"
-                />
+              <div style={{ flex: "1 1 220px", minWidth: 0 }}>
+                <TextInput label="Rollback reason (when reverting)" value={rollbackReason} onChange={setRollbackReason} width="100%" />
               </div>
-              <CheckboxInput
-                label="Enable OTLP exporter"
-                value={otlpEnabled}
-                onChange={setOtlpEnabled}
-              />
-              {cfg.privacy_profile === "works-council" && (
-                <TextInput
-                  label="Step-up verification token (to leave works-council)"
-                  type="password"
-                  placeholder="Enter GRDR_STEP_UP_TOKEN"
-                  value={stepUpToken}
-                  onChange={setStepUpToken}
-                />
-              )}
+              <CheckboxInput label="Enable OTLP exporter" value={otlpEnabled} onChange={setOtlpEnabled} />
               <Button
                 variant="primary"
                 size="sm"
                 label="Stage revision"
-                isDisabled={phase.kind === "busy"}
+                isDisabled={phase.kind === "busy" || summary.trim() === ""}
                 onClick={() => void stageRevision()}
               />
-            </HStack>
+            </div>
+
+            {draftWeakensProtection && (
+              <Banner
+                status="warning"
+                title="Candidate revision widens capture or lowers works-council privacy"
+                description="Activating this staged revision will require explicit confirmation and a fresh step-up verification token."
+                collapsible={false}
+              />
+            )}
           </VStack>
         </Card>
 
-        <div className="table-wrap">
-          <table className="table responsive-table">
-            <thead>
-              <tr>
-                <th>Revision</th>
-                <th>State</th>
-                <th>Summary and diff</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {opState.revisions.map((rev) => (
-                <tr key={rev.revision_id}>
-                  <td data-label="Revision">
-                    <VStack gap={0}>
-                      <span className="mono">{`v${rev.version} (${rev.revision_id})`}</span>
-                      <Text size="sm" color="secondary">{`${rev.author} · ${formatTimestamp(rev.created_at)}`}</Text>
-                    </VStack>
-                  </td>
-                  <td data-label="State">
-                    <StatusInline
-                      tone={
-                        rev.state === "applied"
-                          ? "allow"
-                          : rev.state === "draft" || rev.state === "validated"
-                            ? "ask"
-                            : "neutral"
-                      }
-                      dot
-                      label={rev.state}
-                    />
-                  </td>
-                  <td data-label="Summary and diff">
-                    <VStack gap={1}>
-                      <Text size="sm">{rev.summary}</Text>
-                      {rev.diff_lines.length > 0 && (
-                        <Text size="sm" color="secondary" className="mono">
-                          {rev.diff_lines
-                            .map((d) => `${d.field}: ${d.previous} -> ${d.next}`)
-                            .join(" | ")}
-                        </Text>
-                      )}
-                    </VStack>
-                  </td>
-                  <td data-label="Actions">
-                    <HStack gap={1}>
-                      {(rev.state === "draft" || rev.state === "validated") && (
-                        <Button
-                          size="sm"
-                          variant="primary"
-                          label="Apply"
-                          isDisabled={phase.kind === "busy"}
-                          onClick={() => void applyRevision(rev.revision_id)}
-                        />
-                      )}
-                      {rev.revision_id !== cfg.revision_id && rev.state !== "draft" && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          label="Restore"
-                          isDisabled={phase.kind === "busy"}
-                          onClick={() => void rollbackRevision(rev.revision_id)}
-                        />
-                      )}
-                    </HStack>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {opState.revisions.length === 0 ? (
+          <EmptyState
+            title="No runtime configuration revisions staged"
+            description="Stage a candidate configuration revision above to inspect diffs before activation."
+            icon={<GrdrIcon name="layers" size={20} />}
+          />
+        ) : (
+          <div className="table-wrap">
+            <table className="table responsive-table">
+              <thead>
+                <tr><th>Revision</th><th>State</th><th>Summary and diff</th><th>Actions</th></tr>
+              </thead>
+              <tbody>
+                {opState.revisions.map((rev) => (
+                  <tr key={rev.revision_id}>
+                    <td data-label="Revision">
+                      <VStack gap={0}>
+                        <span className="mono">{`v${rev.version} (${rev.revision_id})`}</span>
+                        <Text size="sm" color="secondary">{`${rev.author} · ${formatTimestamp(rev.created_at)}`}</Text>
+                      </VStack>
+                    </td>
+                    <td data-label="State">
+                      <StatusInline
+                        tone={rev.state === "applied" ? "allow" : rev.state === "draft" || rev.state === "validated" ? "ask" : "neutral"}
+                        dot
+                        label={capitalizeLabel(rev.state.replace(/_/g, " "))}
+                      />
+                    </td>
+                    <td data-label="Summary and diff">
+                      <VStack gap={1}>
+                        <Text size="sm">{rev.summary}</Text>
+                        {rev.diff_lines.length > 0 && (
+                          <Text size="sm" color="secondary" className="mono">
+                            {rev.diff_lines.map((d) => `${d.field}: ${d.previous} -> ${d.next}`).join(" | ")}
+                          </Text>
+                        )}
+                      </VStack>
+                    </td>
+                    <td data-label="Actions">
+                      <HStack gap={1}>
+                        {(rev.state === "draft" || rev.state === "validated") && (
+                          <Button size="sm" variant="primary" label="Apply" isDisabled={phase.kind === "busy"} onClick={() => openApplyDialog(rev)} />
+                        )}
+                        {rev.revision_id !== cfg.revision_id && rev.state !== "draft" && (
+                          <Button size="sm" variant="secondary" label="Restore" isDisabled={phase.kind === "busy"} onClick={() => openRollbackDialog(rev.revision_id)} />
+                        )}
+                      </HStack>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
-      <section className="ledger-section">
-        <div className="ledger-header" style={{ flexWrap: "wrap", gap: 10 }}>
-          <VStack gap={0}>
-            <Heading level={2}>Upgrade compatibility preflight</Heading>
-            <Text size="sm" color="secondary">
-              Validate daemon, schema, and protocol handshake ranges before promoting fleet rollouts.
-            </Text>
-          </VStack>
-          <HStack gap={2} align="end" style={{ flexWrap: "wrap" }}>
+      <OperatorUpgradePreflight
+        targetVersion={targetVersion}
+        onChangeTargetVersion={setTargetVersion}
+        overallCompatible={opState.overall_compatible}
+        opTargetVersion={opState.target_version}
+        preflightMatrix={opState.preflight_matrix}
+        busy={phase.kind === "busy"}
+        onRunPreflight={() => void runPreflight()}
+      />
+
+      <Dialog
+        isOpen={dialog.kind === "confirming"}
+        onOpenChange={(open) => {
+          if (!open) setDialog({ kind: "closed" });
+        }}
+        purpose="required"
+        width={520}
+        padding={4}
+        aria-label="Confirm runtime configuration transition"
+      >
+        {dialog.kind === "confirming" && (
+          <VStack gap={3}>
+            <HStack justify="between" align="start">
+              <HStack gap={2} align="center">
+                <GrdrIcon name="shield-alert" size={18} color="var(--tone-ask)" />
+                <Heading level={2}>{dialog.action === "apply" ? "Confirm apply revision" : "Confirm configuration restore"}</Heading>
+              </HStack>
+              <IconButton label="Close" icon={<GrdrIcon name="x" size={14} />} variant="ghost" size="sm" onClick={() => setDialog({ kind: "closed" })} />
+            </HStack>
+            <Text size="sm" color="secondary">{dialog.summary}</Text>
+            {dialog.requiresStepUp && (
+              <Banner
+                status="warning"
+                title="Fresh step-up credential required"
+                description="This transition relaxes privacy or capture safeguards and requires explicit step-up verification."
+                collapsible={false}
+              />
+            )}
             <TextInput
-              label="Target version"
-              value={targetVersion}
-              onChange={setTargetVersion}
-              width={130}
+              label={dialog.requiresStepUp ? "Step-up verification token (required)" : "Step-up verification token (optional)"}
+              type="password"
+              placeholder="Enter step-up verification token"
+              value={dialog.stepUpToken}
+              onChange={(val) => setDialog({ ...dialog, stepUpToken: val })}
+              data-agent-secret="true"
+              autoComplete="off"
+              width="100%"
             />
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<GrdrIcon name="shield-check" size={14} />}
-              label="Run preflight"
-              isDisabled={phase.kind === "busy"}
-              onClick={() => void runPreflight()}
-            />
-          </HStack>
-        </div>
-
-        <StatusInline
-          tone={opState.overall_compatible ? "allow" : "ask"}
-          dot
-          label={
-            opState.overall_compatible
-              ? `Ready for v${opState.target_version}`
-              : `Warnings on v${opState.target_version}`
-          }
-        />
-
-        <div className="table-wrap">
-          <table className="table responsive-table">
-            <thead>
-              <tr>
-                <th>Component</th>
-                <th>Versions</th>
-                <th>Status</th>
-                <th>Capabilities and remediation</th>
-              </tr>
-            </thead>
-            <tbody>
-              {opState.preflight_matrix.map((chk) => (
-                <tr key={chk.component}>
-                  <td data-label="Component" className="mono">{chk.component}</td>
-                  <td data-label="Versions" className="mono">{`${chk.current_version} -> ${chk.target_version} (${chk.supported_range})`}</td>
-                  <td data-label="Status">
-                    <StatusInline
-                      tone={
-                        chk.status === "compatible"
-                          ? "allow"
-                          : chk.status === "compatible_with_warnings"
-                            ? "ask"
-                            : "block"
-                      }
-                      dot
-                      label={chk.status.replace(/_/g, " ")}
-                    />
-                  </td>
-                  <td data-label="Capabilities and remediation">
-                    <VStack gap={0}>
-                      <Text size="sm" color="secondary">
-                        {formatCapabilityList(chk.agreed_capabilities)}
-                      </Text>
-                      {chk.remediation && <Text size="sm">{chk.remediation}</Text>}
-                    </VStack>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+            <HStack justify="end" gap={2}>
+              <Button variant="secondary" size="sm" label="Cancel" onClick={() => setDialog({ kind: "closed" })} />
+              <Button
+                variant="primary"
+                size="sm"
+                label={dialog.action === "apply" ? "Confirm apply" : "Confirm restore"}
+                isDisabled={dialog.requiresStepUp && dialog.stepUpToken.trim() === ""}
+                onClick={() => void executeConfirmedDialog()}
+              />
+            </HStack>
+          </VStack>
+        )}
+      </Dialog>
     </VStack>
   );
 }

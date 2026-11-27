@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
 import type { ArtifactEntry, RiskTier, UserDetailResponse } from "@grdr/api";
 import { formatActionLabel, pluralize } from "@grdr/i18n";
 import { EntityLink, type EntityTarget, Quoted, VerdictBadge } from "@grdr/kit";
-import { Badge, Button, Card, GrdrIcon, Heading, HStack, Text, VStack } from "@grdr/ui";
+import { Badge, Button, Card, EmptyState, GrdrIcon, Heading, HStack, Text, VStack } from "@grdr/ui";
 
 export function riskTone(tier: RiskTier): "block" | "ask" | "watch" | "allow" {
   switch (tier) {
@@ -50,7 +52,11 @@ export function UserDetailSection({
   if (!detail) {
     return (
       <div className="ledger-section">
-        <Text color="secondary">Select a user to inspect assigned devices, risk drivers, and activity feed.</Text>
+        <EmptyState
+          title="Select a user"
+          description="Choose a directory entry to inspect assigned devices, risk drivers, and activity feed."
+          icon={<GrdrIcon name="user" size={20} />}
+        />
       </div>
     );
   }
@@ -70,7 +76,9 @@ export function UserDetailSection({
               )}
             </HStack>
             <Text size="sm" color="secondary">
-              {`${detail.user.email} · ${detail.user.department} · Synced via ${detail.user.idp_source}`}
+              {isPseudonymous
+                ? `Pseudonymous identity · ${detail.user.department} · Synced via ${detail.user.idp_source}`
+                : `${detail.user.email} · ${detail.user.department} · Synced via ${detail.user.idp_source}`}
             </Text>
           </VStack>
           <div className="mono" style={{ color: "var(--ink-muted)", fontSize: 12 }}>
@@ -81,7 +89,7 @@ export function UserDetailSection({
         {!isPseudonymous && detail.user.risk_factors.length > 0 && (
           <Card padding={2}>
             <VStack gap={2}>
-              <Text size="sm" style={{ fontWeight: 600 }}>
+              <Text size="sm" weight="semibold">
                 Risk score drivers
               </Text>
               <div className="risk-driver-grid">
@@ -101,37 +109,43 @@ export function UserDetailSection({
         <div className="grid-2">
           <Card padding={2}>
             <VStack gap={2}>
-              <Text size="sm" style={{ fontWeight: 600 }}>
+              <Text size="sm" weight="semibold">
                 {`Devices & agents (${detail.devices.length})`}
               </Text>
-              {detail.devices.map((dev) => (
-                <HStack key={dev.id} gap={2} align="center" style={{ flexWrap: "wrap" }}>
-                  <EntityLink
-                    kind="device"
-                    id={dev.id}
-                    label={dev.hostname}
-                    os={dev.os}
-                    compact
-                    onSelect={onOpenEntity}
-                  />
-                  {dev.agents.map((ag) => (
+              {detail.devices.length === 0 ? (
+                <Text size="sm" color="secondary">
+                  No endpoints currently attributed to this user.
+                </Text>
+              ) : (
+                detail.devices.map((dev) => (
+                  <HStack key={dev.id} gap={2} align="center" style={{ flexWrap: "wrap" }}>
                     <EntityLink
-                      key={ag.id}
-                      kind="agent"
-                      id={ag.id}
-                      label={ag.name}
+                      kind="device"
+                      id={dev.id}
+                      label={dev.hostname}
+                      os={dev.os}
                       compact
                       onSelect={onOpenEntity}
                     />
-                  ))}
-                </HStack>
-              ))}
+                    {dev.agents.map((ag) => (
+                      <EntityLink
+                        key={ag.id}
+                        kind="agent"
+                        id={ag.id}
+                        label={ag.name}
+                        compact
+                        onSelect={onOpenEntity}
+                      />
+                    ))}
+                  </HStack>
+                ))
+              )}
             </VStack>
           </Card>
 
           <Card padding={2}>
             <VStack gap={2}>
-              <Text size="sm" style={{ fontWeight: 600 }}>
+              <Text size="sm" weight="semibold">
                 {`Assigned skills & rules (${detail.artifacts.length})`}
               </Text>
               {detail.artifacts.length === 0 ? (
@@ -167,7 +181,7 @@ export function UserDetailSection({
             <Text color="secondary">No recorded activity for this user yet.</Text>
           ) : (
             <div className="table-wrap">
-              <table>
+              <table className="table responsive-table">
                 <thead>
                   <tr>
                     <th>Verdict</th>
@@ -184,7 +198,7 @@ export function UserDetailSection({
                     const turnNum = attempt.turn_index ?? 1;
                     return (
                       <tr key={attempt.id}>
-                        <td>
+                        <td data-label="Verdict">
                           {isWatchHit ? (
                             <Badge
                               variant="info"
@@ -194,17 +208,17 @@ export function UserDetailSection({
                           ) : receipt ? (
                             <VerdictBadge verdict={receipt.verdict} />
                           ) : (
-                            "Allow"
+                            <VerdictBadge verdict="allow" />
                           )}
                         </td>
-                        <td className="mono">{`T${turnNum}`}</td>
-                        <td>
+                        <td data-label="Turn" className="mono">{`T${turnNum}`}</td>
+                        <td data-label="Action & target">
                           <VStack gap={1}>
                             <span style={{ fontWeight: 500 }}>{formatActionLabel(attempt.action_class)}</span>
                             <Quoted text={attempt.target} />
                           </VStack>
                         </td>
-                        <td>
+                        <td data-label="Agent">
                           <EntityLink
                             kind="agent"
                             label={attempt.agent_name}
@@ -212,7 +226,7 @@ export function UserDetailSection({
                             onSelect={onOpenEntity}
                           />
                         </td>
-                        <td>
+                        <td data-label="Trace">
                           <Button
                             size="sm"
                             variant="ghost"
