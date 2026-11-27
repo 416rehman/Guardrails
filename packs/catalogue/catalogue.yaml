@@ -1,0 +1,839 @@
+schema: grdr.catalogue/v1alpha1
+version: 1
+agents:
+  - id: claude-code
+    aliases: [claude]
+    name: Claude Code
+    vendor: Anthropic
+    kind: coding-agent
+    catalogue_tier: A
+    surfaces: [cli, ide-extension]
+    declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request, child.spawn]
+    containment_default: guided
+    adapter: hook-shim
+    routes:
+      binaries: [claude]
+      windows_exes: [claude.exe, claude-code.exe]
+      wsl_harnesses: [claude, claude-code]
+      cmdline_markers: ['@anthropic-ai/claude-code', claude-code]
+      npm: ['@anthropic-ai/claude-code']
+      pypi: []
+      vscode_extensions: [anthropic.claude-code]
+      state_dirs: [.claude]
+      config_paths: [.claude.json, .claude/settings.json, .claude/settings.local.json]
+      admin_config_paths:
+        macos: "/Library/Application Support/ClaudeCode/managed-settings.json"
+        linux: "/etc/claude-code/managed-settings.json"
+        windows: '%ProgramData%\ClaudeCode\managed-settings.json'
+      mcp_config_paths: [.claude.json, .claude/settings.json, $WORKSPACE/.mcp.json]
+      mcp_config_key: mcpServers
+      env_markers: [ANTHROPIC_API_KEY, CLAUDE_CODE_USE_BEDROCK, CLAUDE_CODE_USE_VERTEX]
+      net: [api.anthropic.com, statsig.anthropic.com]
+      artifacts:
+        skills: [.claude/skills, $WORKSPACE/.claude/skills]
+        plugins: [.claude/plugins]
+        rules: [.claude/CLAUDE.md, $WORKSPACE/CLAUDE.md, $WORKSPACE/AGENTS.md]
+        commands: [.claude/commands, $WORKSPACE/.claude/commands]
+        subagents: [.claude/agents, $WORKSPACE/.claude/agents]
+        transcripts: [.claude/projects]
+      autonomy_flags: [--dangerously-skip-permissions, --permission-mode bypassPermissions]
+    hook:
+      supported: true
+      dialect: claude-code
+      config_rel: .claude/settings.json
+      config_format: json
+      root_key: hooks
+      entry_style: matcher-hooks
+      matcher: 'Bash|PowerShell|Read|Write|Edit|MultiEdit|WebFetch|mcp__.*'
+      events: [PreToolUse]
+      all_events: [PreToolUse, PostToolUse, SessionStart, SessionEnd]
+      payload_session_keys: [session_id]
+      timeout_ms: 250
+      timeout_unit_secs: true
+      append_agent_flag: false
+      fail_mode: closed
+      mdm_ids:
+        plist_domain: com.anthropic.claude-code
+        registry_subkey: 'Software\Policies\Anthropic\ClaudeCode'
+
+  - id: cursor
+    aliases: [cursor-agent]
+    name: Cursor
+    vendor: Anysphere
+    kind: coding-agent
+    catalogue_tier: A
+    surfaces: [ide, cli]
+    declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request, child.spawn]
+    containment_default: guided
+    adapter: hook-shim
+    routes:
+      binaries: [cursor, cursor-agent]
+      windows_exes: [Cursor.exe, cursor.exe, cursor-agent.exe]
+      wsl_harnesses: [cursor-agent]
+      cmdline_markers: [cursor-agent]
+      npm: []
+      pypi: []
+      vscode_extensions: []
+      state_dirs: [.cursor]
+      config_paths: [.cursor/hooks.json, .cursor/mcp.json, .cursor/cli-config.json]
+      admin_config_paths:
+        macos: "/Library/Application Support/Cursor/hooks.json"
+        linux: "/etc/cursor/hooks.json"
+        windows: '%ProgramData%\Cursor\hooks.json'
+      mcp_config_paths: [.cursor/mcp.json, $WORKSPACE/.cursor/mcp.json]
+      mcp_config_key: mcpServers
+      env_markers: [CURSOR_API_KEY]
+      net: [api2.cursor.sh, api3.cursor.sh]
+      artifacts:
+        skills: [.cursor/skills, $WORKSPACE/.cursor/skills]
+        plugins: []
+        rules: [.cursor/rules, $WORKSPACE/.cursorrules, $WORKSPACE/.cursor/rules]
+        commands: [.cursor/commands]
+        subagents: []
+        transcripts: []
+      autonomy_flags: [--yolo, --force]
+    hook:
+      supported: true
+      dialect: cursor
+      config_rel: .cursor/hooks.json
+      config_format: json
+      root_key: hooks
+      version_field: 1
+      entry_style: command-item
+      events: [beforeShellExecution, preToolUse]
+      all_events: [beforeShellExecution, preToolUse, afterShellExecution, stop]
+      payload_session_keys: [conversation_id]
+      timeout_ms: 250
+      fail_mode: closed
+      mdm_ids:
+        plist_domain: com.todesktop.230313mzl4w4u92
+        registry_subkey: 'Software\Policies\Cursor'
+
+  - id: codex
+    aliases: [codex-cli, openai-codex]
+    name: Codex CLI
+    vendor: OpenAI
+    kind: coding-agent
+    catalogue_tier: A
+    surfaces: [cli, ide-extension]
+    declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request, child.spawn]
+    containment_default: guided
+    adapter: hook-shim
+    routes:
+      binaries: [codex]
+      windows_exes: [codex.exe]
+      wsl_harnesses: [codex, codex-cli]
+      cmdline_markers: ['@openai/codex', codex-cli]
+      npm: ['@openai/codex']
+      pypi: []
+      vscode_extensions: [openai.chatgpt]
+      state_dirs: [.codex]
+      config_paths: [.codex/config.toml, .codex/hooks.json, $WORKSPACE/.codex/config.toml]
+      admin_config_paths:
+        macos: "/Library/Managed Preferences/codex-requirements.toml"
+        linux: "/etc/codex/requirements.toml"
+        windows: '%ProgramData%\OpenAI\Codex\requirements.toml'
+      mcp_config_paths: [.codex/config.toml, $WORKSPACE/.codex/config.toml]
+      mcp_config_key: mcp_servers
+      env_markers: [OPENAI_API_KEY, CODEX_HOME]
+      net: [api.openai.com, chatgpt.com]
+      artifacts:
+        skills: [.codex/skills, $WORKSPACE/.codex/skills]
+        plugins: []
+        rules: [.codex/AGENTS.md, $WORKSPACE/AGENTS.md]
+        commands: []
+        subagents: []
+        transcripts: [.codex/sessions]
+      autonomy_flags: [--dangerously-bypass-approvals-and-sandbox, --full-auto]
+    hook:
+      supported: true
+      dialect: codex
+      config_rel: .codex/hooks.json
+      config_format: json
+      root_key: hooks
+      entry_style: matcher-hooks
+      events: [PreToolUse]
+      all_events: [PreToolUse, PostToolUse, SessionStart, exec]
+      payload_session_keys: [thread_id]
+      timeout_ms: 250
+      fail_mode: closed
+      mdm_ids:
+        plist_domain: com.openai.codex
+        registry_subkey: 'Software\Policies\OpenAI\Codex'
+
+  - id: gemini-cli
+    aliases: [gemini]
+    name: Gemini CLI
+    vendor: Google
+    kind: coding-agent
+    catalogue_tier: A
+    surfaces: [cli]
+    declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request, child.spawn]
+    containment_default: guided
+    adapter: hook-shim
+    routes:
+      binaries: [gemini]
+      windows_exes: [gemini.exe]
+      wsl_harnesses: [gemini]
+      cmdline_markers: ['@google/gemini-cli', gemini-cli]
+      npm: ['@google/gemini-cli']
+      pypi: []
+      vscode_extensions: []
+      state_dirs: [.gemini]
+      config_paths: [.gemini/settings.json, $WORKSPACE/.gemini/settings.json]
+      admin_config_paths:
+        macos: "/Library/Application Support/GeminiCli/settings.json"
+        linux: "/etc/gemini-cli/settings.json"
+        windows: '%ProgramData%\GeminiCli\settings.json'
+      mcp_config_paths: [.gemini/settings.json, $WORKSPACE/.gemini/settings.json]
+      mcp_config_key: mcpServers
+      env_markers: [GEMINI_API_KEY, GOOGLE_API_KEY]
+      net: [generativelanguage.googleapis.com, cloudcode-pa.googleapis.com]
+      artifacts:
+        skills: [.gemini/skills, .gemini/config/skills, $WORKSPACE/.gemini/skills]
+        plugins: [.gemini/extensions, .gemini/config/plugins]
+        rules: [.gemini/GEMINI.md, $WORKSPACE/GEMINI.md]
+        commands: [.gemini/commands]
+        subagents: []
+        transcripts: [.gemini/tmp]
+      autonomy_flags: [--yolo, --approval-mode yolo]
+    hook:
+      supported: true
+      dialect: gemini
+      config_rel: .gemini/settings.json
+      config_format: json
+      root_key: hooks
+      entry_style: matcher-hooks
+      entry_name: guardrails-adr
+      events: [BeforeTool]
+      all_events: [BeforeTool, AfterTool, SessionStart, SessionEnd]
+      timeout_ms: 250
+      fail_mode: closed
+      mdm_ids:
+        plist_domain: com.google.gemini-cli
+        registry_subkey: 'Software\Policies\Google\GeminiCli'
+
+  - id: antigravity
+    aliases: [agy]
+    name: Antigravity
+    vendor: Google
+    kind: coding-agent
+    catalogue_tier: A
+    surfaces: [ide, desktop]
+    declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request, child.spawn]
+    containment_default: guided
+    adapter: hook-shim
+    routes:
+      binaries: [antigravity, agy]
+      windows_exes: [Antigravity.exe, antigravity.exe, agy.exe]
+      wsl_harnesses: [antigravity, agy]
+      cmdline_markers: [antigravity]
+      npm: []
+      pypi: []
+      vscode_extensions: []
+      state_dirs: [.gemini/antigravity, .antigravity]
+      config_paths: [.gemini/antigravity/mcp_config.json, .agents/hooks.json, $WORKSPACE/.agents/hooks.json]
+      admin_config_paths:
+        macos: "/Library/Application Support/Antigravity/hooks.json"
+        linux: "/etc/antigravity/hooks.json"
+        windows: '%ProgramData%\Antigravity\hooks.json'
+      mcp_config_paths: [.gemini/antigravity/mcp_config.json]
+      mcp_config_key: mcpServers
+      env_markers: [GEMINI_API_KEY]
+      net: [generativelanguage.googleapis.com]
+      artifacts:
+        skills: [.gemini/antigravity/skills, $WORKSPACE/.agents/skills]
+        plugins: []
+        rules: [GEMINI.md, .agents/rules, $WORKSPACE/AGENTS.md]
+        commands: []
+        subagents: []
+        transcripts: [.gemini/antigravity/brain]
+      autonomy_flags: [--yolo]
+    hook:
+      supported: true
+      dialect: antigravity
+      config_rel: .agents/hooks.json
+      config_format: json
+      root_key: hooks
+      entry_style: matcher-hooks
+      events: [PreToolUse]
+      all_events: [PreToolUse, PostToolUse]
+      timeout_ms: 250
+      fail_mode: closed
+      mdm_ids:
+        plist_domain: com.google.antigravity
+        registry_subkey: 'Software\Policies\Google\Antigravity'
+
+  - id: github-copilot
+    aliases: [copilot, copilot-cli, gh-copilot]
+    name: GitHub Copilot
+    vendor: GitHub
+    kind: coding-agent
+    catalogue_tier: A
+    surfaces: [ide-extension, cli]
+    declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request]
+    containment_default: guided
+    adapter: hook-shim
+    routes:
+      binaries: [copilot, copilot-language-server]
+      windows_exes: [copilot.exe, copilot-language-server.exe]
+      wsl_harnesses: [copilot, copilot-cli, github-copilot]
+      cmdline_markers: ['@github/copilot', copilot-language-server]
+      npm: ['@github/copilot']
+      pypi: []
+      vscode_extensions: [github.copilot, github.copilot-chat]
+      state_dirs: [.copilot, .config/github-copilot]
+      config_paths: [.copilot/hooks.json, .config/github-copilot/hosts.json, $WORKSPACE/.github/hooks/grdr.json]
+      admin_config_paths:
+        macos: "/Library/Application Support/GitHubCopilot/hooks.json"
+        linux: "/etc/github-copilot/hooks.json"
+        windows: '%ProgramData%\GitHubCopilot\hooks.json'
+      mcp_config_paths: [.copilot/mcp-config.json, $WORKSPACE/.vscode/mcp.json, $APPDATA/Code/User/mcp.json]
+      mcp_config_key: servers
+      env_markers: [GITHUB_COPILOT_TOKEN, GH_TOKEN]
+      net: [api.githubcopilot.com, copilot-proxy.githubusercontent.com]
+      artifacts:
+        skills: [$WORKSPACE/.github/skills]
+        plugins: []
+        rules: [.github/copilot-instructions.md, $WORKSPACE/.github/copilot-instructions.md]
+        commands: [$WORKSPACE/.github/prompts]
+        subagents: [$WORKSPACE/.github/agents]
+        transcripts: []
+      autonomy_flags: [--allow-all-tools, --yolo]
+    hook:
+      supported: true
+      dialect: copilot
+      config_rel: .copilot/hooks.json
+      config_format: json
+      root_key: hooks
+      entry_style: matcher-hooks
+      events: [preToolUse]
+      all_events: [preToolUse, postToolUse, sessionStart, sessionEnd]
+      timeout_ms: 250
+      fail_mode: closed
+      mdm_ids:
+        plist_domain: com.github.copilot
+        registry_subkey: 'Software\Policies\GitHub\Copilot'
+
+  - id: windsurf
+    aliases: [codeium-windsurf, cascade]
+    name: Windsurf
+    vendor: Codeium
+    kind: coding-agent
+    catalogue_tier: A
+    surfaces: [ide]
+    declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request]
+    containment_default: guided
+    adapter: hook-shim
+    routes:
+      binaries: [windsurf, language_server_macos_arm64, language_server_linux_x64]
+      windows_exes: [Windsurf.exe, windsurf.exe, language_server_windows_x64.exe]
+      wsl_harnesses: [windsurf]
+      cmdline_markers: [codeium/windsurf, language_server]
+      npm: []
+      pypi: []
+      vscode_extensions: [codeium.codeium]
+      state_dirs: [.codeium/windsurf]
+      config_paths: [.codeium/windsurf/hooks.json, .codeium/windsurf/mcp_config.json]
+      admin_config_paths:
+        macos: "/Library/Application Support/Windsurf/hooks.json"
+        linux: "/etc/windsurf/hooks.json"
+        windows: '%ProgramData%\Windsurf\hooks.json'
+      mcp_config_paths: [.codeium/windsurf/mcp_config.json]
+      mcp_config_key: mcpServers
+      env_markers: [CODEIUM_API_KEY]
+      net: [server.codeium.com, api.codeium.com]
+      artifacts:
+        skills: [.windsurf/skills, $WORKSPACE/.windsurf/skills]
+        plugins: []
+        rules: [.windsurfrules, .windsurf/rules, $WORKSPACE/.windsurfrules, $WORKSPACE/.windsurf/rules]
+        commands: [.windsurf/workflows]
+        subagents: []
+        transcripts: []
+      autonomy_flags: [--yolo]
+    hook:
+      supported: true
+      dialect: windsurf
+      config_rel: .codeium/windsurf/hooks.json
+      config_format: json
+      root_key: hooks
+      entry_style: command-item
+      events: [pre_run_command, pre_mcp_tool_use]
+      all_events: [pre_run_command, pre_write_code, pre_mcp_tool_use, post_run_command]
+      timeout_ms: 250
+      fail_mode: closed
+      mdm_ids:
+        plist_domain: com.codeium.windsurf
+        registry_subkey: 'Software\Policies\Codeium\Windsurf'
+
+  - id: cline
+    aliases: [claude-dev]
+    name: Cline
+    vendor: Cline
+    kind: coding-agent
+    catalogue_tier: B
+    surfaces: [ide-extension, cli]
+    declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request]
+    containment_default: guided
+    adapter: hook-shim
+    routes:
+      binaries: [cline]
+      windows_exes: [cline.exe]
+      wsl_harnesses: [cline]
+      cmdline_markers: [saoudrizwan.claude-dev, cline-core]
+      npm: [cline]
+      pypi: []
+      vscode_extensions: [saoudrizwan.claude-dev]
+      state_dirs: [.cline]
+      config_paths: [.cline/settings.json, .cline/cline_mcp_settings.json, $WORKSPACE/.clinerules]
+      admin_config_paths: {}
+      mcp_config_paths: [.cline/cline_mcp_settings.json]
+      mcp_config_key: mcpServers
+      env_markers: [ANTHROPIC_API_KEY, OPENROUTER_API_KEY]
+      net: [api.cline.bot]
+      artifacts:
+        skills: []
+        plugins: []
+        rules: [.clinerules, $WORKSPACE/.clinerules, $WORKSPACE/.clinerules/]
+        commands: []
+        subagents: []
+        transcripts: []
+      autonomy_flags: [--auto-approve]
+    hook:
+      supported: true
+      dialect: cline
+      config_rel: .cline/hooks.json
+      config_format: json
+      root_key: hooks
+      entry_style: matcher-hooks
+      events: [PreToolUse]
+      all_events: [PreToolUse, PostToolUse, TaskStart]
+      timeout_ms: 250
+      fail_mode: closed
+      mdm_ids:
+        plist_domain: bot.cline.agent
+        registry_subkey: 'Software\Policies\Cline'
+
+  - id: roo-code
+    aliases: [roo, roo-cline]
+    name: Roo Code
+    vendor: Roo
+    kind: coding-agent
+    catalogue_tier: B
+    surfaces: [ide-extension]
+    declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request]
+    containment_default: guided
+    adapter: hook-shim
+    routes:
+      binaries: []
+      windows_exes: []
+      wsl_harnesses: []
+      cmdline_markers: [rooveterinaryinc.roo-cline, roo-code]
+      npm: []
+      pypi: []
+      vscode_extensions: [rooveterinaryinc.roo-cline]
+      state_dirs: [.roo]
+      config_paths: [.roo/mcp.json, .roo/hooks.json, $WORKSPACE/.roorules, $WORKSPACE/.roo/mcp.json]
+      admin_config_paths: {}
+      mcp_config_paths: [.roo/mcp.json, $WORKSPACE/.roo/mcp.json]
+      mcp_config_key: mcpServers
+      env_markers: [ANTHROPIC_API_KEY, OPENAI_API_KEY]
+      net: [api.roocode.com]
+      artifacts:
+        skills: []
+        plugins: []
+        rules: [.roorules, .roo/rules, $WORKSPACE/.roorules, $WORKSPACE/.roo/rules]
+        commands: [$WORKSPACE/.roo/commands]
+        subagents: []
+        transcripts: []
+      autonomy_flags: []
+    hook:
+      supported: true
+      dialect: roo-code
+      config_rel: .roo/hooks.json
+      config_format: json
+      root_key: hooks
+      entry_style: matcher-hooks
+      events: [PreToolUse]
+      all_events: [PreToolUse, PostToolUse]
+      timeout_ms: 250
+      fail_mode: closed
+      mdm_ids:
+        plist_domain: com.roocode.agent
+        registry_subkey: 'Software\Policies\RooCode'
+
+  - id: aider
+    aliases: [aider-chat]
+    name: Aider
+    vendor: Aider
+    kind: coding-agent
+    catalogue_tier: B
+    surfaces: [cli]
+    declared_action_classes: [exec, file.read, file.write, net.request, llm.request]
+    containment_default: monitored
+    adapter: provider-proxy
+    routes:
+      binaries: [aider]
+      windows_exes: [aider.exe]
+      wsl_harnesses: [aider]
+      cmdline_markers: [aider-chat, aider.main]
+      npm: []
+      pypi: [aider-chat]
+      vscode_extensions: []
+      state_dirs: [.aider]
+      config_paths: [.aider.conf.yml, $WORKSPACE/.aider.conf.yml]
+      admin_config_paths: {}
+      mcp_config_paths: []
+      mcp_config_key: ""
+      env_markers: [AIDER_MODEL, OPENAI_API_KEY, ANTHROPIC_API_KEY]
+      net: [api.openai.com, api.anthropic.com]
+      artifacts:
+        skills: []
+        plugins: []
+        rules: [.aider.conf.yml, $WORKSPACE/CONVENTIONS.md]
+        commands: []
+        subagents: []
+        transcripts: [.aider.chat.history.md]
+      autonomy_flags: [--yes-always, --yes]
+    hook:
+      supported: false
+      dialect: aider
+      config_rel: ""
+      config_format: none
+      root_key: ""
+      entry_style: none
+      events: []
+      all_events: []
+      timeout_ms: 250
+      fail_mode: open
+      mdm_ids: {}
+
+  - id: opencode
+    aliases: [open-code]
+    name: OpenCode
+    vendor: SST
+    kind: coding-agent
+    catalogue_tier: B
+    surfaces: [cli]
+    declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request]
+    containment_default: guided
+    adapter: hook-shim
+    routes:
+      binaries: [opencode]
+      windows_exes: [opencode.exe]
+      wsl_harnesses: [opencode]
+      cmdline_markers: [opencode-ai, opencode]
+      npm: [opencode-ai]
+      pypi: []
+      vscode_extensions: []
+      state_dirs: [.config/opencode, .local/share/opencode]
+      config_paths: [.config/opencode/opencode.json, .config/opencode/hooks.json, $WORKSPACE/opencode.json]
+      admin_config_paths: {}
+      mcp_config_paths: [.config/opencode/opencode.json, $WORKSPACE/opencode.json]
+      mcp_config_key: mcp
+      env_markers: [ANTHROPIC_API_KEY, OPENAI_API_KEY]
+      net: [api.anthropic.com, api.openai.com]
+      artifacts:
+        skills: [.config/opencode/skills]
+        plugins: [.config/opencode/plugin]
+        rules: [AGENTS.md, $WORKSPACE/AGENTS.md]
+        commands: [.config/opencode/command]
+        subagents: [.config/opencode/agent]
+        transcripts: []
+      autonomy_flags: [--yes]
+    hook:
+      supported: true
+      dialect: opencode
+      config_rel: .config/opencode/hooks.json
+      config_format: json
+      root_key: hooks
+      entry_style: matcher-hooks
+      events: [PreToolUse]
+      all_events: [PreToolUse, PostToolUse]
+      timeout_ms: 250
+      fail_mode: closed
+      mdm_ids:
+        plist_domain: dev.opencode.cli
+        registry_subkey: 'Software\Policies\OpenCode'
+
+  - id: pi
+    aliases: [pi-agent, pi-coding-agent]
+    name: Pi Coding Agent
+    vendor: Pi
+    kind: coding-agent
+    catalogue_tier: B
+    surfaces: [cli]
+    declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request]
+    containment_default: guided
+    adapter: hook-shim
+    routes:
+      binaries: [pi]
+      windows_exes: [pi.exe]
+      wsl_harnesses: [pi]
+      cmdline_markers: ['@mariozechner/pi-coding-agent', pi-coding-agent]
+      npm: ['@mariozechner/pi-coding-agent']
+      pypi: []
+      vscode_extensions: []
+      state_dirs: [.pi]
+      config_paths: [.pi/agent/settings.json, .pi/settings.json, .pi/hooks.json]
+      admin_config_paths: {}
+      mcp_config_paths: [.pi/agent/mcp.json]
+      mcp_config_key: mcpServers
+      env_markers: [ANTHROPIC_API_KEY, OPENAI_API_KEY]
+      net: [api.anthropic.com, api.openai.com]
+      artifacts:
+        skills: [.pi/agent/skills, $WORKSPACE/.pi/skills]
+        plugins: [.pi/agent/extensions]
+        rules: [AGENTS.md, $WORKSPACE/AGENTS.md]
+        commands: []
+        subagents: []
+        transcripts: [.pi/agent/sessions]
+      autonomy_flags: []
+    hook:
+      supported: true
+      dialect: pi
+      config_rel: .pi/hooks.json
+      config_format: json
+      root_key: hooks
+      entry_style: matcher-hooks
+      events: [PreToolUse]
+      all_events: [PreToolUse, PostToolUse]
+      timeout_ms: 250
+      fail_mode: closed
+      mdm_ids:
+        plist_domain: dev.pi.coding-agent
+        registry_subkey: 'Software\Policies\PiAgent'
+
+  - id: continue
+    aliases: [continue-dev, cn]
+    name: Continue
+    vendor: Continue
+    kind: coding-agent
+    catalogue_tier: B
+    surfaces: [ide-extension, cli]
+    declared_action_classes: [exec, file.read, file.write, net.request, mcp.call, llm.request]
+    containment_default: monitored
+    adapter: mcp-broker
+    routes:
+      binaries: [cn]
+      windows_exes: [cn.exe]
+      wsl_harnesses: [cn]
+      cmdline_markers: [continue.continue, continuedev]
+      npm: ['@continuedev/cli']
+      pypi: []
+      vscode_extensions: [continue.continue]
+      state_dirs: [.continue]
+      config_paths: [.continue/config.yaml, .continue/config.json, $WORKSPACE/.continuerules]
+      admin_config_paths: {}
+      mcp_config_paths: [.continue/config.json]
+      mcp_config_key: mcpServers
+      env_markers: [CONTINUE_API_KEY]
+      net: [api.continue.dev]
+      artifacts:
+        skills: []
+        plugins: []
+        rules: [.continue/rules, $WORKSPACE/.continue/rules, $WORKSPACE/.continuerules]
+        commands: []
+        subagents: []
+        transcripts: [.continue/sessions]
+      autonomy_flags: [--auto]
+    hook:
+      supported: false
+      dialect: continue
+      config_rel: ""
+      config_format: none
+      root_key: ""
+      entry_style: none
+      events: []
+      all_events: []
+      timeout_ms: 250
+      fail_mode: open
+      mdm_ids: {}
+
+  - id: zed-ai
+    aliases: [zed]
+    name: Zed AI
+    vendor: Zed Industries
+    kind: coding-agent
+    catalogue_tier: B
+    surfaces: [ide]
+    declared_action_classes: [exec, file.read, file.write, net.request, mcp.call, llm.request]
+    containment_default: monitored
+    adapter: mcp-broker
+    routes:
+      binaries: [zed, zeditor]
+      windows_exes: [Zed.exe, zed.exe]
+      wsl_harnesses: [zed]
+      cmdline_markers: [zed-editor, zeditor]
+      npm: []
+      pypi: []
+      vscode_extensions: []
+      state_dirs: [.config/zed]
+      config_paths: [.config/zed/settings.json, $WORKSPACE/.zed/settings.json]
+      admin_config_paths: {}
+      mcp_config_paths: [.config/zed/settings.json, $WORKSPACE/.zed/settings.json]
+      mcp_config_key: context_servers
+      env_markers: [ZED_AI_TOKEN, ANTHROPIC_API_KEY]
+      net: [cloud.zed.dev]
+      artifacts:
+        skills: []
+        plugins: []
+        rules: [.rules, $WORKSPACE/.rules]
+        commands: []
+        subagents: []
+        transcripts: []
+      autonomy_flags: []
+    hook:
+      supported: false
+      dialect: zed-ai
+      config_rel: ""
+      config_format: none
+      root_key: ""
+      entry_style: none
+      events: []
+      all_events: []
+      timeout_ms: 250
+      fail_mode: open
+      mdm_ids: {}
+
+  - id: junie
+    aliases: [jetbrains-junie]
+    name: JetBrains Junie
+    vendor: JetBrains
+    kind: coding-agent
+    catalogue_tier: B
+    surfaces: [ide-extension]
+    declared_action_classes: [exec, file.read, file.write, net.request, mcp.call, llm.request]
+    containment_default: monitored
+    adapter: mcp-broker
+    routes:
+      binaries: [junie]
+      windows_exes: [junie.exe]
+      wsl_harnesses: [junie]
+      cmdline_markers: [jetbrains.junie, junie]
+      npm: []
+      pypi: []
+      vscode_extensions: []
+      state_dirs: [.junie]
+      config_paths: [.junie/guidelines.md, .junie/mcp/mcp.json, $WORKSPACE/.junie/guidelines.md]
+      admin_config_paths: {}
+      mcp_config_paths: [.junie/mcp/mcp.json, $WORKSPACE/.junie/mcp/mcp.json]
+      mcp_config_key: mcpServers
+      env_markers: [JUNIE_API_KEY]
+      net: [api.jetbrains.ai]
+      artifacts:
+        skills: []
+        plugins: []
+        rules: [.junie/guidelines.md, $WORKSPACE/.junie/guidelines.md]
+        commands: []
+        subagents: []
+        transcripts: []
+      autonomy_flags: []
+    hook:
+      supported: false
+      dialect: junie
+      config_rel: ""
+      config_format: none
+      root_key: ""
+      entry_style: none
+      events: []
+      all_events: []
+      timeout_ms: 250
+      fail_mode: open
+      mdm_ids: {}
+
+  - id: amazon-q
+    aliases: [q, amazon-q-cli, aws-q]
+    name: Amazon Q Developer
+    vendor: Amazon
+    kind: coding-agent
+    catalogue_tier: B
+    surfaces: [cli, ide-extension]
+    declared_action_classes: [exec, file.read, file.write, net.request, mcp.call, llm.request]
+    containment_default: guided
+    adapter: hook-shim
+    routes:
+      binaries: [q, qchat]
+      windows_exes: [q.exe]
+      wsl_harnesses: [q]
+      cmdline_markers: [amazon-q, qchat]
+      npm: []
+      pypi: []
+      vscode_extensions: [amazonwebservices.amazon-q-vscode]
+      state_dirs: [.aws/amazonq]
+      config_paths: [.aws/amazonq/mcp.json, .aws/amazonq/hooks.json, $WORKSPACE/.amazonq/mcp.json]
+      admin_config_paths: {}
+      mcp_config_paths: [.aws/amazonq/mcp.json, $WORKSPACE/.amazonq/mcp.json]
+      mcp_config_key: mcpServers
+      env_markers: [AWS_Q_ENABLED]
+      net: [q.us-east-1.amazonaws.com, codewhisperer.us-east-1.amazonaws.com]
+      artifacts:
+        skills: []
+        plugins: []
+        rules: [.amazonq/rules, $WORKSPACE/.amazonq/rules]
+        commands: []
+        subagents: [.aws/amazonq/cli-agents]
+        transcripts: []
+      autonomy_flags: [--trust-all-tools]
+    hook:
+      supported: true
+      dialect: amazon-q
+      config_rel: .aws/amazonq/hooks.json
+      config_format: json
+      root_key: hooks
+      entry_style: matcher-hooks
+      events: [PreToolUse]
+      all_events: [PreToolUse, PostToolUse]
+      timeout_ms: 250
+      fail_mode: closed
+      mdm_ids:
+        plist_domain: com.amazon.q-developer
+        registry_subkey: 'Software\Policies\Amazon\QDeveloper'
+
+  - id: kiro
+    aliases: [kiro-cli, kiro-ide]
+    name: Kiro
+    vendor: Amazon
+    kind: coding-agent
+    catalogue_tier: B
+    surfaces: [ide, cli]
+    declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request]
+    containment_default: guided
+    adapter: hook-shim
+    routes:
+      binaries: [kiro, kiro-cli]
+      windows_exes: [Kiro.exe, kiro.exe, kiro-cli.exe]
+      wsl_harnesses: [kiro-cli]
+      cmdline_markers: [kiro-cli, kiro-ide]
+      npm: []
+      pypi: []
+      vscode_extensions: []
+      state_dirs: [.kiro]
+      config_paths: [.kiro/settings/mcp.json, .kiro/hooks.json, $WORKSPACE/.kiro/settings/mcp.json]
+      admin_config_paths: {}
+      mcp_config_paths: [.kiro/settings/mcp.json, $WORKSPACE/.kiro/settings/mcp.json]
+      mcp_config_key: mcpServers
+      env_markers: [KIRO_API_KEY]
+      net: [q.us-east-1.amazonaws.com]
+      artifacts:
+        skills: [.kiro/powers]
+        plugins: []
+        rules: [.kiro/steering, $WORKSPACE/.kiro/steering]
+        commands: []
+        subagents: [.kiro/agents]
+        transcripts: []
+      autonomy_flags: [--trust-all-tools]
+    hook:
+      supported: true
+      dialect: kiro
+      config_rel: .kiro/hooks.json
+      config_format: json
+      root_key: hooks
+      entry_style: matcher-hooks
+      events: [PreToolUse]
+      all_events: [PreToolUse, PostToolUse]
+      timeout_ms: 250
+      fail_mode: closed
+      mdm_ids:
+        plist_domain: dev.kiro.agent
+        registry_subkey: 'Software\Policies\Amazon\Kiro'

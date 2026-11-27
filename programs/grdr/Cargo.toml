@@ -21,6 +21,7 @@ grdr-core = { workspace = true }
 grdr-crypto = { workspace = true }
 grdr-llm-proto = { workspace = true }
 grdr-model = { workspace = true }
+grdr-peer-os = { workspace = true }
 grdr-ports = { workspace = true }
 grdr-rel-postgres = { workspace = true }
 grdr-rel-sqlite = { workspace = true }

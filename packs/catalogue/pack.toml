@@ -1,0 +1,21 @@
+id = "grdr.catalogue"
+version = "1.0.0"
+kind = "intel"
+per_person_scoring = false
+commands = []
+executables = []
+urls = []
+env_vars_to_set = []
+mcp_servers_to_start = []
+
+[[reads]]
+path = "process.image"
+data_class = "structural"
+
+[[reads]]
+path = "config.path"
+data_class = "structural"
+
+[[reads]]
+path = "artifact.digest"
+data_class = "structural"

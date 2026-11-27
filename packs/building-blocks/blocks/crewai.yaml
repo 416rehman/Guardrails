@@ -1,0 +1,13 @@
+schema: grdr.building-block/v1alpha1
+id: crewai
+name: CrewAI
+role: orchestrator
+agentic: yes
+ecosystems:
+  pypi: [crewai, crewai-tools]
+  npm: []
+  cargo: []
+binaries: [crewai]
+env_markers: [CREWAI_TRACING_ENABLED]
+net: [app.crewai.com]
+classifier_boost_bp: 4500

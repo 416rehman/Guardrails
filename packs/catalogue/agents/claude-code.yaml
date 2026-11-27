@@ -1,0 +1,55 @@
+schema: grdr.catalogue/v1alpha1
+id: claude-code
+aliases: [claude]
+name: Claude Code
+vendor: Anthropic
+kind: coding-agent
+catalogue_tier: A
+surfaces: [cli, ide-extension]
+declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request, child.spawn]
+containment_default: guided
+adapter: hook-shim
+routes:
+  binaries: [claude]
+  windows_exes: [claude.exe, claude-code.exe]
+  wsl_harnesses: [claude, claude-code]
+  cmdline_markers: ['@anthropic-ai/claude-code', claude-code]
+  npm: ['@anthropic-ai/claude-code']
+  pypi: []
+  vscode_extensions: [anthropic.claude-code]
+  state_dirs: [.claude]
+  config_paths: [.claude.json, .claude/settings.json, .claude/settings.local.json]
+  admin_config_paths:
+    macos: "/Library/Application Support/ClaudeCode/managed-settings.json"
+    linux: "/etc/claude-code/managed-settings.json"
+    windows: '%ProgramData%\ClaudeCode\managed-settings.json'
+  mcp_config_paths: [.claude.json, .claude/settings.json, $WORKSPACE/.mcp.json]
+  mcp_config_key: mcpServers
+  env_markers: [ANTHROPIC_API_KEY, CLAUDE_CODE_USE_BEDROCK, CLAUDE_CODE_USE_VERTEX]
+  net: [api.anthropic.com, statsig.anthropic.com]
+  artifacts:
+    skills: [.claude/skills, $WORKSPACE/.claude/skills]
+    plugins: [.claude/plugins]
+    rules: [.claude/CLAUDE.md, $WORKSPACE/CLAUDE.md, $WORKSPACE/AGENTS.md]
+    commands: [.claude/commands, $WORKSPACE/.claude/commands]
+    subagents: [.claude/agents, $WORKSPACE/.claude/agents]
+    transcripts: [.claude/projects]
+  autonomy_flags: [--dangerously-skip-permissions, --permission-mode bypassPermissions]
+hook:
+  supported: true
+  dialect: claude-code
+  config_rel: .claude/settings.json
+  config_format: json
+  root_key: hooks
+  entry_style: matcher-hooks
+  matcher: 'Bash|PowerShell|Read|Write|Edit|MultiEdit|WebFetch|mcp__.*'
+  events: [PreToolUse]
+  all_events: [PreToolUse, PostToolUse, SessionStart, SessionEnd]
+  payload_session_keys: [session_id]
+  timeout_ms: 250
+  timeout_unit_secs: true
+  append_agent_flag: false
+  fail_mode: closed
+  mdm_ids:
+    plist_domain: com.anthropic.claude-code
+    registry_subkey: 'Software\Policies\Anthropic\ClaudeCode'

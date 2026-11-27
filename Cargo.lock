@@ -947,6 +947,7 @@ dependencies = [
  "grdr-crypto",
  "grdr-llm-proto",
  "grdr-model",
+ "grdr-peer-os",
  "grdr-ports",
  "grdr-rel-postgres",
  "grdr-rel-sqlite",
@@ -993,8 +994,11 @@ dependencies = [
 name = "grdr-agents"
 version = "0.1.0"
 dependencies = [
+ "grdr-core",
  "grdr-crypto",
  "grdr-model",
+ "grdr-ports",
+ "grdr-schema",
  "jiff 1.0.2",
  "serde",
  "serde_json",
@@ -1035,6 +1039,7 @@ dependencies = [
  "grdr-model",
  "grdr-ports",
  "grdr-ports-testkit",
+ "grdr-schema",
  "grdr-strings",
  "jiff 1.0.2",
  "serde",
@@ -1103,6 +1108,7 @@ dependencies = [
  "grdr-llm-proto",
  "grdr-mcp-proto",
  "grdr-model",
+ "grdr-peer-os",
  "grdr-policy-ref",
  "grdr-ports",
  "grdr-sandbox-engine",
@@ -1491,12 +1497,14 @@ version = "0.1.0"
 dependencies = [
  "grdr-model",
  "grdr-os-clock",
+ "grdr-ports",
  "grdr-wire",
  "jiff 1.0.2",
  "libc",
  "serde",
  "serde_json",
  "thiserror",
+ "uuid",
  "windows-sys 0.61.2",
 ]
 

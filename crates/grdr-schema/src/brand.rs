@@ -12,6 +12,15 @@ pub struct BrandIdentity {
     pub domain: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrandDisplayStrings {
+    pub product_name: String,
+    pub short_name: String,
+    pub namespace: String,
+    pub macos_agent_label: String,
+    pub windows_program_dir: String,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DataClass {
@@ -246,6 +255,122 @@ pub fn is_valid_brand_identity(identity: &BrandIdentity) -> bool {
 
 pub fn brand_identity() -> BrandIdentity {
     parse_brand_identity_toml(BRAND_MANIFEST_RAW)
+}
+
+pub fn load_embedded_brand_display() -> Result<BrandDisplayStrings, String> {
+    parse_brand_display_toml(BRAND_MANIFEST_RAW)
+}
+
+pub fn parse_brand_display_toml(raw: &str) -> Result<BrandDisplayStrings, String> {
+    let mut section = String::new();
+    let (mut id_prod, mut short_name, mut ns, mut disp_name, mut mac_label, mut win_dir) =
+        (None, None, None, None, None, None);
+
+    for (idx, raw_line) in raw.lines().enumerate() {
+        let trimmed = strip_toml_comment_quote_aware(raw_line).trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some(sec) = trimmed.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+            section = sec.trim().to_owned();
+            continue;
+        }
+        let Some((raw_k, raw_v)) = trimmed.split_once('=') else {
+            continue;
+        };
+        let key = raw_k.trim();
+        let val_str = raw_v.trim();
+        if !(val_str.starts_with('"') || val_str.starts_with('\'')) {
+            continue;
+        }
+        let val = decode_toml_string(val_str).ok_or_else(|| {
+            format!(
+                "invalid TOML string on line {} for `{}.{key}`",
+                idx.saturating_add(1),
+                section
+            )
+        })?;
+        match (section.as_str(), key) {
+            ("identity", "product_name") => id_prod = Some(val),
+            ("identity", "short_name") => short_name = Some(val),
+            ("identity", "namespace") => ns = Some(val),
+            ("os_identity", "macos_agent_label") => mac_label = Some(val),
+            ("os_identity", "windows_program_dir") => win_dir = Some(val),
+            ("display", "name") => disp_name = Some(val),
+            _ => {}
+        }
+    }
+
+    let product_name = disp_name
+        .or(id_prod)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "brand manifest missing display.name or identity.product_name".to_owned())?;
+    let short = short_name
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| product_name.clone());
+    let namespace = ns
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "grdr".into());
+    let macos_agent_label = mac_label
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| format!("local.{namespace}.agent"));
+    let windows_program_dir = win_dir
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| product_name.clone());
+
+    Ok(BrandDisplayStrings {
+        product_name,
+        short_name: short,
+        namespace,
+        macos_agent_label,
+        windows_program_dir,
+    })
+}
+
+fn decode_toml_string(raw: &str) -> Option<String> {
+    if let Some(inner) = raw.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')) {
+        if inner
+            .chars()
+            .any(|c| c == '\'' || (c.is_control() && c != '\t'))
+        {
+            return None;
+        }
+        return Some(inner.to_owned());
+    }
+    let inner = raw.strip_prefix('"').and_then(|s| s.strip_suffix('"'))?;
+    let mut out = String::with_capacity(inner.len());
+    let mut chars = inner.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '"' || (ch.is_control() && ch != '\t') {
+            return None;
+        }
+        if ch != '\\' {
+            out.push(ch);
+            continue;
+        }
+        match chars.next()? {
+            'b' => out.push('\u{0008}'),
+            't' => out.push('\t'),
+            'n' => out.push('\n'),
+            'f' => out.push('\u{000C}'),
+            'r' => out.push('\r'),
+            '"' => out.push('"'),
+            '\\' => out.push('\\'),
+            'u' => out.push(parse_hex_scalar(&mut chars, 4)?),
+            'U' => out.push(parse_hex_scalar(&mut chars, 8)?),
+            _ => return None,
+        }
+    }
+    Some(out)
+}
+
+fn parse_hex_scalar(chars: &mut std::str::Chars<'_>, digits: usize) -> Option<char> {
+    let mut hex = String::with_capacity(digits);
+    for _ in 0..digits {
+        hex.push(chars.next()?);
+    }
+    let code = u32::from_str_radix(&hex, 16).ok()?;
+    char::from_u32(code)
 }
 
 pub fn schema_base_uri() -> String {

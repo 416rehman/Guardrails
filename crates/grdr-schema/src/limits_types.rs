@@ -13,6 +13,23 @@ pub struct LimitsConfig {
     pub uplink: UplinkLimits,
     pub retry: RetryLimits,
     pub server: ServerLimits,
+    pub broker: BrokerLimits,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrokerLimits {
+    pub max_worker_threads: usize,
+    pub circuit_breaker: BrokerCircuitBreakerLimits,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrokerCircuitBreakerLimits {
+    pub consecutive_failures: u32,
+    pub window_ms: u64,
+    pub min_calls: usize,
+    pub error_rate_bp: u64,
+    pub cooldown_ms: u64,
+    pub max_outcomes: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

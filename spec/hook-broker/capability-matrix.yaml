@@ -1,0 +1,22 @@
+schema: grdr.spec.capability-matrix/v1alpha1
+verdict_precedence_highest_first:
+  - deny
+  - step_up
+  - defer
+  - modify
+  - allow
+on_failure_outcomes:
+  fail_closed: deny
+  step_up: step_up
+  ignore: allow
+model_backed_clamps:
+  deny_becomes: step_up
+  may_modify_allowed: false
+  on_failure_effective: ignore
+circuit_breaker:
+  consecutive_failures_threshold: 5
+  window_secs: 300
+  min_window_calls: 20
+  error_rate_threshold_bp: 500
+  cooldown_secs: 60
+  event_code: provider-suspend

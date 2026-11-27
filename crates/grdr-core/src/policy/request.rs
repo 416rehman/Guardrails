@@ -9,6 +9,7 @@ use grdr_model::{
     ActionAttempt, ActionClass, ApprovalGrade, BoundaryObserver, Grant, IdentityMode,
     InstallProfile, Mode, PolicyPack,
 };
+pub use grdr_model::{ActorKind, SessionFreezeState};
 use jiff::Timestamp;
 
 use super::PolicyError;
@@ -47,26 +48,11 @@ pub enum ContextField {
     TargetClasses,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ActorKind {
-    Agent,
-    Human,
-    System,
-    Undetermined,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum CredUseMode {
     #[default]
     Inject,
     Release,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum SessionFreezeState {
-    #[default]
-    Active,
-    Frozen,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

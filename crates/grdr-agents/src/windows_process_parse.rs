@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+use std::sync::OnceLock;
+
 use serde::{Deserialize, Serialize};
 
 use grdr_model::CodedError;
+
+use crate::catalogue::AgentCatalogue;
 
 pub const CODE_WIN_SNAPSHOT_PARSE: &str = "GRDR-WIN-0002";
 
@@ -30,51 +34,13 @@ const WSL_VALUE_FLAGS: &[&str] = &[
 const WSL_NO_VALUE_FLAGS: &[&str] = &["-e", "--exec", "--", "--raw", "--system", "--no-launch"];
 const SHELL_LAUNCHERS: &[&str] = &["sh", "bash", "zsh", "dash", "fish", "ash"];
 
-const KNOWN_WINDOWS_AGENTS: &[AgentBinarySpec] = &[
-    AgentBinarySpec {
-        id: "agent-claude-code",
-        name: "Claude Code",
-        kind: "claude-code",
-        windows_exes: &["claude.exe"],
-        wsl_harnesses: &["claude", "claude-code"],
-    },
-    AgentBinarySpec {
-        id: "agent-codex",
-        name: "Codex CLI",
-        kind: "codex",
-        windows_exes: &["codex.exe"],
-        wsl_harnesses: &["codex", "codex-cli"],
-    },
-    AgentBinarySpec {
-        id: "agent-copilot",
-        name: "GitHub Copilot CLI",
-        kind: "copilot",
-        windows_exes: &["copilot.exe"],
-        wsl_harnesses: &["copilot", "copilot-cli", "github-copilot"],
-    },
-    AgentBinarySpec {
-        id: "agent-cursor",
-        name: "Cursor",
-        kind: "cursor",
-        windows_exes: &["cursor.exe"],
-        wsl_harnesses: &["cursor"],
-    },
-    AgentBinarySpec {
-        id: "agent-agy",
-        name: "Antigravity CLI (agy)",
-        kind: "agy",
-        windows_exes: &["agy.exe"],
-        wsl_harnesses: &["agy", "antigravity"],
-    },
-];
+static EMBEDDED_CATALOGUE_CACHE: OnceLock<Option<AgentCatalogue>> = OnceLock::new();
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct AgentBinarySpec {
-    pub id: &'static str,
-    pub name: &'static str,
-    pub kind: &'static str,
-    pub windows_exes: &'static [&'static str],
-    pub wsl_harnesses: &'static [&'static str],
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MatchedProcessSpec {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -294,22 +260,39 @@ pub fn executable_basename(raw: &str) -> &str {
         .unwrap_or(raw)
 }
 
-pub(crate) fn classify_process_entry(
+pub fn classify_process_entry(
     entry: &WindowsProcessEntry,
-) -> Option<(&'static AgentBinarySpec, AgentExecutionSurface)> {
+) -> Option<(MatchedProcessSpec, AgentExecutionSurface)> {
+    let catalogue = EMBEDDED_CATALOGUE_CACHE
+        .get_or_init(|| AgentCatalogue::embedded().ok())
+        .as_ref()?;
+    classify_process_entry_with_catalogue(entry, catalogue)
+}
+
+pub fn classify_process_entry_with_catalogue(
+    entry: &WindowsProcessEntry,
+    catalogue: &AgentCatalogue,
+) -> Option<(MatchedProcessSpec, AgentExecutionSurface)> {
     let image_lower = entry.image_name.to_ascii_lowercase();
     let exe_base_lower = entry
         .executable_path
         .as_deref()
         .map(|p| executable_basename(p).to_ascii_lowercase());
 
-    for spec in KNOWN_WINDOWS_AGENTS {
-        let matched_native = spec
-            .windows_exes
-            .iter()
-            .any(|exe| image_lower == *exe || exe_base_lower.as_deref() == Some(*exe));
+    for agent in catalogue.agents() {
+        let matched_native = agent.routes.windows_exes.iter().any(|exe| {
+            let lower = exe.to_ascii_lowercase();
+            image_lower == lower || exe_base_lower.as_deref() == Some(lower.as_str())
+        });
         if matched_native {
-            return Some((spec, AgentExecutionSurface::NativeWindows));
+            return Some((
+                MatchedProcessSpec {
+                    id: format!("agent-{}", agent.id),
+                    name: agent.name.clone(),
+                    kind: agent.id.clone(),
+                },
+                AgentExecutionSurface::NativeWindows,
+            ));
         }
     }
 
@@ -325,10 +308,19 @@ pub(crate) fn classify_process_entry(
     let target_cmd = invocation.target_command?;
     let target_lower = executable_basename(&target_cmd).to_ascii_lowercase();
 
-    for spec in KNOWN_WINDOWS_AGENTS {
-        if spec.wsl_harnesses.iter().any(|h| target_lower == *h) {
+    for agent in catalogue.agents() {
+        if agent
+            .routes
+            .wsl_harnesses
+            .iter()
+            .any(|h| target_lower == h.to_ascii_lowercase())
+        {
             return Some((
-                spec,
+                MatchedProcessSpec {
+                    id: format!("agent-{}", agent.id),
+                    name: agent.name.clone(),
+                    kind: agent.id.clone(),
+                },
                 AgentExecutionSurface::WslBridge {
                     distro: invocation.distro,
                     wsl_pid: entry.pid,

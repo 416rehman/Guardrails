@@ -9,6 +9,7 @@ pub mod bus;
 pub mod clock;
 pub mod dlp;
 pub mod events;
+pub mod fs;
 pub mod hunt_sql;
 pub mod jobs;
 pub mod relational;
@@ -50,6 +51,7 @@ pub use events::{
     LakeQueryRow, LakeRecord, LegalHold, LegalHoldRequest, LegalHoldScope, LegalHoldState,
     RetentionClass, SessionContentKey,
 };
+pub use fs::{LocalFsPort, RegularEntryKind, validate_safe_rel_path};
 pub use hunt_sql::{HuntTable, ParsedHunt, parse_hunt_sql};
 pub use jobs::{
     CODE_JOBS_INVALID_STATE, CODE_JOBS_IO, CODE_JOBS_NOT_FOUND, CODE_JOBS_STALE_FENCE,

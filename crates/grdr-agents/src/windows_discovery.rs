@@ -16,11 +16,9 @@ use crate::windows_process_parse::{
     AgentExecutionSurface, WindowsProcessEntry, classify_process_entry, is_wsl_bridge_image,
     parse_wsl_command_invocation,
 };
-#[cfg(windows)]
-use crate::windows_process_parse::{parse_cim_process_json, parse_tasklist_csv};
 
 pub const CODE_WIN_SNAPSHOT_UNAVAILABLE: &str = "GRDR-WIN-0001";
-const SYSTEM_SOURCE_NAME: &str = "windows-system";
+pub const SYSTEM_SNAPSHOT_SOURCE_NAME: &str = "windows-system";
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ProcessInstanceKey {
@@ -95,9 +93,6 @@ pub trait ProcessSnapshotSource {
     fn snapshot_processes(&self) -> Result<Vec<WindowsProcessEntry>, CodedError>;
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct SystemWindowsProcessSource;
-
 #[derive(Debug, Clone)]
 pub struct WindowsDiscoveryTracker<S> {
     source: S,
@@ -113,22 +108,6 @@ impl<T: ProcessSnapshotSource + ?Sized> ProcessSnapshotSource for &T {
 
     fn snapshot_processes(&self) -> Result<Vec<WindowsProcessEntry>, CodedError> {
         (**self).snapshot_processes()
-    }
-}
-
-impl ProcessSnapshotSource for SystemWindowsProcessSource {
-    fn source_name(&self) -> &'static str {
-        SYSTEM_SOURCE_NAME
-    }
-
-    fn snapshot_processes(&self) -> Result<Vec<WindowsProcessEntry>, CodedError> {
-        query_system_windows_processes()
-    }
-}
-
-impl Default for WindowsDiscoveryTracker<SystemWindowsProcessSource> {
-    fn default() -> Self {
-        Self::new(SystemWindowsProcessSource)
     }
 }
 
@@ -158,7 +137,7 @@ impl<S: ProcessSnapshotSource> WindowsDiscoveryTracker<S> {
         match self.source.snapshot_processes() {
             Ok(entries) => Ok(self.apply_snapshot(&entries, now)),
             Err(err) => {
-                self.observer_state = if self.source.source_name() == SYSTEM_SOURCE_NAME
+                self.observer_state = if self.source.source_name() == SYSTEM_SNAPSHOT_SOURCE_NAME
                     && err.code == CODE_WIN_SNAPSHOT_UNAVAILABLE
                     && !cfg!(windows)
                 {
@@ -221,9 +200,9 @@ impl<S: ProcessSnapshotSource> WindowsDiscoveryTracker<S> {
                 if let Entry::Vacant(vacant) = self.active_agents.entry(key) {
                     let agent = ObservedWindowsAgent {
                         key: vacant.key().clone(),
-                        agent_id: spec.id.into(),
-                        agent_name: spec.name.into(),
-                        agent_kind: spec.kind.into(),
+                        agent_id: spec.id,
+                        agent_name: spec.name,
+                        agent_kind: spec.kind,
                         surface,
                         command_line: entry.command_line.clone(),
                         session_id: entry.session_id,
@@ -307,56 +286,6 @@ impl<S: ProcessSnapshotSource> WindowsDiscoveryTracker<S> {
             })
             .collect()
     }
-}
-
-pub fn discover_windows_processes_once() -> Result<Vec<ObservedWindowsAgent>, CodedError> {
-    let mut tracker = WindowsDiscoveryTracker::default();
-    let _events = tracker.poll_delta(Timestamp::now())?;
-    Ok(tracker.active_agents().into_iter().cloned().collect())
-}
-
-#[cfg(windows)]
-fn query_system_windows_processes() -> Result<Vec<WindowsProcessEntry>, CodedError> {
-    use std::process::Command;
-
-    let cim_cmd = "@(Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,ExecutablePath,CommandLine,SessionId) | ConvertTo-Json -Compress";
-    if let Ok(output) = Command::new("powershell.exe")
-        .args(["-NoProfile", "-NonInteractive", "-Command", cim_cmd])
-        .output()
-        && output.status.success()
-    {
-        let text = String::from_utf8_lossy(&output.stdout);
-        return parse_cim_process_json(&text);
-    }
-
-    let fallback = Command::new("tasklist.exe")
-        .args(["/FO", "CSV", "/NH"])
-        .output()
-        .map_err(|e| {
-            CodedError::new(
-                CODE_WIN_SNAPSHOT_UNAVAILABLE,
-                format!("Failed querying Windows process snapshot: {e}"),
-                "Ensure tasklist.exe or powershell.exe is accessible.",
-            )
-        })?;
-    if !fallback.status.success() {
-        return Err(CodedError::new(
-            CODE_WIN_SNAPSHOT_UNAVAILABLE,
-            format!("Windows process snapshot exited with {}", fallback.status),
-            "Inspect permissions for querying local processes.",
-        ));
-    }
-    let csv_text = String::from_utf8_lossy(&fallback.stdout);
-    Ok(parse_tasklist_csv(&csv_text))
-}
-
-#[cfg(not(windows))]
-fn query_system_windows_processes() -> Result<Vec<WindowsProcessEntry>, CodedError> {
-    Err(CodedError::new(
-        CODE_WIN_SNAPSHOT_UNAVAILABLE,
-        "Windows process observation is not available on this operating system.",
-        "Run on Windows or inject a ProcessSnapshotSource implementation.",
-    ))
 }
 
 #[cfg(test)]
@@ -453,9 +382,9 @@ mod tests {
         assert_eq!(started_kinds.len(), 7);
         assert!(started_kinds.contains(&"claude-code".to_string()));
         assert!(started_kinds.contains(&"codex".to_string()));
-        assert!(started_kinds.contains(&"copilot".to_string()));
+        assert!(started_kinds.contains(&"github-copilot".to_string()));
         assert!(started_kinds.contains(&"cursor".to_string()));
-        assert!(started_kinds.contains(&"agy".to_string()));
+        assert!(started_kinds.contains(&"antigravity".to_string()));
 
         let wsl_claude = tracker
             .active_agents()
@@ -475,7 +404,7 @@ mod tests {
             .into_iter()
             .find(|a| a.key.pid == 202)
             .unwrap();
-        assert_eq!(wsl_copilot.agent_kind, "copilot");
+        assert_eq!(wsl_copilot.agent_kind, "github-copilot");
 
         assert!(tracker.active_agents().iter().all(|a| a.key.pid != 203));
         assert_eq!(tracker.active_wsl_bridges().len(), 4);

@@ -1,0 +1,51 @@
+schema: grdr.catalogue/v1alpha1
+id: windsurf
+aliases: [codeium-windsurf, cascade]
+name: Windsurf
+vendor: Codeium
+kind: coding-agent
+catalogue_tier: A
+surfaces: [ide]
+declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request]
+containment_default: guided
+adapter: hook-shim
+routes:
+  binaries: [windsurf, language_server_macos_arm64, language_server_linux_x64]
+  windows_exes: [Windsurf.exe, windsurf.exe, language_server_windows_x64.exe]
+  wsl_harnesses: [windsurf]
+  cmdline_markers: [codeium/windsurf, language_server]
+  npm: []
+  pypi: []
+  vscode_extensions: [codeium.codeium]
+  state_dirs: [.codeium/windsurf]
+  config_paths: [.codeium/windsurf/hooks.json, .codeium/windsurf/mcp_config.json]
+  admin_config_paths:
+    macos: "/Library/Application Support/Windsurf/hooks.json"
+    linux: "/etc/windsurf/hooks.json"
+    windows: '%ProgramData%\Windsurf\hooks.json'
+  mcp_config_paths: [.codeium/windsurf/mcp_config.json]
+  mcp_config_key: mcpServers
+  env_markers: [CODEIUM_API_KEY]
+  net: [server.codeium.com, api.codeium.com]
+  artifacts:
+    skills: [.windsurf/skills, $WORKSPACE/.windsurf/skills]
+    plugins: []
+    rules: [.windsurfrules, .windsurf/rules, $WORKSPACE/.windsurfrules, $WORKSPACE/.windsurf/rules]
+    commands: [.windsurf/workflows]
+    subagents: []
+    transcripts: []
+  autonomy_flags: [--yolo]
+hook:
+  supported: true
+  dialect: windsurf
+  config_rel: .codeium/windsurf/hooks.json
+  config_format: json
+  root_key: hooks
+  entry_style: command-item
+  events: [pre_run_command, pre_mcp_tool_use]
+  all_events: [pre_run_command, pre_write_code, pre_mcp_tool_use, post_run_command]
+  timeout_ms: 250
+  fail_mode: closed
+  mdm_ids:
+    plist_domain: com.codeium.windsurf
+    registry_subkey: 'Software\Policies\Codeium\Windsurf'

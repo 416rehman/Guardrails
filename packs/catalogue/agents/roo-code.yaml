@@ -1,0 +1,48 @@
+schema: grdr.catalogue/v1alpha1
+id: roo-code
+aliases: [roo, roo-cline]
+name: Roo Code
+vendor: Roo
+kind: coding-agent
+catalogue_tier: B
+surfaces: [ide-extension]
+declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request]
+containment_default: guided
+adapter: hook-shim
+routes:
+  binaries: []
+  windows_exes: []
+  wsl_harnesses: []
+  cmdline_markers: [rooveterinaryinc.roo-cline, roo-code]
+  npm: []
+  pypi: []
+  vscode_extensions: [rooveterinaryinc.roo-cline]
+  state_dirs: [.roo]
+  config_paths: [.roo/mcp.json, .roo/hooks.json, $WORKSPACE/.roorules, $WORKSPACE/.roo/mcp.json]
+  admin_config_paths: {}
+  mcp_config_paths: [.roo/mcp.json, $WORKSPACE/.roo/mcp.json]
+  mcp_config_key: mcpServers
+  env_markers: [ANTHROPIC_API_KEY, OPENAI_API_KEY]
+  net: [api.roocode.com]
+  artifacts:
+    skills: []
+    plugins: []
+    rules: [.roorules, .roo/rules, $WORKSPACE/.roorules, $WORKSPACE/.roo/rules]
+    commands: [$WORKSPACE/.roo/commands]
+    subagents: []
+    transcripts: []
+  autonomy_flags: []
+hook:
+  supported: true
+  dialect: roo-code
+  config_rel: .roo/hooks.json
+  config_format: json
+  root_key: hooks
+  entry_style: matcher-hooks
+  events: [PreToolUse]
+  all_events: [PreToolUse, PostToolUse]
+  timeout_ms: 250
+  fail_mode: closed
+  mdm_ids:
+    plist_domain: com.roocode.agent
+    registry_subkey: 'Software\Policies\RooCode'

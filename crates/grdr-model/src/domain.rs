@@ -26,6 +26,21 @@ pub enum Verdict {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ActorKind {
+    Agent,
+    Human,
+    System,
+    Undetermined,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub enum SessionFreezeState {
+    #[default]
+    Active,
+    Frozen,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ActionClass {
     Exec,

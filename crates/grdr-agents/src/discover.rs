@@ -1,32 +1,81 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+//! Dynamic P14 4-pass agent discovery (`docs/design/05`).
+
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
-use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use jiff::Timestamp;
+use serde::{Deserialize, Serialize};
 
-use grdr_model::{
-    AssuranceRecord, ControlStrength, DiscoveredAgent, DiscoveryReport, InstallProfile,
-    McpServerEntry, OnFailure, TamperGrade, Visibility,
+use grdr_core::discover::{
+    BehavioralAssessment, BehavioralObservation, Pass1MatchState, ProgramIdentity,
+    classify_agentic_loop, evaluate_pass1_routes,
 };
+use grdr_model::{DiscoveredAgent, DiscoveryReport, InstallProfile};
+use grdr_ports::LocalFsPort;
 
-use crate::artifacts::scan_artifacts_for_roots;
-use crate::parse::{
-    display_path, extract_mcp_servers, extract_toml_mcp_headers, json_contains_grdr_hook, read_json,
+use crate::abom::{
+    AgentBom, AgentDeclaration, InventoryDiffRecord, ObservedAgentState, PresenceState,
+    build_agent_bom, reconcile_inventory_diff,
 };
+use crate::artifacts::scan_artifacts_for_roots_with_catalogue;
+use crate::blocks_scan::{DetectedBuildingBlock, scan_workspace_building_blocks};
+use crate::catalogue::{AgentCatalogue, BuildingBlockCatalogue};
+use crate::discover_routes::{
+    assurance_for_hook, build_program_identity, empty_report, find_matching_process,
+    scan_manifest_filesystem_routes,
+};
+use crate::parse::display_path;
+use crate::windows_process_parse::WindowsProcessEntry;
 
-struct JsonAgentSpec<'a> {
-    id: &'a str,
-    name: &'a str,
-    kind: &'a str,
-    config_path: &'a Path,
-    dir_exists: bool,
-    display_root: &'a Path,
+static EMBEDDED_DISCOVERY_CATALOGUE: OnceLock<Option<AgentCatalogue>> = OnceLock::new();
+static EMBEDDED_DISCOVERY_BLOCKS: OnceLock<Option<BuildingBlockCatalogue>> = OnceLock::new();
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Pass1CandidateSummary {
+    pub agent_id: String,
+    pub agent_name: String,
+    pub match_state: Pass1MatchState,
+    pub matched_routes: Vec<String>,
+    pub hook_installed: bool,
+    pub program_identity: ProgramIdentity,
 }
 
-pub fn discover_local_agents(profile: InstallProfile) -> DiscoveryReport {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FourPassDiscoveryReport {
+    pub report: DiscoveryReport,
+    pub pass1: Vec<Pass1CandidateSummary>,
+    pub building_blocks: Vec<DetectedBuildingBlock>,
+    pub behavioral: Vec<BehavioralAssessment>,
+    pub inventory_diff: Vec<InventoryDiffRecord>,
+    pub abom: AgentBom,
+}
+
+pub struct FourPassDiscoveryInput<'a> {
+    pub device_name: &'a str,
+    pub home: Option<&'a Path>,
+    pub appdata: Option<&'a Path>,
+    pub workspace: Option<&'a Path>,
+    pub profile: InstallProfile,
+    pub hook_command: &'a str,
+    pub fs: &'a dyn LocalFsPort,
+    pub catalogue: &'a AgentCatalogue,
+    pub blocks: &'a BuildingBlockCatalogue,
+    pub processes: &'a [WindowsProcessEntry],
+    pub observations: &'a [BehavioralObservation],
+    pub declarations: &'a [AgentDeclaration],
+}
+
+#[must_use]
+pub fn discover_local_agents(
+    profile: InstallProfile,
+    hook_command: &str,
+    fs: &dyn LocalFsPort,
+) -> DiscoveryReport {
     let home = detect_home_dir();
     let appdata = env::var_os("APPDATA").map(PathBuf::from);
     let cwd = env::current_dir().ok();
@@ -37,9 +86,12 @@ pub fn discover_local_agents(profile: InstallProfile) -> DiscoveryReport {
         appdata.as_deref(),
         cwd.as_deref(),
         profile,
+        hook_command,
+        fs,
     )
 }
 
+#[must_use]
 pub fn detect_hostname() -> String {
     env::var("COMPUTERNAME")
         .or_else(|_| env::var("HOSTNAME"))
@@ -48,136 +100,198 @@ pub fn detect_hostname() -> String {
         .unwrap_or_else(|| "local-workstation".into())
 }
 
+#[must_use]
+pub fn detect_home_dir() -> Option<PathBuf> {
+    env::var_os("HOME")
+        .or_else(|| env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+}
+
+#[must_use]
 pub fn discover_from_roots(
     device_name: &str,
     home: Option<&Path>,
     appdata: Option<&Path>,
     profile: InstallProfile,
+    hook_command: &str,
+    fs: &dyn LocalFsPort,
 ) -> DiscoveryReport {
-    discover_from_roots_with_workspace(device_name, home, appdata, None, profile)
+    discover_from_roots_with_workspace(device_name, home, appdata, None, profile, hook_command, fs)
 }
 
+#[must_use]
 pub fn discover_from_roots_with_workspace(
     device_name: &str,
     home: Option<&Path>,
     appdata: Option<&Path>,
     workspace: Option<&Path>,
     profile: InstallProfile,
+    hook_command: &str,
+    fs: &dyn LocalFsPort,
 ) -> DiscoveryReport {
+    let Some(catalogue) = EMBEDDED_DISCOVERY_CATALOGUE
+        .get_or_init(|| AgentCatalogue::embedded().ok())
+        .as_ref()
+    else {
+        return empty_report(device_name, profile);
+    };
+    let Some(blocks) = EMBEDDED_DISCOVERY_BLOCKS
+        .get_or_init(|| BuildingBlockCatalogue::embedded().ok())
+        .as_ref()
+    else {
+        return empty_report(device_name, profile);
+    };
+    discover_four_pass(&FourPassDiscoveryInput {
+        device_name,
+        home,
+        appdata,
+        workspace,
+        profile,
+        hook_command,
+        fs,
+        catalogue,
+        blocks,
+        processes: &[],
+        observations: &[],
+        declarations: &[],
+    })
+    .report
+}
+
+#[must_use]
+pub fn discover_four_pass(input: &FourPassDiscoveryInput<'_>) -> FourPassDiscoveryReport {
+    let FourPassDiscoveryInput {
+        device_name,
+        home,
+        appdata,
+        workspace,
+        profile,
+        hook_command,
+        fs,
+        catalogue,
+        blocks,
+        processes,
+        observations,
+        declarations,
+    } = *input;
     let now = Timestamp::now();
     let mut agents = Vec::new();
     let mut mcp_servers = Vec::new();
     let mut scanned_paths = Vec::new();
     let mut warnings = Vec::new();
+    let mut pass1 = Vec::new();
+    let mut observed_states = Vec::new();
 
-    if let Some(home_dir) = home {
-        scan_claude_code(
-            home_dir,
-            profile,
-            now,
-            &mut agents,
+    if home.is_none() {
+        warnings.push("Home directory environment variable was unavailable during scan.".into());
+    }
+
+    for manifest in catalogue.agents() {
+        let mut matched_routes = Vec::new();
+        let mut primary_path: Option<PathBuf> = None;
+        let mut hook_installed = false;
+        let mcp_before = mcp_servers.len();
+
+        scan_manifest_filesystem_routes(
+            manifest,
+            home,
+            appdata,
+            workspace,
+            hook_command,
+            fs,
+            &mut matched_routes,
+            &mut primary_path,
+            &mut hook_installed,
             &mut mcp_servers,
             &mut scanned_paths,
             &mut warnings,
         );
-        scan_cursor(
-            home_dir,
-            appdata,
-            profile,
-            now,
-            &mut agents,
-            &mut mcp_servers,
-            &mut scanned_paths,
-        );
-        scan_codex(
-            home_dir,
-            profile,
-            now,
-            &mut agents,
-            &mut mcp_servers,
-            &mut scanned_paths,
-        );
-        scan_gemini(
-            home_dir,
-            profile,
-            now,
-            &mut agents,
-            &mut mcp_servers,
-            &mut scanned_paths,
-        );
 
-        let windsurf_cfg = home_dir
-            .join(".codeium")
-            .join("windsurf")
-            .join("mcp_config.json");
-        scan_json_mcp_agent(
-            JsonAgentSpec {
-                id: "agent-windsurf",
-                name: "Windsurf",
-                kind: "windsurf",
-                config_path: &windsurf_cfg,
-                dir_exists: windsurf_cfg.is_file(),
-                display_root: &windsurf_cfg,
-            },
-            profile,
-            now,
-            &mut agents,
-            &mut mcp_servers,
-            &mut scanned_paths,
-        );
+        let running_proc = find_matching_process(manifest, processes);
+        if running_proc.is_some() {
+            matched_routes.push("process:running".into());
+        }
 
-        let opencode_dir = home_dir.join(".config").join("opencode");
-        let opencode_cfg = opencode_dir.join("opencode.json");
-        scan_json_mcp_agent(
-            JsonAgentSpec {
-                id: "agent-opencode",
-                name: "OpenCode",
-                kind: "opencode",
-                config_path: &opencode_cfg,
-                dir_exists: opencode_dir.is_dir() || opencode_cfg.is_file(),
-                display_root: &opencode_dir,
-            },
-            profile,
-            now,
-            &mut agents,
-            &mut mcp_servers,
-            &mut scanned_paths,
-        );
-    } else {
-        warnings.push("Home directory environment variable was unavailable during scan.".into());
+        let mcp_count = mcp_servers.len().saturating_sub(mcp_before);
+        let match_state = evaluate_pass1_routes(matched_routes.len());
+        if matched_routes.is_empty() {
+            continue;
+        }
+
+        let exe_path = running_proc
+            .and_then(|p| p.executable_path.clone())
+            .or_else(|| primary_path.as_ref().map(|p| display_path(p)))
+            .unwrap_or_default();
+        let program_identity = build_program_identity(manifest, &exe_path);
+
+        pass1.push(Pass1CandidateSummary {
+            agent_id: manifest.id.clone(),
+            agent_name: manifest.name.clone(),
+            match_state,
+            matched_routes,
+            hook_installed,
+            program_identity: program_identity.clone(),
+        });
+
+        let has_config_or_proc = primary_path
+            .as_ref()
+            .is_some_and(|p| fs.is_regular_file_nofollow(p))
+            || running_proc.is_some();
+        if match_state == Pass1MatchState::InstalledMatched || has_config_or_proc {
+            let assurance = assurance_for_hook(hook_installed, profile);
+            agents.push(DiscoveredAgent {
+                id: format!("agent-{}", manifest.id),
+                name: manifest.name.clone(),
+                kind: manifest.id.clone(),
+                config_path: exe_path,
+                hook_installed,
+                mcp_count,
+                assurance,
+                assurance_level: assurance.level(),
+                sponsor: None,
+                detected_at: now,
+            });
+        }
+
+        let presence = if running_proc.is_some() {
+            PresenceState::Running
+        } else {
+            PresenceState::InstalledOnly
+        };
+        observed_states.push(ObservedAgentState {
+            agent_id: manifest.id.clone(),
+            program_identity,
+            presence,
+            observed_signer: None,
+            observed_hosts: BTreeSet::new(),
+            observed_artifacts: BTreeMap::new(),
+        });
     }
 
-    if let Some(vscode_cfg) = appdata
-        .map(|d| d.join("Code").join("User").join("mcp.json"))
-        .or_else(|| home.map(|h| h.join(".config").join("Code").join("User").join("mcp.json")))
-    {
-        scan_json_mcp_agent(
-            JsonAgentSpec {
-                id: "agent-vscode",
-                name: "VS Code Copilot / MCP",
-                kind: "vscode",
-                config_path: &vscode_cfg,
-                dir_exists: vscode_cfg.is_file(),
-                display_root: &vscode_cfg,
-            },
-            profile,
-            now,
-            &mut agents,
-            &mut mcp_servers,
-            &mut scanned_paths,
-        );
-    }
-
-    let artifacts = scan_artifacts_for_roots(
+    let artifacts = scan_artifacts_for_roots_with_catalogue(
+        catalogue,
         device_name,
         home,
         workspace,
         now,
+        fs,
         &mut scanned_paths,
         &mut warnings,
     );
+    let block_scan = scan_workspace_building_blocks(workspace, blocks, fs);
+    if let Some(reason) = block_scan.blocked_reason {
+        warnings.push(format!("Building-block scan incomplete: {reason:?}"));
+    }
 
-    DiscoveryReport {
+    let behavioral: Vec<BehavioralAssessment> = observations
+        .iter()
+        .map(|obs| classify_agentic_loop(obs, &blocks.classifier))
+        .collect();
+
+    let inventory_diff = reconcile_inventory_diff(declarations, &observed_states);
+    let abom = build_agent_bom(device_name, &inventory_diff, &observed_states);
+
+    let report = DiscoveryReport {
         device_name: device_name.into(),
         os: env::consts::OS.into(),
         arch: env::consts::ARCH.into(),
@@ -188,254 +302,24 @@ pub fn discover_from_roots_with_workspace(
         scanned_paths,
         warnings,
         scanned_at: now,
-    }
-}
-
-fn scan_claude_code(
-    home: &Path,
-    profile: InstallProfile,
-    now: Timestamp,
-    agents: &mut Vec<DiscoveredAgent>,
-    mcp_servers: &mut Vec<McpServerEntry>,
-    scanned_paths: &mut Vec<String>,
-    warnings: &mut Vec<String>,
-) {
-    let claude_dir = home.join(".claude");
-    let settings_path = claude_dir.join("settings.json");
-    let claude_json = home.join(".claude.json");
-    scanned_paths.push(display_path(&settings_path));
-    scanned_paths.push(display_path(&claude_json));
-
-    if !claude_dir.is_dir() && !settings_path.is_file() && !claude_json.is_file() {
-        return;
-    }
-
-    let mut hook_installed = false;
-    let mut local_mcps = Vec::new();
-    for path in [&settings_path, &claude_json] {
-        if path.is_file() {
-            match read_json(path) {
-                Ok(val) => {
-                    if json_contains_grdr_hook(&val) {
-                        hook_installed = true;
-                    }
-                    extract_mcp_servers(&val, "Claude Code", path, &mut local_mcps);
-                }
-                Err(err) => warnings.push(err),
-            }
-        }
-    }
-
-    let mcp_count = local_mcps.len();
-    mcp_servers.extend(local_mcps);
-    let assurance = assurance_for_hook(hook_installed, profile);
-
-    agents.push(DiscoveredAgent {
-        id: "agent-claude-code".into(),
-        name: "Claude Code".into(),
-        kind: "claude-code".into(),
-        config_path: display_path(if settings_path.is_file() {
-            &settings_path
-        } else {
-            &claude_dir
-        }),
-        hook_installed,
-        mcp_count,
-        assurance_level: assurance.level(),
-        assurance,
-        sponsor: None,
-        detected_at: now,
-    });
-}
-
-fn scan_cursor(
-    home: &Path,
-    appdata: Option<&Path>,
-    profile: InstallProfile,
-    now: Timestamp,
-    agents: &mut Vec<DiscoveredAgent>,
-    mcp_servers: &mut Vec<McpServerEntry>,
-    scanned_paths: &mut Vec<String>,
-) {
-    let cursor_dir = home.join(".cursor");
-    let mcp_path = cursor_dir.join("mcp.json");
-    let appdata_cursor = appdata.map(|d| d.join("Cursor"));
-    let exists = cursor_dir.is_dir()
-        || mcp_path.is_file()
-        || appdata_cursor.as_ref().is_some_and(|p| p.is_dir());
-
-    scan_json_mcp_agent(
-        JsonAgentSpec {
-            id: "agent-cursor",
-            name: "Cursor",
-            kind: "cursor",
-            config_path: &mcp_path,
-            dir_exists: exists,
-            display_root: &cursor_dir,
-        },
-        profile,
-        now,
-        agents,
-        mcp_servers,
-        scanned_paths,
-    );
-}
-
-fn scan_codex(
-    home: &Path,
-    profile: InstallProfile,
-    now: Timestamp,
-    agents: &mut Vec<DiscoveredAgent>,
-    mcp_servers: &mut Vec<McpServerEntry>,
-    scanned_paths: &mut Vec<String>,
-) {
-    let codex_dir = home.join(".codex");
-    let cfg_path = codex_dir.join("config.toml");
-    scanned_paths.push(display_path(&cfg_path));
-    if !codex_dir.is_dir() && !cfg_path.is_file() {
-        return;
-    }
-
-    let mut local_mcps = Vec::new();
-    if cfg_path.is_file()
-        && let Ok(text) = fs::read_to_string(&cfg_path)
-    {
-        extract_toml_mcp_headers(&text, "Codex CLI", &cfg_path, &mut local_mcps);
-    }
-
-    let mcp_count = local_mcps.len();
-    mcp_servers.extend(local_mcps);
-    let assurance = assurance_for_hook(false, profile);
-
-    agents.push(DiscoveredAgent {
-        id: "agent-codex".into(),
-        name: "Codex CLI".into(),
-        kind: "codex".into(),
-        config_path: display_path(if cfg_path.is_file() {
-            &cfg_path
-        } else {
-            &codex_dir
-        }),
-        hook_installed: false,
-        mcp_count,
-        assurance_level: assurance.level(),
-        assurance,
-        sponsor: None,
-        detected_at: now,
-    });
-}
-
-fn scan_gemini(
-    home: &Path,
-    profile: InstallProfile,
-    now: Timestamp,
-    agents: &mut Vec<DiscoveredAgent>,
-    mcp_servers: &mut Vec<McpServerEntry>,
-    scanned_paths: &mut Vec<String>,
-) {
-    let gemini_dir = home.join(".gemini");
-    let settings_path = gemini_dir.join("settings.json");
-    let antigravity_mcp = gemini_dir.join("antigravity").join("mcp_config.json");
-    scanned_paths.push(display_path(&settings_path));
-    scanned_paths.push(display_path(&antigravity_mcp));
-
-    if !gemini_dir.is_dir() {
-        return;
-    }
-
-    let mut local_mcps = Vec::new();
-    let mut hook_installed = false;
-    for path in [&settings_path, &antigravity_mcp] {
-        if path.is_file()
-            && let Ok(val) = read_json(path)
-        {
-            if json_contains_grdr_hook(&val) {
-                hook_installed = true;
-            }
-            extract_mcp_servers(&val, "Gemini CLI / Antigravity", path, &mut local_mcps);
-        }
-    }
-
-    let mcp_count = local_mcps.len();
-    mcp_servers.extend(local_mcps);
-    let assurance = assurance_for_hook(hook_installed, profile);
-
-    agents.push(DiscoveredAgent {
-        id: "agent-gemini".into(),
-        name: "Gemini CLI / Antigravity".into(),
-        kind: "gemini".into(),
-        config_path: display_path(&gemini_dir),
-        hook_installed,
-        mcp_count,
-        assurance_level: assurance.level(),
-        assurance,
-        sponsor: None,
-        detected_at: now,
-    });
-}
-
-fn scan_json_mcp_agent(
-    spec: JsonAgentSpec<'_>,
-    profile: InstallProfile,
-    now: Timestamp,
-    agents: &mut Vec<DiscoveredAgent>,
-    mcp_servers: &mut Vec<McpServerEntry>,
-    scanned_paths: &mut Vec<String>,
-) {
-    scanned_paths.push(display_path(spec.config_path));
-    if !spec.dir_exists {
-        return;
-    }
-
-    let mut local_mcps = Vec::new();
-    if spec.config_path.is_file()
-        && let Ok(val) = read_json(spec.config_path)
-    {
-        extract_mcp_servers(&val, spec.name, spec.config_path, &mut local_mcps);
-    }
-    let mcp_count = local_mcps.len();
-    mcp_servers.extend(local_mcps);
-    let assurance = assurance_for_hook(false, profile);
-
-    agents.push(DiscoveredAgent {
-        id: spec.id.into(),
-        name: spec.name.into(),
-        kind: spec.kind.into(),
-        config_path: display_path(spec.display_root),
-        hook_installed: false,
-        mcp_count,
-        assurance_level: assurance.level(),
-        assurance,
-        sponsor: None,
-        detected_at: now,
-    });
-}
-
-fn assurance_for_hook(hook_installed: bool, profile: InstallProfile) -> AssuranceRecord {
-    let (control, tamper) = match (hook_installed, profile) {
-        (true, InstallProfile::Protected) => (ControlStrength::ScopedBoundary, TamperGrade::Admin),
-        (true, InstallProfile::User) => (ControlStrength::Request, TamperGrade::User),
-        (false, InstallProfile::Protected) => (ControlStrength::None, TamperGrade::Admin),
-        (false, InstallProfile::User) => (ControlStrength::None, TamperGrade::User),
     };
-    AssuranceRecord {
-        visibility: Visibility::Claimed,
-        control,
-        on_failure: OnFailure::Open,
-        tamper,
-    }
-}
 
-pub fn detect_home_dir() -> Option<PathBuf> {
-    env::var_os("HOME")
-        .or_else(|| env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
+    FourPassDiscoveryReport {
+        report,
+        pass1,
+        building_blocks: block_scan.detected,
+        behavioral,
+        inventory_diff,
+        abom,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use grdr_model::AssuranceLevel;
+    use crate::test_fs::TestLocalFs;
+    use grdr_model::{AssuranceLevel, ControlStrength};
+    use std::fs;
 
     #[test]
     fn discovers_agents_without_leaking_secrets() {
@@ -467,7 +351,14 @@ mod tests {
         .unwrap();
         fs::write(codex_dir.join("config.toml"), "[mcp_servers.docs]\n").unwrap();
 
-        let report = discover_from_roots("test-box", Some(&root), None, InstallProfile::User);
+        let report = discover_from_roots(
+            "test-box",
+            Some(&root),
+            None,
+            InstallProfile::User,
+            "grdr-hook",
+            &TestLocalFs,
+        );
         let json = serde_json::to_string(&report).unwrap();
         assert!(!json.contains("ghp_super_secret_token_do_not_leak"));
         assert!(report.agents.iter().any(|a| a.kind == "claude-code"
@@ -485,6 +376,10 @@ mod tests {
         );
         assert!(report.mcp_servers.iter().any(|m| m.name == "postgres"));
         assert!(report.mcp_servers.iter().any(|m| m.name == "docs"));
+
+        let protected = assurance_for_hook(true, InstallProfile::Protected);
+        assert_eq!(protected.control, ControlStrength::Request);
+        assert_eq!(protected.level(), AssuranceLevel::Al2Guided);
 
         let _ = fs::remove_dir_all(&root);
     }

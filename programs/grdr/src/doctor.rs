@@ -7,12 +7,12 @@ use jiff::Timestamp;
 use serde::Serialize;
 
 use grdr_agents::{
-    DoctorSeverity, ObservedWindowsAgent, ProcessSnapshotSource, SystemWindowsProcessSource,
-    WindowsDiscoveryTracker, WindowsOptionalTelemetryState, WindowsTelemetryAdvisory,
-    WindowsTelemetryRegistryReader, WslBridgeProcess, detect_hostname, discover_local_agents,
-    evaluate_windows_telemetry,
+    CODE_WIN_SNAPSHOT_UNAVAILABLE, DoctorSeverity, ObservedWindowsAgent, ProcessSnapshotSource,
+    WindowsDiscoveryTracker, WindowsOptionalTelemetryState, WindowsProcessEntry,
+    WindowsTelemetryAdvisory, WindowsTelemetryRegistryReader, WslBridgeProcess, detect_hostname,
+    discover_local_agents, evaluate_windows_telemetry,
 };
-use grdr_model::InstallProfile;
+use grdr_model::{CodedError, InstallProfile};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
@@ -42,6 +42,8 @@ pub struct DoctorReport {
     pub checked_at: Timestamp,
 }
 
+struct PeerOsWindowsProcessSource;
+
 pub fn run_doctor(json: bool, profile: InstallProfile, strict: bool) -> ExitCode {
     let report = collect_doctor_report(profile);
 
@@ -60,11 +62,38 @@ pub fn run_doctor(json: bool, profile: InstallProfile, strict: bool) -> ExitCode
     exit_code_for_report(&report, strict)
 }
 
+impl ProcessSnapshotSource for PeerOsWindowsProcessSource {
+    fn source_name(&self) -> &'static str {
+        grdr_agents::SYSTEM_SNAPSHOT_SOURCE_NAME
+    }
+
+    fn snapshot_processes(&self) -> Result<Vec<WindowsProcessEntry>, CodedError> {
+        let entries = grdr_peer_os::enumerate_windows_processes().map_err(|err| {
+            CodedError::new(
+                CODE_WIN_SNAPSHOT_UNAVAILABLE,
+                err.to_string(),
+                "Inspect OS permissions for native ToolHelp32 process enumeration.",
+            )
+        })?;
+        Ok(entries
+            .into_iter()
+            .map(|e| WindowsProcessEntry {
+                pid: e.pid,
+                parent_pid: e.parent_pid,
+                image_name: e.image_name,
+                executable_path: e.executable_path,
+                command_line: None,
+                session_id: e.session_id,
+            })
+            .collect())
+    }
+}
+
 pub fn collect_doctor_report(profile: InstallProfile) -> DoctorReport {
     let device_name = detect_hostname();
     let telemetry_reader = grdr_agents::windows_telemetry::SystemWindowsTelemetryReader;
-    let process_source = SystemWindowsProcessSource;
-    let discovery = discover_local_agents(profile);
+    let process_source = PeerOsWindowsProcessSource;
+    let discovery = discover_local_agents(profile, "grdr-hook", &grdr_peer_os::OsLocalFs);
     build_doctor_report_with(
         &device_name,
         profile,

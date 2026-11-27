@@ -174,3 +174,14 @@ floor_pubkey_max_bytes = 512
 seccomp_denied_rules_max = 64
 default_memory_limit_bytes = 2147483648
 default_cgroup_pids_max = 256
+
+[broker]
+max_worker_threads = 8
+
+[broker.circuit_breaker]
+consecutive_failures = 5
+window_ms = 300000
+min_calls = 20
+error_rate_bp = 500
+cooldown_ms = 60000
+max_outcomes = 4096

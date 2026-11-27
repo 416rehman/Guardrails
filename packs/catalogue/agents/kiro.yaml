@@ -1,0 +1,48 @@
+schema: grdr.catalogue/v1alpha1
+id: kiro
+aliases: [kiro-cli, kiro-ide]
+name: Kiro
+vendor: Amazon
+kind: coding-agent
+catalogue_tier: B
+surfaces: [ide, cli]
+declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request]
+containment_default: guided
+adapter: hook-shim
+routes:
+  binaries: [kiro, kiro-cli]
+  windows_exes: [Kiro.exe, kiro.exe, kiro-cli.exe]
+  wsl_harnesses: [kiro-cli]
+  cmdline_markers: [kiro-cli, kiro-ide]
+  npm: []
+  pypi: []
+  vscode_extensions: []
+  state_dirs: [.kiro]
+  config_paths: [.kiro/settings/mcp.json, .kiro/hooks.json, $WORKSPACE/.kiro/settings/mcp.json]
+  admin_config_paths: {}
+  mcp_config_paths: [.kiro/settings/mcp.json, $WORKSPACE/.kiro/settings/mcp.json]
+  mcp_config_key: mcpServers
+  env_markers: [KIRO_API_KEY]
+  net: [q.us-east-1.amazonaws.com]
+  artifacts:
+    skills: [.kiro/powers]
+    plugins: []
+    rules: [.kiro/steering, $WORKSPACE/.kiro/steering]
+    commands: []
+    subagents: [.kiro/agents]
+    transcripts: []
+  autonomy_flags: [--trust-all-tools]
+hook:
+  supported: true
+  dialect: kiro
+  config_rel: .kiro/hooks.json
+  config_format: json
+  root_key: hooks
+  entry_style: matcher-hooks
+  events: [PreToolUse]
+  all_events: [PreToolUse, PostToolUse]
+  timeout_ms: 250
+  fail_mode: closed
+  mdm_ids:
+    plist_domain: dev.kiro.agent
+    registry_subkey: 'Software\Policies\Amazon\Kiro'

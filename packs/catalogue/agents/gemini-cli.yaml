@@ -1,0 +1,52 @@
+schema: grdr.catalogue/v1alpha1
+id: gemini-cli
+aliases: [gemini]
+name: Gemini CLI
+vendor: Google
+kind: coding-agent
+catalogue_tier: A
+surfaces: [cli]
+declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request, child.spawn]
+containment_default: guided
+adapter: hook-shim
+routes:
+  binaries: [gemini]
+  windows_exes: [gemini.exe]
+  wsl_harnesses: [gemini]
+  cmdline_markers: ['@google/gemini-cli', gemini-cli]
+  npm: ['@google/gemini-cli']
+  pypi: []
+  vscode_extensions: []
+  state_dirs: [.gemini]
+  config_paths: [.gemini/settings.json, $WORKSPACE/.gemini/settings.json]
+  admin_config_paths:
+    macos: "/Library/Application Support/GeminiCli/settings.json"
+    linux: "/etc/gemini-cli/settings.json"
+    windows: '%ProgramData%\GeminiCli\settings.json'
+  mcp_config_paths: [.gemini/settings.json, $WORKSPACE/.gemini/settings.json]
+  mcp_config_key: mcpServers
+  env_markers: [GEMINI_API_KEY, GOOGLE_API_KEY]
+  net: [generativelanguage.googleapis.com, cloudcode-pa.googleapis.com]
+  artifacts:
+    skills: [.gemini/skills, .gemini/config/skills, $WORKSPACE/.gemini/skills]
+    plugins: [.gemini/extensions, .gemini/config/plugins]
+    rules: [.gemini/GEMINI.md, $WORKSPACE/GEMINI.md]
+    commands: [.gemini/commands]
+    subagents: []
+    transcripts: [.gemini/tmp]
+  autonomy_flags: [--yolo, --approval-mode yolo]
+hook:
+  supported: true
+  dialect: gemini
+  config_rel: .gemini/settings.json
+  config_format: json
+  root_key: hooks
+  entry_style: matcher-hooks
+  entry_name: guardrails-adr
+  events: [BeforeTool]
+  all_events: [BeforeTool, AfterTool, SessionStart, SessionEnd]
+  timeout_ms: 250
+  fail_mode: closed
+  mdm_ids:
+    plist_domain: com.google.gemini-cli
+    registry_subkey: 'Software\Policies\Google\GeminiCli'

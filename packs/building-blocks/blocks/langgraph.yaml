@@ -1,0 +1,13 @@
+schema: grdr.building-block/v1alpha1
+id: langgraph
+name: LangGraph
+role: orchestrator
+agentic: yes
+ecosystems:
+  pypi: [langgraph, langgraph-prebuilt]
+  npm: ['@langchain/langgraph']
+  cargo: []
+binaries: []
+env_markers: [LANGSMITH_API_KEY, LANGCHAIN_TRACING_V2]
+net: [api.smith.langchain.com]
+classifier_boost_bp: 4500

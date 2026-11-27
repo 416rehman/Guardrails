@@ -1513,3 +1513,30 @@ lines = "512-520"
 invariant = "Null-checks BFE UTF-16 pointer and caps NUL scan at 512 code units before slice conversion."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_toolhelp.rs"
+symbol = "enumerate_windows_processes_native"
+lines = "31-99"
+invariant = "Wraps CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS) in ScopedWinHandle, sets PROCESSENTRY32W::dwSize safely without zero fallback, checks ERROR_NO_MORE_FILES on Process32FirstW/NextW, and bounds iteration to 65536 entries."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_toolhelp.rs"
+symbol = "query_process_details"
+lines = "101-171"
+invariant = "Checks OpenProcess and OpenProcessToken against both null and INVALID_HANDLE_VALUE, verifies PID, start times pre/post, and image basename consistency before reading TokenSessionId."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_toolhelp.rs"
+symbol = "query_image_path_growing"
+lines = "173-198"
+invariant = "Grows UTF-16 buffer dynamically on ERROR_INSUFFICIENT_BUFFER up to 32768 WCHARs before returning image path."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]

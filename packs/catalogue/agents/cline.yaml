@@ -1,0 +1,48 @@
+schema: grdr.catalogue/v1alpha1
+id: cline
+aliases: [claude-dev]
+name: Cline
+vendor: Cline
+kind: coding-agent
+catalogue_tier: B
+surfaces: [ide-extension, cli]
+declared_action_classes: [exec, file.read, file.write, file.delete, net.request, mcp.call, llm.request]
+containment_default: guided
+adapter: hook-shim
+routes:
+  binaries: [cline]
+  windows_exes: [cline.exe]
+  wsl_harnesses: [cline]
+  cmdline_markers: [saoudrizwan.claude-dev, cline-core]
+  npm: [cline]
+  pypi: []
+  vscode_extensions: [saoudrizwan.claude-dev]
+  state_dirs: [.cline]
+  config_paths: [.cline/settings.json, .cline/cline_mcp_settings.json, $WORKSPACE/.clinerules]
+  admin_config_paths: {}
+  mcp_config_paths: [.cline/cline_mcp_settings.json]
+  mcp_config_key: mcpServers
+  env_markers: [ANTHROPIC_API_KEY, OPENROUTER_API_KEY]
+  net: [api.cline.bot]
+  artifacts:
+    skills: []
+    plugins: []
+    rules: [.clinerules, $WORKSPACE/.clinerules, $WORKSPACE/.clinerules/]
+    commands: []
+    subagents: []
+    transcripts: []
+  autonomy_flags: [--auto-approve]
+hook:
+  supported: true
+  dialect: cline
+  config_rel: .cline/hooks.json
+  config_format: json
+  root_key: hooks
+  entry_style: matcher-hooks
+  events: [PreToolUse]
+  all_events: [PreToolUse, PostToolUse, TaskStart]
+  timeout_ms: 250
+  fail_mode: closed
+  mdm_ids:
+    plist_domain: bot.cline.agent
+    registry_subkey: 'Software\Policies\Cline'

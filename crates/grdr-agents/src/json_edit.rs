@@ -24,31 +24,46 @@ struct JsonMember {
     value: JsonNode,
 }
 
+const MAX_JSON_DEPTH: usize = 64;
+
 pub(crate) fn insert_array_entries_preserving_spans(
     raw: &str,
+    root_key: &str,
     event_entries: &[(&str, Value)],
 ) -> Result<String, String> {
+    let key = if root_key.is_empty() {
+        "hooks"
+    } else {
+        root_key
+    };
     let mut current = raw.to_string();
     for (event_key, entry) in event_entries {
-        current = insert_single_event_entry(&current, event_key, entry)?;
+        current = insert_single_event_entry(&current, key, event_key, entry)?;
     }
     Ok(current)
 }
 
-fn insert_single_event_entry(raw: &str, event_key: &str, entry: &Value) -> Result<String, String> {
+fn insert_single_event_entry(
+    raw: &str,
+    root_key: &str,
+    event_key: &str,
+    entry: &Value,
+) -> Result<String, String> {
     let root = parse_root_object(raw)?;
     let JsonKind::Object(root_members) = &root.kind else {
         return Err("GRDR-AGENTS-0003: root hook config must be a JSON object".into());
     };
 
-    if let Some(hooks_member) = root_members.iter().find(|m| m.key_name == "hooks") {
+    if let Some(hooks_member) = root_members.iter().find(|m| m.key_name == root_key) {
         let JsonKind::Object(hooks_members) = &hooks_member.value.kind else {
-            return Err("GRDR-AGENTS-0003: `hooks` field must be a JSON object".into());
+            return Err(format!(
+                "GRDR-AGENTS-0003: `{root_key}` field must be a JSON object"
+            ));
         };
         if let Some(ev_member) = hooks_members.iter().find(|m| m.key_name == event_key) {
             let JsonKind::Array(items) = &ev_member.value.kind else {
                 return Err(format!(
-                    "GRDR-AGENTS-0003: `hooks.{event_key}` must be a JSON array"
+                    "GRDR-AGENTS-0003: `{root_key}.{event_key}` must be a JSON array"
                 ));
             };
             return insert_into_array(raw, &ev_member.value, items, entry);
@@ -62,7 +77,7 @@ fn insert_single_event_entry(raw: &str, event_key: &str, entry: &Value) -> Resul
         );
     }
 
-    insert_hooks_member_into_root(raw, &root, root_members, event_key, entry)
+    insert_hooks_member_into_root(raw, &root, root_members, root_key, event_key, entry)
 }
 
 fn insert_into_array(
@@ -127,11 +142,14 @@ fn insert_hooks_member_into_root(
     raw: &str,
     root_node: &JsonNode,
     root_members: &[JsonMember],
+    root_key: &str,
     event_key: &str,
     entry: &Value,
 ) -> Result<String, String> {
     let entry_pretty = serde_json::to_string_pretty(entry)
         .map_err(|e| format!("failed serializing hook entry: {e}"))?;
+    let root_key_json =
+        serde_json::to_string(root_key).map_err(|e| format!("failed serializing root key: {e}"))?;
     let key_json = serde_json::to_string(event_key)
         .map_err(|e| format!("failed serializing event key: {e}"))?;
 
@@ -141,7 +159,7 @@ fn insert_hooks_member_into_root(
         let item_indent = format!("{ev_indent}  ");
         let indented = indent_multiline(&entry_pretty, &item_indent);
         let insertion = format!(
-            ",\n{member_indent}\"hooks\": {{\n{ev_indent}{key_json}: [\n{item_indent}{indented}\n{ev_indent}]\n{member_indent}}}"
+            ",\n{member_indent}{root_key_json}: {{\n{ev_indent}{key_json}: [\n{item_indent}{indented}\n{ev_indent}]\n{member_indent}}}"
         );
         return splice_str(raw, last.value.end, last.value.end, &insertion);
     }
@@ -154,7 +172,7 @@ fn insert_hooks_member_into_root(
     let inner_start = root_node.start.saturating_add(1);
     let inner_end = root_node.end.saturating_sub(1);
     let replacement = format!(
-        "\n{member_indent}\"hooks\": {{\n{ev_indent}{key_json}: [\n{item_indent}{indented}\n{ev_indent}]\n{member_indent}}}\n{base_indent}"
+        "\n{member_indent}{root_key_json}: {{\n{ev_indent}{key_json}: [\n{item_indent}{indented}\n{ev_indent}]\n{member_indent}}}\n{base_indent}"
     );
     splice_str(raw, inner_start, inner_end, &replacement)
 }
@@ -203,7 +221,7 @@ fn indent_multiline(pretty: &str, indent: &str) -> String {
 fn parse_root_object(raw: &str) -> Result<JsonNode, String> {
     let bytes = raw.as_bytes();
     let pos = skip_ws(bytes, 0);
-    let (node, end) = parse_value(raw, bytes, pos)?;
+    let (node, end) = parse_value(raw, bytes, pos, 0)?;
     let trailing = skip_ws(bytes, end);
     if trailing != bytes.len() {
         return Err("GRDR-AGENTS-0003: trailing characters after JSON document".into());
@@ -211,15 +229,23 @@ fn parse_root_object(raw: &str) -> Result<JsonNode, String> {
     Ok(node)
 }
 
-fn parse_value(raw: &str, bytes: &[u8], pos: usize) -> Result<(JsonNode, usize), String> {
+fn parse_value(
+    raw: &str,
+    bytes: &[u8],
+    pos: usize,
+    depth: usize,
+) -> Result<(JsonNode, usize), String> {
+    if depth > MAX_JSON_DEPTH {
+        return Err("GRDR-AGENTS-0003: JSON nesting depth exceeded".into());
+    }
     let p = skip_ws(bytes, pos);
     let byte = bytes
         .get(p)
         .copied()
         .ok_or_else(|| "GRDR-AGENTS-0003: unexpected end of JSON".to_string())?;
     match byte {
-        b'{' => parse_object(raw, bytes, p),
-        b'[' => parse_array(raw, bytes, p),
+        b'{' => parse_object(raw, bytes, p, depth.saturating_add(1)),
+        b'[' => parse_array(raw, bytes, p, depth.saturating_add(1)),
         b'"' => {
             let end = scan_string(bytes, p)?;
             Ok((
@@ -245,7 +271,12 @@ fn parse_value(raw: &str, bytes: &[u8], pos: usize) -> Result<(JsonNode, usize),
     }
 }
 
-fn parse_object(raw: &str, bytes: &[u8], start: usize) -> Result<(JsonNode, usize), String> {
+fn parse_object(
+    raw: &str,
+    bytes: &[u8],
+    start: usize,
+    depth: usize,
+) -> Result<(JsonNode, usize), String> {
     let mut p = skip_ws(bytes, start.saturating_add(1));
     let mut members = Vec::new();
     if bytes.get(p).copied() == Some(b'}') {
@@ -276,7 +307,7 @@ fn parse_object(raw: &str, bytes: &[u8], start: usize) -> Result<(JsonNode, usiz
         if bytes.get(p).copied() != Some(b':') {
             return Err("GRDR-AGENTS-0003: expected ':' in JSON object".into());
         }
-        let (value, next) = parse_value(raw, bytes, p.saturating_add(1))?;
+        let (value, next) = parse_value(raw, bytes, p.saturating_add(1), depth)?;
         members.push(JsonMember {
             key_start,
             key_name,
@@ -301,7 +332,12 @@ fn parse_object(raw: &str, bytes: &[u8], start: usize) -> Result<(JsonNode, usiz
     }
 }
 
-fn parse_array(raw: &str, bytes: &[u8], start: usize) -> Result<(JsonNode, usize), String> {
+fn parse_array(
+    raw: &str,
+    bytes: &[u8],
+    start: usize,
+    depth: usize,
+) -> Result<(JsonNode, usize), String> {
     let mut p = skip_ws(bytes, start.saturating_add(1));
     let mut items = Vec::new();
     if bytes.get(p).copied() == Some(b']') {
@@ -316,7 +352,7 @@ fn parse_array(raw: &str, bytes: &[u8], start: usize) -> Result<(JsonNode, usize
     }
 
     loop {
-        let (item, next) = parse_value(raw, bytes, p)?;
+        let (item, next) = parse_value(raw, bytes, p, depth)?;
         items.push(item);
         p = skip_ws(bytes, next);
         match bytes.get(p).copied() {

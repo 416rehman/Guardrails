@@ -1,0 +1,13 @@
+schema: grdr.building-block/v1alpha1
+id: anthropic-sdk
+name: Anthropic SDK
+role: llm-sdk
+agentic: no
+ecosystems:
+  pypi: [anthropic]
+  npm: ['@anthropic-ai/sdk']
+  cargo: []
+binaries: []
+env_markers: [ANTHROPIC_API_KEY]
+net: [api.anthropic.com]
+classifier_boost_bp: 1000

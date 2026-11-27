@@ -299,7 +299,7 @@ fn run_scan(json: bool, profile: ProfileArg) -> ExitCode {
         ProfileArg::User => InstallProfile::User,
         ProfileArg::Protected => InstallProfile::Protected,
     };
-    let report = discover_local_agents(install_profile);
+    let report = discover_local_agents(install_profile, "grdr-hook", &grdr_peer_os::OsLocalFs);
 
     if json {
         match serde_json::to_string_pretty(&report) {

@@ -6,11 +6,12 @@ use std::process::ExitCode;
 use serde::Serialize;
 
 use grdr_agents::{
-    HookInstallState, HookTargetKind, InstallOutcome, detect_home_dir, hook_status, install_hook,
-    uninstall_hook,
+    HookInstallState, HookTargetKind, InstallOutcome, detect_home_dir, detect_state_dir,
+    hook_status, install_hook, recorded_hook_command, uninstall_hook,
 };
 
 const CLI_API_VERSION: &str = "grdr.cli.v1alpha1";
+const CLI_DEFAULT_HOOK_COMMAND: &str = "grdr-hook";
 const HOOK_STATUS_TYPE: &str = "hook.status";
 
 #[derive(Debug, Serialize)]
@@ -42,7 +43,14 @@ pub fn run_hook_status(agent: &str, json: bool) -> ExitCode {
         return ExitCode::from(2);
     };
 
-    let report = match hook_status(target, &home) {
+    let fs = grdr_peer_os::OsLocalFs;
+    let state_dir = detect_state_dir(&home);
+    let recorded_cmd = recorded_hook_command(&target, &state_dir, &fs)
+        .ok()
+        .flatten();
+    let hook_cmd = recorded_cmd.as_deref().unwrap_or(CLI_DEFAULT_HOOK_COMMAND);
+
+    let report = match hook_status(target, &home, hook_cmd, &fs) {
         Ok(r) => r,
         Err(err) => {
             eprintln!("{err}");
@@ -101,7 +109,7 @@ pub fn run_install_hook(agent: &str, command: &str, apply: bool) -> ExitCode {
         return ExitCode::FAILURE;
     };
 
-    match install_hook(target, &home, command, !apply) {
+    match install_hook(target, &home, command, !apply, &grdr_peer_os::OsLocalFs) {
         Ok(report) => {
             match report.outcome {
                 InstallOutcome::DryRunPreview => {
@@ -148,7 +156,19 @@ pub fn run_uninstall_hook(agent: &str) -> ExitCode {
         return ExitCode::FAILURE;
     };
 
-    match uninstall_hook(target, &home) {
+    let fs = grdr_peer_os::OsLocalFs;
+    let state_dir = detect_state_dir(&home);
+    let fallback = if recorded_hook_command(&target, &state_dir, &fs)
+        .ok()
+        .flatten()
+        .is_some()
+    {
+        None
+    } else {
+        Some(CLI_DEFAULT_HOOK_COMMAND)
+    };
+
+    match uninstall_hook(target, &home, fallback, &fs) {
         Ok(report) => {
             match report.outcome {
                 InstallOutcome::Applied => {
@@ -191,7 +211,9 @@ mod tests {
         )
         .unwrap();
 
-        let before = grdr_agents::hook_status(HookTargetKind::ClaudeCode, &home).unwrap();
+        let fs = grdr_peer_os::OsLocalFs;
+        let before =
+            grdr_agents::hook_status(HookTargetKind::ClaudeCode, &home, "grdr-hook", &fs).unwrap();
         let before_env = HookStatusEnvelope {
             api_version: CLI_API_VERSION,
             kind: HOOK_STATUS_TYPE,
@@ -215,9 +237,11 @@ mod tests {
             &state_dir,
             "/usr/local/bin/grdr-hook",
             false,
+            &fs,
         )
         .unwrap();
-        let after = grdr_agents::hook_status(HookTargetKind::ClaudeCode, &home).unwrap();
+        let after =
+            grdr_agents::hook_status(HookTargetKind::ClaudeCode, &home, "grdr-hook", &fs).unwrap();
         let after_env = HookStatusEnvelope {
             api_version: CLI_API_VERSION,
             kind: HOOK_STATUS_TYPE,
@@ -232,7 +256,8 @@ mod tests {
         assert_eq!(after_json["data"]["state"], "effective");
         assert_eq!(after_json["data"]["installed"], true);
 
-        uninstall_hook_in_state_dir(HookTargetKind::ClaudeCode, &home, &state_dir).unwrap();
+        uninstall_hook_in_state_dir(HookTargetKind::ClaudeCode, &home, &state_dir, None, &fs)
+            .unwrap();
         let _ = std::fs::remove_dir_all(&home);
     }
 }

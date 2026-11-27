@@ -1,0 +1,13 @@
+schema: grdr.building-block/v1alpha1
+id: vercel-ai-sdk
+name: Vercel AI SDK
+role: orchestrator
+agentic: yes
+ecosystems:
+  pypi: []
+  npm: [ai, '@ai-sdk/openai', '@ai-sdk/anthropic', '@ai-sdk/google']
+  cargo: []
+binaries: []
+env_markers: [AI_GATEWAY_API_KEY]
+net: [ai-gateway.vercel.sh]
+classifier_boost_bp: 3500

@@ -1,0 +1,13 @@
+schema: grdr.building-block/v1alpha1
+id: mcp-sdks
+name: Model Context Protocol SDKs
+role: protocol-bridge
+agentic: corroborated
+ecosystems:
+  pypi: [mcp, fastmcp]
+  npm: ['@modelcontextprotocol/sdk']
+  cargo: [rmcp]
+binaries: [mcp-proxy]
+env_markers: []
+net: []
+classifier_boost_bp: 2500

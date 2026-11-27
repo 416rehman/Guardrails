@@ -9,19 +9,17 @@ design: docs/design/03-system-architecture-and-modularity.md section 2; docs/des
 Per-agent installers, managed-source probes and structural dialect translators (design/03 section 2). Hook payloads are parsed here and never in `grdr-hook` (ARCH-004).
 
 ## Invariants
-- Dependency edges: none yet. Every edge goes to a lower layer or is a same-layer edge of `architecture.toml` (`cargo metadata`; ARCH-001 once #1580 lands).
-- No panic path in non-test code: the workspace clippy deny lints (`unwrap_used`, `expect_used`, `panic`, `indexing_slicing` and the rest of the root table).
-- No `unsafe`: the workspace lints forbid it.
+- Dependency edges: Layers 0 to 2 only (`grdr-core`, `grdr-crypto`, `grdr-model`, `grdr-schema`). Same-layer edges in `architecture.toml`: none (`ARCH-002`).
+- No panic path in non-test code: inherits `[lints] workspace = true` (`unwrap_used`, `expect_used`, `panic`, `indexing_slicing`, `unsafe_code = "forbid"`).
+- No `unsafe`: enforced via `#![forbid(unsafe_code)]`; OS process enumeration is injected via `ProcessSnapshotSource` from Layer 4 callers (`grdr-peer-os`).
 - Formats no text a person or an agent reads (`renders = "none"`).
-- Event names, tool names, matchers and version ranges are manifest data, never code (P14).
+- Event names, tool names, matchers, routes, dialects, and SDKs are manifest data in `packs/catalogue/` and `packs/building-blocks/`, never hardcoded in Rust (`P14`).
 
 ## Allowed dependencies
-Layers 0 to 2. Same-layer edges in architecture.toml: none (ARCH-002). Its first edges come with #370.
+Layers 0 to 2. Same-layer edges in `architecture.toml`: none (`ARCH-002`).
 
 ## How to test
 - `cargo test --locked -p grdr-agents`
-- Oracle: none yet; the crate has no behaviour (first content #376).
-- Fuzz and differential targets: none yet: no code reads input (first content #376).
 
 ## Data classes
 Reads: none yet. Writes: none yet (first content #376). Logs: LogSafe only.

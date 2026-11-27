@@ -1,0 +1,162 @@
+schema: grdr.building-blocks/v1alpha1
+version: 1
+classifier:
+  window_secs: 60
+  min_cycles: 3
+  coincidence_window_ms: 2000
+  min_coincidence_ratio_bp: 5000
+  llm_client_min_calls: 2
+  candidate_scan_budget_ms: 500
+  suspected_threshold_bp: 5500
+  classified_threshold_bp: 7500
+  advisory_only: true
+  can_enforce: false
+  weights_bp:
+    llm_stream_then_tool: 3500
+    multi_turn_cadence: 2500
+    sandbox_or_workspace_access: 2500
+    orchestrator_package: 4000
+    headless_env_markers: 1500
+blocks:
+  - id: langgraph
+    name: LangGraph
+    role: orchestrator
+    agentic: yes
+    ecosystems:
+      pypi: [langgraph, langgraph-prebuilt]
+      npm: ['@langchain/langgraph']
+      cargo: []
+    binaries: []
+    env_markers: [LANGSMITH_API_KEY, LANGCHAIN_TRACING_V2]
+    net: [api.smith.langchain.com]
+    classifier_boost_bp: 4500
+
+  - id: crewai
+    name: CrewAI
+    role: orchestrator
+    agentic: yes
+    ecosystems:
+      pypi: [crewai, crewai-tools]
+      npm: []
+      cargo: []
+    binaries: [crewai]
+    env_markers: [CREWAI_TRACING_ENABLED]
+    net: [app.crewai.com]
+    classifier_boost_bp: 4500
+
+  - id: autogen
+    name: Microsoft AutoGen
+    role: orchestrator
+    agentic: yes
+    ecosystems:
+      pypi: [pyautogen, autogen-agentchat, autogen-core]
+      npm: []
+      cargo: []
+    binaries: []
+    env_markers: [AUTOGEN_USE_DOCKER]
+    net: []
+    classifier_boost_bp: 4500
+
+  - id: openai-agents-sdk
+    name: OpenAI Agents SDK
+    role: orchestrator
+    agentic: yes
+    ecosystems:
+      pypi: [openai-agents]
+      npm: ['@openai/agents']
+      cargo: []
+    binaries: []
+    env_markers: [OPENAI_API_KEY]
+    net: [api.openai.com]
+    classifier_boost_bp: 4500
+
+  - id: anthropic-agent-sdk
+    name: Anthropic Agent SDK
+    role: orchestrator
+    agentic: yes
+    ecosystems:
+      pypi: [claude-agent-sdk, claude-code-sdk]
+      npm: ['@anthropic-ai/claude-agent-sdk', '@anthropic-ai/claude-code']
+      cargo: []
+    binaries: []
+    env_markers: [ANTHROPIC_API_KEY]
+    net: [api.anthropic.com]
+    classifier_boost_bp: 4500
+
+  - id: pydantic-ai
+    name: PydanticAI
+    role: orchestrator
+    agentic: yes
+    ecosystems:
+      pypi: [pydantic-ai, pydantic-ai-slim]
+      npm: []
+      cargo: []
+    binaries: []
+    env_markers: [LOGFIRE_TOKEN]
+    net: []
+    classifier_boost_bp: 4500
+
+  - id: vercel-ai-sdk
+    name: Vercel AI SDK
+    role: orchestrator
+    agentic: yes
+    ecosystems:
+      pypi: []
+      npm: [ai, '@ai-sdk/openai', '@ai-sdk/anthropic', '@ai-sdk/google']
+      cargo: []
+    binaries: []
+    env_markers: [AI_GATEWAY_API_KEY]
+    net: [ai-gateway.vercel.sh]
+    classifier_boost_bp: 3500
+
+  - id: mcp-sdks
+    name: Model Context Protocol SDKs
+    role: protocol-bridge
+    agentic: corroborated
+    ecosystems:
+      pypi: [mcp, fastmcp]
+      npm: ['@modelcontextprotocol/sdk']
+      cargo: [rmcp]
+    binaries: [mcp-proxy]
+    env_markers: []
+    net: []
+    classifier_boost_bp: 2500
+
+  - id: anthropic-sdk
+    name: Anthropic SDK
+    role: llm-sdk
+    agentic: no
+    ecosystems:
+      pypi: [anthropic]
+      npm: ['@anthropic-ai/sdk']
+      cargo: []
+    binaries: []
+    env_markers: [ANTHROPIC_API_KEY]
+    net: [api.anthropic.com]
+    classifier_boost_bp: 1000
+
+  - id: openai-sdk
+    name: OpenAI SDK
+    role: llm-sdk
+    agentic: no
+    ecosystems:
+      pypi: [openai]
+      npm: [openai]
+      cargo: [async-openai]
+    binaries: []
+    env_markers: [OPENAI_API_KEY]
+    net: [api.openai.com]
+    classifier_boost_bp: 1000
+
+  - id: ollama
+    name: Ollama Runtime
+    role: runtime
+    agentic: no
+    ecosystems:
+      pypi: [ollama]
+      npm: [ollama]
+      cargo: []
+    binaries: [ollama]
+    env_markers: [OLLAMA_HOST]
+    net: [127.0.0.1:11434]
+    classifier_boost_bp: 1000

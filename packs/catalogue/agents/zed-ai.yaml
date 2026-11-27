@@ -1,0 +1,46 @@
+schema: grdr.catalogue/v1alpha1
+id: zed-ai
+aliases: [zed]
+name: Zed AI
+vendor: Zed Industries
+kind: coding-agent
+catalogue_tier: B
+surfaces: [ide]
+declared_action_classes: [exec, file.read, file.write, net.request, mcp.call, llm.request]
+containment_default: monitored
+adapter: mcp-broker
+routes:
+  binaries: [zed, zeditor]
+  windows_exes: [Zed.exe, zed.exe]
+  wsl_harnesses: [zed]
+  cmdline_markers: [zed-editor, zeditor]
+  npm: []
+  pypi: []
+  vscode_extensions: []
+  state_dirs: [.config/zed]
+  config_paths: [.config/zed/settings.json, $WORKSPACE/.zed/settings.json]
+  admin_config_paths: {}
+  mcp_config_paths: [.config/zed/settings.json, $WORKSPACE/.zed/settings.json]
+  mcp_config_key: context_servers
+  env_markers: [ZED_AI_TOKEN, ANTHROPIC_API_KEY]
+  net: [cloud.zed.dev]
+  artifacts:
+    skills: []
+    plugins: []
+    rules: [.rules, $WORKSPACE/.rules]
+    commands: []
+    subagents: []
+    transcripts: []
+  autonomy_flags: []
+hook:
+  supported: false
+  dialect: zed-ai
+  config_rel: ""
+  config_format: none
+  root_key: ""
+  entry_style: none
+  events: []
+  all_events: []
+  timeout_ms: 250
+  fail_mode: open
+  mdm_ids: {}
