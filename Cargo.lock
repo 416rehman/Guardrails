@@ -1020,12 +1020,22 @@ dependencies = [
 name = "grdr-blob"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "grdr-crypto",
  "grdr-model",
  "grdr-ports",
  "grdr-ports-testkit",
+ "jiff 1.0.2",
+ "reqwest",
+ "rustls",
+ "rustls-pki-types",
+ "serde",
+ "serde_json",
  "thiserror",
+ "tokio",
+ "url",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]
@@ -1063,12 +1073,20 @@ dependencies = [
 name = "grdr-bus-nats"
 version = "0.1.0"
 dependencies = [
+ "base64",
+ "grdr-crypto",
  "grdr-model",
  "grdr-ports",
  "grdr-ports-testkit",
+ "rustls",
+ "rustls-native-certs",
+ "rustls-pki-types",
  "serde",
  "serde_json",
  "thiserror",
+ "url",
+ "webpki-root-certs",
+ "zeroize",
 ]
 
 [[package]]
@@ -1371,6 +1389,7 @@ dependencies = [
  "grdr-model",
  "grdr-ports",
  "grdr-ports-testkit",
+ "grdr-schema",
  "jiff 1.0.2",
  "rusqlite",
  "serde",
@@ -1593,15 +1612,22 @@ dependencies = [
 name = "grdr-rel-postgres"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "grdr-crypto",
  "grdr-model",
  "grdr-ports",
  "grdr-ports-testkit",
  "jiff 1.0.2",
  "rusqlite",
+ "rustls",
+ "rustls-native-certs",
+ "rustls-pki-types",
  "serde",
  "serde_json",
  "thiserror",
+ "unicode-normalization",
+ "webpki-root-certs",
+ "zeroize",
 ]
 
 [[package]]

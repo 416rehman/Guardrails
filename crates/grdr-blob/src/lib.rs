@@ -4,8 +4,17 @@
 #![deny(clippy::arithmetic_side_effects)]
 
 mod fs_blob;
+mod s3_blob;
+pub mod s3_config;
+mod s3_http;
+mod s3_sigv4;
+mod s3_xml;
 
 pub use fs_blob::FilesystemBlobStore;
+pub use s3_blob::{S3BlobStore, S3ConformanceReport};
+pub use s3_config::{
+    S3AddressingStyle, S3BlobConfig, S3Credentials, S3LifecycleMode, S3TransportSecurity,
+};
 
 #[cfg(test)]
 mod tests {

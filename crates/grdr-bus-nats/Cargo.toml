@@ -11,11 +11,19 @@ surface = "internal"
 renders = "none"
 
 [dependencies]
+base64 = { workspace = true }
+grdr-crypto = { workspace = true }
 grdr-model = { workspace = true }
 grdr-ports = { workspace = true }
+rustls = { workspace = true }
+rustls-native-certs = { workspace = true }
+rustls-pki-types = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+url = { workspace = true }
+webpki-root-certs = { workspace = true }
+zeroize = { workspace = true }
 
 [dev-dependencies]
 grdr-ports-testkit = { workspace = true }

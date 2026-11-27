@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+use std::collections::BTreeSet;
+
 use rusqlite::{Connection, OptionalExtension};
 use uuid::Uuid;
 
 use grdr_crypto::AeadKey;
 use grdr_model::CodedError;
 use grdr_ports::{
-    BlobPort, CODE_LAKE_HOLD_ACTIVE, CODE_LAKE_IO, CODE_LAKE_NOT_FOUND, ErasureReceipt, LegalHold,
-    LegalHoldRequest, LegalHoldScope, LegalHoldState, RetentionClass, SingleCtx, TenantCtx,
-    TenantPath,
+    BlobPort, CODE_LAKE_HOLD_ACTIVE, CODE_LAKE_IO, CODE_LAKE_NOT_FOUND, ErasureReceipt, LakeBatch,
+    LegalHold, LegalHoldRequest, LegalHoldScope, LegalHoldState, OrgId, RetentionClass, SingleCtx,
+    TenantCtx, TenantPath,
 };
 
 use crate::crypto::{
@@ -19,6 +21,13 @@ use crate::crypto::{
 use crate::flush::json_io_err;
 use crate::retention::load_active_holds;
 use crate::schema::lake_sql_err;
+
+pub(crate) struct ErasureRequest<'a> {
+    pub(crate) ctx: &'a SingleCtx,
+    pub(crate) root_session_id: &'a str,
+    pub(crate) reason: &'a str,
+    pub(crate) now_ms: i64,
+}
 
 struct HoldRow {
     scope_json: String,
@@ -34,6 +43,11 @@ struct ArchiveSegmentRow {
     day: String,
     sessions_json: String,
     reduced_at_ms: Option<i64>,
+}
+
+struct SessionScope {
+    devices: Vec<String>,
+    segments: Vec<(RetentionClass, String, Vec<String>)>,
 }
 
 pub(crate) fn place_hold_record(
@@ -139,15 +153,29 @@ pub(crate) fn erase_session_records<B: BlobPort>(
     conn: &mut Connection,
     blobs: &B,
     org_kek: &AeadKey,
-    ctx: &SingleCtx,
-    root_session_id: &str,
-    reason: &str,
-    now_ms: i64,
+    mem_batches: Option<&mut Vec<LakeBatch>>,
+    req: ErasureRequest<'_>,
 ) -> Result<ErasureReceipt, CodedError> {
+    let ErasureRequest {
+        ctx,
+        root_session_id,
+        reason,
+        now_ms,
+    } = req;
     let org_id = ctx.organisation_id();
     let tx = conn.transaction().map_err(lake_sql_err)?;
     let active_holds = load_active_holds(&tx, org_id, now_ms)?;
     let session_list = vec![root_session_id.to_string()];
+
+    let mem_slice = mem_batches.as_deref().map_or(&[][..], Vec::as_slice);
+    let scope = collect_session_scope(&tx, org_id, root_session_id, mem_slice)?;
+    let session_devices = scope.devices;
+    let matching_segments = scope.segments;
+    let hold_blocks_class = |class: RetentionClass, day: &str, devs: &[String]| {
+        active_holds
+            .iter()
+            .any(|h| h.covers(class, day, devs, &session_list))
+    };
 
     let key_day: Option<String> = tx
         .query_row(
@@ -162,15 +190,27 @@ pub(crate) fn erase_session_records<B: BlobPort>(
         .transpose()?;
 
     if let Some(day) = key_day.as_deref()
-        && active_holds
-            .iter()
-            .any(|h| h.covers(RetentionClass::Content, day, &[], &session_list))
+        && hold_blocks_class(RetentionClass::Content, day, &session_devices)
     {
         return Err(CodedError::new(
             CODE_LAKE_HOLD_ACTIVE,
             format!("Cannot erase session `{root_session_id}` while an active legal hold applies."),
             "Release blocking legal holds before re-running session erasure.",
         ));
+    }
+
+    for (seg_class, seg_day, seg_devs) in &matching_segments {
+        if hold_blocks_class(*seg_class, seg_day, seg_devs)
+            || hold_blocks_class(*seg_class, seg_day, &session_devices)
+        {
+            return Err(CodedError::new(
+                CODE_LAKE_HOLD_ACTIVE,
+                format!(
+                    "Cannot erase segment data on `{seg_day}` for session `{root_session_id}` under active legal hold."
+                ),
+                "Release blocking legal holds before re-running session erasure.",
+            ));
+        }
     }
 
     let arch_rows = load_archive_rows(&tx, org_id.as_str())?;
@@ -181,10 +221,14 @@ pub(crate) fn erase_session_records<B: BlobPort>(
         if !sessions.iter().any(|s| s == root_session_id) {
             continue;
         }
-        if active_holds
-            .iter()
-            .any(|h| h.covers(RetentionClass::Content, &row.day, &[], &session_list))
-        {
+        let archive_held = [
+            RetentionClass::Content,
+            RetentionClass::Activity,
+            RetentionClass::Decision,
+        ]
+        .iter()
+        .any(|class| hold_blocks_class(*class, &row.day, &session_devices));
+        if archive_held {
             return Err(CodedError::new(
                 CODE_LAKE_HOLD_ACTIVE,
                 format!(
@@ -247,6 +291,21 @@ pub(crate) fn erase_session_records<B: BlobPort>(
     )?;
     tx.commit().map_err(lake_sql_err)?;
 
+    if let Some(batches) = mem_batches {
+        for batch in batches {
+            let mut touches_session = false;
+            for rec in &mut batch.records {
+                if rec.root_session_id == root_session_id {
+                    rec.content_fields.clear();
+                    touches_session = true;
+                }
+            }
+            if touches_session {
+                batch.archive_bytes.clear();
+            }
+        }
+    }
+
     Ok(ErasureReceipt {
         organisation_id: org_id.clone(),
         root_session_id: root_session_id.to_string(),
@@ -256,6 +315,68 @@ pub(crate) fn erase_session_records<B: BlobPort>(
         archive_segments_reduced,
         held_segments_deferred: 0,
         state_log_key,
+    })
+}
+
+fn collect_session_scope(
+    tx: &Connection,
+    org_id: &OrgId,
+    root_session_id: &str,
+    mem_batches: &[LakeBatch],
+) -> Result<SessionScope, CodedError> {
+    let mut devices = BTreeSet::new();
+    let mut segments = Vec::new();
+    let mut stmt = tx
+        .prepare(
+            "SELECT retention_class, day, device_ids_json, root_session_ids_json
+             FROM lake_segments
+             WHERE organisation_id = ?1 AND physical_deleted_at_ms IS NULL",
+        )
+        .map_err(lake_sql_err)?;
+    let rows = stmt
+        .query_map(rusqlite::params![org_id.as_str()], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })
+        .map_err(lake_sql_err)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(lake_sql_err)?;
+    drop(stmt);
+
+    for (class_str, day, dev_json, sess_json) in rows {
+        let sessions: Vec<String> = serde_json::from_str(&sess_json).map_err(json_io_err)?;
+        if !sessions.iter().any(|s| s == root_session_id) {
+            continue;
+        }
+        let devs: Vec<String> = serde_json::from_str(&dev_json).map_err(json_io_err)?;
+        let Some(class) = RetentionClass::parse(&class_str) else {
+            return Err(CodedError::new(
+                CODE_LAKE_IO,
+                format!("Invalid retention_class `{class_str}` in lake_segments."),
+                "Inspect lake_segments catalogue integrity.",
+            ));
+        };
+        devices.extend(devs.iter().cloned());
+        segments.push((class, day, devs));
+    }
+
+    for batch in mem_batches {
+        for rec in &batch.records {
+            if rec.root_session_id == root_session_id {
+                devices.insert(rec.device_id.clone());
+                let day = day_from_ms(rec.observed_time_ms)?;
+                segments.push((rec.retention_class, day, vec![rec.device_id.clone()]));
+            }
+        }
+    }
+
+    Ok(SessionScope {
+        devices: devices.into_iter().collect(),
+        segments,
     })
 }
 
