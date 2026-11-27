@@ -1,4 +1,8 @@
-import { QueryClient, useQueries, useQueryClient } from "@tanstack/react-query";
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+import { useMemo } from "react";
+import { QueryClient, QueryClientProvider, useQueries, useQueryClient } from "@tanstack/react-query";
+export { QueryClient, QueryClientProvider };
 import {
   api,
   type ApprovalRequest,
@@ -9,10 +13,16 @@ import {
   type OrgPrivacyConfig,
   type OverviewResponse,
   type PolicyPack,
+  type SessionDetailResponse,
   type SessionSummary,
   type UserProfile,
 } from "@grdr/api";
-import { EMPTY_CONSOLE_SNAPSHOT, type ConsoleSnapshot } from "./consoleState";
+import {
+  computeWeeklyDecisionVelocity,
+  EMPTY_CONSOLE_SNAPSHOT,
+  type ConsoleSnapshot,
+  type WeeklyVelocitySummary,
+} from "./consoleState";
 
 export const CONSOLE_SCOPE = "console" as const;
 
@@ -91,13 +101,19 @@ export function createConsoleQueryClient(): QueryClient {
 export function invalidateConsoleStreamEvent(
   queryClient: QueryClient,
   eventName: ConsoleStreamEventName,
+  sessionId?: string,
 ): Promise<void[]> {
   switch (eventName) {
     case "session.verdict":
       return Promise.all([
         queryClient.invalidateQueries({ queryKey: [CONSOLE_SCOPE, "sessions"] }),
         queryClient.invalidateQueries({ queryKey: [CONSOLE_SCOPE, "sessionsPage"] }),
-        queryClient.invalidateQueries({ queryKey: [CONSOLE_SCOPE, "sessionDetail"] }),
+        queryClient.invalidateQueries({
+          queryKey: sessionId
+            ? consoleQueryKeys.sessionDetail(sessionId)
+            : [CONSOLE_SCOPE, "sessionDetail"],
+          refetchType: "active",
+        }),
         queryClient.invalidateQueries({ queryKey: [CONSOLE_SCOPE, "overview"] }),
       ]);
     case "approval.decided":
@@ -224,4 +240,43 @@ export function useConsoleSnapshotQueries(streamVersion: number): ConsoleSnapsho
     errorMessage,
     invalidateAll: () => queryClient.invalidateQueries({ queryKey: consoleQueryKeys.all }),
   };
+}
+
+const VELOCITY_DETAIL_SESSION_LIMIT = 8;
+
+function sessionActivityMs(session: SessionSummary): number {
+  const parsed = Date.parse(session.last_activity || session.started_at);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function useWeeklyDecisionVelocity(
+  sessions: SessionSummary[],
+  enabled: boolean,
+): WeeklyVelocitySummary {
+  const sampled = useMemo(() => {
+    if (!enabled || sessions.length === 0) return [];
+    const sorted = [...sessions].sort(
+      (a, b) => sessionActivityMs(b) - sessionActivityMs(a),
+    );
+    return sorted.slice(0, VELOCITY_DETAIL_SESSION_LIMIT);
+  }, [enabled, sessions]);
+  const detailQueries = useQueries({
+    queries: sampled.map((session) => ({
+      queryKey: consoleQueryKeys.sessionDetail(session.id),
+      queryFn: () => api.getSessionDetail(session.id),
+      staleTime: 30_000,
+    })),
+  });
+  const detailsSnapshotKey = detailQueries.map((q) => q.dataUpdatedAt).join(",");
+
+  return useMemo(() => {
+    const detailsMap = new Map<string, SessionDetailResponse>();
+    detailQueries.forEach((query, idx) => {
+      const session = sampled[idx];
+      if (session && query.data) {
+        detailsMap.set(session.id, query.data);
+      }
+    });
+    return computeWeeklyDecisionVelocity(sessions, detailsMap);
+  }, [sessions, sampled, detailsSnapshotKey]);
 }

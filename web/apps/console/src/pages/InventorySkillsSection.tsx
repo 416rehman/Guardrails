@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
 import { useMemo, useState } from "react";
 import { api, type Device } from "@grdr/api";
 import {
@@ -279,7 +281,7 @@ export function SkillsAndRulesView({
             </Text>
           ) : (
             <div className="table-wrap">
-              <table>
+              <table className="responsive-table">
                 <thead>
                   <tr>
                     <th>Artifact</th>
@@ -294,16 +296,16 @@ export function SkillsAndRulesView({
                 <tbody>
                   {pagedArtifacts.map(({ deviceId, deviceHostname, deviceOs, artifact }) => (
                     <tr key={artifact.id}>
-                      <td>
+                      <td data-label="Artifact">
                         <VStack gap={1}>
                           <EntityLink kind="artifact" id={artifact.id} label={artifact.name} compact onSelect={onOpenEntity} />
                           <Quoted text={artifact.path} />
                         </VStack>
                       </td>
-                      <td><Badge variant="neutral" label={presentArtifactKind(artifact.kind)} /></td>
-                      <td><Text size="sm">{presentArtifactScope(artifact.scope)}</Text></td>
-                      <td>
-                        <HStack gap={1} align="center" style={{ flexWrap: "nowrap", columnGap: 6 }}>
+                      <td data-label="Kind"><Badge variant="neutral" label={presentArtifactKind(artifact.kind)} /></td>
+                      <td data-label="Scope"><Text size="sm">{presentArtifactScope(artifact.scope)}</Text></td>
+                      <td data-label="Agent & device">
+                        <HStack gap={1} align="center" style={{ flexWrap: "wrap", columnGap: 6 }}>
                           <EntityLink kind="agent" label={artifact.source_agent} compact onSelect={onOpenEntity} />
                           <EntityLink
                             kind="device"
@@ -315,9 +317,9 @@ export function SkillsAndRulesView({
                           />
                         </HStack>
                       </td>
-                      <td className="nowrap-cell"><Quoted text={artifact.content_digest.slice(0, 8)} /></td>
-                      <td className="tabular">{artifact.usage_count}</td>
-                      <td>
+                      <td data-label="Digest" className="nowrap-cell"><Quoted text={artifact.content_digest.slice(0, 8)} /></td>
+                      <td data-label="Usage" className="tabular">{artifact.usage_count}</td>
+                      <td data-label="Signals">
                         {artifact.risk_flags.length === 0 ? (
                           <StatusInline
                             tone="allow"

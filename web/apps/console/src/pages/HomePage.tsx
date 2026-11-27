@@ -1,4 +1,6 @@
-import { useState } from "react";
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+import { useContext, useState } from "react";
 import type {
   ApprovalRequest,
   Device,
@@ -9,30 +11,21 @@ import type {
   PolicyPack,
 } from "@grdr/api";
 import { pluralize, presentFindingTitle } from "@grdr/i18n";
-import { AssuranceBadge, EntityLink, type EntityTarget, OsLabel, Quoted, VerdictBadge } from "@grdr/kit";
+import { EntityLink, type EntityTarget, Quoted, VerdictBadge } from "@grdr/kit";
 import {
-  Badge,
   Banner,
   Button,
   GrdrCoverageRing,
   GrdrIcon,
   GrdrVelocityChart,
   HStack,
-  ProgressBar,
   StatusInline,
   Text,
   VStack,
 } from "@grdr/ui";
-
-const VELOCITY_DAYS = [
-  { day: "Mon", allowed: 18, ask: 1, block: 0 },
-  { day: "Tue", allowed: 24, ask: 2, block: 1 },
-  { day: "Wed", allowed: 21, ask: 0, block: 1 },
-  { day: "Thu", allowed: 32, ask: 3, block: 2 },
-  { day: "Fri", allowed: 28, ask: 1, block: 0 },
-  { day: "Sat", allowed: 14, ask: 0, block: 0 },
-  { day: "Sun", allowed: 19, ask: 1, block: 1 },
-];
+import { ConsoleWorkspaceContext } from "../ConsoleContext";
+import { useWeeklyDecisionVelocity } from "../queries";
+import { EnrolledEndpointsCard, SetupReadinessCard } from "./HomeSections";
 
 export function HomePage({
   overview,
@@ -57,6 +50,11 @@ export function HomePage({
 }) {
   const [expandedApprovalId, setExpandedApprovalId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const workspace = useContext(ConsoleWorkspaceContext);
+  const velocity = useWeeklyDecisionVelocity(
+    workspace?.snapshot.sessions ?? [],
+    Boolean(workspace),
+  );
 
   const pending = approvals.filter((a) => a.state.status === "pending");
   const openFindings = findings.filter((f) => {
@@ -84,9 +82,9 @@ export function HomePage({
 
   const headline =
     pending.length > 0
-      ? `${pending.length} action waiting for your decision`
+      ? `${pluralize(pending.length, "action")} waiting for your decision`
       : openFindings.length > 0
-        ? `${openFindings.length} finding to inspect`
+        ? `${pluralize(openFindings.length, "finding")} to inspect`
         : `${boundaryAgents} of ${allAgents.length} agents guarded at boundary`;
 
   async function decide(id: string, approve: boolean, scope: GrantScope) {
@@ -208,16 +206,29 @@ export function HomePage({
           <HStack gap={2} align="center">
             <GrdrIcon name="activity" size={16} color="var(--accent-primary)" />
             <Text style={{ fontWeight: 600 }}>
-              Evaluated agent calls this week (169)
+              {velocity.windowKind === "current"
+                ? `Evaluated agent calls this week (${velocity.totalEvaluated})`
+                : `Evaluated agent calls (${velocity.windowLabel}) (${velocity.totalEvaluated})`}
             </Text>
           </HStack>
-          <HStack gap={3} align="center">
-            <StatusInline tone="neutral" dot dotColor="var(--viz-allow-end)" label="Allowed 156" />
-            <StatusInline tone="neutral" dot dotColor="var(--viz-ask-start)" label="Ask 8" />
-            <StatusInline tone="neutral" dot dotColor="var(--viz-block-start)" label="Blocked 5" />
+          <HStack gap={3} align="center" style={{ flexWrap: "wrap" }}>
+            <StatusInline tone="neutral" dot dotColor="var(--viz-allow-end)" label={`Allowed ${velocity.totalAllowed}`} />
+            <StatusInline tone="neutral" dot dotColor="var(--viz-ask-start)" label={`Ask ${velocity.totalAsk}`} />
+            <StatusInline tone="neutral" dot dotColor="var(--viz-block-start)" label={`Blocked ${velocity.totalBlocked}`} />
           </HStack>
         </HStack>
-        <GrdrVelocityChart data={VELOCITY_DAYS} />
+        <GrdrVelocityChart data={velocity.days} />
+        {velocity.totalEvaluated === 0 ? (
+          <Text size="sm" color="secondary">
+            No agent decisions recorded in this 7-day window yet.
+          </Text>
+        ) : (
+          velocity.isPartialSummary && (
+            <Text size="sm" color="secondary">
+              Includes session summary counts (detailed bars cover the 8 most recent sessions).
+            </Text>
+          )
+        )}
       </section>
 
       <section className="ledger-section" aria-label="Needs you">
@@ -414,93 +425,18 @@ export function HomePage({
       </section>
 
       <section className="quiet-split" aria-label="Deployment checklist">
-        <div className="ledger-section">
-          <div className="ledger-header">
-            <h2 className="ledger-title">Setup readiness</h2>
-            <Text size="sm" color="secondary" className="tabular">
-              {`${completedSteps} of ${totalSteps} ready (${readinessPct}%)`}
-            </Text>
-          </div>
-
-          <ProgressBar value={readinessPct} max={100} label="Setup readiness" isLabelHidden />
-
-          <div className="checklist">
-            {overview?.setup_steps.map((step) => (
-              <div key={step.id} className="check-row">
-                <HStack gap={2} align="center">
-                  <GrdrIcon
-                    name={step.done ? "check-circle" : "circle"}
-                    size={15}
-                    color={step.done ? "var(--tone-allow)" : "var(--ink-muted)"}
-                  />
-                  <div>
-                    <div style={{ fontWeight: 500 }}>{step.label}</div>
-                    <Text size="sm" color="secondary">
-                      {step.detail}
-                    </Text>
-                  </div>
-                </HStack>
-                {!step.done && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    label="Finish"
-                    onClick={() => onNavigate("protect")}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="ledger-section">
-          <div className="ledger-header">
-            <h2 className="ledger-title">Enrolled endpoints</h2>
-            <Button
-              size="sm"
-              variant="ghost"
-              label="Inventory"
-              endContent={<GrdrIcon name="arrow-right" size={13} />}
-              onClick={() => onNavigate("inventory")}
-            />
-          </div>
-
-          <div className="checklist">
-            {devices.map((device) => (
-              <div key={device.id} className="check-row" style={{ alignItems: "flex-start" }}>
-                <VStack gap={1}>
-                  <div>
-                    <EntityLink
-                      kind="device"
-                      id={device.id}
-                      label={device.hostname}
-                      os={device.os}
-                      onSelect={onOpenEntity}
-                    />
-                  </div>
-                  <HStack gap={2} align="center" style={{ flexWrap: "wrap", color: "var(--ink-secondary)", fontSize: 13 }}>
-                    <OsLabel os={device.os} arch={device.arch} size={13} />
-                    <span>{`· ${pluralize(device.agents.length, "agent")} · ${pluralize(device.mcp_servers.length, "MCP server")}`}</span>
-                  </HStack>
-                  <HStack gap={1} style={{ flexWrap: "wrap" }}>
-                    {device.agents.map((ag) => (
-                      <AssuranceBadge
-                        key={ag.id}
-                        level={ag.assurance_level}
-                        control={`${ag.name}: ${ag.assurance.control}`}
-                      />
-                    ))}
-                  </HStack>
-                </VStack>
-                <Badge
-                  variant={device.hook_effective ? "success" : "warning"}
-                  icon={<GrdrIcon name={device.hook_effective ? "shield-check" : "shield-alert"} size={12} />}
-                  label={device.hook_effective ? "Hook active" : "User mode"}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
+        <SetupReadinessCard
+          steps={overview?.setup_steps ?? []}
+          completedSteps={completedSteps}
+          totalSteps={totalSteps}
+          readinessPct={readinessPct}
+          onNavigate={onNavigate}
+        />
+        <EnrolledEndpointsCard
+          devices={devices}
+          onNavigate={onNavigate}
+          onOpenEntity={onOpenEntity}
+        />
       </section>
     </VStack>
   );

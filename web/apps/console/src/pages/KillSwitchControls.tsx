@@ -1,5 +1,13 @@
-import type { KillScope, KillSwitchState } from "@grdr/api";
-import { capitalizeLabel, pluralize } from "@grdr/i18n";
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+import { useContext, useMemo } from "react";
+import type {
+  Device,
+  KillScope,
+  KillSwitchState,
+  SessionSummary,
+} from "@grdr/api";
+import { capitalizeLabel, pluralize, presentAgentName } from "@grdr/i18n";
 import {
   Badge,
   Banner,
@@ -17,10 +25,15 @@ import {
   TextInput,
   VStack,
 } from "@grdr/ui";
+import { ConsoleWorkspaceContext } from "../ConsoleContext";
+import {
+  deriveKillSwitchCatalog,
+  EMPTY_KILL_SELECTION,
+  resolveKillSwitchBlastRadius,
+  type KillSwitchSelection,
+} from "../consoleState";
 
-const MATRIX_ENDPOINTS = ["Claude", "Claude Code", "Cursor", "Codex", "Gemini", "GitHub Copilot", "OpenCode", "Windsurf"];
-const MATRIX_MODELS = ["Anthropic", "OpenAI", "Google", "AWS Bedrock", "Meta Llama", "Mistral"];
-const MATRIX_GATEWAYS = ["MCP Broker", "Guardrails Proxy", "LiteLLM", "Kong", "Azure AI Foundry", "Portkey"];
+export type { KillSwitchSelection };
 
 export type KillSwitchFlow =
   | { kind: "closed"; inlineArmed: boolean }
@@ -42,6 +55,10 @@ export type KillSwitchFlow =
 
 export function KillSwitchSection({
   killSwitch,
+  devices,
+  sessions,
+  savedSelection = EMPTY_KILL_SELECTION,
+  errorMessage,
   scope,
   targetId,
   killReason,
@@ -53,6 +70,10 @@ export function KillSwitchSection({
   onTrigger,
 }: {
   killSwitch: KillSwitchState;
+  devices?: Device[];
+  sessions?: SessionSummary[];
+  savedSelection?: KillSwitchSelection;
+  errorMessage?: string;
   scope: KillScope;
   targetId: string;
   killReason: string;
@@ -61,8 +82,18 @@ export function KillSwitchSection({
   onTargetIdChange: (targetId: string) => void;
   onKillReasonChange: (reason: string) => void;
   onFlowChange: (next: KillSwitchFlow) => void;
-  onTrigger: (action: "freeze" | "kill" | "release") => Promise<void>;
+  onTrigger: (
+    action: "freeze" | "kill" | "release",
+    selection?: KillSwitchSelection,
+  ) => Promise<boolean>;
 }) {
+  const workspace = useContext(ConsoleWorkspaceContext);
+  const resolvedDevices = devices ?? workspace?.snapshot.devices ?? [];
+  const resolvedSessions = sessions ?? workspace?.snapshot.sessions ?? [];
+  const catalog = useMemo(
+    () => deriveKillSwitchCatalog(resolvedDevices, resolvedSessions),
+    [resolvedDevices, resolvedSessions],
+  );
   const inlineArmed = flow.kind === "closed" && flow.inlineArmed;
   const isModalOpen = flow.kind === "modalOpen" || flow.kind === "armedConfirming";
   const blockedAgents = isModalOpen ? flow.blockedAgents : [];
@@ -71,15 +102,70 @@ export function KillSwitchSection({
   const matrixQuery = isModalOpen ? flow.query : "";
   const confirmPhrase = flow.kind === "armedConfirming" ? flow.confirmPhrase : "";
   const totalSelected = blockedAgents.length + blockedModels.length + blockedGateways.length;
+  const blastRadius = useMemo(
+    () =>
+      resolveKillSwitchBlastRadius(resolvedDevices, {
+        blockedAgents,
+        blockedModels,
+        blockedGateways,
+      }),
+    [resolvedDevices, blockedAgents, blockedModels, blockedGateways],
+  );
+
+  const targetOptions = useMemo(() => {
+    if (scope === "session") {
+      const opts = resolvedSessions.map((s) => ({
+        value: s.id,
+        label: `${s.id} (${presentAgentName(s.agent_name)} on ${s.device_name})`,
+      }));
+      if (targetId && !opts.some((o) => o.value === targetId)) {
+        opts.unshift({ value: targetId, label: targetId });
+      }
+      return opts;
+    }
+    if (scope === "device") {
+      const opts = resolvedDevices.map((d) => ({
+        value: d.id,
+        label: `${d.hostname} (${d.id})`,
+      }));
+      if (targetId && !opts.some((o) => o.value === targetId)) {
+        opts.unshift({ value: targetId, label: targetId });
+      }
+      return opts;
+    }
+    return [];
+  }, [scope, resolvedSessions, resolvedDevices, targetId]);
+
+  const activeBannerTitle =
+    killSwitch.state === "inactive"
+      ? ""
+      : killSwitch.scope === "organisation"
+        ? `Active fleet-wide organisation containment (${pluralize(resolvedDevices.length, "enrolled endpoint")}): ${killSwitch.reason}`
+        : `Active ${killSwitch.scope} containment (target ${killSwitch.target_id}): ${killSwitch.reason}`;
 
   function openModal() {
-    onFlowChange({
-      kind: "modalOpen",
-      blockedAgents: [],
-      blockedModels: [],
-      blockedGateways: [],
-      query: "",
-    });
+    const savedCount =
+      savedSelection.blockedAgents.length +
+      savedSelection.blockedModels.length +
+      savedSelection.blockedGateways.length;
+    if (savedCount > 0) {
+      onFlowChange({
+        kind: "armedConfirming",
+        blockedAgents: savedSelection.blockedAgents,
+        blockedModels: savedSelection.blockedModels,
+        blockedGateways: savedSelection.blockedGateways,
+        query: "",
+        confirmPhrase: "",
+      });
+    } else {
+      onFlowChange({
+        kind: "modalOpen",
+        blockedAgents: [],
+        blockedModels: [],
+        blockedGateways: [],
+        query: "",
+      });
+    }
   }
 
   function updateSelections(
@@ -123,6 +209,14 @@ export function KillSwitchSection({
             />
           </HStack>
 
+          {killSwitch.state !== "inactive" && (
+            <Banner
+              status="error"
+              title={activeBannerTitle}
+              collapsible={false}
+            />
+          )}
+
           <div className="form-grid">
             <GrdrSelect
               label="Scope"
@@ -135,12 +229,22 @@ export function KillSwitchSection({
               onChange={(val) => onScopeChange(val as KillScope)}
               width="100%"
             />
-            <TextInput
-              label="Target ID"
-              value={scope === "organisation" ? "*" : targetId}
-              isDisabled={scope === "organisation"}
-              onChange={onTargetIdChange}
-            />
+            {scope === "organisation" || targetOptions.length === 0 ? (
+              <TextInput
+                label="Target ID"
+                value={scope === "organisation" ? "*" : targetId}
+                isDisabled={scope === "organisation"}
+                onChange={onTargetIdChange}
+              />
+            ) : (
+              <GrdrSelect
+                label="Target ID"
+                value={targetId}
+                options={targetOptions}
+                onChange={onTargetIdChange}
+                width="100%"
+              />
+            )}
             <div className="field full">
               <TextInput
                 label="Audit reason"
@@ -225,10 +329,14 @@ export function KillSwitchSection({
             title={
               totalSelected === 0
                 ? "Select target agent types, model providers, or gateways to contain."
-                : `Preview: will isolate ${pluralize(blockedAgents.length, "agent type")}, ${pluralize(blockedModels.length, "provider")}, and ${pluralize(blockedGateways.length, "gateway")}.`
+                : `Preview: will isolate ${pluralize(blockedAgents.length, "agent type")}, ${pluralize(blockedModels.length, "provider")}, and ${pluralize(blockedGateways.length, "gateway")}. ${blastRadius.summaryText}`
             }
             collapsible={false}
           />
+
+          {errorMessage && (
+            <Banner status="error" title={errorMessage} collapsible={false} />
+          )}
 
           <div className="killswitch-search-bar">
             <div style={{ flex: 1, minWidth: 220 }}>
@@ -268,7 +376,7 @@ export function KillSwitchSection({
                   key: "agents",
                   title: "Agent types",
                   icon: "layers" as const,
-                  items: MATRIX_ENDPOINTS,
+                  items: catalog.agents,
                   selected: blockedAgents,
                   apply: (next: string[]) => updateSelections(next, blockedModels, blockedGateways),
                 },
@@ -276,7 +384,7 @@ export function KillSwitchSection({
                   key: "models",
                   title: "Model providers",
                   icon: "cpu" as const,
-                  items: MATRIX_MODELS,
+                  items: catalog.models,
                   selected: blockedModels,
                   apply: (next: string[]) => updateSelections(blockedAgents, next, blockedGateways),
                 },
@@ -284,13 +392,16 @@ export function KillSwitchSection({
                   key: "gateways",
                   title: "Gateways",
                   icon: "plug" as const,
-                  items: MATRIX_GATEWAYS,
+                  items: catalog.gateways,
                   selected: blockedGateways,
                   apply: (next: string[]) => updateSelections(blockedAgents, blockedModels, next),
                 },
               ] as const
             ).map((col) => {
               const queryLower = matrixQuery.toLowerCase();
+              const filteredItems = col.items.filter((entry) =>
+                entry.toLowerCase().includes(queryLower),
+              );
               return (
                 <div key={col.key} className="killswitch-col">
                   <div className="killswitch-col-head">
@@ -302,9 +413,18 @@ export function KillSwitchSection({
                       {`${col.selected.length}/${col.items.length}`}
                     </span>
                   </div>
-                  {col.items
-                    .filter((entry) => entry.toLowerCase().includes(queryLower))
-                    .map((entry) => {
+                  {col.items.length === 0 ? (
+                    <Text size="sm" color="secondary">
+                      {col.key === "models"
+                        ? "No model endpoints discovered in telemetry yet."
+                        : "No targets discovered in fleet telemetry yet."}
+                    </Text>
+                  ) : filteredItems.length === 0 ? (
+                    <Text size="sm" color="secondary">
+                      No matches for current filter.
+                    </Text>
+                  ) : (
+                    filteredItems.map((entry) => {
                       const isSelected = col.selected.includes(entry);
                       return (
                         <SelectableTile
@@ -321,7 +441,8 @@ export function KillSwitchSection({
                           }
                         />
                       );
-                    })}
+                    })
+                  )}
                 </div>
               );
             })}
@@ -354,10 +475,20 @@ export function KillSwitchSection({
                   flow.kind !== "armedConfirming" ||
                   flow.confirmPhrase.trim().toLowerCase() !== "fleet-kill"
                 }
-                data-agent-confirm="Confirm fleet-wide kill switch"
+                data-agent-confirm={
+                  blastRadius.scope === "device"
+                    ? "Confirm device kill switch"
+                    : "Confirm fleet-wide kill switch"
+                }
                 onClick={async () => {
-                  await onTrigger("kill");
-                  onFlowChange({ kind: "closed", inlineArmed: false });
+                  const ok = await onTrigger("kill", {
+                    blockedAgents,
+                    blockedModels,
+                    blockedGateways,
+                  });
+                  if (ok) {
+                    onFlowChange({ kind: "closed", inlineArmed: false });
+                  }
                 }}
               />
             </HStack>

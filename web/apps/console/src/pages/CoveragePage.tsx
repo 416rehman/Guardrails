@@ -1,10 +1,40 @@
-import type { Device } from "@grdr/api";
-import { formatOsName, t } from "@grdr/i18n";
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+import { useContext, useMemo } from "react";
+import type { AssuranceLevel, Device } from "@grdr/api";
+import { formatOsName, presentAgentName, t } from "@grdr/i18n";
 import { AssuranceBadge, EntityLink, type EntityTarget, Quoted, ViewStateFrame } from "@grdr/kit";
 import { Badge, Card, GrdrIcon, Heading, HStack, OsIcon, StatusInline, Text, VStack } from "@grdr/ui";
+import { ConsoleWorkspaceContext } from "../ConsoleContext";
+import { canonicalAgentSlugKey } from "../consoleState";
 
-const MATRIX_AGENTS = ["Claude Code", "Cursor", "Codex", "Gemini CLI"] as const;
-const MATRIX_OS = ["macos", "linux", "windows"] as const;
+const ASSURANCE_RANK: Record<AssuranceLevel, number> = {
+  AL0: 0,
+  AL1: 1,
+  AL2: 2,
+  AL3: 3,
+  AL4: 4,
+};
+
+function normalizeOsKey(os: string): string {
+  const cleaned = os.trim().toLowerCase();
+  if (cleaned === "darwin" || cleaned === "mac os" || cleaned === "mac") return "macos";
+  if (cleaned === "win32" || cleaned === "win64") return "windows";
+  return cleaned || "unknown";
+}
+
+function orderOsColumns(osKeys: string[]): string[] {
+  const knownRank = (os: string): number => {
+    if (os === "macos") return 0;
+    if (os === "linux") return 1;
+    if (os === "windows") return 2;
+    return 3;
+  };
+  return [...osKeys].sort((a, b) => {
+    const rankDiff = knownRank(a) - knownRank(b);
+    return rankDiff !== 0 ? rankDiff : a.localeCompare(b);
+  });
+}
 
 export function CoveragePage({
   devices,
@@ -13,7 +43,33 @@ export function CoveragePage({
   devices: Device[];
   onOpenEntity?: (target: EntityTarget) => void;
 }) {
-  const allAgents = devices.flatMap((d) => d.agents.map((a) => ({ device: d, agent: a })));
+  const workspace = useContext(ConsoleWorkspaceContext);
+  const allAgents = useMemo(
+    () => devices.flatMap((d) => d.agents.map((a) => ({ device: d, agent: a }))),
+    [devices],
+  );
+  const matrixOses = useMemo(
+    () => orderOsColumns(Array.from(new Set(devices.map((d) => normalizeOsKey(d.os))))),
+    [devices],
+  );
+  const matrixAgents = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const item of allAgents) {
+      const display = presentAgentName(item.agent.name);
+      const key = canonicalAgentSlugKey(display);
+      if (key && !seen.has(key)) {
+        seen.set(key, display);
+      }
+    }
+    for (const session of workspace?.snapshot.sessions ?? []) {
+      const display = presentAgentName(session.agent_name);
+      const key = canonicalAgentSlugKey(display);
+      if (key && !seen.has(key)) {
+        seen.set(key, display);
+      }
+    }
+    return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
+  }, [allAgents, workspace?.snapshot.sessions]);
   const protectedCount = allAgents.filter((x) =>
     x.agent.assurance.control.includes("boundary"),
   ).length;
@@ -46,7 +102,7 @@ export function CoveragePage({
       ) : (
         <VStack gap={4}>
           <section className="visual-panel" aria-label="Agent by OS assurance matrix">
-            <HStack justify="between" align="center">
+            <HStack justify="between" align="center" style={{ flexWrap: "wrap", gap: 8 }}>
               <HStack gap={2} align="center">
                 <GrdrIcon name="layers" size={16} color="var(--accent-primary)" />
                 <Heading level={2}>Protection by agent & OS</Heading>
@@ -55,73 +111,83 @@ export function CoveragePage({
                 Enforcement strength observed per agent across operating systems
               </Text>
             </HStack>
-            <div className="table-wrap">
-              <table className="heatmap-grid">
-                <thead>
-                  <tr>
-                    <th>Agent harness</th>
-                    <th>
-                      <HStack gap={1} align="center">
-                        <OsIcon os="macos" size={13} />
-                        <span>macOS</span>
-                      </HStack>
-                    </th>
-                    <th>
-                      <HStack gap={1} align="center">
-                        <OsIcon os="linux" size={13} />
-                        <span>Linux</span>
-                      </HStack>
-                    </th>
-                    <th>
-                      <HStack gap={1} align="center">
-                        <OsIcon os="windows" size={13} />
-                        <span>Windows</span>
-                      </HStack>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {MATRIX_AGENTS.map((agentName) => (
-                    <tr key={agentName}>
-                      <td>
-                        <EntityLink
-                          kind="agent"
-                          label={agentName}
-                          compact
-                          onSelect={onOpenEntity}
-                        />
-                      </td>
-                      {MATRIX_OS.map((osKey) => {
-                        const match = allAgents.find(
-                          (item) =>
-                            item.device.os.toLowerCase().includes(osKey) &&
-                            item.agent.name.toLowerCase().includes(agentName.split(" ")[0].toLowerCase()),
-                        );
-                        return (
-                          <td key={`${agentName}-${osKey}`} className={match ? undefined : "heatmap-cell-unobserved"}>
-                            {match ? (
-                              <AssuranceBadge
-                                level={match.agent.assurance_level}
-                                control={match.agent.assurance.control}
-                              />
-                            ) : (
-                              <span className="heatmap-cell-empty">Not observed</span>
-                            )}
-                          </td>
-                        );
-                      })}
+            {matrixAgents.length === 0 || matrixOses.length === 0 ? (
+              <Text size="sm" color="secondary">
+                No agent harnesses discovered on enrolled devices yet.
+              </Text>
+            ) : (
+              <div className="table-wrap">
+                <table className="heatmap-grid responsive-table">
+                  <thead>
+                    <tr>
+                      <th>Agent harness</th>
+                      {matrixOses.map((osKey) => (
+                        <th key={osKey}>
+                          <HStack gap={1} align="center">
+                            <OsIcon os={osKey} size={13} />
+                            <span>{formatOsName(osKey)}</span>
+                          </HStack>
+                        </th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {matrixAgents.map((agentName) => (
+                      <tr key={agentName}>
+                        <td data-label="Agent harness">
+                          <EntityLink
+                            kind="agent"
+                            label={agentName}
+                            compact
+                            onSelect={onOpenEntity}
+                          />
+                        </td>
+                        {matrixOses.map((osKey) => {
+                          const matches = allAgents.filter(
+                            (item) =>
+                              normalizeOsKey(item.device.os) === osKey &&
+                              canonicalAgentSlugKey(presentAgentName(item.agent.name)) ===
+                                canonicalAgentSlugKey(presentAgentName(agentName)),
+                          );
+                          const conservativeMatch =
+                            matches.length === 0
+                              ? undefined
+                              : matches.reduce((weakest, candidate) =>
+                                  ASSURANCE_RANK[candidate.agent.assurance_level] <
+                                  ASSURANCE_RANK[weakest.agent.assurance_level]
+                                    ? candidate
+                                    : weakest,
+                                );
+                          return (
+                            <td
+                              key={`${agentName}-${osKey}`}
+                              data-label={formatOsName(osKey)}
+                              className={conservativeMatch ? undefined : "heatmap-cell-unobserved"}
+                            >
+                              {conservativeMatch ? (
+                                <AssuranceBadge
+                                  level={conservativeMatch.agent.assurance_level}
+                                  control={conservativeMatch.agent.assurance.control}
+                                />
+                              ) : (
+                                <span className="heatmap-cell-empty">Not observed</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
 
           <Card padding={3}>
             <VStack gap={3}>
               <Heading level={2}>{`Assurance matrix by endpoint (${allAgents.length})`}</Heading>
               <div className="table-wrap">
-                <table>
+                <table className="responsive-table">
                   <thead>
                     <tr>
                       <th>Endpoint</th>
@@ -133,7 +199,7 @@ export function CoveragePage({
                   <tbody>
                     {allAgents.map(({ device, agent }) => (
                       <tr key={`${device.id}-${agent.id}`}>
-                        <td>
+                        <td data-label="Endpoint">
                           <EntityLink
                             kind="device"
                             id={device.id}
@@ -143,7 +209,7 @@ export function CoveragePage({
                             onSelect={onOpenEntity}
                           />
                         </td>
-                        <td>
+                        <td data-label="Agent">
                           <EntityLink
                             kind="agent"
                             id={agent.id}
@@ -152,13 +218,13 @@ export function CoveragePage({
                             onSelect={onOpenEntity}
                           />
                         </td>
-                        <td>
+                        <td data-label="Assurance">
                           <AssuranceBadge
                             level={agent.assurance_level}
                             control={agent.assurance.control}
                           />
                         </td>
-                        <td>
+                        <td data-label="Hook health">
                           <StatusInline
                             tone={device.hook_effective && agent.hook_installed ? "allow" : "ask"}
                             icon={<GrdrIcon name={device.hook_effective && agent.hook_installed ? "check-circle" : "alert-triangle"} size={13} />}

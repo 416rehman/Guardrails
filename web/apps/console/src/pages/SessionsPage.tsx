@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -12,6 +14,7 @@ import { EntityLink, type EntityTarget } from "@grdr/kit";
 import {
   Badge,
   Banner,
+  Button,
   GrdrFlowGraph,
   GrdrIcon,
   Heading,
@@ -23,7 +26,10 @@ import {
 import { consoleQueryKeys } from "../queries";
 import type { ConsoleSearchParams } from "../searchSchema";
 import {
+  buildClusteredFlowPhases,
   buildSessionFlowGraph,
+  ClusteredFlowTable,
+  selectPrioritizedGraphDetail,
   SessionAttemptDrawer,
   SessionStreamTable,
   SessionTimelineView,
@@ -32,6 +38,13 @@ import { SessionListPane } from "./SessionListPane";
 import { TraceWaterfall } from "./TraceWaterfall";
 
 export type SessionViewMode = "graph" | "trace" | "timeline" | "stream";
+
+type LargeGraphMode = "clustered" | "sampled";
+
+const LARGE_GRAPH_NODE_LIMIT = 100;
+const INFRA_NODE_COUNT = 3;
+
+export { buildClusteredFlowPhases };
 
 type SessionSelection =
   | { kind: "none" }
@@ -80,6 +93,7 @@ export function SessionsPage({
     sessions[0] ? { kind: "selected", sessionId: sessions[0].id } : { kind: "none" },
   );
   const [internalViewMode, setInternalViewMode] = useState<SessionViewMode>("graph");
+  const [largeGraphMode, setLargeGraphMode] = useState<LargeGraphMode>("clustered");
   const [fallbackTurn, setFallbackTurn] = useState<TurnFocus>({ kind: "all" });
   const [fallbackAttemptId, setFallbackAttemptId] = useState<string | null>(null);
 
@@ -162,13 +176,45 @@ export function SessionsPage({
     ? detail?.receipts.find((r) => r.attempt_id === focusedAttempt.id)
     : undefined;
 
-  const { flowNodes, flowEdges } = useMemo(
+  const rawNodeCount = detail ? detail.attempts.length + INFRA_NODE_COUNT : 0;
+  const isLargeGraph = rawNodeCount > LARGE_GRAPH_NODE_LIMIT;
+
+  const { flowNodes, flowEdges } = useMemo(() => {
+    if (!detail || (isLargeGraph && largeGraphMode === "clustered")) {
+      return { flowNodes: [], flowEdges: [] };
+    }
+    const graphDetail = isLargeGraph
+      ? selectPrioritizedGraphDetail(detail, LARGE_GRAPH_NODE_LIMIT - INFRA_NODE_COUNT)
+      : detail;
+    return buildSessionFlowGraph(graphDetail, focusedAttempt?.id ?? null);
+  }, [detail, focusedAttempt?.id, isLargeGraph, largeGraphMode]);
+
+  const clusteredPhases = useMemo(
     () =>
-      detail
-        ? buildSessionFlowGraph(detail, focusedAttempt?.id ?? null)
-        : { flowNodes: [], flowEdges: [] },
-    [detail, focusedAttempt?.id],
+      detail && isLargeGraph && largeGraphMode === "clustered"
+        ? buildClusteredFlowPhases(detail.attempts, detail.receipts)
+        : [],
+    [detail, isLargeGraph, largeGraphMode],
   );
+
+  function handleFlowNodeSelect(nodeId: string) {
+    if (!detail) return;
+    if (nodeId === "host") {
+      onOpenEntity?.({
+        kind: "device",
+        id: detail.session.device_id,
+        label: detail.session.device_name,
+      });
+    } else if (nodeId === "agent") {
+      onOpenEntity?.({
+        kind: "agent",
+        id: detail.session.agent_name,
+        label: detail.session.agent_name,
+      });
+    } else if (detail.attempts.some((a) => a.id === nodeId)) {
+      selectAttempt(nodeId);
+    }
+  }
 
   const detailError =
     detailQuery.error instanceof Error ? detailQuery.error.message : null;
@@ -291,30 +337,55 @@ export function SessionsPage({
                 />
               )}
 
-              {viewMode === "graph" && (
+              {viewMode === "graph" && isLargeGraph && (
+                <VStack gap={3}>
+                  <Banner
+                    status="info"
+                    title={`Large session graph (${rawNodeCount} nodes): clustered by action class to keep layout responsive.`}
+                    collapsible={false}
+                    endContent={
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        label={
+                          largeGraphMode === "clustered"
+                            ? `Preview priority ${LARGE_GRAPH_NODE_LIMIT} nodes`
+                            : "Cluster by action class"
+                        }
+                        onClick={() =>
+                          setLargeGraphMode((prev) =>
+                            prev === "clustered" ? "sampled" : "clustered",
+                          )
+                        }
+                      />
+                    }
+                  />
+                  {largeGraphMode === "clustered" ? (
+                    <ClusteredFlowTable
+                      phases={clusteredPhases}
+                      onSelectAttempt={selectAttempt}
+                    />
+                  ) : (
+                    <GrdrFlowGraph
+                      nodes={flowNodes}
+                      edges={flowEdges}
+                      direction="LR"
+                      height={336}
+                      ariaLabel="Sampled agent session execution path graph"
+                      onNodeSelect={handleFlowNodeSelect}
+                    />
+                  )}
+                </VStack>
+              )}
+
+              {viewMode === "graph" && !isLargeGraph && (
                 <GrdrFlowGraph
                   nodes={flowNodes}
                   edges={flowEdges}
                   direction="LR"
                   height={336}
                   ariaLabel="Agent session execution path graph"
-                  onNodeSelect={(nodeId) => {
-                    if (nodeId === "host") {
-                      onOpenEntity?.({
-                        kind: "device",
-                        id: detail.session.device_id,
-                        label: detail.session.device_name,
-                      });
-                    } else if (nodeId === "agent") {
-                      onOpenEntity?.({
-                        kind: "agent",
-                        id: detail.session.agent_name,
-                        label: detail.session.agent_name,
-                      });
-                    } else if (detail.attempts.some((a) => a.id === nodeId)) {
-                      selectAttempt(nodeId);
-                    }
-                  }}
+                  onNodeSelect={handleFlowNodeSelect}
                 />
               )}
 

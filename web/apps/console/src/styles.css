@@ -636,7 +636,10 @@ html[data-theme="dark"] .grdr-brand-img {
   font-size: 12.5px;
   line-height: 1.6;
   color: var(--ink-primary);
+  max-width: 100%;
+  box-sizing: border-box;
   overflow-x: auto;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 
@@ -1599,6 +1602,10 @@ tr.selected td {
     align-items: flex-start;
   }
   .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .table-wrap:has(table.responsive-table) {
     overflow-x: visible;
   }
   .table-wrap table.responsive-table thead {
@@ -1610,6 +1617,7 @@ tr.selected td {
   .table-wrap table.responsive-table td {
     display: block;
     width: 100%;
+    max-width: 100%;
     box-sizing: border-box;
   }
   .table-wrap table.responsive-table tr {
@@ -1628,6 +1636,7 @@ tr.selected td {
     padding-block: 6px;
     border-block-end: 1px solid var(--border-subtle);
     text-align: end;
+    overflow-wrap: anywhere;
   }
   .table-wrap table.responsive-table td:last-child {
     border-block-end: none;

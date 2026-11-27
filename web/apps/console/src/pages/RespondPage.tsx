@@ -1,4 +1,6 @@
-import { useState } from "react";
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+import { useContext, useEffect, useState } from "react";
 import {
   api,
   type ApprovalRequest,
@@ -13,6 +15,12 @@ import {
 import { capitalizeLabel } from "@grdr/i18n";
 import { type EntityTarget } from "@grdr/kit";
 import { Banner, Button, GrdrIcon, Heading, Text, VStack } from "@grdr/ui";
+import { ConsoleWorkspaceContext } from "../ConsoleContext";
+import {
+  EMPTY_KILL_SELECTION,
+  resolveKillSwitchBlastRadius,
+  type KillSwitchSelection,
+} from "../consoleState";
 import type { ConsoleSearchParams } from "../searchSchema";
 import { KillSwitchSection, type KillSwitchFlow } from "./KillSwitchControls";
 import { FindingsSection } from "./FindingsSection";
@@ -25,6 +33,60 @@ type RespondFeedback =
   | { kind: "idle" }
   | { kind: "error"; message: string }
   | { kind: "exported"; message: string };
+
+export function buildKillSwitchPayload(
+  action: "freeze" | "kill" | "release",
+  scope: KillScope,
+  targetId: string,
+  reason: string,
+  devices: Device[],
+  selection?: KillSwitchSelection,
+): {
+  action: "freeze" | "kill" | "release";
+  scope: KillScope;
+  target_id: string;
+  reason: string;
+  duration_minutes?: number;
+} {
+  const blockedAgents = selection?.blockedAgents ?? [];
+  const blockedModels = selection?.blockedModels ?? [];
+  const blockedGateways = selection?.blockedGateways ?? [];
+  const combinedTargets = [...blockedAgents, ...blockedModels, ...blockedGateways];
+
+  if (action !== "release" && combinedTargets.length > 0) {
+    const blastRadius = resolveKillSwitchBlastRadius(devices, {
+      blockedAgents,
+      blockedModels,
+      blockedGateways,
+    });
+    const summaryParts: string[] = [];
+    if (blockedAgents.length > 0) {
+      summaryParts.push(`agents=${blockedAgents.join("|")}`);
+    }
+    if (blockedModels.length > 0) {
+      summaryParts.push(`models=${blockedModels.join("|")}`);
+    }
+    if (blockedGateways.length > 0) {
+      summaryParts.push(`gateways=${blockedGateways.join("|")}`);
+    }
+    const baseReason = reason.trim() || "Scoped containment activated by operator";
+    return {
+      action,
+      scope: blastRadius.scope,
+      target_id: blastRadius.targetId,
+      reason: `${baseReason} [${summaryParts.join(", ")}]`,
+      duration_minutes: action === "freeze" ? 60 : undefined,
+    };
+  }
+
+  return {
+    action,
+    scope,
+    target_id: scope === "organisation" ? "*" : targetId,
+    reason,
+    duration_minutes: action === "freeze" ? 60 : undefined,
+  };
+}
 
 export function RespondPage({
   approvals,
@@ -53,12 +115,66 @@ export function RespondPage({
   onExplainReceipt?: (reference: string) => void;
   onUpdated: () => void;
 }) {
+  const workspace = useContext(ConsoleWorkspaceContext);
+  const sessions = workspace?.snapshot.sessions ?? [];
   const [feedback, setFeedback] = useState<RespondFeedback>({ kind: "idle" });
   const [refreshKey, setRefreshKey] = useState(0);
   const [scope, setScope] = useState<KillScope>("session");
   const [targetId, setTargetId] = useState(defaultSessionId || "sess-demo-refactor");
   const [killReason, setKillReason] = useState("Containment triggered by operator during triage");
+  const [savedSelection, setSavedSelection] = useState<KillSwitchSelection>(EMPTY_KILL_SELECTION);
   const [killFlow, setKillFlow] = useState<KillSwitchFlow>({ kind: "closed", inlineArmed: false });
+
+  const killScope = killSwitch.state === "inactive" ? null : killSwitch.scope;
+  const killTargetId = killSwitch.state === "inactive" ? null : killSwitch.target_id;
+
+  useEffect(() => {
+    if (killSwitch.state !== "inactive" && killScope && killTargetId !== null) {
+      setScope(killScope);
+      setTargetId(killScope === "organisation" ? "*" : killTargetId);
+    }
+  }, [killSwitch.state, killScope, killTargetId]);
+
+  function handleScopeChange(nextScope: KillScope) {
+    setScope(nextScope);
+    if (nextScope === "organisation") {
+      setTargetId("*");
+    } else if (nextScope === "device") {
+      setTargetId(devices[0]?.id ?? "");
+    } else {
+      setTargetId(sessions[0]?.id ?? defaultSessionId ?? "");
+    }
+  }
+
+  function updateKillFlow(next: KillSwitchFlow) {
+    setKillFlow(next);
+  }
+
+  function openScopedModal() {
+    setFeedback({ kind: "idle" });
+    const count =
+      savedSelection.blockedAgents.length +
+      savedSelection.blockedModels.length +
+      savedSelection.blockedGateways.length;
+    if (count > 0) {
+      setKillFlow({
+        kind: "armedConfirming",
+        blockedAgents: savedSelection.blockedAgents,
+        blockedModels: savedSelection.blockedModels,
+        blockedGateways: savedSelection.blockedGateways,
+        query: "",
+        confirmPhrase: "",
+      });
+    } else {
+      setKillFlow({
+        kind: "modalOpen",
+        blockedAgents: [],
+        blockedModels: [],
+        blockedGateways: [],
+        query: "",
+      });
+    }
+  }
 
   const pendingCount = approvals.filter((a) => a.state.status === "pending").length;
 
@@ -114,20 +230,32 @@ export function RespondPage({
     }
   }
 
-  async function handleKillSwitch(action: "freeze" | "kill" | "release") {
+  async function handleKillSwitch(
+    action: "freeze" | "kill" | "release",
+    selection?: KillSwitchSelection,
+  ): Promise<boolean> {
     setFeedback({ kind: "idle" });
     try {
-      await api.setKillSwitch({
+      const payload = buildKillSwitchPayload(
         action,
         scope,
-        target_id: scope === "organisation" ? "*" : targetId,
-        reason: killReason,
-        duration_minutes: action === "freeze" ? 60 : undefined,
-      });
+        targetId,
+        killReason,
+        devices,
+        selection,
+      );
+      await api.setKillSwitch(payload);
+      if (action === "release") {
+        setSavedSelection(EMPTY_KILL_SELECTION);
+      } else if (selection) {
+        setSavedSelection(selection);
+      }
       setKillFlow({ kind: "closed", inlineArmed: false });
       bumpRefresh();
+      return true;
     } catch (err) {
       setFeedback({ kind: "error", message: (err as Error).message });
+      return false;
     }
   }
 
@@ -144,15 +272,7 @@ export function RespondPage({
           variant="destructive"
           label="Emergency controls"
           icon={<GrdrIcon name="alert-octagon" size={14} />}
-          onClick={() =>
-            setKillFlow({
-              kind: "modalOpen",
-              blockedAgents: [],
-              blockedModels: [],
-              blockedGateways: [],
-              query: "",
-            })
-          }
+          onClick={openScopedModal}
         />
       </div>
 
@@ -233,14 +353,18 @@ export function RespondPage({
 
       <KillSwitchSection
         killSwitch={killSwitch}
+        devices={devices}
+        sessions={sessions}
+        savedSelection={savedSelection}
+        errorMessage={feedback.kind === "error" ? feedback.message : undefined}
         scope={scope}
         targetId={targetId}
         killReason={killReason}
         flow={killFlow}
-        onScopeChange={setScope}
+        onScopeChange={handleScopeChange}
         onTargetIdChange={setTargetId}
         onKillReasonChange={setKillReason}
-        onFlowChange={setKillFlow}
+        onFlowChange={updateKillFlow}
         onTrigger={handleKillSwitch}
       />
     </VStack>

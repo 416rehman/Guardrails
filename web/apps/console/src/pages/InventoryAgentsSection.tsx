@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
 import { useEffect, useMemo, useState } from "react";
 import { api, type Device } from "@grdr/api";
+import { presentAgentName } from "@grdr/i18n";
 import { AssuranceBadge, EntityLink, type EntityTarget, Quoted } from "@grdr/kit";
 import {
   Button,
@@ -15,6 +18,7 @@ import {
 } from "@grdr/ui";
 import { CursorPagerBar, formatRangeLabel } from "../components/PagerBar";
 import { aipQuote, useServerPage } from "../components/useServerPage";
+import { canonicalAgentSlugKey } from "../consoleState";
 import type { ConsoleSearchParams } from "../searchSchema";
 
 export function InventoryAgentsSection({
@@ -100,12 +104,25 @@ export function InventoryAgentsSection({
   );
 
   const agentTypeOptions = useMemo(() => {
-    const names = Array.from(new Set(allRows.map((r) => r.agent.name))).sort();
+    const seen = new Map<string, string>();
+    for (const row of allRows) {
+      const display = presentAgentName(row.agent.name);
+      const key = canonicalAgentSlugKey(display);
+      if (key && !seen.has(key)) {
+        seen.set(key, display);
+      }
+    }
+    const sorted = Array.from(seen.entries()).sort((a, b) => a[1].localeCompare(b[1]));
     return [
       { value: "all", label: "Harness: All agents" },
-      ...names.map((name) => ({ value: name.toLowerCase(), label: name })),
+      ...sorted.map(([value, label]) => ({ value, label })),
     ];
   }, [allRows]);
+
+  const normalizedAgentFilter =
+    agentTypeFilter === "all"
+      ? "all"
+      : canonicalAgentSlugKey(presentAgentName(agentTypeFilter));
 
   const combinedQuery = `${globalQuery} ${localQuery}`.trim().toLowerCase();
   const aipFilter = useMemo(() => {
@@ -113,8 +130,29 @@ export function InventoryAgentsSection({
     if (combinedQuery) {
       clauses.push(`(name:${aipQuote(combinedQuery)} OR device_name:${aipQuote(combinedQuery)})`);
     }
-    if (agentTypeFilter !== "all") {
-      clauses.push(`name:${aipQuote(agentTypeFilter)}`);
+    if (normalizedAgentFilter !== "all") {
+      const matchedSpellings = Array.from(
+        new Set(
+          allRows
+            .filter(
+              (r) => canonicalAgentSlugKey(presentAgentName(r.agent.name)) === normalizedAgentFilter,
+            )
+            .map((r) => r.agent.name.trim().toLowerCase())
+            .filter(Boolean),
+        ),
+      );
+      const rawAgentTerm = agentTypeFilter.trim().toLowerCase();
+      const displayFallback = presentAgentName(agentTypeFilter).toLowerCase();
+      const slugHyphen = normalizedAgentFilter.replace(/\s+/g, "-");
+      const nameTerms = Array.from(
+        new Set([...matchedSpellings.slice(0, 3), displayFallback, rawAgentTerm, normalizedAgentFilter].filter(Boolean)),
+      ).slice(0, 4);
+      const kindTerms = Array.from(new Set([slugHyphen, rawAgentTerm].filter(Boolean))).slice(0, 2);
+      const termClauses = [
+        ...nameTerms.map((term) => `name:${aipQuote(term)}`),
+        ...kindTerms.map((term) => `kind:${aipQuote(term)}`),
+      ];
+      clauses.push(`(${termClauses.join(" OR ")})`);
     }
     if (assuranceFilter === "sandboxed") {
       clauses.push("(assurance_level = al3 OR assurance_level = al4)");
@@ -128,7 +166,7 @@ export function InventoryAgentsSection({
     if (hookFilter === "installed") clauses.push("hook_installed = true");
     if (hookFilter === "missing") clauses.push("hook_installed = false");
     return clauses.join(" AND ");
-  }, [combinedQuery, agentTypeFilter, assuranceFilter, hookFilter]);
+  }, [combinedQuery, agentTypeFilter, normalizedAgentFilter, allRows, assuranceFilter, hookFilter]);
 
   const agentPage = useServerPage(
     api.listAgentsPage,
@@ -168,10 +206,12 @@ export function InventoryAgentsSection({
     (r) => r.agent.assurance_level === "AL3" || r.agent.assurance_level === "AL4",
   ).length;
   const hookInstalledCount = allRows.filter((r) => r.agent.hook_installed).length;
-  const distinctTypes = new Set(allRows.map((r) => r.agent.name)).size;
+  const distinctTypes = new Set(
+    allRows.map((r) => canonicalAgentSlugKey(presentAgentName(r.agent.name))),
+  ).size;
   const hasFilters =
     Boolean(localQuery.trim()) ||
-    agentTypeFilter !== "all" ||
+    normalizedAgentFilter !== "all" ||
     assuranceFilter !== "all" ||
     hookFilter !== "all";
 
@@ -223,7 +263,7 @@ export function InventoryAgentsSection({
             isLabelHidden
             size="sm"
             variant="secondary"
-            value={agentTypeFilter}
+            value={normalizedAgentFilter}
             options={agentTypeOptions}
             onChange={(val) => setAgentTypeFilter(val)}
           />
@@ -297,7 +337,7 @@ export function InventoryAgentsSection({
             </Text>
           ) : (
             <div className="table-wrap">
-              <table>
+              <table className="responsive-table">
                 <thead>
                   <tr>
                     <th>Agent</th>
@@ -311,18 +351,18 @@ export function InventoryAgentsSection({
                 <tbody>
                   {pagedRows.map(({ deviceId, deviceHostname, deviceOs, agent }) => (
                     <tr key={`${deviceId}-${agent.id}`} className="selectable" onClick={() => onSelectDevice(deviceId)}>
-                      <td><EntityLink kind="agent" id={agent.id} label={agent.name} compact onSelect={onOpenEntity} /></td>
-                      <td><EntityLink kind="device" id={deviceId} label={deviceHostname} os={deviceOs} compact onSelect={() => onSelectDevice(deviceId)} /></td>
-                      <td><AssuranceBadge level={agent.assurance_level} control={agent.assurance.control} /></td>
-                      <td>
+                      <td data-label="Agent"><EntityLink kind="agent" id={agent.id} label={agent.name} compact onSelect={onOpenEntity} /></td>
+                      <td data-label="Endpoint"><EntityLink kind="device" id={deviceId} label={deviceHostname} os={deviceOs} compact onSelect={() => onSelectDevice(deviceId)} /></td>
+                      <td data-label="Assurance level"><AssuranceBadge level={agent.assurance_level} control={agent.assurance.control} /></td>
+                      <td data-label="Hook shim">
                         <StatusInline
                           tone={agent.hook_installed ? "allow" : "ask"}
                           icon={<GrdrIcon name={agent.hook_installed ? "check-circle" : "alert-triangle"} size={13} />}
                           label={agent.hook_installed ? "Installed" : "Not configured"}
                         />
                       </td>
-                      <td className="tabular">{agent.mcp_count}</td>
-                      <td><Quoted text={agent.config_path} /></td>
+                      <td data-label="MCPs" className="tabular">{agent.mcp_count}</td>
+                      <td data-label="Config path"><Quoted text={agent.config_path} /></td>
                     </tr>
                   ))}
                 </tbody>
