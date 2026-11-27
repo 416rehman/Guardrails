@@ -347,7 +347,7 @@ describe("W4-2 console state, policy projection, kill-switch, and clustering hel
             matcher: {
               action_classes: ["file.read", "exec"],
               target_prefixes: ["/etc/ssh*prod\\"],
-              target_contains: [".env", "secret*key", 'id_rsa"key'],
+              target_contains: [".env", "secret*key", "src\\*secret", 'id_rsa"key'],
               agents: ["Claude Code", "Cursor"],
             },
             hits: 0,
@@ -391,6 +391,7 @@ describe("W4-2 console state, policy projection, kill-switch, and clustering hel
     expect(rendered.source).toContain('principal in Grdr::Agent::"cursor"');
     expect(rendered.source).toContain('resource.target like "/etc/ssh\\*prod\\\\*"');
     expect(rendered.source).toContain('resource.target like "*secret\\*key*"');
+    expect(rendered.source).toContain('resource.target like "*src\\\\\\*secret*"');
     expect(rendered.source).toContain('resource.target like "*id_rsa\\"key*"');
     expect(rendered.source).toContain("rule.off");
     expect(rendered.source).not.toContain('forbid(\n  principal is Grdr::Session,\n  action == Grdr::Action::"exec"');

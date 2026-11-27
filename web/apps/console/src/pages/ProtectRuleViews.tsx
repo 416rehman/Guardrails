@@ -225,7 +225,13 @@ function escapeCedarString(raw: string): string {
 }
 
 function escapeCedarLikeSegment(raw: string): string {
-  return escapeCedarString(raw).replace(/\*/g, "\\*");
+  return raw
+    .replace(/\\/g, "\\\\")
+    .replace(/\*/g, "\\*")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
 }
 
 function sanitizeCedarComment(raw: string): string {
