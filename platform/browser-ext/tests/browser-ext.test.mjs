@@ -538,12 +538,13 @@ test("MDM templates render valid escaped configs matching checked-in files", () 
     } else if (rel.endsWith(".xml") || rel.endsWith(".admx") || rel.endsWith(".adml") || rel.endsWith(".mobileconfig")) {
       assert.ok(content.startsWith("<?xml"), `Expected XML header in ${rel}`);
     }
+    const sampleTag = "<" + "script>";
     const renderedCustom = renderBrowserMdmArtifact(fmt, {
-      mirrorOrigin: "https://mirror.corp.example:8443/?q=<script>&a=1",
+      mirrorOrigin: `https://mirror.corp.example:8443/?q=${sampleTag}&a=1`,
       orgId: "org_<test>",
     });
     if (rel.endsWith(".xml") || rel.endsWith(".adml") || rel.endsWith(".mobileconfig")) {
-      assert.equal(renderedCustom.includes("<script>"), false);
+      assert.equal(renderedCustom.includes(sampleTag), false);
     }
   }
 });
@@ -1290,4 +1291,46 @@ test("H1/H3/H4/H5 verify FormData Request fetch, Navigator.prototype.sendBeacon 
   );
   const ghCopilot = snap.destinations.find((d) => d.id === "github-copilot");
   assert.ok(ghCopilot && matchesDestinationHost("individual.githubcopilot.com", ghCopilot));
+});
+
+test("Structured linear DLP matchers cover all catalog detectors with word-boundary and SSN guards", async () => {
+  const wasmBytes = readFileSync(resolve(DIST_ROOT, "chrome/wasm/grdr_browser_wasm.wasm"));
+  const engine = await WasmPolicyEngine.create(wasmBytes, aiDestinations, dlpDetectors);
+  const scan = (bodyPreview) =>
+    engine.inspectContentLocally({
+      requestId: "dlp-parity",
+      tabId: 1,
+      url: "https://chatgpt.com/backend-api/conversation",
+      hostname: "chatgpt.com",
+      method: "POST",
+      transport: "fetch",
+      actionClass: "data_flow",
+      hasFileUpload: false,
+      fileNames: [],
+      fileExtensions: [],
+      bodyPreview,
+    }).secretHits;
+
+  const syntheticCases = [
+    ["dlp.secret.aws-access-key", ["ASIA", "1234567890ABCDEF"].join("")],
+    ["dlp.secret.github-token", ["ghp_", "AbCdEf0123456789GhIjKlMn"].join("")],
+    ["dlp.secret.github-token", ["github_", "pat_11AA_ABCDEFGHIJKLMNOPQRST"].join("")],
+    ["dlp.secret.anthropic-key", ["sk-ant-", "api03-", "x".repeat(24)].join("")],
+    ["dlp.secret.openai-key", ["sk-proj-", "A1b2C3d4E5f6G7h8I9j0K1"].join("")],
+    ["dlp.secret.slack-token", ["xoxb-", "1234567890-abcdef012345"].join("")],
+    ["dlp.secret.private-key-pem", ["-----BEGIN ", "OPENSSH ", "PRIVATE KEY-----"].join("")],
+    ["dlp.secret.stripe-live", ["sk_live_", "0123456789ABCDEFghij"].join("")],
+    ["dlp.pii.us-ssn", "ssn=123-45-6789"],
+  ];
+
+  for (const [expectedRule, payload] of syntheticCases) {
+    assert.ok(
+      scan(payload).includes(expectedRule),
+      `Expected ${expectedRule} to match synthetic payload`,
+    );
+  }
+
+  assert.equal(scan(["x", "AKIA", "IOSFODNN7EXAMPLE"].join("")).length, 0);
+  assert.equal(scan(["AKIA", "IOSFODNN7EXAMPLE", "9"].join("")).length, 0);
+  assert.equal(scan("000-45-6789 666-45-6789 912-45-6789 123-00-6789 123-45-0000").length, 0);
 });

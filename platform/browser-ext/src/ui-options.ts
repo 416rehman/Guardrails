@@ -7,8 +7,8 @@ import {
   createBidiEl,
   createPreviewSnapshot,
   getExtRuntime,
+  localize,
   renderModeRadiogroup,
-  t,
   unwrapSnapshotResponse,
   verdictBadgeToneClass,
   verdictLabel,
@@ -61,13 +61,13 @@ function renderOptions(
   brand.appendChild(mark);
   const titleGroup = el("div");
   titleGroup.appendChild(
-    el("h1", "ext-h1", t("optionsHeading", "Guardrails Browser Protection")),
+    el("h1", "ext-h1", localize("optionsHeading", "Guardrails Browser Protection")),
   );
   titleGroup.appendChild(
     el(
       "p",
       "ext-subtitle",
-      t(
+      localize(
         "optionsSub",
         "Local Wasm policy core, Native Messaging host bridge, tenant headers, and WebMCP tool controls.",
       ),
@@ -83,11 +83,11 @@ function renderOptions(
       "span",
       `ext-badge ${connected ? "tone-ok" : "tone-warn"}`,
       connected
-        ? t("statusConnected", "Connected")
-        : t("statusDegraded", "Degraded (Wasm floor)"),
+        ? localize("statusConnected", "Connected")
+        : localize("statusDegraded", "Degraded (Wasm floor)"),
     ),
   );
-  const reconnectBtn = el("button", "ext-btn", t("reconnectHost", "Reconnect host"));
+  const reconnectBtn = el("button", "ext-btn", localize("reconnectHost", "Reconnect host"));
   reconnectBtn.type = "button";
   reconnectBtn.addEventListener("click", () => void onReconnect());
   actions.appendChild(reconnectBtn);
@@ -112,22 +112,22 @@ function renderOptions(
   const kpiGrid = el("section", "ext-options-kpis");
   const kpis: Array<[string, string, string]> = [
     [
-      t("kpiNativeHost", "Native messaging host"),
-      connected ? "grdr.browser" : t("degradedLabel", "Degraded"),
+      localize("kpiNativeHost", "Native messaging host"),
+      connected ? "grdr.browser" : localize("degradedLabel", "Degraded"),
       hostMeta,
     ],
     [
-      t("kpiWasmCore", "Wasm policy core"),
+      localize("kpiWasmCore", "Wasm policy core"),
       snapshot.wasmInfo.ready ? `ABI v${snapshot.wasmInfo.abiVersion}` : "Unavailable",
       `${snapshot.wasmInfo.importCount} host imports / ${snapshot.wasmInfo.floorRulesLoaded} floor rules`,
     ],
     [
-      t("kpiDnrRules", "Tenant DNR rules"),
+      localize("kpiDnrRules", "Tenant DNR rules"),
       `${snapshot.dnrSummary.ruleCount} / ${snapshot.dnrSummary.maxRules}`,
       `${snapshot.dnrSummary.activeHeaders.length} tenant headers / ${snapshot.dnrSummary.blockedAnonymousFilters.length} anon blocks`,
     ],
     [
-      t("kpiWebMcp", "WebMCP registered tools"),
+      localize("kpiWebMcp", "WebMCP registered tools"),
       String(snapshot.webMcpTools.length),
       mcpSummary,
     ],
@@ -143,7 +143,7 @@ function renderOptions(
 
   const policyCard = el("section", "ext-card");
   policyCard.appendChild(
-    el("h2", "ext-h2", t("aiDestinationsHeading", "AI destination controls")),
+    el("h2", "ext-h2", localize("aiDestinationsHeading", "AI destination controls")),
   );
   const tableWrap = el("div", "ext-table-wrap");
   const table = el("table", "ext-table");
@@ -189,7 +189,7 @@ function renderOptions(
   const twoCol = el("section", "ext-options-2col");
 
   const dnrCard = el("div", "ext-card");
-  dnrCard.appendChild(el("h2", "ext-h2", t("tenantHeadersHeading", "Tenant restriction headers")));
+  dnrCard.appendChild(el("h2", "ext-h2", localize("tenantHeadersHeading", "Tenant restriction headers")));
   if (snapshot.dnrSummary.activeHeaders.length === 0) {
     dnrCard.appendChild(
       el("p", "ext-muted", "No enterprise tenant headers configured via managed storage."),
@@ -210,7 +210,7 @@ function renderOptions(
   twoCol.appendChild(dnrCard);
 
   const mcpCard = el("div", "ext-card");
-  mcpCard.appendChild(el("h2", "ext-h2", t("webMcpHeading", "WebMCP registered tools")));
+  mcpCard.appendChild(el("h2", "ext-h2", localize("webMcpHeading", "WebMCP registered tools")));
   if (snapshot.webMcpTools.length === 0) {
     mcpCard.appendChild(
       el("p", "ext-muted", "No active tabs have registered document.modelContext tools yet."),
@@ -241,7 +241,7 @@ function renderOptions(
 
   const scopeCard = el("section", "ext-card");
   scopeCard.appendChild(
-    el("h2", "ext-h2", t("scopeHeading", "Inspection boundaries and sensor scope")),
+    el("h2", "ext-h2", localize("scopeHeading", "Inspection boundaries and sensor scope")),
   );
   scopeCard.appendChild(
     el(

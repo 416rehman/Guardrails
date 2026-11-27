@@ -149,8 +149,12 @@ export function renderBrowserMdmArtifact(format, options = {}) {
       return [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<gupdate xmlns="http://www.google.com/update2/response" protocol="2.0">',
-        `  <app appid="${xmlEscape(chromeId)}">`,
-        `    <updatecheck codebase="${xmlEscape(crxDownloadUrl)}" version="${xmlEscape(version)}" />`,
+        '  <app appid="' + xmlEscape(chromeId) + '">',
+        '    <updatecheck codebase="' +
+          xmlEscape(crxDownloadUrl) +
+          '" version="' +
+          xmlEscape(version) +
+          '" />',
         "  </app>",
         "</gupdate>",
       ].join("\n");
@@ -212,7 +216,11 @@ export function renderBrowserMdmArtifact(format, options = {}) {
         "    <stringTable>",
         '      <string id="GuardrailsBrowser">Guardrails Browser Protection</string>',
         '      <string id="ForceInstallExtensionSettings">Force-install Guardrails ADR Firefox Extension</string>',
-        `      <string id="ForceInstallExtensionSettings_Help">Install ${xmlEscape(firefoxId)} from ${xmlEscape(firefoxXpiUrl)} via Mozilla ExtensionSettings policy.</string>`,
+        '      <string id="ForceInstallExtensionSettings_Help">Install ' +
+          xmlEscape(firefoxId) +
+          " from " +
+          xmlEscape(firefoxXpiUrl) +
+          " via Mozilla ExtensionSettings policy.</string>",
         "    </stringTable>",
         "  </resources>",
         "</policyDefinitionResources>",
@@ -233,7 +241,7 @@ export function renderBrowserMdmArtifact(format, options = {}) {
         "      <key>PayloadVersion</key><integer>1</integer>",
         "      <key>ExtensionInstallForcelist</key>",
         "      <array>",
-        `        <string>${xmlEscape(chromeId)};${xmlEscape(crxUpdateUrl)}</string>`,
+        "        <string>" + xmlEscape(chromeId) + ";" + xmlEscape(crxUpdateUrl) + "</string>",
         "      </array>",
         "      <key>RemoteDebuggingAllowed</key><false/>",
         "      <key>DeveloperToolsAvailability</key><integer>2</integer>",
@@ -247,10 +255,10 @@ export function renderBrowserMdmArtifact(format, options = {}) {
         "      <key>EnterprisePoliciesEnabled</key><true/>",
         "      <key>ExtensionSettings</key>",
         "      <dict>",
-        `        <key>${xmlEscape(firefoxId)}</key>`,
+        "        <key>" + xmlEscape(firefoxId) + "</key>",
         "        <dict>",
         "          <key>installation_mode</key><string>force_installed</string>",
-        `          <key>install_url</key><string>${xmlEscape(firefoxXpiUrl)}</string>`,
+        "          <key>install_url</key><string>" + xmlEscape(firefoxXpiUrl) + "</string>",
         "          <key>private_browsing</key><true/>",
         "        </dict>",
         "      </dict>",
@@ -293,14 +301,14 @@ export function renderBrowserMdmArtifact(format, options = {}) {
               omaUri:
                 "./Device/Vendor/MSFT/Policy/Config/Chrome~Policy~googlechrome~Extensions/ExtensionSettings",
               dataType: "String",
-              value: `<enabled/><data id="ExtensionSettings" value='${chromeSettingsJson}'/>`,
+              value: '<enabled/><data id="ExtensionSettings" value=\'' + chromeSettingsJson + "'/>",
             },
             {
               name: "Edge Force-Install Guardrails Extension (ExtensionSettings)",
               omaUri:
                 "./Device/Vendor/MSFT/Policy/Config/Edge~Policy~microsoft_edge~Extensions/ExtensionSettings",
               dataType: "String",
-              value: `<enabled/><data id="ExtensionSettings" value='${edgeSettingsJson}'/>`,
+              value: '<enabled/><data id="ExtensionSettings" value=\'' + edgeSettingsJson + "'/>",
             },
             {
               name: "Disable Chrome Remote Debugging",

@@ -7,11 +7,11 @@ import {
   createBidiEl,
   createPreviewSnapshot,
   getExtRuntime,
+  localize,
   matchesDestinationHost,
   modeBadgeToneClass,
   modeLabel,
   renderModeRadiogroup,
-  t,
   unwrapSnapshotResponse,
   verdictBadgeToneClass,
   verdictLabel,
@@ -76,15 +76,15 @@ function renderPopup(
   mark.height = 22;
   mark.className = "ext-mark";
   brand.appendChild(mark);
-  brand.appendChild(createTextEl("span", "ext-title", t("extTitle", "Guardrails ADR")));
+  brand.appendChild(createTextEl("span", "ext-title", localize("extTitle", "Guardrails ADR")));
 
   const isConnected = snapshot.nativeStatus.kind === "connected";
   const statusBadge = createTextEl(
     "span",
     `ext-badge ${isConnected ? "tone-ok" : "tone-warn"}`,
     isConnected
-      ? t("statusConnected", "Connected")
-      : t("statusDegraded", "Degraded (Wasm floor)"),
+      ? localize("statusConnected", "Connected")
+      : localize("statusDegraded", "Degraded (Wasm floor)"),
   );
   header.appendChild(brand);
   header.appendChild(statusBadge);
@@ -99,8 +99,8 @@ function renderPopup(
         "ext-item-title",
         `${snapshot.nativeStatus.errorCode}: ${
           snapshot.managedConfig.failClosedOnDegraded
-            ? t("degradedFailClosed", "Fail-closed protection active")
-            : t("degradedLocalFloor", "Local Wasm policy floor active")
+            ? localize("degradedFailClosed", "Fail-closed protection active")
+            : localize("degradedLocalFloor", "Local Wasm policy floor active")
         }`,
       ),
     );
@@ -119,7 +119,7 @@ function renderPopup(
   siteTop.className = "ext-row-between";
   const siteInfo = document.createElement("div");
   siteInfo.appendChild(
-    createTextEl("div", "ext-label", t("activeDestination", "Active destination")),
+    createTextEl("div", "ext-label", localize("activeDestination", "Active destination")),
   );
   siteInfo.appendChild(
     createBidiEl(
@@ -155,7 +155,7 @@ function renderPopup(
         createTextEl(
           "div",
           "ext-muted",
-          t("managedModeLocked", "Mode locked by enterprise managed policy."),
+          localize("managedModeLocked", "Mode locked by enterprise managed policy."),
         ),
       );
     }
@@ -165,9 +165,9 @@ function renderPopup(
   const statsGrid = document.createElement("section");
   statsGrid.className = "ext-stats-3";
   const metrics: Array<[string, number]> = [
-    [t("metricInspected", "Inspected"), snapshot.counters.inspectedSession],
-    [t("metricBlocked", "Blocked"), snapshot.counters.blockedSession],
-    [t("metricWebMcp", "WebMCP tools"), snapshot.webMcpTools.length],
+    [localize("metricInspected", "Inspected"), snapshot.counters.inspectedSession],
+    [localize("metricBlocked", "Blocked"), snapshot.counters.blockedSession],
+    [localize("metricWebMcp", "WebMCP tools"), snapshot.webMcpTools.length],
   ];
   for (const [label, value] of metrics) {
     const cell = document.createElement("div");
@@ -181,14 +181,14 @@ function renderPopup(
   const ledgerCard = document.createElement("section");
   ledgerCard.className = "ext-card";
   ledgerCard.appendChild(
-    createTextEl("div", "ext-section-title", t("recentDecisions", "Recent decisions")),
+    createTextEl("div", "ext-section-title", localize("recentDecisions", "Recent decisions")),
   );
   if (snapshot.recentDecisions.length === 0) {
     ledgerCard.appendChild(
       createTextEl(
         "p",
         "ext-muted",
-        t("emptyDecisions", "No sensitive outbound transfers observed in this session."),
+        localize("emptyDecisions", "No sensitive outbound transfers observed in this session."),
       ),
     );
   } else {
@@ -216,7 +216,7 @@ function renderPopup(
   const optionsBtn = document.createElement("button");
   optionsBtn.type = "button";
   optionsBtn.className = "ext-btn ext-btn-primary";
-  optionsBtn.textContent = t("openOptions", "Policy settings");
+  optionsBtn.textContent = localize("openOptions", "Policy settings");
   optionsBtn.addEventListener("click", () => {
     const ext = getExtRuntime();
     if (ext?.runtime?.openOptionsPage) {
@@ -236,7 +236,7 @@ function renderPopup(
   const reconnectBtn = document.createElement("button");
   reconnectBtn.type = "button";
   reconnectBtn.className = "ext-btn";
-  reconnectBtn.textContent = t("reconnectHost", "Reconnect host");
+  reconnectBtn.textContent = localize("reconnectHost", "Reconnect host");
   reconnectBtn.addEventListener("click", () => void onReconnect());
 
   footer.appendChild(reconnectBtn);

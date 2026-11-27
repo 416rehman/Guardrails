@@ -69,13 +69,49 @@ export interface TenantProvidersCatalog {
   providers: DnrProviderSpec[];
 }
 
+export type DlpCharset =
+  | "upper_alnum"
+  | "alnum"
+  | "alnum_underscore"
+  | "alnum_dash"
+  | "alnum_dash_underscore";
+
+export interface PrefixedTokenClause {
+  type: "prefixed_token";
+  prefixes: string[];
+  charset: DlpCharset;
+  minTailLen: number;
+  maxTailLen: number;
+  wordBoundary: boolean;
+}
+
+export interface FramedMarkerClause {
+  type: "framed_marker";
+  start: string;
+  middleOptions: string[];
+  end: string;
+}
+
+export interface DelimitedDigitsClause {
+  type: "delimited_digits";
+  segments: number[];
+  delimiter: string;
+  disallowedFirstPrefixes: string[];
+  disallowAllZeroSegment: boolean;
+  wordBoundary: boolean;
+}
+
+export type DlpMatcherClause =
+  | PrefixedTokenClause
+  | FramedMarkerClause
+  | DelimitedDigitsClause;
+
 export interface DlpDetectorRule {
   id: string;
   kind: "secret" | "pii";
   severity: "deny" | "stepup";
   label: string;
-  pattern: string;
-  flags: string;
+  clauses: DlpMatcherClause[];
 }
 
 export interface DlpDetectorsCatalog {

@@ -8,64 +8,134 @@
       "kind": "secret",
       "severity": "deny",
       "label": "AWS Access Key ID",
-      "pattern": "\\b(?:AKIA|ASIA)[0-9A-Z]{16}\\b",
-      "flags": ""
+      "clauses": [
+        {
+          "type": "prefixed_token",
+          "prefixes": ["AKIA", "ASIA"],
+          "charset": "upper_alnum",
+          "minTailLen": 16,
+          "maxTailLen": 16,
+          "wordBoundary": true
+        }
+      ]
     },
     {
       "id": "dlp.secret.github-token",
       "kind": "secret",
       "severity": "deny",
       "label": "GitHub Personal or Fine-Grained Token",
-      "pattern": "\\b(?:gh[pousr]_[A-Za-z0-9]{20,64}|github_pat_[A-Za-z0-9_]{22,120})\\b",
-      "flags": ""
+      "clauses": [
+        {
+          "type": "prefixed_token",
+          "prefixes": ["ghp_", "gho_", "ghu_", "ghs_", "ghr_"],
+          "charset": "alnum",
+          "minTailLen": 20,
+          "maxTailLen": 64,
+          "wordBoundary": true
+        },
+        {
+          "type": "prefixed_token",
+          "prefixes": ["github_pat_"],
+          "charset": "alnum_underscore",
+          "minTailLen": 22,
+          "maxTailLen": 120,
+          "wordBoundary": true
+        }
+      ]
     },
     {
       "id": "dlp.secret.anthropic-key",
       "kind": "secret",
       "severity": "deny",
       "label": "Anthropic API Key",
-      "pattern": "\\bsk-ant-api03-[A-Za-z0-9_-]{20,120}\\b",
-      "flags": ""
+      "clauses": [
+        {
+          "type": "prefixed_token",
+          "prefixes": ["sk-ant-api03-"],
+          "charset": "alnum_dash_underscore",
+          "minTailLen": 20,
+          "maxTailLen": 120,
+          "wordBoundary": true
+        }
+      ]
     },
     {
       "id": "dlp.secret.openai-key",
       "kind": "secret",
       "severity": "deny",
       "label": "OpenAI API Key",
-      "pattern": "\\bsk-(?:proj|live|svcacct)-[A-Za-z0-9_-]{20,160}\\b",
-      "flags": ""
+      "clauses": [
+        {
+          "type": "prefixed_token",
+          "prefixes": ["sk-proj-", "sk-live-", "sk-svcacct-"],
+          "charset": "alnum_dash_underscore",
+          "minTailLen": 20,
+          "maxTailLen": 160,
+          "wordBoundary": true
+        }
+      ]
     },
     {
       "id": "dlp.secret.slack-token",
       "kind": "secret",
       "severity": "deny",
       "label": "Slack API Token",
-      "pattern": "\\bxox[baprs]-[0-9A-Za-z-]{16,120}\\b",
-      "flags": ""
+      "clauses": [
+        {
+          "type": "prefixed_token",
+          "prefixes": ["xoxb-", "xoxa-", "xoxp-", "xoxr-", "xoxs-"],
+          "charset": "alnum_dash",
+          "minTailLen": 16,
+          "maxTailLen": 120,
+          "wordBoundary": true
+        }
+      ]
     },
     {
       "id": "dlp.secret.private-key-pem",
       "kind": "secret",
       "severity": "deny",
       "label": "PEM Private Key Block",
-      "pattern": "-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----",
-      "flags": ""
+      "clauses": [
+        {
+          "type": "framed_marker",
+          "start": "-----BEGIN ",
+          "middleOptions": ["", "RSA ", "EC ", "DSA ", "OPENSSH ", "PGP "],
+          "end": "PRIVATE KEY-----"
+        }
+      ]
     },
     {
       "id": "dlp.secret.stripe-live",
       "kind": "secret",
       "severity": "deny",
       "label": "Stripe Live Secret Key",
-      "pattern": "\\b(?:sk|rk)_live_[0-9A-Za-z]{16,96}\\b",
-      "flags": ""
+      "clauses": [
+        {
+          "type": "prefixed_token",
+          "prefixes": ["sk_live_", "rk_live_"],
+          "charset": "alnum",
+          "minTailLen": 16,
+          "maxTailLen": 96,
+          "wordBoundary": true
+        }
+      ]
     },
     {
       "id": "dlp.pii.us-ssn",
       "kind": "pii",
       "severity": "stepup",
       "label": "US Social Security Number Pattern",
-      "pattern": "\\b(?!000|666|9\\d\\d)\\d{3}-(?!00)\\d{2}-(?!0000)\\d{4}\\b",
-      "flags": ""
+      "clauses": [
+        {
+          "type": "delimited_digits",
+          "segments": [3, 2, 4],
+          "delimiter": "-",
+          "disallowedFirstPrefixes": ["000", "666", "9"],
+          "disallowAllZeroSegment": true,
+          "wordBoundary": true
+        }
+      ]
     }
   ]
 }

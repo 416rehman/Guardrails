@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+import { matchesDlpRule } from "./dlp-matcher.js";
 import type {
   ActionClass,
   AiDestinationSpec,
@@ -9,6 +10,7 @@ import type {
   BrowserInspectRequest,
   BrowserMode,
   BrowserVerdict,
+  DlpDetectorRule,
   DlpDetectorsCatalog,
 } from "./types.js";
 
@@ -49,14 +51,6 @@ interface WasmExports extends WebAssembly.Exports {
   ) => number;
 }
 
-interface CompiledRule {
-  id: string;
-  kind: "secret" | "pii";
-  severity: "deny" | "stepup";
-  label: string;
-  regex: RegExp;
-}
-
 interface RawWasmEvalResult {
   verdict: BrowserVerdict;
   rule_id: string;
@@ -68,16 +62,6 @@ interface RawWasmEvalResult {
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder("utf-8", { fatal: false });
-
-function compileDetectors(catalog: DlpDetectorsCatalog): CompiledRule[] {
-  return catalog.rules.map((rule) => ({
-    id: rule.id,
-    kind: rule.kind,
-    severity: rule.severity,
-    label: rule.label,
-    regex: new RegExp(rule.pattern, rule.flags),
-  }));
-}
 
 function matchHost(hostname: string, destination: AiDestinationSpec): boolean {
   const lower = hostname.toLowerCase();
@@ -132,7 +116,7 @@ export class WasmPolicyEngine {
   readonly importCount: number;
   private readonly exports: WasmExports;
   private readonly destinations: AiDestinationsCatalog;
-  private readonly detectors: CompiledRule[];
+  private readonly detectors: DlpDetectorRule[];
   private readonly maxInspectBytes: number;
   private floorRuleCount = 0;
 
@@ -147,7 +131,7 @@ export class WasmPolicyEngine {
     this.abiVersion = abiVersion;
     this.importCount = importCount;
     this.destinations = destinations;
-    this.detectors = compileDetectors(dlpCatalog);
+    this.detectors = dlpCatalog.rules;
     this.maxInspectBytes = Math.min(dlpCatalog.maxInspectBytes, 65_536);
   }
 
@@ -231,8 +215,7 @@ export class WasmPolicyEngine {
     const sample = req.bodyPreview.slice(0, this.maxInspectBytes);
     const secretHits: string[] = [];
     for (const rule of this.detectors) {
-      rule.regex.lastIndex = 0;
-      if (rule.regex.test(sample)) {
+      if (matchesDlpRule(sample, rule)) {
         secretHits.push(rule.id);
       }
     }

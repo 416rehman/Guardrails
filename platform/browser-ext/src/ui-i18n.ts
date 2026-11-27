@@ -36,7 +36,7 @@ export function getExtRuntime(): RuntimeApi | null {
   return g.chrome ?? g.browser ?? null;
 }
 
-export function t(key: string, fallback: string): string {
+export function localize(key: string, fallback: string): string {
   const msg = getExtRuntime()?.i18n?.getMessage(key);
   return msg && msg.length > 0 ? msg : fallback;
 }
@@ -59,7 +59,7 @@ export function createBidiEl<K extends keyof HTMLElementTagNameMap>(
 }
 
 export function applyBidiRoot(): void {
-  const rawDir = t("@@bidi_dir", "ltr");
+  const rawDir = localize("@@bidi_dir", "ltr");
   const params =
     typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
   const urlDir = params?.get("dir");
@@ -77,13 +77,13 @@ export function applyBidiRoot(): void {
 export function modeLabel(mode: BrowserMode): string {
   switch (mode) {
     case "off":
-      return t("modeOff", "Off");
+      return localize("modeOff", "Off");
     case "watch":
-      return t("modeWatch", "Watch");
+      return localize("modeWatch", "Watch");
     case "ask":
-      return t("modeAsk", "Ask");
+      return localize("modeAsk", "Ask");
     case "block":
-      return t("modeBlock", "Block");
+      return localize("modeBlock", "Block");
   }
 }
 
@@ -103,11 +103,11 @@ export function modeBadgeToneClass(mode: BrowserMode): string {
 export function verdictLabel(verdict: BrowserVerdict): string {
   switch (verdict) {
     case "allow":
-      return t("verdictAllow", "Allow");
+      return localize("verdictAllow", "Allow");
     case "step_up":
-      return t("verdictStepUp", "Ask");
+      return localize("verdictStepUp", "Ask");
     case "deny":
-      return t("verdictDeny", "Deny");
+      return localize("verdictDeny", "Deny");
   }
 }
 
