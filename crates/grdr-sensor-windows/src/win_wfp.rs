@@ -94,31 +94,70 @@ mod tests {
     #[test]
     fn coexistence_probe_returns_clean_report_or_graceful_denial() {
         let report = probe_wfp_coexistence().expect("probe must handle non-admin cleanly");
-        assert!(matches!(
-            report.engine_access,
-            WfpEngineAccess::FullAdminWrite
-                | WfpEngineAccess::ReadOnlyProbe
-                | WfpEngineAccess::AccessDenied
-                | WfpEngineAccess::UnsupportedPlatform
-        ));
+        #[cfg(windows)]
+        {
+            let elevated = crate::win_wfp_sys::tests::current_process_is_elevated_admin()
+                .expect("token elevation check must succeed");
+            if elevated {
+                assert_eq!(report.engine_access, WfpEngineAccess::ReadOnlyProbe);
+                assert_eq!(report.provider_count, report.providers.len());
+            } else {
+                assert_eq!(report.engine_access, WfpEngineAccess::AccessDenied);
+                assert_eq!(report.provider_count, 0);
+                assert!(report.providers.is_empty());
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(report.engine_access, WfpEngineAccess::UnsupportedPlatform);
+            assert_eq!(report.provider_count, 0);
+            assert!(report.providers.is_empty());
+        }
     }
 
     #[test]
     fn apply_plan_respects_privileges_or_platform() {
-        let plan = plan_session_wfp_filters(
+        for principal in [
             WfpPrincipalKey::AppContainerPackageSid {
                 package_sid: "S-1-15-2-1001".into(),
             },
-            18080,
-            Some(18081),
-        )
-        .expect("valid plan");
-        let applied = apply_wfp_sublayer_plan(&plan).expect("graceful non-admin behavior");
-        if applied.applied {
-            let removed = remove_applied_wfp_filters(&applied).expect("cleanup");
-            assert_eq!(removed, applied.filter_ids.len());
-        } else {
-            assert!(applied.filter_ids.is_empty());
+            WfpPrincipalKey::AppContainerPackageSid {
+                package_sid: "S-1-15-2-1-2-3-4-5-6-7-8".into(),
+            },
+            WfpPrincipalKey::SandboxSid {
+                sid: "S-1-5-21-1000-2000-3000-1001".into(),
+            },
+            WfpPrincipalKey::ServiceSid {
+                service_sid: "S-1-5-80-1234567890-1-2-3".into(),
+            },
+        ] {
+            let plan = plan_session_wfp_filters(principal, 18080, Some(18081)).expect("valid plan");
+            let applied = apply_wfp_sublayer_plan(&plan).expect("graceful non-admin behavior");
+            #[cfg(windows)]
+            {
+                let elevated = crate::win_wfp_sys::tests::current_process_is_elevated_admin()
+                    .expect("token elevation check must succeed");
+                if elevated {
+                    assert!(
+                        applied.applied,
+                        "elevated admin must apply WFP filters: {}",
+                        applied.detail
+                    );
+                    assert_eq!(applied.filter_ids.len(), plan.rules.len());
+                    let removed = remove_applied_wfp_filters(&applied).expect("cleanup");
+                    assert_eq!(removed, plan.rules.len());
+                } else {
+                    assert!(!applied.applied);
+                    assert!(applied.filter_ids.is_empty());
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                assert!(!applied.applied);
+                assert!(applied.filter_ids.is_empty());
+                let probe = probe_wfp_coexistence().expect("platform probe");
+                assert_eq!(probe.engine_access, WfpEngineAccess::UnsupportedPlatform);
+            }
         }
     }
 }

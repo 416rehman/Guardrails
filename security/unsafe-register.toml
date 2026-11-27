@@ -1365,7 +1365,7 @@ verification = ["cargo test -p grdr-sensor-windows"]
 crate = "grdr-sensor-windows"
 file = "crates/grdr-sensor-windows/src/win_wfp_filters.rs"
 symbol = "LocalAllocSid::drop"
-lines = "63-65"
+lines = "47-49"
 invariant = "Frees non-null LocalAlloc PSID once via LocalFree."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-windows"]
@@ -1374,7 +1374,7 @@ verification = ["cargo test -p grdr-sensor-windows"]
 crate = "grdr-sensor-windows"
 file = "crates/grdr-sensor-windows/src/win_wfp_filters.rs"
 symbol = "LocalAllocSd::drop"
-lines = "79-81"
+lines = "63-65"
 invariant = "Frees non-null LocalAlloc self-relative SECURITY_DESCRIPTOR once via LocalFree."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-windows"]
@@ -1383,8 +1383,8 @@ verification = ["cargo test -p grdr-sensor-windows"]
 crate = "grdr-sensor-windows"
 file = "crates/grdr-sensor-windows/src/win_wfp_filters.rs"
 symbol = "LocalAllocSid::parse"
-lines = "102-102"
-invariant = "Converts NUL-terminated UTF-16 SID string into LocalAllocSid RAII wrapper via ConvertStringSidToSidW."
+lines = "81-81"
+invariant = "Validates canonical SID before converting NUL-terminated UTF-16 SID string into LocalAllocSid RAII wrapper via ConvertStringSidToSidW."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-windows"]
 
@@ -1392,8 +1392,8 @@ verification = ["cargo test -p grdr-sensor-windows"]
 crate = "grdr-sensor-windows"
 file = "crates/grdr-sensor-windows/src/win_wfp_filters.rs"
 symbol = "LocalAllocSd::for_user_match_sid"
-lines = "124-131"
-invariant = "Converts canonical validated SID SDDL into self-relative LocalAllocSd granting FWP_ACTRL_MATCH_FILTER for ALE user conditions."
+lines = "105-112"
+invariant = "Converts canonical validated SID SDDL into self-relative LocalAllocSd RAII wrapper built unconditionally before status/size validation."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-windows"]
 
@@ -1401,8 +1401,8 @@ verification = ["cargo test -p grdr-sensor-windows"]
 crate = "grdr-sensor-windows"
 file = "crates/grdr-sensor-windows/src/win_wfp_filters.rs"
 symbol = "install_single_filter"
-lines = "239-266"
-invariant = "Calls FwpmFilterAdd0 over initialized FWPM_FILTER0 and stack condition array owned by PrincipalConditionGuard inside active WfpTxGuard."
+lines = "266-293"
+invariant = "Calls FwpmFilterAdd0 over initialized FWPM_FILTER0 and scoped condition slice while pinned stack SID/SD/blob locals remain unmoved in with_principal_condition."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-windows"]
 
@@ -1410,7 +1410,7 @@ verification = ["cargo test -p grdr-sensor-windows"]
 crate = "grdr-sensor-windows"
 file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
 symbol = "WfpEngineGuard::open"
-lines = "60-60"
+lines = "96-96"
 invariant = "Opens BFE handle via FwpmEngineOpen0 with RPC_C_AUTHN_WINNT and closes automatically on drop."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-windows"]
@@ -1418,8 +1418,26 @@ verification = ["cargo test -p grdr-sensor-windows"]
 [[entry]]
 crate = "grdr-sensor-windows"
 file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
+symbol = "WfpEngineGuard::commit_tx"
+lines = "108-110"
+invariant = "Commits active WFP transaction on borrowed engine handle via FwpmTransactionCommit0."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
+symbol = "WfpEngineGuard::abort_tx"
+lines = "116-118"
+invariant = "Aborts uncommitted WFP transaction on borrowed engine handle via FwpmTransactionAbort0."
+owner = "endpoint"
+verification = ["cargo test -p grdr-sensor-windows"]
+
+[[entry]]
+crate = "grdr-sensor-windows"
+file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
 symbol = "WfpEngineGuard::drop"
-lines = "73-75"
+lines = "127-129"
 invariant = "Closes non-null BFE handle once via FwpmEngineClose0."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-windows"]
@@ -1428,7 +1446,7 @@ verification = ["cargo test -p grdr-sensor-windows"]
 crate = "grdr-sensor-windows"
 file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
 symbol = "WfpEnumGuard::drop"
-lines = "86-88"
+lines = "140-142"
 invariant = "Destroys non-null WFP enumeration handle once via FwpmProviderDestroyEnumHandle0."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-windows"]
@@ -1437,35 +1455,17 @@ verification = ["cargo test -p grdr-sensor-windows"]
 crate = "grdr-sensor-windows"
 file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
 symbol = "WfpTxGuard::begin"
-lines = "98-98"
-invariant = "Begins atomic WFP transaction via FwpmTransactionBegin0 over live BFE handle and aborts automatically if dropped uncommitted."
+lines = "152-152"
+invariant = "Begins atomic WFP transaction via FwpmTransactionBegin0 borrowing WfpEngineGuard<'a> and aborts on drop until commit succeeds."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-windows"]
 
 [[entry]]
 crate = "grdr-sensor-windows"
 file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
-symbol = "WfpTxGuard::commit"
-lines = "111-111"
-invariant = "Commits active WFP transaction once via FwpmTransactionCommit0 and disarms Drop abort."
-owner = "endpoint"
-verification = ["cargo test -p grdr-sensor-windows"]
-
-[[entry]]
-crate = "grdr-sensor-windows"
-file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
-symbol = "WfpTxGuard::drop"
-lines = "125-127"
-invariant = "Aborts uncommitted WFP transaction via FwpmTransactionAbort0 on early return or error."
-owner = "endpoint"
-verification = ["cargo test -p grdr-sensor-windows"]
-
-[[entry]]
-crate = "grdr-sensor-windows"
-file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
-symbol = "probe_win_wfp_coexistence"
-lines = "157-157"
-invariant = "Probes Windows BFE coexistence cleanly, returning non-admin fallback report on ERROR_ACCESS_DENIED."
+symbol = "probe_win_wfp_coexistence_inner"
+lines = "214-214"
+invariant = "Creates provider enumeration handle on open BFE session into WfpEnumGuard<'a> before enumerating providers."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-windows"]
 
@@ -1473,8 +1473,8 @@ verification = ["cargo test -p grdr-sensor-windows"]
 crate = "grdr-sensor-windows"
 file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
 symbol = "remove_win_wfp_filters"
-lines = "292-292"
-invariant = "Deletes installed WFP filters atomically via FwpmFilterDeleteById0 inside WfpTxGuard."
+lines = "321-321"
+invariant = "Deletes installed WFP filters atomically via FwpmFilterDeleteById0 inside WfpTxGuard<'a>."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-windows"]
 
@@ -1482,8 +1482,8 @@ verification = ["cargo test -p grdr-sensor-windows"]
 crate = "grdr-sensor-windows"
 file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
 symbol = "ensure_tier_provider_and_sublayer"
-lines = "323-379"
-invariant = "Fails closed on non-NOT_FOUND lookup errors and ensures dynamic or persistent Guardrails WFP provider/sublayer with freed lookup outputs."
+lines = "341-397"
+invariant = "Unconditionally frees non-null FWPM_PROVIDER0 via FwpmFreeMemory0 before checking prov_rc and registers Guardrails provider/sublayer."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-windows"]
 
@@ -1491,8 +1491,8 @@ verification = ["cargo test -p grdr-sensor-windows"]
 crate = "grdr-sensor-windows"
 file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
 symbol = "enumerate_providers"
-lines = "398-432"
-invariant = "Bounds enumerated provider slice to BFE count and frees allocated table immediately via FwpmFreeMemory0."
+lines = "416-460"
+invariant = "Frees non-null provider table unconditionally via FwpmFreeMemory0 and bounds slice to BFE count."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-windows"]
 
@@ -1500,8 +1500,8 @@ verification = ["cargo test -p grdr-sensor-windows"]
 crate = "grdr-sensor-windows"
 file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
 symbol = "check_sublayer_present"
-lines = "445-457"
-invariant = "Frees non-null FWPM_SUBLAYER0 pointer returned by FwpmSubLayerGetByKey0 via FwpmFreeMemory0."
+lines = "472-483"
+invariant = "Unconditionally frees non-null FWPM_SUBLAYER0 pointer returned by FwpmSubLayerGetByKey0 via FwpmFreeMemory0."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-windows"]
 
@@ -1509,7 +1509,7 @@ verification = ["cargo test -p grdr-sensor-windows"]
 crate = "grdr-sensor-windows"
 file = "crates/grdr-sensor-windows/src/win_wfp_sys.rs"
 symbol = "read_pwstr"
-lines = "512-520"
+lines = "528-536"
 invariant = "Null-checks BFE UTF-16 pointer and caps NUL scan at 512 code units before slice conversion."
 owner = "endpoint"
 verification = ["cargo test -p grdr-sensor-windows"]
