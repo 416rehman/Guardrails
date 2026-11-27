@@ -1,28 +1,31 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
 import { formatStorageMode } from "@grdr/api";
-import { formatTimestamp, pluralize, type OperatorRouteId } from "@grdr/i18n";
+import { capitalizeLabel, formatTimestamp, pluralize } from "@grdr/i18n";
 import {
   Badge,
   Button,
+  Card,
   EmptyState,
   GrdrFlowGraph,
   GrdrIcon,
   Heading,
   HStack,
+  ProgressBar,
+  StatusInline,
   Text,
+  VStack,
 } from "@grdr/ui";
+import { formatAuditKind } from "./OperatorAuditView";
+import type { ExtendedOperatorRouteId } from "./operatorRoutes";
 import type { OperatorSnapshot } from "./queries";
 
-function formatAuditKind(kind: string): string {
-  switch (kind) {
-    case "policy.pack.loaded":
-      return "Policy pack loaded";
-    case "policy.update":
-      return "Policy updated";
-    case "kill_switch.updated":
-      return "Kill switch changed";
-    default:
-      return kind.replace(/\./g, " ");
-  }
+interface ChecklistItem {
+  id: string;
+  label: string;
+  done: boolean;
+  actionLabel?: string;
+  route?: ExtendedOperatorRouteId;
 }
 
 export function OperatorOverviewView({
@@ -30,10 +33,44 @@ export function OperatorOverviewView({
   onNavigate,
 }: {
   snapshot: OperatorSnapshot;
-  onNavigate: (route: OperatorRouteId) => void;
+  onNavigate: (route: ExtendedOperatorRouteId) => void;
 }) {
+  const checklist: ChecklistItem[] = [
+    {
+      id: "daemon-health",
+      label: "Control-plane service healthy and isolated",
+      done: snapshot.health.status === "ok" || snapshot.health.status === "healthy",
+      actionLabel: "View health",
+      route: "op-health",
+    },
+    {
+      id: "receipt-keys",
+      label: "Ed25519 receipt signing keys registered",
+      done: snapshot.keys.length > 0,
+      actionLabel: "Trust keys",
+      route: "op-keys",
+    },
+    {
+      id: "persistent-db",
+      label: "Persistent SQLite WAL storage enabled",
+      done: snapshot.health.storage_mode.kind === "sqlite",
+      actionLabel: "View health",
+      route: "op-health",
+    },
+    {
+      id: "backup-drill",
+      label: "Backup or restore verification drill completed",
+      done: snapshot.operatorState.drills.some((d) => d.status === "passed"),
+      actionLabel: "Run drill",
+      route: "op-backups",
+    },
+  ];
+
+  const completedSteps = checklist.filter((step) => step.done).length;
+  const readinessPct = Math.max(20, Math.round((completedSteps / checklist.length) * 100));
+
   return (
-    <>
+    <VStack gap={4}>
       <div
         className="metric-strip"
         style={{
@@ -46,7 +83,7 @@ export function OperatorOverviewView({
           <div className="metric-value tabular">
             {snapshot.health.status === "ok" || snapshot.health.status === "healthy"
               ? "Healthy"
-              : snapshot.health.status}
+              : capitalizeLabel(snapshot.health.status)}
           </div>
           <div className="metric-label">Service health</div>
           <div className="metric-note">{`Version ${snapshot.health.version} (${formatStorageMode(snapshot.health.storage_mode)})`}</div>
@@ -68,6 +105,51 @@ export function OperatorOverviewView({
         </div>
       </div>
 
+      <Card padding={3}>
+        <VStack gap={2}>
+          <HStack justify="between" align="center" style={{ flexWrap: "wrap", gap: 8 }}>
+            <VStack gap={0}>
+              <Heading level={2}>Deployment readiness checklist</Heading>
+              <Text size="sm" color="secondary">
+                Core isolation, trust-key, and backup controls verified for this operator realm.
+              </Text>
+            </VStack>
+            <Badge
+              variant={completedSteps === checklist.length ? "success" : "info"}
+              label={`${completedSteps}/${checklist.length} ready`}
+            />
+          </HStack>
+          <ProgressBar
+            label="Operator readiness"
+            isLabelHidden
+            value={readinessPct}
+            max={100}
+            variant={completedSteps === checklist.length ? "success" : "accent"}
+          />
+          <div>
+            {checklist.map((item) => {
+              const targetRoute = item.route;
+              return (
+                <div key={item.id} className="op-check-item">
+                  <HStack gap={2} align="center">
+                    <StatusInline tone={item.done ? "allow" : "ask"} dot label={item.label} />
+                  </HStack>
+                  {targetRoute && item.actionLabel && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      label={item.actionLabel}
+                      endContent={<GrdrIcon name="arrow-right" size={12} />}
+                      onClick={() => onNavigate(targetRoute)}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </VStack>
+      </Card>
+
       <div className="quiet-split">
         <section className="ledger-section">
           <div className="ledger-header">
@@ -80,7 +162,7 @@ export function OperatorOverviewView({
           <GrdrFlowGraph
             direction="LR"
             height={220}
-            ariaLabel="P8 Deployment isolation boundary diagram"
+            ariaLabel="Deployment isolation boundary diagram"
             nodes={[
               {
                 id: "op-realm",
@@ -93,7 +175,7 @@ export function OperatorOverviewView({
               {
                 id: "tenant-plane",
                 label: "Tenant payloads",
-                subtitle: "Unmounted on operator origin",
+                subtitle: "Restricted on operator origin",
                 badge: "Blocked",
                 tone: "block",
                 icon: "lock",
@@ -101,7 +183,7 @@ export function OperatorOverviewView({
             ]}
             edges={[
               {
-                id: "p8-wall",
+                id: "realm-wall",
                 source: "op-realm",
                 target: "tenant-plane",
                 label: "No route",
@@ -118,7 +200,11 @@ export function OperatorOverviewView({
             <Text color="secondary">Kill switch state</Text>
             <Badge
               variant={snapshot.overview.kill_switch.state === "inactive" ? "success" : "error"}
-              label={snapshot.overview.kill_switch.state === "inactive" ? "Inactive" : snapshot.overview.kill_switch.state}
+              label={
+                snapshot.overview.kill_switch.state === "inactive"
+                  ? "Inactive"
+                  : capitalizeLabel(snapshot.overview.kill_switch.state.replace(/_/g, " "))
+              }
             />
           </div>
           <div className="kv-row">
@@ -177,114 +263,119 @@ export function OperatorOverviewView({
           )}
         </section>
       </div>
-    </>
+    </VStack>
   );
 }
 
-export function OperatorHealthView({ snapshot }: { snapshot: OperatorSnapshot }) {
+export function OperatorHealthView({
+  snapshot,
+  onNavigate,
+}: {
+  snapshot: OperatorSnapshot;
+  onNavigate?: (route: ExtendedOperatorRouteId) => void;
+}) {
   return (
-    <section className="ledger-section">
-      <div className="ledger-header">
-        <Heading level={3}>Control-plane liveness</Heading>
-        <Badge
-          label={snapshot.health.status}
-          variant={snapshot.health.status === "ok" ? "success" : "warning"}
-        />
-      </div>
-      <div className="kv-row">
-        <Text color="secondary">Daemon version</Text>
-        <Text className="mono">{snapshot.health.version}</Text>
-      </div>
-      <div className="kv-row">
-        <Text color="secondary">Storage mode</Text>
-        <Text className="mono">{formatStorageMode(snapshot.health.storage_mode)}</Text>
-      </div>
-      <div className="kv-row">
-        <Text color="secondary">Active kill switch</Text>
-        <Text>{snapshot.overview.kill_switch.state}</Text>
-      </div>
-      <div className="kv-row">
-        <Text color="secondary">Open findings</Text>
-        <Text hasTabularNumbers>{snapshot.overview.open_findings}</Text>
-      </div>
-    </section>
-  );
-}
-
-export function OperatorSettingsView({ snapshot }: { snapshot: OperatorSnapshot }) {
-  return (
-    <section className="ledger-section">
-      <div className="ledger-header">
-        <Heading level={3}>Receipt signing keys</Heading>
-      </div>
-      {snapshot.keys.length === 0 ? (
-        <EmptyState
-          title="No signing keys registered"
-          description="Configure receipt signing keys via grdr keygen."
-          icon={<GrdrIcon name="key-round" size={24} />}
-        />
-      ) : (
-        <div className="table-wrap">
-          <table className="table responsive-table">
-            <thead>
-              <tr>
-                <th>Key ID</th>
-                <th>Public key (Base64)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {snapshot.keys.map((key) => (
-                <tr key={key.key_id}>
-                  <td data-label="Key ID" className="mono">{key.key_id}</td>
-                  <td data-label="Public key (Base64)" className="mono">{key.public_key_b64.slice(0, 32)}...</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <VStack gap={4}>
+      <section className="ledger-section">
+        <div className="ledger-header">
+          <Heading level={2}>Daemon health</Heading>
+          <Badge
+            variant={snapshot.health.status === "ok" || snapshot.health.status === "healthy" ? "success" : "warning"}
+            label={
+              snapshot.health.status === "ok" || snapshot.health.status === "healthy"
+                ? "Healthy"
+                : capitalizeLabel(snapshot.health.status)
+            }
+          />
         </div>
-      )}
-    </section>
-  );
-}
-
-export function OperatorAuditView({ snapshot }: { snapshot: OperatorSnapshot }) {
-  return (
-    <section className="ledger-section">
-      <div className="ledger-header">
-        <Heading level={3}>Operator audit stream</Heading>
-      </div>
-      {snapshot.audit.length === 0 ? (
-        <EmptyState
-          title="No audit entries yet"
-          description="Control-plane changes appear here cleanly."
-          icon={<GrdrIcon name="file-text" size={24} />}
-        />
-      ) : (
-        <div className="table-wrap">
-          <table className="table responsive-table">
-            <thead>
-              <tr>
-                <th>Timestamp</th>
-                <th>Kind</th>
-                <th>Actor</th>
-                <th>Target</th>
-                <th>Summary</th>
-              </tr>
-            </thead>
-            <tbody>
-              {snapshot.audit.map((entry) => (
-                <tr key={entry.id}>
-                  <td data-label="Timestamp" className="tabular">{formatTimestamp(entry.timestamp)}</td>
-                  <td data-label="Kind" className="mono">{entry.kind}</td>
-                  <td data-label="Actor">{entry.actor}</td>
-                  <td data-label="Target" className="mono">{entry.target}</td>
-                  <td data-label="Summary">{entry.summary}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="kv-row">
+          <Text color="secondary">Status</Text>
+          <Text>{capitalizeLabel(snapshot.health.status)}</Text>
         </div>
-      )}
-    </section>
+        <div className="kv-row">
+          <Text color="secondary">Version</Text>
+          <Text className="mono">{snapshot.health.version}</Text>
+        </div>
+        <div className="kv-row">
+          <Text color="secondary">Storage engine</Text>
+          <Text className="mono">{formatStorageMode(snapshot.health.storage_mode)}</Text>
+        </div>
+        <div className="kv-row">
+          <Text color="secondary">Timestamp</Text>
+          <Text className="mono">{formatTimestamp(snapshot.health.timestamp)}</Text>
+        </div>
+        <div className="kv-row">
+          <Text color="secondary">Kill switch</Text>
+          <Text>{capitalizeLabel(snapshot.overview.kill_switch.state.replace(/_/g, " "))}</Text>
+        </div>
+      </section>
+
+      <section className="ledger-section">
+        <div className="ledger-header" style={{ flexWrap: "wrap", gap: 8 }}>
+          <VStack gap={0}>
+            <Heading level={2}>Delivery target probes</Heading>
+            <Text size="sm" color="secondary">
+              Circuit-breaker state and round-trip latency across audit and export sinks.
+            </Text>
+          </VStack>
+          {onNavigate && (
+            <Button
+              size="sm"
+              variant="secondary"
+              label="Open Backups & breakers"
+              endContent={<GrdrIcon name="arrow-right" size={13} />}
+              onClick={() => onNavigate("op-backups")}
+            />
+          )}
+        </div>
+
+        {snapshot.operatorState.targets.length === 0 ? (
+          <EmptyState
+            title="No delivery targets configured"
+            description="Configure an OTLP collector or GRC export sink to monitor delivery latency."
+            icon={<GrdrIcon name="activity" size={20} />}
+          />
+        ) : (
+          <div className="table-wrap">
+            <table className="table responsive-table">
+              <thead>
+                <tr>
+                  <th>Target</th>
+                  <th>State</th>
+                  <th>Circuit</th>
+                  <th>Latency</th>
+                </tr>
+              </thead>
+              <tbody>
+                {snapshot.operatorState.targets.map((tgt) => (
+                  <tr key={tgt.id}>
+                    <td data-label="Target">{tgt.name}</td>
+                    <td data-label="State">
+                      <StatusInline
+                        tone={
+                          tgt.status === "healthy"
+                            ? "allow"
+                            : tgt.status === "degraded"
+                              ? "ask"
+                              : "block"
+                        }
+                        dot
+                        label={capitalizeLabel(tgt.status.replace(/_/g, " "))}
+                      />
+                    </td>
+                    <td data-label="Circuit" className="mono">
+                      {tgt.circuit_state}
+                    </td>
+                    <td data-label="Latency" className="mono tabular">
+                      {`${tgt.latency_ms}ms`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </VStack>
   );
 }

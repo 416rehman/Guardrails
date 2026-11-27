@@ -1,9 +1,12 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
 import { useState } from "react";
 import { api } from "@grdr/api";
-import { formatTimestamp } from "@grdr/i18n";
+import { capitalizeLabel, formatTimestamp } from "@grdr/i18n";
 import {
   Banner,
   Button,
+  EmptyState,
   GrdrIcon,
   Heading,
   HStack,
@@ -85,61 +88,69 @@ export function OperatorBackupsView({
           </VStack>
         </div>
 
-        <div className="table-wrap">
-          <table className="table responsive-table">
-            <thead>
-              <tr>
-                <th>Target</th>
-                <th>Tier</th>
-                <th>State</th>
-                <th>Circuit</th>
-                <th>Latency</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {opState.targets.map((tgt) => (
-                <tr key={tgt.id}>
-                  <td data-label="Target">
-                    <VStack gap={0}>
-                      <strong>{tgt.name}</strong>
-                      <Text size="sm" color="secondary">{tgt.detail}</Text>
-                    </VStack>
-                  </td>
-                  <td data-label="Tier" className="mono">{`Tier ${tgt.tier}`}</td>
-                  <td data-label="State">
-                    <StatusInline
-                      tone={
-                        tgt.status === "healthy"
-                          ? "allow"
-                          : tgt.status === "degraded"
-                            ? "ask"
-                            : "block"
-                      }
-                      dot
-                      label={tgt.status.replace(/_/g, " ")}
-                    />
-                  </td>
-                  <td data-label="Circuit" className="mono">{`${tgt.circuit_state} (${tgt.failure_count} err)`}</td>
-                  <td data-label="Latency" className="mono tabular">{`${tgt.latency_ms}ms`}</td>
-                  <td data-label="Actions">
-                    {tgt.circuit_state !== "closed" || tgt.status !== "healthy" ? (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        label="Reset breaker"
-                        isDisabled={phase.kind === "busy"}
-                        onClick={() => void resetBreaker(tgt.id)}
-                      />
-                    ) : (
-                      <Text size="sm" color="secondary">Nominal</Text>
-                    )}
-                  </td>
+        {opState.targets.length === 0 ? (
+          <EmptyState
+            title="No delivery targets configured"
+            description="Add an audit ledger, OTLP collector, or GRC sink to track circuit-breaker health."
+            icon={<GrdrIcon name="activity" size={20} />}
+          />
+        ) : (
+          <div className="table-wrap">
+            <table className="table responsive-table">
+              <thead>
+                <tr>
+                  <th>Target</th>
+                  <th>Tier</th>
+                  <th>State</th>
+                  <th>Circuit</th>
+                  <th>Latency</th>
+                  <th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {opState.targets.map((tgt) => (
+                  <tr key={tgt.id}>
+                    <td data-label="Target">
+                      <VStack gap={0}>
+                        <strong>{tgt.name}</strong>
+                        <Text size="sm" color="secondary">{tgt.detail}</Text>
+                      </VStack>
+                    </td>
+                    <td data-label="Tier" className="mono">{`Tier ${tgt.tier}`}</td>
+                    <td data-label="State">
+                      <StatusInline
+                        tone={
+                          tgt.status === "healthy"
+                            ? "allow"
+                            : tgt.status === "degraded"
+                              ? "ask"
+                              : "block"
+                        }
+                        dot
+                        label={capitalizeLabel(tgt.status.replace(/_/g, " "))}
+                      />
+                    </td>
+                    <td data-label="Circuit" className="mono">{`${tgt.circuit_state} (${tgt.failure_count} err)`}</td>
+                    <td data-label="Latency" className="mono tabular">{`${tgt.latency_ms}ms`}</td>
+                    <td data-label="Actions">
+                      {tgt.circuit_state !== "closed" || tgt.status !== "healthy" ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          label="Reset breaker"
+                          isDisabled={phase.kind === "busy"}
+                          onClick={() => void resetBreaker(tgt.id)}
+                        />
+                      ) : (
+                        <Text size="sm" color="secondary">Nominal</Text>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="ledger-section">
@@ -150,13 +161,15 @@ export function OperatorBackupsView({
               Verify SQLite WAL integrity, signed receipt digests, and point-in-time recovery.
             </Text>
           </VStack>
-          <HStack gap={2} align="end" style={{ flexWrap: "wrap" }}>
-            <TextInput
-              label="Drill note"
-              value={drillNote}
-              onChange={setDrillNote}
-              width={240}
-            />
+          <div className="op-actions-row" style={{ flex: "1 1 260px", minWidth: 0 }}>
+            <div style={{ flex: "1 1 200px", minWidth: 0, maxWidth: 280 }}>
+              <TextInput
+                label="Drill note"
+                value={drillNote}
+                onChange={setDrillNote}
+                width="100%"
+              />
+            </div>
             <Button
               size="sm"
               variant="secondary"
@@ -173,49 +186,57 @@ export function OperatorBackupsView({
               isDisabled={phase.kind === "busy"}
               onClick={() => void triggerDrill("restore")}
             />
-          </HStack>
+          </div>
         </div>
 
-        <div className="table-wrap">
-          <table className="table responsive-table">
-            <thead>
-              <tr>
-                <th>Drill</th>
-                <th>Kind</th>
-                <th>Status</th>
-                <th>Verification</th>
-                <th>Digest</th>
-              </tr>
-            </thead>
-            <tbody>
-              {opState.drills.map((drill) => (
-                <tr key={drill.drill_id}>
-                  <td data-label="Drill">
-                    <VStack gap={0}>
-                      <span className="mono">{drill.drill_id}</span>
-                      <Text size="sm" color="secondary">{`${drill.actor} · ${formatTimestamp(drill.executed_at)}`}</Text>
-                    </VStack>
-                  </td>
-                  <td data-label="Kind">{drill.kind}</td>
-                  <td data-label="Status">
-                    <StatusInline
-                      tone={drill.status === "passed" ? "allow" : "ask"}
-                      dot
-                      label={drill.status}
-                    />
-                  </td>
-                  <td data-label="Verification">
-                    <VStack gap={0}>
-                      <Text size="sm">{`${drill.record_count} records · ${drill.verified_tables} tables (${drill.duration_ms}ms)`}</Text>
-                      <Text size="sm" color="secondary">{drill.note}</Text>
-                    </VStack>
-                  </td>
-                  <td data-label="Digest" className="mono">{drill.snapshot_digest.slice(0, 16)}</td>
+        {opState.drills.length === 0 ? (
+          <EmptyState
+            title="No backup or restore drills recorded yet"
+            description="Run a backup or restore verification drill above to establish a signed WAL recovery checkpoint."
+            icon={<GrdrIcon name="hard-drive" size={20} />}
+          />
+        ) : (
+          <div className="table-wrap">
+            <table className="table responsive-table">
+              <thead>
+                <tr>
+                  <th>Drill</th>
+                  <th>Kind</th>
+                  <th>Status</th>
+                  <th>Verification</th>
+                  <th>Digest</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {opState.drills.map((drill) => (
+                  <tr key={drill.drill_id}>
+                    <td data-label="Drill">
+                      <VStack gap={0}>
+                        <span className="mono">{drill.drill_id}</span>
+                        <Text size="sm" color="secondary">{`${drill.actor} · ${formatTimestamp(drill.executed_at)}`}</Text>
+                      </VStack>
+                    </td>
+                    <td data-label="Kind">{drill.kind}</td>
+                    <td data-label="Status">
+                      <StatusInline
+                        tone={drill.status === "passed" ? "allow" : "ask"}
+                        dot
+                        label={capitalizeLabel(drill.status)}
+                      />
+                    </td>
+                    <td data-label="Verification">
+                      <VStack gap={0}>
+                        <Text size="sm">{`${drill.record_count} records · ${drill.verified_tables} tables (${drill.duration_ms}ms)`}</Text>
+                        <Text size="sm" color="secondary">{drill.note}</Text>
+                      </VStack>
+                    </td>
+                    <td data-label="Digest" className="mono">{drill.snapshot_digest.slice(0, 16)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </VStack>
   );

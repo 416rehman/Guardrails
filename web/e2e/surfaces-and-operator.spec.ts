@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
 import type { Page, Request } from "@playwright/test";
 import {
   assertNoHorizontalOverflow,
@@ -39,7 +41,14 @@ async function navigateConsoleSection(
     .click();
 }
 
-async function navigateOperatorSection(page: Page, label: string): Promise<void> {
+async function navigateOperatorSection(
+  page: Page,
+  isMobile: boolean,
+  label: string,
+): Promise<void> {
+  if (isMobile) {
+    await page.getByRole("button", { name: "Toggle navigation menu" }).click();
+  }
   await page
     .locator('aside[aria-label="Operator navigation"] nav.rail-nav')
     .getByRole("button", { name: label, exact: true })
@@ -136,13 +145,14 @@ test.describe("Web Console Surfaces, WhyCard, and Operator Plane", () => {
 
     const diagnostics = attachDiagnostics(page);
     const waitRpcsSettled = trackRpcSettling(page);
+    const isMobile = testInfo.project.name === "mobile";
 
     await page.goto(`${opBaseUrl}/`);
     await expect(page.getByText("Deployment boundary")).toBeVisible();
     await waitRpcsSettled();
     await assertNoHorizontalOverflow(page, "Operator overview");
 
-    await navigateOperatorSection(page, "Upgrades");
+    await navigateOperatorSection(page, isMobile, "Upgrades");
     await expect(page.getByRole("heading", { name: "Runtime configuration revisions" })).toBeVisible();
     await waitRpcsSettled();
     await assertNoHorizontalOverflow(page, "Operator upgrades");
@@ -154,7 +164,7 @@ test.describe("Web Console Surfaces, WhyCard, and Operator Plane", () => {
     await expect(page.getByText(/Preflight for v/)).toBeVisible();
     await waitRpcsSettled();
 
-    await navigateOperatorSection(page, "Backups");
+    await navigateOperatorSection(page, isMobile, "Backups");
     await expect(page.getByRole("heading", { name: "Delivery targets and circuit breakers" })).toBeVisible();
     await waitRpcsSettled();
     await assertNoHorizontalOverflow(page, "Operator backups");

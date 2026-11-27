@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -12,6 +14,8 @@ import { EntityLink, type EntityTarget } from "@grdr/kit";
 import {
   Badge,
   Banner,
+  Button,
+  EmptyState,
   GrdrIcon,
   GrdrSelect,
   Heading,
@@ -121,14 +125,21 @@ export function UsersPage({
 
   const isPseudonymous = privacyConfig.identity_mode === "pseudonymous";
   const effectiveQuery = (localFilter || searchQuery).trim().toLowerCase();
+  const hasFilters = departmentFilter !== "all" || tierFilter !== "all" || effectiveQuery.length > 0;
   const aipFilter = useMemo(() => {
     const clauses: string[] = [];
     if (departmentFilter !== "all") clauses.push(`department = ${aipQuote(departmentFilter)}`);
     if (!isPseudonymous && tierFilter !== "all") clauses.push(`risk_tier = ${aipQuote(tierFilter)}`);
     if (effectiveQuery) {
-      clauses.push(
-        `(display_name:${aipQuote(effectiveQuery)} OR email:${aipQuote(effectiveQuery)} OR department:${aipQuote(effectiveQuery)})`,
-      );
+      if (isPseudonymous) {
+        clauses.push(
+          `(pseudonym_id:${aipQuote(effectiveQuery)} OR department:${aipQuote(effectiveQuery)})`,
+        );
+      } else {
+        clauses.push(
+          `(display_name:${aipQuote(effectiveQuery)} OR email:${aipQuote(effectiveQuery)} OR department:${aipQuote(effectiveQuery)})`,
+        );
+      }
     }
     return clauses.join(" AND ");
   }, [departmentFilter, tierFilter, isPseudonymous, effectiveQuery]);
@@ -168,6 +179,19 @@ export function UsersPage({
   function selectUser(userId: string) {
     setFallbackUserId(userId);
     onUpdateSearch?.({ userId });
+  }
+
+  function clearFilters() {
+    setFallbackDept("all");
+    setFallbackTier("all");
+    setFallbackQuery("");
+    onUpdateSearch?.({
+      dept: undefined,
+      tier: undefined,
+      q: undefined,
+      pageToken: undefined,
+      page: undefined,
+    });
   }
 
   const detailQuery = useQuery<UserDetailResponse>({
@@ -270,16 +294,18 @@ export function UsersPage({
       </div>
 
       <div className="facet-bar">
-        <HStack gap={2} align="center" style={{ flexWrap: "wrap" }}>
-          <TextInput
-            label="Filter users"
-            isLabelHidden
-            placeholder="Search name, email, department, agent..."
-            startIcon={<GrdrIcon name="search" size={14} color="var(--ink-muted)" />}
-            value={localFilter}
-            onChange={setLocalFilter}
-            width={260}
-          />
+        <HStack gap={2} align="center" style={{ flexWrap: "wrap", flex: "1 1 auto" }}>
+          <div style={{ flex: "1 1 200px", maxWidth: 280, minWidth: 0 }}>
+            <TextInput
+              label="Filter users"
+              isLabelHidden
+              placeholder="Search name, email, department, agent..."
+              startIcon={<GrdrIcon name="search" size={14} color="var(--ink-muted)" />}
+              value={localFilter}
+              onChange={setLocalFilter}
+              width="100%"
+            />
+          </div>
           <GrdrSelect
             label="Department"
             isLabelHidden
@@ -318,9 +344,24 @@ export function UsersPage({
             <Heading level={2}>{`Risk ranking (${totalUsersCount})`}</Heading>
           </div>
           {displayedUsers.length === 0 ? (
-            <Text color="secondary">
-              {usersPage.loading ? "Loading users..." : "No users match the active filters."}
-            </Text>
+            usersPage.loading ? (
+              <Text color="secondary">Loading users...</Text>
+            ) : (
+              <EmptyState
+                title={hasFilters ? "No users match the active filters" : "No synced directory users yet"}
+                description={
+                  hasFilters
+                    ? "Adjust department, risk tier, or search query to inspect directory entries."
+                    : "Configure directory sync in Connect & MDM to populate user risk profiles and assigned endpoints."
+                }
+                icon={<GrdrIcon name="users" size={20} />}
+                actions={
+                  hasFilters ? (
+                    <Button size="sm" variant="secondary" label="Clear filters" onClick={clearFilters} />
+                  ) : undefined
+                }
+              />
+            )
           ) : (
             <div className="ledger-list">
               {displayedUsers.map((u, idx) => {
@@ -330,9 +371,23 @@ export function UsersPage({
                 return (
                   <div
                     key={u.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={isSelected}
                     className={`ledger-row selectable ${isSelected ? "selected" : ""} ${highAttention ? "attention-row" : ""}`}
                     style={{ paddingInline: 12, cursor: "pointer" }}
-                    onClick={() => selectUser(u.id)}
+                    onClick={(e) => {
+                      if (e.target instanceof Element && e.target.closest("button, a")) {
+                        return;
+                      }
+                      selectUser(u.id);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        selectUser(u.id);
+                      }
+                    }}
                   >
                     <div className="ledger-row-main">
                       <VStack gap={1}>
