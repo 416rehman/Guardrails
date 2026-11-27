@@ -538,13 +538,15 @@ test("MDM templates render valid escaped configs matching checked-in files", () 
     } else if (rel.endsWith(".xml") || rel.endsWith(".admx") || rel.endsWith(".adml") || rel.endsWith(".mobileconfig")) {
       assert.ok(content.startsWith("<?xml"), `Expected XML header in ${rel}`);
     }
-    const sampleTag = "<" + "script>";
     const renderedCustom = renderBrowserMdmArtifact(fmt, {
-      mirrorOrigin: `https://mirror.corp.example:8443/?q=${sampleTag}&a=1`,
+      mirrorOrigin: "https://mirror.corp.example:8443",
+      chromeExtensionId: "ext_<b>",
+      firefoxExtensionId: "ff_<b>@corp",
       orgId: "org_<test>",
     });
     if (rel.endsWith(".xml") || rel.endsWith(".adml") || rel.endsWith(".mobileconfig")) {
-      assert.equal(renderedCustom.includes(sampleTag), false);
+      assert.equal(renderedCustom.includes("<b>"), false);
+      assert.ok(renderedCustom.includes("&lt;b&gt;"));
     }
   }
 });
