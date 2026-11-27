@@ -74,15 +74,23 @@ pub fn verify_windows_path_security(
     }
 
     let owner_sid = psid_to_string(owner_psid)?;
+    let owner_sddl = dacl_to_sddl(sec_desc, OWNER_SECURITY_INFORMATION)?;
+    let owner_token = parse_owner_sddl_token(&owner_sddl);
     let caller_sid = if protected {
         None
     } else {
         Some(current_process_sid()?)
     };
-    validate_owner_sid(&owner_sid, caller_sid.as_deref(), protected)?;
+    validate_owner_sid(&owner_sid, owner_token, caller_sid.as_deref(), protected)?;
 
-    let sddl = dacl_to_sddl(sec_desc)?;
-    validate_dacl_sddl(&sddl, &owner_sid, caller_sid.as_deref(), protected)
+    let sddl = dacl_to_sddl(sec_desc, DACL_SECURITY_INFORMATION)?;
+    validate_dacl_sddl(
+        &sddl,
+        &owner_sid,
+        owner_token,
+        caller_sid.as_deref(),
+        protected,
+    )
 }
 
 #[allow(
@@ -120,8 +128,10 @@ pub fn restrict_windows_dir_handle_dacl(handle: BorrowedHandle<'_>) -> Result<()
         )));
     }
     let owner_sid = psid_to_string(owner_psid)?;
+    let owner_sddl = dacl_to_sddl(cur_sd, OWNER_SECURITY_INFORMATION)?;
+    let owner_token = parse_owner_sddl_token(&owner_sddl);
     let caller_sid = current_process_sid()?;
-    validate_owner_sid(&owner_sid, Some(&caller_sid), false)?;
+    validate_owner_sid(&owner_sid, owner_token, Some(&caller_sid), false)?;
     if !caller_sid.starts_with("S-1-")
         || !caller_sid
             .bytes()
@@ -200,16 +210,16 @@ pub fn restrict_windows_dir_handle_dacl(handle: BorrowedHandle<'_>) -> Result<()
     unsafe_code,
     reason = "Win32 ConvertSecurityDescriptorToStringSecurityDescriptorW reads validated SD and NUL-scans bounded UTF-16 output"
 )]
-fn dacl_to_sddl(sec_desc: PSECURITY_DESCRIPTOR) -> Result<String, PeerError> {
+fn dacl_to_sddl(sec_desc: PSECURITY_DESCRIPTOR, info: u32) -> Result<String, PeerError> {
     let mut sddl_ptr: *mut u16 = null_mut();
     let mut sddl_len: u32 = 0;
     let ok = {
-        // SAFETY: `sec_desc` was returned by `GetSecurityInfo` with `DACL_SECURITY_INFORMATION` and remains alive in caller.
+        // SAFETY: `sec_desc` came from `GetSecurityInfo` containing the requested `info` section (`OWNER_SECURITY_INFORMATION` or `DACL_SECURITY_INFORMATION`) and remains alive in caller.
         unsafe {
             ConvertSecurityDescriptorToStringSecurityDescriptorW(
                 sec_desc,
                 SDDL_REVISION_1,
-                DACL_SECURITY_INFORMATION,
+                info,
                 &mut sddl_ptr,
                 &mut sddl_len,
             )
@@ -245,12 +255,20 @@ fn dacl_to_sddl(sec_desc: PSECURITY_DESCRIPTOR) -> Result<String, PeerError> {
         .map_err(|_| PeerError::Unverifiable("invalid UTF-16 SDDL string".to_string()))
 }
 
+fn parse_owner_sddl_token(sddl: &str) -> Option<&str> {
+    sddl.strip_prefix("O:")
+        .filter(|token| !token.is_empty() && !token.contains(':'))
+}
+
 fn validate_owner_sid(
     owner_sid: &str,
+    owner_sddl_token: Option<&str>,
     caller_sid: Option<&str>,
     protected: bool,
 ) -> Result<(), PeerError> {
-    if is_privileged_windows_sid(owner_sid) {
+    if is_privileged_windows_sid(owner_sid)
+        || owner_sddl_token.is_some_and(is_privileged_windows_sid)
+    {
         return Ok(());
     }
     if !protected && caller_sid.is_some_and(|caller| caller == owner_sid) {
@@ -262,6 +280,7 @@ fn validate_owner_sid(
 fn validate_dacl_sddl(
     sddl: &str,
     owner_sid: &str,
+    owner_sddl_token: Option<&str>,
     caller_sid: Option<&str>,
     protected: bool,
 ) -> Result<(), PeerError> {
@@ -289,7 +308,14 @@ fn validate_dacl_sddl(
             continue;
         }
         let inherit_only = ace_has_flag(ace_flags, b"IO");
-        if is_trusted_write_trustee(trustee, owner_sid, caller_sid, protected, inherit_only) {
+        if is_trusted_write_trustee(
+            trustee,
+            owner_sid,
+            owner_sddl_token,
+            caller_sid,
+            protected,
+            inherit_only,
+        ) {
             continue;
         }
         if is_broad_sddl_trustee(trustee) {
@@ -305,7 +331,7 @@ fn validate_dacl_sddl(
 fn is_privileged_windows_sid(sid: &str) -> bool {
     matches!(
         sid,
-        "S-1-5-18" | "S-1-5-19" | "S-1-5-20" | "S-1-5-32-544" | "SY" | "BA" | "LS" | "NS"
+        "S-1-5-18" | "S-1-5-19" | "S-1-5-20" | "S-1-5-32-544" | "SY" | "BA" | "LA" | "LS" | "NS"
     ) || sid.starts_with("S-1-5-80-")
 }
 
@@ -331,6 +357,7 @@ fn is_broad_sddl_trustee(trustee: &str) -> bool {
 fn is_trusted_write_trustee(
     trustee: &str,
     owner_sid: &str,
+    owner_sddl_token: Option<&str>,
     caller_sid: Option<&str>,
     protected: bool,
     inherit_only: bool,
@@ -347,6 +374,7 @@ fn is_trusted_write_trustee(
         }
         if matches!(trustee, "OW" | "S-1-3-4")
             && (is_privileged_windows_sid(owner_sid)
+                || owner_sddl_token.is_some_and(is_privileged_windows_sid)
                 || caller_sid.is_some_and(|caller| caller == owner_sid))
         {
             return true;
@@ -402,6 +430,7 @@ mod tests {
             validate_dacl_sddl(
                 "D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;;0x1200a9;;;AU)",
                 "S-1-5-18",
+                Some("SY"),
                 None,
                 true,
             )
@@ -411,6 +440,7 @@ mod tests {
             validate_dacl_sddl(
                 "D:(A;;FA;;;SY)(A;;FW;;;WD)",
                 "S-1-5-18",
+                Some("SY"),
                 Some("S-1-5-21-100-200"),
                 false,
             )
@@ -420,6 +450,7 @@ mod tests {
             validate_dacl_sddl(
                 "D:(A;;FA;;;SY)(A;;FA;;;S-1-5-21-100-200)",
                 "S-1-5-18",
+                Some("SY"),
                 Some("S-1-5-21-100-200"),
                 true,
             )
@@ -430,9 +461,174 @@ mod tests {
                 "D:(A;;FA;;;SY)(A;;FA;;;S-1-5-21-100-200)",
                 "S-1-5-21-100-200",
                 Some("S-1-5-21-100-200"),
+                Some("S-1-5-21-100-200"),
                 false,
             )
             .is_ok()
+        );
+    }
+
+    #[test]
+    fn local_admin_sddl_la_and_owner_token_are_accepted_while_foreign_500_fails_closed() {
+        let local_admin_numeric = "S-1-5-21-100-200-300-500";
+        let foreign_admin_numeric = "S-1-5-21-999-888-777-500";
+        let local_caller = "S-1-5-21-100-200-300-1001";
+
+        assert!(is_privileged_windows_sid("LA"));
+        assert_eq!(parse_owner_sddl_token("O:LA"), Some("LA"));
+        assert_eq!(
+            parse_owner_sddl_token("O:S-1-5-21-999-888-777-500"),
+            Some(foreign_admin_numeric)
+        );
+        for malformed in ["", "D:P", "O:", "O:LA:extra"] {
+            assert_eq!(parse_owner_sddl_token(malformed), None);
+            assert_eq!(
+                validate_owner_sid(
+                    local_admin_numeric,
+                    parse_owner_sddl_token(malformed),
+                    None,
+                    true,
+                ),
+                Err(PeerError::PathForeign)
+            );
+        }
+
+        let la_token = parse_owner_sddl_token("O:LA");
+        assert!(validate_owner_sid(local_admin_numeric, la_token, None, true).is_ok());
+        assert!(
+            validate_owner_sid(local_admin_numeric, la_token, Some(local_caller), false).is_ok()
+        );
+        assert!(
+            validate_dacl_sddl(
+                "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;LA)",
+                local_admin_numeric,
+                la_token,
+                Some(local_caller),
+                false,
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_dacl_sddl(
+                "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;LA)(A;;FA;;;OW)",
+                local_admin_numeric,
+                la_token,
+                Some(local_caller),
+                false,
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_dacl_sddl(
+                "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;LA)",
+                local_admin_numeric,
+                la_token,
+                None,
+                true,
+            )
+            .is_ok()
+        );
+        assert_eq!(
+            validate_dacl_sddl(
+                "D:P(A;OICI;FA;;;SY)(A;;FA;;;OW)",
+                local_admin_numeric,
+                la_token,
+                None,
+                true,
+            ),
+            Err(PeerError::PathForeign)
+        );
+
+        let foreign_token = parse_owner_sddl_token("O:S-1-5-21-999-888-777-500");
+        assert_eq!(
+            validate_owner_sid(foreign_admin_numeric, foreign_token, None, true),
+            Err(PeerError::PathForeign)
+        );
+        assert_eq!(
+            validate_owner_sid(
+                foreign_admin_numeric,
+                foreign_token,
+                Some(local_caller),
+                false,
+            ),
+            Err(PeerError::PathForeign)
+        );
+        assert_eq!(
+            validate_dacl_sddl(
+                "D:P(A;OICI;FA;;;SY)(A;;FA;;;OW)",
+                foreign_admin_numeric,
+                foreign_token,
+                Some(local_caller),
+                false,
+            ),
+            Err(PeerError::PathForeign)
+        );
+    }
+
+    #[test]
+    fn unprivileged_and_broad_sddl_trustees_fail_closed() {
+        let foreign_user = "S-1-5-21-100-200-300-1001";
+        for sid in ["LG", "BU", "WD", foreign_user] {
+            assert!(!is_privileged_windows_sid(sid));
+            assert_eq!(
+                validate_owner_sid(sid, Some(sid), None, true),
+                Err(PeerError::PathForeign)
+            );
+            assert_eq!(
+                validate_owner_sid(sid, Some(sid), Some("S-1-5-21-100-200-300-500"), false),
+                Err(PeerError::PathForeign)
+            );
+        }
+
+        assert_eq!(
+            validate_dacl_sddl(
+                "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;LG)",
+                "S-1-5-18",
+                Some("SY"),
+                Some("S-1-5-21-100-200-300-500"),
+                false,
+            ),
+            Err(PeerError::PathForeign)
+        );
+        assert!(matches!(
+            validate_dacl_sddl(
+                "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BU)",
+                "S-1-5-18",
+                Some("SY"),
+                Some("S-1-5-21-100-200-300-500"),
+                false,
+            ),
+            Err(PeerError::PathUnsafe(_))
+        ));
+        assert!(matches!(
+            validate_dacl_sddl(
+                "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;WD)",
+                "S-1-5-18",
+                Some("SY"),
+                Some("S-1-5-21-100-200-300-500"),
+                false,
+            ),
+            Err(PeerError::PathUnsafe(_))
+        ));
+        assert_eq!(
+            validate_dacl_sddl(
+                "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;S-1-5-21-100-200-300-1001)",
+                "S-1-5-18",
+                Some("SY"),
+                Some("S-1-5-21-100-200-300-500"),
+                false,
+            ),
+            Err(PeerError::PathForeign)
+        );
+        assert_eq!(
+            validate_dacl_sddl(
+                "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;S-1-5-21-100-200-300-1001)",
+                "S-1-5-18",
+                Some("SY"),
+                Some(foreign_user),
+                true,
+            ),
+            Err(PeerError::PathForeign)
         );
     }
 }

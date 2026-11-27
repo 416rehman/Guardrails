@@ -578,6 +578,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("grdr-cg-root-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
+        let root = fs::canonicalize(&root).unwrap();
         let cg_dir = root.join("sess-1");
         let plan = CgroupV2Plan {
             dir: cg_dir.clone(),
