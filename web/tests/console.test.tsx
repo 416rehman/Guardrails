@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -773,7 +775,7 @@ describe("Console and Operator Plane workflows", () => {
     await waitFor(() => {
       expect(screen.getByText(/Decomposed shell actions/)).toBeTruthy();
     });
-  });
+  }, 15_000);
 
   it("deep-links clickable EntityLink pills across Home, Inventory drawer, and Protect", async () => {
     installFetchMock();

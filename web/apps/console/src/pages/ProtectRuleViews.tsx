@@ -1,5 +1,8 @@
-import type { FormEvent } from "react";
-import type { ActionClass, Mode, ReplaySummary } from "@grdr/api";
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import type { ActionClass, Mode, PolicyPack, ReplaySummary } from "@grdr/api";
+import { pluralize } from "@grdr/i18n";
 import { EntityLink, type EntityTarget, ModeBadge, ModeControl, Quoted, VerdictBadge } from "@grdr/kit";
 import {
   Badge,
@@ -151,7 +154,7 @@ export function ReplayImpactCard({
 
         {replay.summary.samples.length > 0 && (
           <div className="table-wrap">
-            <table>
+            <table className="responsive-table">
               <thead>
                 <tr>
                   <th>Session</th>
@@ -164,7 +167,7 @@ export function ReplayImpactCard({
               <tbody>
                 {replay.summary.samples.map((sample) => (
                   <tr key={sample.attempt_id}>
-                    <td>
+                    <td data-label="Session">
                       <EntityLink
                         kind="session"
                         id={sample.session_id}
@@ -173,7 +176,7 @@ export function ReplayImpactCard({
                         onSelect={onOpenEntity}
                       />
                     </td>
-                    <td>
+                    <td data-label="Agent">
                       <EntityLink
                         kind="agent"
                         label={sample.agent_name}
@@ -181,13 +184,13 @@ export function ReplayImpactCard({
                         onSelect={onOpenEntity}
                       />
                     </td>
-                    <td>
+                    <td data-label="Target">
                       <Quoted text={sample.target} />
                     </td>
-                    <td>
+                    <td data-label="Current">
                       <VerdictBadge verdict={sample.current_verdict} />
                     </td>
-                    <td>
+                    <td data-label="After promotion">
                       <VerdictBadge verdict={sample.candidate_verdict} />
                     </td>
                   </tr>
@@ -207,5 +210,248 @@ export function ReplayImpactCard({
         </HStack>
       </VStack>
     </Card>
+  );
+}
+
+type CopyState = "idle" | "copied" | "unavailable";
+
+function escapeCedarString(raw: string): string {
+  return raw
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
+}
+
+function escapeCedarLikeSegment(raw: string): string {
+  return raw
+    .replace(/\\/g, "\\\\")
+    .replace(/\*/g, "\\*")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
+}
+
+function sanitizeCedarComment(raw: string): string {
+  return raw.replace(/[\r\n\u202a-\u202e\u2066-\u2069\u200e\u200f]+/g, " ").trim();
+}
+
+export function formatCedarPolicySource(packs: PolicyPack[], query: string): {
+  source: string;
+  ruleCount: number;
+  lockedCount: number;
+} {
+  const normalizedQuery = query.trim().toLowerCase();
+  const blocks: string[] = [];
+  let ruleCount = 0;
+  let lockedCount = 0;
+
+  for (const pack of packs) {
+    for (const rule of pack.rules) {
+      if (normalizedQuery) {
+        const haystack = [
+          rule.id,
+          rule.title,
+          pack.id,
+          pack.name,
+          ...rule.matcher.action_classes,
+          ...rule.matcher.agents,
+          ...rule.matcher.target_contains,
+          ...rule.matcher.target_prefixes,
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(normalizedQuery)) {
+          continue;
+        }
+      }
+      ruleCount += 1;
+      if (rule.locked) lockedCount += 1;
+
+      const safeRuleId = sanitizeCedarComment(rule.id);
+      const safePackId = sanitizeCedarComment(pack.id);
+      if (!rule.enabled || rule.mode === "off") {
+        blocks.push(
+          `// ${safeRuleId} (${safePackId}, mode=${rule.mode}, enabled=${rule.enabled}, inactive)\n// No active forbid statement emitted while mode is off or disabled.`,
+        );
+        continue;
+      }
+
+      const idEsc = escapeCedarString(rule.id);
+      const reasonEsc = escapeCedarString(rule.reason_template || rule.title);
+      const minGradeEsc = escapeCedarString(rule.min_grade || "G1");
+      const modeEsc = escapeCedarString(rule.mode);
+
+      const actionClause =
+        rule.matcher.action_classes.length === 0
+          ? 'action in Grdr::Action::"any"'
+          : rule.matcher.action_classes.length === 1
+            ? `action == Grdr::Action::"${escapeCedarString(rule.matcher.action_classes[0])}"`
+            : `action in [${rule.matcher.action_classes
+                .map((a) => `Grdr::Action::"${escapeCedarString(a)}"`)
+                .join(", ")}]`;
+
+      const conditions: string[] = [];
+      if (rule.matcher.agents.length > 0) {
+        const agentChecks = rule.matcher.agents.map(
+          (agent) => `principal in Grdr::Agent::"${escapeCedarString(agent.trim().toLowerCase())}"`,
+        );
+        conditions.push(
+          agentChecks.length === 1 ? agentChecks[0] : `(${agentChecks.join(" || ")})`,
+        );
+      }
+
+      const targetChecks = [
+        ...rule.matcher.target_prefixes.map(
+          (prefix) => `resource.target like "${escapeCedarLikeSegment(prefix)}*"`,
+        ),
+        ...rule.matcher.target_contains.map(
+          (part) => `resource.target like "*${escapeCedarLikeSegment(part)}*"`,
+        ),
+      ];
+      if (targetChecks.length > 0) {
+        conditions.push(
+          targetChecks.length === 1 ? targetChecks[0] : `(${targetChecks.join(" || ")})`,
+        );
+      }
+
+      const annotations = [
+        `@id("${idEsc}")`,
+        `@mode("${modeEsc}")`,
+        `@min_grade("${minGradeEsc}")`,
+        ...(rule.locked && rule.mode === "block" ? ['@final("true")'] : []),
+        `@message("${reasonEsc}")`,
+      ];
+      const whenBlock =
+        conditions.length > 0 ? `\nwhen {\n  ${conditions.join(" &&\n  ")}\n}` : "";
+
+      blocks.push(
+        `// ${safeRuleId} (${safePackId}, locked=${rule.locked})\n${annotations.join("\n")}\nforbid(\n  principal is Grdr::Session,\n  ${actionClause},\n  resource\n)${whenBlock};`,
+      );
+    }
+  }
+
+  return {
+    source: blocks.join("\n\n"),
+    ruleCount,
+    lockedCount,
+  };
+}
+
+export function CedarProjectionPanel({ packs }: { packs: PolicyPack[] }) {
+  const [selectedPackId, setSelectedPackId] = useState<string>("all");
+  const [filterQuery, setFilterQuery] = useState<string>("");
+  const [copyState, setCopyState] = useState<CopyState>("idle");
+  const copyTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
+
+  const visiblePacks = useMemo(
+    () => (selectedPackId === "all" ? packs : packs.filter((p) => p.id === selectedPackId)),
+    [packs, selectedPackId],
+  );
+  const { source, ruleCount, lockedCount } = useMemo(
+    () => formatCedarPolicySource(visiblePacks, filterQuery),
+    [visiblePacks, filterQuery],
+  );
+
+  function scheduleCopyReset() {
+    if (copyTimerRef.current !== null) {
+      window.clearTimeout(copyTimerRef.current);
+    }
+    copyTimerRef.current = window.setTimeout(() => {
+      setCopyState("idle");
+      copyTimerRef.current = null;
+    }, 2000);
+  }
+
+  async function copySource() {
+    if (!source) return;
+    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+      setCopyState("unavailable");
+      scheduleCopyReset();
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(source);
+      setCopyState("copied");
+      scheduleCopyReset();
+    } catch {
+      setCopyState("unavailable");
+      scheduleCopyReset();
+    }
+  }
+
+  return (
+    <section className="visual-panel" aria-label="Compiled Cedar policy projection">
+      <HStack justify="between" align="center" style={{ flexWrap: "wrap", gap: 10 }}>
+        <HStack gap={2} align="center">
+          <GrdrIcon name="code" size={16} color="var(--accent-primary)" />
+          <Heading level={2}>Read-only Cedar projection</Heading>
+        </HStack>
+        <HStack gap={2} align="center" style={{ flexWrap: "wrap" }}>
+          <Badge
+            variant="info"
+            icon={<GrdrIcon name="lock" size={11} />}
+            label={`${pluralize(ruleCount, "rule")} (${lockedCount} locked)`}
+          />
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={<GrdrIcon name={copyState === "copied" ? "check" : "file-code"} size={13} />}
+            label={
+              copyState === "copied"
+                ? "Copied"
+                : copyState === "unavailable"
+                  ? "Clipboard unavailable"
+                  : "Copy Cedar"
+            }
+            isDisabled={!source}
+            onClick={() => void copySource()}
+          />
+        </HStack>
+      </HStack>
+
+      <HStack gap={2} align="end" style={{ flexWrap: "wrap" }}>
+        <div style={{ flex: "1 1 200px", minWidth: 200 }}>
+          <GrdrSelect
+            label="Policy pack"
+            value={selectedPackId}
+            options={[
+              { value: "all", label: `All packs (${packs.length})` },
+              ...packs.map((pack) => ({
+                value: pack.id,
+                label: `${pack.name} (${pack.rules.length})`,
+              })),
+            ]}
+            onChange={(next) => setSelectedPackId(next)}
+            width="100%"
+          />
+        </div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <TextInput
+            label="Filter rules"
+            isLabelHidden
+            placeholder="Filter Cedar rules by id, action, or target..."
+            startIcon={<GrdrIcon name="search" size={13} color="var(--ink-muted)" />}
+            value={filterQuery}
+            onChange={setFilterQuery}
+            width="100%"
+          />
+        </div>
+      </HStack>
+
+      <pre className="cedar-code">
+        {source || "// No Cedar rules match the current pack or filter."}
+      </pre>
+    </section>
   );
 }

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
 import { useState } from "react";
 import { api, type ActionClass, type DecisionReceipt } from "@grdr/api";
 import { EntityLink, type EntityTarget, Quoted, VerdictBadge } from "@grdr/kit";
@@ -220,7 +222,7 @@ export function TesterPage({
               <strong>Next step: </strong>
               <span>{activeReceipt.next_step}</span>
             </div>
-            <div className="mono" style={{ color: "var(--ink-muted)" }}>
+            <div className="mono" style={{ color: "var(--ink-muted)", overflowWrap: "anywhere" }}>
               SHA-256: {activeReceipt.receipt_digest}
             </div>
           </VStack>

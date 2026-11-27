@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
 import { useMemo, useState } from "react";
 import { api, type Device } from "@grdr/api";
 import { EntityLink, type EntityTarget, Quoted } from "@grdr/kit";
@@ -272,7 +274,7 @@ function McpServersView({
             <Text color="secondary">No MCP server definitions match the active filters.</Text>
           ) : (
             <div className="table-wrap">
-              <table>
+              <table className="responsive-table">
                 <thead>
                   <tr>
                     <th>Name</th>
@@ -286,9 +288,9 @@ function McpServersView({
                 <tbody>
                   {pagedMcps.map(({ deviceId, deviceHostname, deviceOs, mcp }, idx) => (
                     <tr key={`${deviceHostname}-${mcp.name}-${idx}`}>
-                      <td><EntityLink kind="mcp" id={mcp.name} label={mcp.name} compact onSelect={onOpenEntity} /></td>
-                      <td><EntityLink kind="agent" label={mcp.source_agent} compact onSelect={onOpenEntity} /></td>
-                      <td>
+                      <td data-label="Name"><EntityLink kind="mcp" id={mcp.name} label={mcp.name} compact onSelect={onOpenEntity} /></td>
+                      <td data-label="Source agent"><EntityLink kind="agent" label={mcp.source_agent} compact onSelect={onOpenEntity} /></td>
+                      <td data-label="Endpoint">
                         <EntityLink
                           kind="device"
                           id={deviceId}
@@ -298,7 +300,7 @@ function McpServersView({
                           onSelect={() => onSelectDevice(deviceId)}
                         />
                       </td>
-                      <td>
+                      <td data-label="Transport">
                         <HStack gap={1} align="center">
                           <GrdrIcon
                             name={mcp.transport.toLowerCase() === "stdio" ? "terminal" : "globe"}
@@ -308,8 +310,8 @@ function McpServersView({
                           <span className="mono">{mcp.transport}</span>
                         </HStack>
                       </td>
-                      <td><Quoted text={mcp.command} /></td>
-                      <td>
+                      <td data-label="Command / endpoint"><Quoted text={mcp.command} /></td>
+                      <td data-label="Digest pin">
                         <Badge
                           variant={mcp.pinned ? "success" : "warning"}
                           icon={<GrdrIcon name={mcp.pinned ? "lock" : "alert-triangle"} size={11} />}

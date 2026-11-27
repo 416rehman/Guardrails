@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
 import { useEffect, useState, type FormEvent } from "react";
 import {
   api,
@@ -24,7 +26,7 @@ import {
 } from "@grdr/ui";
 import type { ConsoleSearchParams } from "../searchSchema";
 import { BrowserPoliciesSection } from "./BrowserPoliciesSection";
-import { ReplayImpactCard, RuleEditorCard } from "./ProtectRuleViews";
+import { CedarProjectionPanel, ReplayImpactCard, RuleEditorCard } from "./ProtectRuleViews";
 
 type EditorViewMode = "simple" | "advanced" | "code";
 
@@ -287,34 +289,7 @@ export function ProtectPage({
             </section>
           )}
 
-          {editorMode === "code" && (
-            <section className="visual-panel" aria-label="Compiled Cedar policy projection">
-              <HStack justify="between" align="center">
-                <HStack gap={2} align="center">
-                  <GrdrIcon name="code" size={16} color="var(--accent-primary)" />
-                  <Heading level={2}>Read-only Cedar projection</Heading>
-                </HStack>
-                <Badge
-                  variant="info"
-                  icon={<GrdrIcon name="lock" size={11} />}
-                  label={pluralize(packs.reduce((n, p) => n + p.rules.length, 0), "rule")}
-                />
-              </HStack>
-              <pre className="cedar-code">
-                {packs
-                  .flatMap((pack) =>
-                    pack.rules.map((rule) => {
-                      const actionExpr = rule.matcher.action_classes
-                        .map((a) => `Action::"${a}"`)
-                        .join(", ");
-                      const pat = rule.matcher.target_contains[0] ?? "*";
-                      return `// ${rule.id} (${pack.id}, mode=${rule.mode}, locked=${rule.locked})\nforbid(\n  principal in Agent::"*" ,\n  action in [${actionExpr}],\n  resource\n) when {\n  context.mode == "${rule.mode}" &&\n  context.target like "*${pat}*"\n};`;
-                    }),
-                  )
-                  .join("\n\n")}
-              </pre>
-            </section>
-          )}
+          {editorMode === "code" && <CedarProjectionPanel packs={packs} />}
 
           {isFormOpen && (
             <RuleEditorCard
