@@ -1,0 +1,95 @@
+{
+  "theme.SearchBar.label": {
+    "message": "بحث"
+  },
+  "home.meta.title": {
+    "message": "التوثيق"
+  },
+  "home.meta.description": {
+    "message": "الوثائق الرسمية وأدلة التشغيل وعقود البنية لمنصة Guardrails ADR"
+  },
+  "home.hero.kicker": {
+    "message": "grdr v0.1 | مستويات تحكم منفصلة | اتصال محلي موثق بنظام التشغيل"
+  },
+  "home.hero.title": {
+    "message": "توثيق Guardrails ADR"
+  },
+  "home.hero.subtitle": {
+    "message": "اكتشف وكلاء البرمجة بالذكاء الاصطناعي وخوادم MCP ديناميكياً، وطبّق سياسات Cedar وحزم الأساس الموقّعة محلياً، وشغّل النشر المعزول أو متعدد الخلايا دون أي اعتماديات شبكية خارجية."
+  },
+  "home.cta.quickstart": {
+    "message": "ابدأ التشغيل السريع"
+  },
+  "home.cta.search": {
+    "message": "البحث دون اتصال"
+  },
+  "home.cta.runbooks": {
+    "message": "أدلة التشغيل"
+  },
+  "home.command.label": {
+    "message": "تشغيل خادم وحدة التحكم والمشغّل المنفصلين واختبار الاتصال المحلي"
+  },
+  "home.track.quickstart.title": {
+    "message": "دليل البدء السريع"
+  },
+  "home.track.quickstart.desc": {
+    "message": "شغّل مستويي وحدة التحكم والمشغّل، واختبر اتصال الوكيل المحلي، وتحقق من الخطافات محلياً."
+  },
+  "home.track.hooks.title": {
+    "message": "الخطافات ووسيط MCP"
+  },
+  "home.track.hooks.desc": {
+    "message": "ثبّت خطافات الوكلاء القابلة للاسترجاع وافحص نداءات JSON-RPC MCP محلياً دون اتصال."
+  },
+  "home.track.cells.title": {
+    "message": "ملفات التخزين والخلايا"
+  },
+  "home.track.cells.desc": {
+    "message": "شغّل قواعد SQLite المدمجة وPostgreSQL 18 عالية التوافر وNATS JetStream وخلايا 4096 حزمة."
+  },
+  "home.track.runbooks.title": {
+    "message": "أدلة الحوادث (RB-01..12)"
+  },
+  "home.track.runbooks.desc": {
+    "message": "استعادة الخلايا خلال 4 ساعات، وتدوير المفاتيح، وإيقاف مطابقة الفوترة، وفرز استهلاك الأخطاء."
+  },
+  "home.track.extending.title": {
+    "message": "توسيع المنصة"
+  },
+  "home.track.extending.desc": {
+    "message": "أضف تعريفات الوكلاء وحزم سياسات Cedar ومحولات المنافذ دون تعديل النواة."
+  },
+  "home.track.contracts.title": {
+    "message": "مرجع العقود المولّد"
+  },
+  "home.track.contracts.desc": {
+    "message": "جداول محقّقة آلياً لرموز أخطاء GRDR المسجلة وطبقات الحزم وحدود الدعم."
+  },
+  "search.meta.title": {
+    "message": "البحث دون اتصال"
+  },
+  "search.meta.description": {
+    "message": "بحث نصي كامل داخل المتصفح عبر فهرس Pagefind الثابت"
+  },
+  "search.hero.kicker": {
+    "message": "بحث Pagefind محلي دون اتصال (صفر طلبات شبكية خارجية)"
+  },
+  "search.hero.title": {
+    "message": "البحث في التوثيق"
+  },
+  "search.hero.subtitle": {
+    "message": "يعمل البحث النصي الكامل محلياً داخل المتصفح باستخدام شرائح فهرس Pagefind الثابتة المبنية مع الموقع."
+  },
+  "search.fallback.prefix": {
+    "message": "تُحمَّل ملفات Pagefind الثابتة من البناء المجمّع (pnpm --dir website run build). يمكنك في البيئات المعزولة تصفح "
+  },
+  "search.fallback.or": {
+    "message": "أو"
+  },
+  "search.fallback.browse": {
+    "message": "أو الانتقال إلى"
+  },
+  "search.fallback.quickstart": {
+    "message": "دليل البدء السريع"
+  }
+}

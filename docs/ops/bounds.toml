@@ -1,0 +1,18 @@
+# Guardrails ADR Operations Runner Safety Bounds (aligned with contracts/limits.toml)
+schema = "grdr.ops.bounds.v1alpha1"
+
+[bounds]
+max_blast_radius_pct = 25
+max_concurrent_regions = 1
+cooldown_minutes = 30
+min_gross_margin_bps = 7000
+cell_soft_cap_pct = 70
+cell_reserve_pct = 20
+
+[usage_ledger]
+late_window_days = 35
+reconcile_max_drift_bps = 10
+payment_retry_days = 14
+suspended_grace_days = 60
+erasure_retention_days = 30
+max_ledger_samples = 100000

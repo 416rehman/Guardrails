@@ -37,6 +37,7 @@ schema = "grdr.architecture.v1"
   "grdr-peer-os",
   "grdr-rel-postgres",
   "grdr-rel-sqlite",
+  "grdr-saas",
   "grdr-sandbox-engine",
   "grdr-sensor-linux",
   "grdr-sensor-macos",

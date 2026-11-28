@@ -1,0 +1,29 @@
+# Guardrails ADR Known Issues Register (LC-4, docs/design/34)
+schema = "grdr.known-issues.v1alpha1"
+
+[[issues]]
+id = "KI-0001"
+component = "platform.macos.endpoint-security"
+severity = "medium"
+affected_versions = ["0.1.0"]
+workaround = "Run grdr-daemon in --profile user mode using hook shims and MCP stdio proxy until Apple Endpoint Security entitlement provisioning (pre-macos-notarisation) clears."
+precondition = "pre-macos-notarisation"
+status = "open"
+
+[[issues]]
+id = "KI-0002"
+component = "platform.windows.minifilter"
+severity = "medium"
+affected_versions = ["0.1.0"]
+workaround = "Use Windows user-mode ETW/WFP and grdr-hook enforcement while EV Authenticode/HLK driver signing (pre-windows-ev-signing) clears."
+precondition = "pre-windows-ev-signing"
+status = "open"
+
+[[issues]]
+id = "KI-0003"
+component = "platform.hosted.capacity"
+severity = "low"
+affected_versions = ["0.1.0"]
+workaround = "Deploy self-hosted with embedded SQLite, HA PostgreSQL 18, or distributed NATS + Postgres profiles until hosted production cell clusters are provisioned."
+precondition = "pre-hosted-capacity"
+status = "open"

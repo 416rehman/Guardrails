@@ -49,6 +49,7 @@ grdr-proto = { version = "0.1.0", path = "crates/grdr-proto" }
 grdr-rel-postgres = { version = "0.1.0", path = "crates/grdr-rel-postgres" }
 grdr-rel-sqlite = { version = "0.1.0", path = "crates/grdr-rel-sqlite" }
 grdr-review = { version = "0.1.0", path = "crates/grdr-review" }
+grdr-saas = { version = "0.1.0", path = "crates/grdr-saas" }
 grdr-sandbox-engine = { version = "0.1.0", path = "crates/grdr-sandbox-engine" }
 grdr-schema = { version = "0.1.0", path = "crates/grdr-schema" }
 grdr-schema-lint = { version = "0.1.0", path = "crates/grdr-schema-lint" }

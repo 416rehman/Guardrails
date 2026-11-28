@@ -1,0 +1,204 @@
+{
+  "schema": "grdr.docs-index.v1alpha1",
+  "total_documents": 33,
+  "documents": [
+    {
+      "path": "docs/product/concepts/architecture-and-trust.md",
+      "title": "Architecture and Trust Boundaries",
+      "sha256": "33e0c5206a54883e4eb51cda69299d266683d8cb599f639dd1dc52ae489b8b51",
+      "bytes": 2142
+    },
+    {
+      "path": "docs/product/embed/port-contracts.md",
+      "title": "Port Contracts and Workspace Layers",
+      "sha256": "60f444ffc539527ff6779add1ae7aba4b351486a60107a5b97862989fd064396",
+      "bytes": 2076
+    },
+    {
+      "path": "docs/product/how-to/configure-hooks-and-mcp.md",
+      "title": "Configure Agent Hooks and MCP Proxy",
+      "sha256": "df1946be1cfad673f1b2fa44230c754aa9bb9465faa8b018052d4a6015171eae",
+      "bytes": 1685
+    },
+    {
+      "path": "docs/product/how-to/manage-packs-and-cedar.md",
+      "title": "Manage Policy Packs and Cedar Rules",
+      "sha256": "1aa2f110c5baafbd5b143a16ffbe3295d55b691fa66a541a23148bde635f4399",
+      "bytes": 1414
+    },
+    {
+      "path": "docs/product/lifecycle/releases-and-upgrades.md",
+      "title": "Releases, Support Windows, and Upgrades",
+      "sha256": "a4bf1d1f934c866e0fc47c2bfbbc31cd0a0fe03e13730cd9b8c87e9144716762",
+      "bytes": 1620
+    },
+    {
+      "path": "docs/product/operate/saas-cells.md",
+      "title": "Hosted SaaS Cells, Portability, and Billing",
+      "sha256": "59003df30bc176b295c236bcce41c78ee4c1fb60c2a340290eebfdc42ef5ecd7",
+      "bytes": 2526
+    },
+    {
+      "path": "docs/product/operate/server-profiles.md",
+      "title": "Server Storage Profiles and Migrations",
+      "sha256": "f05584e679ca74292befbf2379bdcc07013cde1c4f51259fb07f81a455743d3c",
+      "bytes": 1938
+    },
+    {
+      "path": "docs/product/operate/support-bundles-and-verify.md",
+      "title": "Diagnostics, Support Bundles, and Offline Verification",
+      "sha256": "30f391087b635cbf9ea867d078a4179d5152d331af35100563940404a5d88d4a",
+      "bytes": 1337
+    },
+    {
+      "path": "docs/product/tutorials/quickstart.md",
+      "title": "Quickstart",
+      "sha256": "88bc4c6a819e5e12e79db2a0b362dcfe48b10fa169b93d3f71cf4a15fa71e6b3",
+      "bytes": 2044
+    },
+    {
+      "path": "docs/runbooks/FLEET-VERIFY.md",
+      "title": "Fleet Verification Checklist (`GRDR-VERIFY-<YYYY-MM-DD>`)",
+      "sha256": "6eebb304adb854231d1bf3eb06ed99e9afc0df585363dcc44b2d297bebb23cc2",
+      "bytes": 1829
+    },
+    {
+      "path": "docs/runbooks/RB-01-cell-restore-and-dr.md",
+      "title": "RB-01: Cell Backup Restore and Disaster Recovery",
+      "sha256": "920428a12e431d48055d74193ec2baa091cef3475ccdd79252efc276b5f71951",
+      "bytes": 1705
+    },
+    {
+      "path": "docs/runbooks/RB-02-release-upgrade-rollback.md",
+      "title": "RB-02: Release Upgrade and Minor Rollback",
+      "sha256": "40ef6bc1dd4fa4eb4979a6702f337c8bb14d8873bcd2deae790cef671942de34",
+      "bytes": 1361
+    },
+    {
+      "path": "docs/runbooks/RB-03-org-cell-migration-and-export.md",
+      "title": "RB-03: Organisation Cell Migration and Self-Hosted Export",
+      "sha256": "7459cc0d2ccca08287e1c133e922be823364cda998057769abcbd36341463491",
+      "bytes": 1479
+    },
+    {
+      "path": "docs/runbooks/RB-04-cell-split-and-rebalance.md",
+      "title": "RB-04: Cell Shard Split and Capacity Rebalance",
+      "sha256": "cc7b9b9e8e05906ff3ee85f53e79b506d0662da689ce1a32502d31f60f6d4fe3",
+      "bytes": 1277
+    },
+    {
+      "path": "docs/runbooks/RB-05-nats-jetstream-recovery.md",
+      "title": "RB-05: NATS JetStream Stream and Consumer Recovery",
+      "sha256": "202572689d695316b5214a1ad4e2000f3c86389b48e257dc15e9c03d76567f2d",
+      "bytes": 1179
+    },
+    {
+      "path": "docs/runbooks/RB-06-postgres-failover-and-pitr.md",
+      "title": "RB-06: PostgreSQL 18 Failover and Point-in-Time Recovery",
+      "sha256": "5ad12ae8002e56048a703c692167af53f3ac5cda4386750f060619d99402816b",
+      "bytes": 1230
+    },
+    {
+      "path": "docs/runbooks/RB-07-key-rotation-and-custody.md",
+      "title": "RB-07: Key Rotation, Custody Ceremony, and Compromise Yank",
+      "sha256": "87c9d26c99a20312d2f56e73dfd93d0457d9986d221083b8af298d3e6cdde169",
+      "bytes": 1285
+    },
+    {
+      "path": "docs/runbooks/RB-08-kill-switch-and-emergency-contain.md",
+      "title": "RB-08: Emergency Kill Switch and Scoped Containment",
+      "sha256": "e01660567a2cea5226b40994d8fb74626bdadff7e45fccadc5248b4ca271ede9",
+      "bytes": 1213
+    },
+    {
+      "path": "docs/runbooks/RB-09-billing-reconciliation-halt.md",
+      "title": "RB-09: Billing Reconciliation Halt and Usage Replay",
+      "sha256": "a5157b05d0296c050cb66eba8c398e3534e6dcbbc05f1beb879a2597e3c1c308",
+      "bytes": 1376
+    },
+    {
+      "path": "docs/runbooks/RB-10-slo-burn-rate-incident.md",
+      "title": "RB-10: SLO Error-Budget Burn Rate Incident",
+      "sha256": "6177f97a27376e84c4c1a58c488b9f54673a7fb3d014530d8d7ada8ffb3158a1",
+      "bytes": 1037
+    },
+    {
+      "path": "docs/runbooks/RB-11-tenant-abuse-dunning-erasure.md",
+      "title": "RB-11: Tenant Dunning, Suspension, and Legal-Hold Erasure",
+      "sha256": "db3ef9d4693ad2d4b053632efdc879de98921854f4cea71ef15dd786033f2c92",
+      "bytes": 1425
+    },
+    {
+      "path": "docs/runbooks/RB-12-sigstore-and-supply-chain-alert.md",
+      "title": "RB-12: Sigstore Transparency Log and Supply-Chain Alert",
+      "sha256": "77526625b3e12be567fb49a9033e10ef4e8f53282067db097509383726bc5551",
+      "bytes": 1214
+    },
+    {
+      "path": "docs/runbooks/RB-INDEX.md",
+      "title": "Guardrails ADR Operational Runbook Index",
+      "sha256": "54408a71b56eeb2de7508f9b4d70f4e832a713d8ec66e4c0ffb5cb90d52a0fb7",
+      "bytes": 1929
+    },
+    {
+      "path": "docs/extending/adding-a-port-adapter.md",
+      "title": "Adding a Port Adapter",
+      "sha256": "883cbec7d475a51128f1c4a57dd5963dabff65f81cb29caa742468b0ec2e2280",
+      "bytes": 1036
+    },
+    {
+      "path": "docs/extending/adding-a-rule-or-pack.md",
+      "title": "Adding a Rule or Policy Pack",
+      "sha256": "7792d92e190ca86aa725372a510227c5e81b36b34172ffa74b31b75cc58f053a",
+      "bytes": 729
+    },
+    {
+      "path": "docs/extending/adding-an-agent-manifest.md",
+      "title": "Adding an Agent Harness Manifest",
+      "sha256": "0ab44b137a5fe7c2e1afb670d545a2a91a349b60d1745b3ff7e334d22f354ae2",
+      "bytes": 840
+    },
+    {
+      "path": "docs/extending/README.md",
+      "title": "Extending Guardrails ADR",
+      "sha256": "603265a648e1c77cf9d1ec027a769dedc00e3e10cb1fcb669ac80515b548ec33",
+      "bytes": 967
+    },
+    {
+      "path": "docs/training/developer-lab.md",
+      "title": "Lab 1: Developer Endpoint Enforcement & Receipt Audit",
+      "sha256": "28c788a3125968de203fa2a602721516ba53c407378e578e712c893241fb12a5",
+      "bytes": 621
+    },
+    {
+      "path": "docs/training/operator-lab.md",
+      "title": "Lab 2: Operator Split-Plane, Recovery Drills, and SaaS Cells",
+      "sha256": "e778b5011958dd91ff96ac343179a71a5e33be28db53704ef664e0b39a5f4521",
+      "bytes": 893
+    },
+    {
+      "path": "docs/training/README.md",
+      "title": "Guardrails ADR Training Labs",
+      "sha256": "bd653db273f5a4f52922cd48298b0a514099f3d7c49796ce13b72fa548fbcd0b",
+      "bytes": 524
+    },
+    {
+      "path": "docs/product/reference/_generated/error-codes.md",
+      "title": "Registered Error Codes (`contracts/codes/registry.toml`)",
+      "sha256": "63ed7ca4b2497cbc98f568b51980827c83346c8494a8090f48c4e1b6542cb9ca",
+      "bytes": 35842
+    },
+    {
+      "path": "docs/product/reference/_generated/crate-layers.md",
+      "title": "Workspace Crate Layers (`contracts/architecture.toml`)",
+      "sha256": "60630af676aaadcdd345be9e35860b7735c110a6a304956116df4226235917da",
+      "bytes": 1965
+    },
+    {
+      "path": "docs/product/reference/_generated/surfaces-and-support.md",
+      "title": "Public Surfaces and Support Matrix",
+      "sha256": "134773dc7a14c684671eaf620673314f15cb786cd45bdc8318b8ee0c4c869b70",
+      "bytes": 5242
+    }
+  ]
+}

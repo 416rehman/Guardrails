@@ -1,0 +1,27 @@
+# Guardrails ADR
+
+> Open-source, local-first Agent Detection and Response platform (`grdr`) for developer endpoints, CI runners, AI coding harnesses, and MCP servers. Enforces Cedar policies and signed Essentials packs at tool boundaries over OS peer-authenticated IPC (`grdr-daemon`), records cryptographic decision receipts, and serves split Console and Operator planes over Connect/Protobuf RPCs (`grdr-server`).
+
+## Core Capabilities
+
+- Synchronous endpoint boundary enforcement across agent hooks (`grdr-hook`), stdio MCP proxying (`grdr mcp-proxy`), browser/WASM floor checks, and OS sensors (`grdr-sensor-*`)
+- Split Console (`--bind`) and Operator (`--operator-bind`) Connect/Protobuf planes backed by `embedded` (SQLite), `ha` (PostgreSQL 18), and `distributed` (PostgreSQL 18 + NATS JetStream + object storage) profiles
+- Multi-cell SaaS operations (`crates/grdr-saas`) providing region-pinned 4096-bucket shard routing, signed org migration bundles (`lake/` + `audit/`), idempotent usage metering, and zero-variance invoice reconciliation
+- Standalone offline-searchable Docusaurus 3 + Pagefind documentation site (`website/`) and supply-chain verification (`security/supply-chain/licence-headers.toml`, `licences.toml`, `contracts/architecture.toml`)
+
+## Quick Verification Commands
+
+- Rust workspace lint & test: `cargo clippy --workspace --locked --all-targets -- -D warnings` and `cargo test --workspace --locked`
+- Web & docs workspaces: `pnpm --dir web run build` and `pnpm --dir website run build`
+- Architecture, licence & docs gates: `node scripts/check-architecture.mjs`, `node scripts/licence-lint.mjs`, `node scripts/check-docs-gen.mjs --check`, `node scripts/check-docs.mjs`
+
+## Key Documentation Paths
+
+- [README.md](README.md): Overview, CLI/daemon/server quickstart, FAQ, and verification suite
+- [Quickstart Tutorial](docs/product/tutorials/quickstart.md): End-to-end local setup across Console, Operator, daemon IPC self-test, and hook CLI
+- [Server Storage Profiles](docs/product/operate/server-profiles.md): Running `embedded`, `ha`, and `distributed` profiles plus preflight and migrations
+- [Hosted SaaS Cells & Portability](docs/product/operate/saas-cells.md): Regional cell sharding, org migration bundles, and billing reconciliation
+- [Operational Runbooks](docs/runbooks/RB-INDEX.md): Recovery runbooks and fleet verification checklist
+- [Extending Guardrails](docs/extending/README.md): Authoring agent manifests, Cedar packs, and `grdr-ports` adapters
+- [Lifecycle & Upgrade Manifests](lifecycle.toml): Release lines alongside [upgrade-path.json](upgrade-path.json), [contracts/upgrade-path.json](contracts/upgrade-path.json), [contracts/support.toml](contracts/support.toml), and [contracts/plans.toml](contracts/plans.toml)
+- [Offline Corpus (generated during docs build)](website/static/llms-full.txt): Concatenated canonical docs with [website/static/docs-index.json](website/static/docs-index.json)

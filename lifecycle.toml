@@ -1,0 +1,35 @@
+# Guardrails ADR Release Lifecycle Manifest
+schema = "grdr.lifecycle.v1alpha1"
+support_contract = "contracts/support.toml"
+upgrade_path_contract = "contracts/upgrade-path.json"
+lifecycle_upgrade_plan = "upgrade-path.json"
+deprecations_manifest = "docs/lifecycle/deprecations.toml"
+known_issues_manifest = "docs/lifecycle/known-issues.toml"
+
+[current]
+release_line = "0.1"
+version = "0.1.0"
+status = "active-prerelease"
+stability = "beta"
+security_support_until = "2027-11-27"
+wire_major = 1
+schema_rev = 1
+
+[policy]
+cadence = "monthly"
+supported_minors_behind = 2
+lts_security_months = 24
+max_upgrade_minor_hop = 2
+rollback_window_minors = 1
+minimum_deprecation_notice_releases = 2
+minimum_deprecation_notice_days = 180
+
+[[lines]]
+line = "0.1"
+channel = "edge"
+latest_patch = "0.1.0"
+released_at = "2026-11-27"
+eol_at = "2027-11-27"
+upgrade_from = []
+supported_storage_profiles = ["embedded", "ha", "distributed"]
+notes = "Initial pre-GA baseline with split Console/Operator control planes and OS peer-authenticated daemon IPC."

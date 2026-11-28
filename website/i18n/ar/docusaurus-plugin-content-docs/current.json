@@ -1,0 +1,23 @@
+{
+  "sidebar.docsSidebar.category.Tutorials": {
+    "message": "الدروس التمهيدية"
+  },
+  "sidebar.docsSidebar.category.How-To Guides": {
+    "message": "أدلة التنفيذ"
+  },
+  "sidebar.docsSidebar.category.Architecture & Concepts": {
+    "message": "البنية والمفاهيم"
+  },
+  "sidebar.docsSidebar.category.Operate": {
+    "message": "التشغيل والإدارة"
+  },
+  "sidebar.docsSidebar.category.Reference (Generated)": {
+    "message": "المراجع المولدة"
+  },
+  "sidebar.docsSidebar.category.Runbooks & Fleet Verification": {
+    "message": "أدلة التشغيل والتحقق للأسطول"
+  },
+  "sidebar.docsSidebar.category.Extending & Training": {
+    "message": "التوسعة والتدريب"
+  }
+}

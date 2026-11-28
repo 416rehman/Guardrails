@@ -1,0 +1,20 @@
+{
+  "title": {
+    "message": "Guardrails ADR"
+  },
+  "item.label.Documentation": {
+    "message": "التوثيق"
+  },
+  "item.label.Runbooks": {
+    "message": "أدلة التشغيل"
+  },
+  "item.label.Extending": {
+    "message": "التوسعة"
+  },
+  "item.label.Search": {
+    "message": "البحث"
+  },
+  "item.label.llms.txt": {
+    "message": "llms.txt"
+  }
+}

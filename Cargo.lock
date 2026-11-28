@@ -1687,6 +1687,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "grdr-saas"
+version = "0.1.0"
+dependencies = [
+ "grdr-compat",
+ "grdr-crypto",
+ "grdr-model",
+ "grdr-ports",
+ "grdr-ports-testkit",
+ "grdr-schema",
+ "jiff 1.0.2",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
 name = "grdr-sandbox-engine"
 version = "0.1.0"
 dependencies = [

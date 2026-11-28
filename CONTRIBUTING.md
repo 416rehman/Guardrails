@@ -1,14 +1,15 @@
 # Contributing to Guardrails ADR
 
 Thank you for helping. This file covers both ways to contribute: content
-(rules, fingerprints, policy packs and other data) and code. AI_POLICY.md
+(rules, fingerprints, policy packs and other data) and code. [docs/governance/AI_POLICY.md](docs/governance/AI_POLICY.md)
 applies to every contribution, whoever or whatever wrote it.
 
 ## How the project works
 
-Guardrails ADR is built agent-first, with plain Claude Code. The team is the
-subagents in `.claude/agents/`; a session told to work an issue follows the
-skill `.claude/skills/grdr-work-issue/` and spawns them:
+Guardrails ADR is built agent-first. The team roles and review gates are
+configured in `.claude/agents/`, `.claude/skills/`, and [GOVERNANCE.md](GOVERNANCE.md); a
+session told to work an issue follows `.claude/skills/grdr-work-issue/` and
+spawns independent reviewers:
 
 - Every work item is a GitHub issue in this repository. Labels carry its
   fields; the agent that writes an issue's spec never implements it.
@@ -29,7 +30,7 @@ agents.
   GPL-2.0-only OR BSD-2-Clause. Documentation is Apache-2.0 OR CC-BY-4.0.
   There is no CLA and no sign-off. You keep your copyright. By opening a
   pull request you submit your contribution under the project's licence
-  (Apache-2.0 section 5); see AI_POLICY.md.
+  (Apache-2.0 section 5); see [docs/governance/AI_POLICY.md](docs/governance/AI_POLICY.md).
 - Commit messages are one line: a Conventional Commit subject such as
   `fix(grdr-core): return unresolved for here-doc bodies`, at most 72
   characters, with no body and no trailers.
@@ -39,11 +40,11 @@ agents.
   commands and their lockfiles are refused in review. The npm registry is only where packages are fetched from and
   published to.
 - Do not copy, translate or paraphrase code or rule logic from sources
-  listed in security/supply-chain/do-not-read.toml (for example Elastic detection
+  listed in [security/supply-chain/do-not-read.toml](security/supply-chain/do-not-read.toml) (for example Elastic detection
   rules under the Elastic License, SigmaHQ rules under the DRL, AGPL or GPL
   engines). Reading them to understand a technique is fine; reproducing
   them is not.
-- Security problems go to SECURITY.md, never to a public issue.
+- Security problems go to [SECURITY.md](SECURITY.md), never to a public issue.
 
 ## Content: the open lane
 
@@ -84,7 +85,7 @@ adapters).
    "open-to-contributors", or open an issue describing the problem and wait
    for a lead to specify it. Pull requests that link no accepted item are
    closed automatically unless you are on the vouch list
-   (governance/vouched.txt); if you are, they stay open but cannot merge
+   ([docs/governance/vouched.txt](docs/governance/vouched.txt)); if you are, they stay open but cannot merge
    until an accepted item is linked. You get on the list with one merged
    content contribution, an accepted issue with a reproducer, or a
    maintainer's vouch.
@@ -94,23 +95,24 @@ adapters).
    the workspace Cargo.toml and is checked by CI) and run the gates:
    `cargo fmt --all -- --check`,
    `cargo clippy --workspace --locked --all-targets -- -D warnings`,
-   `cargo test --workspace --locked` and `cargo deny --config security/deny.toml check`. CI runs the same
+   `cargo test --workspace --locked`, `cargo deny --config security/deny.toml check`,
+   and `node scripts/check-architecture.mjs`. CI runs the same
    commands. A clean clone should be green in under 15 minutes
    on Windows, macOS or Linux, with no kernel, Swift, Node or GPU
    toolchain. If it is not, that is a bug; please report it.
-4. Keep to the layer rules of `architecture.toml`; review checks them until
-   the architecture lint (WI-0003) lands.
+4. Keep to the layer rules of [`contracts/architecture.toml`](contracts/architecture.toml);
+   `node scripts/check-architecture.mjs` enforces layer edges, code registration, and plan invariants in CI.
 5. Changes to public crates, wire formats, the pack format, the Cedar
-   schema or anything else listed in GOVERNANCE.md need an accepted RFC
-   first.
-6. Changes to trust-core paths (security/trust-core.paths) need the
+   schema or anything else listed in [GOVERNANCE.md](GOVERNANCE.md) need an accepted RFC
+   first in [rfcs/](rfcs/).
+6. Changes to trust-core paths ([security/trust-core.paths](security/trust-core.paths)) need the
    security and adversarial reviews, two independent passing reviews on
    different models, and extra evidence (a reference model, differential
    tests, matrix and soak runs); a trust-core maintainer's review adds
    evidence. Talk to a maintainer before starting.
 7. New dependencies need a licence on the allow-list in
-   security/supply-chain/licences.toml and pass the licence review. Adding a
-   licence to that list changes security/supply-chain/, a trust-core path, and is a
+   [security/supply-chain/licences.toml](security/supply-chain/licences.toml) and pass the licence review. Adding a
+   licence to that list changes `security/supply-chain/`, a trust-core path, and is a
    change of its own.
 
 ### Contrib adapters
@@ -122,11 +124,11 @@ after two releases with a failing kit.
 
 ## Every pull request
 
-Fill in the template:
+Fill in [the pull request template](.github/PULL_REQUEST_TEMPLATE.md):
 
 - Work item: `Closes #<n>`.
 - Metadata: the tool and model that wrote the change, or `none` (see
-  AI_POLICY.md).
+  [docs/governance/AI_POLICY.md](docs/governance/AI_POLICY.md)).
 - Testing: the commands you ran and their output.
 - Risk: what could break, and where.
 - How to revert.
@@ -156,6 +158,6 @@ you get the same category counts the project's own agents get.
 
 Every issue and pull request gets a response, from a maintainer or from the
 project's triage agent marked as one, and every content pull request a
-decision. community/health.md publishes the median times, by
+decision. [docs/community/health.md](docs/community/health.md) publishes the median times, by
 affiliation, so anyone can check that outside contributions are not
 handled more slowly.

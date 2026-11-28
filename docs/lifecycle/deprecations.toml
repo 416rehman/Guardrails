@@ -1,0 +1,22 @@
+# Guardrails ADR Deprecation Schedule
+schema = "grdr.deprecations.v1alpha1"
+minimum_notice_releases = 2
+minimum_notice_days = 180
+
+[[items]]
+id = "DEP-0001"
+surface = "prototype-rest-api-v1"
+status = "removed"
+announced_in = "0.1.0"
+removed_in = "0.1.0"
+replacement = "Connect/Protobuf services under grdr.api.*.v1alpha1 (including grdr.api.operator.v1alpha1.OperatorService)"
+notes = "Pre-release REST JSON endpoints were replaced by typed Connect/Protobuf contracts prior to v0.1.0."
+
+[[items]]
+id = "DEP-0002"
+surface = "daemon-http-listener"
+status = "removed"
+announced_in = "0.1.0"
+removed_in = "0.1.0"
+replacement = "OS peer-authenticated IPC endpoints via grdr-daemon --decide-endpoint / --local-endpoint"
+notes = "Loopback TCP daemon ports were removed in favor of Unix domain socket and Windows named-pipe peer authentication."

@@ -1,0 +1,41 @@
+{
+  "link.title.Guides": {
+    "message": "الأدلة"
+  },
+  "link.title.Operations": {
+    "message": "العمليات"
+  },
+  "link.title.Contracts & Offline Corpus": {
+    "message": "العقود والفهرس المحلي"
+  },
+  "link.item.label.Quickstart": {
+    "message": "البدء السريع"
+  },
+  "link.item.label.Configure Hooks & MCP": {
+    "message": "إعداد الخطافات ووسيط MCP"
+  },
+  "link.item.label.Server Storage Profiles": {
+    "message": "ملفات تخزين الخادم"
+  },
+  "link.item.label.Runbook Index (RB-01..12)": {
+    "message": "فهرس أدلة التشغيل (RB-01..12)"
+  },
+  "link.item.label.Fleet Verification Checklist": {
+    "message": "قائمة التحقق للأسطول"
+  },
+  "link.item.label.Hosted SaaS Cells": {
+    "message": "خلايا الخدمة المستضافة"
+  },
+  "link.item.label.Registered Error Codes": {
+    "message": "رموز الأخطاء المسجلة"
+  },
+  "link.item.label.Workspace Crate Layers": {
+    "message": "طبقات حزم مساحة العمل"
+  },
+  "link.item.label.Full Offline Index (JSON)": {
+    "message": "الفهرس الكامل دون اتصال (JSON)"
+  },
+  "copyright": {
+    "message": "Apache-2.0 / CC-BY-4.0 | مؤلفو Guardrails ADR"
+  }
+}

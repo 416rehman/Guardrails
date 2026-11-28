@@ -1,0 +1,41 @@
+{
+  "schema": "grdr.upgrade-path.v1alpha1",
+  "generated_from": "lifecycle.toml",
+  "canonical_contract": "contracts/upgrade-path.json",
+  "max_minor_hop": 2,
+  "rollback_window_minors": 1,
+  "sensor_skew": {
+    "behind_minors": 2,
+    "ahead_minors": 1
+  },
+  "lines": [
+    {
+      "line": "0.1",
+      "min_version": "0.1.0",
+      "max_version": "0.1.x",
+      "wire_major": 1,
+      "schema_rev": 1,
+      "supported_profiles": ["embedded", "ha", "distributed"],
+      "direct_upgrade_targets": ["0.1"],
+      "direct_rollback_targets": [],
+      "preflight_command": "grdr server preflight --profile ha --strict",
+      "migrate_command": "grdr server migrate --from-data-dir ./grdr-data --target-bucket-dir ./grdr-object-store --dry-run"
+    }
+  ],
+  "paths": [
+    {
+      "from_line": "0.1",
+      "to_line": "0.1",
+      "hops": ["0.1"],
+      "requires_schema_migration": false,
+      "zero_downtime_supported": true,
+      "runbook": "docs/runbooks/RB-02-release-upgrade-rollback.md",
+      "steps": [
+        "Run grdr server preflight --profile <embedded|ha|distributed> --strict against the target deployment profile.",
+        "Preview schema and object migration with grdr server migrate --from-data-dir <PATH> --target-bucket-dir <PATH> --dry-run, then apply without --dry-run.",
+        "Drain secondary replicas and roll server binaries within the -2/+1 sensor skew window.",
+        "Verify grdr doctor and complete the Fleet Verification checklist."
+      ]
+    }
+  ]
+}
