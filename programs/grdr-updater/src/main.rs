@@ -94,6 +94,7 @@ fn main() -> ExitCode {
 }
 
 fn run_cli(cli: Cli) -> Result<(), String> {
+    grdr_crypto::startup_crypto_self_test_from_env().map_err(|e| e.to_string())?;
     let clock = SystemClock::new();
     match cli.command {
         UpdaterCommand::PrepareHandover {

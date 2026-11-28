@@ -108,6 +108,8 @@ GRDR-CRYPTO-0005 = { owner = "grdr-crypto", file = "crates/grdr-crypto/src/lib.r
 GRDR-CRYPTO-0006 = { owner = "grdr-crypto", file = "crates/grdr-crypto/src/lib.rs" }
 GRDR-CRYPTO-0007 = { owner = "grdr-crypto", file = "crates/grdr-crypto/src/lib.rs" }
 GRDR-CRYPTO-0008 = { owner = "grdr-crypto", file = "crates/grdr-crypto/src/lib.rs" }
+GRDR-CRYPTO-0009 = { owner = "grdr-crypto", file = "crates/grdr-crypto/src/lib.rs" }
+GRDR-CRYPTO-0010 = { owner = "grdr-crypto", file = "crates/grdr-crypto/src/lib.rs" }
 GRDR-DAEMON-0001 = { owner = "grdr-model", file = "crates/grdr-model/src/error.rs" }
 GRDR-DAEM-0001 = { owner = "grdr-daemon", file = "programs/grdr-daemon/src/main.rs" }
 GRDR-DAEM-0002 = { owner = "grdr-daemon", file = "programs/grdr-daemon/src/main.rs" }

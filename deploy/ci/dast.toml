@@ -6,11 +6,14 @@ ready_poll_seconds = 5
 [[target]]
 name = "console"
 url = "http://127.0.0.1:8787/"
+auth = "none"
 
 [[target]]
 name = "api-health"
 url = "http://127.0.0.1:8787/grdr.api.overview.v1alpha1.OverviewService/GetHealth?encoding=json"
+auth = "none"
 
 [[target]]
 name = "api-overview"
 url = "http://127.0.0.1:8787/grdr.api.overview.v1alpha1.OverviewService/GetOverview?encoding=json"
+auth = "console-bearer"

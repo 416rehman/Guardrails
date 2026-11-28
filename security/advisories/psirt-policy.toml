@@ -1,0 +1,34 @@
+# Guardrails ADR PSIRT, CRA Article 14 Reporting & Advisory Policy (docs/design/35, SP-26..SP-32).
+# Drives security/advisories/generate_advisories.py (P14).
+schema = "grdr.psirt-policy.v1alpha1"
+security_policy_doc = "SECURITY.md"
+support_contract = "contracts/support.toml"
+release_checklist = "deploy/release/checklist.toml"
+
+[formats]
+csaf_version = "2.0"
+csaf_profile = "csaf_vex"
+openvex_context = "https://openvex.dev/ns/v0.2.0"
+osv_schema_version = "1.6.0"
+
+[sla]
+bundled_dependency_patch_days = 7
+kev_priority_triage_hours = 24
+pre_disclosure_embargo_default_days = 90
+
+[cra_article_14]
+early_warning_hours = 24
+initial_notification_hours = 72
+final_report_exploited_vulnerability_days = 14
+final_report_severe_incident_days = 30
+
+[pgp]
+algorithm = "Ed25519 / OpenPGP"
+custody = "release-signer environment secret (subkey) + rotated announcement one release ahead"
+announcement_min_releases_ahead = 1
+key_fingerprint_status = "pending-ceremony"
+
+[external_preconditions]
+id = "pre-external-audit"
+status = "pending_external_precondition"
+report_index = "security/advisories/external-audits.toml"

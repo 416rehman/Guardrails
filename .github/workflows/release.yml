@@ -1,0 +1,546 @@
+name: release
+
+# Reusable multi-OS build, SBOM, OpenVEX, CSAF, SLSA L3, FIPS, container, Helm,
+# independent rebuilder, and TUF release manifest workflow (docs/design/24 section 10, E5.1, E5.5).
+
+on:
+  workflow_call:
+    inputs:
+      releases_json:
+        description: JSON array of released component paths and tags from release-please
+        required: false
+        type: string
+        default: '[]'
+      channel:
+        description: Release channel (nightly, canary, beta, broad, lts)
+        required: false
+        type: string
+        default: broad
+      ceremony:
+        description: Optional TUF root ceremony mode (none, root-rotation)
+        required: false
+        type: string
+        default: none
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Release channel (nightly, canary, beta, broad, lts)
+        required: false
+        type: string
+        default: canary
+      ceremony:
+        description: Optional TUF root ceremony mode (none, root-rotation)
+        required: false
+        type: string
+        default: none
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify-tags:
+    name: Verify tags, checklist, roots, and support matrix
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      bundle_version: ${{ steps.meta.outputs.bundle_version }}
+      commit: ${{ steps.meta.outputs.commit }}
+      channel: ${{ steps.meta.outputs.channel }}
+      source_date_epoch: ${{ steps.meta.outputs.source_date_epoch }}
+    steps:
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+        with:
+          install: "false"
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      - name: Verify release configuration, roots, advisories, fuzz parity, and support matrix drift
+        run: |
+          python3 -I -B deploy/release/release_tools.py check-config
+          python3 -I -B deploy/release/release_tools.py support-matrix --check-workflow .github/workflows/release.yml
+          python3 -I -B deploy/release/release_tools.py check-fuzz-parity --targets security/fuzz-targets.toml --build-script .clusterfuzzlite/build.sh
+          python3 -I -B deploy/release/test_release_tools.py -v
+          python3 -I -B security/advisories/generate_advisories.py --check-dir security/advisories/records
+          python3 -I -B security/advisories/test_advisories.py -v
+      - name: Verify release tags point exactly at HEAD commit and enforce main ref guard
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref }}
+          RELEASES: ${{ inputs.releases_json || '[]' }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$REF_NAME" != "refs/heads/main" ]; then
+            echo "::error::release workflow_dispatch is restricted to refs/heads/main (got $REF_NAME)"
+            exit 1
+          fi
+          if [ "$EVENT_NAME" = "workflow_call" ] && [ "$RELEASES" = "[]" ]; then
+            echo "::error::workflow_call requires non-empty releases_json"
+            exit 1
+          fi
+          if [ "$RELEASES" != "[]" ]; then
+            tag_count=0
+            while IFS= read -r tag; do
+              [ -z "$tag" ] && continue
+              tag_count=$((tag_count + 1))
+              if ! git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
+                echo "::error::Missing expected release tag refs/tags/$tag"
+                exit 1
+              fi
+              tag_commit=$(git rev-list -n 1 "refs/tags/$tag")
+              if [ "$tag_commit" != "$HEAD_SHA" ]; then
+                echo "::error::Tag $tag ($tag_commit) does not equal HEAD ($HEAD_SHA)"
+                exit 1
+              fi
+            done < <(jq -er '.[].tag' <<< "$RELEASES")
+            if [ "$tag_count" -eq 0 ]; then
+              echo "::error::releases_json contained zero tags"
+              exit 1
+            fi
+          fi
+      - id: meta
+        env:
+          CHANNEL: ${{ inputs.channel || 'broad' }}
+        run: |
+          ver=$(tr -d ' \r\n' < deploy/release/VERSION)
+          epoch=$(git show -s --format=%ct HEAD)
+          {
+            echo "bundle_version=$ver"
+            echo "commit=$GITHUB_SHA"
+            echo "channel=$CHANNEL"
+            echo "source_date_epoch=$epoch"
+          } >> "$GITHUB_OUTPUT"
+
+  build-binaries:
+    needs: verify-tags
+    name: Build and SBOM (${{ matrix.target }}, fips=${{ matrix.fips }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: x86_64
+            runner: ubuntu-26.04
+            target: x86_64-unknown-linux-musl
+            fips: false
+          - os: linux
+            arch: aarch64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            fips: false
+          - os: linux
+            arch: x86_64
+            runner: ubuntu-26.04
+            target: x86_64-unknown-linux-gnu
+            fips: true
+          - os: linux
+            arch: aarch64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            fips: false
+          - os: macos
+            arch: aarch64
+            runner: macos-26
+            target: aarch64-apple-darwin
+            fips: false
+          - os: macos
+            arch: x86_64
+            runner: macos-26
+            target: x86_64-apple-darwin
+            fips: false
+          - os: windows
+            arch: x86_64
+            runner: windows-2025
+            target: x86_64-pc-windows-msvc
+            fips: true
+          - os: windows
+            arch: aarch64
+            runner: windows-2025
+            target: aarch64-pc-windows-msvc
+            fips: false
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install pinned target std and OS cross tools
+        env:
+          TARGET: ${{ matrix.target }}
+          OS_KIND: ${{ matrix.os }}
+        run: |
+          python3 -I -B deploy/release/release_tools.py ensure-rust-target --target "$TARGET"
+          if [ "$OS_KIND" = "linux" ] && [[ "$TARGET" == *musl ]]; then
+            sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
+          fi
+      - name: Build release binaries for exact target and verify binary architecture
+        env:
+          SOURCE_DATE_EPOCH: ${{ needs.verify-tags.outputs.source_date_epoch }}
+          TARGET: ${{ matrix.target }}
+          OS_KIND: ${{ matrix.os }}
+          FIPS_MODE: ${{ matrix.fips }}
+          BUNDLE_VER: ${{ needs.verify-tags.outputs.bundle_version }}
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
+        run: |
+          if [ "$OS_KIND" = "macos" ] && [ "$FIPS_MODE" = "true" ]; then
+            echo "::error::macOS carries no FIPS claim (docs/design/24 section 13)"
+            exit 1
+          fi
+          mkdir -p dist-out
+          flags=(--release --locked -p grdr -p grdr-daemon -p grdr-server --target "$TARGET")
+          if [ "$FIPS_MODE" = "true" ]; then
+            flags+=(--features fips)
+            if [ "$(uname -m)" = "x86_64" ] || [ "$OS_KIND" = "linux" ]; then
+              cargo test -p grdr-crypto -p grdr -p grdr-daemon -p grdr-server -p grdr-updater --locked --features fips
+            fi
+          fi
+          cargo build "${flags[@]}"
+          bin_dir="target/$TARGET/release"
+          ext=""
+          if [ "$OS_KIND" = "windows" ]; then ext=".exe"; fi
+          suffix=""
+          if [ "$FIPS_MODE" = "true" ]; then suffix="-fips"; fi
+          bundle_dir="dist-out/grdr-${BUNDLE_VER}-${TARGET}${suffix}"
+          mkdir -p "$bundle_dir"
+          cp "$bin_dir/grdr$ext" "$bin_dir/grdr-daemon$ext" "$bin_dir/grdr-server$ext" "$bundle_dir/"
+          python3 -I -B deploy/release/release_tools.py verify-binary-arch --target "$TARGET" \
+            --binary "$bundle_dir/grdr$ext" \
+            --binary "$bundle_dir/grdr-daemon$ext" \
+            --binary "$bundle_dir/grdr-server$ext"
+          tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" -czf "dist-out/grdr-${BUNDLE_VER}-${TARGET}${suffix}.tar.gz" -C dist-out "grdr-${BUNDLE_VER}-${TARGET}${suffix}" 2>/dev/null \
+            || tar -czf "dist-out/grdr-${BUNDLE_VER}-${TARGET}${suffix}.tar.gz" -C dist-out "grdr-${BUNDLE_VER}-${TARGET}${suffix}"
+          sha256sum "$bundle_dir/grdr$ext" "$bundle_dir/grdr-daemon$ext" "$bundle_dir/grdr-server$ext" > "dist-out/grdr-${BUNDLE_VER}-${TARGET}${suffix}.bins.sha256"
+          rm -rf "$bundle_dir"
+      - name: Generate CycloneDX 1.6 workspace SBOM, cross-check, and verify FIPS policy
+        env:
+          TARGET: ${{ matrix.target }}
+          OS_KIND: ${{ matrix.os }}
+          FIPS_MODE: ${{ matrix.fips }}
+          BUNDLE_VER: ${{ needs.verify-tags.outputs.bundle_version }}
+        run: |
+          suffix=""
+          if [ "$FIPS_MODE" = "true" ]; then suffix="-fips"; fi
+          sbom="dist-out/grdr-${BUNDLE_VER}-${TARGET}${suffix}.cdx.json"
+          fips_args=()
+          if [ "$FIPS_MODE" = "true" ]; then fips_args=(--fips); fi
+          python3 -I -B deploy/release/release_tools.py generate-workspace-sbom \
+            --out "$sbom" \
+            --version "$BUNDLE_VER" \
+            --os "$OS_KIND" \
+            --target "$TARGET" \
+            --package grdr --package grdr-daemon --package grdr-server \
+            "${fips_args[@]}"
+          python3 -I -B deploy/release/release_tools.py cross-check-sbom \
+            --sbom "$sbom" \
+            --target "$TARGET" \
+            --package grdr --package grdr-daemon --package grdr-server \
+            "${fips_args[@]}"
+          python3 -I -B deploy/release/release_tools.py validate-fips-sbom \
+            --sbom "$sbom" --os "$OS_KIND" "${fips_args[@]}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-bin-${{ matrix.target }}-fips-${{ matrix.fips }}
+          path: dist-out/
+
+  containers-and-helm:
+    needs: verify-tags
+    name: Containerfiles, FIPS image scan, and Helm chart lint
+    runs-on: ubuntu-26.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+        with:
+          install: "false"
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      - id: grype-pin
+        uses: $/.github/actions/pins
+        with:
+          tool: grype
+          keys: version
+      - name: Verify standard and FIPS Containerfiles, scan FIPS SBOM, and package Helm charts
+        env:
+          BUNDLE_VER: ${{ needs.verify-tags.outputs.bundle_version }}
+          GRYPE_VERSION: ${{ steps.grype-pin.outputs.version }}
+        run: |
+          python3 -I -B deploy/release/release_tools.py verify-containerfile \
+            --path deploy/docker/Containerfile.server \
+            --path deploy/docker/Containerfile.node-sensor \
+            --path deploy/release/fips/Containerfile.server-fips
+          python3 -I -B deploy/release/release_tools.py generate-workspace-sbom \
+            --out server-fips.cdx.json \
+            --version "$BUNDLE_VER" \
+            --os linux \
+            --target x86_64-unknown-linux-musl \
+            --package grdr-server --package grdr \
+            --fips
+          python3 -I -B deploy/release/release_tools.py install-grype \
+            --version "$GRYPE_VERSION" \
+            --dest "$RUNNER_TEMP/grype-bin"
+          "$RUNNER_TEMP/grype-bin/grype" "sbom:server-fips.cdx.json" -o json > grype-fips.json
+          python3 -I -B deploy/release/release_tools.py check-grype-report --report grype-fips.json
+          if command -v helm >/dev/null 2>&1; then
+            mkdir -p helm-out
+            helm lint deploy/helm/grdr-server --set image.digest=sha256:1111111111111111111111111111111111111111111111111111111111111111
+            helm lint deploy/helm/grdr-node-sensor --set image.digest=sha256:1111111111111111111111111111111111111111111111111111111111111111
+            helm package deploy/helm/grdr-server --destination helm-out
+            helm package deploy/helm/grdr-node-sensor --destination helm-out
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: helm-charts
+          path: helm-out/
+          if-no-files-found: ignore
+
+  rebuilder:
+    needs: [verify-tags, build-binaries]
+    name: Independent rebuilder digest check (docs/design/24 24-4)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Rebuild primary Linux targets and verify exact SHA-256 digest match
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+          BUNDLE_VER: ${{ needs.verify-tags.outputs.bundle_version }}
+          SOURCE_DATE_EPOCH: ${{ needs.verify-tags.outputs.source_date_epoch }}
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
+          python3 -I -B deploy/release/release_tools.py ensure-rust-target --target x86_64-unknown-linux-gnu
+          python3 -I -B deploy/release/release_tools.py ensure-rust-target --target x86_64-unknown-linux-musl
+
+          mkdir -p primary-gnu primary-musl rebuild-out
+          gh run download "$RUN_ID" --name "release-bin-x86_64-unknown-linux-gnu-fips-true" --dir primary-gnu
+          gh run download "$RUN_ID" --name "release-bin-x86_64-unknown-linux-musl-fips-false" --dir primary-musl
+
+          tar -xzf "primary-gnu/grdr-${BUNDLE_VER}-x86_64-unknown-linux-gnu-fips.tar.gz" -C primary-gnu
+          tar -xzf "primary-musl/grdr-${BUNDLE_VER}-x86_64-unknown-linux-musl.tar.gz" -C primary-musl
+
+          cargo build --release --locked -p grdr -p grdr-daemon -p grdr-server --target x86_64-unknown-linux-gnu --features fips
+          cargo build --release --locked -p grdr -p grdr-daemon -p grdr-server --target x86_64-unknown-linux-musl
+
+          for bin in grdr grdr-daemon grdr-server; do
+            p_gnu=$(sha256sum "primary-gnu/grdr-${BUNDLE_VER}-x86_64-unknown-linux-gnu-fips/$bin" | awk '{print $1}')
+            r_gnu=$(sha256sum "target/x86_64-unknown-linux-gnu/release/$bin" | awk '{print $1}')
+            if [ "$p_gnu" != "$r_gnu" ]; then
+              echo "::error::rebuilder SHA-256 mismatch for x86_64-gnu-fips $bin ($p_gnu != $r_gnu)"
+              exit 1
+            fi
+            p_musl=$(sha256sum "primary-musl/grdr-${BUNDLE_VER}-x86_64-unknown-linux-musl/$bin" | awk '{print $1}')
+            r_musl=$(sha256sum "target/x86_64-unknown-linux-musl/release/$bin" | awk '{print $1}')
+            if [ "$p_musl" != "$r_musl" ]; then
+              echo "::error::rebuilder SHA-256 mismatch for x86_64-musl $bin ($p_musl != $r_musl)"
+              exit 1
+            fi
+            echo "Verified reproducible $bin gnu-fips=$r_gnu musl=$r_musl"
+          done
+
+          python3 -I - "$BUNDLE_VER" rebuild-out/rebuilder-attestation.json <<'PY'
+          import hashlib, json, sys
+          from pathlib import Path
+          ver, out_file = sys.argv[1:3]
+          gnu = {b: hashlib.sha256(Path(f"target/x86_64-unknown-linux-gnu/release/{b}").read_bytes()).hexdigest() for b in ("grdr", "grdr-daemon", "grdr-server")}
+          musl = {b: hashlib.sha256(Path(f"target/x86_64-unknown-linux-musl/release/{b}").read_bytes()).hexdigest() for b in ("grdr", "grdr-daemon", "grdr-server")}
+          Path(out_file).write_text(json.dumps({
+              "bundle_version": ver,
+              "rebuilder_verified": True,
+              "x86_64-unknown-linux-gnu-fips": gnu,
+              "x86_64-unknown-linux-musl": musl,
+          }, indent=2) + "\n", "utf-8")
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rebuilder-attestation
+          path: rebuild-out/
+
+  manifest-and-advisories:
+    needs: [verify-tags, build-binaries, containers-and-helm, rebuilder]
+    name: Sign multi-OS release, verify attestations, and assemble manifest
+    runs-on: ubuntu-26.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+        with:
+          install: "false"
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      - id: pins
+        uses: $/.github/actions/pins
+        with:
+          tool: cosign
+          keys: version
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        with:
+          cosign-release: ${{ steps.pins.outputs.version }}
+      - name: Download verified build artefacts and confirm rebuilder approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          mkdir -p dl-all release-dist release-bundle
+          gh run download "$RUN_ID" --dir dl-all
+          python3 -I - dl-all/rebuilder-attestation/rebuilder-attestation.json <<'PY'
+          import json, sys
+          from pathlib import Path
+          doc = json.loads(Path(sys.argv[1]).read_text("utf-8"))
+          if doc.get("rebuilder_verified") is not True:
+              raise SystemExit("rebuilder attestation verification missing")
+          print("Confirmed rebuilder approval gate before signing/TUF binaries")
+          PY
+          while IFS= read -r -d '' f; do
+            base="$(basename "$f")"
+            if [ -e "release-dist/$base" ]; then
+              echo "::error::duplicate artefact filename $base"
+              exit 1
+            fi
+            cp "$f" "release-dist/$base"
+          done < <(find dl-all -type f \( -name '*.tar.gz' -o -name '*.cdx.json' -o -name '*.tgz' -o -name '*.bins.sha256' \) -print0)
+      - name: Sign multi-OS release tarballs, SBOMs, Helm charts, and checksums keylessly on main
+        if: github.ref == 'refs/heads/main' && github.event.repository.private == false
+        run: |
+          for artifact in release-dist/*.tar.gz release-dist/*.cdx.json release-dist/*.tgz release-dist/*.bins.sha256; do
+            [ -e "$artifact" ] || continue
+            cosign sign-blob --yes --bundle "$artifact.sigstore.json" "$artifact"
+          done
+      - id: provenance
+        if: github.ref == 'refs/heads/main' && github.event.repository.private == false
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-dist/*.tar.gz
+      - name: Verify Cosign signatures and SLSA build provenance on main
+        if: github.ref == 'refs/heads/main' && github.event.repository.private == false
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PROVENANCE_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+        run: |
+          if [ ! -f "$PROVENANCE_BUNDLE" ]; then
+            echo "::error::missing provenance bundle at $PROVENANCE_BUNDLE"
+            exit 1
+          fi
+          for tarball in release-dist/*.tar.gz; do
+            cosign verify-blob \
+              --trusted-root deploy/release/sigstore/trusted_root.json \
+              --bundle "$tarball.sigstore.json" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              --certificate-identity-regexp "^https://github\\.com/${REPO}/\\.github/workflows/release\\.yml@refs/heads/main$" \
+              "$tarball"
+            gh attestation verify "$tarball" \
+              --repo "$REPO" \
+              --signer-workflow "${REPO}/.github/workflows/release.yml" \
+              --bundle "$PROVENANCE_BUNDLE"
+          done
+      - name: Build release-manifest.json, upgrade-path.json, and support-matrix.json
+        env:
+          BUNDLE_VER: ${{ needs.verify-tags.outputs.bundle_version }}
+          COMMIT_SHA: ${{ needs.verify-tags.outputs.commit }}
+          CHANNEL: ${{ needs.verify-tags.outputs.channel }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 -I -B deploy/release/release_tools.py collect-artefacts \
+            --dist-dir release-dist \
+            --version "$BUNDLE_VER" \
+            --repo "$REPO" \
+            --out release-bundle/artefacts.json
+          python3 -I -B deploy/release/release_tools.py support-matrix --out release-bundle/support-matrix.json
+          python3 -I -B deploy/release/release_tools.py build-manifest \
+            --version "$BUNDLE_VER" \
+            --commit "$COMMIT_SHA" \
+            --channel "$CHANNEL" \
+            --artefacts-json release-bundle/artefacts.json \
+            --out-manifest release-bundle/release-manifest.json \
+            --out-upgrade-path release-bundle/upgrade-path.json
+      - name: Sign release-manifest bundle keylessly on main
+        if: github.ref == 'refs/heads/main' && github.event.repository.private == false
+        run: |
+          for f in release-bundle/release-manifest.json release-bundle/upgrade-path.json release-bundle/support-matrix.json; do
+            cosign sign-blob --yes --bundle "$f.sigstore.json" "$f"
+          done
+      - id: manifest-provenance
+        if: github.ref == 'refs/heads/main' && github.event.repository.private == false
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-bundle/release-manifest.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-manifest-bundle
+          path: |
+            release-bundle/
+            release-dist/

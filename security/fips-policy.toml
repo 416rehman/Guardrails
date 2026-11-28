@@ -1,0 +1,41 @@
+# Guardrails ADR FIPS 140-3 Module & Platform Policy (docs/design/03 section 8, 24 section 13, E5.5).
+# P14 source of truth for FIPS build variants, CMVP certificate attribution, and SBOM claims.
+schema = "grdr.fips-policy.v1alpha1"
+crypto_crate = "grdr-crypto"
+feature_flag = "fips"
+require_startup_self_test = true
+startup_strict_env = "GRDR_FIPS_REQUIRE_VALIDATED_MODULE"
+container_image_suffix = "-fips"
+cmvp_validation_claimed = false
+
+[platforms.linux]
+fips_supported = true
+cmvp_active = false
+linking = ["static", "shared"]
+package_variants = ["grdr-fips", "grdr-server-fips"]
+containerfile = "deploy/release/fips/Containerfile.server-fips"
+module_name = "AWS-LC Cryptographic Module"
+cmvp_certificate = "#5314 (AWS-LC 3.x; track CMVP active status for 4.x/5.x after SP-24-2)"
+claim_statement = "ships FIPS build profile with non-CMVP AWS-LC until SP-24-2 admission and runtime ValidatedModuleActive"
+
+[platforms.windows]
+fips_supported = true
+cmvp_active = false
+linking = ["shared"]
+package_variants = ["grdr-fips-msi"]
+module_name = "AWS-LC Cryptographic Module (shared DLL) / Windows CNG"
+cmvp_certificate = "AWS-LC FIPS / Microsoft Windows CNG active CMVP certificate (pending SP-24-2)"
+claim_statement = "uses a FIPS 140-3 validated module only when bound to an active validated module on Windows"
+
+[platforms.macos]
+fips_supported = false
+linking = []
+package_variants = []
+module_name = ""
+cmvp_certificate = ""
+claim_statement = "macOS carries no FIPS 140-3 validated module claim; standard macOS builds ship without FIPS assertion"
+
+[sbom]
+component_property = "grdr:fips:module"
+certificate_property = "grdr:fips:cmvp-certificate"
+forbid_claim_on_macos = true

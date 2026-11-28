@@ -1,0 +1,98 @@
+{
+  "signed": {
+    "root_kind": "project",
+    "version": 1,
+    "expires": "2028-11-27T00:00:00Z",
+    "keys": {
+      "kid_00df61b945c6e257": {
+        "key_id": "kid_00df61b945c6e257",
+        "public_key_b64": "Hus1yOgiFA9NN8mrmu8Xu/tPZ5hCEOnpiJAMr+0ijxA="
+      },
+      "kid_0f4bb0bb1865fd2e": {
+        "key_id": "kid_0f4bb0bb1865fd2e",
+        "public_key_b64": "Huw9V6RfMH1JyNdoGV7na7geGuq7jwU0z3Pb4VzlUjw="
+      },
+      "kid_1acc70b861915eea": {
+        "key_id": "kid_1acc70b861915eea",
+        "public_key_b64": "O7fjMsrgjZ1xVN11ah2VikqOGdcTVq1NDFVIvzLXjNw="
+      },
+      "kid_4d5b04a5579fd6ac": {
+        "key_id": "kid_4d5b04a5579fd6ac",
+        "public_key_b64": "ddiUhyddmy1KImzV4Uo+UaagCDx9P+fwC+zQA8LVs8A="
+      },
+      "kid_56c155c28177d4f8": {
+        "key_id": "kid_56c155c28177d4f8",
+        "public_key_b64": "Idsgmkf91KnDsU4j7InZ+fsLpJTg52AVIssBnTc/BDE="
+      },
+      "kid_78c808789822538e": {
+        "key_id": "kid_78c808789822538e",
+        "public_key_b64": "IPisc6qFOOZ/v15y9/LIOeqHn3mHejp/sAsUzaR+IZo="
+      },
+      "kid_9fd639c9eccc7916": {
+        "key_id": "kid_9fd639c9eccc7916",
+        "public_key_b64": "wHC7uxWX0r6w3Pg3ebzP2HT80q/ftP+TGnmtT17H4zA="
+      },
+      "kid_f1f99606ab41e1f7": {
+        "key_id": "kid_f1f99606ab41e1f7",
+        "public_key_b64": "wOxaOuIgWiF/BLzKTvE2aWEFbj4vniR7rKmD6jRzmw4="
+      }
+    },
+    "roles": {
+      "root": {
+        "key_ids": [
+          "kid_56c155c28177d4f8",
+          "kid_78c808789822538e"
+        ],
+        "threshold": 2
+      },
+      "timestamp": {
+        "key_ids": [
+          "kid_9fd639c9eccc7916"
+        ],
+        "threshold": 1
+      },
+      "snapshot": {
+        "key_ids": [
+          "kid_4d5b04a5579fd6ac"
+        ],
+        "threshold": 1
+      },
+      "targets": {
+        "key_ids": [
+          "kid_00df61b945c6e257",
+          "kid_0f4bb0bb1865fd2e"
+        ],
+        "threshold": 2
+      },
+      "binaries": {
+        "key_ids": [
+          "kid_00df61b945c6e257",
+          "kid_0f4bb0bb1865fd2e"
+        ],
+        "threshold": 2
+      },
+      "content": {
+        "key_ids": [
+          "kid_f1f99606ab41e1f7"
+        ],
+        "threshold": 1
+      },
+      "rollout": {
+        "key_ids": [
+          "kid_1acc70b861915eea"
+        ],
+        "threshold": 1
+      }
+    }
+  },
+  "signatures": [
+    {
+      "keyid": "kid_78c808789822538e",
+      "sig": "Fon2m3biEkrvwAYYd1/gMuhgwDD9UR9mNbdIcrLU4wzCdGQ+oGWSDAdvDAKbwb9jorLknDjN19ZpGWG01mj9Cg=="
+    },
+    {
+      "keyid": "kid_56c155c28177d4f8",
+      "sig": "JhNinSQb1U4IfQPk5Lepctr7IlzUY/bkTNzkjNhYbNQzpnsTE6sE0SFLVTvgatbyR3QyBgttfIgghkjhvggeBA=="
+    }
+  ]
+}

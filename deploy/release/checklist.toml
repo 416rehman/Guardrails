@@ -1,0 +1,52 @@
+# Guardrails ADR Release Gate Checklist (docs/design/24 section 10, docs/design/35 SP-26..SP-32).
+# Machine-verified by deploy/release/release_tools.py and .github/workflows/release.yml.
+schema = "grdr.release-checklist.v1alpha1"
+version_source = "deploy/release/VERSION"
+dist_manifest = "deploy/release/dist.toml"
+fips_policy = "security/fips-policy.toml"
+psirt_policy = "security/advisories/psirt-policy.toml"
+
+[signing]
+tuf_binaries_threshold = 2
+tuf_root_threshold = 2
+require_keyless_cosign = true
+require_slsa_level3 = true
+external_preconditions = ["pre-apple-dev", "pre-win-authenticode", "pre-external-audit"]
+
+[gates.reproducibility]
+id = "rebuilder-digest-match"
+required = true
+description = "Independent rebuilder reproduces unsigned artefact and OCI digests."
+
+[gates.sbom]
+id = "cyclonedx-sbom-crosscheck"
+required = true
+formats = ["cyclonedx-1.6"]
+cross_check_tools = ["cargo-metadata", "cargo-lock"]
+
+[gates.vulnerabilities]
+id = "vex-and-scanners"
+required = true
+fail_on_kev = true
+patch_sla_days = 7
+require_openvex = true
+require_csaf_schema = true
+
+[gates.fips]
+id = "fips-sbom-and-selftest"
+required = true
+validated_platforms = ["linux", "windows"]
+excluded_platforms = ["macos"]
+require_startup_self_test = true
+forbid_macos_fips_claim = true
+
+[gates.compatibility]
+id = "support-matrix-and-upgrade-hops"
+required = true
+max_minor_hop = 2
+support_contract = "contracts/support.toml"
+
+[gates.egress]
+id = "egress-oracle"
+required = true
+phone_home = false

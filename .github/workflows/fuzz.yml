@@ -1,8 +1,8 @@
 name: fuzz
 
 # ClusterFuzzLite in GitHub Actions, with no account (owner instructions 22 and 23): the changed
-# targets on pull requests, every target in a nightly batch. It runs once the first fuzz target
-# lands with its .clusterfuzzlite/ build files; until then the fuzzing job is skipped.
+# targets on pull requests, every target in a nightly batch. Parity between security/fuzz-targets.toml
+# and .clusterfuzzlite/build.sh is checked via deploy/release/release_tools.py check-fuzz-parity.
 
 on:
   pull_request:
@@ -42,7 +42,9 @@ jobs:
           CHANNEL: ${{ steps.toolchain.outputs.channel }}
         run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
       - id: check
-        run: echo "present=$([ -f .clusterfuzzlite/project.yaml ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+        run: |
+          python3 -I -B deploy/release/release_tools.py check-fuzz-parity --targets security/fuzz-targets.toml --build-script .clusterfuzzlite/build.sh
+          echo "present=$([ -f .clusterfuzzlite/project.yaml ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
   fuzz:
     needs: targets

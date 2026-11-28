@@ -138,6 +138,35 @@ async fn main() -> ExitCode {
         .init();
 
     let args = Args::parse();
+    let fips_report = match grdr_crypto::startup_crypto_self_test_from_env() {
+        Ok(report) => report,
+        Err(err) => {
+            error!(error = %err, "Startup cryptographic self-test failed");
+            return ExitCode::FAILURE;
+        }
+    };
+    let tls_policy = grdr_crypto::FipsTlsPolicy::for_startup_mode(fips_report.startup_mode);
+    if let Err(err) = grdr_crypto::filter_tls_cipher_suites(
+        fips_report.startup_mode,
+        &tls_policy.allowed_cipher_suites,
+    ) {
+        error!(error = %err, "FIPS TLS cipher suite policy check failed");
+        return ExitCode::FAILURE;
+    }
+    if let Err(err) =
+        grdr_crypto::filter_tls_kx_groups(fips_report.startup_mode, &tls_policy.allowed_kx_groups)
+    {
+        error!(error = %err, "FIPS TLS key-exchange policy check failed");
+        return ExitCode::FAILURE;
+    }
+    info!(
+        fips_profile = fips_report.profile.as_str(),
+        fips_state = fips_report.state.as_str(),
+        tls_suites = tls_policy.allowed_cipher_suites.len(),
+        tls_kx_groups = tls_policy.allowed_kx_groups.len(),
+        tls_termination = "reverse-proxy-http-listener-pending-wave-tls",
+        "Cryptographic self-test and FIPS TLS policy seam initialized"
+    );
     if args.bind.trim() == args.operator_bind.trim() {
         error!(
             bind = %args.bind,

@@ -213,3 +213,81 @@ jobs:
             semgrep scan --metrics=off --error --disable-version-check \
             --exclude third_party --exclude target \
             "${levels[@]}" "${configs[@]}"
+
+  advisories-and-vex:
+    name: PSIRT advisories, OpenVEX, CSAF, and FIPS policy
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+        with:
+          install: "false"
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      - name: Validate advisories, VEX/CSAF generator, and FIPS policy
+        run: |
+          python3 -I -B security/advisories/generate_advisories.py --check-dir security/advisories/records
+          python3 -I -B security/advisories/test_advisories.py -v
+          python3 -I -B deploy/release/release_tools.py check-config
+          python3 -I -B deploy/release/test_release_tools.py -v
+
+  grype-sbom:
+    name: Grype vulnerability pin verification and container SBOM check
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+        with:
+          install: "false"
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      - id: grype-pin
+        uses: $/.github/actions/pins
+        with:
+          tool: grype
+          keys: version
+      - name: Generate CycloneDX workspace SBOM and run pinned Grype scan
+        env:
+          GRYPE_VERSION: ${{ steps.grype-pin.outputs.version }}
+        run: |
+          python3 -I -B deploy/release/release_tools.py verify-containerfile \
+            --path deploy/release/fips/Containerfile.server-fips
+          python3 -I -B deploy/release/release_tools.py generate-workspace-sbom \
+            --out workspace.cdx.json \
+            --version dev \
+            --os linux \
+            --target x86_64-unknown-linux-gnu \
+            --fips
+          python3 -I -B deploy/release/release_tools.py cross-check-sbom \
+            --sbom workspace.cdx.json \
+            --target x86_64-unknown-linux-gnu \
+            --fips
+          python3 -I -B deploy/release/release_tools.py install-grype \
+            --version "$GRYPE_VERSION" \
+            --dest "$RUNNER_TEMP/grype-bin"
+          "$RUNNER_TEMP/grype-bin/grype" "sbom:workspace.cdx.json" -o json > grype-workspace.json
+          python3 -I -B deploy/release/release_tools.py check-grype-report --report grype-workspace.json

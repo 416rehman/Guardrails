@@ -10,6 +10,10 @@ privilege = "privileged"
 surface = "internal"
 renders = "none"
 
+[features]
+default = []
+fips = ["grdr-crypto/fips"]
+
 [dependencies]
 clap = { workspace = true }
 grdr-crypto = { workspace = true }

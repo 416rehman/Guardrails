@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:grdr:schema:advisory-record:v1",
+  "title": "Guardrails ADR PSIRT Advisory Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "title",
+    "summary",
+    "severity",
+    "discovered_at",
+    "published_at",
+    "cra_incident_class",
+    "affected_packages",
+    "vex_statements"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "grdr.advisory.v1" },
+    "id": { "type": "string", "pattern": "^GRDR-ADV-[0-9]{4}-[0-9]{4}$" },
+    "cve": { "type": "string", "pattern": "^CVE-[0-9]{4}-[0-9]{4,}$" },
+    "ghsa": { "type": "string", "pattern": "^GHSA(-[a-z0-9]{4}){3}$" },
+    "title": { "type": "string", "minLength": 5 },
+    "summary": { "type": "string", "minLength": 10 },
+    "severity": { "type": "string", "enum": ["critical", "high", "medium", "low", "none"] },
+    "cvss_v4_vector": { "type": "string" },
+    "kev": { "type": "boolean" },
+    "actively_exploited": { "type": "boolean" },
+    "discovered_at": { "type": "string", "format": "date-time" },
+    "published_at": { "type": "string", "format": "date-time" },
+    "cra_incident_class": {
+      "type": "string",
+      "enum": ["actively_exploited_vulnerability", "severe_incident", "none"]
+    },
+    "affected_packages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ecosystem", "name", "purl", "ranges"],
+        "properties": {
+          "ecosystem": { "type": "string" },
+          "name": { "type": "string" },
+          "purl": { "type": "string" },
+          "ranges": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["introduced"],
+              "properties": {
+                "introduced": { "type": "string" },
+                "fixed": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "vex_statements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["product", "status"],
+        "properties": {
+          "product": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["not_affected", "affected", "fixed", "under_investigation"]
+          },
+          "justification": {
+            "type": "string",
+            "enum": [
+              "component_not_present",
+              "vulnerable_code_not_present",
+              "vulnerable_code_cannot_be_controlled_by_adversary",
+              "vulnerable_code_not_in_execute_path",
+              "inline_mitigations_already_exist"
+            ]
+          },
+          "impact_statement": { "type": "string" },
+          "action_statement": { "type": "string" }
+        }
+      }
+    },
+    "yank_versions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["component", "version", "reason"],
+        "properties": {
+          "component": { "type": "string" },
+          "version": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    }
+  }
+}
