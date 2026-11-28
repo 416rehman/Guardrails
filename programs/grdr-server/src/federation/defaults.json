@@ -1,0 +1,24 @@
+{
+  "default_spiffe_domains": ["local"],
+  "allowed_oidc_scopes": [
+    "broker:lease",
+    "identity:read",
+    "mcp:invoke",
+    "openid",
+    "profile"
+  ],
+  "trusted_federated_issuers": [
+    "https://token.actions.githubusercontent.com",
+    "https://kubernetes.default.svc",
+    "https://gitlab.com"
+  ],
+  "ssf_events_requested": [
+    "https://schemas.openid.net/secevent/caep/event-type/session-revoked",
+    "https://schemas.openid.net/secevent/caep/event-type/credential-change",
+    "https://schemas.openid.net/secevent/caep/event-type/assurance-level-change",
+    "https://schemas.openid.net/secevent/risc/event-type/account-disabled"
+  ],
+  "max_snapshot_bytes": 33554432,
+  "device_expires_secs": 600,
+  "device_poll_interval_secs": 5
+}

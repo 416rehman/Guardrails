@@ -236,6 +236,80 @@ pub fn format_kube_exec_credential(
         .map_err(|e| IdentityError::CredentialHelper(format!("serialize kube output: {e}")))
 }
 
+pub fn format_gh_credential_token(
+    token: &BrokeredToken,
+) -> Result<Zeroizing<String>, IdentityError> {
+    let raw = token.token_value.as_str();
+    if raw.trim().is_empty() || raw.contains('\n') || raw.contains('\r') || raw.contains('\0') {
+        return Err(IdentityError::CredentialHelper(
+            "gh credential token must be single-line non-empty".to_string(),
+        ));
+    }
+    Ok(Zeroizing::new(raw.to_owned()))
+}
+
+pub fn format_npm_userconfig(
+    registry_host: &str,
+    token: &BrokeredToken,
+) -> Result<Zeroizing<String>, IdentityError> {
+    let raw_url = registry_host.trim().trim_end_matches('/');
+    if raw_url.is_empty()
+        || raw_url.contains("${")
+        || raw_url.chars().any(|c| c.is_control() || c.is_whitespace())
+    {
+        return Err(IdentityError::CredentialHelper(
+            "invalid npm registry URL".to_string(),
+        ));
+    }
+    let parsed = crate::http_security::validate_exact_endpoint_url(raw_url, false)?;
+    let val = token.token_value.as_str();
+    if val.trim().is_empty()
+        || val.contains("${")
+        || val.chars().any(|c| c.is_control() || c.is_whitespace())
+    {
+        return Err(IdentityError::CredentialHelper(
+            "npm token contains invalid characters".to_string(),
+        ));
+    }
+    let host = parsed.host_str().ok_or_else(|| {
+        IdentityError::CredentialHelper("npm registry URL missing host".to_string())
+    })?;
+    let authority = match parsed.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host.to_owned(),
+    };
+    Ok(Zeroizing::new(format!("//{authority}/:_authToken={val}\n")))
+}
+
+pub fn format_pypi_twine_env(
+    repository_url: &str,
+    token: &BrokeredToken,
+) -> Result<Zeroizing<String>, IdentityError> {
+    let raw_url = repository_url.trim();
+    if raw_url.is_empty()
+        || raw_url.contains("${")
+        || raw_url.chars().any(|c| c.is_control() || c.is_whitespace())
+    {
+        return Err(IdentityError::CredentialHelper(
+            "invalid PyPI repository URL".to_string(),
+        ));
+    }
+    let parsed = crate::http_security::validate_exact_endpoint_url(raw_url, false)?;
+    let val = token.token_value.as_str();
+    if val.trim().is_empty()
+        || val.contains("${")
+        || val.chars().any(|c| c.is_control() || c.is_whitespace())
+    {
+        return Err(IdentityError::CredentialHelper(
+            "PyPI token contains invalid characters".to_string(),
+        ));
+    }
+    Ok(Zeroizing::new(format!(
+        "TWINE_USERNAME=__token__\nTWINE_REPOSITORY_URL={}\nTWINE_PASSWORD={val}\n",
+        parsed.as_str()
+    )))
+}
+
 fn format_rfc3339(ts: Timestamp) -> String {
     ts.to_string()
 }

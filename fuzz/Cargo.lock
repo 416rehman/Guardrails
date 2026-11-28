@@ -1069,6 +1069,7 @@ dependencies = [
  "base64",
  "grdr-crypto",
  "grdr-model",
+ "grdr-schema",
  "jiff 1.0.3",
  "libc",
  "regex",

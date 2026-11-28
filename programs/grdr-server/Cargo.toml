@@ -22,6 +22,7 @@ grdr-compat = { workspace = true }
 grdr-comply = { workspace = true }
 grdr-core = { workspace = true }
 grdr-crypto = { workspace = true }
+grdr-identity = { workspace = true }
 grdr-integrations = { workspace = true }
 grdr-jobs = { workspace = true }
 grdr-lake = { workspace = true }
@@ -32,6 +33,7 @@ grdr-proto = { workspace = true }
 grdr-rel-postgres = { workspace = true }
 grdr-rel-sqlite = { workspace = true }
 grdr-review = { workspace = true }
+grdr-schema = { workspace = true }
 grdr-strings = { workspace = true }
 jiff = { workspace = true }
 prost = { workspace = true }
@@ -44,6 +46,7 @@ tower-http = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
+zeroize = { workspace = true }
 
 [lints]
 workspace = true

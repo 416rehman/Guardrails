@@ -1276,6 +1276,7 @@ dependencies = [
  "base64",
  "grdr-crypto",
  "grdr-model",
+ "grdr-schema",
  "jiff 1.0.2",
  "libc",
  "regex",
@@ -1781,6 +1782,7 @@ dependencies = [
  "grdr-comply",
  "grdr-core",
  "grdr-crypto",
+ "grdr-identity",
  "grdr-integrations",
  "grdr-jobs",
  "grdr-lake",
@@ -1791,6 +1793,7 @@ dependencies = [
  "grdr-rel-postgres",
  "grdr-rel-sqlite",
  "grdr-review",
+ "grdr-schema",
  "grdr-strings",
  "jiff 1.0.2",
  "prost",
@@ -1803,6 +1806,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]

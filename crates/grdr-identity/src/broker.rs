@@ -20,10 +20,11 @@ use crate::broker_types::{
 use crate::issuer::CredentialIssuer;
 use crate::spiffe::AgentLifecycle;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CredentialBroker {
     policy: BrokerPolicy,
     pub(crate) leases: BTreeMap<String, LeaseRecord>,
+    pub(crate) lease_principals: BTreeMap<String, String>,
     recent_issuances: BTreeMap<String, Vec<Timestamp>>,
     pub(crate) revocation_handles: BTreeMap<String, Zeroizing<String>>,
     pub(crate) pending_revocations: BTreeMap<String, Zeroizing<String>>,
@@ -36,6 +37,18 @@ struct ValidatedLeaseCtx {
     lease_id: String,
     scope_digest: String,
     expires_at: Timestamp,
+}
+
+impl std::fmt::Debug for CredentialBroker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CredentialBroker")
+            .field("policy", &self.policy)
+            .field("lease_count", &self.leases.len())
+            .field("revocation_handle_count", &self.revocation_handles.len())
+            .field("pending_revocation_count", &self.pending_revocations.len())
+            .field("sequence", &self.sequence)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Ceiling {
@@ -103,6 +116,7 @@ impl CredentialBroker {
         Self {
             policy,
             leases: BTreeMap::new(),
+            lease_principals: BTreeMap::new(),
             recent_issuances: BTreeMap::new(),
             revocation_handles: BTreeMap::new(),
             pending_revocations: BTreeMap::new(),
@@ -378,12 +392,51 @@ impl CredentialBroker {
             .retain(|_, lease| lease.state == LeaseState::Active && lease.expires_at > now);
         self.revocation_handles
             .retain(|id, _| self.leases.contains_key(id));
+        self.lease_principals
+            .retain(|id, _| self.leases.contains_key(id));
+        self.pending_revocations
+            .retain(|id, _| self.leases.get(id).is_some_and(|l| l.expires_at > now));
     }
 }
 
 fn resource_matches_prefix(resource: &str, prefix: &str) -> bool {
-    if prefix.is_empty() || resource.is_empty() {
+    if !crate::ceiling_ref::is_safe_resource_string(prefix)
+        || !crate::ceiling_ref::is_safe_resource_string(resource)
+    {
         return false;
+    }
+    let prefix_is_url = prefix.contains("://");
+    let res_is_url = resource.contains("://");
+    if prefix_is_url || res_is_url {
+        if !(prefix_is_url && res_is_url) {
+            return false;
+        }
+        let (Ok(p_url), Ok(r_url)) = (url::Url::parse(prefix), url::Url::parse(resource)) else {
+            return false;
+        };
+        if !p_url.scheme().eq_ignore_ascii_case(r_url.scheme())
+            || p_url.port_or_known_default() != r_url.port_or_known_default()
+        {
+            return false;
+        }
+        let p_host = p_url
+            .host_str()
+            .map(|h| h.trim_end_matches('.').to_ascii_lowercase());
+        let r_host = r_url
+            .host_str()
+            .map(|h| h.trim_end_matches('.').to_ascii_lowercase());
+        if p_host != r_host || p_host.is_none() {
+            return false;
+        }
+        if let Some(pq) = p_url.query() {
+            return r_url.path() == p_url.path() && r_url.query() == Some(pq);
+        }
+        if p_url.path() == "/" {
+            return true;
+        }
+        let p_clean = p_url.path().trim_end_matches('/');
+        let r_path = r_url.path();
+        return r_path == p_clean || r_path.starts_with(&format!("{p_clean}/"));
     }
     if resource == prefix {
         return true;
@@ -391,7 +444,7 @@ fn resource_matches_prefix(resource: &str, prefix: &str) -> bool {
     let Some(rest) = resource.strip_prefix(prefix) else {
         return false;
     };
-    prefix.ends_with(['/', ':', '-']) || rest.starts_with(['/', ':', '?'])
+    prefix.ends_with(['/', ':']) || rest.starts_with('/')
 }
 
 fn intersect_prefixes(a: &[String], b: &[String]) -> Vec<String> {
@@ -433,6 +486,14 @@ fn compute_effective_ttl(
 }
 
 fn mint_token_with_entropy<const N: usize>(prefix: &str) -> Result<String, IdentityError> {
+    if prefix.trim().is_empty()
+        || prefix.len() > 32
+        || prefix.chars().any(|c| c.is_control() || c.is_whitespace())
+    {
+        return Err(IdentityError::CredentialHelper(
+            "phantom_prefix must be non-empty <= 32 non-control chars".to_string(),
+        ));
+    }
     let mut entropy = [0u8; N];
     fill_random(&mut entropy).map_err(|e| IdentityError::VaultState(e.to_string()))?;
     Ok(format!("{prefix}{}", B64_URL.encode(entropy)))

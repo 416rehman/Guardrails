@@ -108,7 +108,7 @@ fn extract_url_host_and_user(content: &str) -> Option<String> {
             && let Some((creds, host_tail)) = after_scheme.split_once('@')
         {
             let user = creds.split(':').next().unwrap_or("").trim();
-            let host = host_tail.split('/').next().unwrap_or("").trim();
+            let host = host_tail.split(['/', '?', '#']).next().unwrap_or("").trim();
             if !host.is_empty() {
                 return Some(format!("{user}@{host}"));
             }

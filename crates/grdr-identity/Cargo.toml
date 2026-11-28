@@ -14,6 +14,7 @@ renders = "none"
 base64 = { workspace = true }
 grdr-crypto = { workspace = true }
 grdr-model = { workspace = true }
+grdr-schema = { workspace = true }
 jiff = { workspace = true }
 regex = { workspace = true }
 reqwest = { workspace = true }

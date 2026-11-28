@@ -58,6 +58,7 @@ programs/grdr-mcp/**
 programs/grdr-acp/**
 programs/grdr-run/**
 programs/grdr-server/src/auth.rs
+programs/grdr-server/src/federation/**
 programs/grdr-server/src/routes.rs
 programs/grdr-server/src/rpc/**
 programs/grdr-server/src/store/surfaces_operator.rs

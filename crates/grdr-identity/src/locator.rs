@@ -210,7 +210,7 @@ impl CredentialLocatorPack {
         let has_secret_shape = loc.content_regex.is_match(content);
         let unencrypted_ssh = loc.store_kind == CredentialStoreKind::PrivateKeyFile
             && has_secret_shape
-            && !content.contains("ENCRYPTED");
+            && is_unencrypted_ssh_private_key(content);
         let triggered = collect_triggered_hygiene(loc, ctx, has_secret_shape, unencrypted_ssh);
 
         let hygiene_findings = triggered
@@ -291,37 +291,71 @@ fn collect_triggered_hygiene(
     out
 }
 
-fn read_bounded(path: &Path) -> Result<String, IdentityError> {
-    let meta = fs::symlink_metadata(path).map_err(|e| {
-        IdentityError::LocatorPack(format!("cannot stat `{}`: {e}", path.display()))
-    })?;
-    if meta.file_type().is_symlink() || !meta.is_file() {
-        return Err(IdentityError::LocatorPack(format!(
-            "locator pack `{}` must be a regular non-symlink file",
-            path.display()
-        )));
+pub fn is_reparse_or_symlink(meta: &fs::Metadata) -> bool {
+    if meta.file_type().is_symlink() {
+        return true;
     }
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
         const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0400;
         if (meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT) != 0 {
-            return Err(IdentityError::LocatorPack(format!(
-                "locator pack `{}` reparse point forbidden",
-                path.display()
-            )));
+            return true;
         }
+    }
+    false
+}
+
+pub fn open_regular_nofollow(path: &Path) -> Result<fs::File, IdentityError> {
+    let meta = fs::symlink_metadata(path).map_err(|e| {
+        IdentityError::LocatorPack(format!("cannot stat `{}`: {e}", path.display()))
+    })?;
+    if is_reparse_or_symlink(&meta) || !meta.is_file() {
+        return Err(IdentityError::LocatorPack(format!(
+            "`{}` must be a regular non-symlink file",
+            path.display()
+        )));
     }
     let mut opts = OpenOptions::new();
     opts.read(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        opts.custom_flags(libc::O_NOFOLLOW);
+        opts.custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        opts.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
     }
     let file = opts.open(path).map_err(|e| {
         IdentityError::LocatorPack(format!("cannot open `{}`: {e}", path.display()))
     })?;
+    let opened_meta = file.metadata().map_err(|e| {
+        IdentityError::LocatorPack(format!("cannot stat opened `{}`: {e}", path.display()))
+    })?;
+    if is_reparse_or_symlink(&opened_meta) || !opened_meta.is_file() {
+        return Err(IdentityError::LocatorPack(format!(
+            "`{}` changed into symlink or non-regular file",
+            path.display()
+        )));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if meta.dev() != opened_meta.dev() || meta.ino() != opened_meta.ino() {
+            return Err(IdentityError::LocatorPack(format!(
+                "`{}` device/inode changed across open",
+                path.display()
+            )));
+        }
+    }
+    Ok(file)
+}
+
+fn read_bounded(path: &Path) -> Result<String, IdentityError> {
+    let file = open_regular_nofollow(path)?;
     let cap = u64::try_from(MAX_YAML_BYTES.saturating_add(1)).unwrap_or(u64::MAX);
     let mut raw_bytes = Vec::new();
     file.take(cap).read_to_end(&mut raw_bytes).map_err(|e| {
@@ -336,4 +370,49 @@ fn read_bounded(path: &Path) -> Result<String, IdentityError> {
     String::from_utf8(raw_bytes).map_err(|e| {
         IdentityError::LocatorPack(format!("invalid UTF-8 in `{}`: {e}", path.display()))
     })
+}
+
+fn is_unencrypted_ssh_private_key(content: &str) -> bool {
+    if content.contains("ENCRYPTED") {
+        return false;
+    }
+    let header = "-----BEGIN OPENSSH PRIVATE KEY-----";
+    let footer = "-----END OPENSSH PRIVATE KEY-----";
+    let Some(start) = content.find(header) else {
+        return true;
+    };
+    let after_header = content
+        .get(start.saturating_add(header.len())..)
+        .unwrap_or("");
+    let body = match after_header.find(footer) {
+        Some(end) => after_header.get(..end).unwrap_or(""),
+        None => return true,
+    };
+    let compact: String = body.chars().filter(|c| !c.is_ascii_whitespace()).collect();
+    let Ok(decoded) = base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        compact.as_bytes(),
+    ) else {
+        return true;
+    };
+    let magic = b"openssh-key-v1\0";
+    let Some(mut cursor) = decoded.strip_prefix(magic) else {
+        return true;
+    };
+    let Some(cipher) = read_ssh_wire_bytes(&mut cursor) else {
+        return true;
+    };
+    let Some(kdf) = read_ssh_wire_bytes(&mut cursor) else {
+        return true;
+    };
+    !(cipher != b"none" && kdf == b"bcrypt")
+}
+
+fn read_ssh_wire_bytes<'a>(cursor: &mut &'a [u8]) -> Option<&'a [u8]> {
+    let hdr: [u8; 4] = cursor.get(..4)?.try_into().ok()?;
+    let len = usize::try_from(u32::from_be_bytes(hdr)).ok()?;
+    let rest = cursor.get(4..)?;
+    let val = rest.get(..len)?;
+    *cursor = rest.get(len..)?;
+    Some(val)
 }

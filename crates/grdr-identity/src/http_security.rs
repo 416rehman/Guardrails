@@ -72,10 +72,15 @@ pub(crate) fn validate_endpoint_url(
     Ok(url)
 }
 
-pub(crate) fn validate_exact_endpoint_url(
+pub fn validate_exact_endpoint_url(
     raw: &str,
     allow_insecure_loopback: bool,
 ) -> Result<Url, IdentityError> {
+    if raw.is_empty() || raw.bytes().any(|b| b < 0x20 || b == 0x7f) {
+        return Err(IdentityError::InvalidHttpEndpoint(
+            "endpoint URL contains control characters or is empty".to_string(),
+        ));
+    }
     let url = Url::parse(raw)
         .map_err(|e| IdentityError::InvalidHttpEndpoint(format!("invalid endpoint URL: {e}")))?;
     if !url.username().is_empty() || url.password().is_some() {
@@ -114,6 +119,43 @@ pub(crate) fn validate_exact_endpoint_url(
     Ok(url)
 }
 
+pub fn validate_protected_resource_uri(raw: &str) -> Result<Url, IdentityError> {
+    if !crate::ceiling_ref::is_safe_resource_string(raw) {
+        return Err(IdentityError::InvalidHttpEndpoint(
+            "RFC 8707 resource is not a safe resource URI".to_string(),
+        ));
+    }
+    let url = Url::parse(raw)
+        .map_err(|e| IdentityError::InvalidHttpEndpoint(format!("invalid resource URI: {e}")))?;
+    if !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(IdentityError::InvalidHttpEndpoint(
+            "RFC 8707 resource must not embed credentials, query, or fragment".to_string(),
+        ));
+    }
+    let Some(host) = url.host() else {
+        return Err(IdentityError::InvalidHttpEndpoint(
+            "RFC 8707 resource missing host".to_string(),
+        ));
+    };
+    if is_forbidden_metadata_or_unspecified_host(&host) {
+        return Err(IdentityError::InvalidHttpEndpoint(
+            "RFC 8707 resource host is forbidden".to_string(),
+        ));
+    }
+    let valid_scheme = url.scheme() == "https"
+        || (url.scheme() == "http" && matches!(host, Host::Ipv4(ip) if ip == Ipv4Addr::LOCALHOST));
+    if !valid_scheme {
+        return Err(IdentityError::InvalidHttpEndpoint(
+            "RFC 8707 resource must use https (or http://127.0.0.1 for local loopback)".to_string(),
+        ));
+    }
+    Ok(url)
+}
+
 pub(crate) fn is_forbidden_ip_addr(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => is_forbidden_ipv4(v4),
@@ -123,7 +165,8 @@ pub(crate) fn is_forbidden_ip_addr(ip: IpAddr) -> bool {
             }
             let first = *v6.segments().first().unwrap_or(&0);
             let is_link_local = (first & 0xffc0) == 0xfe80;
-            v6.is_unspecified() || is_link_local || v6.is_multicast()
+            let is_ula = (first & 0xfe00) == 0xfc00;
+            v6.is_unspecified() || is_link_local || is_ula || v6.is_multicast()
         }
     }
 }
@@ -189,7 +232,9 @@ fn is_loopback_ip(ip: IpAddr) -> bool {
 }
 
 fn is_forbidden_ipv4(ip: Ipv4Addr) -> bool {
-    ip.is_unspecified() || ip.is_link_local() || ip.is_multicast() || ip.is_broadcast()
+    let [a, b, ..] = ip.octets();
+    let is_cgnat = a == 100 && (b & 0b1100_0000) == 64;
+    ip.is_unspecified() || ip.is_link_local() || is_cgnat || ip.is_multicast() || ip.is_broadcast()
 }
 
 fn is_loopback_host(host: &Host<&str>) -> bool {
@@ -198,7 +243,7 @@ fn is_loopback_host(host: &Host<&str>) -> bool {
         Host::Ipv6(ip) => {
             ip.is_loopback() || ip.to_ipv4_mapped().is_some_and(|v4| v4.is_loopback())
         }
-        Host::Domain(d) => d.eq_ignore_ascii_case("localhost"),
+        Host::Domain(d) => d.trim_end_matches('.').eq_ignore_ascii_case("localhost"),
     }
 }
 
@@ -207,9 +252,12 @@ fn is_forbidden_metadata_or_unspecified_host(host: &Host<&str>) -> bool {
         Host::Ipv4(ip) => is_forbidden_ipv4(*ip),
         Host::Ipv6(ip) => is_forbidden_ip_addr(IpAddr::V6(*ip)),
         Host::Domain(d) => {
-            d.eq_ignore_ascii_case("metadata.google.internal")
-                || d.eq_ignore_ascii_case("metadata")
-                || d.eq_ignore_ascii_case("instance-data")
+            let trimmed = d.trim_end_matches('.');
+            trimmed.is_empty()
+                || trimmed.eq_ignore_ascii_case("metadata.google.internal")
+                || trimmed.eq_ignore_ascii_case("metadata")
+                || trimmed.eq_ignore_ascii_case("instance-data")
+                || trimmed.eq_ignore_ascii_case("metadata.azure.internal")
         }
     }
 }

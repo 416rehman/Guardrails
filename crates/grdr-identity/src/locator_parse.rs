@@ -2,13 +2,16 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 #![deny(clippy::arithmetic_side_effects)]
 
-use regex::Regex;
+use regex::RegexBuilder;
 
 use crate::IdentityError;
 use crate::broker_types::CredentialClass;
 use crate::locator::{
     CredentialLocatorDef, CredentialStoreKind, HygieneMode, HygieneRuleDef, HygieneRuleId,
 };
+
+const MAX_LOCATOR_REGEX_BYTES: usize = 4_096;
+const MAX_LOCATOR_REGEX_COMPILED_BYTES: usize = 256 * 1024;
 
 struct RawLocatorBuilder {
     id: String,
@@ -74,16 +77,21 @@ impl RawLocatorBuilder {
                 self.id
             )));
         }
-        if self.content_regex.trim().is_empty() {
+        if self.content_regex.trim().is_empty()
+            || self.content_regex.len() > MAX_LOCATOR_REGEX_BYTES
+        {
             return Err(IdentityError::LocatorPack(format!(
-                "locator `{}` requires non-empty content_regex",
+                "locator `{}` requires non-empty content_regex <= {MAX_LOCATOR_REGEX_BYTES} bytes",
                 self.id
             )));
         }
         validate_extractor(&self.public_part_extractor)?;
-        let re = Regex::new(&self.content_regex).map_err(|e| {
-            IdentityError::LocatorPack(format!("invalid locator regex for `{}`: {e}", self.id))
-        })?;
+        let re = RegexBuilder::new(&self.content_regex)
+            .size_limit(MAX_LOCATOR_REGEX_COMPILED_BYTES)
+            .build()
+            .map_err(|e| {
+                IdentityError::LocatorPack(format!("invalid locator regex for `{}`: {e}", self.id))
+            })?;
         Ok(CredentialLocatorDef {
             id: self.id,
             credential_class: self.credential_class.ok_or_else(|| {

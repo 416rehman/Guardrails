@@ -308,15 +308,22 @@ pub fn build_console_router_with_security(
             post(rpc::surfaces::advance_provider_ring),
         )
         .layer(middleware::from_fn_with_state(
-            auth_state,
+            auth_state.clone(),
             require_console_auth,
         ));
+
+    let fed_state = crate::federation::FederationState::from_app(state.clone());
+    let fed_protected = crate::federation::protected_routes(fed_state.clone()).layer(
+        middleware::from_fn_with_state(auth_state, require_console_auth),
+    );
 
     let api = Router::new()
         .merge(public_routes)
         .merge(device_routes)
         .merge(console_routes)
         .with_state(state)
+        .merge(crate::federation::public_routes(fed_state))
+        .merge(fed_protected)
         .layer(DefaultBodyLimit::max(security.max_body_bytes))
         .layer(cors);
 
