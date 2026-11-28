@@ -13,6 +13,7 @@ mod config_toml_lex;
 pub mod corr;
 pub mod engine;
 pub mod eval;
+pub mod kill_switch;
 pub mod l0;
 mod l0_format;
 pub mod response;

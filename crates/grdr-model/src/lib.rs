@@ -9,6 +9,7 @@ pub mod connect;
 pub mod domain;
 pub mod error;
 pub mod eval;
+mod eval_rules;
 pub mod identity;
 pub mod log_safe;
 pub mod policy;
@@ -16,6 +17,11 @@ pub mod proto_conv;
 pub mod query_catalog;
 pub mod query_ir;
 pub mod signing;
+
+pub use grdr_schema::{
+    AuditLane, CommitmentClass, ContentKind, DataClass as CanonicalDataClass, FiveWayCommitments,
+    capture as capture_schema,
+};
 
 pub use api::*;
 pub use artifacts::*;

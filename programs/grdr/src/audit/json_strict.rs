@@ -10,7 +10,7 @@ use std::path::Path;
 use serde::de::{DeserializeSeed, Deserializer, Error as DeError, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Number, Value};
 
-use grdr_core::audit::AuditVerifyError;
+use super::types::AuditVerifyError;
 
 use crate::fs_safe::{FsSafeError, reject_symlinks_on_existing_prefixes};
 

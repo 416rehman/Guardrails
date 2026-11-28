@@ -1,0 +1,2018 @@
+{
+  "schema": "grdr.upgrade-path.v1",
+  "series_major": 1,
+  "max_upgrade_minor_hop": 2,
+  "lts_interval_minors": 12,
+  "rollback_window_minors": 1,
+  "lts_minors": [
+    12
+  ],
+  "allowed_paths": [
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.1.0",
+      "hops": [
+        "1.0.0",
+        "1.1.0"
+      ],
+      "rollback_supported": true
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.2.0",
+      "hops": [
+        "1.0.0",
+        "1.2.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.3.0",
+      "hops": [
+        "1.0.0",
+        "1.2.0",
+        "1.3.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.4.0",
+      "hops": [
+        "1.0.0",
+        "1.2.0",
+        "1.4.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.5.0",
+      "hops": [
+        "1.0.0",
+        "1.2.0",
+        "1.4.0",
+        "1.5.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.6.0",
+      "hops": [
+        "1.0.0",
+        "1.2.0",
+        "1.4.0",
+        "1.6.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.7.0",
+      "hops": [
+        "1.0.0",
+        "1.2.0",
+        "1.4.0",
+        "1.6.0",
+        "1.7.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.8.0",
+      "hops": [
+        "1.0.0",
+        "1.2.0",
+        "1.4.0",
+        "1.6.0",
+        "1.8.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.9.0",
+      "hops": [
+        "1.0.0",
+        "1.2.0",
+        "1.4.0",
+        "1.6.0",
+        "1.8.0",
+        "1.9.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.10.0",
+      "hops": [
+        "1.0.0",
+        "1.2.0",
+        "1.4.0",
+        "1.6.0",
+        "1.8.0",
+        "1.10.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.11.0",
+      "hops": [
+        "1.0.0",
+        "1.2.0",
+        "1.4.0",
+        "1.6.0",
+        "1.8.0",
+        "1.10.0",
+        "1.11.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.12.0",
+      "hops": [
+        "1.0.0",
+        "1.2.0",
+        "1.4.0",
+        "1.6.0",
+        "1.8.0",
+        "1.10.0",
+        "1.12.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.13.0",
+      "hops": [
+        "1.0.0",
+        "1.2.0",
+        "1.4.0",
+        "1.6.0",
+        "1.8.0",
+        "1.10.0",
+        "1.12.0",
+        "1.13.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.14.0",
+      "hops": [
+        "1.0.0",
+        "1.2.0",
+        "1.4.0",
+        "1.6.0",
+        "1.8.0",
+        "1.10.0",
+        "1.12.0",
+        "1.14.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.2.0",
+      "hops": [
+        "1.1.0",
+        "1.2.0"
+      ],
+      "rollback_supported": true
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.3.0",
+      "hops": [
+        "1.1.0",
+        "1.3.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.4.0",
+      "hops": [
+        "1.1.0",
+        "1.3.0",
+        "1.4.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.5.0",
+      "hops": [
+        "1.1.0",
+        "1.3.0",
+        "1.5.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.6.0",
+      "hops": [
+        "1.1.0",
+        "1.3.0",
+        "1.5.0",
+        "1.6.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.7.0",
+      "hops": [
+        "1.1.0",
+        "1.3.0",
+        "1.5.0",
+        "1.7.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.8.0",
+      "hops": [
+        "1.1.0",
+        "1.3.0",
+        "1.5.0",
+        "1.7.0",
+        "1.8.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.9.0",
+      "hops": [
+        "1.1.0",
+        "1.3.0",
+        "1.5.0",
+        "1.7.0",
+        "1.9.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.10.0",
+      "hops": [
+        "1.1.0",
+        "1.3.0",
+        "1.5.0",
+        "1.7.0",
+        "1.9.0",
+        "1.10.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.11.0",
+      "hops": [
+        "1.1.0",
+        "1.3.0",
+        "1.5.0",
+        "1.7.0",
+        "1.9.0",
+        "1.11.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.12.0",
+      "hops": [
+        "1.1.0",
+        "1.3.0",
+        "1.5.0",
+        "1.7.0",
+        "1.9.0",
+        "1.11.0",
+        "1.12.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.13.0",
+      "hops": [
+        "1.1.0",
+        "1.3.0",
+        "1.5.0",
+        "1.7.0",
+        "1.9.0",
+        "1.11.0",
+        "1.12.0",
+        "1.13.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.14.0",
+      "hops": [
+        "1.1.0",
+        "1.3.0",
+        "1.5.0",
+        "1.7.0",
+        "1.9.0",
+        "1.11.0",
+        "1.12.0",
+        "1.14.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.3.0",
+      "hops": [
+        "1.2.0",
+        "1.3.0"
+      ],
+      "rollback_supported": true
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.4.0",
+      "hops": [
+        "1.2.0",
+        "1.4.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.5.0",
+      "hops": [
+        "1.2.0",
+        "1.4.0",
+        "1.5.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.6.0",
+      "hops": [
+        "1.2.0",
+        "1.4.0",
+        "1.6.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.7.0",
+      "hops": [
+        "1.2.0",
+        "1.4.0",
+        "1.6.0",
+        "1.7.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.8.0",
+      "hops": [
+        "1.2.0",
+        "1.4.0",
+        "1.6.0",
+        "1.8.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.9.0",
+      "hops": [
+        "1.2.0",
+        "1.4.0",
+        "1.6.0",
+        "1.8.0",
+        "1.9.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.10.0",
+      "hops": [
+        "1.2.0",
+        "1.4.0",
+        "1.6.0",
+        "1.8.0",
+        "1.10.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.11.0",
+      "hops": [
+        "1.2.0",
+        "1.4.0",
+        "1.6.0",
+        "1.8.0",
+        "1.10.0",
+        "1.11.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.12.0",
+      "hops": [
+        "1.2.0",
+        "1.4.0",
+        "1.6.0",
+        "1.8.0",
+        "1.10.0",
+        "1.12.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.13.0",
+      "hops": [
+        "1.2.0",
+        "1.4.0",
+        "1.6.0",
+        "1.8.0",
+        "1.10.0",
+        "1.12.0",
+        "1.13.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.14.0",
+      "hops": [
+        "1.2.0",
+        "1.4.0",
+        "1.6.0",
+        "1.8.0",
+        "1.10.0",
+        "1.12.0",
+        "1.14.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.4.0",
+      "hops": [
+        "1.3.0",
+        "1.4.0"
+      ],
+      "rollback_supported": true
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.5.0",
+      "hops": [
+        "1.3.0",
+        "1.5.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.6.0",
+      "hops": [
+        "1.3.0",
+        "1.5.0",
+        "1.6.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.7.0",
+      "hops": [
+        "1.3.0",
+        "1.5.0",
+        "1.7.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.8.0",
+      "hops": [
+        "1.3.0",
+        "1.5.0",
+        "1.7.0",
+        "1.8.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.9.0",
+      "hops": [
+        "1.3.0",
+        "1.5.0",
+        "1.7.0",
+        "1.9.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.10.0",
+      "hops": [
+        "1.3.0",
+        "1.5.0",
+        "1.7.0",
+        "1.9.0",
+        "1.10.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.11.0",
+      "hops": [
+        "1.3.0",
+        "1.5.0",
+        "1.7.0",
+        "1.9.0",
+        "1.11.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.12.0",
+      "hops": [
+        "1.3.0",
+        "1.5.0",
+        "1.7.0",
+        "1.9.0",
+        "1.11.0",
+        "1.12.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.13.0",
+      "hops": [
+        "1.3.0",
+        "1.5.0",
+        "1.7.0",
+        "1.9.0",
+        "1.11.0",
+        "1.12.0",
+        "1.13.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.14.0",
+      "hops": [
+        "1.3.0",
+        "1.5.0",
+        "1.7.0",
+        "1.9.0",
+        "1.11.0",
+        "1.12.0",
+        "1.14.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.5.0",
+      "hops": [
+        "1.4.0",
+        "1.5.0"
+      ],
+      "rollback_supported": true
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.6.0",
+      "hops": [
+        "1.4.0",
+        "1.6.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.7.0",
+      "hops": [
+        "1.4.0",
+        "1.6.0",
+        "1.7.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.8.0",
+      "hops": [
+        "1.4.0",
+        "1.6.0",
+        "1.8.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.9.0",
+      "hops": [
+        "1.4.0",
+        "1.6.0",
+        "1.8.0",
+        "1.9.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.10.0",
+      "hops": [
+        "1.4.0",
+        "1.6.0",
+        "1.8.0",
+        "1.10.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.11.0",
+      "hops": [
+        "1.4.0",
+        "1.6.0",
+        "1.8.0",
+        "1.10.0",
+        "1.11.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.12.0",
+      "hops": [
+        "1.4.0",
+        "1.6.0",
+        "1.8.0",
+        "1.10.0",
+        "1.12.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.13.0",
+      "hops": [
+        "1.4.0",
+        "1.6.0",
+        "1.8.0",
+        "1.10.0",
+        "1.12.0",
+        "1.13.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.14.0",
+      "hops": [
+        "1.4.0",
+        "1.6.0",
+        "1.8.0",
+        "1.10.0",
+        "1.12.0",
+        "1.14.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.5.0",
+      "to_version": "1.6.0",
+      "hops": [
+        "1.5.0",
+        "1.6.0"
+      ],
+      "rollback_supported": true
+    },
+    {
+      "from_version": "1.5.0",
+      "to_version": "1.7.0",
+      "hops": [
+        "1.5.0",
+        "1.7.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.5.0",
+      "to_version": "1.8.0",
+      "hops": [
+        "1.5.0",
+        "1.7.0",
+        "1.8.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.5.0",
+      "to_version": "1.9.0",
+      "hops": [
+        "1.5.0",
+        "1.7.0",
+        "1.9.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.5.0",
+      "to_version": "1.10.0",
+      "hops": [
+        "1.5.0",
+        "1.7.0",
+        "1.9.0",
+        "1.10.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.5.0",
+      "to_version": "1.11.0",
+      "hops": [
+        "1.5.0",
+        "1.7.0",
+        "1.9.0",
+        "1.11.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.5.0",
+      "to_version": "1.12.0",
+      "hops": [
+        "1.5.0",
+        "1.7.0",
+        "1.9.0",
+        "1.11.0",
+        "1.12.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.5.0",
+      "to_version": "1.13.0",
+      "hops": [
+        "1.5.0",
+        "1.7.0",
+        "1.9.0",
+        "1.11.0",
+        "1.12.0",
+        "1.13.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.5.0",
+      "to_version": "1.14.0",
+      "hops": [
+        "1.5.0",
+        "1.7.0",
+        "1.9.0",
+        "1.11.0",
+        "1.12.0",
+        "1.14.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.6.0",
+      "to_version": "1.7.0",
+      "hops": [
+        "1.6.0",
+        "1.7.0"
+      ],
+      "rollback_supported": true
+    },
+    {
+      "from_version": "1.6.0",
+      "to_version": "1.8.0",
+      "hops": [
+        "1.6.0",
+        "1.8.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.6.0",
+      "to_version": "1.9.0",
+      "hops": [
+        "1.6.0",
+        "1.8.0",
+        "1.9.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.6.0",
+      "to_version": "1.10.0",
+      "hops": [
+        "1.6.0",
+        "1.8.0",
+        "1.10.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.6.0",
+      "to_version": "1.11.0",
+      "hops": [
+        "1.6.0",
+        "1.8.0",
+        "1.10.0",
+        "1.11.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.6.0",
+      "to_version": "1.12.0",
+      "hops": [
+        "1.6.0",
+        "1.8.0",
+        "1.10.0",
+        "1.12.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.6.0",
+      "to_version": "1.13.0",
+      "hops": [
+        "1.6.0",
+        "1.8.0",
+        "1.10.0",
+        "1.12.0",
+        "1.13.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.6.0",
+      "to_version": "1.14.0",
+      "hops": [
+        "1.6.0",
+        "1.8.0",
+        "1.10.0",
+        "1.12.0",
+        "1.14.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.7.0",
+      "to_version": "1.8.0",
+      "hops": [
+        "1.7.0",
+        "1.8.0"
+      ],
+      "rollback_supported": true
+    },
+    {
+      "from_version": "1.7.0",
+      "to_version": "1.9.0",
+      "hops": [
+        "1.7.0",
+        "1.9.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.7.0",
+      "to_version": "1.10.0",
+      "hops": [
+        "1.7.0",
+        "1.9.0",
+        "1.10.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.7.0",
+      "to_version": "1.11.0",
+      "hops": [
+        "1.7.0",
+        "1.9.0",
+        "1.11.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.7.0",
+      "to_version": "1.12.0",
+      "hops": [
+        "1.7.0",
+        "1.9.0",
+        "1.11.0",
+        "1.12.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.7.0",
+      "to_version": "1.13.0",
+      "hops": [
+        "1.7.0",
+        "1.9.0",
+        "1.11.0",
+        "1.12.0",
+        "1.13.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.7.0",
+      "to_version": "1.14.0",
+      "hops": [
+        "1.7.0",
+        "1.9.0",
+        "1.11.0",
+        "1.12.0",
+        "1.14.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.8.0",
+      "to_version": "1.9.0",
+      "hops": [
+        "1.8.0",
+        "1.9.0"
+      ],
+      "rollback_supported": true
+    },
+    {
+      "from_version": "1.8.0",
+      "to_version": "1.10.0",
+      "hops": [
+        "1.8.0",
+        "1.10.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.8.0",
+      "to_version": "1.11.0",
+      "hops": [
+        "1.8.0",
+        "1.10.0",
+        "1.11.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.8.0",
+      "to_version": "1.12.0",
+      "hops": [
+        "1.8.0",
+        "1.10.0",
+        "1.12.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.8.0",
+      "to_version": "1.13.0",
+      "hops": [
+        "1.8.0",
+        "1.10.0",
+        "1.12.0",
+        "1.13.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.8.0",
+      "to_version": "1.14.0",
+      "hops": [
+        "1.8.0",
+        "1.10.0",
+        "1.12.0",
+        "1.14.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.9.0",
+      "to_version": "1.10.0",
+      "hops": [
+        "1.9.0",
+        "1.10.0"
+      ],
+      "rollback_supported": true
+    },
+    {
+      "from_version": "1.9.0",
+      "to_version": "1.11.0",
+      "hops": [
+        "1.9.0",
+        "1.11.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.9.0",
+      "to_version": "1.12.0",
+      "hops": [
+        "1.9.0",
+        "1.11.0",
+        "1.12.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.9.0",
+      "to_version": "1.13.0",
+      "hops": [
+        "1.9.0",
+        "1.11.0",
+        "1.12.0",
+        "1.13.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.9.0",
+      "to_version": "1.14.0",
+      "hops": [
+        "1.9.0",
+        "1.11.0",
+        "1.12.0",
+        "1.14.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.10.0",
+      "to_version": "1.11.0",
+      "hops": [
+        "1.10.0",
+        "1.11.0"
+      ],
+      "rollback_supported": true
+    },
+    {
+      "from_version": "1.10.0",
+      "to_version": "1.12.0",
+      "hops": [
+        "1.10.0",
+        "1.12.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.10.0",
+      "to_version": "1.13.0",
+      "hops": [
+        "1.10.0",
+        "1.12.0",
+        "1.13.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.10.0",
+      "to_version": "1.14.0",
+      "hops": [
+        "1.10.0",
+        "1.12.0",
+        "1.14.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.11.0",
+      "to_version": "1.12.0",
+      "hops": [
+        "1.11.0",
+        "1.12.0"
+      ],
+      "rollback_supported": true
+    },
+    {
+      "from_version": "1.11.0",
+      "to_version": "1.13.0",
+      "hops": [
+        "1.11.0",
+        "1.12.0",
+        "1.13.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.11.0",
+      "to_version": "1.14.0",
+      "hops": [
+        "1.11.0",
+        "1.12.0",
+        "1.14.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.12.0",
+      "to_version": "1.13.0",
+      "hops": [
+        "1.12.0",
+        "1.13.0"
+      ],
+      "rollback_supported": true
+    },
+    {
+      "from_version": "1.12.0",
+      "to_version": "1.14.0",
+      "hops": [
+        "1.12.0",
+        "1.14.0"
+      ],
+      "rollback_supported": false
+    },
+    {
+      "from_version": "1.13.0",
+      "to_version": "1.14.0",
+      "hops": [
+        "1.13.0",
+        "1.14.0"
+      ],
+      "rollback_supported": true
+    }
+  ],
+  "forbidden_jumps": [
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.3.0",
+      "reason": "direct jump of 3 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.4.0",
+      "reason": "direct jump of 4 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.5.0",
+      "reason": "direct jump of 5 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.6.0",
+      "reason": "direct jump of 6 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.7.0",
+      "reason": "direct jump of 7 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.8.0",
+      "reason": "direct jump of 8 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.9.0",
+      "reason": "direct jump of 9 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.10.0",
+      "reason": "direct jump of 10 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.11.0",
+      "reason": "direct jump of 11 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.12.0",
+      "reason": "direct jump of 12 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.13.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.0.0",
+      "to_version": "1.14.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.4.0",
+      "reason": "direct jump of 3 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.5.0",
+      "reason": "direct jump of 4 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.6.0",
+      "reason": "direct jump of 5 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.7.0",
+      "reason": "direct jump of 6 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.8.0",
+      "reason": "direct jump of 7 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.9.0",
+      "reason": "direct jump of 8 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.10.0",
+      "reason": "direct jump of 9 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.11.0",
+      "reason": "direct jump of 10 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.12.0",
+      "reason": "direct jump of 11 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.13.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.1.0",
+      "to_version": "1.14.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.0.0",
+      "reason": "rollback distance 2 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.5.0",
+      "reason": "direct jump of 3 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.6.0",
+      "reason": "direct jump of 4 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.7.0",
+      "reason": "direct jump of 5 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.8.0",
+      "reason": "direct jump of 6 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.9.0",
+      "reason": "direct jump of 7 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.10.0",
+      "reason": "direct jump of 8 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.11.0",
+      "reason": "direct jump of 9 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.12.0",
+      "reason": "direct jump of 10 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.13.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.2.0",
+      "to_version": "1.14.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.0.0",
+      "reason": "rollback distance 3 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.1.0",
+      "reason": "rollback distance 2 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.6.0",
+      "reason": "direct jump of 3 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.7.0",
+      "reason": "direct jump of 4 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.8.0",
+      "reason": "direct jump of 5 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.9.0",
+      "reason": "direct jump of 6 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.10.0",
+      "reason": "direct jump of 7 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.11.0",
+      "reason": "direct jump of 8 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.12.0",
+      "reason": "direct jump of 9 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.13.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.3.0",
+      "to_version": "1.14.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.0.0",
+      "reason": "rollback distance 4 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.1.0",
+      "reason": "rollback distance 3 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.2.0",
+      "reason": "rollback distance 2 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.7.0",
+      "reason": "direct jump of 3 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.8.0",
+      "reason": "direct jump of 4 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.9.0",
+      "reason": "direct jump of 5 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.10.0",
+      "reason": "direct jump of 6 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.11.0",
+      "reason": "direct jump of 7 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.12.0",
+      "reason": "direct jump of 8 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.13.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.4.0",
+      "to_version": "1.14.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.5.0",
+      "to_version": "1.0.0",
+      "reason": "rollback distance 5 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.5.0",
+      "to_version": "1.1.0",
+      "reason": "rollback distance 4 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.5.0",
+      "to_version": "1.2.0",
+      "reason": "rollback distance 3 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.5.0",
+      "to_version": "1.3.0",
+      "reason": "rollback distance 2 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.5.0",
+      "to_version": "1.8.0",
+      "reason": "direct jump of 3 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.5.0",
+      "to_version": "1.9.0",
+      "reason": "direct jump of 4 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.5.0",
+      "to_version": "1.10.0",
+      "reason": "direct jump of 5 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.5.0",
+      "to_version": "1.11.0",
+      "reason": "direct jump of 6 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.5.0",
+      "to_version": "1.12.0",
+      "reason": "direct jump of 7 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.5.0",
+      "to_version": "1.13.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.5.0",
+      "to_version": "1.14.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.6.0",
+      "to_version": "1.0.0",
+      "reason": "rollback distance 6 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.6.0",
+      "to_version": "1.1.0",
+      "reason": "rollback distance 5 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.6.0",
+      "to_version": "1.2.0",
+      "reason": "rollback distance 4 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.6.0",
+      "to_version": "1.3.0",
+      "reason": "rollback distance 3 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.6.0",
+      "to_version": "1.4.0",
+      "reason": "rollback distance 2 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.6.0",
+      "to_version": "1.9.0",
+      "reason": "direct jump of 3 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.6.0",
+      "to_version": "1.10.0",
+      "reason": "direct jump of 4 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.6.0",
+      "to_version": "1.11.0",
+      "reason": "direct jump of 5 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.6.0",
+      "to_version": "1.12.0",
+      "reason": "direct jump of 6 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.6.0",
+      "to_version": "1.13.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.6.0",
+      "to_version": "1.14.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.7.0",
+      "to_version": "1.0.0",
+      "reason": "rollback distance 7 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.7.0",
+      "to_version": "1.1.0",
+      "reason": "rollback distance 6 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.7.0",
+      "to_version": "1.2.0",
+      "reason": "rollback distance 5 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.7.0",
+      "to_version": "1.3.0",
+      "reason": "rollback distance 4 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.7.0",
+      "to_version": "1.4.0",
+      "reason": "rollback distance 3 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.7.0",
+      "to_version": "1.5.0",
+      "reason": "rollback distance 2 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.7.0",
+      "to_version": "1.10.0",
+      "reason": "direct jump of 3 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.7.0",
+      "to_version": "1.11.0",
+      "reason": "direct jump of 4 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.7.0",
+      "to_version": "1.12.0",
+      "reason": "direct jump of 5 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.7.0",
+      "to_version": "1.13.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.7.0",
+      "to_version": "1.14.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.8.0",
+      "to_version": "1.0.0",
+      "reason": "rollback distance 8 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.8.0",
+      "to_version": "1.1.0",
+      "reason": "rollback distance 7 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.8.0",
+      "to_version": "1.2.0",
+      "reason": "rollback distance 6 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.8.0",
+      "to_version": "1.3.0",
+      "reason": "rollback distance 5 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.8.0",
+      "to_version": "1.4.0",
+      "reason": "rollback distance 4 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.8.0",
+      "to_version": "1.5.0",
+      "reason": "rollback distance 3 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.8.0",
+      "to_version": "1.6.0",
+      "reason": "rollback distance 2 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.8.0",
+      "to_version": "1.11.0",
+      "reason": "direct jump of 3 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.8.0",
+      "to_version": "1.12.0",
+      "reason": "direct jump of 4 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.8.0",
+      "to_version": "1.13.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.8.0",
+      "to_version": "1.14.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.9.0",
+      "to_version": "1.0.0",
+      "reason": "rollback distance 9 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.9.0",
+      "to_version": "1.1.0",
+      "reason": "rollback distance 8 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.9.0",
+      "to_version": "1.2.0",
+      "reason": "rollback distance 7 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.9.0",
+      "to_version": "1.3.0",
+      "reason": "rollback distance 6 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.9.0",
+      "to_version": "1.4.0",
+      "reason": "rollback distance 5 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.9.0",
+      "to_version": "1.5.0",
+      "reason": "rollback distance 4 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.9.0",
+      "to_version": "1.6.0",
+      "reason": "rollback distance 3 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.9.0",
+      "to_version": "1.7.0",
+      "reason": "rollback distance 2 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.9.0",
+      "to_version": "1.12.0",
+      "reason": "direct jump of 3 minors exceeds max_upgrade_minor_hop (2)"
+    },
+    {
+      "from_version": "1.9.0",
+      "to_version": "1.13.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.9.0",
+      "to_version": "1.14.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.10.0",
+      "to_version": "1.0.0",
+      "reason": "rollback distance 10 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.10.0",
+      "to_version": "1.1.0",
+      "reason": "rollback distance 9 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.10.0",
+      "to_version": "1.2.0",
+      "reason": "rollback distance 8 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.10.0",
+      "to_version": "1.3.0",
+      "reason": "rollback distance 7 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.10.0",
+      "to_version": "1.4.0",
+      "reason": "rollback distance 6 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.10.0",
+      "to_version": "1.5.0",
+      "reason": "rollback distance 5 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.10.0",
+      "to_version": "1.6.0",
+      "reason": "rollback distance 4 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.10.0",
+      "to_version": "1.7.0",
+      "reason": "rollback distance 3 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.10.0",
+      "to_version": "1.8.0",
+      "reason": "rollback distance 2 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.10.0",
+      "to_version": "1.13.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.10.0",
+      "to_version": "1.14.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.11.0",
+      "to_version": "1.0.0",
+      "reason": "rollback distance 11 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.11.0",
+      "to_version": "1.1.0",
+      "reason": "rollback distance 10 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.11.0",
+      "to_version": "1.2.0",
+      "reason": "rollback distance 9 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.11.0",
+      "to_version": "1.3.0",
+      "reason": "rollback distance 8 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.11.0",
+      "to_version": "1.4.0",
+      "reason": "rollback distance 7 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.11.0",
+      "to_version": "1.5.0",
+      "reason": "rollback distance 6 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.11.0",
+      "to_version": "1.6.0",
+      "reason": "rollback distance 5 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.11.0",
+      "to_version": "1.7.0",
+      "reason": "rollback distance 4 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.11.0",
+      "to_version": "1.8.0",
+      "reason": "rollback distance 3 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.11.0",
+      "to_version": "1.9.0",
+      "reason": "rollback distance 2 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.11.0",
+      "to_version": "1.13.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.11.0",
+      "to_version": "1.14.0",
+      "reason": "direct jump skips mandatory LTS stop 1.12.0"
+    },
+    {
+      "from_version": "1.12.0",
+      "to_version": "1.0.0",
+      "reason": "rollback distance 12 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.12.0",
+      "to_version": "1.1.0",
+      "reason": "rollback distance 11 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.12.0",
+      "to_version": "1.2.0",
+      "reason": "rollback distance 10 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.12.0",
+      "to_version": "1.3.0",
+      "reason": "rollback distance 9 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.12.0",
+      "to_version": "1.4.0",
+      "reason": "rollback distance 8 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.12.0",
+      "to_version": "1.5.0",
+      "reason": "rollback distance 7 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.12.0",
+      "to_version": "1.6.0",
+      "reason": "rollback distance 6 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.12.0",
+      "to_version": "1.7.0",
+      "reason": "rollback distance 5 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.12.0",
+      "to_version": "1.8.0",
+      "reason": "rollback distance 4 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.12.0",
+      "to_version": "1.9.0",
+      "reason": "rollback distance 3 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.12.0",
+      "to_version": "1.10.0",
+      "reason": "rollback distance 2 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.13.0",
+      "to_version": "1.0.0",
+      "reason": "rollback distance 13 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.13.0",
+      "to_version": "1.1.0",
+      "reason": "rollback distance 12 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.13.0",
+      "to_version": "1.2.0",
+      "reason": "rollback distance 11 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.13.0",
+      "to_version": "1.3.0",
+      "reason": "rollback distance 10 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.13.0",
+      "to_version": "1.4.0",
+      "reason": "rollback distance 9 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.13.0",
+      "to_version": "1.5.0",
+      "reason": "rollback distance 8 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.13.0",
+      "to_version": "1.6.0",
+      "reason": "rollback distance 7 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.13.0",
+      "to_version": "1.7.0",
+      "reason": "rollback distance 6 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.13.0",
+      "to_version": "1.8.0",
+      "reason": "rollback distance 5 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.13.0",
+      "to_version": "1.9.0",
+      "reason": "rollback distance 4 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.13.0",
+      "to_version": "1.10.0",
+      "reason": "rollback distance 3 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.13.0",
+      "to_version": "1.11.0",
+      "reason": "rollback distance 2 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.14.0",
+      "to_version": "1.0.0",
+      "reason": "rollback distance 14 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.14.0",
+      "to_version": "1.1.0",
+      "reason": "rollback distance 13 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.14.0",
+      "to_version": "1.2.0",
+      "reason": "rollback distance 12 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.14.0",
+      "to_version": "1.3.0",
+      "reason": "rollback distance 11 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.14.0",
+      "to_version": "1.4.0",
+      "reason": "rollback distance 10 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.14.0",
+      "to_version": "1.5.0",
+      "reason": "rollback distance 9 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.14.0",
+      "to_version": "1.6.0",
+      "reason": "rollback distance 8 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.14.0",
+      "to_version": "1.7.0",
+      "reason": "rollback distance 7 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.14.0",
+      "to_version": "1.8.0",
+      "reason": "rollback distance 6 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.14.0",
+      "to_version": "1.9.0",
+      "reason": "rollback distance 5 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.14.0",
+      "to_version": "1.10.0",
+      "reason": "rollback distance 4 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.14.0",
+      "to_version": "1.11.0",
+      "reason": "rollback distance 3 exceeds rollback_window_minors (1)"
+    },
+    {
+      "from_version": "1.14.0",
+      "to_version": "1.12.0",
+      "reason": "rollback distance 2 exceeds rollback_window_minors (1)"
+    }
+  ]
+}

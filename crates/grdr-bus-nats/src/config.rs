@@ -1,10 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+use std::fmt;
+use std::net::IpAddr;
+
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroize;
 
 use grdr_model::CodedError;
 use grdr_ports::OrgId;
+
+use crate::nkey::{parse_nats_creds, validate_nkey_seed};
+use crate::tls::validate_ca_pem;
 
 pub const CODE_NATS_IO: &str = "GRDR-NATS-0001";
 pub const CODE_NATS_CONFIG: &str = "GRDR-NATS-0002";
@@ -52,6 +59,22 @@ pub struct JetStreamStreamSpec {
     pub replicas: u8,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum NatsTlsHandshake {
+    AfterInfo,
+    #[default]
+    TlsFirst,
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct NatsAuthConfig {
+    #[serde(default)]
+    pub nkey_seed: Option<String>,
+    #[serde(default)]
+    pub jwt: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NatsConfig {
     pub transport: NatsTransportMode,
@@ -62,6 +85,32 @@ pub struct NatsConfig {
     pub max_age_secs: u64,
     pub replicas: u8,
     pub connect_timeout_ms: u32,
+    #[serde(default)]
+    pub tls_ca_pem: Option<String>,
+    #[serde(default)]
+    pub tls_handshake: NatsTlsHandshake,
+    #[serde(default)]
+    pub auth: Option<NatsAuthConfig>,
+}
+
+impl Drop for NatsAuthConfig {
+    fn drop(&mut self) {
+        if let Some(ref mut s) = self.nkey_seed {
+            s.zeroize();
+        }
+        if let Some(ref mut j) = self.jwt {
+            j.zeroize();
+        }
+    }
+}
+
+impl fmt::Debug for NatsAuthConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NatsAuthConfig")
+            .field("nkey_seed", &self.nkey_seed.as_ref().map(|_| "[REDACTED]"))
+            .field("jwt", &self.jwt.as_ref().map(|_| "[REDACTED]"))
+            .finish()
+    }
 }
 
 impl Default for NatsListenerGuard {
@@ -101,23 +150,48 @@ impl NatsConfig {
             max_age_secs: 72 * 3600,
             replicas: 3,
             connect_timeout_ms: 5_000,
+            tls_ca_pem: None,
+            tls_handshake: NatsTlsHandshake::TlsFirst,
+            auth: None,
         }
     }
 
+    pub fn with_ca_cert_pem(mut self, pem: impl Into<String>) -> Self {
+        self.tls_ca_pem = Some(pem.into());
+        self
+    }
+
+    pub fn with_tls_handshake(mut self, mode: NatsTlsHandshake) -> Self {
+        self.tls_handshake = mode;
+        self
+    }
+
+    pub fn with_nkey_seed(mut self, seed: impl Into<String>) -> Self {
+        let mut auth = self.auth.unwrap_or_default();
+        auth.nkey_seed = Some(seed.into());
+        self.auth = Some(auth);
+        self
+    }
+
+    pub fn with_jwt(mut self, jwt: impl Into<String>) -> Self {
+        let mut auth = self.auth.unwrap_or_default();
+        auth.jwt = Some(jwt.into());
+        self.auth = Some(auth);
+        self
+    }
+
+    pub fn with_creds_bundle(mut self, creds_text: &str) -> Result<Self, CodedError> {
+        let bundle = parse_nats_creds(creds_text)?;
+        self.auth = Some(NatsAuthConfig {
+            nkey_seed: Some(bundle.nkey_seed.to_string()),
+            jwt: bundle.jwt.map(|j| j.to_string()),
+        });
+        Ok(self)
+    }
+
     pub fn parse_url(server_url: &str) -> Result<Self, CodedError> {
-        let trimmed = server_url.trim();
-        let (scheme, hostport) = if let Some(rest) = trimmed.strip_prefix("nats://") {
-            ("nats://", rest)
-        } else if let Some(rest) = trimmed.strip_prefix("tls://") {
-            ("tls://", rest)
-        } else {
-            return Err(CodedError::new(
-                CODE_NATS_CONFIG,
-                "NATS server URL must begin with nats:// or tls://.",
-                "Provide a valid NATS JetStream endpoint URL.",
-            ));
-        };
-        let normalized_hostport = validate_nats_hostport(hostport)?;
+        let (is_tls, normalized_hostport) = parse_validated_nats_url(server_url)?;
+        let scheme = if is_tls { "tls://" } else { "nats://" };
         let mut cfg = Self::embedded_default();
         cfg.transport = NatsTransportMode::JetStreamTcp {
             server_url: format!("{scheme}{normalized_hostport}"),
@@ -146,21 +220,35 @@ impl NatsConfig {
                 "Set valid JetStream stream capacity and replication factor.",
             ));
         }
-        if let NatsTransportMode::JetStreamTcp { server_url } = &self.transport
-            && server_url.trim().is_empty()
-        {
-            return Err(CodedError::new(
-                CODE_NATS_CONFIG,
-                "NATS JetStreamTcp server_url cannot be empty.",
-                "Provide a nats:// or tls:// endpoint.",
-            ));
+        if let NatsTransportMode::JetStreamTcp { server_url } = &self.transport {
+            let _ = parse_validated_nats_url(server_url)?;
+        }
+        if let Some(ref pem) = self.tls_ca_pem {
+            let _ = validate_ca_pem(pem)?;
+        }
+        if let Some(ref auth) = self.auth {
+            if let Some(ref seed) = auth.nkey_seed {
+                validate_nkey_seed(seed)?;
+            }
+            if let Some(ref jwt) = auth.jwt
+                && (jwt.trim().is_empty()
+                    || jwt.contains('\r')
+                    || jwt.contains('\n')
+                    || jwt.contains('\0'))
+            {
+                return Err(CodedError::new(
+                    CODE_NATS_CONFIG,
+                    "NATS JWT credential cannot be empty or contain control characters.",
+                    "Provide a valid signed NATS user JWT.",
+                ));
+            }
         }
         Ok(())
     }
 
     pub fn stream_spec(&self, stream: &str, partition: u32) -> JetStreamStreamSpec {
         let js_name = jetstream_stream_name(stream, partition);
-        let subject_pattern = format!("grdr.*.{}.*", sanitize_token(stream));
+        let subject_pattern = format!("grdr.*.{}.*", encode_subject_token(stream));
         JetStreamStreamSpec {
             stream_name: js_name,
             subjects: vec![subject_pattern],
@@ -175,8 +263,8 @@ impl NatsConfig {
 pub fn subject_for(org: &OrgId, stream: &str, partition: u32) -> String {
     format!(
         "grdr.{}.{}.p{partition}",
-        sanitize_token(org.as_str()),
-        sanitize_token(stream)
+        encode_subject_token(org.as_str()),
+        encode_subject_token(stream)
     )
 }
 
@@ -200,6 +288,90 @@ pub fn jetstream_stream_name(stream: &str, partition: u32) -> String {
                 .collect::<String>()
         ),
     }
+}
+
+pub(crate) fn encode_subject_token(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return "default".into();
+    }
+    let mut out = String::with_capacity(trimmed.len());
+    for byte in trimmed.bytes() {
+        if byte.is_ascii_alphanumeric() || byte == b'-' {
+            out.push(char::from(byte));
+        } else {
+            out.push_str(&format!("_{byte:02x}"));
+        }
+    }
+    out
+}
+
+pub(crate) fn decode_subject_token(encoded: &str) -> Option<String> {
+    if encoded.is_empty() {
+        return None;
+    }
+    let bytes = encoded.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut idx = 0usize;
+    while let Some(&b) = bytes.get(idx) {
+        if b == b'_' {
+            let h1 = *bytes.get(idx.saturating_add(1))?;
+            let h2 = *bytes.get(idx.saturating_add(2))?;
+            let hi = from_hex_digit(h1)?;
+            let lo = from_hex_digit(h2)?;
+            out.push((hi << 4) | lo);
+            idx = idx.saturating_add(3);
+        } else if b.is_ascii_alphanumeric() || b == b'-' {
+            out.push(b);
+            idx = idx.saturating_add(1);
+        } else {
+            return None;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+fn from_hex_digit(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b.saturating_sub(b'0')),
+        b'a'..=b'f' => Some(b.saturating_sub(b'a').saturating_add(10)),
+        b'A'..=b'F' => Some(b.saturating_sub(b'A').saturating_add(10)),
+        _ => None,
+    }
+}
+
+pub(crate) fn parse_validated_nats_url(server_url: &str) -> Result<(bool, String), CodedError> {
+    let trimmed = server_url.trim();
+    let (is_tls, hostport) = if let Some(rest) = trimmed.strip_prefix("nats://") {
+        (false, rest)
+    } else if let Some(rest) = trimmed.strip_prefix("tls://") {
+        (true, rest)
+    } else {
+        return Err(CodedError::new(
+            CODE_NATS_CONFIG,
+            "NATS server URL must begin with nats:// or tls://.",
+            "Provide a valid NATS JetStream endpoint URL.",
+        ));
+    };
+    let normalized = validate_nats_hostport(hostport)?;
+    if !is_tls && !is_loopback_hostport(&normalized) {
+        return Err(CodedError::new(
+            CODE_NATS_CONFIG,
+            "Plaintext nats:// is permitted only for loopback hosts; use tls:// for remote NATS servers.",
+            "Configure tls://host:port for remote NATS JetStream connections.",
+        ));
+    }
+    Ok((is_tls, normalized))
+}
+
+fn is_loopback_hostport(hostport: &str) -> bool {
+    let host = if let Some(after_open) = hostport.strip_prefix('[') {
+        after_open.split_once(']').map(|(h, _)| h).unwrap_or("")
+    } else {
+        hostport.split_once(':').map(|(h, _)| h).unwrap_or(hostport)
+    };
+    host.eq_ignore_ascii_case("localhost")
+        || host.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
 }
 
 fn validate_nats_hostport(raw: &str) -> Result<String, CodedError> {
@@ -273,23 +445,4 @@ fn validate_port(raw: &str) -> Result<u16, CodedError> {
         ));
     }
     Ok(port)
-}
-
-fn sanitize_token(raw: &str) -> String {
-    let cleaned: String = raw
-        .trim()
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    if cleaned.is_empty() {
-        "default".into()
-    } else {
-        cleaned
-    }
 }

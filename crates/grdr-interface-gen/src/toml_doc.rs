@@ -140,15 +140,13 @@ pub fn parse_toml_table(source: &str) -> Result<BTreeMap<String, TomlValue>, Tom
 
         if let Some(inner) = trimmed.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
             let key = parse_key_token(inner.trim(), line_no)?;
-            let entry = root
-                .entry(key.clone())
-                .or_insert_with(|| TomlValue::Table(BTreeMap::new()));
-            if !matches!(entry, TomlValue::Table(_)) {
+            if root.contains_key(&key) {
                 return Err(TomlParseError::Syntax {
                     line: line_no,
-                    detail: format!("key [{key}] collides with non-table entry"),
+                    detail: format!("duplicate table [{key}]"),
                 });
             }
+            root.insert(key.clone(), TomlValue::Table(BTreeMap::new()));
             target = CursorTarget::Table(key);
             continue;
         }
@@ -208,6 +206,12 @@ fn insert_into_target(
 ) -> Result<(), TomlParseError> {
     match target {
         CursorTarget::Root => {
+            if root.contains_key(&key) {
+                return Err(TomlParseError::Syntax {
+                    line,
+                    detail: format!("duplicate key '{key}'"),
+                });
+            }
             root.insert(key, value);
             Ok(())
         }
@@ -218,6 +222,12 @@ fn insert_into_target(
                     detail: format!("missing section table '{section}'"),
                 });
             };
+            if map.contains_key(&key) {
+                return Err(TomlParseError::Syntax {
+                    line,
+                    detail: format!("duplicate key '{key}' in [{section}]"),
+                });
+            }
             map.insert(key, value);
             Ok(())
         }
@@ -237,6 +247,12 @@ fn insert_into_target(
                     detail: format!("invalid array table index for '{arr_key}'"),
                 });
             };
+            if map.contains_key(&key) {
+                return Err(TomlParseError::Syntax {
+                    line,
+                    detail: format!("duplicate key '{key}' in [[{arr_key}]]"),
+                });
+            }
             map.insert(key, value);
             Ok(())
         }
@@ -309,6 +325,9 @@ fn parse_value(raw: &str, line: usize) -> Result<TomlValue, TomlParseError> {
     if let Some(inner) = raw.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
         return parse_array(inner, line);
     }
+    if let Some(inner) = raw.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
+        return parse_inline_table(inner, line);
+    }
     if let Ok(num) = raw.parse::<i64>() {
         return Ok(TomlValue::Int(num));
     }
@@ -318,12 +337,13 @@ fn parse_value(raw: &str, line: usize) -> Result<TomlValue, TomlParseError> {
     })
 }
 
-fn parse_array(inner: &str, line: usize) -> Result<TomlValue, TomlParseError> {
-    let mut items = Vec::new();
+fn split_top_level_commas(inner: &str) -> Vec<String> {
+    let mut parts = Vec::new();
     let mut current = String::new();
     let mut in_double = false;
     let mut in_single = false;
     let mut escaped = false;
+    let mut brace_depth: usize = 0;
 
     for ch in inner.chars() {
         if escaped {
@@ -353,10 +373,16 @@ fn parse_array(inner: &str, line: usize) -> Result<TomlValue, TomlParseError> {
         } else if ch == '\'' {
             in_single = true;
             current.push(ch);
-        } else if ch == ',' {
+        } else if ch == '[' || ch == '{' {
+            brace_depth = brace_depth.saturating_add(1);
+            current.push(ch);
+        } else if ch == ']' || ch == '}' {
+            brace_depth = brace_depth.saturating_sub(1);
+            current.push(ch);
+        } else if ch == ',' && brace_depth == 0 {
             let trimmed = current.trim();
             if !trimmed.is_empty() {
-                items.push(parse_value(trimmed, line)?);
+                parts.push(trimmed.to_owned());
             }
             current.clear();
         } else {
@@ -366,9 +392,40 @@ fn parse_array(inner: &str, line: usize) -> Result<TomlValue, TomlParseError> {
 
     let trimmed = current.trim();
     if !trimmed.is_empty() {
-        items.push(parse_value(trimmed, line)?);
+        parts.push(trimmed.to_owned());
+    }
+    parts
+}
+
+fn parse_array(inner: &str, line: usize) -> Result<TomlValue, TomlParseError> {
+    let parts = split_top_level_commas(inner);
+    let mut items = Vec::with_capacity(parts.len());
+    for part in parts {
+        items.push(parse_value(&part, line)?);
     }
     Ok(TomlValue::Array(items))
+}
+
+fn parse_inline_table(inner: &str, line: usize) -> Result<TomlValue, TomlParseError> {
+    let mut table = BTreeMap::new();
+    for entry in split_top_level_commas(inner) {
+        let Some((lhs, rhs)) = entry.split_once('=') else {
+            return Err(TomlParseError::Syntax {
+                line,
+                detail: format!("invalid inline table entry: {entry}"),
+            });
+        };
+        let key = parse_key_token(lhs.trim(), line)?;
+        if table.contains_key(&key) {
+            return Err(TomlParseError::Syntax {
+                line,
+                detail: format!("duplicate inline table key '{key}'"),
+            });
+        }
+        let val = parse_value(rhs.trim(), line)?;
+        table.insert(key, val);
+    }
+    Ok(TomlValue::Table(table))
 }
 
 fn unescape_basic(raw: &str, line: usize) -> Result<String, TomlParseError> {

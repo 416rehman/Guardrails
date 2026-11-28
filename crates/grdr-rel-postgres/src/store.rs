@@ -17,9 +17,8 @@ use crate::config::{
 };
 use crate::dialect::{rls_session_statements, rls_write_statements};
 use crate::migrations::{MigrationPhase, OFFLINE_SCHEMA_SQL, POSTGRES_MIGRATIONS};
-use crate::wire::{
-    WireConnParams, WireStatement, execute_extended_tx_wire, execute_simple_query_wire,
-};
+use crate::pool::{PgConnectionPool, PgPoolStats};
+use crate::wire::WireStatement;
 
 #[derive(Debug)]
 pub(crate) enum StoreBackend {
@@ -29,8 +28,9 @@ pub(crate) enum StoreBackend {
 
 #[derive(Debug)]
 pub struct PostgresRelationalStore {
-    pub(crate) config: PostgresConfig,
+    pub(crate) config: Box<PostgresConfig>,
     pub(crate) backend: StoreBackend,
+    pub(crate) pool: Option<Box<PgConnectionPool>>,
 }
 
 impl PostgresRelationalStore {
@@ -38,8 +38,9 @@ impl PostgresRelationalStore {
         let mut conn = Connection::open_in_memory().map_err(pg_sql_err)?;
         init_offline_postgres(&mut conn)?;
         Ok(Self {
-            config: PostgresConfig::offline(),
+            config: Box::new(PostgresConfig::offline()),
             backend: StoreBackend::OfflineSqlite(Mutex::new(conn)),
+            pool: None,
         })
     }
 
@@ -47,61 +48,41 @@ impl PostgresRelationalStore {
         config.validate()?;
         match &config.transport {
             PostgresTransport::OfflineEmbedded => Self::open_offline(),
-            PostgresTransport::TcpWire {
-                endpoint,
-                database,
-                user,
-                password,
-            } => {
-                let conn = WireConnParams {
-                    endpoint,
-                    user,
-                    database,
-                    app_name: &config.application_name,
-                    timeout_ms: config.connect_timeout_ms,
-                    ssl_mode: config.ssl_mode,
-                };
-                let _ = execute_simple_query_wire(&conn, password.as_deref(), "SELECT 1")?;
+            PostgresTransport::TcpWire { .. } => {
+                let pool = PgConnectionPool::new(&config)?;
+                let _ = pool.execute_simple("SELECT 1", config.connect_timeout_ms)?;
                 Ok(Self {
-                    config,
+                    config: Box::new(config),
                     backend: StoreBackend::WireTcp,
+                    pool: Some(Box::new(pool)),
                 })
             }
         }
     }
 
+    pub fn pool_stats(&self) -> Result<Option<PgPoolStats>, CodedError> {
+        match &self.pool {
+            Some(pool) => Ok(Some(pool.stats()?)),
+            None => Ok(None),
+        }
+    }
+
     pub fn run_migrations(&self) -> Result<(), CodedError> {
-        let PostgresTransport::TcpWire {
-            endpoint,
-            database,
-            user,
-            password,
-        } = &self.config.transport
-        else {
+        let Some(pool) = &self.pool else {
             return Ok(());
         };
-        let conn = WireConnParams {
-            endpoint,
-            user,
-            database,
-            app_name: &self.config.application_name,
-            timeout_ms: self.config.connect_timeout_ms,
-            ssl_mode: self.config.ssl_mode,
-        };
-        let _ = execute_simple_query_wire(
-            &conn,
-            password.as_deref(),
+        let _ = pool.execute_simple(
             "CREATE TABLE IF NOT EXISTS schema_migrations (
                 version INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
                 phase TEXT NOT NULL,
                 applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );",
+            self.config.statement_timeout_ms,
         )?;
-        let applied_rows = execute_simple_query_wire(
-            &conn,
-            password.as_deref(),
+        let applied_rows = pool.execute_simple(
             "SELECT version::text FROM schema_migrations ORDER BY version ASC;",
+            self.config.statement_timeout_ms,
         )?;
         let mut applied_versions = std::collections::BTreeSet::new();
         for row in applied_rows {
@@ -116,13 +97,13 @@ impl PostgresRelationalStore {
                 continue;
             }
             let record_sql = format!(
-                "{}\nINSERT INTO schema_migrations (version, name, phase) VALUES ({}, '{}', '{}') ON CONFLICT (version) DO NOTHING;",
+                "BEGIN;\n{}\nINSERT INTO schema_migrations (version, name, phase) VALUES ({}, '{}', '{}') ON CONFLICT (version) DO NOTHING;\nCOMMIT;",
                 mig.sql,
                 mig.version,
                 mig.name,
                 phase_label(mig.phase),
             );
-            let _ = execute_simple_query_wire(&conn, password.as_deref(), &record_sql)?;
+            let _ = pool.execute_simple(&record_sql, self.config.statement_timeout_ms)?;
         }
         Ok(())
     }
@@ -161,28 +142,14 @@ impl PostgresRelationalStore {
         rls_stmts: &[String],
         statements: &[WireStatement<'_>],
     ) -> Result<Vec<Vec<Vec<Option<String>>>>, CodedError> {
-        let PostgresTransport::TcpWire {
-            endpoint,
-            database,
-            user,
-            password,
-        } = &self.config.transport
-        else {
+        let Some(pool) = &self.pool else {
             return Err(CodedError::new(
                 CODE_PG_IO,
                 "Wire execution requested on OfflineEmbedded store.",
                 "Connect with a postgres:// DSN.",
             ));
         };
-        let conn = WireConnParams {
-            endpoint,
-            user,
-            database,
-            app_name: &self.config.application_name,
-            timeout_ms: self.config.statement_timeout_ms,
-            ssl_mode: self.config.ssl_mode,
-        };
-        execute_extended_tx_wire(&conn, password.as_deref(), rls_stmts, statements)
+        pool.execute_tx(rls_stmts, statements)
     }
 }
 

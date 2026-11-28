@@ -2,7 +2,14 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 //! Cedar 4.x schemas (`Grdr`, `Grdr::Console`, `Grdr::Operator`).
 
+use std::fmt;
+
 use cedar_policy::{PolicySet, Schema, ValidationMode, Validator};
+
+use crate::codes::{
+    CODE_SCHEMA_CEDAR_POLICY_PARSE, CODE_SCHEMA_CEDAR_POLICY_VALIDATION,
+    CODE_SCHEMA_CEDAR_SCHEMA_PARSE,
+};
 
 pub const SCHEMA_VERSION: &str = "v1alpha1";
 
@@ -37,15 +44,49 @@ pub enum CedarPlane {
     Operator,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CedarSchemaError {
-    #[error("GRDR-SCHEMA-0005: failed to load Cedar {plane:?} schema: {detail}")]
     SchemaParse { plane: CedarPlane, detail: String },
-    #[error("GRDR-SCHEMA-0006: failed to parse Cedar policy set: {detail}")]
     PolicyParse { detail: String },
-    #[error("GRDR-SCHEMA-0007: Cedar policy failed strict schema validation: {detail}")]
     PolicyValidation { detail: String },
 }
+
+impl CedarSchemaError {
+    #[must_use]
+    pub const fn code(&self) -> &'static str {
+        match self {
+            Self::SchemaParse { .. } => CODE_SCHEMA_CEDAR_SCHEMA_PARSE,
+            Self::PolicyParse { .. } => CODE_SCHEMA_CEDAR_POLICY_PARSE,
+            Self::PolicyValidation { .. } => CODE_SCHEMA_CEDAR_POLICY_VALIDATION,
+        }
+    }
+}
+
+impl fmt::Display for CedarSchemaError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SchemaParse { plane, detail } => write!(
+                f,
+                "{}: failed to load Cedar {plane:?} schema: {detail}",
+                self.code()
+            ),
+            Self::PolicyParse { detail } => {
+                write!(
+                    f,
+                    "{}: failed to parse Cedar policy set: {detail}",
+                    self.code()
+                )
+            }
+            Self::PolicyValidation { detail } => write!(
+                f,
+                "{}: Cedar policy failed strict schema validation: {detail}",
+                self.code()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for CedarSchemaError {}
 
 pub fn schema_source(plane: CedarPlane) -> &'static str {
     match plane {

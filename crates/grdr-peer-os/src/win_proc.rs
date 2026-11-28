@@ -43,9 +43,9 @@ const MAX_SNAPSHOT_PROCESSES: usize = 65_536;
 const KERNEL_SYSTEM_PID: u32 = 4;
 
 #[cfg(windows)]
-struct SnapshotProcEntry {
-    ppid: u32,
-    exe_name: String,
+pub(crate) struct SnapshotProcEntry {
+    pub(crate) ppid: u32,
+    pub(crate) exe_name: String,
 }
 
 #[cfg(windows)]
@@ -63,7 +63,7 @@ pub(crate) fn read_windows_peer_observation(pid: u32) -> Result<PeerObservation,
             && entry.ppid == 0
             && entry.exe_name.eq_ignore_ascii_case("System")
         {
-            return Ok(tcb_root_observation(pid, 1));
+            return Ok(tcb_root_observation(pid, 1, None));
         }
         return Err(PeerError::Unverifiable(
             "unexpected metadata for Windows System PID 4".to_string(),
@@ -120,14 +120,11 @@ pub(crate) fn read_windows_peer_observation(pid: u32) -> Result<PeerObservation,
             })
         }
         Err((Some(err_code), _)) if err_code == ERROR_ACCESS_DENIED => {
-            if let Some(entry) = snap_entry
-                && is_trusted_tcb_stub(&snap, pid, entry)
-            {
-                return Ok(tcb_root_observation(pid, 1));
-            }
-            Err(PeerError::Unverifiable(format!(
-                "OpenProcess({pid}) access denied"
-            )))
+            crate::win_tcb::verify_tcb_process_on_access_denied(&snap, pid).map(
+                |(verified_exe, started_100ns)| {
+                    tcb_root_observation(pid, started_100ns, Some(verified_exe))
+                },
+            )
         }
         Err((_, err)) => Err(err),
     }
@@ -140,7 +137,20 @@ pub(crate) fn read_windows_exe_identity(pid: u32) -> Result<ExeIdentity, PeerErr
             "pid 0 is invalid for executable lookup".to_string(),
         ));
     }
-    let proc_owned = open_limited_query(pid).map_err(|(_, e)| e)?;
+    let proc_owned = match open_limited_query(pid) {
+        Ok(handle) => handle,
+        Err((Some(err_code), _)) if err_code == ERROR_ACCESS_DENIED => {
+            let snap = snapshot_process_map()?;
+            let (verified_exe, _) =
+                crate::win_tcb::verify_tcb_process_on_access_denied(&snap, pid)?;
+            return Ok(ExeIdentity {
+                exe_path: Some(verified_exe),
+                signer_team_id: None,
+                signing_id: None,
+            });
+        }
+        Err((_, e)) => return Err(e),
+    };
     let proc_raw = proc_owned.as_raw_handle() as HANDLE;
     if read_process_id(proc_raw)? != pid {
         return Err(PeerError::PidReuse);
@@ -154,7 +164,11 @@ pub(crate) fn read_windows_exe_identity(pid: u32) -> Result<ExeIdentity, PeerErr
 }
 
 #[cfg(windows)]
-fn tcb_root_observation(pid: u32, started_100ns: u64) -> PeerObservation {
+fn tcb_root_observation(
+    pid: u32,
+    started_100ns: u64,
+    verified_exe: Option<String>,
+) -> PeerObservation {
     PeerObservation {
         credentials: PeerCredentials::Windows(WindowsPipePeer {
             client_pid: pid,
@@ -173,7 +187,7 @@ fn tcb_root_observation(pid: u32, started_100ns: u64) -> PeerObservation {
         parent_pid: 0,
         started_at_ticks: started_100ns,
         exe: Some(ExeIdentity {
-            exe_path: None,
+            exe_path: verified_exe,
             signer_team_id: None,
             signing_id: None,
         }),
@@ -197,30 +211,6 @@ fn parent_missing_or_newer(
         Ok(parent_start) => parent_start > child_started_100ns,
         Err(_) => true,
     }
-}
-
-#[cfg(windows)]
-fn is_trusted_tcb_stub(
-    snap: &BTreeMap<u32, SnapshotProcEntry>,
-    pid: u32,
-    entry: &SnapshotProcEntry,
-) -> bool {
-    if pid == KERNEL_SYSTEM_PID || entry.ppid == pid {
-        return false;
-    }
-    if entry.exe_name.eq_ignore_ascii_case("smss.exe")
-        || entry.exe_name.eq_ignore_ascii_case("wininit.exe")
-        || entry.exe_name.eq_ignore_ascii_case("services.exe")
-        || entry.exe_name.eq_ignore_ascii_case("winlogon.exe")
-    {
-        return true;
-    }
-    if entry.exe_name.eq_ignore_ascii_case("svchost.exe")
-        && let Some(parent) = snap.get(&entry.ppid)
-    {
-        return parent.exe_name.eq_ignore_ascii_case("services.exe");
-    }
-    false
 }
 
 #[cfg(windows)]

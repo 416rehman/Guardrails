@@ -101,31 +101,299 @@ msg = "Deny"
 desc = "Assurance level 0 label"
 max = 32
 risk = "normal"
-msg = "Observed"
+msg = "AL0 Inventoried"
+
+["assurance.al0.desc"]
+desc = "Assurance level 0 description"
+max = 120
+risk = "normal"
+msg = "Discovered on device. No observation or protection active yet."
 
 ["assurance.al1"]
 desc = "Assurance level 1 label"
 max = 32
 risk = "normal"
-msg = "App hook"
+msg = "AL1 Observed"
+
+["assurance.al1.desc"]
+desc = "Assurance level 1 description"
+max = 120
+risk = "normal"
+msg = "Observed via transcripts or passive telemetry."
 
 ["assurance.al2"]
 desc = "Assurance level 2 label"
 max = 32
 risk = "normal"
-msg = "Tool proxy"
+msg = "AL2 Guided"
+
+["assurance.al2.desc"]
+desc = "Assurance level 2 description"
+max = 120
+risk = "normal"
+msg = "Checked by an application hook or routed through the tool broker."
 
 ["assurance.al3"]
 desc = "Assurance level 3 label"
 max = 32
 risk = "normal"
-msg = "Sandboxed"
+msg = "AL3 Contained"
+
+["assurance.al3.desc"]
+desc = "Assurance level 3 description"
+max = 120
+risk = "normal"
+msg = "Isolated inside an operating-system boundary."
 
 ["assurance.al4"]
 desc = "Assurance level 4 label"
 max = 32
 risk = "normal"
-msg = "Enforced"
+msg = "AL4 Enforced"
+
+["assurance.al4.desc"]
+desc = "Assurance level 4 description"
+max = 120
+risk = "normal"
+msg = "Tamper-resistant boundary enforcement verified."
+
+["assurance.control.boundary"]
+desc = "Assurance control label: boundary"
+max = 32
+risk = "normal"
+msg = "Boundary"
+
+["assurance.control.request"]
+desc = "Assurance control label: request"
+max = 32
+risk = "normal"
+msg = "Request"
+
+["assurance.control.observe"]
+desc = "Assurance control label: observe"
+max = 32
+risk = "normal"
+msg = "Observe"
+
+["os.macos"]
+desc = "Operating system display name: macOS"
+max = 24
+risk = "normal"
+msg = "macOS"
+
+["os.linux"]
+desc = "Operating system display name: Linux"
+max = 24
+risk = "normal"
+msg = "Linux"
+
+["os.windows"]
+desc = "Operating system display name: Windows"
+max = 24
+risk = "normal"
+msg = "Windows"
+
+["action.exec"]
+desc = "Action class label: command execution"
+max = 36
+risk = "normal"
+msg = "Command run"
+
+["action.file_read"]
+desc = "Action class label: file read"
+max = 36
+risk = "normal"
+msg = "File read"
+
+["action.file_write"]
+desc = "Action class label: file write"
+max = 36
+risk = "normal"
+msg = "File write"
+
+["action.file_delete"]
+desc = "Action class label: file delete"
+max = 36
+risk = "normal"
+msg = "File delete"
+
+["action.net_connect"]
+desc = "Action class label: network connect"
+max = 36
+risk = "normal"
+msg = "Network connect"
+
+["action.net_request"]
+desc = "Action class label: network request"
+max = 36
+risk = "normal"
+msg = "Network request"
+
+["action.llm_request"]
+desc = "Action class label: LLM request"
+max = 36
+risk = "normal"
+msg = "LLM request"
+
+["action.mcp_connect"]
+desc = "Action class label: MCP connect"
+max = 36
+risk = "normal"
+msg = "MCP connect"
+
+["action.mcp_call"]
+desc = "Action class label: tool call"
+max = 36
+risk = "normal"
+msg = "Tool call"
+
+["action.cred_use"]
+desc = "Action class label: credential access"
+max = 36
+risk = "normal"
+msg = "Credential access"
+
+["action.agent_spawn"]
+desc = "Action class label: agent spawn"
+max = 36
+risk = "normal"
+msg = "Agent spawn"
+
+["action.config_change"]
+desc = "Action class label: config change"
+max = 36
+risk = "normal"
+msg = "Config change"
+
+["action.elevate"]
+desc = "Action class label: privilege elevation"
+max = 36
+risk = "normal"
+msg = "Privilege elevation"
+
+["action.ui_act"]
+desc = "Action class label: UI action"
+max = 36
+risk = "normal"
+msg = "UI action"
+
+["action.data_flow"]
+desc = "Action class label: data transfer"
+max = 36
+risk = "normal"
+msg = "Data transfer"
+
+["artifact.kind.skill"]
+desc = "Artifact kind label: skill"
+max = 24
+risk = "normal"
+msg = "Skill"
+
+["artifact.kind.rule"]
+desc = "Artifact kind label: rule"
+max = 24
+risk = "normal"
+msg = "Rule"
+
+["artifact.kind.plugin"]
+desc = "Artifact kind label: plugin"
+max = 24
+risk = "normal"
+msg = "Plugin"
+
+["artifact.kind.command"]
+desc = "Artifact kind label: command"
+max = 24
+risk = "normal"
+msg = "Command"
+
+["artifact.kind.subagent"]
+desc = "Artifact kind label: subagent"
+max = 24
+risk = "normal"
+msg = "Subagent"
+
+["artifact.scope.user"]
+desc = "Artifact scope label: user"
+max = 24
+risk = "normal"
+msg = "User"
+
+["artifact.scope.workspace"]
+desc = "Artifact scope label: workspace"
+max = 24
+risk = "normal"
+msg = "Workspace"
+
+["artifact.scope.managed"]
+desc = "Artifact scope label: managed"
+max = 24
+risk = "normal"
+msg = "Managed"
+
+["artifact.risk.has_scripts"]
+desc = "Artifact risk flag: has scripts"
+max = 32
+risk = "normal"
+msg = "Has scripts"
+
+["artifact.risk.requests_broad_tools"]
+desc = "Artifact risk flag: requests broad tools"
+max = 32
+risk = "normal"
+msg = "Broad tools"
+
+["artifact.risk.bidi_obfuscation"]
+desc = "Artifact risk flag: bidi obfuscation"
+max = 32
+risk = "normal"
+msg = "Bidi obfuscation"
+
+["artifact.risk.unpinned_digest"]
+desc = "Artifact risk flag: unpinned digest"
+max = 32
+risk = "normal"
+msg = "Unpinned digest"
+
+["approval.grade.g1"]
+desc = "Approval grade label: G1 personal authentication"
+max = 36
+risk = "safety"
+msg = "Approval required"
+
+["approval.grade.g2"]
+desc = "Approval grade label: G2 administrator"
+max = 36
+risk = "safety"
+msg = "Admin approval"
+
+["approval.grade.g3"]
+desc = "Approval grade label: G3 quorum"
+max = 36
+risk = "safety"
+msg = "Two approvers"
+
+["common.count.sandboxed_devices"]
+desc = "Pluralized count of sandboxed devices"
+max = 48
+risk = "normal"
+msg = '''
+.input {$count :number}
+.match $count
+one {{{$count} sandboxed device}}
+* {{{$count} sandboxed devices}}
+'''
+
+["common.count.hook_agents"]
+desc = "Pluralized count of app-hook agents"
+max = 48
+risk = "normal"
+msg = '''
+.input {$count :number}
+.match $count
+one {{{$count} app-hook agent}}
+* {{{$count} app-hook agents}}
+'''
 
 ["session_label.credential_accessed"]
 desc = "Session label when credential material was accessed"
@@ -150,3 +418,153 @@ desc = "Session label when tainted exfiltration risk was detected"
 max = 40
 risk = "normal"
 msg = "Tainted exfil risk"
+
+["mdm_format.intune_win32"]
+desc = "MDM export format: Microsoft Intune Win32"
+max = 48
+risk = "normal"
+msg = "Intune Win32 (.intunewin / PS1)"
+
+["mdm_format.jamf_mobileconfig"]
+desc = "MDM export format: Jamf Pro mobileconfig"
+max = 48
+risk = "normal"
+msg = "Jamf Pro (.mobileconfig)"
+
+["mdm_format.hexnode"]
+desc = "MDM export format: Hexnode MDM"
+max = 40
+risk = "normal"
+msg = "Hexnode MDM"
+
+["mdm_format.tanium"]
+desc = "MDM export format: Tanium Deploy"
+max = 40
+risk = "normal"
+msg = "Tanium Deploy"
+
+["mdm_format.chrome_enterprise"]
+desc = "MDM export format: Chrome and Edge Enterprise"
+max = 48
+risk = "normal"
+msg = "Chrome / Edge Enterprise"
+
+["mdm_format.firefox_gpo"]
+desc = "MDM export format: Firefox AD GPO"
+max = 48
+risk = "normal"
+msg = "Firefox AD GPO / policies.json"
+
+["mdm_format.linux_repo"]
+desc = "MDM export format: Linux package repositories"
+max = 48
+risk = "normal"
+msg = "Linux apt / dnf config"
+
+["integration_category.directory_sync"]
+desc = "Integration family: Directory sync"
+max = 36
+risk = "normal"
+msg = "Directory sync"
+
+["integration_category.saas_connector"]
+desc = "Integration family: SaaS activity"
+max = 36
+risk = "normal"
+msg = "SaaS activity"
+
+["integration_category.export_sink"]
+desc = "Integration family: Export sink"
+max = 36
+risk = "normal"
+msg = "Export sink"
+
+["integration_health.connected"]
+desc = "Integration health: Connected"
+max = 32
+risk = "normal"
+msg = "Connected"
+
+["integration_health.at_risk"]
+desc = "Integration health: At risk"
+max = 32
+risk = "normal"
+msg = "At risk"
+
+["integration_health.degraded"]
+desc = "Integration health: Degraded"
+max = 32
+risk = "normal"
+msg = "Degraded"
+
+["integration_health.not_configured"]
+desc = "Integration health: Not configured"
+max = 32
+risk = "normal"
+msg = "Not configured"
+
+["deployment_key_status.active"]
+desc = "Deployment key status: Active"
+max = 32
+risk = "normal"
+msg = "Active"
+
+["deployment_key_status.exhausted"]
+desc = "Deployment key status: Quota reached"
+max = 32
+risk = "normal"
+msg = "Quota reached"
+
+["deployment_key_status.expired"]
+desc = "Deployment key status: Expired"
+max = 32
+risk = "normal"
+msg = "Expired"
+
+["deployment_key_status.revoked"]
+desc = "Deployment key status: Revoked"
+max = 32
+risk = "normal"
+msg = "Revoked"
+
+["install_profile.standard"]
+desc = "Install profile: Standard"
+max = 36
+risk = "normal"
+msg = "Standard"
+
+["install_profile.enforced"]
+desc = "Install profile: Enforced boundary"
+max = 36
+risk = "normal"
+msg = "Enforced boundary"
+
+["install_profile.watch"]
+desc = "Install profile: Watch baseline"
+max = 36
+risk = "normal"
+msg = "Watch baseline"
+
+["browser_dlp.file_upload"]
+desc = "Browser AI data class: File upload"
+max = 36
+risk = "normal"
+msg = "File upload"
+
+["browser_dlp.paste_secret"]
+desc = "Browser AI data class: Secret paste"
+max = 36
+risk = "normal"
+msg = "Secret paste"
+
+["browser_dlp.source_code"]
+desc = "Browser AI data class: Source code"
+max = 36
+risk = "normal"
+msg = "Source code"
+
+["browser_dlp.customer_pii"]
+desc = "Browser AI data class: Customer PII"
+max = 36
+risk = "normal"
+msg = "Customer PII"
