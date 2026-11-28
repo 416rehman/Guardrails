@@ -1,0 +1,132 @@
+format: grdr.compliance-incidents.v1
+pack_id: grdr.compliance
+version: "1.0.0"
+regimes:
+  - id: cra-eu-2024-2847
+    title: "EU Cyber Resilience Act (Regulation (EU) 2024/2847 Art. 14)"
+    authority: "Designated national CSIRT and ENISA single reporting platform"
+    source_note: "Art. 14 reporting applies from 11 Sep 2026; manufacturer filings owned by PSIRT"
+    stages:
+      - stage: early-warning
+        citation: "CRA Art. 14(2)(a) / Art. 14(4)(a)"
+        anchor: detected
+        offset_hours: 24
+        offset_days: 0
+        offset_business_days: 0
+        summary: "Undue-delay early warning within 24 hours of awareness; state suspected cross-border impact"
+      - stage: notification
+        citation: "CRA Art. 14(2)(b) / Art. 14(4)(b)"
+        anchor: detected
+        offset_hours: 72
+        offset_days: 0
+        offset_business_days: 0
+        summary: "Initial assessment notification within 72 hours with severity, mitigation, and IOCs"
+      - stage: final-report-vuln-fix
+        citation: "CRA Art. 14(2)(c)"
+        anchor: fixed_or_detected
+        offset_hours: 0
+        offset_days: 14
+        offset_business_days: 0
+        summary: "Final report 14 days after corrective or mitigating measure becomes available"
+      - stage: final-report-severe-incident
+        citation: "CRA Art. 14(4)(c)"
+        anchor: notified_or_72h
+        offset_hours: 0
+        offset_days: 30
+        offset_business_days: 0
+        summary: "Final severe-incident report within one month of the 72-hour notification"
+  - id: nis2-art-23
+    title: "EU NIS2 Directive (Directive (EU) 2022/2555 Art. 23)"
+    authority: "National CSIRT or competent authority"
+    source_note: "Essential and important entity significant incident notification"
+    stages:
+      - stage: early-warning
+        citation: "NIS2 Art. 23(4)(a)"
+        anchor: detected
+        offset_hours: 24
+        offset_days: 0
+        offset_business_days: 0
+        summary: "Early warning within 24 hours indicating whether unlawful conduct or cross-border impact is suspected"
+      - stage: incident-notification
+        citation: "NIS2 Art. 23(4)(b)"
+        anchor: detected
+        offset_hours: 72
+        offset_days: 0
+        offset_business_days: 0
+        summary: "Initial severity and impact assessment with IOCs within 72 hours"
+      - stage: final-report
+        citation: "NIS2 Art. 23(4)(d)"
+        anchor: notified_or_72h
+        offset_hours: 0
+        offset_days: 30
+        offset_business_days: 0
+        summary: "Detailed root-cause, mitigation, and cross-border impact report within one month"
+  - id: dora-eu-2022-2554
+    title: "EU DORA (Regulation (EU) 2022/2554 Art. 19)"
+    authority: "Competent financial supervisory authority"
+    source_note: "Major ICT-related incident reporting clock from classification/awareness"
+    stages:
+      - stage: initial-notification
+        citation: "DORA Art. 19(4)(a)"
+        anchor: detected
+        offset_hours: 24
+        offset_days: 0
+        offset_business_days: 0
+        summary: "Initial notification without undue delay and within 24 hours of detection"
+      - stage: intermediate-report
+        citation: "DORA Art. 19(4)(b)"
+        anchor: detected
+        offset_hours: 72
+        offset_days: 0
+        offset_business_days: 0
+        summary: "Intermediate status update within 72 hours of initial notification/detection"
+      - stage: final-report
+        citation: "DORA Art. 19(4)(c)"
+        anchor: notified_or_72h
+        offset_hours: 0
+        offset_days: 30
+        offset_business_days: 0
+        summary: "Root-cause and actual financial/operational impact report within one month"
+  - id: sec-8k-1.05
+    title: "US SEC Form 8-K Item 1.05"
+    authority: "US Securities and Exchange Commission (EDGAR)"
+    source_note: "Material cybersecurity incident disclosure within 4 business days of determination"
+    stages:
+      - stage: form-8k-filing
+        citation: "17 CFR 249.308 Item 1.05"
+        anchor: materiality_or_detected
+        offset_hours: 0
+        offset_days: 0
+        offset_business_days: 4
+        summary: "Disclose nature, scope, timing, and material impact within 4 business days"
+  - id: nydfs-500.17
+    title: "NYDFS Cybersecurity Regulation (23 NYCRR 500.17)"
+    authority: "New York State Department of Financial Services"
+    source_note: "72-hour notification to Superintendent from determination"
+    stages:
+      - stage: superintendent-notice
+        citation: "23 NYCRR 500.17(a)"
+        anchor: materiality_or_detected
+        offset_hours: 72
+        offset_days: 0
+        offset_business_days: 0
+        summary: "Electronic notice within 72 hours of determining a reportable cybersecurity event"
+  - id: gdpr-art-33
+    title: "GDPR Personal Data Breach Notification (Arts. 33-34)"
+    authority: "Lead Supervisory Authority and Data Controller"
+    source_note: "24h processor-to-controller SLA (Doc 29 s.11) and 72h authority clock"
+    stages:
+      - stage: controller-notice
+        citation: "GDPR Art. 33(2) / Doc 29 SLA"
+        anchor: detected
+        offset_hours: 24
+        offset_days: 0
+        offset_business_days: 0
+        summary: "Processor notifies tenant controller within 24 hours of confirmation"
+      - stage: authority-notice
+        citation: "GDPR Art. 33(1)"
+        anchor: detected
+        offset_hours: 72
+        offset_days: 0
+        offset_business_days: 0
+        summary: "Controller notifies supervisory authority within 72 hours unless unlikely to result in risk"

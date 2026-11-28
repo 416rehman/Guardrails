@@ -76,7 +76,9 @@ implementing work item E7.1 of `docs/design/29-compliance-and-privacy.md` and
     versions, and initial indicators.
   - **14 days (actively exploited vulnerability) / 1 month (severe incident):** Final
     report with root cause, corrective measures, and mitigation status.
-- Customer-facing incident timeline exports follow the closed regime clock registry in `grdr-comply`.
+- Customer-facing incident timeline exports follow the closed regime clock registry in `grdr-comply` (`grdr comply incident-timeline`).
+- Public Annex I essential cybersecurity mapping: [`docs/compliance/cra-annex-i.md`](cra-annex-i.md).
+- SOC 2 readiness ownership matrix and WCAG 2.2 AA VPAT 2.5 INT documentation: [`docs/compliance/soc2-readiness.md`](soc2-readiness.md), [`docs/compliance/vpat-wcag22-aa.md`](vpat-wcag22-aa.md).
 
 ## 5. SBOM, Build Provenance, and VEX Artefacts
 
@@ -102,7 +104,8 @@ implementing work item E7.1 of `docs/design/29-compliance-and-privacy.md` and
 
 - Guardrails ADR uses only standard, publicly specified cryptographic primitives vetted in
   `crates/grdr-crypto/` (`ed25519-dalek`, `chacha20poly1305`, `sha2`, `zeroize`, and `rustls` /
-  `aws-lc-rs` for transport/FIPS builds).
+  `aws-lc-rs` via `aws-lc-sys` for standard transport builds; FIPS-validated `aws-lc-fips-sys`
+  builds remain feature-gated/pending external validation).
 - No proprietary or non-standard cryptographic algorithms are included; CI dependency and schema
   allow-lists (`security/deny.toml`, `grdr-crypto`) block unapproved cryptographic primitives.
 - Complete source code for every released open-source binary stays publicly available under

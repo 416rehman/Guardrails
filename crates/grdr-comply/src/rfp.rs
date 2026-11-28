@@ -1,134 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
-//! Buyer RFP generator covering parity checklist T1 to T17 (`docs/design/01`, `29` s.3).
+//! Buyer RFP generator covering parity checklist T1 to T17 loaded from YAML (`docs/design/01`, `29` s.3).
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::markdown_safe;
+use crate::pack_loader::{
+    load_yaml_checked, yaml_req_bool, yaml_req_seq, yaml_req_str, yaml_req_str_list,
+};
+use crate::registry::CapabilityRegistry;
+use crate::{ComplyError, markdown_safe};
 
-const PARITY_ITEMS: &[(&str, &str, bool, &[&str], &str)] = &[
-    (
-        "T1",
-        "Inventory of named agents, MCP servers, and extensions without manual registration",
-        true,
-        &["cap.inventory.agents"],
-        "Windows Tier 1 requires S-04; Linux and macOS inventory runs locally",
-    ),
-    (
-        "T2",
-        "Pre-execution hook verdicts for Claude Code, Codex, and Cursor",
-        true,
-        &["cap.preexec.enforce"],
-        "Claude Code, Codex, and Cursor covered via grdr-hook",
-    ),
-    (
-        "T3",
-        "MCP control point with per-tool allow and block",
-        true,
-        &["cap.supplychain.provenance", "cap.preexec.enforce"],
-        "MCP broker mediates stdio and HTTP tool calls with manifest pins",
-    ),
-    (
-        "T4",
-        "Allow, Ask, Block plus Watch detect-only mode",
-        true,
-        &["cap.preexec.enforce"],
-        "Cedar 4.x evaluator derives all five AARM verdicts",
-    ),
-    (
-        "T5",
-        "Session-centred audit with run reconstruction",
-        true,
-        &["cap.receipts.signed", "cap.attribution.graded"],
-        "Local chain standalone; fleet timeline with server",
-    ),
-    (
-        "T6",
-        "SaaS connectors for Copilot Studio, Agentforce, Bedrock AgentCore, Claude Enterprise",
-        true,
-        &["cap.inventory.agents", "cap.export.siem"],
-        "Read-only Anthropic/OpenAI connectors only; remaining SaaS connectors unmet without API integration",
-    ),
-    (
-        "T7",
-        "Coexistence beside a third-party EDR",
-        true,
-        &["cap.preexec.enforce", "cap.containment"],
-        "Targeted build avoids driver/hook collisions",
-    ),
-    (
-        "T8",
-        "MITRE ATLAS mapping of detection content",
-        true,
-        &["cap.detect.respond"],
-        "Detection content carries MITRE ATLAS tags",
-    ),
-    (
-        "T9",
-        "Verdict API for gateways (LiteLLM, Kong, AuthZEN)",
-        true,
-        &["cap.preexec.enforce"],
-        "Requires server decide target for remote gateway callers",
-    ),
-    (
-        "T10",
-        "Principal and agent attribution in every record with five verdicts",
-        true,
-        &["cap.attribution.graded", "cap.preexec.enforce"],
-        "Attribution grade 0-4 and actor_kind recorded per envelope",
-    ),
-    (
-        "T11",
-        "Recorded human approval for high-impact actions",
-        true,
-        &["cap.approval.graded"],
-        "Graded STEP_UP approvals bound to exact action digest",
-    ),
-    (
-        "T12",
-        "Suspend an agent or group and revoke credentials",
-        true,
-        &["cap.detect.respond", "cap.identity.brokered"],
-        "Session freeze works locally; credential revocation requires broker and token service",
-    ),
-    (
-        "T13",
-        "SIEM, SOAR, and ticketing export with stable identifiers",
-        true,
-        &["cap.export.siem"],
-        "OCSF 1.9 / 1.3 and JSONL export contracts",
-    ),
-    (
-        "T14",
-        "Policy versioning, counterfactual dry-run replay, and rollback",
-        true,
-        &["cap.policy.change"],
-        "Signed packs with 7-day replay and last-known-good rollback",
-    ),
-    (
-        "T15",
-        "Tamper-evident audit log retained 12 months or more",
-        true,
-        &["cap.receipts.signed", "cap.retention.policy"],
-        "13-month default decision/audit retention with checkpoint chains",
-    ),
-    (
-        "T16",
-        "Static-secret findings and short-lived brokered tokens",
-        true,
-        &["cap.detect.respond", "cap.identity.brokered"],
-        "Static-secret inventory works locally; short-lived tokens require credential broker",
-    ),
-    (
-        "T17",
-        "Compliance assurance: OSCAL library, exit export/deletion, certifications",
-        true,
-        &["cap.retention.policy", "cap.privacy.floor"],
-        "Control library and export/deletion included; paid SOC 2 / ISO 27001 require sponsor or revenue",
-    ),
-];
+const EMBEDDED_RFP_PARITY_YAML: &str = include_str!("../data/rfp-parity.yaml");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -193,6 +77,7 @@ pub struct RfpItemReport {
     pub mandatory: bool,
     pub status: RfpItemStatus,
     pub capabilities: Vec<String>,
+    pub requires: Vec<String>,
     pub test_green: bool,
     pub gap_note: Option<String>,
 }
@@ -206,46 +91,55 @@ pub struct RfpParityReport {
     pub items: Vec<RfpItemReport>,
 }
 
-pub fn generate_rfp_response(readiness: &PlatformReadiness) -> RfpParityReport {
-    let mut items = Vec::with_capacity(PARITY_ITEMS.len());
-    let mut failing_gate_items = Vec::new();
-
-    for (id, title, mandatory, caps, default_note) in PARITY_ITEMS {
-        let test_green = readiness
-            .acceptance_tests_green
-            .get(*id)
-            .copied()
-            .unwrap_or(false);
-
-        let (status, gap_note) = evaluate_item_status(id, default_note, readiness);
-
-        if *mandatory && status == RfpItemStatus::Met && !test_green {
-            failing_gate_items.push((*id).to_owned());
-        }
-
-        items.push(RfpItemReport {
-            id: (*id).to_owned(),
-            title: (*title).to_owned(),
-            mandatory: *mandatory,
-            status,
-            capabilities: caps.iter().map(|c| (*c).to_owned()).collect(),
-            test_green,
-            gap_note,
+pub fn load_parity_items_yaml(raw: &str) -> Result<Vec<ParityItemSpec>, ComplyError> {
+    let doc = load_yaml_checked(raw, "rfp-parity.yaml")?;
+    let seq = yaml_req_seq(&doc, "items", "rfp-parity.yaml")?;
+    let mut items = Vec::with_capacity(seq.len());
+    for node in seq {
+        let id = yaml_req_str(node, "id", "rfp item")?.to_owned();
+        items.push(ParityItemSpec {
+            id: id.clone(),
+            title: yaml_req_str(node, "title", &id)?.to_owned(),
+            mandatory: yaml_req_bool(node, "mandatory", &id)?,
+            capabilities: yaml_req_str_list(node, "capabilities", &id)?,
+            notes: yaml_req_str(node, "notes", &id)?.to_owned(),
         });
     }
-
-    RfpParityReport {
-        release_version: readiness.release_version.clone(),
-        os_assurance_summary: readiness.os_assurance_summary.clone(),
-        release_gate_passed: failing_gate_items.is_empty(),
-        failing_gate_items,
-        items,
+    if items.is_empty() {
+        return Err(ComplyError::VerificationFailed {
+            detail: "rfp-parity.yaml contains zero items".into(),
+        });
     }
+    Ok(items)
+}
+
+pub fn generate_rfp_response(
+    readiness: &PlatformReadiness,
+) -> Result<RfpParityReport, ComplyError> {
+    let items = load_parity_items_yaml(EMBEDDED_RFP_PARITY_YAML)?;
+    let registry = crate::registry::try_default_registry()?;
+    Ok(generate_rfp_response_with_items(
+        &registry, readiness, &items,
+    ))
+}
+
+pub fn generate_rfp_response_with_registry(
+    registry: &CapabilityRegistry,
+    readiness: &PlatformReadiness,
+    extra_partner_yaml: Option<&str>,
+) -> Result<RfpParityReport, ComplyError> {
+    let mut items = load_parity_items_yaml(EMBEDDED_RFP_PARITY_YAML)?;
+    if let Some(extra) = extra_partner_yaml {
+        items.extend(load_parity_items_yaml(extra)?);
+    }
+    Ok(generate_rfp_response_with_items(
+        registry, readiness, &items,
+    ))
 }
 
 pub fn render_rfp_markdown(report: &RfpParityReport) -> String {
     let mut out = format!(
-        "# Guardrails ADR Buyer RFP Parity Report ({})\n\nAssurance reachability: {}\nRelease gate: {}\n\n| Item | Status | Mandatory | Test | Notes |\n|---|---|---|---|---|\n",
+        "# Guardrails ADR Buyer RFP Parity Report ({})\n\nAssurance reachability: {}\nRelease gate: {}\n\n| Item | Status | Mandatory | Requires | Test | Notes |\n|---|---|---|---|---|---|\n",
         markdown_safe(&report.release_version),
         markdown_safe(&report.os_assurance_summary),
         if report.release_gate_passed {
@@ -261,17 +155,85 @@ pub fn render_rfp_markdown(report: &RfpParityReport) -> String {
             RfpItemStatus::Unmet => "Unmet",
         };
         let note = item.gap_note.as_deref().unwrap_or("Full parity");
+        let reqs = if item.requires.is_empty() {
+            "none".to_owned()
+        } else {
+            item.requires.join(", ")
+        };
         out.push_str(&format!(
-            "| {} ({}) | {} | {} | {} | {} |\n",
+            "| {} ({}) | {} | {} | {} | {} | {} |\n",
             markdown_safe(&item.id),
             markdown_safe(&item.title),
             status,
             item.mandatory,
+            markdown_safe(&reqs),
             if item.test_green { "green" } else { "red" },
             markdown_safe(note)
         ));
     }
     out
+}
+
+fn generate_rfp_response_with_items(
+    registry: &CapabilityRegistry,
+    readiness: &PlatformReadiness,
+    specs: &[ParityItemSpec],
+) -> RfpParityReport {
+    if specs.is_empty() {
+        return RfpParityReport {
+            release_version: readiness.release_version.clone(),
+            os_assurance_summary: readiness.os_assurance_summary.clone(),
+            release_gate_passed: false,
+            failing_gate_items: vec!["T1..T17".into()],
+            items: Vec::new(),
+        };
+    }
+
+    let mut items = Vec::with_capacity(specs.len());
+    let mut failing_gate_items = Vec::new();
+
+    for spec in specs {
+        let test_green = readiness
+            .acceptance_tests_green
+            .get(&spec.id)
+            .copied()
+            .unwrap_or(false);
+
+        let (status, gap_note) = evaluate_item_status(&spec.id, &spec.notes, readiness);
+        let mut requires = Vec::new();
+        for cap_id in &spec.capabilities {
+            if let Some(cap) = registry.capabilities.get(cap_id) {
+                for req in &cap.requires {
+                    if !requires.contains(req) {
+                        requires.push(req.clone());
+                    }
+                }
+            }
+        }
+
+        if spec.mandatory && status == RfpItemStatus::Met && !test_green {
+            failing_gate_items.push(spec.id.clone());
+        }
+
+        items.push(RfpItemReport {
+            id: spec.id.clone(),
+            title: spec.title.clone(),
+            mandatory: spec.mandatory,
+            status,
+            capabilities: spec.capabilities.clone(),
+            requires,
+            test_green,
+            gap_note,
+        });
+    }
+
+    RfpParityReport {
+        release_version: readiness.release_version.clone(),
+        os_assurance_summary: readiness.os_assurance_summary.clone(),
+        release_gate_passed: failing_gate_items.is_empty(),
+        failing_gate_items,
+        items,
+    }
 }
 
 fn evaluate_item_status(

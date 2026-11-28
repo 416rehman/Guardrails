@@ -1,0 +1,88 @@
+format: grdr.compliance-privacy-templates.v1
+pack_id: grdr.compliance
+version: "1.0.0"
+never_collected_telemetry:
+  - "keystrokes"
+  - "screen_capture"
+  - "clipboard"
+  - "emotion_inference"
+dpia_default_risks:
+  - id: ADV-10-01
+    title: "Unauthorized re-identification bypass using copied device key"
+    mitigation: "Two-layer keyed HMAC pseudonyms; server re-pseudonymization key never reaches endpoints"
+    residual: "Local admin can correlate only single-device local sessions"
+  - id: ADV-10-02
+    title: "Unbounded content capture widening by operator or provider layer"
+    mitigation: "Monotonic narrowing enforcement (D-11, SR-26) plus 7d/14d mandatory device notice"
+    residual: "Emergency content requires session-scoped ContentGrant"
+  - id: ADV-10-03
+    title: "Backup restore reviving GDPR-erased personal data"
+    mitigation: "Destroy session content DEKs and replay key destruction/reduction ledger on restore within 35d backup cap"
+    residual: "Pseudonymous security records stay until legal retention floor expires"
+locales:
+  - code: en
+    notice_title: "Monitored Person Privacy Notice"
+    status_prefix: "Protection status"
+    collected_heading: "Telemetry Collected at Effective Capture Level"
+    never_collected_heading: "Telemetry Never Collected"
+    readers_heading: "Who Can Access Content and Conditions"
+    retention_heading: "Retention, Exclusions, and Privacy Contact"
+    contest_heading: "How to Contest a Verdict or Request Access / Erasure"
+    never_collected_statement: "Guardrails ADR never collects keystrokes, clipboard contents, screen captures, or emotion inference."
+    content_access_rule: "Uploaded capture defaults to metadata. Prompt/output content access requires an active ContentGrant logged to audit.access."
+    contest_instructions: "Use My activity or `grdr privacy show` to review access logs, contest automated blocks, or submit GDPR Arts. 15-21 access, erasure, restriction, or objection requests."
+    works_annex_title: "Works-Agreement Annex (BetrVG s.87(1) no.6 / s.80(3))"
+    works_annex_prohibited: "Per-person productivity ranking, individual risk scoring, approver ranking, covert monitoring, keystroke/clipboard/screen capture, and emotion inference are strictly disabled."
+    works_annex_quorum: "Re-identification, capture-level increases, and privacy-relevant pack promotions require privacy officer, organisation owner, and a member of co_approver_group."
+    works_annex_expert: "Under BetrVG s.80(3), works-council experts receive read access to the public source repository, active Cedar rules, monitoring catalogue diff history, and compliance pack."
+  - code: de
+    notice_title: "Datenschutzhinweis fuer ueberwachte Beschaeftigte"
+    status_prefix: "Schutzstatus"
+    collected_heading: "Erhobene Telemetrie auf aktuellem Erfassungsniveau"
+    never_collected_heading: "Niemals erhobene Daten"
+    readers_heading: "Zugriffsberechtigte Rollen und Bedingungen"
+    retention_heading: "Speicherdauer, Ausnahmen und Datenschutzkontakt"
+    contest_heading: "Widerspruch, Auskunft und Loeschung (DSGVO Art. 15-21)"
+    never_collected_statement: "Guardrails ADR erfasst niemals Tastenanschlaege, Zwischenablage, Bildschirminhalte oder Emotionserkennung."
+    content_access_rule: "Standardmaessig werden nur Metadaten uebertragen. Inhaltszugriff erfordert einen dokumentierten ContentGrant mit Protokollierung in audit.access."
+    contest_instructions: "Ueber Meine Aktivitaet oder `grdr privacy show` koennen Zugriffsprotokolle eingesehen, Blockierungen angefochten sowie Auskunfts-, Loeschungs-, Einschraenkungs- und Widerspruchsantraege gestellt werden."
+    works_annex_title: "Betriebsvereinbarung Anlage (BetrVG Par. 87 Abs. 1 Nr. 6 / Par. 80 Abs. 3)"
+    works_annex_prohibited: "Personenbezogene Leistungsbewertung, individuelles Risk-Scoring, Genehmiger-Rankings, verdeckte Ueberwachung, Tastenanschlag-, Zwischenablage-, Bildschirm- und Emotionserfassung sind technisch deaktiviert."
+    works_annex_quorum: "Re-Identifizierung, Erhoehung des Erfassungsniveaus und datenschutzrelevante Pack-Updates erfordern Datenschutzbeauftragten, Organisationsleitung und ein Mitglied von co_approver_group."
+    works_annex_expert: "Sachverstaendige nach Par. 80 Abs. 3 BetrVG erhalten Einsicht in oeffentlichen Quellcode, aktive Cedar-Richtlinien, Ueberwachungskatalog-Historie und Compliance-Pack."
+  - code: pseudo
+    notice_title: "[!! Monitored Person Privacy Notice !!]"
+    status_prefix: "[~Protection status~]"
+    collected_heading: "[~Telemetry Collected at Effective Capture Level~]"
+    never_collected_heading: "[~Telemetry Never Collected~]"
+    readers_heading: "[~Who Can Access Content and Conditions~]"
+    retention_heading: "[~Retention, Exclusions, and Privacy Contact~]"
+    contest_heading: "[~How to Contest a Verdict or Request Access / Erasure~]"
+    never_collected_statement: "[~Guardrails ADR never collects keystrokes, clipboard, screen captures, or emotion inference.~]"
+    content_access_rule: "[~Metadata default; ContentGrant + audit.access required for content reads.~]"
+    contest_instructions: "[~Review audit.access via grdr privacy show or submit Arts. 15-21 DSAR requests to privacy contact.~]"
+    works_annex_title: "[~Works-Agreement Annex (BetrVG s.87(1) no.6 / s.80(3))~]"
+    works_annex_prohibited: "[~Per-person scoring, approver ranking, covert mode, and emotion inference locked disabled.~]"
+    works_annex_quorum: "[~Dual quorum + co_approver_group required for re-identification and capture increases.~]"
+    works_annex_expert: "[~BetrVG s.80(3) expert source and configuration inspection enabled.~]"
+national_variants:
+  - id: fr-cse
+    country: "France"
+    statute: "Code du travail Art. L2312-38 (CSE consultation)"
+    requires_local_counsel_review: true
+    clause: "Inform and consult the Comite Social et Economique prior to enabling employee-facing monitoring packs."
+  - id: nl-wor-27
+    country: "Netherlands"
+    statute: "Wet op de ondernemingsraden (WOR) Art. 27(1)(k-l)"
+    requires_local_counsel_review: true
+    clause: "Obtain Works Council (OR) prior consent before adopting or modifying employee monitoring arrangements."
+  - id: at-arbvg-96
+    country: "Austria"
+    statute: "Arbeitsverfassungsgesetz (ArbVG) ss.96 and 96a"
+    requires_local_counsel_review: true
+    clause: "Conclude mandatory Betriebsvereinbarung (s.96(1) no.3 / s.96a) before deploying workplace telemetry."
+  - id: it-workers-art-4
+    country: "Italy"
+    statute: "Statuto dei Lavoratori (Law 300/1970) Art. 4"
+    requires_local_counsel_review: true
+    clause: "Execute collective union agreement or Ispettorato Nazionale del Lavoro authorization prior to remote tool monitoring."

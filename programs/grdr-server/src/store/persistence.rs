@@ -25,13 +25,11 @@ use grdr_model::{
     PolicyPack, Verdict, summarize_sessions,
 };
 use grdr_ports::{
-    BusAppendMessage, EventsPort, FencingToken, JobPort, LakeManifest, LeaseAcquireOutcome,
-    LeaseState, OrgId, SingleCtx, TenantCtx, TenantUserRecord,
+    BusAppendMessage, ErasureReceipt, EventsPort, FencingToken, JobPort, LakeManifest,
+    LeaseAcquireOutcome, LeaseState, OrgId, SingleCtx, TenantCtx, TenantUserRecord,
 };
 #[cfg(test)]
-use grdr_ports::{
-    ErasureReceipt, LakeCompactionResult, LakeFlushResult, LakeQueryIr, LakeQueryResult,
-};
+use grdr_ports::{LakeCompactionResult, LakeFlushResult, LakeQueryIr, LakeQueryResult};
 use grdr_rel_postgres::{PostgresConfig, PostgresRelationalStore};
 use grdr_rel_sqlite::SqliteRelationalStore;
 
@@ -398,7 +396,6 @@ impl EmbeddedStorage {
         self.lake.execute_query_ir(&read_ctx, query)
     }
 
-    #[cfg(test)]
     pub(crate) fn erase_lake_session(
         &self,
         root_session_id: &str,

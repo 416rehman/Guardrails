@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
-//! OSCAL 1.2.3 Component Definition, Assessment Results, CSV/Markdown, and offline bundle.
+//! OSCAL 1.2.3 Component Definition, Assessment Results, and signed offline bundle.
 
 use std::collections::BTreeSet;
 
@@ -9,11 +9,10 @@ use grdr_model::{SignatureStatus, SigningKeypairExt as _, TrustedKeyInfo};
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
-use crate::evidence::{
-    EvidenceItem, EvidenceResult, canonical_evidence_bytes, verify_evidence_item,
-};
+use crate::evidence::{EvidenceItem, canonical_evidence_bytes, verify_evidence_item};
+pub use crate::exports::{export_evidence_csv, export_evidence_markdown};
 use crate::registry::CapabilityRegistry;
-use crate::{ComplyError, deterministic_uuid_string, markdown_safe};
+use crate::{ComplyError, deterministic_uuid_string};
 
 pub const OSCAL_VERSION: &str = "1.2.3";
 const OFFLINE_BUNDLE_VERSION: u32 = 1;
@@ -71,12 +70,22 @@ pub struct OscalComponentDefinitionDoc {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OscalSubjectReference {
+    #[serde(rename = "subject-uuid")]
+    pub subject_uuid: String,
+    #[serde(rename = "type")]
+    pub subject_type: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OscalObservation {
     pub uuid: String,
     pub description: String,
+    pub methods: Vec<String>,
     pub collected: Timestamp,
     #[serde(rename = "subject-references")]
-    pub subject_references: Vec<String>,
+    pub subject_references: Vec<OscalSubjectReference>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -179,6 +188,9 @@ pub fn export_component_definition(
                 description: format!("{} ({:?}): {}", cw.capability, cw.relation, cw.note),
             });
         }
+        if reqs.is_empty() {
+            continue;
+        }
         implementations.push(OscalControlImplementation {
             uuid: deterministic_uuid_string(&format!("impl:{fw_id}")),
             source: format!("urn:grdr:framework:{fw_id}@{}", fw.version),
@@ -212,6 +224,11 @@ pub fn export_assessment_results(
     items: &[EvidenceItem],
     now: Timestamp,
 ) -> Result<OscalAssessmentResultsDoc, ComplyError> {
+    if items.is_empty() {
+        return Err(ComplyError::InvalidEvidenceInput {
+            detail: "OSCAL assessment-results requires at least one evidence observation".into(),
+        });
+    }
     let mut observations = Vec::with_capacity(items.len());
     let mut start = now;
     let mut end = now;
@@ -223,6 +240,15 @@ pub fn export_assessment_results(
         if idx == 0 || item.period_end > end {
             end = item.period_end;
         }
+        let subject_references: Vec<OscalSubjectReference> = item
+            .sample_ids
+            .iter()
+            .map(|sid| OscalSubjectReference {
+                subject_uuid: deterministic_uuid_string(&format!("subj:{organisation}:{sid}")),
+                subject_type: "inventory-item".to_owned(),
+                title: sid.clone(),
+            })
+            .collect();
         observations.push(OscalObservation {
             uuid: deterministic_uuid_string(&format!("obs:{}", item.id)),
             description: format!(
@@ -231,8 +257,9 @@ pub fn export_assessment_results(
                 item.result,
                 item.control_refs.join(", ")
             ),
+            methods: vec!["EXAMINE".to_owned(), "TEST".to_owned()],
             collected: item.period_end,
-            subject_references: item.sample_ids.clone(),
+            subject_references,
         });
     }
 
@@ -255,51 +282,6 @@ pub fn export_assessment_results(
             }],
         },
     })
-}
-
-pub fn export_evidence_csv(items: &[EvidenceItem]) -> String {
-    let mut out = String::from(
-        "item_id,organisation,capability,result,period_start,period_end,sample_count,controls\n",
-    );
-    for item in items {
-        let result_label = match item.result {
-            EvidenceResult::Met => "met",
-            EvidenceResult::Partial => "partial",
-            EvidenceResult::NotMet => "not-met",
-            EvidenceResult::NotEvaluable => "not-evaluable",
-        };
-        let line = format!(
-            "\"{}\",\"{}\",\"{}\",\"{}\",\"{}\",\"{}\",{},\"{}\"\n",
-            csv_safe(&item.id),
-            csv_safe(&item.organisation),
-            csv_safe(&item.capability),
-            csv_safe(result_label),
-            item.period_start,
-            item.period_end,
-            item.sample_ids.len(),
-            csv_safe(&item.control_refs.join(";"))
-        );
-        out.push_str(&line);
-    }
-    out
-}
-
-pub fn export_evidence_markdown(organisation: &str, items: &[EvidenceItem]) -> String {
-    let mut out = format!(
-        "# Compliance Evidence Report ({})\n\n| Item | Capability | Result | Samples | Controls |\n|---|---|---|---|---|\n",
-        markdown_safe(organisation)
-    );
-    for item in items {
-        out.push_str(&format!(
-            "| `{}` | `{}` | `{:?}` | {} | {} |\n",
-            markdown_safe(&item.id),
-            markdown_safe(&item.capability),
-            item.result,
-            item.sample_ids.len(),
-            markdown_safe(&item.control_refs.join(", "))
-        ));
-    }
-    out
 }
 
 pub fn export_offline_bundle(
@@ -524,17 +506,4 @@ fn build_inclusion_chain(
         prev = chain_digest;
     }
     Ok((prev, proofs))
-}
-
-fn csv_safe(raw: &str) -> String {
-    let single_line = raw.replace(['\n', '\r'], " ");
-    let trimmed = single_line.trim_start();
-    let formula_prefix =
-        single_line.starts_with('\t') || trimmed.starts_with(['=', '+', '-', '@', '\t']);
-    let neutralized = if formula_prefix {
-        format!("'{single_line}")
-    } else {
-        single_line
-    };
-    neutralized.replace('"', "\"\"")
 }

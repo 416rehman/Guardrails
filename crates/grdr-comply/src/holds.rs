@@ -2,11 +2,15 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 //! Legal holds, dual-approver governance, renewals, and subject erasure (`D-57`).
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
+pub use crate::works_council::{
+    CoApproverQuorumPolicy, DrillDownAuditRecord, validate_purpose_bound_drill_down,
+    validate_works_council_quorum,
+};
 use crate::{ComplyError, deterministic_prefixed_id};
 
 const MAX_HOLD_REVIEW_SECONDS: i64 = 365 * 86_400;
@@ -146,10 +150,34 @@ impl HoldsLedger {
             validate_deferred_notice(&hold_id, input.created_at, until)?;
         }
 
+        let scope = HoldScope {
+            pseudonyms: input
+                .scope
+                .pseudonyms
+                .into_iter()
+                .map(|s| s.trim().to_owned())
+                .collect(),
+            session_ids: input
+                .scope
+                .session_ids
+                .into_iter()
+                .map(|s| s.trim().to_owned())
+                .collect(),
+            incident_id: input.scope.incident_id.map(|s| s.trim().to_owned()),
+            classes: input
+                .scope
+                .classes
+                .into_iter()
+                .map(|s| s.trim().to_owned())
+                .collect(),
+            from: input.scope.from,
+            to: input.scope.to,
+        };
+
         let hold = Hold {
             hold_id,
             organisation: input.organisation.trim().to_owned(),
-            scope: input.scope,
+            scope,
             matter_ref: input.matter_ref.trim().to_owned(),
             reason: input.reason.trim().to_owned(),
             created_by: input.created_by.trim().to_owned(),
@@ -168,11 +196,12 @@ impl HoldsLedger {
     }
 
     pub fn check(&self, query: &HoldCheckQuery<'_>) -> HoldCheckResult {
+        let org = query.organisation.trim();
         let matching: Vec<String> = self
             .holds
             .iter()
             .filter(|h| h.lifecycle != HoldLifecycle::Released)
-            .filter(|h| h.organisation == query.organisation)
+            .filter(|h| h.organisation == org)
             .filter(|h| {
                 let ps_hit = query
                     .pseudonym
@@ -223,6 +252,7 @@ impl HoldsLedger {
 
     pub fn renew_hold(
         &mut self,
+        organisation: &str,
         hold_id: &str,
         approvers: &[String],
         new_review_by: Timestamp,
@@ -235,10 +265,11 @@ impl HoldsLedger {
             validate_deferred_notice(hold_id, now, until)?;
         }
 
+        let org_clean = organisation.trim();
         let hold = self
             .holds
             .iter_mut()
-            .find(|h| h.hold_id == hold_id)
+            .find(|h| h.hold_id == hold_id && h.organisation == org_clean)
             .ok_or_else(|| ComplyError::UnknownHold(hold_id.to_owned()))?;
         if hold.lifecycle == HoldLifecycle::Released {
             return Err(ComplyError::InvalidHold {
@@ -266,6 +297,7 @@ impl HoldsLedger {
 
     pub fn release_hold(
         &mut self,
+        organisation: &str,
         hold_id: &str,
         approvers: &[String],
         reason: &str,
@@ -278,16 +310,69 @@ impl HoldsLedger {
                 detail: "release reason must not be empty".into(),
             });
         }
+        let org_clean = organisation.trim();
         let hold = self
             .holds
             .iter_mut()
-            .find(|h| h.hold_id == hold_id)
+            .find(|h| h.hold_id == hold_id && h.organisation == org_clean)
             .ok_or_else(|| ComplyError::UnknownHold(hold_id.to_owned()))?;
+        if hold.lifecycle == HoldLifecycle::Released {
+            return Err(ComplyError::InvalidHold {
+                hold_id: hold_id.to_owned(),
+                detail: "cannot release an already released hold".into(),
+            });
+        }
         hold.lifecycle = HoldLifecycle::Released;
         hold.released_at = Some(now);
         hold.release_approvers = validated_approvers;
         hold.release_reason = Some(reason.trim().to_owned());
         Ok(hold)
+    }
+
+    pub fn check_erasure_targets(
+        &self,
+        organisation: &str,
+        pseudonyms: &[String],
+        session_ids: &[String],
+        now: Timestamp,
+    ) -> Option<(Vec<String>, bool)> {
+        let org = organisation.trim();
+        let mut hold_ids = Vec::new();
+        for (is_session, targets) in [(false, pseudonyms), (true, session_ids)] {
+            for target in targets {
+                let clean = target.trim();
+                if clean.is_empty() {
+                    continue;
+                }
+                let query = HoldCheckQuery {
+                    organisation: org,
+                    pseudonym: (!is_session).then_some(clean),
+                    session_id: is_session.then_some(clean),
+                    incident_id: None,
+                    data_class: None,
+                    record_at: None,
+                };
+                if let HoldCheckResult::Held { hold_ids: hits } = self.check(&query) {
+                    for hid in hits {
+                        if !hold_ids.contains(&hid) {
+                            hold_ids.push(hid);
+                        }
+                    }
+                }
+            }
+        }
+        if hold_ids.is_empty() {
+            return None;
+        }
+        let disclose_hold = self
+            .holds
+            .iter()
+            .filter(|h| hold_ids.contains(&h.hold_id))
+            .all(|h| match h.notice {
+                HoldNotice::Immediate => true,
+                HoldNotice::Deferred { until, .. } => now >= until,
+            });
+        Some((hold_ids, disclose_hold))
     }
 
     pub fn process_erasure(
@@ -296,44 +381,35 @@ impl HoldsLedger {
         subject_pseudonym: &str,
         now: Timestamp,
     ) -> ErasureOutcome {
-        let query = HoldCheckQuery {
-            organisation,
-            pseudonym: Some(subject_pseudonym),
-            session_id: None,
-            incident_id: None,
-            data_class: None,
-            record_at: None,
-        };
-        match self.check(&query) {
-            HoldCheckResult::Clear => ErasureOutcome::Executed {
+        match self.check_erasure_targets(organisation, &[subject_pseudonym.to_owned()], &[], now) {
+            None => ErasureOutcome::Executed {
                 subject_ref: subject_pseudonym.to_owned(),
             },
-            HoldCheckResult::Held { hold_ids } => {
-                let disclose_hold = self
-                    .holds
-                    .iter()
-                    .filter(|h| hold_ids.contains(&h.hold_id))
-                    .all(|h| match h.notice {
-                        HoldNotice::Immediate => true,
-                        HoldNotice::Deferred { until, .. } => now >= until,
-                    });
-                ErasureOutcome::PendingHeld {
-                    subject_ref: subject_pseudonym.to_owned(),
-                    hold_ids,
-                    disclose_hold,
-                }
-            }
+            Some((hold_ids, disclose_hold)) => ErasureOutcome::PendingHeld {
+                subject_ref: subject_pseudonym.to_owned(),
+                hold_ids,
+                disclose_hold,
+            },
         }
     }
 }
 
 fn validate_scope(hold_id: &str, scope: &HoldScope) -> Result<(), ComplyError> {
-    let has_ps = scope.pseudonyms.iter().any(|p| !p.trim().is_empty());
-    let has_sess = scope.session_ids.iter().any(|s| !s.trim().is_empty());
-    let has_inc = scope
-        .incident_id
-        .as_deref()
-        .is_some_and(|i| !i.trim().is_empty());
+    if scope.pseudonyms.iter().any(|p| p.trim().is_empty())
+        || scope.session_ids.iter().any(|s| s.trim().is_empty())
+        || scope
+            .incident_id
+            .as_deref()
+            .is_some_and(|i| i.trim().is_empty())
+    {
+        return Err(ComplyError::InvalidHold {
+            hold_id: hold_id.to_owned(),
+            detail: "hold scope targets must not contain empty or whitespace strings".into(),
+        });
+    }
+    let has_ps = !scope.pseudonyms.is_empty();
+    let has_sess = !scope.session_ids.is_empty();
+    let has_inc = scope.incident_id.is_some();
     if !has_ps && !has_sess && !has_inc {
         return Err(ComplyError::InvalidHold {
             hold_id: hold_id.to_owned(),
@@ -358,15 +434,20 @@ fn validate_scope(hold_id: &str, scope: &HoldScope) -> Result<(), ComplyError> {
     Ok(())
 }
 
-fn validate_dual_approvers(
+pub(crate) fn validate_dual_approvers(
     hold_id: &str,
     approvers: &[String],
 ) -> Result<Vec<String>, ComplyError> {
-    let distinct: BTreeSet<String> = approvers
-        .iter()
-        .map(|a| a.trim().to_owned())
-        .filter(|a| !a.is_empty())
-        .collect();
+    let mut distinct: BTreeMap<String, String> = BTreeMap::new();
+    for raw in approvers {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        distinct
+            .entry(trimmed.to_ascii_lowercase())
+            .or_insert_with(|| trimmed.to_owned());
+    }
     if distinct.len() < 2 {
         return Err(ComplyError::InvalidHold {
             hold_id: hold_id.to_owned(),
@@ -375,7 +456,7 @@ fn validate_dual_approvers(
                     .into(),
         });
     }
-    Ok(distinct.into_iter().collect())
+    Ok(distinct.into_values().collect())
 }
 
 fn validate_review_window(

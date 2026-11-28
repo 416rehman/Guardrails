@@ -1,0 +1,89 @@
+format: grdr.compliance-rfp.v1
+pack_id: grdr.compliance
+version: "1.0.0"
+items:
+  - id: T1
+    title: "Inventory of named agents, MCP servers, and extensions without manual registration"
+    mandatory: true
+    capabilities: ["cap.inventory.agents"]
+    notes: "Windows Tier 1 requires S-04; Linux and macOS inventory runs locally"
+  - id: T2
+    title: "Pre-execution hook verdicts for Claude Code, Codex, and Cursor"
+    mandatory: true
+    capabilities: ["cap.preexec.enforce"]
+    notes: "Claude Code, Codex, and Cursor covered via grdr-hook"
+  - id: T3
+    title: "MCP control point with per-tool allow and block"
+    mandatory: true
+    capabilities: ["cap.supplychain.provenance", "cap.preexec.enforce"]
+    notes: "MCP broker mediates stdio and HTTP tool calls with manifest pins"
+  - id: T4
+    title: "Allow, Ask, Block plus Watch detect-only mode"
+    mandatory: true
+    capabilities: ["cap.preexec.enforce"]
+    notes: "Cedar 4.x evaluator derives all five AARM verdicts"
+  - id: T5
+    title: "Session-centred audit with run reconstruction"
+    mandatory: true
+    capabilities: ["cap.receipts.signed", "cap.attribution.graded"]
+    notes: "Local chain standalone; fleet timeline with server"
+  - id: T6
+    title: "SaaS connectors for Copilot Studio, Agentforce, Bedrock AgentCore, Claude Enterprise"
+    mandatory: true
+    capabilities: ["cap.inventory.agents", "cap.export.siem"]
+    notes: "Read-only Anthropic/OpenAI connectors only; remaining SaaS connectors unmet without API integration"
+  - id: T7
+    title: "Coexistence beside a third-party EDR"
+    mandatory: true
+    capabilities: ["cap.preexec.enforce", "cap.containment"]
+    notes: "Targeted build avoids driver/hook collisions"
+  - id: T8
+    title: "MITRE ATLAS mapping of detection content"
+    mandatory: true
+    capabilities: ["cap.detect.respond"]
+    notes: "Detection content carries MITRE ATLAS tags"
+  - id: T9
+    title: "Verdict API for gateways (LiteLLM, Kong, AuthZEN)"
+    mandatory: true
+    capabilities: ["cap.preexec.enforce"]
+    notes: "Requires server decide target for remote gateway callers"
+  - id: T10
+    title: "Principal and agent attribution in every record with five verdicts"
+    mandatory: true
+    capabilities: ["cap.attribution.graded", "cap.preexec.enforce"]
+    notes: "Attribution grade 0-4 and actor_kind recorded per envelope"
+  - id: T11
+    title: "Recorded human approval for high-impact actions"
+    mandatory: true
+    capabilities: ["cap.approval.graded"]
+    notes: "Graded STEP_UP approvals bound to exact action digest"
+  - id: T12
+    title: "Suspend an agent or group and revoke credentials"
+    mandatory: true
+    capabilities: ["cap.detect.respond", "cap.identity.brokered"]
+    notes: "Session freeze works locally; credential revocation requires broker and token service"
+  - id: T13
+    title: "SIEM, SOAR, and ticketing export with stable identifiers"
+    mandatory: true
+    capabilities: ["cap.export.siem"]
+    notes: "OCSF 1.9 / 1.3 and JSONL export contracts"
+  - id: T14
+    title: "Policy versioning, counterfactual dry-run replay, and rollback"
+    mandatory: true
+    capabilities: ["cap.policy.change"]
+    notes: "Signed packs with 7-day replay and last-known-good rollback"
+  - id: T15
+    title: "Tamper-evident audit log retained 12 months or more"
+    mandatory: true
+    capabilities: ["cap.receipts.signed", "cap.retention.policy"]
+    notes: "13-month default decision/audit retention with checkpoint chains"
+  - id: T16
+    title: "Static-secret findings and short-lived brokered tokens"
+    mandatory: true
+    capabilities: ["cap.detect.respond", "cap.identity.brokered"]
+    notes: "Static-secret inventory works locally; short-lived tokens require credential broker"
+  - id: T17
+    title: "Compliance assurance: OSCAL library, exit export/deletion, certifications"
+    mandatory: true
+    capabilities: ["cap.retention.policy", "cap.privacy.floor"]
+    notes: "Control library and export/deletion included; paid SOC 2 / ISO 27001 require sponsor or revenue"

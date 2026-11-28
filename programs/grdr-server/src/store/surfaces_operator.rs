@@ -18,6 +18,8 @@ use grdr_strings::sanitize_untrusted_text as sanitize_inert_text;
 use crate::auth::AuthContext;
 
 use super::AppState;
+use super::surfaces_comply_helpers::clean_customer_basis;
+use super::surfaces_comply_seed::ensure_compliance_seeded;
 use super::surfaces_operator_helpers::{
     compute_config_diff, config_to_proto, parse_op_preset, profile_str, revision_to_proto,
 };
@@ -100,14 +102,57 @@ impl AppState {
             }
         };
 
+        let mut guard = self.inner.write().await;
+        ensure_operator_seeded(&mut guard, now);
+        ensure_compliance_seeded(&mut guard, now);
+
         let mut basis = BTreeMap::new();
-        basis.insert(preset, grdr_comply::preset_spec(preset).legal_basis);
+        let spec = grdr_comply::preset_spec(preset).map_err(|e| {
+            CodedError::new(
+                CODE_INVALID_INPUT,
+                e.to_string(),
+                "Adjust the retention preset before staging this revision.",
+            )
+        })?;
+        let (recorded_preset_basis, comp_override) = guard
+            .surfaces
+            .compliance
+            .as_ref()
+            .map(|c| {
+                (
+                    c.recorded_legal_bases.get(&preset).cloned(),
+                    c.override_legal_basis.clone(),
+                )
+            })
+            .unwrap_or((None, None));
+        if spec.requires_recorded_basis {
+            let explicit = recorded_preset_basis
+                .or_else(|| comp_override.clone())
+                .ok_or_else(|| {
+                    CodedError::new(
+                        CODE_INVALID_INPUT,
+                        format!(
+                            "Preset `{:?}` ({}) requires an explicit recorded legal basis in Compliance before staging.",
+                            spec.preset, spec.clause_id
+                        ),
+                        "Record override_legal_basis in Compliance before staging this regulated preset.",
+                    )
+                })?;
+            basis.insert(preset, clean_customer_basis(&explicit));
+        } else {
+            basis.insert(
+                preset,
+                recorded_preset_basis
+                    .map(|b| clean_customer_basis(&b))
+                    .unwrap_or_else(|| clean_customer_basis(&spec.legal_basis)),
+            );
+        }
         let policy = resolve_retention_policy(&RetentionProposal {
-            organisation: "org-default".to_owned(),
+            organisation: auth.tenant_id.clone(),
             presets: vec![preset],
             ceiling_profile: profile,
             legal_basis: basis,
-            override_legal_basis: None,
+            override_legal_basis: comp_override,
             content_days: None,
             activity_days: None,
             decision_days: None,
@@ -121,9 +166,6 @@ impl AppState {
                 "Adjust privacy profile or preset.",
             )
         })?;
-
-        let mut guard = self.inner.write().await;
-        ensure_operator_seeded(&mut guard, now);
 
         let op = guard.surfaces.operator.as_mut().ok_or_else(|| {
             CodedError::new(
@@ -217,6 +259,7 @@ impl AppState {
 
         let mut guard = self.inner.write().await;
         ensure_operator_seeded(&mut guard, now);
+        ensure_compliance_seeded(&mut guard, now);
 
         let candidate_profile = guard
             .surfaces
@@ -230,14 +273,17 @@ impl AppState {
             })
             .unwrap_or_default();
 
-        if guard.privacy.identity_mode == IdentityMode::Pseudonymous
-            && candidate_profile != "works-council"
-            && !auth.confirmation.is_step_up()
-        {
+        let active_wc = guard.privacy.identity_mode == IdentityMode::Pseudonymous
+            || guard
+                .surfaces
+                .compliance
+                .as_ref()
+                .is_some_and(|c| c.privacy_profile == PrivacyCeilingProfile::WorksCouncil);
+        if active_wc && candidate_profile != "works-council" {
             return Err(CodedError::new(
                 CODE_INVALID_INPUT,
-                "Cannot weaken active works-council privacy profile to standard without passkey step-up confirmation (D-70).",
-                "Supply a valid X-Grdr-Step-Up credential or StepUpVerified principal, or preserve works-council profile.",
+                "Cannot weaken active works-council privacy profile to standard via single-actor operator apply; two-approver co_approver_group quorum in Compliance is required first.",
+                "Complete dual-approver co_approver_group quorum with recorded legal basis in Compliance before applying a standard revision.",
             ));
         }
 
@@ -292,10 +338,16 @@ impl AppState {
         if next_current.privacy_profile == "works-council" {
             guard.privacy.identity_mode = IdentityMode::Pseudonymous;
             guard.privacy.user_risk_scoring = false;
-        } else if guard.privacy.identity_mode == IdentityMode::Pseudonymous
-            && auth.confirmation.is_step_up()
-        {
+            if let Some(ref mut comp) = guard.surfaces.compliance {
+                comp.privacy_profile = PrivacyCeilingProfile::WorksCouncil;
+                comp.pending_profile_downgrade = None;
+                super::surfaces_comply::ops::extend_pending_capture_for_works_council(comp, now)?;
+            }
+        } else {
             guard.privacy.identity_mode = IdentityMode::Named;
+            if let Some(ref mut comp) = guard.surfaces.compliance {
+                comp.privacy_profile = PrivacyCeilingProfile::Standard;
+            }
         }
         guard.otlp_config.enabled = next_current.otlp_enabled;
 
@@ -341,6 +393,7 @@ impl AppState {
 
         let mut guard = self.inner.write().await;
         ensure_operator_seeded(&mut guard, now);
+        ensure_compliance_seeded(&mut guard, now);
 
         let restore_idx = {
             let op = guard.surfaces.operator.as_ref().ok_or_else(|| {
@@ -370,14 +423,17 @@ impl AppState {
             .map(|r| r.config.privacy_profile.clone())
             .unwrap_or_default();
 
-        if guard.privacy.identity_mode == IdentityMode::Pseudonymous
-            && restored_profile != "works-council"
-            && !auth.confirmation.is_step_up()
-        {
+        let active_wc = guard.privacy.identity_mode == IdentityMode::Pseudonymous
+            || guard
+                .surfaces
+                .compliance
+                .as_ref()
+                .is_some_and(|c| c.privacy_profile == PrivacyCeilingProfile::WorksCouncil);
+        if active_wc && restored_profile != "works-council" {
             return Err(CodedError::new(
                 CODE_INVALID_INPUT,
-                "Rollback cannot downgrade active works-council privacy profile to standard without passkey step-up confirmation (D-70).",
-                "Supply a valid X-Grdr-Step-Up credential or StepUpVerified principal before rolling back off works-council.",
+                "Rollback cannot downgrade active works-council privacy profile to standard via single-actor operator rollback; two-approver co_approver_group quorum in Compliance is required first.",
+                "Complete dual-approver co_approver_group quorum with recorded legal basis in Compliance before rolling back off works-council.",
             ));
         }
 
@@ -407,10 +463,16 @@ impl AppState {
         if restored_cfg.privacy_profile == "works-council" {
             guard.privacy.identity_mode = IdentityMode::Pseudonymous;
             guard.privacy.user_risk_scoring = false;
-        } else if guard.privacy.identity_mode == IdentityMode::Pseudonymous
-            && auth.confirmation.is_step_up()
-        {
+            if let Some(ref mut comp) = guard.surfaces.compliance {
+                comp.privacy_profile = PrivacyCeilingProfile::WorksCouncil;
+                comp.pending_profile_downgrade = None;
+                super::surfaces_comply::ops::extend_pending_capture_for_works_council(comp, now)?;
+            }
+        } else {
             guard.privacy.identity_mode = IdentityMode::Named;
+            if let Some(ref mut comp) = guard.surfaces.compliance {
+                comp.privacy_profile = PrivacyCeilingProfile::Standard;
+            }
         }
         guard.otlp_config.enabled = restored_cfg.otlp_enabled;
 

@@ -235,7 +235,7 @@ fn s31_offline_compliance_oscal_and_tamper_detection() -> Result<ScenarioResult,
     let now = Timestamp::from_second(1_750_000_000).unwrap_or(Timestamp::UNIX_EPOCH);
     let start = Timestamp::from_second(1_749_913_600).unwrap_or(Timestamp::UNIX_EPOCH);
     let kp = SigningKeypair::generate().map_err(|e| map_err("S31-04", e))?;
-    let registry = default_registry();
+    let registry = default_registry().map_err(|e| map_err("S31-04", e))?;
 
     let comp = export_component_definition(&registry, "Guardrails ADR", "0.1.0", now);
     if comp.component_definition.metadata.oscal_version != OSCAL_VERSION {

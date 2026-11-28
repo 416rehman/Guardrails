@@ -1,0 +1,84 @@
+format: grdr.compliance-retention.v1
+pack_id: grdr.compliance
+version: "1.0.0"
+ceilings:
+  - profile: standard
+    clause: "standard-absolute-ceiling (1y content / 7y logs)"
+    content_days: 365
+    activity_days: 2555
+    decision_days: 2555
+    audit_days: 2555
+    backup_days_max: 35
+    notice_days: 7
+  - profile: works-council
+    clause: "works-council (BetrVG s.87(1) no.6: max 90d activity / 30d content / 13mo decision)"
+    content_days: 30
+    activity_days: 90
+    decision_days: 396
+    audit_days: 396
+    backup_days_max: 35
+    notice_days: 14
+presets:
+  - preset: default
+    clause_id: "default (D-51 baseline)"
+    content_days: 30
+    activity_days: 184
+    decision_days: 396
+    audit_days: 396
+    hot_days: 30
+    legal_basis: "Security monitoring baseline (D-51)"
+    requires_recorded_basis: false
+  - preset: eu-ai-act-deployer
+    clause_id: "eu-ai-act-deployer (Art. 26(6))"
+    content_days: 30
+    activity_days: 184
+    decision_days: 396
+    audit_days: 396
+    hot_days: 30
+    legal_basis: "EU AI Act Art. 26(6) six-month log retention"
+    requires_recorded_basis: true
+  - preset: pci-dss-4
+    clause_id: "pci-dss-4 (Req. 10.5.1: 12 months activity, 3 months hot)"
+    content_days: 30
+    activity_days: 365
+    decision_days: 396
+    audit_days: 396
+    hot_days: 90
+    legal_basis: "PCI DSS v4.0.1 Req. 10.5.1"
+    requires_recorded_basis: true
+  - preset: hipaa
+    clause_id: "hipaa (45 CFR 164.316(b)(2): 6 years)"
+    content_days: 30
+    activity_days: 365
+    decision_days: 2190
+    audit_days: 2190
+    hot_days: 30
+    legal_basis: "HIPAA 45 CFR 164.316(b)(2)"
+    requires_recorded_basis: true
+  - preset: nydfs-500
+    clause_id: "nydfs-500 (23 NYCRR 500.06: 3y/5y)"
+    content_days: 30
+    activity_days: 1095
+    decision_days: 1825
+    audit_days: 1825
+    hot_days: 30
+    legal_basis: "23 NYCRR 500.06"
+    requires_recorded_basis: true
+  - preset: colorado-adm
+    clause_id: "colorado-adm (SB26-189: 3 years decisions)"
+    content_days: 30
+    activity_days: 184
+    decision_days: 1095
+    audit_days: 1095
+    hot_days: 30
+    legal_basis: "Colorado SB26-189 decision record retention"
+    requires_recorded_basis: true
+  - preset: sox-itgc
+    clause_id: "sox-itgc (7 years audit)"
+    content_days: 30
+    activity_days: 184
+    decision_days: 2555
+    audit_days: 2555
+    hot_days: 30
+    legal_basis: "SOX ITGC seven-year audit retention"
+    requires_recorded_basis: true

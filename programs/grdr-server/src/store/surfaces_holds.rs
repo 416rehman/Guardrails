@@ -1,26 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+use std::collections::BTreeSet;
+
 use jiff::Timestamp;
 use uuid::Uuid;
 
-use grdr_comply::{HoldNotice, HoldScope, HoldsLedger, PlaceHoldInput};
+use grdr_comply::{
+    CoApproverQuorumPolicy, HoldNotice, HoldScope, HoldsLedger, PlaceHoldInput, format_utc_quarter,
+    validate_works_council_quorum,
+};
 use grdr_model::error::{CODE_INVALID_INPUT, CODE_NOT_FOUND};
 use grdr_model::{AuditEntry, CodedError};
-use grdr_proto::api::surfaces::{
-    ApproveLegalHoldRequest, ApproveReidentificationRequest, CreateLegalHoldRequest,
-    LegalHoldEntry, ReidentificationRequestEntry, RequestReidentificationRequest,
-};
+use grdr_proto::api::surfaces::{ApproveLegalHoldRequest, CreateLegalHoldRequest, LegalHoldEntry};
 use grdr_strings::sanitize_untrusted_text as sanitize_inert_text;
 
 use crate::auth::AuthContext;
 
-use super::AppState;
-use super::surfaces_comply_helpers::{comply_to_coded, reid_to_proto};
+use super::surfaces_comply_helpers::comply_to_coded;
 use super::surfaces_comply_seed::ensure_compliance_seeded;
-use super::surfaces_types::{
-    DisclosureRecord, PendingLegalHoldRecord, ReidLifecycle, ReidentificationRecord,
-};
+use super::surfaces_types::{DisclosureRecord, PendingLegalHoldRecord};
+use super::{AppState, StoreData};
+
+#[path = "surfaces_reid.rs"]
+mod reid;
 
 const SECONDS_PER_DAY: i64 = 86_400;
 
@@ -71,6 +74,7 @@ impl AppState {
 
         let mut guard = self.inner.write().await;
         ensure_compliance_seeded(&mut guard, now);
+        let (pseudonyms, session_ids) = resolve_hold_targets(&guard, &target_ref);
 
         let rec = PendingLegalHoldRecord {
             hold_id: hold_id.clone(),
@@ -78,6 +82,8 @@ impl AppState {
             matter_ref: matter_ref.clone(),
             reason: reason.clone(),
             target_ref: target_ref.clone(),
+            pseudonyms,
+            session_ids,
             created_by: actor.clone(),
             approvers: vec![actor.clone()],
             created_at: now.to_string(),
@@ -170,13 +176,37 @@ impl AppState {
         let created_ts = pending.created_at.parse::<Timestamp>().unwrap_or(now);
         let mut approvers = pending.approvers.clone();
         approvers.push(auth.principal_id.clone());
+        let quorum_policy = CoApproverQuorumPolicy {
+            profile: comp.privacy_profile,
+            co_approver_group: comp.co_approver_group.iter().cloned().collect(),
+        };
+        let distinct_approvers = validate_works_council_quorum(hold_id, &approvers, &quorum_policy)
+            .map_err(comply_to_coded)?;
+
+        let (live_pseudonyms, live_sessions) = resolve_hold_targets(&guard, &pending.target_ref);
+        let mut pseudonyms = pending.pseudonyms.clone();
+        for ps in live_pseudonyms {
+            if !pseudonyms.contains(&ps) {
+                pseudonyms.push(ps);
+            }
+        }
+        let mut session_ids = pending.session_ids.clone();
+        for sid in live_sessions {
+            if !session_ids.contains(&sid) {
+                session_ids.push(sid);
+            }
+        }
+        if pseudonyms.is_empty() && session_ids.is_empty() {
+            pseudonyms.push(pending.target_ref.clone());
+            session_ids.push(pending.target_ref.clone());
+        }
 
         let hold = ledger
             .place_hold(PlaceHoldInput {
                 organisation: pending.organisation.clone(),
                 scope: HoldScope {
-                    pseudonyms: vec![pending.target_ref.clone()],
-                    session_ids: Vec::new(),
+                    pseudonyms,
+                    session_ids,
                     incident_id: None,
                     classes: vec!["decision".to_owned(), "audit".to_owned()],
                     from: None,
@@ -185,7 +215,7 @@ impl AppState {
                 matter_ref: pending.matter_ref.clone(),
                 reason: pending.reason.clone(),
                 created_by: pending.created_by.clone(),
-                approvers,
+                approvers: distinct_approvers,
                 created_at: created_ts,
                 review_by: review_ts,
                 notice: HoldNotice::Immediate,
@@ -205,7 +235,7 @@ impl AppState {
                     target_ref: pending.target_ref.clone(),
                     legal_basis: hold.matter_ref.clone(),
                     timestamp: now.to_string(),
-                    quarter: "2026-Q4".to_owned(),
+                    quarter: format_utc_quarter(now),
                     summary: format!(
                         "Legal hold {} activated by dual approvers {} & {}",
                         hold.hold_id, pending.created_by, auth.principal_id
@@ -241,170 +271,170 @@ impl AppState {
         })
     }
 
-    pub async fn request_reidentification(
+    // Awaits W5 proto/RPC surface exposure outside surfaces_holds ownership.
+    #[allow(dead_code)]
+    pub async fn release_legal_hold(
         &self,
-        req: RequestReidentificationRequest,
+        hold_id: &str,
+        approvers: &[String],
+        reason: &str,
         auth: &AuthContext,
-    ) -> Result<ReidentificationRequestEntry, CodedError> {
+    ) -> Result<(LegalHoldEntry, usize), CodedError> {
         let now = Timestamp::now();
-        let pseudonym = sanitize_inert_text(req.pseudonym_id.trim());
-        let requester = auth.principal_id.clone();
-        let reason = sanitize_inert_text(req.reason.trim());
-        let legal_basis = sanitize_inert_text(req.legal_basis.trim());
-        if pseudonym.is_empty() || reason.is_empty() || legal_basis.is_empty() {
+        let trimmed_id = hold_id.trim();
+        let clean_reason = sanitize_inert_text(reason.trim());
+        if trimmed_id.is_empty() || clean_reason.is_empty() {
             return Err(CodedError::new(
                 CODE_INVALID_INPUT,
-                "Pseudonym, reason, and legal basis are required for re-identification.",
-                "Complete all quorum justification fields.",
+                "Hold identifier and release rationale are required.",
+                "Provide hold_id and non-empty release reason.",
             ));
         }
-
-        let mut guard = self.inner.write().await;
-        ensure_compliance_seeded(&mut guard, now);
-
-        let rec = ReidentificationRecord {
-            request_id: format!("reid_{}", Uuid::now_v7().simple()),
-            organisation: auth.tenant_id.clone(),
-            pseudonym_id: pseudonym.clone(),
-            requester: requester.clone(),
-            reason,
-            legal_basis,
-            status: ReidLifecycle::PendingQuorum,
-            approvers: Vec::new(),
-            resolved_identity: None,
-            created_at: now.to_string(),
-            resolved_at: None,
-        };
-
-        if let Some(ref mut comp) = guard.surfaces.compliance {
-            comp.reid_requests.insert(0, rec.clone());
-        }
-        push_compliance_audit(
-            &mut guard,
-            now,
-            "privacy.reidentification.requested",
-            requester,
-            format!("Requested two-approver re-identification for {pseudonym}"),
-            rec.request_id.clone(),
-        );
-        self.persist_store(&guard)?;
-        Ok(reid_to_proto(&rec))
-    }
-
-    pub async fn approve_reidentification(
-        &self,
-        req: ApproveReidentificationRequest,
-        auth: &AuthContext,
-    ) -> Result<ReidentificationRequestEntry, CodedError> {
-        let now = Timestamp::now();
-        let req_id = req.request_id.trim();
-        let approver = auth.principal_id.clone();
-        if req_id.is_empty() {
-            return Err(CodedError::new(
-                CODE_INVALID_INPUT,
-                "Request identifier is required.",
-                "Supply a valid request ID.",
-            ));
-        }
-
-        let mut guard = self.inner.write().await;
-        ensure_compliance_seeded(&mut guard, now);
-
-        let directory_clone = guard.user_directory.clone();
-        let comp = guard.surfaces.compliance.as_mut().ok_or_else(|| {
-            CodedError::new(
-                CODE_NOT_FOUND,
-                "Compliance workspace not initialized.",
-                "Reload settings.",
-            )
-        })?;
-        let idx = comp
-            .reid_requests
+        if !approvers
             .iter()
-            .position(|r| r.request_id == req_id && r.organisation == auth.tenant_id)
-            .ok_or_else(|| {
-                CodedError::new(
-                    CODE_NOT_FOUND,
-                    format!("Re-identification request `{req_id}` was not found."),
-                    "Refresh Settings and retry.",
-                )
-            })?;
-
-        let existing = comp.reid_requests.get(idx).ok_or_else(|| {
-            CodedError::new(CODE_NOT_FOUND, "Missing request record.", "Refresh.")
-        })?;
-        if approver.eq_ignore_ascii_case(&existing.requester) {
-            return Err(CodedError::new(
-                CODE_INVALID_INPUT,
-                "Requester cannot approve their own re-identification request.",
-                "Select a separate Security or Legal approver.",
-            ));
-        }
-        if existing
-            .approvers
-            .iter()
-            .any(|a| a.eq_ignore_ascii_case(&approver))
+            .any(|a| a.trim().eq_ignore_ascii_case(&auth.principal_id))
         {
             return Err(CodedError::new(
                 CODE_INVALID_INPUT,
-                "Duplicate approver: two distinct approvers are required.",
-                "Ask a second distinct approver to sign off.",
+                "Authenticated principal must participate in dual-approver hold release.",
+                "Include the active principal and a second distinct co-approver.",
             ));
         }
 
-        let mut updated_rec = existing.clone();
-        updated_rec.approvers.push(approver.clone());
-        let mut newly_resolved = false;
-        if updated_rec.approvers.len() >= 2 && updated_rec.status != ReidLifecycle::Approved {
-            updated_rec.status = ReidLifecycle::Approved;
-            updated_rec.resolved_at = Some(now.to_string());
-            let matched = directory_clone
-                .iter()
-                .find(|u| {
-                    u.pseudonym_id == updated_rec.pseudonym_id || u.id == updated_rec.pseudonym_id
-                })
-                .map(|u| format!("{} <{}>", u.display_name, u.email))
-                .unwrap_or_else(|| format!("Resolved Principal ({})", updated_rec.pseudonym_id));
-            updated_rec.resolved_identity = Some(matched);
-            newly_resolved = true;
-        }
+        let mut guard = self.inner.write().await;
+        ensure_compliance_seeded(&mut guard, now);
 
-        if let Some(slot) = comp.reid_requests.get_mut(idx) {
-            *slot = updated_rec.clone();
-        }
-        if newly_resolved {
+        let (profile, co_approver_group, existing_holds) = {
+            let comp = guard.surfaces.compliance.as_ref().ok_or_else(|| {
+                CodedError::new(CODE_NOT_FOUND, "Compliance state uninitialized.", "Reload.")
+            })?;
+            (
+                comp.privacy_profile,
+                comp.co_approver_group.iter().cloned().collect(),
+                comp.legal_holds.clone(),
+            )
+        };
+        let quorum_policy = CoApproverQuorumPolicy {
+            profile,
+            co_approver_group,
+        };
+        let distinct_approvers =
+            validate_works_council_quorum(trimmed_id, approvers, &quorum_policy)
+                .map_err(comply_to_coded)?;
+
+        let mut ledger = HoldsLedger {
+            holds: existing_holds,
+        };
+        let released = ledger
+            .release_hold(
+                &auth.tenant_id,
+                trimmed_id,
+                &distinct_approvers,
+                &clean_reason,
+                now,
+            )
+            .map_err(comply_to_coded)?
+            .clone();
+
+        // Execute post-hold DSAR cascade atomically before persisting hold release.
+        let reprocessed = self
+            .reprocess_held_erasures_with_holds(&mut guard, &ledger, auth, now)
+            .await?;
+
+        let scope_summary = if released.scope.pseudonyms.is_empty() {
+            released.scope.session_ids.join(", ")
+        } else {
+            released.scope.pseudonyms.join(", ")
+        };
+        if let Some(ref mut comp) = guard.surfaces.compliance {
+            comp.legal_holds = ledger.holds;
             comp.disclosures.insert(
                 0,
                 DisclosureRecord {
                     id: format!("disc_{}", Uuid::now_v7().simple()),
                     organisation: auth.tenant_id.clone(),
-                    kind: "reidentification".to_owned(),
-                    actor: updated_rec.approvers.join(" + "),
-                    target_ref: updated_rec.pseudonym_id.clone(),
-                    legal_basis: updated_rec.legal_basis.clone(),
+                    kind: "legal_hold_release".to_owned(),
+                    actor: distinct_approvers.join(" + "),
+                    target_ref: scope_summary.clone(),
+                    legal_basis: released.matter_ref.clone(),
                     timestamp: now.to_string(),
-                    quarter: "2026-Q4".to_owned(),
+                    quarter: format_utc_quarter(now),
                     summary: format!(
-                        "Two-approver quorum completed for {}",
-                        updated_rec.pseudonym_id
+                        "Legal hold {} released; reprocessed {reprocessed} held DSAR(s)",
+                        released.hold_id
                     ),
                 },
             );
         }
-
         push_compliance_audit(
             &mut guard,
             now,
-            "privacy.reidentification.approved",
-            approver,
+            "compliance.hold.released",
+            auth.principal_id.clone(),
             format!(
-                "Approval {}/2 recorded for {}",
-                updated_rec.approvers.len(),
-                updated_rec.pseudonym_id
+                "Released legal hold {} ({reprocessed} held erasure(s) reprocessed)",
+                released.hold_id
             ),
-            updated_rec.request_id.clone(),
+            released.hold_id.clone(),
         );
         self.persist_store(&guard)?;
-        Ok(reid_to_proto(&updated_rec))
+
+        let entry = LegalHoldEntry {
+            hold_id: released.hold_id,
+            matter_ref: released.matter_ref,
+            reason: released.reason,
+            lifecycle: "released".to_owned(),
+            created_by: released.created_by,
+            approvers: released.approvers,
+            created_at: released.created_at.to_string(),
+            review_by: released.review_by.to_string(),
+            notice_mode: "immediate".to_owned(),
+            scope_summary,
+        };
+        Ok((entry, reprocessed))
     }
+}
+
+fn resolve_hold_targets(data: &StoreData, target_ref: &str) -> (Vec<String>, Vec<String>) {
+    let target = target_ref.trim();
+    let mut known_sessions = BTreeSet::new();
+    for att in &data.attempts {
+        known_sessions.insert(att.session_id.as_str());
+    }
+    for rcp in &data.receipts {
+        known_sessions.insert(rcp.session_id.as_str());
+    }
+    for apr in &data.approvals {
+        known_sessions.insert(apr.session_id.as_str());
+    }
+    for gr in &data.grants {
+        known_sessions.insert(gr.session_id.as_str());
+    }
+    for f in &data.findings {
+        known_sessions.insert(f.session_id.as_str());
+    }
+
+    let mut pseudonyms = BTreeSet::new();
+    let mut session_ids = BTreeSet::new();
+    if known_sessions.contains(target) || target.starts_with("sess") || target.starts_with("ses_") {
+        session_ids.insert(target.to_owned());
+    }
+    for u in &data.user_directory {
+        if (u.id == target || u.email == target || u.pseudonym_id == target)
+            && !u.pseudonym_id.is_empty()
+        {
+            pseudonyms.insert(u.pseudonym_id.clone());
+        }
+    }
+    if target.starts_with("prn_") {
+        pseudonyms.insert(target.to_owned());
+    }
+    if pseudonyms.is_empty() && session_ids.is_empty() && !target.is_empty() {
+        pseudonyms.insert(target.to_owned());
+        session_ids.insert(target.to_owned());
+    }
+    (
+        pseudonyms.into_iter().collect(),
+        session_ids.into_iter().collect(),
+    )
 }

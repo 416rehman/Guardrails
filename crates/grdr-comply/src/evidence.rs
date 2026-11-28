@@ -111,6 +111,15 @@ struct CanonicalEvidencePayload<'a> {
 }
 
 pub fn validate_evidence_query(query: &EvidenceQuery) -> Result<(), ComplyError> {
+    if query.id.trim().is_empty()
+        || query.version.trim().is_empty()
+        || query.capability.trim().is_empty()
+    {
+        return Err(ComplyError::InvalidEvidenceQuery {
+            query_id: query.id.clone(),
+            detail: "evidence query `id`, `version`, and `capability` must not be empty".into(),
+        });
+    }
     if query.max_class > EvidenceDataClass::Derived {
         return Err(ComplyError::InvalidEvidenceQuery {
             query_id: query.id.clone(),
@@ -119,6 +128,12 @@ pub fn validate_evidence_query(query: &EvidenceQuery) -> Result<(), ComplyError>
     }
 
     for read in &query.reads {
+        if read.field_path.trim().is_empty() {
+            return Err(ComplyError::InvalidEvidenceQuery {
+                query_id: query.id.clone(),
+                detail: "read `field_path` must not be empty".into(),
+            });
+        }
         if read.data_class > EvidenceDataClass::Derived {
             return Err(ComplyError::InvalidEvidenceQuery {
                 query_id: query.id.clone(),
@@ -155,7 +170,7 @@ pub fn evaluate_evidence_item(
     keypair: &SigningKeypair,
 ) -> Result<EvidenceItem, ComplyError> {
     validate_evidence_query(query)?;
-    let _cap = registry.capability(&query.capability)?;
+    registry.capability(&query.capability)?;
 
     if input.organisation.trim().is_empty() {
         return Err(ComplyError::InvalidEvidenceInput {
