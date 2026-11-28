@@ -636,7 +636,7 @@ verification = ["cargo test -p grdr-peer-os"]
 crate = "grdr-peer-os"
 file = "crates/grdr-peer-os/src/win_proc.rs"
 symbol = "windows_system_directory"
-lines = "244-257"
+lines = "235-246"
 invariant = "Calls GetWindowsDirectoryW with exact stack UTF-16 buffer capacity and validates returned length < buf.len()."
 owner = "endpoint"
 verification = ["cargo test -p grdr-peer-os"]
@@ -645,7 +645,7 @@ verification = ["cargo test -p grdr-peer-os"]
 crate = "grdr-peer-os"
 file = "crates/grdr-peer-os/src/win_proc.rs"
 symbol = "snapshot_process_map"
-lines = "259-307"
+lines = "249-296"
 invariant = "Wraps CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS) handle in ScopedWinHandle, initializes PROCESSENTRY32W::dwSize to struct byte size, and bounds iteration to 65536 entries."
 owner = "endpoint"
 verification = ["cargo test -p grdr-peer-os"]
@@ -654,7 +654,7 @@ verification = ["cargo test -p grdr-peer-os"]
 crate = "grdr-peer-os"
 file = "crates/grdr-peer-os/src/win_proc.rs"
 symbol = "open_limited_query"
-lines = "309-327"
+lines = "299-316"
 invariant = "Calls OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION) and validates non-null and non-INVALID_HANDLE_VALUE before wrapping in OwnedHandle."
 owner = "endpoint"
 verification = ["cargo test -p grdr-peer-os"]
@@ -663,7 +663,7 @@ verification = ["cargo test -p grdr-peer-os"]
 crate = "grdr-peer-os"
 file = "crates/grdr-peer-os/src/win_proc.rs"
 symbol = "read_process_id"
-lines = "329-340"
+lines = "319-330"
 invariant = "Calls GetProcessId on an owned open Win32 process handle and rejects zero PID."
 owner = "endpoint"
 verification = ["cargo test -p grdr-peer-os"]
@@ -672,7 +672,7 @@ verification = ["cargo test -p grdr-peer-os"]
 crate = "grdr-peer-os"
 file = "crates/grdr-peer-os/src/win_proc.rs"
 symbol = "read_process_start_time_100ns"
-lines = "342-363"
+lines = "333-354"
 invariant = "Calls GetProcessTimes with stack-local FILETIME structs on a held process handle."
 owner = "endpoint"
 verification = ["cargo test -p grdr-peer-os"]
@@ -681,7 +681,7 @@ verification = ["cargo test -p grdr-peer-os"]
 crate = "grdr-peer-os"
 file = "crates/grdr-peer-os/src/win_proc.rs"
 symbol = "query_process_image_path"
-lines = "365-389"
+lines = "357-380"
 invariant = "Calls QueryFullProcessImageNameW with bounded 1024-unit stack UTF-16 buffer and checks return status and 1..=len bounds."
 owner = "endpoint"
 verification = ["cargo test -p grdr-peer-os"]
@@ -690,7 +690,7 @@ verification = ["cargo test -p grdr-peer-os"]
 crate = "grdr-peer-os"
 file = "crates/grdr-peer-os/src/win_proc.rs"
 symbol = "read_optional_process_token"
-lines = "391-405"
+lines = "383-399"
 invariant = "Opens process token with TOKEN_QUERY on open process handle, wraps non-null token in ScopedWinHandle, and handles ACCESS_DENIED gracefully."
 owner = "endpoint"
 verification = ["cargo test -p grdr-peer-os"]
@@ -1898,5 +1898,176 @@ file = "crates/grdr-peer-os/src/win_toolhelp.rs"
 symbol = "query_image_path_growing"
 lines = "173-198"
 invariant = "Grows UTF-16 buffer dynamically on ERROR_INSUFFICIENT_BUFFER up to 32768 WCHARs before returning image path."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_tcb_sys.rs"
+symbol = "<top-level>"
+lines = "58-80"
+invariant = "Extern system ABI declarations match Win32 ntdll NtQuerySystemInformation and kernel32 ProcessIdToSessionId/QueryDosDeviceW signatures."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_tcb_sys.rs"
+symbol = "ScopedScHandle::drop"
+lines = "82-92"
+invariant = "Closes non-null SC_HANDLE obtained from OpenSCManagerW exactly once on drop."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_tcb_sys.rs"
+symbol = "system32_directory"
+lines = "94-108"
+invariant = "Passes exact capacity of stack UTF-16 buffer to GetSystemDirectoryW and checks length bounds."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_tcb_sys.rs"
+symbol = "query_dos_device"
+lines = "110-125"
+invariant = "Passes NUL-terminated UTF-16 drive prefix and bounded stack output slice to QueryDosDeviceW."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_tcb_sys.rs"
+symbol = "query_process_session_id"
+lines = "127-142"
+invariant = "Writes output session ID to initialized stack u32 and checks non-zero return."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_tcb_sys.rs"
+symbol = "query_kernel_process_image_path"
+lines = "144-199"
+invariant = "Bounds UNICODE_STRING buffer allocation to MAX_NT_PATH_BYTES and clamps returned code units before UTF-16 decode."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_tcb_sys.rs"
+symbol = "kernel_process_create_time_100ns"
+lines = "201-278"
+invariant = "Validates buffer size and entry bounds against ret_len before unaligned read of SystemProcessInfoPrefix."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_tcb_sys.rs"
+symbol = "scm_pid_hosts_active_service"
+lines = "280-361"
+invariant = "Probes required EnumServicesStatusExW byte count, allocates bounded buffer, and bounds pointer offset arithmetic before unaligned read."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_tcb_trust.rs"
+symbol = "<top-level>"
+lines = "128-185"
+invariant = "Extern system ABI declarations match Win32 kernel32 open-handle file attribute/final-path queries and wintrust.dll WinVerifyTrust/CryptCATAdmin signatures."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_tcb_trust.rs"
+symbol = "CatAdminGuard::drop"
+lines = "187-197"
+invariant = "Releases non-zero HCATADMIN handle obtained from CryptCATAdminAcquireContext2 exactly once."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_tcb_trust.rs"
+symbol = "CatContextGuard::drop"
+lines = "199-209"
+invariant = "Releases non-zero HCATINFO handle paired with open HCATADMIN when not already transferred to CryptCATAdminEnumCatalogFromHash."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_tcb_trust.rs"
+symbol = "WvtStateGuard::drop"
+lines = "211-230"
+invariant = "Closes active WinVerifyTrust state handle via WTD_STATEACTION_CLOSE when present."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_tcb_trust.rs"
+symbol = "verify_open_handle_not_reparse"
+lines = "257-306"
+invariant = "Calls GetFileInformationByHandle and GetFinalPathNameByHandleW on open File HANDLE with stack-allocated POD and 1024-WCHAR buffer."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_tcb_trust.rs"
+symbol = "verify_disk_binary_trusted"
+lines = "308-371"
+invariant = "Opens file with FILE_FLAG_OPEN_REPARSE_POINT, checks open handle attributes, invokes WinVerifyTrust with whole-chain revocation and signer check before closing state guard."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_tcb_trust.rs"
+symbol = "verify_catalog_signature"
+lines = "373-489"
+invariant = "Guards HCATADMIN, single transferring HCATINFO across enum loop, and WinVerifyTrust state via RAII guards; bounds hash buffer length <= 64 bytes and checks Microsoft OS signer."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_tcb_signer.rs"
+symbol = "<top-level>"
+lines = "74-119"
+invariant = "Extern system ABI declarations match Win32 wintrust state/chain helpers and crypt32 CertVerifyCertificateChainPolicy/CertGetNameStringW/CertGetEnhancedKeyUsage."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_tcb_signer.rs"
+symbol = "verify_wvt_microsoft_os_signer"
+lines = "139-203"
+invariant = "Inspects open WinVerifyTrust state_data prior to WTD_STATEACTION_CLOSE, checks null/zero chain errors, enforces CERT_CHAIN_POLICY_MICROSOFT_ROOT, and validates leaf signer."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_tcb_signer.rs"
+symbol = "read_cert_simple_name"
+lines = "205-228"
+invariant = "Calls CertGetNameStringW with bounded 256-WCHAR stack buffer and verifies returned character count <= buffer length."
+owner = "endpoint"
+verification = ["cargo test -p grdr-peer-os"]
+
+[[entry]]
+crate = "grdr-peer-os"
+file = "crates/grdr-peer-os/src/win_tcb_signer.rs"
+symbol = "read_cert_ekus"
+lines = "230-274"
+invariant = "Probes CertGetEnhancedKeyUsage byte size <= MAX_EKU_BUFFER_BYTES into u64-aligned storage, bounds EKU pointer count <= MAX_EKU_COUNT, and skips null OID pointers."
 owner = "endpoint"
 verification = ["cargo test -p grdr-peer-os"]

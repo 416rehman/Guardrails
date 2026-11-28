@@ -1,5 +1,8 @@
-import { formatOsName, presentAgentName } from "@grdr/i18n";
-import { GrdrIcon, HarnessIcon, HStack, OsIcon } from "@grdr/ui";
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+import { formatOsName, presentAgentName, t, type CatalogHarnessPresentation } from "@grdr/i18n";
+import { GrdrIcon, HarnessIcon, HStack, OsIcon, useGrdrLocale } from "@grdr/ui";
 
 export type EntityKind =
   | "device"
@@ -25,7 +28,9 @@ export function OsLabel({
   arch?: string;
   size?: number;
 }) {
-  const text = arch ? `${formatOsName(os)} / ${arch}` : formatOsName(os);
+  const { locale } = useGrdrLocale();
+  const formatted = formatOsName(os, locale);
+  const text = arch ? `${formatted} / ${arch}` : formatted;
   return (
     <HStack gap={1} align="center">
       <OsIcon os={os} size={size} />
@@ -34,9 +39,13 @@ export function OsLabel({
   );
 }
 
-function formatEntityLabel(kind: EntityKind, label: string): string {
+function formatEntityLabel(
+  kind: EntityKind,
+  label: string,
+  extraCatalog?: ReadonlyArray<CatalogHarnessPresentation>,
+): string {
   if (kind !== "agent") return label;
-  return presentAgentName(label);
+  return presentAgentName(label, extraCatalog);
 }
 
 export function EntityLink({
@@ -45,6 +54,7 @@ export function EntityLink({
   label,
   os,
   compact = false,
+  extraCatalog,
   onSelect,
 }: {
   kind: EntityKind;
@@ -52,14 +62,16 @@ export function EntityLink({
   label: string;
   os?: string;
   compact?: boolean;
+  extraCatalog?: ReadonlyArray<CatalogHarnessPresentation>;
   onSelect?: (target: EntityTarget) => void;
 }) {
+  const { locale } = useGrdrLocale();
   const targetId = id ?? label;
-  const displayLabel = formatEntityLabel(kind, label);
+  const displayLabel = formatEntityLabel(kind, label, extraCatalog);
   const iconSize = compact ? 12 : 14;
   const icon =
     kind === "agent" ? (
-      <HarnessIcon name={label} size={iconSize} />
+      <HarnessIcon name={label} size={iconSize} extraCatalog={extraCatalog} />
     ) : kind === "device" && os ? (
       <OsIcon os={os} size={iconSize} />
     ) : (
@@ -86,14 +98,14 @@ export function EntityLink({
       type="button"
       className={compact ? "grdr-entity-link compact" : "grdr-entity-link"}
       data-entity-kind={kind}
-      title={`Open ${kind}: ${displayLabel}`}
+      title={t("kit.entity.open_label", { kind, label: displayLabel }, locale)}
       onClick={(e) => {
         e.stopPropagation();
         onSelect?.({ kind, id: targetId, label: displayLabel });
       }}
     >
       {icon}
-      <span>{displayLabel}</span>
+      <bdi>{displayLabel}</bdi>
     </button>
   );
 }

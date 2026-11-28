@@ -83,6 +83,141 @@ lucide = "shield-alert"
 mirror = false
 
 [[icon]]
+key = "security.key"
+lucide = "key-round"
+mirror = false
+
+[[icon]]
+key = "security.shield"
+lucide = "shield"
+mirror = false
+
+[[icon]]
+key = "security.shield_half"
+lucide = "shield-half"
+mirror = false
+
+[[icon]]
+key = "security.shield_off"
+lucide = "shield-off"
+mirror = false
+
+[[icon]]
+key = "dir.arrow_left"
+lucide = "arrow-left"
+mirror = true
+
+[[icon]]
+key = "dir.arrow_right"
+lucide = "arrow-right"
+mirror = true
+
+[[icon]]
+key = "dir.chevron_right"
+lucide = "chevron-right"
+mirror = true
+
+[[icon]]
+key = "action.undo"
+lucide = "undo"
+mirror = true
+
+[[icon]]
+key = "action.redo"
+lucide = "redo"
+mirror = true
+
+[[icon]]
+key = "action.send"
+lucide = "send"
+mirror = true
+
+[[icon]]
+key = "auth.sign_out"
+lucide = "log-out"
+mirror = true
+
+[[icon]]
+key = "action.generic"
+lucide = "terminal"
+mirror = false
+
+[[icon]]
+key = "status.connected"
+lucide = "check-circle"
+mirror = false
+
+[[icon]]
+key = "status.warning"
+lucide = "alert-triangle"
+mirror = false
+
+[[icon]]
+key = "status.globe"
+lucide = "globe"
+mirror = false
+
+[[icon]]
+key = "status.file_code"
+lucide = "file-code"
+mirror = false
+
+[[icon]]
+key = "status.layers"
+lucide = "layers"
+mirror = false
+
+[[icon]]
+key = "status.plug"
+lucide = "plug"
+mirror = false
+
+[[icon]]
+key = "status.box"
+lucide = "box"
+mirror = false
+
+[[icon]]
+key = "status.cpu"
+lucide = "cpu"
+mirror = false
+
+[[icon]]
+key = "status.list"
+lucide = "list"
+mirror = false
+
+[[icon]]
+key = "status.user"
+lucide = "user"
+mirror = false
+
+[[icon]]
+key = "status.users"
+lucide = "users"
+mirror = false
+
+[[icon]]
+key = "status.server"
+lucide = "server"
+mirror = false
+
+[[icon]]
+key = "status.info"
+lucide = "info"
+mirror = false
+
+[[icon]]
+key = "status.play"
+lucide = "play"
+mirror = false
+
+[[icon]]
+key = "status.code"
+lucide = "code"
+mirror = false
+
+[[icon]]
 key = "nav.home"
 lucide = "home"
 mirror = false
@@ -141,3 +276,417 @@ mirror = false
 key = "nav.operator_audit"
 lucide = "file-text"
 mirror = false
+
+[[icon]]
+key = "nav.first_run"
+lucide = "check-circle"
+mirror = false
+
+[[icon]]
+key = "nav.why"
+lucide = "info"
+mirror = false
+
+[[icon]]
+key = "nav.review"
+lucide = "list"
+mirror = false
+
+[[icon]]
+key = "nav.compliance"
+lucide = "file-text"
+mirror = false
+
+[[icon]]
+key = "nav.settings"
+lucide = "sliders-horizontal"
+mirror = false
+
+[[icon]]
+key = "nav.provider"
+lucide = "layers"
+mirror = false
+
+[[icon]]
+key = "nav.integrations"
+lucide = "plug"
+mirror = false
+
+[[icon]]
+key = "nav.operator_upgrades"
+lucide = "refresh"
+mirror = false
+
+[[icon]]
+key = "nav.operator_orgs"
+lucide = "building"
+mirror = false
+
+[[icon]]
+key = "nav.operator_keys"
+lucide = "key-round"
+mirror = false
+
+[[icon]]
+key = "nav.operator_backups"
+lucide = "hard-drive"
+mirror = false
+
+# Dynamic P14 agent, provider, gateway, and platform catalogue icons.
+[[harness_icon]]
+id = "claude-code"
+display_name = "Claude Code"
+vendor = "Anthropic"
+kind = "coding-agent"
+aliases = ["claude", "claude code"]
+simple_icon = "claudecode"
+lucide = "terminal"
+tone = "ask"
+
+[[harness_icon]]
+id = "cursor"
+display_name = "Cursor"
+vendor = "Anysphere"
+kind = "coding-agent"
+aliases = ["cursor-agent"]
+simple_icon = "cursor"
+lucide = "code"
+tone = "accent"
+
+[[harness_icon]]
+id = "codex"
+display_name = "Codex CLI"
+vendor = "OpenAI"
+kind = "coding-agent"
+aliases = ["codex-cli", "openai-codex"]
+simple_icon = ""
+lucide = "key-round"
+tone = "accent"
+
+[[harness_icon]]
+id = "gemini-cli"
+display_name = "Gemini CLI"
+vendor = "Google"
+kind = "coding-agent"
+aliases = ["gemini", "google-gemini"]
+simple_icon = "googlegemini"
+lucide = "terminal"
+tone = "accent"
+
+[[harness_icon]]
+id = "github-copilot"
+display_name = "GitHub Copilot"
+vendor = "GitHub"
+kind = "coding-agent"
+aliases = ["copilot", "copilot-cli", "gh-copilot"]
+simple_icon = "githubcopilot"
+lucide = "code"
+tone = "allow"
+
+[[harness_icon]]
+id = "opencode"
+display_name = "OpenCode"
+vendor = "SST"
+kind = "coding-agent"
+aliases = ["open-code"]
+simple_icon = "opencode"
+lucide = "terminal"
+tone = "primary"
+
+[[harness_icon]]
+id = "windsurf"
+display_name = "Windsurf"
+vendor = "Codeium"
+kind = "coding-agent"
+aliases = ["codeium-windsurf", "cascade"]
+simple_icon = "windsurf"
+lucide = "code"
+tone = "accent"
+
+[[harness_icon]]
+id = "aider"
+display_name = "Aider"
+vendor = "Aider"
+kind = "coding-agent"
+aliases = ["aider-chat"]
+simple_icon = ""
+lucide = "terminal"
+tone = "accent"
+
+[[harness_icon]]
+id = "amazon-q"
+display_name = "Amazon Q Developer"
+vendor = "Amazon"
+kind = "coding-agent"
+aliases = ["q", "amazon-q-cli", "aws-q"]
+simple_icon = ""
+lucide = "terminal"
+tone = "ask"
+
+[[harness_icon]]
+id = "antigravity"
+display_name = "Antigravity"
+vendor = "Google"
+kind = "coding-agent"
+aliases = ["agy"]
+simple_icon = "google"
+lucide = "cpu"
+tone = "accent"
+
+[[harness_icon]]
+id = "cline"
+display_name = "Cline"
+vendor = "Cline"
+kind = "coding-agent"
+aliases = ["claude-dev"]
+simple_icon = ""
+lucide = "code"
+tone = "accent"
+
+[[harness_icon]]
+id = "continue"
+display_name = "Continue"
+vendor = "Continue"
+kind = "coding-agent"
+aliases = ["continue-dev", "cn"]
+simple_icon = ""
+lucide = "play"
+tone = "accent"
+
+[[harness_icon]]
+id = "junie"
+display_name = "JetBrains Junie"
+vendor = "JetBrains"
+kind = "coding-agent"
+aliases = ["jetbrains-junie"]
+simple_icon = "jetbrains"
+lucide = "code"
+tone = "accent"
+
+[[harness_icon]]
+id = "kiro"
+display_name = "Kiro"
+vendor = "Amazon"
+kind = "coding-agent"
+aliases = ["kiro-cli", "kiro-ide"]
+simple_icon = ""
+lucide = "box"
+tone = "ask"
+
+[[harness_icon]]
+id = "pi"
+display_name = "Pi Coding Agent"
+vendor = "Pi"
+kind = "coding-agent"
+aliases = ["pi-agent", "pi-coding-agent"]
+simple_icon = ""
+lucide = "terminal"
+tone = "primary"
+
+[[harness_icon]]
+id = "roo-code"
+display_name = "Roo Code"
+vendor = "Roo"
+kind = "coding-agent"
+aliases = ["roo", "roo-cline"]
+simple_icon = ""
+lucide = "code"
+tone = "accent"
+
+[[harness_icon]]
+id = "zed-ai"
+display_name = "Zed AI"
+vendor = "Zed Industries"
+kind = "coding-agent"
+aliases = ["zed"]
+simple_icon = "zedindustries"
+lucide = "code"
+tone = "primary"
+
+[[harness_icon]]
+id = "claude"
+display_name = "Claude"
+vendor = "Anthropic"
+kind = "provider"
+aliases = ["claude-desktop"]
+simple_icon = "claude"
+lucide = "layers"
+tone = "ask"
+
+[[harness_icon]]
+id = "anthropic"
+display_name = "Anthropic"
+vendor = "Anthropic"
+kind = "provider"
+aliases = ["anthropic-api"]
+simple_icon = "anthropic"
+lucide = "layers"
+tone = "primary"
+
+[[harness_icon]]
+id = "google"
+display_name = "Google AI"
+vendor = "Google"
+kind = "provider"
+aliases = ["vertex", "vertex-ai"]
+simple_icon = "google"
+lucide = "layers"
+tone = "accent"
+
+[[harness_icon]]
+id = "meta"
+display_name = "Meta Llama"
+vendor = "Meta"
+kind = "provider"
+aliases = ["llama", "meta-ai"]
+simple_icon = "metaai"
+lucide = "layers"
+tone = "accent"
+
+[[harness_icon]]
+id = "mistral"
+display_name = "Mistral AI"
+vendor = "Mistral"
+kind = "provider"
+aliases = ["mistral-ai"]
+simple_icon = "mistralai"
+lucide = "layers"
+tone = "ask"
+
+[[harness_icon]]
+id = "openai"
+display_name = "OpenAI"
+vendor = "OpenAI"
+kind = "provider"
+aliases = ["gpt"]
+simple_icon = ""
+lucide = "key-round"
+tone = "accent"
+
+[[harness_icon]]
+id = "guardrails"
+display_name = "Guardrails ADR"
+vendor = "Loonaro"
+kind = "platform"
+aliases = ["grdr", "guardrails-adr"]
+simple_icon = "guardrails-mark"
+lucide = "shield"
+tone = "primary"
+
+[[harness_icon]]
+id = "kong"
+display_name = "Kong AI Gateway"
+vendor = "Kong"
+kind = "gateway"
+aliases = ["kong-gateway"]
+simple_icon = "kong"
+lucide = "server"
+tone = "allow"
+
+[[harness_icon]]
+id = "mcp"
+display_name = "Model Context Protocol"
+vendor = "MCP"
+kind = "gateway"
+aliases = ["mcp-server"]
+simple_icon = "modelcontextprotocol"
+lucide = "plug"
+tone = "primary"
+
+[[harness_icon]]
+id = "litellm"
+display_name = "LiteLLM"
+vendor = "BerriAI"
+kind = "gateway"
+aliases = ["litellm-proxy"]
+simple_icon = ""
+lucide = "layers"
+tone = "accent"
+
+[[harness_icon]]
+id = "azure"
+display_name = "Azure OpenAI"
+vendor = "Microsoft"
+kind = "provider"
+aliases = ["azure-ai"]
+simple_icon = ""
+lucide = "box"
+tone = "accent"
+
+[[harness_icon]]
+id = "portkey"
+display_name = "Portkey"
+vendor = "Portkey"
+kind = "gateway"
+aliases = ["portkey-gateway"]
+simple_icon = ""
+lucide = "route"
+tone = "ask"
+
+[[harness_icon]]
+id = "bedrock"
+display_name = "AWS Bedrock"
+vendor = "Amazon"
+kind = "provider"
+aliases = ["aws", "aws-bedrock"]
+simple_icon = ""
+lucide = "server"
+tone = "ask"
+
+[[harness_icon]]
+id = "proxy"
+display_name = "Local Tool Proxy"
+vendor = "Guardrails"
+kind = "gateway"
+aliases = ["gateway", "grdr-proxy"]
+simple_icon = ""
+lucide = "server"
+tone = "accent"
+
+[[os_icon]]
+id = "macos"
+display_name = "macOS"
+aliases = ["darwin", "mac"]
+simple_icon = "apple"
+lucide = "cpu"
+tone = "primary"
+
+[[os_icon]]
+id = "ubuntu"
+display_name = "Ubuntu"
+aliases = ["ubuntu-linux"]
+simple_icon = "ubuntu"
+lucide = "cpu"
+tone = "ask"
+
+[[os_icon]]
+id = "debian"
+display_name = "Debian"
+aliases = ["debian-linux"]
+simple_icon = "debian"
+lucide = "cpu"
+tone = "block"
+
+[[os_icon]]
+id = "fedora"
+display_name = "Fedora"
+aliases = ["fedora-linux"]
+simple_icon = "fedora"
+lucide = "cpu"
+tone = "accent"
+
+[[os_icon]]
+id = "linux"
+display_name = "Linux"
+aliases = ["linux-x86_64", "linux-aarch64"]
+simple_icon = "linux"
+lucide = "cpu"
+tone = "primary"
+
+[[os_icon]]
+id = "windows"
+display_name = "Windows"
+aliases = ["win", "win32", "windows-x86_64"]
+simple_icon = "windows-grid"
+lucide = "layout-grid"
+tone = "accent"

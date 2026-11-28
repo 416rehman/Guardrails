@@ -84,12 +84,12 @@ favicon_operator_png = "web/apps/operator/public/favicon.png"
 [tokens]
 palette_light = "porcelain"
 palette_dark = "carbon-obsidian"
-accent = "#1D4ED8"
-accent_dark = "#60A5FA"
-surface_light = "#FAF8F5"
-surface_dark = "#111318"
-font_sans = "Inter, system-ui, sans-serif"
-font_mono = "JetBrains Mono, ui-monospace, monospace"
+accent = "#2563EB"
+accent_dark = "#3B82F6"
+surface_light = "#FFFFFF"
+surface_dark = "#0B0D10"
+font_sans = "\"DM Sans\", system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+font_mono = "\"IBM Plex Mono\", ui-monospace, SFMono-Regular, monospace"
 
 [legal]
 copyright_holder = "The Guardrails ADR Authors"

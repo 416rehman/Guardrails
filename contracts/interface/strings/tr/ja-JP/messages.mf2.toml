@@ -1,0 +1,162 @@
+# Japanese (ja-JP) translated UI catalog (D-69).
+
+["grdr.brand.subtitle"]
+msg = "エージェント保護"
+
+["grdr.brand.operator_subtitle"]
+msg = "運用プレーン"
+
+["mode.off.label"]
+msg = "オフ"
+
+["mode.watch.label"]
+msg = "監視"
+
+["mode.ask.label"]
+msg = "確認"
+
+["mode.block.label"]
+msg = "ブロック"
+
+["verdict.allow"]
+msg = "許可"
+
+["verdict.modify"]
+msg = "変更済み"
+
+["verdict.step_up"]
+msg = "確認"
+
+["verdict.defer"]
+msg = "保留"
+
+["verdict.deny"]
+msg = "拒否"
+
+["assurance.al0"]
+msg = "AL0 登録済み"
+
+["assurance.al1"]
+msg = "AL1 観測中"
+
+["assurance.al2"]
+msg = "AL2 ガイド"
+
+["assurance.al3"]
+msg = "AL3 分離"
+
+["assurance.al4"]
+msg = "AL4 強制"
+
+["console.nav.home"]
+msg = "ホーム"
+
+["console.nav.first_run"]
+msg = "初回セットアップ"
+
+["console.nav.users"]
+msg = "ユーザー"
+
+["console.nav.inventory"]
+msg = "インベントリ"
+
+["console.nav.sessions"]
+msg = "セッション"
+
+["console.nav.protect"]
+msg = "保護"
+
+["console.nav.review"]
+msg = "レビューキュー"
+
+["console.nav.respond"]
+msg = "対応"
+
+["console.nav.why"]
+msg = "判断理由"
+
+["console.nav.compliance"]
+msg = "コンプライアンス"
+
+["console.nav.settings"]
+msg = "設定とプライバシー"
+
+["console.nav.provider"]
+msg = "プロバイダー"
+
+["console.nav.coverage"]
+msg = "カバレッジ"
+
+["console.nav.tester"]
+msg = "ライブテスター"
+
+["console.nav.integrations"]
+msg = "連携"
+
+["operator.nav.overview"]
+msg = "概要"
+
+["operator.nav.health"]
+msg = "ヘルス"
+
+["operator.nav.settings"]
+msg = "設定"
+
+["operator.nav.upgrades"]
+msg = "アップグレード"
+
+["operator.nav.orgs"]
+msg = "組織"
+
+["operator.nav.keys"]
+msg = "鍵管理"
+
+["operator.nav.backups"]
+msg = "バックアップ"
+
+["operator.nav.audit"]
+msg = "監査ログ"
+
+["common.count.sandboxed_devices"]
+msg = '''
+.input {$count :number}
+.match $count
+* {{{$count}台の分離済みデバイス}}
+'''
+
+["common.count.hook_agents"]
+msg = '''
+.input {$count :number}
+.match $count
+* {{{$count}件のアプリフックエージェント}}
+'''
+
+["kit.approval.deny"]
+msg = "拒否"
+
+["kit.approval.why"]
+msg = "理由"
+
+["kit.approval.allow_once"]
+msg = "1回のみ許可"
+
+["kit.approval.allow_session"]
+msg = "このセッションで許可"
+
+["kit.approval.allow_hour"]
+msg = "1時間許可"
+
+["kit.locale.label"]
+msg = "言語"
+
+["kit.approval.requested_on"]
+msg = "が{$action}を要求:"
+
+["kit.drawer.close"]
+msg = "閉じる"
+
+["kit.drawer.close_named"]
+msg = "{$title}を閉じる"
+
+["kit.quoted.bidi_badge"]
+msg = "制御文字除去済み"

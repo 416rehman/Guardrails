@@ -230,15 +230,15 @@ impl Refusal {
     #[must_use]
     pub const fn code(&self) -> &'static str {
         match self {
-            Self::UnsafeEndpointPath(_) => "GRDR-WIRE-0018",
-            Self::ForeignPeerUid(_) => "GRDR-WIRE-0019",
-            Self::PidReuseSuspected(_) => "GRDR-WIRE-0020",
-            Self::UnauthenticatedPeer(_) => "GRDR-WIRE-0021",
-            Self::UntrustedServerIdentity(_) => "GRDR-WIRE-0022",
-            Self::PrivilegeTooLow(_) => "GRDR-WIRE-0023",
-            Self::ProtocolRejected(_) => "GRDR-WIRE-0024",
-            Self::PolicyProfileMismatch(_) => "GRDR-WIRE-0025",
-            Self::TransientServerRestart(_) => "GRDR-WIRE-0035",
+            Self::UnsafeEndpointPath(_) => crate::codes::CODE_WIRE_PEER_UNSAFE_PATH,
+            Self::ForeignPeerUid(_) => crate::codes::CODE_WIRE_PEER_FOREIGN_UID,
+            Self::PidReuseSuspected(_) => crate::codes::CODE_WIRE_PEER_PID_REUSE,
+            Self::UnauthenticatedPeer(_) => crate::codes::CODE_WIRE_PEER_UNAUTHENTICATED,
+            Self::UntrustedServerIdentity(_) => crate::codes::CODE_WIRE_PEER_UNTRUSTED_SERVER,
+            Self::PrivilegeTooLow(_) => crate::codes::CODE_WIRE_PEER_PRIVILEGE_TOO_LOW,
+            Self::ProtocolRejected(_) => crate::codes::CODE_WIRE_PEER_PROTOCOL_REJECTED,
+            Self::PolicyProfileMismatch(_) => crate::codes::CODE_WIRE_PEER_PROFILE_MISMATCH,
+            Self::TransientServerRestart(_) => crate::codes::CODE_WIRE_PEER_TRANSIENT_RESTART,
         }
     }
 

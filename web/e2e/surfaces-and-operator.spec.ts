@@ -84,7 +84,7 @@ test.describe("Web Console Surfaces, WhyCard, and Operator Plane", () => {
 
     await navigateConsoleSection(page, isMobile, "First run");
     await expect(page.getByRole("heading", { name: "First run setup" })).toBeVisible();
-    await expect(page.getByText("Onboarding checklist")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Onboarding checklist", exact: true })).toBeVisible();
     await waitRpcsSettled();
     await assertNoHorizontalOverflow(page, "First run page");
     await captureVerifiedScreenshot(page, testInfo.project.name, "05-first-run");
@@ -103,7 +103,9 @@ test.describe("Web Console Surfaces, WhyCard, and Operator Plane", () => {
 
     await navigateConsoleSection(page, isMobile, "Compliance");
     await expect(page.getByRole("heading", { name: "Compliance & integrations" })).toBeVisible();
-    await expect(page.getByText("Framework crosswalk readiness")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Framework crosswalk readiness", exact: true }),
+    ).toBeVisible();
     await waitRpcsSettled();
     await assertNoHorizontalOverflow(page, "Compliance page");
     await captureVerifiedScreenshot(page, testInfo.project.name, "07-compliance");
@@ -113,7 +115,9 @@ test.describe("Web Console Surfaces, WhyCard, and Operator Plane", () => {
 
     await navigateConsoleSection(page, isMobile, "Settings & privacy");
     await expect(page.getByRole("heading", { name: "Settings, privacy & disclosure" })).toBeVisible();
-    await expect(page.getByText("Quarterly disclosure ledger")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Quarterly disclosure ledger", exact: true }),
+    ).toBeVisible();
     await waitRpcsSettled();
     await assertNoHorizontalOverflow(page, "Settings & privacy page");
     await captureVerifiedScreenshot(page, testInfo.project.name, "08-settings-privacy");
@@ -123,7 +127,9 @@ test.describe("Web Console Surfaces, WhyCard, and Operator Plane", () => {
 
     await navigateConsoleSection(page, isMobile, "Provider");
     await expect(page.getByRole("heading", { name: "Provider workbench" })).toBeVisible();
-    await expect(page.getByText("Managed organizations")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Managed organizations", exact: true }),
+    ).toBeVisible();
     await waitRpcsSettled();
     await assertNoHorizontalOverflow(page, "Provider workbench page");
     await captureVerifiedScreenshot(page, testInfo.project.name, "09-provider-workbench");

@@ -1,4 +1,4 @@
-# Guardrails ADR interface routes registry (design/27 section 3).
+# Guardrails ADR interface routes registry (design/27 sections 3 and 13).
 
 [[route]]
 id = "home"
@@ -7,6 +7,18 @@ icon = "nav.home"
 area = "console"
 scopes = ["device", "organisation"]
 requires = "daemon"
+path = "/"
+shell_nav = true
+
+[[route]]
+id = "first-run"
+title = "console.nav.first_run"
+icon = "nav.first_run"
+area = "console"
+scopes = ["device", "organisation"]
+requires = "daemon"
+path = "/first-run"
+shell_nav = true
 
 [[route]]
 id = "users"
@@ -15,6 +27,8 @@ icon = "nav.users"
 area = "console"
 scopes = ["device", "organisation"]
 requires = "daemon"
+path = "/users"
+shell_nav = true
 
 [[route]]
 id = "inventory"
@@ -23,6 +37,8 @@ icon = "nav.inventory"
 area = "console"
 scopes = ["device", "organisation"]
 requires = "daemon"
+path = "/inventory"
+shell_nav = true
 
 [[route]]
 id = "sessions"
@@ -31,6 +47,8 @@ icon = "nav.sessions"
 area = "console"
 scopes = ["device", "organisation"]
 requires = "daemon"
+path = "/sessions"
+shell_nav = true
 
 [[route]]
 id = "protect"
@@ -39,6 +57,18 @@ icon = "nav.protect"
 area = "console"
 scopes = ["device", "organisation"]
 requires = "daemon"
+path = "/protect"
+shell_nav = true
+
+[[route]]
+id = "review"
+title = "console.nav.review"
+icon = "nav.review"
+area = "console"
+scopes = ["organisation"]
+requires = "server"
+path = "/review"
+shell_nav = true
 
 [[route]]
 id = "respond"
@@ -47,6 +77,48 @@ icon = "nav.respond"
 area = "console"
 scopes = ["device", "organisation"]
 requires = "daemon"
+path = "/respond"
+shell_nav = true
+
+[[route]]
+id = "why"
+title = "console.nav.why"
+icon = "nav.why"
+area = "console"
+scopes = ["device", "organisation"]
+requires = "daemon"
+path = "/why/$reference"
+shell_nav = false
+
+[[route]]
+id = "compliance"
+title = "console.nav.compliance"
+icon = "nav.compliance"
+area = "console"
+scopes = ["device", "organisation"]
+requires = "server"
+path = "/compliance"
+shell_nav = true
+
+[[route]]
+id = "settings"
+title = "console.nav.settings"
+icon = "nav.settings"
+area = "console"
+scopes = ["device", "organisation"]
+requires = "daemon"
+path = "/settings"
+shell_nav = true
+
+[[route]]
+id = "provider"
+title = "console.nav.provider"
+icon = "nav.provider"
+area = "console"
+scopes = ["provider"]
+requires = "provider"
+path = "/provider"
+shell_nav = true
 
 [[route]]
 id = "coverage"
@@ -55,6 +127,8 @@ icon = "nav.coverage"
 area = "console"
 scopes = ["device", "organisation"]
 requires = "daemon"
+path = "/coverage"
+shell_nav = true
 
 [[route]]
 id = "tester"
@@ -63,6 +137,18 @@ icon = "nav.tester"
 area = "console"
 scopes = ["device", "organisation"]
 requires = "daemon"
+path = "/tester"
+shell_nav = true
+
+[[route]]
+id = "integrations"
+title = "console.nav.integrations"
+icon = "nav.integrations"
+area = "console"
+scopes = ["organisation"]
+requires = "server"
+path = "/integrations"
+shell_nav = false
 
 [[route]]
 id = "op-overview"
@@ -71,6 +157,8 @@ icon = "nav.operator_overview"
 area = "operator"
 scopes = ["operator"]
 requires = "operator-api"
+path = "/overview"
+shell_nav = true
 
 [[route]]
 id = "op-health"
@@ -79,6 +167,8 @@ icon = "nav.operator_health"
 area = "operator"
 scopes = ["operator"]
 requires = "operator-api"
+path = "/health"
+shell_nav = true
 
 [[route]]
 id = "op-settings"
@@ -87,6 +177,48 @@ icon = "nav.operator_settings"
 area = "operator"
 scopes = ["operator"]
 requires = "operator-api"
+path = "/settings"
+shell_nav = true
+
+[[route]]
+id = "op-upgrades"
+title = "operator.nav.upgrades"
+icon = "nav.operator_upgrades"
+area = "operator"
+scopes = ["operator"]
+requires = "operator-api"
+path = "/upgrades"
+shell_nav = true
+
+[[route]]
+id = "op-orgs"
+title = "operator.nav.orgs"
+icon = "nav.operator_orgs"
+area = "operator"
+scopes = ["operator"]
+requires = "operator-api"
+path = "/orgs"
+shell_nav = false
+
+[[route]]
+id = "op-keys"
+title = "operator.nav.keys"
+icon = "nav.operator_keys"
+area = "operator"
+scopes = ["operator"]
+requires = "operator-api"
+path = "/keys"
+shell_nav = false
+
+[[route]]
+id = "op-backups"
+title = "operator.nav.backups"
+icon = "nav.operator_backups"
+area = "operator"
+scopes = ["operator"]
+requires = "operator-api"
+path = "/backups"
+shell_nav = true
 
 [[route]]
 id = "op-audit"
@@ -95,3 +227,5 @@ icon = "nav.operator_audit"
 area = "operator"
 scopes = ["operator"]
 requires = "operator-api"
+path = "/audit"
+shell_nav = true

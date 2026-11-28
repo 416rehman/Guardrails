@@ -1,4 +1,7 @@
-import { formatOsName, presentAssurance } from "@grdr/i18n";
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+import { formatOsName, presentAssurance, t, type LocaleCode } from "@grdr/i18n";
 import {
   Badge,
   type GrdrFlowEdge,
@@ -11,25 +14,27 @@ import {
   Text,
   UiSdkDrawer,
   VStack,
+  useGrdrLocale,
 } from "@grdr/ui";
 import { EntityLink, type EntityTarget } from "./EntityLink";
 import { AssuranceBadge } from "./VerdictBadge";
 import { Quoted } from "./Quoted";
 
-function friendlyControl(control: string): string {
-  if (control.includes("boundary")) return "OS boundary";
-  if (control === "request") return "Hook request";
-  return "Observation only";
-}
-
-function friendlyVisibility(visibility: string, failMode: string): string {
-  const vis = visibility === "observed" ? "Verified" : "Unverified";
-  const fail = failMode.includes("closed") ? "blocks on bypass" : "allows on bypass";
+function friendlyVisibility(visibility: string, failMode: string, locale: LocaleCode): string {
+  const vis =
+    visibility === "observed"
+      ? t("kit.device.vis_verified", undefined, locale)
+      : t("kit.device.vis_unverified", undefined, locale);
+  const fail = failMode.includes("closed")
+    ? t("kit.device.fail_closed", undefined, locale)
+    : t("kit.device.fail_open", undefined, locale);
   return `${vis} · ${fail}`;
 }
 
-function friendlyTamper(tamper: string): string {
-  return tamper === "admin" ? "Admin locked" : "User editable";
+function friendlyTamper(tamper: string, locale: LocaleCode): string {
+  return tamper === "admin"
+    ? t("kit.device.tamper_admin", undefined, locale)
+    : t("kit.device.tamper_user", undefined, locale);
 }
 
 export interface MatrixDevice {
@@ -65,33 +70,35 @@ export function DeviceAssuranceDrawer({
   onOpenEntity?: (target: EntityTarget) => void;
   onClose: () => void;
 }) {
+  const { locale } = useGrdrLocale();
   const assetNodes: GrdrFlowNode[] = [];
   const assetEdges: GrdrFlowEdge[] = [];
   if (device) {
     assetNodes.push({
       id: "device-host",
       label: device.hostname,
-      subtitle: `${formatOsName(device.os)} / ${device.arch}`,
-      badge: "Host",
+      subtitle: `${formatOsName(device.os, locale)} / ${device.arch}`,
+      badge: t("kit.device.badge_host", undefined, locale),
       tone: "accent",
       icon: "cpu",
     });
     for (const ag of device.agents) {
-      const boundary = ag.assurance.control.includes("boundary");
-      const assuranceText = presentAssurance(ag.assurance_level, ag.assurance.control).label;
+      const pres = presentAssurance(ag.assurance_level, ag.assurance.control, locale);
+      const nodeTone =
+        pres.tone === "success" ? "allow" : pres.tone === "warning" ? "ask" : "neutral";
       assetNodes.push({
         id: `ag-${ag.id}`,
         label: ag.name,
-        subtitle: friendlyControl(ag.assurance.control),
-        badge: assuranceText,
-        tone: boundary ? "allow" : "ask",
+        subtitle: pres.controlLabel,
+        badge: pres.label,
+        tone: nodeTone,
         harnessName: ag.name,
       });
       assetEdges.push({
         id: `edge-host-${ag.id}`,
         source: "device-host",
         target: `ag-${ag.id}`,
-        tone: boundary ? "allow" : "neutral",
+        tone: pres.tone === "success" ? "allow" : "neutral",
       });
     }
     const primaryAgentId = device.agents[0] ? `ag-${device.agents[0].id}` : "device-host";
@@ -101,7 +108,9 @@ export function DeviceAssuranceDrawer({
         id: mcpId,
         label: mcp.name,
         subtitle: mcp.transport,
-        badge: mcp.pinned ? "Pinned" : "Unpinned",
+        badge: mcp.pinned
+          ? t("kit.device.badge_pinned", undefined, locale)
+          : t("kit.device.badge_unpinned", undefined, locale),
         tone: mcp.pinned ? "allow" : "ask",
         icon: "plug",
       });
@@ -119,7 +128,7 @@ export function DeviceAssuranceDrawer({
     <UiSdkDrawer
       open={device !== null}
       onClose={onClose}
-      title="Device assurance matrix"
+      title={t("kit.device.title", undefined, locale)}
       description={device ? `${device.hostname} (${device.id})` : undefined}
     >
       {device && (
@@ -128,17 +137,25 @@ export function DeviceAssuranceDrawer({
             <Badge
               variant="info"
               icon={<GrdrIcon name={device.install_profile === "protected" ? "shield-check" : "shield-half"} size={12} />}
-              label={device.install_profile === "protected" ? "Protected" : "User mode"}
+              label={
+                device.install_profile === "protected"
+                  ? t("kit.device.profile_protected", undefined, locale)
+                  : t("kit.device.profile_user", undefined, locale)
+              }
             />
             <Badge
               variant={device.hook_effective ? "success" : "warning"}
               icon={<GrdrIcon name={device.hook_effective ? "check-circle" : "alert-triangle"} size={12} />}
-              label={device.hook_effective ? "Hook active" : "Discovery only"}
+              label={
+                device.hook_effective
+                  ? t("kit.device.hook_active", undefined, locale)
+                  : t("kit.device.discovery_only", undefined, locale)
+              }
             />
             <Badge
               variant="neutral"
               icon={<OsIcon os={device.os} size={12} />}
-              label={`${formatOsName(device.os)} / ${device.arch}`}
+              label={<bdi>{`${formatOsName(device.os, locale)} / ${device.arch}`}</bdi>}
             />
           </HStack>
 
@@ -146,7 +163,7 @@ export function DeviceAssuranceDrawer({
             <HStack gap={1} align="center">
               <GrdrIcon name="route" size={14} color="var(--accent-primary)" />
               <Text size="sm" style={{ fontWeight: 600 }}>
-                Endpoint asset topology
+                {t("kit.device.topology", undefined, locale)}
               </Text>
             </HStack>
             <GrdrFlowGraph
@@ -154,14 +171,14 @@ export function DeviceAssuranceDrawer({
               edges={assetEdges}
               direction="LR"
               height={236}
-              ariaLabel={`Asset graph for ${device.hostname}`}
+              ariaLabel={`${t("kit.device.topology", undefined, locale)}: ${device.hostname}`}
             />
           </VStack>
 
           <VStack gap={2}>
-            <Heading level={3}>Agent protection ({device.agents.length})</Heading>
+            <Heading level={3}>{t("kit.device.agent_protection", { count: device.agents.length }, locale)}</Heading>
             {device.agents.length === 0 ? (
-              <Text color="secondary">No local agents reported for this device.</Text>
+              <Text color="secondary">{t("kit.device.no_agents", undefined, locale)}</Text>
             ) : (
               <div className="table-wrap">
                 <table style={{ tableLayout: "fixed", width: "100%" }}>
@@ -173,10 +190,10 @@ export function DeviceAssuranceDrawer({
                   </colgroup>
                   <thead>
                     <tr>
-                      <th>Agent</th>
-                      <th>Protection</th>
-                      <th>Verification</th>
-                      <th>Config</th>
+                      <th>{t("kit.device.col_agent", undefined, locale)}</th>
+                      <th>{t("kit.device.col_protection", undefined, locale)}</th>
+                      <th>{t("kit.device.col_verification", undefined, locale)}</th>
+                      <th>{t("kit.device.col_config", undefined, locale)}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -191,7 +208,7 @@ export function DeviceAssuranceDrawer({
                             onSelect={onOpenEntity}
                           />
                           <div style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 3 }}>
-                            {friendlyTamper(agent.assurance.tamper)}
+                            {friendlyTamper(agent.assurance.tamper, locale)}
                           </div>
                         </td>
                         <td>
@@ -202,10 +219,12 @@ export function DeviceAssuranceDrawer({
                         </td>
                         <td>
                           <div>
-                            {friendlyVisibility(agent.assurance.visibility, agent.assurance.on_failure)}
+                            {friendlyVisibility(agent.assurance.visibility, agent.assurance.on_failure, locale)}
                           </div>
                           <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>
-                            {agent.hook_installed ? "Hook active" : "Hook absent"}
+                            {agent.hook_installed
+                              ? t("kit.device.hook_active", undefined, locale)
+                              : t("kit.device.hook_absent", undefined, locale)}
                           </div>
                         </td>
                         <td title={agent.config_path}>
@@ -220,17 +239,17 @@ export function DeviceAssuranceDrawer({
           </VStack>
 
           <VStack gap={2}>
-            <Heading level={3}>MCP server inventory ({device.mcp_servers.length})</Heading>
+            <Heading level={3}>{t("kit.device.mcp_inventory", { count: device.mcp_servers.length }, locale)}</Heading>
             {device.mcp_servers.length === 0 ? (
-              <Text color="secondary">No MCP servers bound to this endpoint.</Text>
+              <Text color="secondary">{t("kit.device.no_mcp", undefined, locale)}</Text>
             ) : (
               <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
-                      <th>Server</th>
-                      <th>Transport</th>
-                      <th>Digest pin</th>
+                      <th>{t("kit.device.col_server", undefined, locale)}</th>
+                      <th>{t("kit.device.col_transport", undefined, locale)}</th>
+                      <th>{t("kit.device.col_digest_pin", undefined, locale)}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -255,14 +274,18 @@ export function DeviceAssuranceDrawer({
                               size={12}
                               color="var(--ink-secondary)"
                             />
-                            <span className="mono">{mcp.transport}</span>
+                            <span className="mono"><bdi dir="ltr">{mcp.transport}</bdi></span>
                           </HStack>
                         </td>
                         <td>
                           <Badge
                             variant={mcp.pinned ? "success" : "warning"}
                             icon={<GrdrIcon name={mcp.pinned ? "lock" : "alert-triangle"} size={11} />}
-                            label={mcp.pinned ? "Pinned" : "Unpinned"}
+                            label={
+                              mcp.pinned
+                                ? t("kit.device.badge_pinned", undefined, locale)
+                                : t("kit.device.badge_unpinned", undefined, locale)
+                            }
                           />
                         </td>
                       </tr>

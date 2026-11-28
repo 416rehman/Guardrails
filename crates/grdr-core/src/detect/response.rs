@@ -8,15 +8,19 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use grdr_model::Mode;
+use grdr_schema::limits::load_embedded_limits;
 
+pub use crate::detect::kill_switch::{
+    ActiveKillEntry, ActuatorDeliveryForm, ApprovalOutcomeSignal, DeviceContainmentStage,
+    GranularKillSwitchState, KillSwitchApplyRequest, KillSwitchScope, compute_preview_rollup,
+};
 use crate::detect::types::{
     DetectError, FindingCeiling, ResponseBinding, ResponseExecutionMode, TriggeredResponseIntent,
 };
 
 pub const DEFAULT_MAX_SHARE_BP: u16 = 500;
 const ONE_HOUR_SECS: i64 = 3_600;
-const MAX_BREAKER_RULES: usize = 512;
-const MAX_BREAKER_DEVICES_PER_RULE: usize = 2_048;
+const MAX_BREAKER_RULES: usize = 1_024;
 
 const RECORD_NOTIFY_VERBS: &[&str] = &["capture-evidence"];
 const CONTAIN_VERBS: &[&str] = &[
@@ -33,6 +37,12 @@ const FORBIDDEN_CONTENT_VERBS: &[&str] = &[
     "revoke-brokered-leases",
     "isolate-device",
 ];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ResponseBreakerLimits {
+    max_breaker_rules: usize,
+    max_breaker_devices_per_rule: usize,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -67,6 +77,25 @@ pub struct ResponseExecutor {
     pending_future_sec_by_rule: BTreeMap<String, i64>,
 }
 
+impl ResponseBreakerLimits {
+    fn from_embedded() -> Result<Self, DetectError> {
+        let cfg = load_embedded_limits().map_err(|err| {
+            DetectError::StateRestore(format!("embedded operational limits unavailable: {err}"))
+        })?;
+        let max_breaker_rules = MAX_BREAKER_RULES;
+        let max_breaker_devices_per_rule = cfg.broker.circuit_breaker.max_outcomes;
+        if max_breaker_rules == 0 || max_breaker_devices_per_rule == 0 {
+            return Err(DetectError::StateRestore(
+                "response breaker limits must be positive".into(),
+            ));
+        }
+        Ok(Self {
+            max_breaker_rules,
+            max_breaker_devices_per_rule,
+        })
+    }
+}
+
 /// Validates response binding verbs, blast-radius parameters, and ceiling compliance (`docs/design/13` s.14).
 pub fn validate_response_binding(
     binding: &ResponseBinding,
@@ -80,41 +109,35 @@ pub(crate) fn validate_response_binding_with_legacy(
     effective_ceiling: FindingCeiling,
     enforce_ceiling_fit: bool,
 ) -> Result<(), DetectError> {
-    if binding.max_scope.trim().is_empty() {
-        return Err(DetectError::ResponseBreaker(
-            "response blast_radius max_scope cannot be empty".into(),
-        ));
-    }
-    if binding.max_share_bp == 0 || binding.max_share_bp > 10_000 {
+    if binding.max_scope.trim().is_empty()
+        || binding.max_share_bp == 0
+        || binding.max_share_bp > 10_000
+    {
         return Err(DetectError::ResponseBreaker(format!(
-            "invalid response max_share_bp {}; expected 1..=10000",
-            binding.max_share_bp
+            "invalid response scope `{}` or max_share_bp {}",
+            binding.max_scope, binding.max_share_bp
         )));
     }
     for raw_verb in &binding.verbs {
         let verb = raw_verb.trim().to_ascii_lowercase();
-        let allow_signed_simulated_legacy = !enforce_ceiling_fit
+        let allow_signed_sim = !enforce_ceiling_fit
             && binding.mode == ResponseExecutionMode::Simulate
             && matches!(
                 verb.as_str(),
                 "restore-workspace-files" | "revoke-brokered-leases"
             );
-        if FORBIDDEN_CONTENT_VERBS.contains(&verb.as_str()) && !allow_signed_simulated_legacy {
-            return Err(DetectError::ResponseBreaker(format!(
-                "response verb `{verb}` cannot be automated from detection content"
-            )));
+        if FORBIDDEN_CONTENT_VERBS.contains(&verb.as_str()) && !allow_signed_sim {
+            return Err(breaker(&format!("response verb `{verb}` forbidden")));
         }
-        let known = CONTAIN_VERBS.contains(&verb.as_str())
+        if !(CONTAIN_VERBS.contains(&verb.as_str())
             || REMEDIATE_VERBS.contains(&verb.as_str())
-            || allow_signed_simulated_legacy;
-        if !known {
-            return Err(DetectError::ResponseBreaker(format!(
-                "unknown response verb `{verb}` outside ResponseAction allowlist"
-            )));
+            || allow_signed_sim)
+        {
+            return Err(breaker(&format!("unknown response verb `{verb}`")));
         }
         if enforce_ceiling_fit && !verb_permitted_at_ceiling(&verb, effective_ceiling) {
-            return Err(DetectError::ResponseBreaker(format!(
-                "response verb `{verb}` exceeds effective rule ceiling `{effective_ceiling:?}`"
+            return Err(breaker(&format!(
+                "response verb `{verb}` exceeds `{effective_ceiling:?}`"
             )));
         }
     }
@@ -131,50 +154,42 @@ impl ResponseExecutor {
         &mut self,
         state: &BTreeMap<String, BTreeMap<String, i64>>,
     ) -> Result<(), DetectError> {
-        if state.len() > MAX_BREAKER_RULES
+        let limits = ResponseBreakerLimits::from_embedded()?;
+        if state.len() > limits.max_breaker_rules
             || state
                 .values()
-                .any(|devs| devs.len() > MAX_BREAKER_DEVICES_PER_RULE)
+                .any(|devs| devs.len() > limits.max_breaker_devices_per_rule)
         {
             return Err(DetectError::StateRestore(
-                "restored response breaker device map exceeds capacity bounds".into(),
+                "response breaker capacity".into(),
             ));
         }
         self.hourly_devices_by_rule = state.clone();
         self.pending_future_sec_by_rule.clear();
         self.max_seen_sec_by_rule = state
             .iter()
-            .filter_map(|(r, devs)| devs.values().copied().max().map(|m| (r.clone(), m)))
+            .filter_map(|(r, d)| d.values().copied().max().map(|m| (r.clone(), m)))
             .collect();
         Ok(())
     }
 
-    /// Plans or executes a response binding within mode ladder, finding ceiling,
-    /// external remediate approval gate, and hourly fleet share circuit breaker.
+    /// Plans or executes a response binding within mode ladder, ceiling, and fleet circuit breaker.
     pub fn evaluate_binding(
         &mut self,
         req: &ResponsePlanRequest<'_>,
     ) -> Result<ExecutedResponsePlan, DetectError> {
         if req.binding.max_share_bp == 0 || req.binding.max_share_bp > 10_000 {
-            return Err(DetectError::ResponseBreaker(format!(
-                "response max_share_bp {} is invalid (must be 1..=10000)",
+            return Err(breaker(&format!(
+                "invalid max_share_bp {}",
                 req.binding.max_share_bp
             )));
         }
+        let limits = ResponseBreakerLimits::from_embedded()?;
+        let sim = |m, verbs| Ok(plan(req, m, verbs, true, ResponseBreakerState::Closed));
         if req.pack_mode == Mode::Off {
-            return Ok(ExecutedResponsePlan {
-                intent: TriggeredResponseIntent {
-                    rule_id: req.rule_id.to_owned(),
-                    dedup_key: req.dedup_key.to_owned(),
-                    mode_applied: req.pack_mode,
-                    verbs: Vec::new(),
-                    simulated: true,
-                },
-                breaker_state: ResponseBreakerState::Closed,
-            });
+            return sim(req.pack_mode, Vec::new());
         }
-
-        let allowed_verbs = filter_verbs_by_ceiling_and_mode(
+        let allowed = filter_verbs_by_ceiling_and_mode(
             req.binding,
             req.ceiling,
             req.pack_mode,
@@ -182,112 +197,113 @@ impl ResponseExecutor {
         );
         if req.pack_mode != Mode::Block
             || req.binding.mode == ResponseExecutionMode::Simulate
-            || allowed_verbs.is_empty()
+            || allowed.is_empty()
         {
-            return Ok(ExecutedResponsePlan {
-                intent: TriggeredResponseIntent {
-                    rule_id: req.rule_id.to_owned(),
-                    dedup_key: req.dedup_key.to_owned(),
-                    mode_applied: req.pack_mode,
-                    verbs: allowed_verbs,
-                    simulated: true,
-                },
-                breaker_state: ResponseBreakerState::Closed,
-            });
+            return sim(req.pack_mode, allowed);
         }
-
         if !self.hourly_devices_by_rule.contains_key(req.rule_id)
-            && self.hourly_devices_by_rule.len() >= MAX_BREAKER_RULES
-            && let Some(oldest_rule) = self
+            && self.hourly_devices_by_rule.len() >= limits.max_breaker_rules
+            && let Some(old) = self
                 .hourly_devices_by_rule
                 .iter()
-                .min_by_key(|(rule, devs)| {
+                .min_by_key(|(r, d)| {
                     self.max_seen_sec_by_rule
-                        .get(*rule)
+                        .get(*r)
                         .copied()
-                        .or_else(|| devs.values().copied().max())
+                        .or_else(|| d.values().copied().max())
                         .unwrap_or(i64::MIN)
                 })
                 .map(|(k, _)| k.clone())
         {
-            self.hourly_devices_by_rule.remove(&oldest_rule);
-            self.max_seen_sec_by_rule.remove(&oldest_rule);
-            self.pending_future_sec_by_rule.remove(&oldest_rule);
+            self.hourly_devices_by_rule.remove(&old);
+            self.max_seen_sec_by_rule.remove(&old);
+            self.pending_future_sec_by_rule.remove(&old);
         }
         let max_seen = self
             .max_seen_sec_by_rule
             .entry(req.rule_id.to_owned())
             .or_insert(req.now_sec);
-        let mut effective_now = req.now_sec;
+        let mut eff_now = req.now_sec;
         if req.now_sec.saturating_sub(*max_seen) > ONE_HOUR_SECS {
-            if let Some(&pending) = self.pending_future_sec_by_rule.get(req.rule_id)
-                && req.now_sec >= pending.saturating_sub(ONE_HOUR_SECS)
-                && req.now_sec.saturating_sub(pending) <= ONE_HOUR_SECS
+            if let Some(&pend) = self.pending_future_sec_by_rule.get(req.rule_id)
+                && req.now_sec >= pend.saturating_sub(ONE_HOUR_SECS)
+                && req.now_sec.saturating_sub(pend) <= ONE_HOUR_SECS
             {
-                *max_seen = (*max_seen).max(pending.max(req.now_sec));
+                *max_seen = (*max_seen).max(pend.max(req.now_sec));
                 self.pending_future_sec_by_rule.remove(req.rule_id);
             } else {
                 self.pending_future_sec_by_rule
                     .insert(req.rule_id.to_owned(), req.now_sec);
-                effective_now = *max_seen;
+                eff_now = *max_seen;
             }
         } else {
             self.pending_future_sec_by_rule.remove(req.rule_id);
             *max_seen = (*max_seen).max(req.now_sec);
-            effective_now = effective_now.max(*max_seen);
+            eff_now = eff_now.max(*max_seen);
         }
-        let cutoff = (*max_seen).saturating_sub(ONE_HOUR_SECS);
-        let device_map = self
+        let dev_map = self
             .hourly_devices_by_rule
             .entry(req.rule_id.to_owned())
             .or_default();
-        device_map.retain(|_, ts| *ts >= cutoff);
-
-        let mut distinct_devices: BTreeSet<&str> = device_map.keys().map(String::as_str).collect();
-        distinct_devices.insert(req.device_id);
-
-        let fleet_denom = req.fleet_active_devices.max(1);
-        let share_bp = distinct_devices
+        dev_map.retain(|_, ts| *ts >= (*max_seen).saturating_sub(ONE_HOUR_SECS));
+        let mut distinct: BTreeSet<&str> = dev_map.keys().map(String::as_str).collect();
+        distinct.insert(req.device_id);
+        let share_bp = distinct
             .len()
             .saturating_mul(10_000)
-            .checked_div(fleet_denom)
+            .checked_div(req.fleet_active_devices.max(1))
             .unwrap_or(0);
-        let cap_bp = usize::from(req.binding.max_share_bp);
-
-        if distinct_devices.len() > 1 && share_bp > cap_bp {
-            return Ok(ExecutedResponsePlan {
-                intent: TriggeredResponseIntent {
-                    rule_id: req.rule_id.to_owned(),
-                    dedup_key: req.dedup_key.to_owned(),
-                    mode_applied: Mode::Watch,
-                    verbs: allowed_verbs,
-                    simulated: true,
-                },
-                breaker_state: ResponseBreakerState::TrippedFleetShare,
-            });
+        if distinct.len() > 1 && share_bp > usize::from(req.binding.max_share_bp) {
+            return Ok(plan(
+                req,
+                Mode::Watch,
+                allowed,
+                true,
+                ResponseBreakerState::TrippedFleetShare,
+            ));
         }
-
-        if !device_map.contains_key(req.device_id)
-            && device_map.len() >= MAX_BREAKER_DEVICES_PER_RULE
-            && let Some((oldest_dev, _)) = device_map
+        if !dev_map.contains_key(req.device_id)
+            && dev_map.len() >= limits.max_breaker_devices_per_rule
+            && let Some(old_dev) = dev_map
                 .iter()
                 .min_by_key(|(_, ts)| *ts)
-                .map(|(k, v)| (k.clone(), *v))
+                .map(|(k, _)| k.clone())
         {
-            device_map.remove(&oldest_dev);
+            dev_map.remove(&old_dev);
         }
-        let prev = device_map.get(req.device_id).copied().unwrap_or(i64::MIN);
-        device_map.insert(req.device_id.to_owned(), prev.max(effective_now));
-        Ok(ExecutedResponsePlan {
-            intent: TriggeredResponseIntent {
-                rule_id: req.rule_id.to_owned(),
-                dedup_key: req.dedup_key.to_owned(),
-                mode_applied: Mode::Block,
-                verbs: allowed_verbs,
-                simulated: false,
-            },
-            breaker_state: ResponseBreakerState::Closed,
-        })
+        let prev = dev_map.get(req.device_id).copied().unwrap_or(i64::MIN);
+        dev_map.insert(req.device_id.to_owned(), prev.max(eff_now));
+        Ok(plan(
+            req,
+            Mode::Block,
+            allowed,
+            false,
+            ResponseBreakerState::Closed,
+        ))
+    }
+}
+
+fn breaker(msg: &str) -> DetectError {
+    DetectError::ResponseBreaker(msg.into())
+}
+
+fn plan(
+    req: &ResponsePlanRequest<'_>,
+    mode_applied: Mode,
+    verbs: Vec<String>,
+    simulated: bool,
+    breaker_state: ResponseBreakerState,
+) -> ExecutedResponsePlan {
+    let intent = TriggeredResponseIntent {
+        rule_id: req.rule_id.to_owned(),
+        dedup_key: req.dedup_key.to_owned(),
+        mode_applied,
+        verbs,
+        simulated,
+    };
+    ExecutedResponsePlan {
+        intent,
+        breaker_state,
     }
 }
 
@@ -327,11 +343,8 @@ fn filter_verbs_by_ceiling_and_mode(
                 return None;
             }
             if REMEDIATE_VERBS.contains(&verb.as_str()) {
-                if ceiling == FindingCeiling::Remediate && external_remediate_approved {
-                    Some(verb)
-                } else {
-                    None
-                }
+                (ceiling == FindingCeiling::Remediate && external_remediate_approved)
+                    .then_some(verb)
             } else if CONTAIN_VERBS.contains(&verb.as_str()) && ceiling >= FindingCeiling::Contain {
                 Some(verb)
             } else {

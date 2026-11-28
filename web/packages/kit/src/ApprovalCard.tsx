@@ -1,7 +1,11 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
 import { useEffect, useState } from "react";
-import { Badge, Button, GrdrIcon, HStack, Text, VStack } from "@grdr/ui";
+import { formatActionLabel, presentApprovalGrade, t } from "@grdr/i18n";
+import { Badge, Button, GrdrIcon, HStack, Text, VStack, useGrdrLocale } from "@grdr/ui";
 import { EntityLink, type EntityTarget } from "./EntityLink";
-import { Quoted } from "./Quoted";
+import { Quoted, sanitizeUntrustedText } from "./Quoted";
 import { VerdictBadge } from "./VerdictBadge";
 
 type GrantScope = "once" | "session" | "one_hour";
@@ -39,6 +43,7 @@ export function ApprovalCard({
   onOpenEntity?: (target: EntityTarget) => void;
   onWhy?: (approvalId: string) => void;
 }) {
+  const { locale } = useGrdrLocale();
   const [armingScope, setArmingScope] = useState<GrantScope | null>(null);
   const [armedScope, setArmedScope] = useState<GrantScope | null>(null);
 
@@ -67,24 +72,19 @@ export function ApprovalCard({
         <HStack justify="between" align="center">
           <HStack gap={2} align="center">
             <VerdictBadge verdict="step_up" />
-            <strong>{ruleTitle}</strong>
+            {/* untrusted rule title fallback */}
+            <strong><bdi>{sanitizeUntrustedText(ruleTitle).safeText}</bdi></strong>
           </HStack>
           <Badge
             variant="warning"
-            label={
-              requiredGrade === "G1"
-                ? "Approval required"
-                : requiredGrade === "G2"
-                  ? "Admin approval"
-                  : requiredGrade
-            }
+            label={<bdi>{presentApprovalGrade(requiredGrade, locale)}</bdi>}
           />
         </HStack>
 
         <HStack gap={1} align="center" style={{ flexWrap: "wrap", columnGap: 6, rowGap: 2 }}>
           <EntityLink kind="agent" label={agentName} compact onSelect={onOpenEntity} />
           <Text type="supporting" color="secondary" size="sm">
-            {`(${actionClass}) on`}
+            {t("kit.approval.requested_on", { action: formatActionLabel(actionClass, locale) }, locale)}
           </Text>
           <EntityLink
             kind="device"
@@ -104,20 +104,20 @@ export function ApprovalCard({
         <div>
           <Quoted text={target} />
         </div>
-        <Text>{reason}</Text>
+        <Text><bdi>{sanitizeUntrustedText(reason).safeText}</bdi></Text>
 
         <HStack gap={2} style={{ flexWrap: "wrap" }}>
           <Button
             variant="destructive"
             size="sm"
-            label="Deny"
+            label={t("kit.approval.deny", undefined, locale)}
             onClick={() => void onDeny(id)}
           />
           {onWhy && (
             <Button
               variant="ghost"
               size="sm"
-              label="Why?"
+              label={t("kit.approval.why", undefined, locale)}
               endContent={<GrdrIcon name="arrow-right" size={12} />}
               onClick={() => onWhy(id)}
             />
@@ -127,17 +127,23 @@ export function ApprovalCard({
             const arming = armingScope === scope;
             const scopeLabel =
               scope === "once"
-                ? "Allow once"
+                ? t("kit.approval.allow_once", undefined, locale)
                 : scope === "session"
-                  ? "Allow for this session"
-                  : "Allow for one hour";
+                  ? t("kit.approval.allow_session", undefined, locale)
+                  : t("kit.approval.allow_hour", undefined, locale);
             return (
               <Button
                 key={scope}
                 variant={armed ? "primary" : "secondary"}
                 size="sm"
                 className="grdr-ui-arm-btn"
-                label={armed ? `Confirm ${scopeLabel}` : arming ? "Arming (1s)..." : scopeLabel}
+                label={
+                  armed
+                    ? t("kit.approval.confirm_prefix", { scopeLabel }, locale)
+                    : arming
+                      ? t("kit.approval.arming", undefined, locale)
+                      : scopeLabel
+                }
                 onClick={() => void handleAllow(scope)}
               />
             );

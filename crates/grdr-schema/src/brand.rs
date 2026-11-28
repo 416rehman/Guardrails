@@ -30,7 +30,7 @@ pub enum DataClass {
     Content = 4,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContentKind {
     Argument = 1,
@@ -107,11 +107,37 @@ impl Ord for DataClass {
 }
 
 impl ContentKind {
+    pub const fn sensitivity_rank(self) -> u8 {
+        match self {
+            Self::Argument => 3,
+            Self::Body => 4,
+        }
+    }
+
+    pub const fn commitment_class(self) -> CommitmentClass {
+        match self {
+            Self::Argument => CommitmentClass::ContentArgument,
+            Self::Body => CommitmentClass::ContentBody,
+        }
+    }
+
     pub const fn wire_name(&self) -> &'static str {
         match self {
             Self::Argument => "argument",
             Self::Body => "body",
         }
+    }
+}
+
+impl PartialOrd for ContentKind {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ContentKind {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.sensitivity_rank().cmp(&other.sensitivity_rank())
     }
 }
 

@@ -1,0 +1,160 @@
+{
+  "version": "1.1.0",
+  "rules": [
+    {
+      "rule_id_hint": "cred-ssh",
+      "keywords": [".ssh", "id_rsa", "id_ed25519", "authorized_keys", "ssh_config", "known_hosts"],
+      "action_class": "file.read",
+      "target_prefix": "credential-store.ssh",
+      "resource_class": "credential-store"
+    },
+    {
+      "rule_id_hint": "cred-cloud-env",
+      "keywords": [".aws", ".env", ".npmrc", ".pypirc", "secret", "token", "api_key", "private_key", "keychain", "kubeconfig"],
+      "action_class": "file.read",
+      "target_prefix": "credential-store.secrets",
+      "resource_class": "credential-store"
+    },
+    {
+      "rule_id_hint": "cred-use",
+      "keywords": ["credential", "oauth", "bearer", "vault", "mint token", "iam role", "169.254.169.254", "metadata service"],
+      "action_class": "cred.use",
+      "target_prefix": "credential.broker",
+      "resource_class": "credential-broker"
+    },
+    {
+      "rule_id_hint": "egress-net",
+      "keywords": ["curl", "wget", "webhook", "paste", "egress", "upload", "exfiltrate", "tunnel", "ngrok", "tor"],
+      "action_class": "net.request",
+      "target_prefix": "egress.external",
+      "resource_class": "external-egress"
+    },
+    {
+      "rule_id_hint": "net-connect",
+      "keywords": ["socket", "tcp", "outbound port", "connect", "dns lookup", "net.connect", "reverse shell"],
+      "action_class": "net.connect",
+      "target_prefix": "network.socket",
+      "resource_class": "external-endpoint"
+    },
+    {
+      "rule_id_hint": "dataflow-sink",
+      "keywords": ["sink", "clipboard", "bulk export", "archive dump", "tarball"],
+      "action_class": "data.flow",
+      "target_prefix": "sink.external",
+      "resource_class": "untrusted-sink"
+    },
+    {
+      "rule_id_hint": "agent-control-write",
+      "keywords": ["claude.md", ".claude", "agents.md", "cursorrules", "settings.json", "agent control", "hook config"],
+      "action_class": "file.write",
+      "target_prefix": "agent-control.config",
+      "resource_class": "agent-control"
+    },
+    {
+      "rule_id_hint": "config-tamper",
+      "keywords": ["tamper", "policy", "layer", "monitoring", "telemetry", "sensor", "grdr.toml"],
+      "action_class": "config.change",
+      "target_prefix": "grdr.control",
+      "resource_class": "control-plane"
+    },
+    {
+      "rule_id_hint": "mcp-connect",
+      "keywords": ["mcp server", "mcp connect", "stdio transport", "sse endpoint", "register mcp"],
+      "action_class": "mcp.connect",
+      "target_prefix": "mcp.server",
+      "resource_class": "mcp-server"
+    },
+    {
+      "rule_id_hint": "mcp-tool",
+      "keywords": ["mcp", "tool server", "manifest drift", "tool poisoning"],
+      "action_class": "mcp.call",
+      "target_prefix": "mcp.untrusted",
+      "resource_class": "mcp-tool"
+    },
+    {
+      "rule_id_hint": "llm-proxy",
+      "keywords": ["base_url", "llm", "model endpoint", "anthropic", "openai", "ollama"],
+      "action_class": "llm.request",
+      "target_prefix": "llm.external",
+      "resource_class": "model-endpoint"
+    },
+    {
+      "rule_id_hint": "nested-agent-spawn",
+      "keywords": ["bypass-permissions", "nested agent", "subagent", "headless spawn"],
+      "action_class": "agent.spawn",
+      "target_prefix": "agent.nested",
+      "resource_class": "agent-harness"
+    },
+    {
+      "rule_id_hint": "privilege-elevate",
+      "keywords": ["sudo", "doas", "pkexec", "privilege escalation", "elevate", "setuid", "root shell"],
+      "action_class": "elevate",
+      "target_prefix": "privilege.elevate",
+      "resource_class": "elevation-route"
+    },
+    {
+      "rule_id_hint": "ui-act",
+      "keywords": ["ui click", "browser form", "keystroke", "accessibility", "automate ui", "screen click", "ui.act"],
+      "action_class": "ui.act",
+      "target_prefix": "ui.automation",
+      "resource_class": "ui-target"
+    },
+    {
+      "rule_id_hint": "exec-destructive",
+      "keywords": ["chmod", "rm -rf", "shell", "lifecycle script", "postinstall", "eval", "powershell"],
+      "action_class": "exec",
+      "target_prefix": "execution.shell",
+      "resource_class": "destructive-exec"
+    },
+    {
+      "rule_id_hint": "delete-mass",
+      "keywords": ["delete", "wipe", "purge", "truncate", "unlink"],
+      "action_class": "file.delete",
+      "target_prefix": "filesystem.protected",
+      "resource_class": "protected-path"
+    }
+  ],
+  "fallback_action": "exec",
+  "fallback_prefix": "custom.watch",
+  "fallback_class": "custom-watch",
+  "permissive_tokens": [
+    "permit",
+    "permits",
+    "allow",
+    "allows",
+    "grant",
+    "grants",
+    "bypass",
+    "bypasses",
+    "suppress",
+    "suppresses",
+    "disable rule",
+    "turn off",
+    "mode: off",
+    "unrestrict",
+    "@final",
+    "@mode(\"block\")",
+    "@mode('block')"
+  ],
+  "clarification_terms": [
+    "suspicious",
+    "unusual",
+    "reasonable",
+    "unauthorized",
+    "malicious",
+    "dangerous",
+    "bad",
+    "sensitive",
+    "important",
+    "critical files",
+    "risky"
+  ],
+  "ambiguous_principal_terms": [
+    "someone",
+    "anyone",
+    "some users",
+    "trusted users",
+    "admins",
+    "developers"
+  ]
+}

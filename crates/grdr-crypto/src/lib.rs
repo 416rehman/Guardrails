@@ -16,7 +16,13 @@ use subtle::ConstantTimeEq as _;
 use zeroize::{Zeroize, Zeroizing};
 
 mod aead;
+pub mod codes;
 pub use aead::{AeadKey, open_token, seal_token};
+pub use codes::{
+    CODE_CRYPTO_AEAD_ENCRYPT, CODE_CRYPTO_ENTROPY, CODE_CRYPTO_INVALID_KEY,
+    CODE_CRYPTO_INVALID_SIGNATURE, CODE_CRYPTO_INVALID_TOKEN, CODE_CRYPTO_IO,
+    CODE_CRYPTO_SERIALIZATION, CODE_CRYPTO_VERIFICATION_FAILED, CryptoError,
+};
 
 pub const SHA256_DIGEST_LEN: usize = 32;
 pub const SHA256_HEX_LEN: usize = 64;
@@ -24,26 +30,6 @@ const HMAC_BLOCK_BYTES: usize = 64;
 const HASH_DOMAIN_PREFIX: &[u8] = b"grdr.hash.v1\0";
 const SIGNATURE_DOMAIN_PREFIX: &[u8] = b"grdr.sig.v1\0";
 const SIGNATURE_V2_DOMAIN_PREFIX: &[u8] = b"grdr.sig.v2\0";
-
-#[derive(Debug, thiserror::Error)]
-pub enum CryptoError {
-    #[error("GRDR-CRYPTO-0001: OS entropy generation failed: {0}")]
-    Entropy(String),
-    #[error("GRDR-CRYPTO-0002: invalid Ed25519 key material: {0}")]
-    InvalidKey(String),
-    #[error("GRDR-CRYPTO-0003: invalid Ed25519 signature encoding: {0}")]
-    InvalidSignature(String),
-    #[error("GRDR-CRYPTO-0004: signature verification failed")]
-    VerificationFailed,
-    #[error("GRDR-CRYPTO-0005: canonical payload serialization failed: {0}")]
-    Serialization(String),
-    #[error("GRDR-CRYPTO-0006: key storage I/O failed: {0}")]
-    Io(String),
-    #[error("GRDR-CRYPTO-0007: token encryption failed: {0}")]
-    AeadEncrypt(String),
-    #[error("GRDR-CRYPTO-0008: invalid or tampered sealed token")]
-    InvalidToken,
-}
 
 #[derive(Clone)]
 pub struct SigningKeypair {
@@ -251,6 +237,31 @@ pub fn hmac_sha256_hex(key: &[u8], data: &[u8]) -> String {
 pub fn domain_hmac_sha256(key: &[u8], domain: &str, data: &[u8]) -> [u8; SHA256_DIGEST_LEN] {
     let msg = domain_separated_message(HASH_DOMAIN_PREFIX, domain, data);
     hmac_sha256(key, &msg)
+}
+
+pub fn pbkdf2_hmac_sha256(
+    ikm: &[u8],
+    salt: &[u8],
+    iterations: u32,
+) -> Result<Zeroizing<[u8; SHA256_DIGEST_LEN]>, CryptoError> {
+    let count = std::num::NonZeroU32::new(iterations)
+        .ok_or_else(|| CryptoError::InvalidKey("PBKDF2 iteration count must be positive".into()))?;
+    let mut out = Zeroizing::new([0u8; SHA256_DIGEST_LEN]);
+    aws_lc_rs::pbkdf2::derive(
+        aws_lc_rs::pbkdf2::PBKDF2_HMAC_SHA256,
+        count,
+        salt,
+        ikm,
+        out.as_mut(),
+    );
+    Ok(out)
+}
+
+pub fn random_bytes_16() -> Result<[u8; 16], CryptoError> {
+    let rng = aws_lc_rs::rand::SystemRandom::new();
+    let rnd: aws_lc_rs::rand::Random<[u8; 16]> = aws_lc_rs::rand::generate(&rng)
+        .map_err(|_| CryptoError::Entropy("aws-lc-rs RNG failure".into()))?;
+    Ok(rnd.expose())
 }
 
 #[must_use]
@@ -520,5 +531,21 @@ mod tests {
         }
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pbkdf2_hmac_sha256_matches_one_round_hmac_and_rejects_zero() {
+        let ikm = random_bytes_16().unwrap();
+        let salt = random_bytes_16().unwrap();
+
+        assert!(pbkdf2_hmac_sha256(&ikm, &salt, 0).is_err());
+
+        let derived1 = pbkdf2_hmac_sha256(&ikm, &salt, 1).unwrap();
+        let mut salt_blk = salt.to_vec();
+        salt_blk.extend_from_slice(&1u32.to_be_bytes());
+        assert_eq!(*derived1, hmac_sha256(&ikm, &salt_blk));
+
+        let derived4096 = pbkdf2_hmac_sha256(&ikm, &salt, 4096).unwrap();
+        assert_ne!(*derived4096, *derived1);
     }
 }

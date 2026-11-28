@@ -6,6 +6,12 @@ max = 24
 risk = "normal"
 msg = "Home"
 
+["console.nav.first_run"]
+desc = "Console navigation item: First run"
+max = 24
+risk = "normal"
+msg = "First run"
+
 ["console.nav.users"]
 desc = "Console navigation item: Users"
 max = 24
@@ -108,6 +114,42 @@ max = 24
 risk = "normal"
 msg = "Live Tester"
 
+["console.nav.why"]
+desc = "Console route heading: Decision explanation"
+max = 36
+risk = "normal"
+msg = "Decision explanation"
+
+["console.nav.review"]
+desc = "Console navigation item: Review queue"
+max = 24
+risk = "normal"
+msg = "Review queue"
+
+["console.nav.compliance"]
+desc = "Console navigation item: Compliance"
+max = 24
+risk = "normal"
+msg = "Compliance"
+
+["console.nav.settings"]
+desc = "Console navigation item: Settings & privacy"
+max = 32
+risk = "normal"
+msg = "Settings & privacy"
+
+["console.nav.provider"]
+desc = "Console navigation item: Provider"
+max = 24
+risk = "normal"
+msg = "Provider"
+
+["console.nav.integrations"]
+desc = "Console navigation item: Integrations"
+max = 24
+risk = "normal"
+msg = "Integrations"
+
 ["console.nav.group.overview"]
 desc = "Sidebar group heading: Overview"
 max = 28
@@ -203,3 +245,405 @@ desc = "Coverage page subtitle"
 max = 96
 risk = "normal"
 msg = "Protection strength across agents and operating systems."
+
+["kit.mode_control.aria_label"]
+desc = "Accessible label for Mode segmented control"
+max = 48
+risk = "normal"
+msg = "Rule enforcement mode"
+
+["kit.mode_control.scope_with_requests"]
+desc = "Summary below mode control when hook requests also exist"
+max = 160
+risk = "normal"
+msg = "{$modeLabel} on {$boundaryDevicesText} and {$requestAgentsText}."
+
+["kit.mode_control.scope_boundary_only"]
+desc = "Summary below mode control for sandboxed devices only"
+max = 160
+risk = "normal"
+msg = "Applies in {$modeLabel} mode across {$boundaryDevicesText}."
+
+["kit.approval.deny"]
+desc = "Approval action button: Deny"
+max = 24
+risk = "safety"
+msg = "Deny"
+
+["kit.approval.why"]
+desc = "Approval action button: Why explanation"
+max = 24
+risk = "normal"
+msg = "Why?"
+
+["kit.approval.allow_once"]
+desc = "Approval scope button: Allow once"
+max = 32
+risk = "safety"
+msg = "Allow once"
+
+["kit.approval.allow_session"]
+desc = "Approval scope button: Allow for this session"
+max = 40
+risk = "safety"
+msg = "Allow for this session"
+
+["kit.approval.allow_hour"]
+desc = "Approval scope button: Allow for one hour"
+max = 40
+risk = "safety"
+msg = "Allow for one hour"
+
+["kit.approval.arming"]
+desc = "Button text while time-lock confirmation arms"
+max = 32
+risk = "safety"
+msg = "Arming (1s)..."
+
+["kit.approval.confirm_prefix"]
+desc = "Prefix when ethical friction button is armed"
+max = 48
+risk = "safety"
+msg = "Confirm {$scopeLabel}"
+
+["kit.view_state.empty"]
+desc = "Default empty state heading"
+max = 48
+risk = "normal"
+msg = "Nothing recorded yet"
+
+["kit.view_state.error"]
+desc = "Default error state heading"
+max = 48
+risk = "normal"
+msg = "Connection failed"
+
+["kit.view_state.read_only"]
+desc = "Default read-only banner heading"
+max = 48
+risk = "normal"
+msg = "Read-only view"
+
+["kit.why.default_title"]
+desc = "Fallback drawer title for receipt explanation"
+max = 48
+risk = "normal"
+msg = "Decision explanation"
+
+["kit.why.default_desc"]
+desc = "Fallback drawer description for receipt explanation"
+max = 96
+risk = "normal"
+msg = "Inspect exact policy match, quoted target, and agent notice"
+
+["kit.why.loading"]
+desc = "Loading indicator inside Why explanation drawer"
+max = 64
+risk = "normal"
+msg = "Loading signed receipt explanation..."
+
+["kit.why.verified_receipt"]
+desc = "Badge when Ed25519 receipt signature verified"
+max = 32
+risk = "safety"
+msg = "Verified receipt"
+
+["kit.why.unsigned_record"]
+desc = "Badge when receipt has no signature"
+max = 32
+risk = "safety"
+msg = "Unsigned record"
+
+["kit.quoted.untrusted"]
+desc = "Label framing untrusted agent text"
+max = 48
+risk = "safety"
+msg = "Untrusted agent input"
+
+["kit.locale.label"]
+desc = "Accessible label for interface language picker"
+max = 36
+risk = "normal"
+msg = "Language"
+
+["kit.approval.requested_on"]
+desc = "Approval target action and preposition before device"
+max = 48
+risk = "normal"
+msg = "requested {$action} on"
+
+["kit.drawer.close"]
+desc = "Drawer header close button label"
+max = 24
+risk = "normal"
+msg = "Close"
+
+["kit.drawer.close_named"]
+desc = "Accessible drawer close button label with drawer title"
+max = 72
+risk = "normal"
+msg = "Close {$title}"
+
+["kit.quoted.bidi_badge"]
+desc = "Short visible indicator when untrusted text had bidi or control characters stripped"
+max = 32
+risk = "safety"
+msg = "Bidi stripped"
+
+["kit.why.receipt_id"]
+desc = "Receipt identifier label inside Why explanation drawer"
+max = 48
+risk = "normal"
+msg = "Receipt {$receiptId}"
+
+["kit.why.ref_id"]
+desc = "Reference identifier label inside Why explanation drawer"
+max = 48
+risk = "normal"
+msg = "Ref {$reference}"
+
+["kit.why.what_happened"]
+desc = "Section heading inside Why explanation drawer"
+max = 40
+risk = "normal"
+msg = "What happened"
+
+["kit.why.requested"]
+desc = "Verb between agent name and action badge in Why explanation"
+max = 24
+risk = "normal"
+msg = "requested"
+
+["kit.why.on"]
+desc = "Preposition between action badge and endpoint in Why explanation"
+max = 16
+risk = "normal"
+msg = "on"
+
+["kit.why.rule_and_pack"]
+desc = "Section heading for matched rule and policy pack"
+max = 48
+risk = "normal"
+msg = "Rule and policy pack"
+
+["kit.why.session"]
+desc = "Session field label inside Why explanation drawer"
+max = 24
+risk = "normal"
+msg = "Session"
+
+["kit.why.required_approver"]
+desc = "Required approver line inside Why explanation drawer"
+max = 64
+risk = "safety"
+msg = "Required approver: {$approver}"
+
+["kit.why.agent_told"]
+desc = "Section heading showing exact message sent to the agent"
+max = 64
+risk = "normal"
+msg = "What the agent was told (max 600 chars)"
+
+["kit.why.key_label"]
+desc = "Signing key identifier footer in Why explanation drawer"
+max = 64
+risk = "normal"
+msg = "Key: {$keyId}"
+
+["kit.why.key_ephemeral"]
+desc = "Fallback key label when signed with an ephemeral local key"
+max = 32
+risk = "normal"
+msg = "local-ephemeral"
+
+["kit.device.title"]
+desc = "Device assurance matrix drawer title"
+max = 48
+risk = "normal"
+msg = "Device assurance matrix"
+
+["kit.device.profile_protected"]
+desc = "Badge when device uses protected install profile"
+max = 32
+risk = "normal"
+msg = "Protected"
+
+["kit.device.profile_user"]
+desc = "Badge when device uses user-mode install profile"
+max = 32
+risk = "normal"
+msg = "User mode"
+
+["kit.device.hook_active"]
+desc = "Badge when endpoint hook coverage is verified active"
+max = 32
+risk = "safety"
+msg = "Hook active"
+
+["kit.device.hook_absent"]
+desc = "Status when agent hook shim is not installed"
+max = 32
+risk = "safety"
+msg = "Hook absent"
+
+["kit.device.discovery_only"]
+desc = "Badge when endpoint is discovery only"
+max = 32
+risk = "safety"
+msg = "Discovery only"
+
+["kit.device.topology"]
+desc = "Endpoint asset topology graph heading"
+max = 48
+risk = "normal"
+msg = "Endpoint asset topology"
+
+["kit.device.agent_protection"]
+desc = "Agent protection table heading with count"
+max = 48
+risk = "normal"
+msg = "Agent protection ({$count})"
+
+["kit.device.no_agents"]
+desc = "Empty text when no local agents reported on device"
+max = 64
+risk = "normal"
+msg = "No local agents reported for this device."
+
+["kit.device.col_agent"]
+desc = "Device matrix table column: Agent"
+max = 24
+risk = "normal"
+msg = "Agent"
+
+["kit.device.col_protection"]
+desc = "Device matrix table column: Protection"
+max = 24
+risk = "normal"
+msg = "Protection"
+
+["kit.device.col_verification"]
+desc = "Device matrix table column: Verification"
+max = 24
+risk = "normal"
+msg = "Verification"
+
+["kit.device.col_config"]
+desc = "Device matrix table column: Config"
+max = 24
+risk = "normal"
+msg = "Config"
+
+["kit.device.mcp_inventory"]
+desc = "MCP server inventory table heading with count"
+max = 48
+risk = "normal"
+msg = "MCP server inventory ({$count})"
+
+["kit.device.no_mcp"]
+desc = "Empty text when no MCP servers bound to endpoint"
+max = 64
+risk = "normal"
+msg = "No MCP servers bound to this endpoint."
+
+["kit.device.col_server"]
+desc = "Device MCP table column: Server"
+max = 24
+risk = "normal"
+msg = "Server"
+
+["kit.device.col_transport"]
+desc = "Device MCP table column: Transport"
+max = 24
+risk = "normal"
+msg = "Transport"
+
+["kit.device.col_digest_pin"]
+desc = "Device MCP table column: Digest pin"
+max = 24
+risk = "normal"
+msg = "Digest pin"
+
+["kit.device.control_boundary"]
+desc = "Device matrix control mode label: OS boundary"
+max = 32
+risk = "safety"
+msg = "OS boundary"
+
+["kit.device.control_request"]
+desc = "Device matrix control mode label: Hook request"
+max = 32
+risk = "safety"
+msg = "Hook request"
+
+["kit.device.control_observe"]
+desc = "Device matrix control mode label: Observation only"
+max = 32
+risk = "safety"
+msg = "Observation only"
+
+["kit.device.vis_verified"]
+desc = "Device matrix verification state: Verified"
+max = 24
+risk = "safety"
+msg = "Verified"
+
+["kit.device.vis_unverified"]
+desc = "Device matrix verification state: Unverified"
+max = 24
+risk = "safety"
+msg = "Unverified"
+
+["kit.device.fail_closed"]
+desc = "Device matrix fail mode: blocks on bypass"
+max = 32
+risk = "safety"
+msg = "blocks on bypass"
+
+["kit.device.fail_open"]
+desc = "Device matrix fail mode: allows on bypass"
+max = 32
+risk = "safety"
+msg = "allows on bypass"
+
+["kit.device.tamper_admin"]
+desc = "Device matrix tamper state: Admin locked"
+max = 32
+risk = "safety"
+msg = "Admin locked"
+
+["kit.device.tamper_user"]
+desc = "Device matrix tamper state: User editable"
+max = 32
+risk = "safety"
+msg = "User editable"
+
+["kit.device.badge_host"]
+desc = "Asset graph node badge: Host"
+max = 24
+risk = "normal"
+msg = "Host"
+
+["kit.device.badge_pinned"]
+desc = "Asset graph node badge: Pinned"
+max = 24
+risk = "safety"
+msg = "Pinned"
+
+["kit.device.badge_unpinned"]
+desc = "Asset graph node badge: Unpinned"
+max = 24
+risk = "safety"
+msg = "Unpinned"
+
+["kit.quoted.bidi_flagged"]
+desc = "Warning label when untrusted text contains hidden bidi/control chars"
+max = 72
+risk = "safety"
+msg = "Contains hidden or directional control characters"
+
+["kit.entity.open_label"]
+desc = "Accessible tooltip when opening an entity link"
+max = 64
+risk = "normal"
+msg = "Open {$kind}: {$label}"

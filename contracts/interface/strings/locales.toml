@@ -1,33 +1,91 @@
-# Supported UI and pseudo-locale registry (D-69).
+# Supported UI, translated, and pseudo-locale registry (D-69).
 
 [[locale]]
 tag = "en-US"
 rust_variant = "EnUs"
+native_name = "English (US)"
 tier = "shipped"
 script = "latn"
 direction = "ltr"
+fallback = "en-US"
 aliases = ["en", "en-us", "c", "posix"]
+
+[[locale]]
+tag = "de-DE"
+rust_variant = "DeDe"
+native_name = "Deutsch"
+tier = "shipped"
+script = "latn"
+direction = "ltr"
+fallback = "en-US"
+aliases = ["de", "de-de"]
+
+[[locale]]
+tag = "fr-FR"
+rust_variant = "FrFr"
+native_name = "Français"
+tier = "shipped"
+script = "latn"
+direction = "ltr"
+fallback = "en-US"
+aliases = ["fr", "fr-fr"]
+
+[[locale]]
+tag = "es-ES"
+rust_variant = "EsEs"
+native_name = "Español"
+tier = "shipped"
+script = "latn"
+direction = "ltr"
+fallback = "en-US"
+aliases = ["es", "es-es"]
+
+[[locale]]
+tag = "ja-JP"
+rust_variant = "JaJp"
+native_name = "日本語"
+tier = "shipped"
+script = "jpan"
+direction = "ltr"
+fallback = "en-US"
+aliases = ["ja", "ja-jp"]
+
+[[locale]]
+tag = "ar"
+rust_variant = "Ar"
+native_name = "العربية"
+tier = "shipped"
+script = "arab"
+direction = "rtl"
+fallback = "en-US"
+aliases = ["ar", "ar-sa", "ar-ae", "ar-eg"]
 
 [[locale]]
 tag = "en-XA"
 rust_variant = "EnXa"
+native_name = "English (Pseudo en-XA)"
 tier = "pseudo"
 script = "latn"
 direction = "ltr"
+fallback = "en-US"
 aliases = ["en-xa"]
 
 [[locale]]
 tag = "ar-XB"
 rust_variant = "ArXb"
+native_name = "العربية (Pseudo ar-XB)"
 tier = "pseudo"
 script = "arab"
 direction = "rtl"
+fallback = "en-US"
 aliases = ["ar-xb"]
 
 [[locale]]
 tag = "ja-XC"
 rust_variant = "JaXc"
+native_name = "日本語 (Pseudo ja-XC)"
 tier = "pseudo"
 script = "jpan"
 direction = "ltr"
+fallback = "en-US"
 aliases = ["ja-xc"]
