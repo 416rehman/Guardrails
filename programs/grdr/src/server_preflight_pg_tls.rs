@@ -83,8 +83,12 @@ pub fn probe_postgres_wire_and_clock(
                 None,
             ));
             if clock_probe == PgClockProbe::Enforce {
-                let res =
-                    query_pg_epoch_over_io(&mut tls_stream, user, database, password.as_deref());
+                let res = query_pg_epoch_over_io(
+                    &mut tls_stream,
+                    user,
+                    database,
+                    password.as_deref().map(String::as_str),
+                );
                 let _ = tls_stream.write_all(&[b'X', 0, 0, 0, 4]);
                 let _ = tls_stream.flush();
                 out.push(evaluate_pg_epoch_result(res, thresholds, now_unix_s));
@@ -440,20 +444,11 @@ fn build_scram_final(
     let salt = B64_STD
         .decode(salt_b64.as_bytes())
         .map_err(|_| "Invalid SCRAM base64 salt.".to_string())?;
-    let mut u = Vec::with_capacity(salt.len().saturating_add(4));
-    u.extend_from_slice(&salt);
-    u.extend_from_slice(&1u32.to_be_bytes());
-    let mut hi = hmac_sha256(password.as_bytes(), &u);
-    let mut prev = hi;
-    for _ in 1..iters {
-        prev = hmac_sha256(password.as_bytes(), &prev);
-        for (dst, src) in hi.iter_mut().zip(prev.iter()) {
-            *dst ^= *src;
-        }
-    }
-    let client_key = hmac_sha256(&hi, b"Client Key");
+    let hi = grdr_crypto::pbkdf2_hmac_sha256(password.as_bytes(), &salt, iters)
+        .map_err(|_| "SCRAM PBKDF2 derivation failed.".to_string())?;
+    let client_key = hmac_sha256(&*hi, b"Client Key");
     let stored_key = sha256_digest(&client_key);
-    let server_key = hmac_sha256(&hi, b"Server Key");
+    let server_key = hmac_sha256(&*hi, b"Server Key");
     let client_final_without_proof = format!("c=biws,r={srv_nonce}");
     let auth_msg = format!("{client_first_bare},{server_first},{client_final_without_proof}");
     let client_sig = hmac_sha256(&stored_key, auth_msg.as_bytes());
@@ -471,4 +466,42 @@ fn build_scram_final(
         format!("{client_final_without_proof},p={proof_b64}"),
         server_sig,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{B64_STD, build_scram_final};
+    use base64::Engine as _;
+
+    #[test]
+    fn scram_sha256_matches_rfc7677_pbkdf2_kdf_and_rejects_bad_params() {
+        let client_first_bare = "n=,r=rOprNGfwEbeRWgbNEkqO";
+        let server_first = "r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096";
+        let (final_msg, srv_sig) =
+            build_scram_final(client_first_bare, server_first, "pencil").unwrap();
+        assert_eq!(
+            final_msg,
+            "c=biws,r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,p=qvT2SWdEH5Q06albL+hjSYuUhCG7VndFyzIb7CK4n9k="
+        );
+        assert_eq!(
+            B64_STD.encode(srv_sig),
+            "3HO6Qt1M4MKJrmlKaoOqLAI0/0TV0HZe7J9H3MBtSOg="
+        );
+        assert!(
+            build_scram_final(
+                client_first_bare,
+                "r=wrongnonce,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096",
+                "pencil",
+            )
+            .is_err()
+        );
+        assert!(
+            build_scram_final(
+                client_first_bare,
+                "r=rOprNGfwEbeRWgbNEkqOxyz,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=0",
+                "pencil",
+            )
+            .is_err()
+        );
+    }
 }

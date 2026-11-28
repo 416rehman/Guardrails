@@ -1246,12 +1246,16 @@ mod tests {
             &builtin_roots,
             now_s,
         );
-        assert_eq!(fc_builtin_checks.len(), 2, "{fc_builtin_checks:?}");
+        assert_eq!(
+            fc_builtin_checks.len(),
+            2,
+            "built-in roots check count mismatch"
+        );
         assert!(
             fc_builtin_checks
                 .iter()
                 .all(|c| c.outcome == CheckOutcome::Pass),
-            "{fc_builtin_checks:?}"
+            "expected all built-in root checks to pass"
         );
         let mut unanchored_opts = PreflightOptions::for_profile("embedded");
         unanchored_opts.data_dir = Some(&data_dir);
@@ -1272,7 +1276,7 @@ mod tests {
             bad_fc_checks
                 .iter()
                 .any(|c| c.outcome == CheckOutcome::Fail),
-            "{bad_fc_checks:?}"
+            "expected tampered fullchain to fail check"
         );
 
         for bad_cert_path in [soon_cert, bad_eku_cert, bad_b64_cert, chain_tampered] {
