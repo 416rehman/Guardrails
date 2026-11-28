@@ -3,6 +3,7 @@
 
 use std::fmt;
 
+use grdr_schema::{ContentKind, DataClass as CanonicalDataClass};
 use serde::{Deserialize, Serialize};
 
 use crate::domain::{ActionClass, ControlPoint, Mode, Verdict};
@@ -10,13 +11,14 @@ use crate::domain::{ActionClass, ControlPoint, Mode, Verdict};
 pub const REDACTED_MARKER: &str = "[REDACTED]";
 pub const DEFAULT_LOG_SNIPPET_LEN: usize = 64;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+/// Logging redaction taxonomy; preserves legacy `Public`/`Secret` variants until Post-Wave consolidation onto `grdr_schema::DataClass` + `ContentKind` (#133).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DataClass {
     Public,
     Metadata,
-    Identifier,
     Pseudonym,
+    Identifier,
     Content,
     Secret,
 }
@@ -41,6 +43,18 @@ pub struct LogSafeText {
 
 impl DataClass {
     #[must_use]
+    pub const fn sensitivity_rank(self) -> u8 {
+        match self {
+            Self::Public => 0,
+            Self::Metadata => 1,
+            Self::Pseudonym => 2,
+            Self::Identifier => 3,
+            Self::Content => 4,
+            Self::Secret => 5,
+        }
+    }
+
+    #[must_use]
     pub const fn may_log_raw(self) -> bool {
         matches!(self, Self::Public | Self::Metadata | Self::Pseudonym)
     }
@@ -55,6 +69,65 @@ impl DataClass {
             Self::Content => "content",
             Self::Secret => "secret",
         }
+    }
+
+    #[must_use]
+    pub const fn to_canonical(self) -> (CanonicalDataClass, Option<ContentKind>) {
+        match self {
+            Self::Public | Self::Metadata => (CanonicalDataClass::Structural, None),
+            Self::Pseudonym => (CanonicalDataClass::Derived, None),
+            Self::Identifier => (CanonicalDataClass::Identifier, None),
+            Self::Content => (CanonicalDataClass::Content, Some(ContentKind::Body)),
+            Self::Secret => (CanonicalDataClass::Content, Some(ContentKind::Argument)),
+        }
+    }
+
+    #[must_use]
+    pub const fn canonical_class(self) -> CanonicalDataClass {
+        self.to_canonical().0
+    }
+
+    #[must_use]
+    pub const fn from_canonical_with_kind(
+        class: CanonicalDataClass,
+        kind: Option<ContentKind>,
+    ) -> Self {
+        match (class, kind) {
+            (CanonicalDataClass::Structural, _) => Self::Metadata,
+            (CanonicalDataClass::Derived, _) => Self::Pseudonym,
+            (CanonicalDataClass::Identifier, _) => Self::Identifier,
+            (CanonicalDataClass::Content, Some(ContentKind::Body)) => Self::Content,
+            (CanonicalDataClass::Content, Some(ContentKind::Argument) | None) => Self::Secret,
+        }
+    }
+
+    #[must_use]
+    pub const fn from_canonical(class: CanonicalDataClass) -> Self {
+        Self::from_canonical_with_kind(class, None)
+    }
+}
+
+impl PartialOrd for DataClass {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for DataClass {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.sensitivity_rank().cmp(&other.sensitivity_rank())
+    }
+}
+
+impl From<CanonicalDataClass> for DataClass {
+    fn from(value: CanonicalDataClass) -> Self {
+        Self::from_canonical(value)
+    }
+}
+
+impl LogSafe for CanonicalDataClass {
+    fn log_safe(&self) -> String {
+        DataClass::from_canonical(*self).log_safe()
     }
 }
 
@@ -269,5 +342,61 @@ mod tests {
         let rendered = d.log_safe();
         assert!(rendered.starts_with("sha256:"));
         assert_eq!(rendered.len(), 19);
+    }
+
+    #[test]
+    fn data_class_maps_cleanly_to_canonical_schema_taxonomy() {
+        assert!(DataClass::Public < DataClass::Metadata);
+        assert!(DataClass::Metadata < DataClass::Pseudonym);
+        assert!(DataClass::Pseudonym < DataClass::Identifier);
+        assert!(DataClass::Identifier < DataClass::Content);
+        assert!(DataClass::Content < DataClass::Secret);
+
+        assert_eq!(
+            DataClass::Identifier.to_canonical(),
+            (CanonicalDataClass::Identifier, None)
+        );
+        assert_eq!(
+            DataClass::Metadata.to_canonical(),
+            (CanonicalDataClass::Structural, None)
+        );
+        assert_eq!(
+            DataClass::Pseudonym.to_canonical(),
+            (CanonicalDataClass::Derived, None)
+        );
+        assert_eq!(
+            DataClass::Content.to_canonical(),
+            (CanonicalDataClass::Content, Some(ContentKind::Body))
+        );
+        assert_eq!(
+            DataClass::Secret.to_canonical(),
+            (CanonicalDataClass::Content, Some(ContentKind::Argument))
+        );
+        assert_eq!(
+            DataClass::from_canonical_with_kind(
+                CanonicalDataClass::Content,
+                Some(ContentKind::Argument)
+            ),
+            DataClass::Secret
+        );
+        assert_eq!(
+            DataClass::from_canonical_with_kind(
+                CanonicalDataClass::Content,
+                Some(ContentKind::Body)
+            ),
+            DataClass::Content
+        );
+        assert_eq!(
+            DataClass::from_canonical(CanonicalDataClass::Content),
+            DataClass::Secret
+        );
+        assert_eq!(
+            DataClass::from(CanonicalDataClass::Structural),
+            DataClass::Metadata
+        );
+        assert!(!DataClass::Secret.may_log_raw());
+        assert!(!DataClass::Content.may_log_raw());
+        assert!(!DataClass::Identifier.may_log_raw());
+        assert!(DataClass::Pseudonym.may_log_raw());
     }
 }
