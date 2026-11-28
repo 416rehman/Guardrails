@@ -514,44 +514,11 @@ jobs:
           CHANNEL: ${{ needs.verify-tags.outputs.channel }}
           REPO: ${{ github.repository }}
         run: |
-          python3 -I - release-dist "$BUNDLE_VER" "$REPO" release-bundle/artefacts.json <<'PY'
-          import hashlib, json, sys
-          from pathlib import Path
-          dist_dir, ver, repo, out_file = sys.argv[1:5]
-          items = []
-          for p in sorted(Path(dist_dir).iterdir()):
-              if p.name.endswith(".sigstore.json"):
-                  continue
-              name = p.name
-              if name.endswith(".tar.gz"):
-                  kind = "binary-tarball"
-              elif name.endswith(".cdx.json"):
-                  kind = "sbom"
-              elif name.endswith(".tgz"):
-                  kind = "helm-chart"
-              elif name.endswith(".bins.sha256"):
-                  kind = "checksums"
-              else:
-                  continue
-              os_kind = "linux" if "linux" in name else ("macos" if "darwin" in name else ("windows" if "windows" in name else "any"))
-              arch_kind = "aarch64" if "aarch64" in name else ("x86_64" if "x86_64" in name else "noarch")
-              digest = hashlib.sha256(p.read_bytes()).hexdigest()
-              sig_path = p.with_name(f"{name}.sigstore.json")
-              entry = {
-                  "name": name,
-                  "kind": kind,
-                  "os": os_kind,
-                  "arch": arch_kind,
-                  "uri": f"https://github.com/{repo}/releases/download/grdr-v{ver}/{name}",
-                  "sha256": digest,
-                  "size_bytes": max(1, p.stat().st_size),
-                  "platform_signature_present": False,
-              }
-              if sig_path.is_file():
-                  entry["sigstore_bundle"] = sig_path.name
-              items.append(entry)
-          Path(out_file).write_text(json.dumps(items, indent=2) + "\n", "utf-8")
-          PY
+          python3 -I -B deploy/release/release_tools.py collect-artefacts \
+            --dist-dir release-dist \
+            --version "$BUNDLE_VER" \
+            --repo "$REPO" \
+            --out release-bundle/artefacts.json
           python3 -I -B deploy/release/release_tools.py support-matrix --out release-bundle/support-matrix.json
           python3 -I -B deploy/release/release_tools.py build-manifest \
             --version "$BUNDLE_VER" \

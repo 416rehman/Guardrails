@@ -182,7 +182,7 @@ jobs:
       actions: read
       id-token: write
       attestations: write
-    uses: ./.github/workflows/release.yml
+    uses: $/.github/workflows/release.yml
     with:
       releases_json: ${{ needs.release.outputs.releases }}
       channel: broad

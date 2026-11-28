@@ -39,6 +39,7 @@ HEX64_RE = re.compile(r"^[0-9a-f]{64}\Z")
 SHA256_PREFIX_RE = re.compile(r"^sha256:[0-9a-f]{64}\Z")
 COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}\Z")
 KID_RE = re.compile(r"^kid_[0-9a-f]{16}\Z")
+REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 
 
 def sha256_file(path: Path) -> str:
@@ -459,6 +460,58 @@ def build_release_manifest(
     }
 
 
+def collect_release_artefacts(
+    dist_dir: Path,
+    bundle_version: str,
+    repo: str,
+    out_file: Path | None = None,
+) -> list[dict[str, Any]]:
+    parse_semver(bundle_version)
+    if not REPO_SLUG_RE.match(repo):
+        raise ValueError(f"invalid repository slug: {repo!r}")
+    if not dist_dir.is_dir():
+        raise FileNotFoundError(f"release artefact directory missing: {dist_dir}")
+
+    items: list[dict[str, Any]] = []
+    for path in sorted(dist_dir.iterdir()):
+        name = path.name
+        if not path.is_file() or name.endswith(".sigstore.json"):
+            continue
+        if name.endswith(".tar.gz"):
+            kind = "binary-tarball"
+        elif name.endswith(".cdx.json"):
+            kind = "sbom"
+        elif name.endswith(".tgz"):
+            kind = "helm-chart"
+        elif name.endswith(".bins.sha256"):
+            kind = "checksums"
+        else:
+            continue
+
+        os_kind = "linux" if "linux" in name else ("macos" if "darwin" in name else ("windows" if "windows" in name else "any"))
+        arch_kind = "aarch64" if "aarch64" in name else ("x86_64" if "x86_64" in name else "noarch")
+        digest = sha256_file(path)
+        sig_path = path.with_name(f"{name}.sigstore.json")
+        entry: dict[str, Any] = {
+            "name": name,
+            "kind": kind,
+            "os": os_kind,
+            "arch": arch_kind,
+            "uri": f"https://github.com/{repo}/releases/download/grdr-v{bundle_version}/{name}",
+            "sha256": digest,
+            "size_bytes": max(1, path.stat().st_size),
+            "platform_signature_present": False,
+        }
+        if sig_path.is_file():
+            entry["sigstore_bundle"] = sig_path.name
+        items.append(entry)
+
+    if out_file is not None:
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+        out_file.write_text(json.dumps(items, indent=2) + "\n", "utf-8")
+    return items
+
+
 def _ensure_rust_target(target_triple: str, root: Path = ROOT) -> None:
     tc_cfg = tomllib.loads((root / "rust-toolchain.toml").read_text("utf-8"))
     pinned_channel = str(tc_cfg["toolchain"]["channel"])
@@ -488,6 +541,12 @@ def main(argv: list[str] | None = None) -> int:
     rm.add_argument("--artefacts-json", type=Path, required=True)
     rm.add_argument("--out-manifest", type=Path, required=True)
     rm.add_argument("--out-upgrade-path", type=Path, required=True)
+
+    ca = sub.add_parser("collect-artefacts")
+    ca.add_argument("--dist-dir", type=Path, required=True)
+    ca.add_argument("--version", required=True)
+    ca.add_argument("--repo", required=True)
+    ca.add_argument("--out", type=Path, required=True)
 
     et = sub.add_parser("ensure-rust-target")
     et.add_argument("--target", required=True)
@@ -568,6 +627,10 @@ def main(argv: list[str] | None = None) -> int:
         args.out_upgrade_path.parent.mkdir(parents=True, exist_ok=True)
         args.out_upgrade_path.write_text(json.dumps(upgrade_path, indent=2) + "\n", "utf-8")
         print(f"release-manifest PASS ({args.out_manifest})")
+        return 0
+    if args.cmd == "collect-artefacts":
+        items = collect_release_artefacts(args.dist_dir, args.version, args.repo, args.out)
+        print(f"collect-artefacts PASS ({len(items)} artefacts -> {args.out})")
         return 0
     if args.cmd == "ensure-rust-target":
         _ensure_rust_target(args.target)

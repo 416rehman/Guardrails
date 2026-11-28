@@ -281,6 +281,29 @@ class ReleaseToolsTests(unittest.TestCase):
         self.assertEqual(len(names), 10)
         st.verify_containerfile_hardening(rt.ROOT / "deploy" / "release" / "fips" / "Containerfile.server-fips")
 
+    def test_collect_release_artefacts_and_repo_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            dist.mkdir()
+            tarball = dist / "grdr-0.4.0-x86_64-unknown-linux-musl.tar.gz"
+            tarball.write_bytes(b"tarball-bytes")
+            (dist / "grdr-0.4.0-x86_64-unknown-linux-musl.tar.gz.sigstore.json").write_text("{}", "utf-8")
+            (dist / "grdr-0.4.0-x86_64-unknown-linux-musl.cdx.json").write_text("{}", "utf-8")
+            (dist / "ignored.tmp").write_text("x", "utf-8")
+            out_json = tmp_path / "bundle" / "artefacts.json"
+            items = rt.collect_release_artefacts(dist, "0.4.0", "416rehman/Guardrails", out_json)
+            self.assertEqual(len(items), 2)
+            self.assertTrue(out_json.is_file())
+            tar_entry = [i for i in items if i["kind"] == "binary-tarball"][0]
+            self.assertEqual(tar_entry["sigstore_bundle"], "grdr-0.4.0-x86_64-unknown-linux-musl.tar.gz.sigstore.json")
+            self.assertEqual(
+                tar_entry["uri"],
+                "https://github.com/416rehman/Guardrails/releases/download/grdr-v0.4.0/grdr-0.4.0-x86_64-unknown-linux-musl.tar.gz",
+            )
+            with self.assertRaises(ValueError):
+                rt.collect_release_artefacts(dist, "0.4.0", "416rehman/Guardrails/extra", out_json)
+
 
 if __name__ == "__main__":
     unittest.main()
