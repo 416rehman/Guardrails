@@ -3,7 +3,7 @@ Description=Guardrails ADR Local Management Socket
 PartOf=grdr-daemon.service
 
 [Socket]
-ListenStream=/run/grdr/local.sock
+ListenStream=/run/guardrails/local.sock
 SocketUser=root
 SocketGroup=grdr
 SocketMode=0660

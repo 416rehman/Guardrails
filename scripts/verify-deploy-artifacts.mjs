@@ -39,6 +39,7 @@ const REQUIRED_FILES = [
   "deploy/helm/grdr-node-sensor/values.yaml",
   "deploy/helm/grdr-node-sensor/values.schema.json",
   "deploy/packaging/systemd/sysusers.d/grdr.conf",
+  "deploy/packaging/systemd/sysusers.d/grdr-server.conf",
   "deploy/packaging/systemd/grdr-daemon.service",
   "deploy/packaging/systemd/grdr-decide.socket",
   "deploy/packaging/systemd/grdr-local.socket",
@@ -281,13 +282,20 @@ function checkContainersAndCompose(errors) {
   if (!/seaweedfs:4\.53@sha256:[0-9a-f]{64}/.test(ha)) {
     errors.push("deploy/compose/ha.yml: seaweedfs 4.53 must pin immutable sha256 digest");
   }
+  if (!ha.includes('uid: "70"') || !ha.includes('gid: "70"') || !ha.includes("mode: 0400")) {
+    errors.push("deploy/compose/ha.yml: postgres secrets must pin uid/gid 70 and mode 0400");
+  }
   const composeEnv = {
     GRDR_API_TOKEN: "verify-placeholder-token",
+    GRDR_OPERATOR_TOKEN: "verify-placeholder-op-token",
     GRDR_ENROLL_TOKEN: "verify-placeholder-token",
     GRDR_POSTGRES_PASSWORD: "verify-placeholder-pass",
     GRDR_POSTGRES_DSN: "postgresql://grdr@postgres:5432/grdr?sslmode=verify-full",
+    GRDR_CA_CERT_FILE: "/etc/ssl/certs/ca-certificates.crt",
+    GRDR_PG_TLS_CERT_FILE: "/etc/ssl/certs/pg-server.crt",
+    GRDR_PG_TLS_KEY_FILE: "/etc/ssl/certs/pg-server.key",
   };
-  for (const comp of ["deploy/compose/embedded.yml", "deploy/compose/ha.yml"]) {
+  for (const comp of ["deploy/compose/embedded.yml", "deploy/compose/ha.yml", "deploy/qa/docker-compose.yml"]) {
     try {
       mustCommand("docker", ["compose", "-f", comp, "config", "-q"], composeEnv);
     } catch (err) {
@@ -322,7 +330,11 @@ function checkHelmCharts(errors) {
       }
     }
 
-    mustCommand("helm", ["lint", base, "--set", `image.digest=${TEST_DIGEST}`]);
+    const lintArgs = ["lint", base, "--set", `image.digest=${TEST_DIGEST}`];
+    if (chart === "grdr-server") {
+      lintArgs.push("--set", "operator.existingSecret=op-sec", "--set", "storage.database.existingSecret=db-sec");
+    }
+    mustCommand("helm", lintArgs);
   }
 
   const embeddedOut = mustCommand("helm", [
@@ -330,6 +342,7 @@ function checkHelmCharts(errors) {
     "--set", `image.digest=${TEST_DIGEST}`,
     "--set", "profile=embedded",
     "--set", "storage.embedded.persistence.enabled=false",
+    "--set", "operator.existingSecret=op-sec",
     "--set", "ingress.enabled=true", "--set", "ingress.host=app.example.invalid",
     "--set", "ingress.tls.secretName=api-tls",
     "--set", "operator.ingress.enabled=true", "--set", "operator.ingress.host=ops.example.invalid",
@@ -354,12 +367,21 @@ function checkHelmCharts(errors) {
     "template", "test", "deploy/helm/grdr-server",
     "--set", `image.digest=${TEST_DIGEST}`,
     "--set", "profile=ha",
+    "--set", "operator.existingSecret=op-sec",
+    "--set", "storage.database.existingSecret=db-sec",
     "--set", "pkcs11Sidecar.enabled=true",
     "--set", `pkcs11Sidecar.image.digest=${TEST_DIGEST}`,
     "--set", "autoscaling.enabled=true",
   ]);
   if (!haOut.includes("kind: Deployment") || !haOut.includes("kind: PodDisruptionBudget")) {
     errors.push("grdr-server ha profile must render Deployment and PodDisruptionBudget");
+  }
+  if (!haOut.includes("name: object-store-data") || !haOut.includes("/var/lib/grdr-objects")) {
+    errors.push("grdr-server ha profile must mount isolated /var/lib/grdr-objects volume");
+  }
+  const haNetPol = (haOut.split("kind: NetworkPolicy")[1] || "").split(/\r?\n---/)[0];
+  if (haNetPol.includes("port: 44444")) {
+    errors.push("grdr-server must default-deny operator port 44444 when operator.ingress.enabled is false");
   }
 
   const sensorOut = mustCommand("helm", [
@@ -375,15 +397,75 @@ function checkHelmCharts(errors) {
 
   assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server"], "empty image.digest", errors);
   assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server", "--set", `image.digest=${ZERO_DIGEST}`], "zero image.digest", errors);
-  assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server", "--set", `image.digest=${TEST_DIGEST}`, "--set", "profile=embedded", "--set", "upgrade.strategy=Recreate"], "embedded Recreate", errors);
-  assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server", "--set", `image.digest=${TEST_DIGEST}`, "--set", "storage.database.sslMode=require"], "sslMode=require", errors);
-  assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server", "--set", `image.digest=${TEST_DIGEST}`, "--set", "extraEnv[0].name=GRDR_API_TOKEN", "--set", "extraEnv[0].value=x"], "extraEnv secret override", errors);
-  assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server", "--set", `image.digest=${TEST_DIGEST}`, "--set", "extraEnv[0].name=LD_PRELOAD", "--set", "extraEnv[0].value=/tmp/evil.so"], "extraEnv LD_PRELOAD", errors);
-  assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server", "--set", `image.digest=${TEST_DIGEST}`, "--set", "extraEnv[0].name=SSL_CERT_FILE", "--set", "extraEnv[0].value=/tmp/evil.pem"], "extraEnv SSL_CERT_FILE", errors);
-  assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server", "--set", `image.digest=${TEST_DIGEST}`, "--set", "networkPolicy.allowEgressCidrs={169.254.169.254/32}"], "server IMDS egress CIDR", errors);
-  assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server", "--set", `image.digest=${TEST_DIGEST}`, "--set", "networkPolicy.allowEgressCidrs={::/0}"], "server ::/0 egress CIDR", errors);
+  assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server", "--set", `image.digest=${TEST_DIGEST}`, "--set", "operator.existingSecret="], "missing operator.existingSecret", errors);
+  assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server", "--set", `image.digest=${TEST_DIGEST}`, "--set", "operator.existingSecret=op-sec", "--set", "storage.database.existingSecret="], "missing ha database secret", errors);
+  assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server", "--set", `image.digest=${TEST_DIGEST}`, "--set", "operator.existingSecret=op-sec", "--set", "storage.database.existingSecret=db-sec", "--set", "storage.objectStore.dir=/var/lib/grdr/objects"], "overlapping objectStore.dir", errors);
+  assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server", "--set", `image.digest=${TEST_DIGEST}`, "--set", "operator.existingSecret=op-sec", "--set", "profile=embedded", "--set", "upgrade.strategy=Recreate"], "embedded Recreate", errors);
+  assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server", "--set", `image.digest=${TEST_DIGEST}`, "--set", "operator.existingSecret=op-sec", "--set", "storage.database.existingSecret=db-sec", "--set", "storage.database.sslMode=require"], "sslMode=require", errors);
+  assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server", "--set", `image.digest=${TEST_DIGEST}`, "--set", "operator.existingSecret=op-sec", "--set", "storage.database.existingSecret=db-sec", "--set", "extraEnv[0].name=GRDR_API_TOKEN", "--set", "extraEnv[0].value=x"], "extraEnv secret override", errors);
+  assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server", "--set", `image.digest=${TEST_DIGEST}`, "--set", "operator.existingSecret=op-sec", "--set", "storage.database.existingSecret=db-sec", "--set", "extraEnv[0].name=LD_PRELOAD", "--set", "extraEnv[0].value=/tmp/evil.so"], "extraEnv LD_PRELOAD", errors);
+  assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server", "--set", `image.digest=${TEST_DIGEST}`, "--set", "operator.existingSecret=op-sec", "--set", "storage.database.existingSecret=db-sec", "--set", "extraEnv[0].name=SSL_CERT_FILE", "--set", "extraEnv[0].value=/tmp/evil.pem"], "extraEnv SSL_CERT_FILE", errors);
+  for (const badCidr of [
+    "169.254.169.254/32",
+    "169.252.0.0/14",
+    "0.0.0.0/0",
+    "0.0.0.0/8",
+    "127.0.0.1/32",
+    "::/0",
+    "0000::/0",
+    "::000/0",
+    "::1/128",
+    "::0:1/128",
+    "::ffff:169.254.169.254/128",
+    "::ffff:a9fe:a9fe/128",
+    "fd00:ec2::254/128",
+    "fd00:0ec2::254/128",
+    "fd00::/8",
+    "fd00::/16",
+    "fd00:e00::/24",
+    "fd00:ec0::/30",
+    "fe00::/8",
+    "::fffe:0:0/95",
+    "0:0:0:0:0:fffe:0:0/95",
+    "0:0:0:0:0:8000:0:0/81",
+    "128.0.0.0/2",
+    "160.0.0.0/3",
+    "168.0.0.0/6",
+    "169.0.0.0/8",
+    "169.128.0.0/9",
+    "169.224.0.0/11",
+    "169.240.0.0/12",
+    "169.248.0.0/13",
+    "64.0.0.0/2",
+    "126.0.0.0/7",
+  ]) {
+    assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server", "--set", `image.digest=${TEST_DIGEST}`, "--set", "operator.existingSecret=op-sec", "--set", "storage.database.existingSecret=db-sec", "--set", `networkPolicy.allowEgressCidrs={${badCidr}}`], `server disallowed egress CIDR ${badCidr}`, errors);
+    assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-node-sensor", "--set", `image.digest=${TEST_DIGEST}`, "--set", `networkPolicy.allowEgressCidrs={${badCidr}}`], `sensor disallowed egress CIDR ${badCidr}`, errors);
+  }
+  for (const badOpCidr of [
+    "0.0.0.0/0",
+    "0000::/0",
+    "::000/0",
+    "::/0",
+    "::1/128",
+    "::0:1/128",
+    "::ffff:a9fe:a9fe/128",
+    "128.0.0.0/2",
+    "169.0.0.0/8",
+    "169.254.169.254/32",
+    "fd00::/8",
+    "fe00::/8",
+    "::fffe:0:0/95",
+    "0:0:0:0:0:8000:0:0/81",
+  ]) {
+    assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server", "--set", `image.digest=${TEST_DIGEST}`, "--set", "operator.existingSecret=op-sec", "--set", "storage.database.existingSecret=db-sec", "--set", "operator.ingress.enabled=true", "--set", "operator.ingress.host=ops.example.invalid", "--set", "operator.ingress.tls.secretName=ops-tls", "--set", `operator.ingress.allowCidrs={${badOpCidr}}`], `server disallowed operator ingress CIDR ${badOpCidr}`, errors);
+  }
+  assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server", "--set", `image.digest=${TEST_DIGEST}`, "--set", "operator.existingSecret=op-sec", "--set", "profile=embedded", "--set", "ingress.enabled=true", "--set", "ingress.host=Example.Invalid.", "--set", "ingress.tls.secretName=api-tls", "--set", "operator.ingress.enabled=true", "--set", "operator.ingress.host=example.invalid", "--set", "operator.ingress.tls.secretName=ops-tls"], "normalized D-70 host collision", errors);
+  assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-server", "--set", `image.digest=${TEST_DIGEST}`, "--set", "operator.existingSecret=op-sec", "--set", "profile=embedded", "--set", "ingress.enabled=true", "--set", "ingress.host=app.example.invalid", "--set", "ingress.tls.enabled=false"], "ingress.tls.enabled=false", errors);
   assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-node-sensor", "--set", `image.digest=${TEST_DIGEST}`, "--set", "sidecar.enabled=true", "--set", "sidecar.mutatingWebhook.enabled=true"], "webhook missing CA", errors);
+  assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-node-sensor", "--set", `image.digest=${TEST_DIGEST}`, "--set", "server.sslInsecureSkipVerify=true"], "sensor sslInsecureSkipVerify=true", errors);
   assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-node-sensor", "--set", `image.digest=${TEST_DIGEST}`, "--set", "networkPolicy.allowEgressCidrs={169.254.169.254/32}"], "sensor IMDS egress CIDR", errors);
+  assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-node-sensor", "--set", `image.digest=${TEST_DIGEST}`, "--set", "networkPolicy.allowEgressCidrs={127.0.0.1/32}"], "sensor loopback egress CIDR", errors);
   assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-node-sensor", "--set", `image.digest=${TEST_DIGEST}`, "--set", "networkPolicy.allowEgressCidrs={\"\"}"], "sensor empty egress CIDR", errors);
   assertCommandFails("helm", ["template", "t", "deploy/helm/grdr-node-sensor", "--set", `image.digest=${TEST_DIGEST}`, "--set", "networkPolicy.serverNamespace=", "--set", "networkPolicy.allowEgressCidrs={}"], "sensor empty networkPolicy targets", errors);
 }
@@ -409,7 +491,13 @@ function checkTerraformModules(errors) {
     if (!main.includes(reqs.extra)) errors.push(`${dir}/main.tf: missing required hardening (${reqs.extra})`);
     if (!main.includes("distinct_operator_host")) errors.push(`${dir}/main.tf: missing D-70 distinct_operator_host check`);
     for (const iacBin of ["tofu", "terraform"]) {
-      if (tryCommand(iacBin, ["-chdir=" + dir, "validate"]) !== null) break;
+      if (tryCommand(iacBin, ["-chdir=" + dir, "validate"]) !== null) {
+        const testOut = tryCommand(iacBin, ["-chdir=" + dir, "test"]);
+        if (testOut === null) {
+          errors.push(`${dir}: ${iacBin} test failed`);
+        }
+        break;
+      }
     }
   }
 }
@@ -429,18 +517,36 @@ function checkPackagingUnits(errors) {
     if (!txt.includes("NoNewPrivileges=true")) errors.push(`${svc}: missing NoNewPrivileges=true`);
   }
   const decideSock = readRel("deploy/packaging/systemd/grdr-decide.socket");
-  if (!decideSock.includes("SocketMode=0660") || decideSock.includes("SocketMode=0666")) {
-    errors.push("deploy/packaging/systemd/grdr-decide.socket: must enforce SocketMode=0660");
+  if (!decideSock.includes("SocketMode=0666") || !decideSock.includes("SocketUser=root") || !decideSock.includes("SocketGroup=root")) {
+    errors.push("deploy/packaging/systemd/grdr-decide.socket: must enforce SocketMode=0666 and root:root matching peer_transport.rs");
+  }
+  const localSock = readRel("deploy/packaging/systemd/grdr-local.socket");
+  if (!localSock.includes("SocketMode=0660") || !localSock.includes("SocketGroup=grdr")) {
+    errors.push("deploy/packaging/systemd/grdr-local.socket: must enforce SocketMode=0660 and SocketGroup=grdr");
   }
   const sysusers = readRel("deploy/packaging/systemd/sysusers.d/grdr.conf");
-  if (!sysusers.includes("u grdr 65532") || !sysusers.includes("u grdr-engine")) {
-    errors.push("deploy/packaging/systemd/sysusers.d/grdr.conf: missing grdr or grdr-engine accounts");
+  if (!sysusers.includes("u grdr 65532") || !sysusers.includes("u grdr-engine") || sysusers.includes("grdr-server")) {
+    errors.push("deploy/packaging/systemd/sysusers.d/grdr.conf: must define grdr and grdr-engine only");
+  }
+  const sysusersServer = readRel("deploy/packaging/systemd/sysusers.d/grdr-server.conf");
+  if (!sysusersServer.includes("u grdr-server") || sysusersServer.includes("grdr-engine")) {
+    errors.push("deploy/packaging/systemd/sysusers.d/grdr-server.conf: must define grdr-server account cleanly");
   }
   for (const nfpm of ["deploy/packaging/deb/nfpm.yaml", "deploy/packaging/rpm/nfpm.yaml"]) {
     const txt = readRel(nfpm);
-    if (!txt.includes("bubblewrap") || !txt.includes("socat") || !txt.includes("owner: grdr")) {
-      errors.push(`${nfpm}: missing bubblewrap/socat weak deps or grdr ownership`);
+    if (!txt.includes("bubblewrap") || !txt.includes("socat") || !txt.includes("owner: root")) {
+      errors.push(`${nfpm}: missing bubblewrap/socat weak deps or root ownership on /run/guardrails and /var/lib/guardrails`);
     }
+  }
+  for (const nfpmSrv of ["deploy/packaging/deb/nfpm-server.yaml", "deploy/packaging/rpm/nfpm-server.yaml"]) {
+    const txt = readRel(nfpmSrv);
+    if (!txt.includes("owner: grdr-server") || !txt.includes("/etc/grdr-server")) {
+      errors.push(`${nfpmSrv}: must isolate /etc/grdr-server and /var/lib/grdr-server under grdr-server`);
+    }
+  }
+  const mc = readRel("deploy/packaging/macos-pkg/mobileconfig/com.guardrailshq.grdr.mobileconfig");
+  if (mc.includes("TEAMID0000") || mc.includes("example.invalid")) {
+    errors.push("com.guardrailshq.grdr.mobileconfig: must not contain TEAMID0000 or example.invalid placeholders");
   }
   const wxs = readRel("deploy/packaging/wix/Package.wxs");
   if (!wxs.includes('Hidden="yes"') || wxs.includes("MsiHiddenProperties") || !wxs.includes("Administrators")) {

@@ -193,10 +193,10 @@ if ($DryRun) {
         skip_build     = [bool]$SkipBuild
         plan           = @(
             "build grdr, grdr-daemon, grdr-hook, grdr-server for Linux inside WSL2 or Docker",
-            "stage binaries and linux-guest-e2e.sh into /tmp/grdr-wsl-e2e",
-            "run Slice 0 E2E with isolated HOME=/tmp/grdr-wsl-e2e-home",
+            "stage binaries and linux-guest-e2e.sh into ~/.local/state/grdr-qa/wsl-<tag>",
+            "run Slice 0 E2E with isolated HOME under ~/.local/state/grdr-qa/wsl-<tag>/home",
             "verify host Windows+WSL bridge discovery when host grdr.exe is present",
-            "save report to target/qa/wsl/report.json and clean /tmp/grdr-wsl-e2e*"
+            "save report to target/qa/wsl/report.json and clean ~/.local/state/grdr-qa/wsl-<tag>*"
         )
     }
     $dryReport | ConvertTo-Json -Depth 5 | Set-Content -Path $ReportPath -Encoding UTF8
@@ -208,7 +208,14 @@ if (-not $hasPython3) {
     throw "python3 is required inside WSL2 distro '$Distro'."
 }
 
-$wslWorkDir = "/tmp/grdr-wsl-e2e"
+$wslHome = (Invoke-WslBash -DistroName $Distro -ScriptText 'printf %s "$HOME"').Output.Trim()
+if ([string]::IsNullOrWhiteSpace($wslHome) -or $wslHome -match '^/(tmp|var/tmp|private/tmp|dev/shm)(/|$)') {
+    throw "Unsafe WSL HOME directory '$wslHome' for QA staging."
+}
+$wslRunTag = [guid]::NewGuid().ToString("N").Substring(0, 12)
+$wslSafeRoot = "$wslHome/.local/state/grdr-qa"
+$wslTargetDir = "$wslSafeRoot/cargo-target"
+$wslWorkDir = "$wslSafeRoot/wsl-$wslRunTag"
 $wslBinDir = "$wslWorkDir/bin"
 $reportDir = Split-Path -Parent $ReportPath
 if (-not (Test-Path $reportDir)) {
@@ -222,11 +229,16 @@ try {
             Write-Output "Building Linux binaries inside WSL2 ($Distro)..."
             $buildScript = @"
 set -euo pipefail
+umask 077
 export PATH="`$HOME/.cargo/bin:`$PATH"
-mkdir -p "$wslBinDir"
-cargo build --locked --manifest-path "$wslRepoRoot/Cargo.toml" --target-dir "/tmp/grdr-wsl-cargo-target" -p grdr -p grdr-daemon -p grdr-hook -p grdr-server
+if [[ -L "$wslSafeRoot" || -L "$wslWorkDir" ]]; then
+  echo "Refusing symlinked QA directory" >&2
+  exit 1
+fi
+mkdir -p -m 0700 "$wslSafeRoot" "$wslWorkDir" "$wslBinDir" "$wslTargetDir"
+cargo build --locked --manifest-path "$wslRepoRoot/Cargo.toml" --target-dir "$wslTargetDir" -p grdr -p grdr-daemon -p grdr-hook -p grdr-server
 for b in grdr grdr-daemon grdr-hook grdr-server; do
-  cp "/tmp/grdr-wsl-cargo-target/debug/`$b" "$wslBinDir/`$b"
+  cp "$wslTargetDir/debug/`$b" "$wslBinDir/`$b"
   chmod +x "$wslBinDir/`$b"
 done
 "@
@@ -236,14 +248,15 @@ done
             $dockerOutDir = Join-Path $RepoRoot "target\qa\wsl\linux-bin"
             New-Item -ItemType Directory -Path $dockerOutDir -Force | Out-Null
             $dockerCmd = "cargo build --locked --target-dir /target -p grdr -p grdr-daemon -p grdr-hook -p grdr-server && mkdir -p /out && cp /target/debug/grdr /target/debug/grdr-daemon /target/debug/grdr-hook /target/debug/grdr-server /out/"
-            & docker run --rm -v "${RepoRoot}:/src:ro" -v "grdr-wsl-qa-target:/target" -v "${dockerOutDir}:/out" -w /src rust:1-bookworm bash -c $dockerCmd
+            & docker run --rm -v "${RepoRoot}:/src:ro" -v "grdr-wsl-qa-target:/target" -v "${dockerOutDir}:/out" -w /src rust:1.99.1-bookworm@sha256:e6f2cff35d0f309acf8433b4f05878ed77092602c5065cc81801177da0bb3a9c bash -c $dockerCmd
             if ($LASTEXITCODE -ne 0) {
                 throw "Docker Linux build failed (exit $LASTEXITCODE)."
             }
             $wslDockerBin = Convert-ToWslPath $dockerOutDir
             $copyScript = @"
 set -euo pipefail
-mkdir -p "$wslBinDir"
+umask 077
+mkdir -p -m 0700 "$wslSafeRoot" "$wslWorkDir" "$wslBinDir"
 for b in grdr grdr-daemon grdr-hook grdr-server; do
   cp "$wslDockerBin/`$b" "$wslBinDir/`$b"
   chmod +x "$wslBinDir/`$b"
@@ -256,10 +269,11 @@ done
     } else {
         $stageExisting = @"
 set -euo pipefail
-mkdir -p "$wslBinDir"
+umask 077
+mkdir -p -m 0700 "$wslSafeRoot" "$wslWorkDir" "$wslBinDir"
 for b in grdr grdr-daemon grdr-hook grdr-server; do
-  if [[ -x "/tmp/grdr-wsl-cargo-target/debug/`$b" ]]; then
-    cp "/tmp/grdr-wsl-cargo-target/debug/`$b" "$wslBinDir/`$b"
+  if [[ -x "$wslTargetDir/debug/`$b" ]]; then
+    cp "$wslTargetDir/debug/`$b" "$wslBinDir/`$b"
     chmod +x "$wslBinDir/`$b"
   elif [[ ! -x "$wslBinDir/`$b" ]]; then
     echo "Missing prebuilt binary for -SkipBuild: `$b" >&2
@@ -274,9 +288,14 @@ done
 
     $runScript = @"
 set -euo pipefail
-mkdir -p "$wslWorkDir"
+umask 077
+if [[ -L "$wslSafeRoot" || -L "$wslWorkDir" ]]; then
+  echo "Refusing symlinked QA directory" >&2
+  exit 1
+fi
+mkdir -p -m 0700 "$wslSafeRoot" "$wslWorkDir"
 tr -d '\r' < "$wslRunnerPath" > "$wslWorkDir/linux-guest-e2e.sh"
-chmod +x "$wslWorkDir/linux-guest-e2e.sh"
+chmod 0700 "$wslWorkDir/linux-guest-e2e.sh"
 "$wslWorkDir/linux-guest-e2e.sh" --bin-dir "$wslBinDir" --work-dir "$wslWorkDir" --report "$wslReportPath" --mode wsl
 "@
     $runRes = Invoke-WslBash -DistroName $Distro -ScriptText $runScript -PassThru
@@ -303,5 +322,5 @@ chmod +x "$wslWorkDir/linux-guest-e2e.sh"
     Write-Output "WSL2 E2E passed on '$Distro'. Report: $ReportPath"
 }
 finally {
-    $null = Invoke-WslBash -DistroName $Distro -ScriptText "rm -rf /tmp/grdr-wsl-e2e*" -PassThru
+    $null = Invoke-WslBash -DistroName $Distro -ScriptText "rm -rf '$wslWorkDir' '${wslWorkDir}-home' '${wslWorkDir}-report.json'" -PassThru
 }

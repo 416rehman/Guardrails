@@ -87,26 +87,11 @@ function Invoke-Vmrun {
     param(
         [string]$VmrunExe,
         [string[]]$CmdArgs,
-        [string]$VmPassword = "",
-        [string]$GuestUser = "",
-        [string]$GuestPass = "",
         [switch]$AllowFailure
     )
     $fullArgs = New-Object System.Collections.Generic.List[string]
     $fullArgs.Add("-T")
     $fullArgs.Add("ws")
-    if (-not [string]::IsNullOrEmpty($VmPassword)) {
-        $fullArgs.Add("-vp")
-        $fullArgs.Add($VmPassword)
-    }
-    if (-not [string]::IsNullOrEmpty($GuestUser)) {
-        $fullArgs.Add("-gu")
-        $fullArgs.Add($GuestUser)
-    }
-    if (-not [string]::IsNullOrEmpty($GuestPass)) {
-        $fullArgs.Add("-gp")
-        $fullArgs.Add($GuestPass)
-    }
     foreach ($a in $CmdArgs) {
         $fullArgs.Add($a)
     }
@@ -129,6 +114,73 @@ function Invoke-Vmrun {
     }
 }
 
+function Resolve-GuestSshSpec {
+    param([string]$VmKey)
+    $hostEnvName = "GRDR_QA_SSH_HOST_$($VmKey.ToUpperInvariant())"
+    $sshHost = [Environment]::GetEnvironmentVariable($hostEnvName)
+    if ([string]::IsNullOrWhiteSpace($sshHost)) {
+        $sshHost = $env:GRDR_QA_SSH_HOST
+    }
+    $sshUser = if ($env:GRDR_QA_SSH_USER) { $env:GRDR_QA_SSH_USER } else { "grdrqa" }
+    $sshKey = if ($env:GRDR_QA_SSH_KEY) { $env:GRDR_QA_SSH_KEY } else { "" }
+    return [PSCustomObject]@{
+        configured = (-not [string]::IsNullOrWhiteSpace($sshHost))
+        user       = $sshUser
+        host       = $sshHost
+        key        = $sshKey
+    }
+}
+
+function Invoke-GuestSsh {
+    param(
+        [PSCustomObject]$SshSpec,
+        [string]$Command
+    )
+    $sshArgs = @("-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new")
+    if (-not [string]::IsNullOrWhiteSpace($SshSpec.key)) {
+        $sshArgs += @("-i", $SshSpec.key)
+    }
+    $sshArgs += @("$($SshSpec.user)@$($SshSpec.host)", $Command)
+    & ssh @sshArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "ssh guest command failed (exit $LASTEXITCODE)"
+    }
+}
+
+function Copy-ToGuestScp {
+    param(
+        [PSCustomObject]$SshSpec,
+        [string]$LocalPath,
+        [string]$RemotePath
+    )
+    $scpArgs = @("-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new")
+    if (-not [string]::IsNullOrWhiteSpace($SshSpec.key)) {
+        $scpArgs += @("-i", $SshSpec.key)
+    }
+    $scpArgs += @($LocalPath, "$($SshSpec.user)@$($SshSpec.host):$RemotePath")
+    & scp @scpArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "scp upload failed for $LocalPath (exit $LASTEXITCODE)"
+    }
+}
+
+function Copy-FromGuestScp {
+    param(
+        [PSCustomObject]$SshSpec,
+        [string]$RemotePath,
+        [string]$LocalPath
+    )
+    $scpArgs = @("-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new")
+    if (-not [string]::IsNullOrWhiteSpace($SshSpec.key)) {
+        $scpArgs += @("-i", $SshSpec.key)
+    }
+    $scpArgs += @("$($SshSpec.user)@$($SshSpec.host):$RemotePath", $LocalPath)
+    & scp @scpArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "scp download failed for $RemotePath (exit $LASTEXITCODE)"
+    }
+}
+
 function Get-RunningVmxSet {
     param([string]$VmrunExe)
     $res = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("list") -AllowFailure
@@ -148,23 +200,20 @@ function Get-VmPreflightState {
         [string]$VmrunExe,
         [string]$RequestedSnapshot,
         [bool]$ExplicitSnapshot,
-        [string]$VmPassword,
-        [string]$GuestUser,
-        [string]$GuestPass,
         [hashtable]$RunningSet
     )
     $vmx = Assert-AllowedVmxPath $VmSpec.vmx
     $isRunning = $RunningSet.ContainsKey($vmx.ToLowerInvariant())
-    $passToUse = if ($VmSpec.encrypted) { $VmPassword } else { "" }
+    $sshSpec = Resolve-GuestSshSpec -VmKey $VmSpec.key
 
-    $snapRes = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("listSnapshots", $vmx) -VmPassword $passToUse -AllowFailure
-    $needsPassword = $false
+    $snapRes = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("listSnapshots", $vmx) -AllowFailure
+    $needsUnlock = $false
     $snapshots = @()
     $totalSnapshots = 0
 
     if ($snapRes.ExitCode -ne 0) {
         if ($snapRes.Output -match "password is required|Invalid password") {
-            $needsPassword = $true
+            $needsUnlock = $true
         } else {
             return [PSCustomObject]@{
                 key               = $VmSpec.key
@@ -176,7 +225,7 @@ function Get-VmPreflightState {
                 status            = "vmrun_error"
                 resolved_snapshot = $null
                 snapshots         = @()
-                has_guest_creds   = (-not [string]::IsNullOrEmpty($GuestUser) -and -not [string]::IsNullOrEmpty($GuestPass))
+                has_guest_ssh     = $sshSpec.configured
                 detail            = $snapRes.Output.Trim()
                 operator_action   = "Inspect VMware Workstation state for $vmx"
             }
@@ -192,9 +241,8 @@ function Get-VmPreflightState {
         }
     }
 
-    $hasGuestCreds = (-not [string]::IsNullOrEmpty($GuestUser) -and -not [string]::IsNullOrEmpty($GuestPass))
     $resolvedSnap = $null
-    if (-not $needsPassword) {
+    if (-not $needsUnlock) {
         if ($snapshots -contains $RequestedSnapshot) {
             $resolvedSnap = $RequestedSnapshot
         } elseif (-not $ExplicitSnapshot -and ($snapshots -contains "clean-qa")) {
@@ -206,10 +254,10 @@ function Get-VmPreflightState {
     $detail = "clean snapshot '$resolvedSnap' present"
     $action = "none"
 
-    if ($needsPassword) {
-        $status = "needs_vm_password"
-        $detail = "VM is VMware-encrypted; GRDR_QA_VM_PASSWORD is required"
-        $action = "Set `$env:GRDR_QA_VM_PASSWORD (and GRDR_QA_GUEST_USER / GRDR_QA_GUEST_PASS)"
+    if ($needsUnlock) {
+        $status = "needs_vm_unlock"
+        $detail = "VM is VMware-encrypted; unlock it in Workstation or use an unencrypted QA clone (CLI password arguments are prohibited)"
+        $action = "Unlock '$($VmSpec.name)' interactively in VMware Workstation or decrypt the QA clone"
     } elseif ($totalSnapshots -eq 0) {
         $status = "needs_clean_snapshot"
         $detail = "VM has 0 snapshots; refusing to mutate an unsnapshotted VM"
@@ -218,10 +266,10 @@ function Get-VmPreflightState {
         $status = "missing_snapshot"
         $detail = "Snapshot '$RequestedSnapshot' not found (available: $($snapshots -join ', '))"
         $action = "Pass -Snapshot <name> or create '$RequestedSnapshot' from a clean powered-off state"
-    } elseif (-not $hasGuestCreds) {
-        $status = "needs_guest_credentials"
-        $detail = "Snapshot '$resolvedSnap' verified, but GRDR_QA_GUEST_USER / GRDR_QA_GUEST_PASS are unset"
-        $action = "Set `$env:GRDR_QA_GUEST_USER and `$env:GRDR_QA_GUEST_PASS before running live E2E"
+    } elseif (-not $sshSpec.configured) {
+        $status = "needs_guest_ssh"
+        $detail = "Snapshot '$resolvedSnap' verified, but key-based SSH host env is unset"
+        $action = "Set GRDR_QA_SSH_HOST_$($VmSpec.key.ToUpperInvariant()) (and GRDR_QA_SSH_USER / GRDR_QA_SSH_KEY) before live E2E"
     }
 
     return [PSCustomObject]@{
@@ -234,7 +282,7 @@ function Get-VmPreflightState {
         status            = $status
         resolved_snapshot = $resolvedSnap
         snapshots         = $snapshots
-        has_guest_creds   = $hasGuestCreds
+        has_guest_ssh     = $sshSpec.configured
         detail            = $detail
         operator_action   = $action
     }
@@ -280,7 +328,7 @@ function Build-TargetArtifacts {
                 $hasCargo = (& wsl.exe -d Ubuntu-24.04 -- bash -c 'export PATH="$HOME/.cargo/bin:$PATH"; command -v cargo >/dev/null && echo yes || echo no' 2>$null) -join ""
                 if ($hasCargo -match "yes") {
                     Write-Output "Building Linux binaries via WSL2..."
-                    $script = "set -euo pipefail; export PATH=`"`$HOME/.cargo/bin:`$PATH`"; cargo build --locked --manifest-path `"$wslRepo/Cargo.toml`" --target-dir /tmp/grdr-wsl-cargo-target -p grdr -p grdr-daemon -p grdr-hook -p grdr-server; cp /tmp/grdr-wsl-cargo-target/debug/grdr /tmp/grdr-wsl-cargo-target/debug/grdr-daemon /tmp/grdr-wsl-cargo-target/debug/grdr-hook /tmp/grdr-wsl-cargo-target/debug/grdr-server `"$wslOut/`""
+                    $script = "set -euo pipefail; umask 077; export PATH=`"`$HOME/.cargo/bin:`$PATH`"; SAFE_QA=`"`$HOME/.local/state/grdr-qa`"; if [ -L `"`$SAFE_QA`" ]; then echo 'Refusing symlinked QA directory' >&2; exit 1; fi; mkdir -p -m 0700 `"`$SAFE_QA`"; WSL_TARGET=`"`$SAFE_QA/cargo-target`"; cargo build --locked --manifest-path `"$wslRepo/Cargo.toml`" --target-dir `"`$WSL_TARGET`" -p grdr -p grdr-daemon -p grdr-hook -p grdr-server; cp `"`$WSL_TARGET/debug/grdr`" `"`$WSL_TARGET/debug/grdr-daemon`" `"`$WSL_TARGET/debug/grdr-hook`" `"`$WSL_TARGET/debug/grdr-server`" `"$wslOut/`""
                     & wsl.exe -d Ubuntu-24.04 -- bash -c $script
                     if ($LASTEXITCODE -ne 0) { throw "WSL2 Linux build failed." }
                     $built = $true
@@ -288,7 +336,7 @@ function Build-TargetArtifacts {
             }
             if (-not $built -and $dockerCmd) {
                 Write-Output "Building Linux binaries via Docker..."
-                & docker run --rm -v "${RepoRoot}:/src:ro" -v "grdr-vmware-linux-target:/target" -v "${linuxBin}:/out" -w /src rust:1-bookworm bash -c "cargo build --locked --target-dir /target -p grdr -p grdr-daemon -p grdr-hook -p grdr-server && cp /target/debug/grdr /target/debug/grdr-daemon /target/debug/grdr-hook /target/debug/grdr-server /out/"
+                & docker run --rm -v "${RepoRoot}:/src:ro" -v "grdr-vmware-linux-target:/target" -v "${linuxBin}:/out" -w /src rust:1.99.1-bookworm@sha256:e6f2cff35d0f309acf8433b4f05878ed77092602c5065cc81801177da0bb3a9c bash -c "cargo build --locked --target-dir /target -p grdr -p grdr-daemon -p grdr-hook -p grdr-server && cp /target/debug/grdr /target/debug/grdr-daemon /target/debug/grdr-hook /target/debug/grdr-server /out/"
                 if ($LASTEXITCODE -ne 0) { throw "Docker Linux build failed." }
                 $built = $true
             }
@@ -309,11 +357,10 @@ function Build-TargetArtifacts {
 function Wait-VmwareTools {
     param(
         [string]$VmrunExe,
-        [string]$Vmx,
-        [string]$VmPassword
+        [string]$Vmx
     )
     for ($i = 0; $i -lt 60; $i++) {
-        $res = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("checkToolsState", $Vmx) -VmPassword $VmPassword -AllowFailure
+        $res = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("checkToolsState", $Vmx) -AllowFailure
         if ($res.ExitCode -eq 0 -and $res.Output -match "running|installed") {
             return
         }
@@ -326,51 +373,49 @@ function Invoke-VmwareTargetE2E {
     param(
         [PSCustomObject]$Preflight,
         [string]$VmrunExe,
-        [string]$VmPassword,
-        [string]$GuestUser,
-        [string]$GuestPass,
         [hashtable]$Artifacts,
         [switch]$SkipTeardownRevert
     )
     $vmx = $Preflight.vmx
     $snap = $Preflight.resolved_snapshot
-    $passToUse = if ($Preflight.key -eq "win11") { $VmPassword } else { "" }
+    $sshSpec = Resolve-GuestSshSpec -VmKey $Preflight.key
     $guestReportHost = Join-Path $ReportDir "$($Preflight.key)-report.json"
     $succeeded = $false
 
     try {
         Write-Output "[$($Preflight.name)] Reverting to clean snapshot '$snap'..."
-        $null = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("revertToSnapshot", $vmx, $snap) -VmPassword $passToUse
+        $null = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("revertToSnapshot", $vmx, $snap)
 
         Write-Output "[$($Preflight.name)] Booting VM headless (nogui)..."
-        $null = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("start", $vmx, "nogui") -VmPassword $passToUse
-        Wait-VmwareTools -VmrunExe $VmrunExe -Vmx $vmx -VmPassword $passToUse
+        $null = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("start", $vmx, "nogui")
+        Wait-VmwareTools -VmrunExe $VmrunExe -Vmx $vmx
 
         if ($Preflight.os -eq "windows") {
-            $guestDir = "C:\Windows\Temp\grdr-qa"
-            $null = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("createDirectoryInGuest", $vmx, $guestDir) -VmPassword $passToUse -GuestUser $GuestUser -GuestPass $GuestPass -AllowFailure
+            $guestDir = "grdr-vmware-qa"
+            $prepCmd = "powershell -NoProfile -Command `"`$d = Join-Path `$env:USERPROFILE 'grdr-vmware-qa'; if ((Test-Path `$d) -and ((Get-Item `$d -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Refusing symlinked QA directory' }; Remove-Item -Recurse -Force -ErrorAction SilentlyContinue `$d; New-Item -ItemType Directory -Path `$d -Force | Out-Null`""
+            Invoke-GuestSsh -SshSpec $sshSpec -Command $prepCmd
             foreach ($b in @("grdr.exe", "grdr-daemon.exe", "grdr-hook.exe", "grdr-server.exe")) {
-                $null = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("CopyFileFromHostToGuest", $vmx, (Join-Path $Artifacts.windows_bin_dir $b), "$guestDir\$b") -VmPassword $passToUse -GuestUser $GuestUser -GuestPass $GuestPass
+                Copy-ToGuestScp -SshSpec $sshSpec -LocalPath (Join-Path $Artifacts.windows_bin_dir $b) -RemotePath "$guestDir/$b"
             }
             $winScript = Join-Path $PSScriptRoot "win-guest-e2e.ps1"
-            $null = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("CopyFileFromHostToGuest", $vmx, $winScript, "$guestDir\win-guest-e2e.ps1") -VmPassword $passToUse -GuestUser $GuestUser -GuestPass $GuestPass
-            $guestReport = "$guestDir\report.json"
-            $psArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$guestDir\win-guest-e2e.ps1`" -BinDir `"$guestDir`" -ReportPath `"$guestReport`""
-            $null = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("runProgramInGuest", $vmx, "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe", $psArgs) -VmPassword $passToUse -GuestUser $GuestUser -GuestPass $GuestPass
-            $null = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("CopyFileFromGuestToHost", $vmx, $guestReport, $guestReportHost) -VmPassword $passToUse -GuestUser $GuestUser -GuestPass $GuestPass
+            Copy-ToGuestScp -SshSpec $sshSpec -LocalPath $winScript -RemotePath "$guestDir/win-guest-e2e.ps1"
+            $guestReport = "$guestDir/report.json"
+            $runCmd = "powershell -NoProfile -ExecutionPolicy Bypass -Command `"`$d = Join-Path `$env:USERPROFILE 'grdr-vmware-qa'; & (Join-Path `$d 'win-guest-e2e.ps1') -BinDir `$d -ReportPath (Join-Path `$d 'report.json')`""
+            Invoke-GuestSsh -SshSpec $sshSpec -Command $runCmd
+            Copy-FromGuestScp -SshSpec $sshSpec -RemotePath $guestReport -LocalPath $guestReportHost
+            Invoke-GuestSsh -SshSpec $sshSpec -Command "powershell -NoProfile -Command `"Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path `$env:USERPROFILE 'grdr-vmware-qa')`""
         } else {
-            $guestDir = "/tmp/grdr-vmware-qa"
-            $null = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("createDirectoryInGuest", $vmx, $guestDir) -VmPassword $passToUse -GuestUser $GuestUser -GuestPass $GuestPass -AllowFailure
+            $guestDir = "grdr-vmware-qa"
+            Invoke-GuestSsh -SshSpec $sshSpec -Command "umask 077 && rm -rf ~/$guestDir && mkdir -p -m 0700 ~/$guestDir"
             foreach ($b in @("grdr", "grdr-daemon", "grdr-hook", "grdr-server")) {
-                $null = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("CopyFileFromHostToGuest", $vmx, (Join-Path $Artifacts.linux_bin_dir $b), "$guestDir/$b") -VmPassword $passToUse -GuestUser $GuestUser -GuestPass $GuestPass
+                Copy-ToGuestScp -SshSpec $sshSpec -LocalPath (Join-Path $Artifacts.linux_bin_dir $b) -RemotePath "$guestDir/$b"
             }
             $lfTemp = Join-Path $ReportDir "linux-guest-e2e.lf.sh"
             ((Get-Content -Raw (Join-Path $PSScriptRoot "linux-guest-e2e.sh")) -replace "`r`n", "`n") | Set-Content -Path $lfTemp -Encoding ASCII -NoNewline
-            $null = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("CopyFileFromHostToGuest", $vmx, $lfTemp, "$guestDir/linux-guest-e2e.sh") -VmPassword $passToUse -GuestUser $GuestUser -GuestPass $GuestPass
-            $guestReport = "/tmp/grdr-vmware-report.json"
-            $guestCmd = "chmod +x $guestDir/grdr $guestDir/grdr-daemon $guestDir/grdr-hook $guestDir/grdr-server $guestDir/linux-guest-e2e.sh && $guestDir/linux-guest-e2e.sh --bin-dir $guestDir --work-dir /tmp/grdr-vmware-work --report $guestReport --mode vmware"
-            $null = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("runProgramInGuest", $vmx, "/bin/bash", "-lc", $guestCmd) -VmPassword $passToUse -GuestUser $GuestUser -GuestPass $GuestPass
-            $null = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("CopyFileFromGuestToHost", $vmx, $guestReport, $guestReportHost) -VmPassword $passToUse -GuestUser $GuestUser -GuestPass $GuestPass
+            Copy-ToGuestScp -SshSpec $sshSpec -LocalPath $lfTemp -RemotePath "$guestDir/linux-guest-e2e.sh"
+            $guestReport = "$guestDir/report.json"
+            Invoke-GuestSsh -SshSpec $sshSpec -Command "chmod 0700 ~/$guestDir/grdr ~/$guestDir/grdr-daemon ~/$guestDir/grdr-hook ~/$guestDir/grdr-server ~/$guestDir/linux-guest-e2e.sh && ~/$guestDir/linux-guest-e2e.sh --bin-dir `"`$HOME/$guestDir`" --report `"`$HOME/$guestReport`" --mode vmware"
+            Copy-FromGuestScp -SshSpec $sshSpec -RemotePath $guestReport -LocalPath $guestReportHost
         }
 
         $reportObj = (Get-Content -Raw $guestReportHost) | ConvertFrom-Json
@@ -385,16 +430,13 @@ function Invoke-VmwareTargetE2E {
             Write-Warning "[$($Preflight.name)] -KeepRunning requested; skipping teardown snapshot revert."
         } else {
             Write-Output "[$($Preflight.name)] Reverting to clean snapshot '$snap' on teardown..."
-            $null = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("revertToSnapshot", $vmx, $snap) -VmPassword $passToUse -AllowFailure
-            $null = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("stop", $vmx, "hard") -VmPassword $passToUse -AllowFailure
+            $null = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("revertToSnapshot", $vmx, $snap) -AllowFailure
+            $null = Invoke-Vmrun -VmrunExe $VmrunExe -CmdArgs @("stop", $vmx, "hard") -AllowFailure
         }
     }
 }
 
 $vmrunExe = Resolve-VmrunExe
-$vmPassword = if ($env:GRDR_QA_VM_PASSWORD) { $env:GRDR_QA_VM_PASSWORD } else { "" }
-$guestUser = if ($env:GRDR_QA_GUEST_USER) { $env:GRDR_QA_GUEST_USER } else { "" }
-$guestPass = if ($env:GRDR_QA_GUEST_PASS) { $env:GRDR_QA_GUEST_PASS } else { "" }
 $explicitSnap = $PSBoundParameters.ContainsKey("Snapshot")
 
 $selectedKeys = if ($Target -eq "all") { @("win11", "ubuntu", "rocky", "edr") } else { @($Target) }
@@ -407,9 +449,6 @@ foreach ($k in $selectedKeys) {
         -VmrunExe $vmrunExe `
         -RequestedSnapshot $Snapshot `
         -ExplicitSnapshot $explicitSnap `
-        -VmPassword $vmPassword `
-        -GuestUser $guestUser `
-        -GuestPass $guestPass `
         -RunningSet $runningSet
 }
 
@@ -459,9 +498,6 @@ foreach ($p in $preflights) {
     Invoke-VmwareTargetE2E `
         -Preflight $p `
         -VmrunExe $vmrunExe `
-        -VmPassword $vmPassword `
-        -GuestUser $guestUser `
-        -GuestPass $guestPass `
         -Artifacts $artifacts `
         -SkipTeardownRevert:$KeepRunning
 }

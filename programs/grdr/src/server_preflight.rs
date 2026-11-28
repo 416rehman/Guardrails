@@ -1,51 +1,106 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
-use std::fs;
-use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
-use std::path::{Component, Path, PathBuf};
+#[path = "server_preflight_cert.rs"]
+mod cert_probes;
+#[path = "server_preflight_der.rs"]
+mod der_parse;
+#[path = "server_preflight_ha.rs"]
+mod ha_probes;
+#[path = "server_preflight_pg_tls.rs"]
+mod pg_tls_probes;
+#[path = "server_preflight_types.rs"]
+mod probe_types;
+#[path = "server_preflight_s3_auth.rs"]
+mod s3_auth;
+#[path = "server_preflight_s3_http.rs"]
+mod s3_http;
+#[path = "server_preflight_s3.rs"]
+mod s3_probes;
+#[path = "server_preflight_storage.rs"]
+mod storage_probes;
+#[path = "server_preflight_tls.rs"]
+mod tls_probes;
+
 use std::process::ExitCode;
-use std::time::Duration;
 
-use serde::Serialize;
-use uuid::Uuid;
-
-use grdr_bus_nats::{NatsConfig, NatsTransportMode};
 use grdr_ports::ProfileKind;
-use grdr_rel_postgres::{POSTGRES_MIGRATIONS, PostgresConfig, PostgresSslMode, PostgresTransport};
 
-const TCP_PROBE_TIMEOUT_MS: u64 = 500;
+#[cfg(test)]
+use probe_types::PreflightCheck;
+use probe_types::{
+    CODE_STORAGE, PreflightThresholds, current_unix_s, load_preflight_thresholds, mk_check,
+    normalize_path_for_overlap, push_raw, raw_to_check,
+};
+pub use probe_types::{
+    CheckOutcome, DiskHeadroomProbe, PgClockProbe, PreflightOptions, PreflightReport,
+    S3AddressingStyle,
+};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CheckOutcome {
-    Pass,
-    Warn,
-    Fail,
+#[cfg(test)]
+pub fn evaluate_disk_headroom_sample(
+    label: &str,
+    total_bytes: u64,
+    avail_bytes: u64,
+    min_pct: u64,
+) -> PreflightCheck {
+    raw_to_check(storage_probes::evaluate_disk_headroom_bytes(
+        label,
+        total_bytes,
+        avail_bytes,
+        min_pct,
+    ))
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct PreflightCheck {
-    pub name: String,
-    pub outcome: CheckOutcome,
-    pub detail: String,
-    pub code: Option<String>,
+#[cfg(test)]
+pub fn build_preflight_report(opts: &PreflightOptions<'_>) -> PreflightReport {
+    build_preflight_report_with_probes(opts, false)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct PreflightReport {
-    pub profile: String,
-    pub overall: CheckOutcome,
-    pub checks: Vec<PreflightCheck>,
+#[cfg(test)]
+pub fn sign_s3_test_headers(
+    method: &str,
+    url: &str,
+    access_key: &str,
+    secret_key: &str,
+    region: &str,
+    now_unix_s: i64,
+) -> Result<Vec<(String, String)>, String> {
+    let creds = s3_auth::S3Credentials {
+        access_key: access_key.to_string(),
+        secret_key: secret_key.to_string(),
+        session_token: None,
+        region: region.to_string(),
+    };
+    s3_auth::sign_aws_sigv4_headers(method, url, &creds, now_unix_s)
 }
 
-pub struct PreflightOptions<'a> {
-    pub profile: &'a str,
-    pub data_dir: Option<&'a Path>,
-    pub backup_dir: Option<&'a Path>,
-    pub postgres_dsn: Option<&'a str>,
-    pub nats_url: Option<&'a str>,
-    pub object_store_dir: Option<&'a Path>,
+#[cfg(test)]
+pub fn parse_limits_thresholds_test(toml_text: &str) -> Result<(), String> {
+    probe_types::parse_preflight_thresholds_from(toml_text).map(|_| ())
+}
+
+#[cfg(test)]
+pub fn check_loopback_test(hostport: &str) -> bool {
+    probe_types::is_loopback_hostport(hostport)
+}
+
+#[cfg(test)]
+pub fn probe_certs_with_builtin_roots_test(
+    cert_files: &[std::path::PathBuf],
+    builtin_roots: &[rustls_pki_types::CertificateDer<'static>],
+    now_unix_s: i64,
+) -> Vec<PreflightCheck> {
+    let thresholds = load_preflight_thresholds().unwrap_or_else(|_| PreflightThresholds::default());
+    cert_probes::probe_pem_certificates_with_roots(
+        cert_files,
+        builtin_roots,
+        &thresholds,
+        now_unix_s,
+    )
+    .into_iter()
+    .map(raw_to_check)
+    .collect()
 }
 
 pub fn run_preflight(opts: &PreflightOptions<'_>, json: bool, strict: bool) -> ExitCode {
@@ -64,14 +119,19 @@ pub fn run_preflight(opts: &PreflightOptions<'_>, json: bool, strict: bool) -> E
             report.profile, report.overall
         );
         for chk in &report.checks {
+            let id_prefix = chk
+                .id
+                .as_deref()
+                .map(|id| format!("{id} "))
+                .unwrap_or_default();
             let code_suffix = chk
                 .code
                 .as_deref()
                 .map(|c| format!(" [{c}]"))
                 .unwrap_or_default();
             println!(
-                "  - {:?} {}{}: {}",
-                chk.outcome, chk.name, code_suffix, chk.detail
+                "  - {:?} {}{}{}: {}",
+                chk.outcome, id_prefix, chk.name, code_suffix, chk.detail
             );
         }
     }
@@ -83,48 +143,143 @@ pub fn run_preflight(opts: &PreflightOptions<'_>, json: bool, strict: bool) -> E
     }
 }
 
-#[cfg(test)]
-pub fn build_preflight_report(opts: &PreflightOptions<'_>) -> PreflightReport {
-    build_preflight_report_with_probes(opts, false)
-}
-
 pub fn build_preflight_report_with_probes(
     opts: &PreflightOptions<'_>,
     probe_network: bool,
 ) -> PreflightReport {
     let mut checks = Vec::new();
+    let thresholds = match load_preflight_thresholds() {
+        Ok(cfg) => cfg,
+        Err(detail) => {
+            checks.push(mk_check(
+                "PF-01",
+                "preflight_limits_contract",
+                CheckOutcome::Fail,
+                detail,
+                Some(CODE_STORAGE.into()),
+                Some("Restore valid [server.tenancy] and [server.preflight] entries in contracts/limits.toml."),
+            ));
+            PreflightThresholds::default()
+        }
+    };
+    let now_s = match current_unix_s() {
+        Ok(s) => s,
+        Err(detail) => {
+            checks.push(mk_check(
+                "PF-08",
+                "host_system_clock",
+                CheckOutcome::Fail,
+                detail,
+                Some(CODE_STORAGE.into()),
+                Some("Synchronize host clock before starting server."),
+            ));
+            return PreflightReport {
+                profile: opts.profile.to_string(),
+                overall: CheckOutcome::Fail,
+                checks,
+            };
+        }
+    };
+
     let parsed_profile = match ProfileKind::parse(opts.profile) {
         Ok(p) => {
-            checks.push(PreflightCheck {
-                name: "profile_selection".into(),
-                outcome: CheckOutcome::Pass,
-                detail: format!("Validated profile `{}` (P6/D-33).", p.as_str()),
-                code: None,
-            });
+            checks.push(mk_check(
+                "PF-01",
+                "profile_selection",
+                CheckOutcome::Pass,
+                format!("Validated profile `{}` (P6/D-33).", p.as_str()),
+                None,
+                None,
+            ));
             Some(p)
         }
         Err(err) => {
-            checks.push(PreflightCheck {
-                name: "profile_selection".into(),
-                outcome: CheckOutcome::Fail,
-                detail: err.message,
-                code: Some(err.code),
-            });
+            checks.push(mk_check(
+                "PF-01",
+                "profile_selection",
+                CheckOutcome::Fail,
+                err.message,
+                Some(err.code),
+                Some("Specify embedded, ha, or distributed."),
+            ));
             None
         }
     };
 
     if let Some(profile) = parsed_profile {
         match profile {
-            ProfileKind::Embedded => check_embedded(opts, &mut checks),
+            ProfileKind::Embedded => ha_probes::check_embedded(opts, &mut checks),
             ProfileKind::Ha => {
-                check_postgres(opts.postgres_dsn, probe_network, &mut checks);
-                check_object_store(opts.object_store_dir, opts.data_dir, &mut checks);
+                ha_probes::check_postgres(
+                    opts.postgres_dsn,
+                    opts.cert_files,
+                    probe_network,
+                    opts.pg_clock_probe,
+                    &thresholds,
+                    now_s,
+                    &mut checks,
+                );
+                ha_probes::check_object_store(opts, probe_network, &thresholds, now_s, &mut checks);
             }
             ProfileKind::Distributed => {
-                check_postgres(opts.postgres_dsn, probe_network, &mut checks);
-                check_nats(opts.nats_url, probe_network, &mut checks);
-                check_object_store(opts.object_store_dir, opts.data_dir, &mut checks);
+                ha_probes::check_postgres(
+                    opts.postgres_dsn,
+                    opts.cert_files,
+                    probe_network,
+                    opts.pg_clock_probe,
+                    &thresholds,
+                    now_s,
+                    &mut checks,
+                );
+                ha_probes::check_nats(opts.nats_url, opts.cert_files, probe_network, &mut checks);
+                ha_probes::check_object_store(opts, probe_network, &thresholds, now_s, &mut checks);
+            }
+        }
+        if opts.backup_dir.is_some() || opts.restore_drill_marker.is_some() {
+            push_raw(
+                storage_probes::probe_backup_and_drill(
+                    profile,
+                    opts.backup_dir,
+                    opts.data_dir,
+                    opts.restore_drill_marker,
+                    &thresholds,
+                    now_s,
+                ),
+                &mut checks,
+            );
+        }
+        if !opts.cert_files.is_empty() {
+            push_raw(
+                cert_probes::probe_pem_certificates(opts.cert_files, &thresholds, now_s),
+                &mut checks,
+            );
+        }
+        if opts.disk_headroom_probe == DiskHeadroomProbe::Enforce {
+            let clean_obj_dir = opts.object_store_dir.filter(|d| !d.as_os_str().is_empty());
+            if let Some(dir) = opts.data_dir {
+                checks.push(raw_to_check(storage_probes::probe_disk_headroom(
+                    dir,
+                    &thresholds,
+                )));
+            } else if clean_obj_dir.is_none() {
+                checks.push(mk_check(
+                    "PF-12",
+                    "disk_headroom",
+                    CheckOutcome::Fail,
+                    "Disk headroom probe enabled without --data-dir or --object-store-dir.".into(),
+                    Some(CODE_STORAGE.into()),
+                    Some("Supply --data-dir or --object-store-dir when using --check-disk."),
+                ));
+            }
+            if let Some(dir) = clean_obj_dir
+                && opts.data_dir.is_none_or(|d| {
+                    normalize_path_for_overlap(d) != normalize_path_for_overlap(dir)
+                })
+            {
+                checks.push(raw_to_check(storage_probes::probe_disk_headroom(
+                    dir,
+                    &thresholds,
+                )));
             }
         }
     }
@@ -136,324 +291,9 @@ pub fn build_preflight_report_with_probes(
     } else {
         CheckOutcome::Pass
     };
-
     PreflightReport {
         profile: opts.profile.to_string(),
         overall,
         checks,
     }
-}
-
-fn check_embedded(opts: &PreflightOptions<'_>, checks: &mut Vec<PreflightCheck>) {
-    match opts.data_dir {
-        Some(dir) => {
-            check_directory_writable("embedded_data_dir", dir, false, checks);
-            if let Some(backup) = opts.backup_dir {
-                let same_root = backup.starts_with(dir) || dir.starts_with(backup);
-                checks.push(PreflightCheck {
-                    name: "backup_volume_isolation".into(),
-                    outcome: if same_root {
-                        CheckOutcome::Warn
-                    } else {
-                        CheckOutcome::Pass
-                    },
-                    detail: if same_root {
-                        "backup/ shares a prefix with data_dir; place backups on a separate volume."
-                            .into()
-                    } else {
-                        "Backup directory is separated from data_dir.".into()
-                    },
-                    code: None,
-                });
-            }
-        }
-        None => checks.push(PreflightCheck {
-            name: "embedded_data_dir".into(),
-            outcome: CheckOutcome::Warn,
-            detail: "No --data-dir provided; ephemeral memory mode will not persist lake segments."
-                .into(),
-            code: None,
-        }),
-    }
-}
-
-fn check_postgres(
-    postgres_dsn: Option<&str>,
-    probe_network: bool,
-    checks: &mut Vec<PreflightCheck>,
-) {
-    let Some(dsn) = postgres_dsn else {
-        checks.push(PreflightCheck {
-            name: "postgres_18_dsn".into(),
-            outcome: CheckOutcome::Fail,
-            detail: "Missing --postgres-dsn for HA/Distributed profile.".into(),
-            code: Some("GRDR-PREFLIGHT-0001".into()),
-        });
-        return;
-    };
-    match PostgresConfig::parse_dsn(dsn).and_then(|cfg| cfg.validate().map(|()| cfg)) {
-        Ok(cfg) => {
-            let (ssl_outcome, ssl_detail) = match cfg.ssl_mode {
-                PostgresSslMode::Disable | PostgresSslMode::Prefer => (
-                    CheckOutcome::Warn,
-                    format!(
-                        "PostgreSQL sslmode={} permits unencrypted connections; prefer require or verify-full.",
-                        cfg.ssl_mode.as_str()
-                    ),
-                ),
-                _ => (
-                    CheckOutcome::Pass,
-                    format!(
-                        "Parsed PostgreSQL 18 DSN (sslmode={}, migrations={}).",
-                        cfg.ssl_mode.as_str(),
-                        POSTGRES_MIGRATIONS.len()
-                    ),
-                ),
-            };
-            checks.push(PreflightCheck {
-                name: "postgres_18_dsn".into(),
-                outcome: ssl_outcome,
-                detail: ssl_detail,
-                code: None,
-            });
-            if probe_network && let PostgresTransport::TcpWire { endpoint, .. } = &cfg.transport {
-                probe_tcp(
-                    "postgres_tcp_reachability",
-                    endpoint,
-                    "GRDR-PREFLIGHT-0005",
-                    checks,
-                );
-            }
-        }
-        Err(err) => checks.push(PreflightCheck {
-            name: "postgres_18_dsn".into(),
-            outcome: CheckOutcome::Fail,
-            detail: err.message,
-            code: Some(err.code),
-        }),
-    }
-}
-
-fn check_nats(nats_url: Option<&str>, probe_network: bool, checks: &mut Vec<PreflightCheck>) {
-    let Some(url) = nats_url else {
-        checks.push(PreflightCheck {
-            name: "nats_jetstream_url".into(),
-            outcome: CheckOutcome::Fail,
-            detail: "Missing --nats-url for Distributed profile.".into(),
-            code: Some("GRDR-PREFLIGHT-0002".into()),
-        });
-        return;
-    };
-    match NatsConfig::parse_url(url).and_then(|cfg| cfg.validate().map(|()| cfg)) {
-        Ok(cfg) => {
-            let mut outcome = CheckOutcome::Pass;
-            let mut detail = format!(
-                "Validated NATS JetStream URL with unused listeners disabled (replicas={}).",
-                cfg.replicas
-            );
-            if let NatsTransportMode::JetStreamTcp { ref server_url } = cfg.transport {
-                if let Some(hp) = server_url.strip_prefix("nats://")
-                    && !is_loopback_endpoint(hp)
-                {
-                    outcome = CheckOutcome::Warn;
-                    detail = format!(
-                        "NATS URL `{server_url}` uses plaintext nats:// on a non-loopback host; prefer tls://."
-                    );
-                }
-                if probe_network {
-                    let endpoint = server_url
-                        .strip_prefix("nats://")
-                        .or_else(|| server_url.strip_prefix("tls://"))
-                        .unwrap_or(server_url);
-                    probe_tcp(
-                        "nats_tcp_reachability",
-                        endpoint,
-                        "GRDR-PREFLIGHT-0006",
-                        checks,
-                    );
-                }
-            }
-            checks.push(PreflightCheck {
-                name: "nats_jetstream_url".into(),
-                outcome,
-                detail,
-                code: None,
-            });
-        }
-        Err(err) => checks.push(PreflightCheck {
-            name: "nats_jetstream_url".into(),
-            outcome: CheckOutcome::Fail,
-            detail: err.message,
-            code: Some(err.code),
-        }),
-    }
-}
-
-fn check_object_store(
-    object_store_dir: Option<&Path>,
-    data_dir: Option<&Path>,
-    checks: &mut Vec<PreflightCheck>,
-) {
-    match object_store_dir {
-        Some(dir) if !dir.as_os_str().is_empty() => {
-            check_directory_writable("object_store_conformance", dir, true, checks);
-            if let Some(state) = data_dir {
-                let norm_state = normalize_path_for_overlap(state);
-                let norm_dir = normalize_path_for_overlap(dir);
-                if norm_state == norm_dir
-                    || norm_state.starts_with(&norm_dir)
-                    || norm_dir.starts_with(&norm_state)
-                {
-                    checks.push(PreflightCheck {
-                        name: "state_key_isolation".into(),
-                        outcome: CheckOutcome::Fail,
-                        detail: "State directory (--data-dir) must not overlap --object-store-dir."
-                            .into(),
-                        code: Some("GRDR-PREFLIGHT-0004".into()),
-                    });
-                }
-            }
-        }
-        _ => checks.push(PreflightCheck {
-            name: "object_store_conformance".into(),
-            outcome: CheckOutcome::Fail,
-            detail: "Missing --object-store-dir for HA/Distributed lake and archive storage."
-                .into(),
-            code: Some("GRDR-PREFLIGHT-0003".into()),
-        }),
-    }
-}
-
-fn check_directory_writable(
-    name: &str,
-    dir: &Path,
-    warn_if_missing: bool,
-    checks: &mut Vec<PreflightCheck>,
-) {
-    if dir.exists() {
-        if !dir.is_dir() {
-            checks.push(PreflightCheck {
-                name: name.into(),
-                outcome: CheckOutcome::Fail,
-                detail: format!("Path `{}` exists and is not a directory.", dir.display()),
-                code: Some("GRDR-PREFLIGHT-0004".into()),
-            });
-            return;
-        }
-        let probe = dir.join(format!(".grdr-preflight-{}", Uuid::now_v7().simple()));
-        match fs::write(&probe, b"probe") {
-            Ok(()) => {
-                let _ = fs::remove_file(&probe);
-                checks.push(PreflightCheck {
-                    name: name.into(),
-                    outcome: CheckOutcome::Pass,
-                    detail: format!("Directory `{}` exists and is writable.", dir.display()),
-                    code: None,
-                });
-            }
-            Err(err) => checks.push(PreflightCheck {
-                name: name.into(),
-                outcome: CheckOutcome::Fail,
-                detail: format!("Directory `{}` is not writable: {err}", dir.display()),
-                code: Some("GRDR-PREFLIGHT-0004".into()),
-            }),
-        }
-    } else {
-        checks.push(PreflightCheck {
-            name: name.into(),
-            outcome: if warn_if_missing {
-                CheckOutcome::Pass
-            } else {
-                CheckOutcome::Warn
-            },
-            detail: format!(
-                "Directory `{}` does not exist yet and will be initialized on start.",
-                dir.display()
-            ),
-            code: None,
-        });
-    }
-}
-
-fn probe_tcp(name: &str, endpoint: &str, err_code: &str, checks: &mut Vec<PreflightCheck>) {
-    let timeout = Duration::from_millis(TCP_PROBE_TIMEOUT_MS);
-    let resolved: Vec<SocketAddr> = match endpoint.to_socket_addrs() {
-        Ok(addrs) => addrs.collect(),
-        Err(err) => {
-            checks.push(PreflightCheck {
-                name: name.into(),
-                outcome: CheckOutcome::Fail,
-                detail: format!("Failed resolving endpoint `{endpoint}`: {err}"),
-                code: Some(err_code.into()),
-            });
-            return;
-        }
-    };
-    let connected = resolved
-        .into_iter()
-        .any(|addr| TcpStream::connect_timeout(&addr, timeout).is_ok());
-    if connected {
-        checks.push(PreflightCheck {
-            name: name.into(),
-            outcome: CheckOutcome::Pass,
-            detail: format!("TCP endpoint `{endpoint}` is reachable."),
-            code: None,
-        });
-    } else {
-        checks.push(PreflightCheck {
-            name: name.into(),
-            outcome: CheckOutcome::Fail,
-            detail: format!("TCP endpoint `{endpoint}` is unreachable."),
-            code: Some(err_code.into()),
-        });
-    }
-}
-
-fn normalize_path_for_overlap(path: &Path) -> PathBuf {
-    let abs = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
-    let mut stack: Vec<Component<'_>> = Vec::new();
-    for comp in abs.components() {
-        match comp {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                if matches!(stack.last(), Some(Component::Normal(_))) {
-                    stack.pop();
-                } else {
-                    stack.push(comp);
-                }
-            }
-            other => stack.push(other),
-        }
-    }
-    let clean: PathBuf = stack.into_iter().collect();
-    let mut probe = clean.as_path();
-    let mut tail = Vec::new();
-    loop {
-        if probe.exists()
-            && let Ok(canon) = fs::canonicalize(probe)
-        {
-            let mut out = canon;
-            for seg in tail.into_iter().rev() {
-                out.push(seg);
-            }
-            return out;
-        }
-        let Some(name) = probe.file_name() else {
-            return clean;
-        };
-        tail.push(name.to_os_string());
-        let Some(parent) = probe.parent() else {
-            return clean;
-        };
-        probe = parent;
-    }
-}
-
-fn is_loopback_endpoint(hostport: &str) -> bool {
-    let host = if let Some(inner) = hostport.strip_prefix('[') {
-        inner.split_once(']').map(|(h, _)| h).unwrap_or(hostport)
-    } else {
-        hostport.split_once(':').map(|(h, _)| h).unwrap_or(hostport)
-    };
-    host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1" || host == "::1"
 }

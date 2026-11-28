@@ -3,10 +3,61 @@
 # SPDX-FileCopyrightText: The Guardrails ADR Authors
 set -eu
 
-PLIST="/Library/LaunchDaemons/com.guardrailshq.grdr.daemon.plist"
-mkdir -p "/Library/Application Support/grdr/run" "/Library/Logs/grdr"
-chmod 0750 "/Library/Application Support/grdr" "/Library/Logs/grdr"
+refuse_if_symlink() {
+  for target in "$@"; do
+    if [ -L "${target}" ]; then
+      echo "GRDR-PKG-0001: refusing to follow symlink at ${target}" >&2
+      exit 1
+    fi
+  done
+}
 
+ensure_dir() {
+  dir_path="$1"
+  dir_mode="$2"
+  dir_owner="$3"
+  refuse_if_symlink "${dir_path}"
+  mkdir -p "${dir_path}"
+  refuse_if_symlink "${dir_path}"
+  chown "${dir_owner}" "${dir_path}"
+  chmod "${dir_mode}" "${dir_path}"
+}
+
+ensure_server_role_account() {
+  if ! dscl . -read /Groups/_grdr-server >/dev/null 2>&1; then
+    gid=399
+    while dscl . -search /Groups PrimaryGroupID "${gid}" | grep -q PrimaryGroupID; do
+      gid=$((gid - 1))
+    done
+    dseditgroup -o create -i "${gid}" -r "Guardrails ADR Server" _grdr-server
+  fi
+  if ! dscl . -read /Users/_grdr-server >/dev/null 2>&1; then
+    uid=399
+    while dscl . -search /Users UniqueID "${uid}" | grep -q UniqueID; do
+      uid=$((uid - 1))
+    done
+    gid="$(dscl . -read /Groups/_grdr-server PrimaryGroupID | awk '{print $2}')"
+    dscl . -create /Users/_grdr-server
+    dscl . -create /Users/_grdr-server UniqueID "${uid}"
+    dscl . -create /Users/_grdr-server PrimaryGroupID "${gid}"
+    dscl . -create /Users/_grdr-server UserShell /usr/bin/false
+    dscl . -create /Users/_grdr-server NFSHomeDirectory /var/lib/grdr-server
+    dscl . -create /Users/_grdr-server RealName "Guardrails ADR Server"
+  fi
+}
+
+ensure_server_role_account
+
+ensure_dir "/var/lib/guardrails" 0750 "root:wheel"
+ensure_dir "/Library/Application Support/grdr" 0750 "root:wheel"
+ensure_dir "/Library/Application Support/grdr/run" 0755 "root:wheel"
+ensure_dir "/private/var/run/guardrails" 0755 "root:wheel"
+ensure_dir "/Library/Logs/grdr" 0755 "root:wheel"
+ensure_dir "/var/lib/grdr-server" 0750 "_grdr-server:_grdr-server"
+ensure_dir "/Library/Logs/grdr/server" 0750 "_grdr-server:_grdr-server"
+
+PLIST="/Library/LaunchDaemons/com.guardrailshq.grdr.daemon.plist"
+refuse_if_symlink "${PLIST}"
 if [ -f "${PLIST}" ]; then
   chmod 0644 "${PLIST}"
   chown root:wheel "${PLIST}"

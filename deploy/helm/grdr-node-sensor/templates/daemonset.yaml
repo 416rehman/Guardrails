@@ -1,4 +1,5 @@
 {{- if and .Values.daemonset.enabled (or (eq .Values.mode "daemonset") (eq .Values.mode "hybrid")) }}
+{{- include "grdr-node-sensor.validate" . -}}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -47,8 +48,6 @@ spec:
           args:
             - "--profile"
             - "protected"
-            - "--data-dir"
-            - "/var/lib/grdr"
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -67,8 +66,6 @@ spec:
                 - SYS_ADMIN
                 {{- end }}
           env:
-            - name: GRDR_DAEMON_DATA_DIR
-              value: "/var/lib/grdr"
             {{- if .Values.server.endpoint }}
             - name: GRDR_SERVER_URL
               value: {{ .Values.server.endpoint | quote }}
@@ -91,10 +88,7 @@ spec:
           resources:
             {{- toYaml .Values.daemonset.resources | nindent 12 }}
           volumeMounts:
-            - name: config
-              mountPath: /etc/grdr/sensor.toml
-              subPath: sensor.toml
-              readOnly: true
+            {{- if .Values.daemonset.mountKernelFs }}
             - name: sys-kernel-btf
               mountPath: /sys/kernel/btf
               readOnly: true
@@ -109,6 +103,7 @@ spec:
               mountPath: /sys/fs/bpf
               readOnly: true
             {{- end }}
+            {{- end }}
             {{- if .Values.daemonset.hostPID }}
             - name: host-proc
               mountPath: /host/proc
@@ -120,9 +115,9 @@ spec:
               readOnly: true
             {{- end }}
             - name: state
-              mountPath: /var/lib/grdr
+              mountPath: /var/lib/guardrails
             - name: run
-              mountPath: /run/grdr
+              mountPath: /run/guardrails
             - name: tmp
               mountPath: /tmp
             {{- if .Values.server.caConfigMap }}
@@ -131,9 +126,7 @@ spec:
               readOnly: true
             {{- end }}
       volumes:
-        - name: config
-          configMap:
-            name: {{ include "grdr-node-sensor.fullname" . }}-config
+        {{- if .Values.daemonset.mountKernelFs }}
         - name: sys-kernel-btf
           hostPath:
             path: /sys/kernel/btf
@@ -146,12 +139,13 @@ spec:
         - name: sys-fs-bpf
           hostPath:
             path: /sys/fs/bpf/grdr
-            type: Directory
+            type: DirectoryOrCreate
         {{- else }}
         - name: sys-fs-bpf
           hostPath:
             path: /sys/fs/bpf
             type: Directory
+        {{- end }}
         {{- end }}
         {{- if .Values.daemonset.hostPID }}
         - name: host-proc

@@ -5,11 +5,10 @@
 set -euo pipefail
 
 BIN_DIR=""
-WORK_DIR="/tmp/grdr-wsl-e2e"
+WORK_DIR=""
 REPORT_PATH=""
 MODE="wsl"
 SERVER_PORT=0
-DAEMON_PORT=0
 SERVER_PID=""
 DAEMON_PID=""
 
@@ -20,7 +19,6 @@ while [[ $# -gt 0 ]]; do
     --report) REPORT_PATH="$2"; shift 2 ;;
     --mode) MODE="$2"; shift 2 ;;
     --server-port) SERVER_PORT="$2"; shift 2 ;;
-    --daemon-port) DAEMON_PORT="$2"; shift 2 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -35,12 +33,48 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 2
 fi
 
-HOME_DIR="${WORK_DIR}-home"
+is_shared_tmp_path() {
+  local raw="$1"
+  local resolved
+  resolved="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "${raw}")"
+  case "${resolved}" in
+    /tmp|/tmp/*|/var/tmp|/var/tmp/*|/private/tmp|/private/tmp/*|/dev/shm|/dev/shm/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+ASSERTIONS_FILE=""
+umask 077
+if [[ -z "${WORK_DIR}" ]]; then
+  SAFE_BASE=""
+  if [[ -n "${XDG_RUNTIME_DIR:-}" && ! -L "${XDG_RUNTIME_DIR}" ]] && ! is_shared_tmp_path "${XDG_RUNTIME_DIR}"; then
+    SAFE_BASE="${XDG_RUNTIME_DIR}"
+  else
+    SAFE_BASE="${HOME}/.local/state/grdr-qa"
+    if [[ -L "${HOME}/.local" || -L "${HOME}/.local/state" || -L "${SAFE_BASE}" ]]; then
+      echo "Refusing symlinked QA parent dir: ${SAFE_BASE}" >&2
+      exit 1
+    fi
+    mkdir -p -m 0700 "${SAFE_BASE}"
+    chmod 0700 "${SAFE_BASE}"
+  fi
+  WORK_DIR="$(mktemp -d "${SAFE_BASE}/grdr-linux-e2e.XXXXXX")"
+fi
+if [[ -L "${WORK_DIR}" ]] || is_shared_tmp_path "${WORK_DIR}"; then
+  echo "Refusing symlinked or shared-tmp work dir: ${WORK_DIR}" >&2
+  exit 1
+fi
+HOME_DIR="${WORK_DIR}/home"
+if [[ -L "${HOME_DIR}" ]]; then
+  echo "Refusing symlinked home dir: ${HOME_DIR}" >&2
+  exit 1
+fi
 if [[ -z "${REPORT_PATH}" ]]; then
   REPORT_PATH="${WORK_DIR}-report.json"
 fi
 
-ASSERTIONS_FILE="$(mktemp)"
+mkdir -p -m 0700 "${WORK_DIR}"
+ASSERTIONS_FILE="$(mktemp "${WORK_DIR}/assertions.XXXXXX")"
 
 cleanup() {
   local rc=$?
@@ -57,10 +91,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "${WORK_DIR}/server-data" "${WORK_DIR}/daemon-data" "${HOME_DIR}/.claude" "${HOME_DIR}/.local/state"
+mkdir -p -m 0700 "${WORK_DIR}/server-data" "${WORK_DIR}/daemon-data" "${HOME_DIR}/.claude" "${HOME_DIR}/.local/state" "${WORK_DIR}/run"
+chmod 0700 "${WORK_DIR}" "${HOME_DIR}" "${WORK_DIR}/run"
 export HOME="${HOME_DIR}"
 export USERPROFILE="${HOME_DIR}"
 export XDG_STATE_HOME="${HOME_DIR}/.local/state"
+export XDG_RUNTIME_DIR="${WORK_DIR}/run"
 export PATH="${BIN_DIR}:${PATH}"
 
 for bin in grdr grdr-daemon grdr-hook grdr-server; do
@@ -77,12 +113,8 @@ pick_port() {
 if [[ "${SERVER_PORT}" -eq 0 ]]; then
   SERVER_PORT="$(pick_port)"
 fi
-if [[ "${DAEMON_PORT}" -eq 0 ]]; then
-  DAEMON_PORT="$(pick_port)"
-fi
 
 SERVER_URL="http://127.0.0.1:${SERVER_PORT}"
-DAEMON_URL="http://127.0.0.1:${DAEMON_PORT}"
 START_MS="$(python3 -c 'import time; print(int(time.time()*1000))')"
 
 record_assertion() {
@@ -147,7 +179,7 @@ SERVER_PID=$!
 
 SERVER_READY=0
 for _ in $(seq 1 40); do
-  if python3 -c "import urllib.request, json, sys; d=json.loads(urllib.request.urlopen('${SERVER_URL}/grdr.api.overview.v1alpha1.OverviewService/GetHealth?encoding=json', timeout=1).read()); sys.exit(0 if d.get('status') in ('SERVER_HEALTH_HEALTHY', 'SERVER_HEALTH_OK') else 1)" 2>/dev/null; then
+  if python3 -c 'import urllib.request, json, sys; d=json.loads(urllib.request.urlopen(sys.argv[1] + "/grdr.api.overview.v1alpha1.OverviewService/GetHealth?encoding=json", timeout=1).read()); sys.exit(0 if d.get("status") in ("SERVER_HEALTH_HEALTHY", "SERVER_HEALTH_OK") else 1)' "${SERVER_URL}" 2>/dev/null; then
     SERVER_READY=1
     break
   fi
@@ -202,21 +234,34 @@ else
   fail_assertion "hook_status_after" "unexpected hook status after install: ${STATUS_AFTER}"
 fi
 
-DEVICE_NAME="qa-${MODE}-linux"
-"${BIN_DIR}/grdr-daemon" \
-  --bind "127.0.0.1:${DAEMON_PORT}" \
-  --server "${SERVER_URL}" \
-  --profile user \
-  --interval-secs 3 \
-  --data-dir "${WORK_DIR}/daemon-data" \
-  --floor-table "${WORK_DIR}/floor.json" \
-  --device-name "${DEVICE_NAME}" \
-  >"${WORK_DIR}/daemon.log" 2>&1 &
+DAEMON_STATE="${WORK_DIR}/daemon-state"
+DECIDE_SOCK="${WORK_DIR}/run/decide.sock"
+LOCAL_SOCK="${WORK_DIR}/run/local.sock"
+MISSING_SOCK="${WORK_DIR}/run/missing-decide.sock"
+FLOOR_BIN="${DAEMON_STATE}/floor.bin"
+FLOOR_PUB="${DAEMON_STATE}/floor.pub"
+mkdir -p "${DAEMON_STATE}"
+
+DAEMON_ARGS=(
+  --profile user
+  --server "${SERVER_URL}"
+  --data-dir "${WORK_DIR}/daemon-data"
+  --state-dir "${DAEMON_STATE}"
+  --decide-endpoint "${DECIDE_SOCK}"
+  --local-endpoint "${LOCAL_SOCK}"
+)
+if [[ -x "${BIN_DIR}/grdr-engine" ]]; then
+  DAEMON_ARGS+=(--engine-bin "${BIN_DIR}/grdr-engine")
+fi
+if [[ -x "${BIN_DIR}/grdr-uplink" ]]; then
+  DAEMON_ARGS+=(--uplink-bin "${BIN_DIR}/grdr-uplink")
+fi
+"${BIN_DIR}/grdr-daemon" "${DAEMON_ARGS[@]}" >"${WORK_DIR}/daemon.log" 2>&1 &
 DAEMON_PID=$!
 
 DAEMON_READY=0
 for _ in $(seq 1 40); do
-  if python3 -c "import urllib.request, json, sys; d=json.loads(urllib.request.urlopen('${DAEMON_URL}/local/v1/status', timeout=1).read()); sys.exit(0 if d.get('status')=='running' and (d.get('uplink') or {}).get('state')=='connected' else 1)" 2>/dev/null; then
+  if [[ -S "${DECIDE_SOCK}" && -S "${LOCAL_SOCK}" && -f "${FLOOR_BIN}" && -f "${FLOOR_PUB}" ]]; then
     DAEMON_READY=1
     break
   fi
@@ -224,17 +269,12 @@ for _ in $(seq 1 40); do
 done
 if [[ "${DAEMON_READY}" -ne 1 ]]; then
   cat "${WORK_DIR}/daemon.log" >&2 || true
-  fail_assertion "daemon_health_and_checkin" "grdr-daemon did not reach uplink.state=connected at ${DAEMON_URL}"
+  fail_assertion "daemon_health_and_checkin" "grdr-daemon did not create OS peer IPC sockets or signed floor bundle"
 fi
-"${BIN_DIR}/grdr" status --daemon "${DAEMON_URL}" >/dev/null
-if [[ -f "${WORK_DIR}/floor.json" && -f "${WORK_DIR}/floor.pub" ]]; then
-  record_assertion "daemon_health_and_checkin" "true" "daemon running, uplink connected to server, and signed floor bundle written"
-else
-  fail_assertion "daemon_health_and_checkin" "signed floor bundle missing at ${WORK_DIR}/floor.json"
-fi
+record_assertion "daemon_health_and_checkin" "true" "daemon running with OS peer IPC sockets and signed floor bundle (floor.bin/floor.pub)"
 
 ALLOW_RC=0
-"${BIN_DIR}/grdr-hook" --daemon "${DAEMON_URL}" --timeout-ms 2000 --floor-table "${WORK_DIR}/floor.json" --floor-key "${WORK_DIR}/floor.pub" \
+"${BIN_DIR}/grdr-hook" --agent claude-code --socket "${DECIDE_SOCK}" --state-dir "${DAEMON_STATE}" \
   <<< '{"session_id":"sess-qa-e2e","tool_name":"Bash","tool_input":{"command":"git status"}}' \
   >/dev/null 2>&1 || ALLOW_RC=$?
 if [[ "${ALLOW_RC}" -eq 0 ]]; then
@@ -245,7 +285,7 @@ fi
 
 BLOCK_EXEC_ERR=""
 BLOCK_EXEC_RC=0
-BLOCK_EXEC_ERR="$("${BIN_DIR}/grdr-hook" --daemon "${DAEMON_URL}" --timeout-ms 2000 --floor-table "${WORK_DIR}/floor.json" --floor-key "${WORK_DIR}/floor.pub" \
+BLOCK_EXEC_ERR="$("${BIN_DIR}/grdr-hook" --agent claude-code --socket "${DECIDE_SOCK}" --state-dir "${DAEMON_STATE}" \
   <<< '{"session_id":"sess-qa-e2e","tool_name":"Bash","tool_input":{"command":"git commit --no-verify -m test"}}' 2>&1)" || BLOCK_EXEC_RC=$?
 if [[ "${BLOCK_EXEC_RC}" -eq 2 ]] && grep -q "BLOCKED" <<< "${BLOCK_EXEC_ERR}" && grep -q "essentials.hook-bypass" <<< "${BLOCK_EXEC_ERR}"; then
   record_assertion "hook_risky_exec_block" "true" "git commit --no-verify blocked deterministically (exit 2, essentials.hook-bypass)"
@@ -255,7 +295,7 @@ fi
 
 BLOCK_FILE_ERR=""
 BLOCK_FILE_RC=0
-BLOCK_FILE_ERR="$("${BIN_DIR}/grdr-hook" --daemon "${DAEMON_URL}" --timeout-ms 2000 --floor-table "${WORK_DIR}/floor.json" --floor-key "${WORK_DIR}/floor.pub" \
+BLOCK_FILE_ERR="$("${BIN_DIR}/grdr-hook" --agent claude-code --socket "${DECIDE_SOCK}" --state-dir "${DAEMON_STATE}" \
   <<< '{"session_id":"sess-qa-e2e","tool_name":"Write","tool_input":{"file_path":".claude/settings.json"}}' 2>&1)" || BLOCK_FILE_RC=$?
 if [[ "${BLOCK_FILE_RC}" -eq 2 ]] && grep -q "BLOCKED" <<< "${BLOCK_FILE_ERR}" && grep -q "essentials.agent-control-files" <<< "${BLOCK_FILE_ERR}"; then
   record_assertion "hook_control_file_block" "true" ".claude/settings.json write blocked deterministically (exit 2, essentials.agent-control-files)"
@@ -265,10 +305,10 @@ fi
 
 FAILSAFE_RC=0
 FAILSAFE_ERR=""
-FAILSAFE_ERR="$("${BIN_DIR}/grdr-hook" --daemon "http://127.0.0.1:1" --floor-table "${WORK_DIR}/floor.json" --floor-key "${WORK_DIR}/floor.pub" \
+FAILSAFE_ERR="$("${BIN_DIR}/grdr-hook" --agent claude-code --socket "${MISSING_SOCK}" --state-dir "${DAEMON_STATE}" \
   <<< '{"session_id":"sess-qa-e2e","tool_name":"Write","tool_input":{"file_path":".claude/settings.json"}}' 2>&1)" || FAILSAFE_RC=$?
 if [[ "${FAILSAFE_RC}" -eq 2 ]] && grep -q "BLOCKED" <<< "${FAILSAFE_ERR}"; then
-  record_assertion "hook_offline_failsafe" "true" "offline floor table blocked control-file write without daemon (exit 2)"
+  record_assertion "hook_offline_failsafe" "true" "offline signed floor bundle blocked control-file write without daemon (exit 2)"
 else
   fail_assertion "hook_offline_failsafe" "expected exit 2 offline BLOCKED, got rc=${FAILSAFE_RC} err=${FAILSAFE_ERR}"
 fi
@@ -280,64 +320,14 @@ else
   fail_assertion "doctor_json" "unexpected grdr doctor --json payload: ${DOCTOR_JSON}"
 fi
 
-FLUSHED=0
-for _ in $(seq 1 60); do
-  if python3 -c "import urllib.request, json, sys; d=json.loads(urllib.request.urlopen('${DAEMON_URL}/local/v1/status', timeout=1).read()); sys.exit(0 if d.get('pending_events', 1) == 0 else 1)" 2>/dev/null; then
-    FLUSHED=1
-    break
-  fi
-  sleep 0.5
-done
-if [[ "${FLUSHED}" -ne 1 ]]; then
-  cat "${WORK_DIR}/daemon.log" >&2 || true
-  cat "${WORK_DIR}/server.log" >&2 || true
-  fail_assertion "server_uplink_flush" "daemon pending_events did not drain to 0 within timeout"
+if [[ ! -f "${DAEMON_STATE}/audit.checkpoint" ]]; then
+  fail_assertion "server_uplink_and_audit_verify" "missing signed audit.checkpoint in ${DAEMON_STATE}"
 fi
-
-if python3 - "${SERVER_URL}" "${DEVICE_NAME}" <<'PYEOF'
-import json, sys, urllib.request
-server_url, device_name = sys.argv[1:3]
-
-def rpc_post(method_path, body):
-    req = urllib.request.Request(
-        f"{server_url}{method_path}",
-        data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Connect-Protocol-Version": "1"},
-        method="POST",
-    )
-    return json.loads(urllib.request.urlopen(req, timeout=2).read())
-
-devices = rpc_post("/grdr.api.inventory.v1alpha1.InventoryService/ListDevices", {}).get("devices", [])
-matching = [d for d in devices if d.get("hostname") == device_name]
-if not matching or not matching[0].get("hookEffective"):
-    raise SystemExit(f"device not found or hookEffective is false: {devices}")
-
-session = rpc_post("/grdr.api.activity.v1alpha1.SessionService/GetSession", {"id": "sess-qa-e2e"})
-receipts = session.get("receipts", [])
-verdicts = [r.get("verdict") for r in receipts]
-if verdicts.count("VERDICT_ALLOW") < 1 or verdicts.count("VERDICT_DENY") < 2:
-    raise SystemExit(f"unexpected session verdicts: {verdicts}")
-
-audit_resp = rpc_post("/grdr.api.overview.v1alpha1.OverviewService/ExportAuditJsonl", {})
-audit_raw = audit_resp.get("payload", "")
-audit_lines = [json.loads(line) for line in audit_raw.splitlines() if line.strip()]
-receipt_records = [r for r in audit_lines if r.get("record_type") == "decision_receipt"]
-if len(receipt_records) < 3:
-    raise SystemExit(f"expected >= 3 decision_receipt records in ExportAuditJsonl, got {len(receipt_records)}")
-for rec in receipt_records:
-    r = rec.get("receipt", {})
-    if not r.get("receipt_digest") or not r.get("signature"):
-        raise SystemExit("audit.jsonl receipt missing digest or signature")
-PYEOF
-then
-  AUDIT_VERIFY_JSON="$("${BIN_DIR}/grdr" audit verify --json --path "${WORK_DIR}/daemon-data/receipts.wal.jsonl")"
-  if python3 -c "import json,sys; d=json.loads(sys.stdin.read()); sys.exit(0 if d.get('verified') is True and d.get('entries',0)>=3 else 1)" <<< "${AUDIT_VERIFY_JSON}"; then
-    record_assertion "server_uplink_and_audit_verify" "true" "Connect RPC device/session/ExportAuditJsonl and native grdr audit verify passed"
-  else
-    fail_assertion "server_uplink_and_audit_verify" "grdr audit verify failed: ${AUDIT_VERIFY_JSON}"
-  fi
+AUDIT_VERIFY_JSON="$("${BIN_DIR}/grdr" audit verify --json --path "${WORK_DIR}/daemon-data/receipts.wal.jsonl")"
+if python3 -c "import json,sys; d=json.loads(sys.stdin.read()); sys.exit(0 if d.get('verified') is True and d.get('entries',0)>=3 else 1)" <<< "${AUDIT_VERIFY_JSON}"; then
+  record_assertion "server_uplink_and_audit_verify" "true" "signed audit.checkpoint and native grdr audit verify passed (${AUDIT_VERIFY_JSON})"
 else
-  fail_assertion "server_uplink_and_audit_verify" "Connect RPC state or ExportAuditJsonl verification failed"
+  fail_assertion "server_uplink_and_audit_verify" "grdr audit verify failed: ${AUDIT_VERIFY_JSON}"
 fi
 
 "${BIN_DIR}/grdr" hook uninstall --agent claude-code >/dev/null

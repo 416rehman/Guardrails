@@ -1,0 +1,27 @@
+{{- if .Values.metrics.enabled }}
+# D-70: Metrics exposes an isolated internal ClusterIP Service separate from public API and Operator traffic.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "grdr-server.fullname" . }}-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "grdr-server.labels" . | nindent 4 }}
+    grdr.internal/plane: metrics
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: {{ .Values.metrics.port | quote }}
+    prometheus.io/path: "/metrics"
+    {{- with .Values.metrics.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  type: {{ .Values.metrics.service.type }}
+  selector:
+    {{- include "grdr-server.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.metrics.service.port }}
+      targetPort: metrics
+      protocol: TCP
+{{- end }}

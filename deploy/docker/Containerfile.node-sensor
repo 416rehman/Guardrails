@@ -28,19 +28,43 @@ RUN case "${TARGETARCH}" in \
       *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
     && rustup target add "${MUSL_TARGET}" \
-    && cargo build --release --locked --target "${MUSL_TARGET}" -p grdr-daemon -p grdr-engine -p grdr-hook -p grdr \
-    && cargo check --manifest-path bpf/grdr-sensor-linux-bpf/Cargo.toml --locked \
+    && cargo build --release --locked --target "${MUSL_TARGET}" \
+         -p grdr-daemon \
+         -p grdr-engine \
+         -p grdr-hook \
+         -p grdr \
+         -p grdr-uplink \
+         -p grdr-updater \
+         -p grdr-proxy \
+         -p grdr-run \
+         -p grdr-mcp \
+         -p grdr-acp \
+    && cargo build --manifest-path bpf/grdr-sensor-linux-bpf/Cargo.toml --release --locked --target "${MUSL_TARGET}" \
     && mkdir -p \
          /rootfs/usr/local/bin \
-         /rootfs/var/lib/grdr \
-         /rootfs/run/grdr \
+         /rootfs/usr/libexec/grdr \
+         /rootfs/etc/ssl/certs \
+         /rootfs/var/lib/guardrails/data \
+         /rootfs/var/lib/guardrails/state \
+         /rootfs/var/lib/guardrails/run \
+         /rootfs/run/guardrails \
          /rootfs/tmp \
     && install -m 0755 "target/${MUSL_TARGET}/release/grdr-daemon" /rootfs/usr/local/bin/grdr-daemon \
     && install -m 0755 "target/${MUSL_TARGET}/release/grdr-engine" /rootfs/usr/local/bin/grdr-engine \
+    && install -m 0755 "target/${MUSL_TARGET}/release/grdr-engine" /rootfs/usr/libexec/grdr/grdr-engine \
     && install -m 0755 "target/${MUSL_TARGET}/release/grdr-hook" /rootfs/usr/local/bin/grdr-hook \
     && install -m 0755 "target/${MUSL_TARGET}/release/grdr" /rootfs/usr/local/bin/grdr \
-    && chown -R 65532:65532 /rootfs/var/lib/grdr /rootfs/run/grdr \
-    && chmod 0750 /rootfs/var/lib/grdr /rootfs/run/grdr \
+    && install -m 0755 "target/${MUSL_TARGET}/release/grdr-uplink" /rootfs/usr/local/bin/grdr-uplink \
+    && install -m 0755 "target/${MUSL_TARGET}/release/grdr-updater" /rootfs/usr/local/bin/grdr-updater \
+    && install -m 0755 "target/${MUSL_TARGET}/release/grdr-proxy" /rootfs/usr/local/bin/grdr-proxy \
+    && install -m 0755 "target/${MUSL_TARGET}/release/grdr-run" /rootfs/usr/local/bin/grdr-run \
+    && install -m 0755 "target/${MUSL_TARGET}/release/grdr-mcp" /rootfs/usr/local/bin/grdr-mcp \
+    && install -m 0755 "target/${MUSL_TARGET}/release/grdr-acp" /rootfs/usr/local/bin/grdr-acp \
+    && cp /etc/ssl/certs/ca-certificates.crt /rootfs/etc/ssl/certs/ca-certificates.crt \
+    && chown -R 65532:65532 /rootfs/var/lib/guardrails \
+    && chown 0:0 /rootfs/run/guardrails \
+    && chmod 0750 /rootfs/var/lib/guardrails /rootfs/var/lib/guardrails/data /rootfs/var/lib/guardrails/state \
+    && chmod 0755 /rootfs/var/lib/guardrails/run /rootfs/run/guardrails \
     && chmod 1777 /rootfs/tmp
 
 FROM ${DISTROLESS_STATIC} AS runtime
@@ -51,10 +75,17 @@ LABEL org.opencontainers.image.title="grdr-node-sensor" \
       org.opencontainers.image.source="https://github.com/416rehman/Guardrails"
 
 COPY --from=rust-builder /rootfs/usr/local/bin /usr/local/bin
-COPY --from=rust-builder --chown=65532:65532 /rootfs/var/lib/grdr /var/lib/grdr
-COPY --from=rust-builder --chown=65532:65532 /rootfs/run/grdr /run/grdr
+COPY --from=rust-builder /rootfs/usr/libexec/grdr /usr/libexec/grdr
+COPY --from=rust-builder /rootfs/etc/ssl/certs /etc/ssl/certs
+COPY --from=rust-builder --chown=65532:65532 /rootfs/var/lib/guardrails /var/lib/guardrails
+COPY --from=rust-builder --chown=0:0 /rootfs/run/guardrails /run/guardrails
 
 USER 65532:65532
-ENV GRDR_DAEMON_DATA_DIR=/var/lib/grdr
+ENV GRDR_DATA_DIR=/var/lib/guardrails/data \
+    GRDR_STATE_DIR=/var/lib/guardrails/state \
+    XDG_RUNTIME_DIR=/var/lib/guardrails/run \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
 ENTRYPOINT ["/usr/local/bin/grdr-daemon"]
+# Sidecar container defaults to unprivileged user profile; DaemonSet overrides to protected as UID 0.
+CMD ["--profile", "user", "--data-dir", "/var/lib/guardrails/data", "--state-dir", "/var/lib/guardrails/state"]

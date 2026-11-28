@@ -11,9 +11,13 @@
       DowngradeErrorMessage="A newer version of Guardrails ADR is already installed."
       Schedule="afterInstallInitialize" />
 
+    <Property Id="WINDOWS_EDITION" Secure="yes">
+      <RegistrySearch Id="WindowsEditionSearch" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion" Name="EditionID" Type="raw" />
+    </Property>
+
     <Launch
-      Condition="NOT (TerminalServer AND NOT RemoteAdminTS)"
-      Message="Guardrails ADR Windows sensor does not support multi-session Terminal Server or AVD images." />
+      Condition="Installed OR (VersionNT &gt;= 603 AND NOT (TerminalServer AND NOT RemoteAdminTS) AND NOT (WINDOWS_EDITION = &quot;ServerRdsh&quot;))"
+      Message="Guardrails ADR Windows sensor requires Windows 10/Server 2016+ single-session workstation or RemoteAdmin host; multi-session Terminal Server/RDSH/AVD (ServerRdsh) is unsupported." />
 
     <Property Id="GRDR_INSTALL_FILE" Hidden="yes" />
     <Property Id="GRDR_UPDATE_AUTHORITY" Value="self" Hidden="yes" />
@@ -25,21 +29,53 @@
     </StandardDirectory>
 
     <StandardDirectory Id="CommonAppDataFolder">
-      <Directory Id="DataDir" Name="grdr" />
+      <Directory Id="DataDirRoot" Name="Guardrails">
+        <Directory Id="DataDir" Name="data">
+          <Directory Id="StateDir" Name="state" />
+        </Directory>
+      </Directory>
     </StandardDirectory>
 
     <ComponentGroup Id="CoreComponents" Directory="BinDir">
+      <Component Id="InstallDirSecurity" Guid="C81B09B3-A1E2-4F4B-9C4D-102938475608" Directory="INSTALLDIR">
+        <CreateFolder>
+          <Permission User="SYSTEM" GenericAll="yes" />
+          <Permission User="Administrators" GenericAll="yes" />
+          <Permission User="Users" GenericRead="yes" GenericExecute="yes" />
+        </CreateFolder>
+      </Component>
+
+      <Component Id="DataRootSecurity" Guid="C81B09B3-A1E2-4F4B-9C4D-102938475609" Directory="DataDirRoot">
+        <CreateFolder>
+          <Permission User="SYSTEM" GenericAll="yes" />
+          <Permission User="Administrators" GenericAll="yes" />
+          <Permission User="NT SERVICE\grdr-daemon" GenericAll="yes" />
+        </CreateFolder>
+      </Component>
+
       <Component Id="DataDirSecurity" Guid="C81B09B3-A1E2-4F4B-9C4D-102938475600" Directory="DataDir">
         <CreateFolder>
-          <Permission User="Administrators" GenericAll="yes" />
           <Permission User="SYSTEM" GenericAll="yes" />
-          <Permission User="NT SERVICE\grdr-engine" GenericRead="yes" GenericExecute="yes" />
-          <Permission User="NT SERVICE\grdr-uplink" GenericRead="yes" GenericExecute="yes" />
+          <Permission User="Administrators" GenericAll="yes" />
+          <Permission User="NT SERVICE\grdr-daemon" GenericAll="yes" />
+          <Permission User="NT SERVICE\grdr-engine" GenericRead="yes" />
+          <Permission User="NT SERVICE\grdr-uplink" GenericRead="yes" />
+          <Permission User="NT SERVICE\grdr-proxy" GenericRead="yes" />
         </CreateFolder>
         <RegistryKey Root="HKLM" Key="SOFTWARE\GuardrailsADR">
           <RegistryValue Name="DataDir" Type="string" Value="[DataDir]" />
           <RegistryValue Name="UpdateAuthority" Type="string" Value="[GRDR_UPDATE_AUTHORITY]" />
         </RegistryKey>
+      </Component>
+
+      <Component Id="StateDirSecurity" Guid="C81B09B3-A1E2-4F4B-9C4D-10293847560A" Directory="StateDir">
+        <CreateFolder>
+          <Permission User="SYSTEM" GenericAll="yes" />
+          <Permission User="Administrators" GenericAll="yes" />
+          <Permission User="NT SERVICE\grdr-daemon" GenericAll="yes" />
+          <Permission User="NT SERVICE\grdr-engine" GenericRead="yes" />
+          <Permission User="NT SERVICE\grdr-uplink" GenericRead="yes" />
+        </CreateFolder>
       </Component>
 
       <Component Id="CoreDaemon" Guid="C81B09B3-A1E2-4F4B-9C4D-102938475601">
@@ -51,9 +87,13 @@
           Description="Core endpoint decision broker and sensor coordinator."
           Type="ownProcess"
           Start="auto"
-          Account="LocalSystem"
-          Arguments="--profile protected --data-dir &quot;[DataDir]&quot;"
-          ErrorControl="normal" />
+          Account="NT SERVICE\grdr-daemon"
+          Arguments="--profile protected"
+          ErrorControl="normal">
+          <Permission User="SYSTEM" GenericAll="yes" />
+          <Permission User="Administrators" GenericAll="yes" />
+          <Permission User="NT SERVICE\grdr-daemon" GenericRead="yes" />
+        </ServiceInstall>
         <ServiceControl
           Id="GrdrDaemonCtrl"
           Name="grdr-daemon"
@@ -69,11 +109,22 @@
           Id="GrdrEngineSvc"
           Name="grdr-engine"
           DisplayName="Guardrails ADR Rule Engine"
+          Description="Sandboxed endpoint detection and policy rule worker."
           Type="ownProcess"
           Start="demand"
           Account="NT SERVICE\grdr-engine"
-          ErrorControl="normal" />
-        <ServiceControl Id="GrdrEngineCtrl" Name="grdr-engine" Stop="both" Remove="uninstall" Wait="yes" />
+          Arguments="--device-id local-endpoint"
+          ErrorControl="normal">
+          <Permission User="SYSTEM" GenericAll="yes" />
+          <Permission User="Administrators" GenericAll="yes" />
+          <Permission User="NT SERVICE\grdr-daemon" GenericAll="yes" />
+        </ServiceInstall>
+        <ServiceControl
+          Id="GrdrEngineCtrl"
+          Name="grdr-engine"
+          Stop="both"
+          Remove="uninstall"
+          Wait="yes" />
       </Component>
 
       <Component Id="CoreUplink" Guid="C81B09B3-A1E2-4F4B-9C4D-102938475603">
@@ -82,16 +133,33 @@
           Id="GrdrUplinkSvc"
           Name="grdr-uplink"
           DisplayName="Guardrails ADR Fleet Uplink"
+          Description="Isolated fleet uplink and bundle sync worker."
           Type="ownProcess"
           Start="demand"
           Account="NT SERVICE\grdr-uplink"
-          ErrorControl="normal" />
-        <ServiceControl Id="GrdrUplinkCtrl" Name="grdr-uplink" Stop="both" Remove="uninstall" Wait="yes" />
+          Arguments="daemon-worker"
+          ErrorControl="normal">
+          <Permission User="SYSTEM" GenericAll="yes" />
+          <Permission User="Administrators" GenericAll="yes" />
+          <Permission User="NT SERVICE\grdr-daemon" GenericAll="yes" />
+        </ServiceInstall>
+        <ServiceControl
+          Id="GrdrUplinkCtrl"
+          Name="grdr-uplink"
+          Stop="both"
+          Remove="uninstall"
+          Wait="yes" />
       </Component>
 
       <Component Id="CoreCliAndHook" Guid="C81B09B3-A1E2-4F4B-9C4D-102938475604">
         <File Id="GrdrCliExe" Source="$(var.BinDir)\grdr.exe" KeyPath="yes" />
         <File Id="GrdrHookExe" Source="$(var.BinDir)\grdr-hook.exe" />
+        <File Id="GrdrUpdaterExe" Source="$(var.BinDir)\grdr-updater.exe" />
+        <File Id="GrdrRunExe" Source="$(var.BinDir)\grdr-run.exe" />
+        <File Id="GrdrMcpExe" Source="$(var.BinDir)\grdr-mcp.exe" />
+        <File Id="GrdrAcpExe" Source="$(var.BinDir)\grdr-acp.exe" />
+        <File Id="GrdrApproveExe" Source="$(var.BinDir)\grdr-approve.exe" />
+        <File Id="GrdrInferExe" Source="$(var.BinDir)\grdr-infer.exe" />
         <File Id="GrdrWslDll" Source="$(var.BinDir)\grdr-wsl.dll" />
         <RegistryKey Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Lxss\Plugins\GuardrailsADR">
           <RegistryValue Type="string" Value="[BinDir]grdr-wsl.dll" />
@@ -106,11 +174,22 @@
           Id="GrdrProxySvc"
           Name="grdr-proxy"
           DisplayName="Guardrails ADR Local Proxy"
+          Description="Explicit local LLM and MCP inspection proxy."
           Type="ownProcess"
           Start="demand"
           Account="NT SERVICE\grdr-proxy"
-          ErrorControl="normal" />
-        <ServiceControl Id="GrdrProxyCtrl" Name="grdr-proxy" Stop="both" Remove="uninstall" Wait="yes" />
+          Arguments="--protected"
+          ErrorControl="normal">
+          <Permission User="SYSTEM" GenericAll="yes" />
+          <Permission User="Administrators" GenericAll="yes" />
+          <Permission User="NT SERVICE\grdr-daemon" GenericAll="yes" />
+        </ServiceInstall>
+        <ServiceControl
+          Id="GrdrProxyCtrl"
+          Name="grdr-proxy"
+          Stop="both"
+          Remove="uninstall"
+          Wait="yes" />
       </Component>
     </ComponentGroup>
 

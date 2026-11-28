@@ -6,18 +6,20 @@ Requires=grdr-decide.socket grdr-local.socket
 
 [Service]
 Type=simple
-User=grdr
-Group=grdr
+User=root
+Group=root
 # Absolute binary invoked via /usr/bin/env (no PATH search) so offline systemd-analyze verify passes.
-ExecStart=/usr/bin/env /usr/bin/grdr-daemon --profile protected --data-dir /var/lib/grdr --bind 127.0.0.1:8788
+ExecStart=/usr/bin/env /usr/bin/grdr-daemon --profile protected
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=2s
 TimeoutStopSec=10s
-StateDirectory=grdr
-RuntimeDirectory=grdr
-RuntimeDirectoryMode=0750
+StateDirectory=guardrails
+StateDirectoryMode=0750
+RuntimeDirectory=guardrails
+RuntimeDirectoryMode=0755
 ConfigurationDirectory=grdr
+ConfigurationDirectoryMode=0750
 NoNewPrivileges=true
 CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_SYS_RESOURCE
 AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_RESOURCE
@@ -30,7 +32,7 @@ ProtectControlGroups=true
 LockPersonality=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
-ReadWritePaths=/var/lib/grdr /run/grdr
+ReadWritePaths=/var/lib/guardrails /run/guardrails
 PrivateTmp=true
 LimitNOFILE=65536
 MemoryHigh=40M

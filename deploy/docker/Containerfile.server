@@ -48,19 +48,22 @@ RUN case "${TARGETARCH}" in \
          /rootfs/usr/libexec/grdr \
          /rootfs/usr/lib/grdr/engines \
          /rootfs/usr/share/grdr/web \
+         /rootfs/usr/share/grdr/operator-web \
          /rootfs/etc/ssl/certs \
          /rootfs/var/lib/grdr \
+         /rootfs/var/lib/grdr-objects \
          /rootfs/tmp \
     && install -m 0755 "target/${MUSL_TARGET}/release/grdr-server" /rootfs/usr/local/bin/grdr-server \
     && install -m 0755 "target/${MUSL_TARGET}/release/grdr" /rootfs/usr/local/bin/grdr \
     && cp /etc/ssl/certs/ca-certificates.crt /rootfs/etc/ssl/certs/ca-certificates.crt \
     && printf 'grdr:x:65532:65532:Guardrails ADR:/var/lib/grdr:/sbin/nologin\n' > /rootfs/etc/passwd \
     && printf 'grdr:x:65532:\n' > /rootfs/etc/group \
-    && chown -R 65532:65532 /rootfs/var/lib/grdr \
-    && chmod 0750 /rootfs/var/lib/grdr \
+    && chown -R 65532:65532 /rootfs/var/lib/grdr /rootfs/var/lib/grdr-objects \
+    && chmod 0750 /rootfs/var/lib/grdr /rootfs/var/lib/grdr-objects \
     && chmod 1777 /rootfs/tmp
 
-COPY --from=web-builder /src/web/apps/console/dist /rootfs/usr/share/grdr/web
+COPY --from=web-builder /src/web/dist /rootfs/usr/share/grdr/web
+COPY --from=web-builder /src/web/dist-operator /rootfs/usr/share/grdr/operator-web
 
 FROM scratch AS runtime
 LABEL org.opencontainers.image.title="grdr-server" \
@@ -77,8 +80,10 @@ VOLUME ["/var/lib/grdr"]
 
 ENV GRDR_DATA_DIR=/var/lib/grdr \
     GRDR_WEB_DIR=/usr/share/grdr/web \
+    GRDR_OPERATOR_WEB_DIR=/usr/share/grdr/operator-web \
     GRDR_SERVER_BIND=0.0.0.0:8787 \
+    GRDR_OPERATOR_BIND=0.0.0.0:44444 \
     SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
 ENTRYPOINT ["/usr/local/bin/grdr-server"]
-CMD ["--bind", "0.0.0.0:8787", "--data-dir", "/var/lib/grdr", "--web-dir", "/usr/share/grdr/web"]
+CMD ["--bind", "0.0.0.0:8787", "--operator-bind", "0.0.0.0:44444", "--data-dir", "/var/lib/grdr", "--web-dir", "/usr/share/grdr/web", "--operator-web-dir", "/usr/share/grdr/operator-web"]

@@ -2,6 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <!-- Replace __APPLE_TEAM_ID__ with your Apple Developer Team ID before MDM enrollment. -->
   <key>PayloadContent</key>
   <array>
     <dict>
@@ -17,8 +18,6 @@
       <integer>1</integer>
       <key>UpdateAuthority</key>
       <string>managed</string>
-      <key>EnrolServerUrl</key>
-      <string>https://grdr.example.invalid</string>
     </dict>
     <dict>
       <key>PayloadDisplayName</key>
@@ -40,6 +39,113 @@
           <string>com.guardrailshq.grdr</string>
         </dict>
       </array>
+    </dict>
+    <dict>
+      <key>PayloadDisplayName</key>
+      <string>Guardrails ADR System Extensions</string>
+      <key>PayloadIdentifier</key>
+      <string>com.guardrailshq.grdr.sysext</string>
+      <key>PayloadType</key>
+      <string>com.apple.system-extension-policy</string>
+      <key>PayloadUUID</key>
+      <string>11E4F9D2-72B4-4E53-9A41-68B8A201E903</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+      <key>AllowUserOverrides</key>
+      <false/>
+      <key>AllowedSystemExtensionTypes</key>
+      <dict>
+        <key>__APPLE_TEAM_ID__</key>
+        <array>
+          <string>EndpointSecurityExtension</string>
+          <string>NetworkExtension</string>
+        </array>
+      </dict>
+      <key>AllowedSystemExtensions</key>
+      <dict>
+        <key>__APPLE_TEAM_ID__</key>
+        <array>
+          <string>com.guardrailshq.grdr.esext</string>
+          <string>com.guardrailshq.grdr.netext</string>
+        </array>
+      </dict>
+    </dict>
+    <dict>
+      <key>PayloadDisplayName</key>
+      <string>Guardrails ADR Content Filter</string>
+      <key>PayloadIdentifier</key>
+      <string>com.guardrailshq.grdr.content-filter</string>
+      <key>PayloadType</key>
+      <string>com.apple.webcontent-filter</string>
+      <key>PayloadUUID</key>
+      <string>11E4F9D2-72B4-4E53-9A41-68B8A201E904</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+      <key>UserDefinedName</key>
+      <string>Guardrails ADR Content Filter</string>
+      <key>FilterType</key>
+      <string>Plugin</string>
+      <key>PluginBundleID</key>
+      <string>com.guardrailshq.grdr.desktop</string>
+      <key>FilterDataProviderBundleIdentifier</key>
+      <string>com.guardrailshq.grdr.netext</string>
+      <key>FilterSockets</key>
+      <true/>
+      <key>FilterPackets</key>
+      <false/>
+      <key>FilterGrade</key>
+      <string>inspector</string>
+    </dict>
+    <dict>
+      <key>PayloadDisplayName</key>
+      <string>Guardrails ADR Privacy Preferences (TCC)</string>
+      <key>PayloadIdentifier</key>
+      <string>com.guardrailshq.grdr.tcc</string>
+      <key>PayloadType</key>
+      <string>com.apple.TCC.configuration-profile-policy</string>
+      <key>PayloadUUID</key>
+      <string>11E4F9D2-72B4-4E53-9A41-68B8A201E907</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+      <key>Services</key>
+      <dict>
+        <key>SystemPolicyAllFiles</key>
+        <array>
+          <dict>
+            <key>IdentifierType</key>
+            <string>path</string>
+            <key>Identifier</key>
+            <string>/Library/Application Support/grdr/bin/grdr-daemon</string>
+            <key>CodeRequirement</key>
+            <string>anchor apple generic and identifier "com.guardrailshq.grdr.daemon" and certificate leaf[subject.OU] = "__APPLE_TEAM_ID__"</string>
+            <key>Allowed</key>
+            <true/>
+          </dict>
+          <dict>
+            <key>IdentifierType</key>
+            <string>bundleID</string>
+            <key>Identifier</key>
+            <string>com.guardrailshq.grdr.esext</string>
+            <key>CodeRequirement</key>
+            <string>anchor apple generic and identifier "com.guardrailshq.grdr.esext" and certificate leaf[subject.OU] = "__APPLE_TEAM_ID__"</string>
+            <key>Allowed</key>
+            <true/>
+          </dict>
+        </array>
+        <key>SystemPolicySysAdminFiles</key>
+        <array>
+          <dict>
+            <key>IdentifierType</key>
+            <string>path</string>
+            <key>Identifier</key>
+            <string>/Library/Application Support/grdr/bin/grdr-daemon</string>
+            <key>CodeRequirement</key>
+            <string>anchor apple generic and identifier "com.guardrailshq.grdr.daemon" and certificate leaf[subject.OU] = "__APPLE_TEAM_ID__"</string>
+            <key>Allowed</key>
+            <true/>
+          </dict>
+        </array>
+      </dict>
     </dict>
   </array>
   <key>PayloadDisplayName</key>

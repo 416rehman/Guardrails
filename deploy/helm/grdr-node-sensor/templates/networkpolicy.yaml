@@ -1,4 +1,5 @@
 {{- if .Values.networkPolicy.enabled }}
+{{- include "grdr-node-sensor.validate" . -}}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -40,10 +41,6 @@ spec:
         {{- if . }}
         - ipBlock:
             cidr: {{ . | quote }}
-            {{- if eq . "169.0.0.0/8" }}
-            except:
-              - "169.254.0.0/16"
-            {{- end }}
         {{- end }}
         {{- end }}
     {{- end }}
