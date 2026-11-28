@@ -92,14 +92,13 @@ pub(crate) fn encode_connect_with_auth(
             map.insert("jwt".into(), serde_json::Value::String(jwt.clone()));
         }
         if let Some(ref seed) = auth_cfg.nkey_seed {
-            let nonce = info.nonce.as_deref().unwrap_or("");
-            if info.auth_required == Some(true) && nonce.is_empty() {
+            let Some(nonce) = info.nonce.as_deref().filter(|value| !value.is_empty()) else {
                 return Err(CodedError::new(
                     CODE_NATS_WIRE,
                     "NATS server requires NKey authentication but INFO omitted nonce challenge.",
                     "Verify NATS server NKey configuration.",
                 ));
-            }
+            };
             let signed = sign_nonce_with_seed(seed, nonce.as_bytes())?;
             map.insert("nkey".into(), serde_json::Value::String(signed.public_nkey));
             map.insert(

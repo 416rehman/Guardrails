@@ -267,20 +267,6 @@ fn build_pki(dns: &str, ip: IpAddr, expired: bool) -> Result<CertBundle, String>
     })
 }
 
-fn pbkdf2_test(pw: &[u8], salt: &[u8], iters: u32) -> [u8; 32] {
-    let mut blk = salt.to_vec();
-    blk.extend_from_slice(&1u32.to_be_bytes());
-    let mut u = hmac_sha256(pw, &blk);
-    let mut out = u;
-    for _ in 1..iters {
-        u = hmac_sha256(pw, &u);
-        for (a, b) in out.iter_mut().zip(u.iter()) {
-            *a ^= *b;
-        }
-    }
-    out
-}
-
 fn read_pg_startup(sock: &mut dyn Read) -> Option<Vec<u8>> {
     let mut len_buf = [0u8; 4];
     sock.read_exact(&mut len_buf).ok()?;
@@ -432,7 +418,10 @@ fn serve_pg_session(
                 return;
             };
             let server_nonce = format!("{client_nonce}srvrandom9876");
-            let salt = b"guardrails-salt-16";
+            let mut salt = [0u8; 16];
+            if grdr_crypto::fill_random(&mut salt).is_err() {
+                return;
+            }
             let salt_b64 = B64.encode(salt);
             let server_first = format!("r={server_nonce},s={salt_b64},i={iterations}");
             send_auth_frame(stream.as_mut(), 11, server_first.as_bytes());
@@ -460,8 +449,12 @@ fn serve_pg_session(
                 }
             }
             let auth_msg = format!("{client_first_bare},{server_first},{without_proof}");
-            let salted = pbkdf2_test(password.as_bytes(), salt, iterations);
-            let client_key = hmac_sha256(&salted, b"Client Key");
+            let Ok(salted) =
+                grdr_crypto::pbkdf2_hmac_sha256(password.as_bytes(), &salt, iterations)
+            else {
+                return;
+            };
+            let client_key = hmac_sha256(&*salted, b"Client Key");
             let stored_key = sha256_digest(&client_key);
             let client_sig = hmac_sha256(&stored_key, auth_msg.as_bytes());
             let mut expected_proof = [0u8; 32];
@@ -483,7 +476,7 @@ fn serve_pg_session(
                 let _ = stream.flush();
                 return;
             }
-            let server_key = hmac_sha256(&salted, b"Server Key");
+            let server_key = hmac_sha256(&*salted, b"Server Key");
             let mut server_sig = hmac_sha256(&server_key, auth_msg.as_bytes());
             if tamper_server_sig {
                 server_sig[0] ^= 0xff;
@@ -950,6 +943,10 @@ fn postgres_bus_wire_atomic_rls_fence_and_monotonic_guards() {
     let addr = listener.local_addr().unwrap();
     let srv_cfg = Arc::clone(&pki.server_config);
     let leaf = pki.leaf_der.clone();
+    let mut pw_raw = [0u8; 16];
+    grdr_crypto::fill_random(&mut pw_raw).unwrap();
+    let bus_pw = grdr_crypto::encode_lower_hex(&pw_raw);
+    let bus_pw_srv = bus_pw.clone();
 
     let srv = thread::spawn(move || {
         let Ok((mut tcp, _)) = listener.accept() else {
@@ -985,18 +982,21 @@ fn postgres_bus_wire_atomic_rls_fence_and_monotonic_guards() {
         };
         let (_, bare) = cf.split_once(",,").unwrap();
         let cnonce = bare.strip_prefix("n=,r=").unwrap();
-        let srv_first = format!("r={cnonce}buswire12345,s=Z3JkcnNhbHQxMjM0NTY=,i=4096");
+        let mut salt = [0u8; 16];
+        if grdr_crypto::fill_random(&mut salt).is_err() {
+            return;
+        }
+        let salt_b64 = B64.encode(salt);
+        let srv_first = format!("r={cnonce}buswire12345,s={salt_b64},i=4096");
         send_auth_frame(&mut tls, 11, srv_first.as_bytes());
         let (_, fbody) = read_pg_frame_opt(&mut tls).unwrap();
         let cfinal = std::str::from_utf8(&fbody).unwrap();
         let (wo_proof, _) = cfinal.rsplit_once(",p=").unwrap();
         let auth_msg = format!("{bare},{srv_first},{wo_proof}");
-        let salted = pbkdf2_test(
-            b"bus-secret",
-            B64.decode("Z3JkcnNhbHQxMjM0NTY=").unwrap().as_slice(),
-            4096,
-        );
-        let skey = hmac_sha256(&salted, b"Server Key");
+        let Ok(salted) = grdr_crypto::pbkdf2_hmac_sha256(bus_pw_srv.as_bytes(), &salt, 4096) else {
+            return;
+        };
+        let skey = hmac_sha256(&*salted, b"Server Key");
         let ssig = hmac_sha256(&skey, auth_msg.as_bytes());
         let _ = leaf;
         send_auth_frame(&mut tls, 12, format!("v={}", B64.encode(ssig)).as_bytes());
@@ -1053,7 +1053,7 @@ fn postgres_bus_wire_atomic_rls_fence_and_monotonic_guards() {
     });
 
     let cfg = PostgresConfig::parse_dsn(&format!(
-        "postgres://grdr:bus-secret@{addr}/guardrails?sslmode=verify-full"
+        "postgres://grdr:{bus_pw}@{addr}/guardrails?sslmode=verify-full"
     ))
     .unwrap()
     .with_ca_cert_pem(pki.ca_pem);

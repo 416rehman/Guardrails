@@ -123,8 +123,12 @@ impl ScramClientSession {
         );
 
         let normalized_pw = Zeroizing::new(saslprep_nfkc(&self.password)?);
-        let salted_pw =
-            pbkdf2_hmac_sha256(normalized_pw.as_bytes(), &fields.salt, fields.iterations);
+        let salted_pw = grdr_crypto::pbkdf2_hmac_sha256(
+            normalized_pw.as_bytes(),
+            &fields.salt,
+            fields.iterations,
+        )
+        .map_err(|e| malformed_scram_err(&format!("SCRAM key derivation failed: {e}")))?;
         let client_key = Zeroizing::new(hmac_sha256(&*salted_pw, b"Client Key"));
         let stored_key = Zeroizing::new(sha256_digest(&*client_key));
         let client_sig = hmac_sha256(&*stored_key, auth_message.as_bytes());
@@ -366,23 +370,6 @@ fn saslprep_nfkc(raw: &str) -> Result<String, CodedError> {
     Ok(out)
 }
 
-fn pbkdf2_hmac_sha256(password: &[u8], salt: &[u8], iterations: u32) -> Zeroizing<[u8; 32]> {
-    let mut salt_block = Vec::with_capacity(salt.len().saturating_add(4));
-    salt_block.extend_from_slice(salt);
-    salt_block.extend_from_slice(&1u32.to_be_bytes());
-
-    let mut u = Zeroizing::new(hmac_sha256(password, &salt_block));
-    let mut out = Zeroizing::new(*u);
-    for _ in 1..iterations {
-        let next = hmac_sha256(password, &*u);
-        for (acc, byte) in out.iter_mut().zip(next.iter()) {
-            *acc ^= *byte;
-        }
-        *u = next;
-    }
-    out
-}
-
 fn xor_bytes_32(lhs: &[u8; 32], rhs: &[u8; 32]) -> Zeroizing<[u8; 32]> {
     let mut out = Zeroizing::new([0u8; 32]);
     for ((dst, a), b) in out.iter_mut().zip(lhs.iter()).zip(rhs.iter()) {
@@ -397,20 +384,24 @@ mod tests {
 
     #[test]
     fn scram_sets_y_header_on_tls_without_plus_and_rejects_malformed_frames() {
+        let mut pw_seed = [0u8; 16];
+        fill_random(&mut pw_seed).unwrap();
+        let test_pw = grdr_crypto::encode_lower_hex(&pw_seed);
+
         let tls_no_plus = ScramClientSession::start(
             &[SCRAM_MECH_SHA256.to_string()],
-            "secret-pw",
+            &test_pw,
             Some(&[0x11u8; 32]),
         )
         .unwrap();
         assert_eq!(tls_no_plus.mechanism(), SCRAM_MECH_SHA256);
         assert!(tls_no_plus.client_first_message().starts_with(b"y,,n=,r="));
         let dbg = format!("{tls_no_plus:?}");
-        assert!(!dbg.contains("secret-pw"));
+        assert!(!dbg.contains(&test_pw));
         assert!(dbg.contains("[REDACTED]"));
 
         let plain_sess =
-            ScramClientSession::start(&[SCRAM_MECH_SHA256.to_string()], "secret-pw", None).unwrap();
+            ScramClientSession::start(&[SCRAM_MECH_SHA256.to_string()], &test_pw, None).unwrap();
         assert!(plain_sess.client_first_message().starts_with(b"n,,n=,r="));
 
         let cnonce = &tls_no_plus.client_nonce;

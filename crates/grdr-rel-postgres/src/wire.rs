@@ -358,7 +358,14 @@ fn open_authenticated_stream(
                         "Reject out-of-order SASL state.",
                     ));
                 }
-                let pw = password.unwrap_or("");
+                let Some(pw) = password.filter(|p| !p.is_empty()) else {
+                    let _ = stream.write_all(&encode_terminate_message());
+                    return Err(CodedError::new(
+                        CODE_PG_WIRE,
+                        "PostgreSQL SASL SCRAM requested but no password was configured.",
+                        "Provide a non-empty PostgreSQL password for SCRAM-SHA-256.",
+                    ));
+                };
                 let sasl =
                     ScramClientSession::start(&mechanisms, pw, stream.peer_leaf_cert_binding())?;
                 let msg =

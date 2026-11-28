@@ -350,7 +350,11 @@ fn spawn_mock_nats(
             let st_c = Arc::clone(&st_bg);
             thread::spawn(move || {
                 let mut tcp = tcp;
-                let nonce = "nats-nonce-123456";
+                let mut nonce_raw = [0u8; 16];
+                if grdr_crypto::fill_random(&mut nonce_raw).is_err() {
+                    return;
+                }
+                let nonce = grdr_crypto::encode_lower_hex(&nonce_raw);
                 let info_line = format!(
                     "INFO {{\"server_id\":\"mock-js\",\"version\":\"2.15.2\",\"jetstream\":true,\"tls_required\":true,\"auth_required\":true,\"headers\":true,\"nonce\":\"{nonce}\"}}\r\n"
                 );
@@ -372,7 +376,7 @@ fn spawn_mock_nats(
                             stream: tls_s,
                             buf: Vec::new(),
                         },
-                        nonce,
+                        &nonce,
                         st_c,
                     );
                 } else {
@@ -393,7 +397,7 @@ fn spawn_mock_nats(
                             stream: tls_s,
                             buf: Vec::new(),
                         },
-                        nonce,
+                        &nonce,
                         st_c,
                     );
                 }
