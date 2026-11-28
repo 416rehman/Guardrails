@@ -756,7 +756,39 @@ forbid (principal is Grdr::Session, action == Grdr::Action::"exec", resource) wh
         assert!(matches!(merged, Err(PolicyError::LayerViolation { .. })));
 
         let ess = vec![essentials_pack()];
-        let claude = compile_down_claude_code(&ess, &[]);
+        let claude_ess = compile_down_claude_code(&ess, &[]);
+        assert!(claude_ess.deny_rules.is_empty());
+
+        let static_pack = PolicyPack {
+            id: "custom.cd-static".into(),
+            name: "CD Static".into(),
+            description: String::new(),
+            version: "1.0.0".into(),
+            channel: "custom".into(),
+            rules: vec![PolicyRule {
+                id: "custom.control-edit".into(),
+                title: "Protect control".into(),
+                description: String::new(),
+                mode: Mode::Block,
+                min_grade: ApprovalGrade::G2,
+                enabled: true,
+                locked: true,
+                matcher: RuleMatch {
+                    action_classes: vec![ActionClass::FileWrite, ActionClass::FileDelete],
+                    target_prefixes: Vec::new(),
+                    target_contains: vec![".claude/".into()],
+                    agents: Vec::new(),
+                },
+                hits: 0,
+                would_ask_hits: 0,
+                would_block_hits: 0,
+                reason_template: "Blocked".into(),
+                cedar: None,
+            }],
+            key_id: None,
+            signature: None,
+        };
+        let claude = compile_down_claude_code(std::slice::from_ref(&static_pack), &[]);
         assert!(!claude.deny_rules.is_empty());
         assert!(render_claude_settings_json(&claude).contains("disableBypassPermissionsMode"));
         let codex = compile_down_codex(&ess, &[]);
@@ -769,7 +801,7 @@ forbid (principal is Grdr::Session, action == Grdr::Action::"exec", resource) wh
             ".claude/settings.json",
         );
         assert!(verify_compile_down_subset(
-            &ess,
+            &[static_pack],
             &[probe],
             &claude,
             ts(1_700_000_000)

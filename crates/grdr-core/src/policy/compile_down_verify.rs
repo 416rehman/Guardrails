@@ -9,6 +9,7 @@ use super::caps::{DeterministicEntropy, default_control_point_caps};
 use super::compile_down::{
     ClaudeCodeManagedSettings, CodexRequirements, format_claude_mcp_pattern,
 };
+use super::compile_down_render::escape_quoted_string;
 use super::compiler::{CompileOptions, compile_packs_with_options};
 use super::request::{ActorKind, RequestBuildOptions, build_cedar_request_with_options};
 use super::verdict::{VerdictEvalConfig, resolve_verdict};
@@ -17,11 +18,11 @@ pub fn render_claude_settings_json(settings: &ClaudeCodeManagedSettings) -> Stri
     let deny_list: Vec<String> = settings
         .deny_rules
         .iter()
-        .map(|r| format!("\"{}\"", escape_json(r)))
+        .map(|r| format!("\"{}\"", escape_quoted_string(r)))
         .collect();
     format!(
         "{{\n  \"disableBypassPermissionsMode\": \"{}\",\n  \"allowManagedPermissionRulesOnly\": {},\n  \"allowManagedHooksOnly\": {},\n  \"allowManagedMcpServersOnly\": {},\n  \"permissions\": {{\n    \"deny\": [{}]\n  }}\n}}",
-        settings.disable_bypass_permissions_mode,
+        escape_quoted_string(settings.disable_bypass_permissions_mode),
         settings.allow_managed_permission_rules_only,
         settings.allow_managed_hooks_only,
         settings.allow_managed_mcp_servers_only,
@@ -32,18 +33,19 @@ pub fn render_claude_settings_json(settings: &ClaudeCodeManagedSettings) -> Stri
 pub fn render_codex_requirements_toml(req: &CodexRequirements) -> String {
     let mut out = format!(
         "approval_policy = \"{}\"\nsandbox_mode = \"{}\"\n",
-        req.approval_policy, req.sandbox_mode
+        escape_quoted_string(&req.approval_policy),
+        escape_quoted_string(&req.sandbox_mode)
     );
     for pat in &req.prefix_rules {
         out.push_str(&format!(
             "\n[[rules]]\naction = \"forbid\"\npattern = \"{}\"\n",
-            escape_json(pat)
+            escape_quoted_string(pat)
         ));
     }
     for mcp in &req.mcp_deny_patterns {
         out.push_str(&format!(
             "\n[mcp_servers.\"{}\"]\nallowed = false\n",
-            escape_json(mcp)
+            escape_quoted_string(mcp)
         ));
     }
     out
@@ -141,6 +143,7 @@ fn claude_rule_matches_attempt(rule: &str, attempt: &ActionAttempt) -> bool {
         (tool, attempt.action_class),
         ("Read", ActionClass::FileRead)
             | ("Edit", ActionClass::FileWrite | ActionClass::FileDelete)
+            | ("Bash", ActionClass::Exec)
             | (
                 "WebFetch",
                 ActionClass::NetRequest | ActionClass::NetConnect
@@ -150,27 +153,24 @@ fn claude_rule_matches_attempt(rule: &str, attempt: &ActionAttempt) -> bool {
         return false;
     }
     let norm = attempt.target.replace('\\', "/").to_ascii_lowercase();
-    let needle = inner
-        .trim_matches('*')
-        .replace('\\', "/")
-        .to_ascii_lowercase();
-    !needle.is_empty() && norm.contains(&needle)
-}
-
-fn escape_json(raw: &str) -> String {
-    let mut out = String::with_capacity(raw.len());
-    for ch in raw.chars() {
-        match ch {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 || c == '\x7f' => {
-                out.push_str(&format!("\\u{:04x}", c as u32));
-            }
-            c => out.push(c),
-        }
+    let pat = inner.replace('\\', "/").to_ascii_lowercase();
+    if let Some(prefix) = pat.strip_suffix(":*") {
+        return !prefix.is_empty() && norm.starts_with(prefix);
     }
-    out
+    if pat.starts_with('*') && pat.ends_with('*') {
+        let mid = pat.trim_matches('*');
+        return !mid.is_empty() && norm.contains(mid);
+    }
+    if pat.ends_with('*') {
+        let prefix = pat.trim_end_matches('*');
+        if prefix.is_empty() {
+            return false;
+        }
+        return norm.starts_with(prefix);
+    }
+    if pat.starts_with('*') {
+        let suffix = pat.trim_start_matches('*');
+        return !suffix.is_empty() && norm.ends_with(suffix);
+    }
+    !pat.is_empty() && norm == pat
 }

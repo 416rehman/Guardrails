@@ -8,26 +8,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::IntelError;
+use crate::governance::default_intel_governance;
 
 pub const MIN_MALICIOUS_INDEPENDENT_SOURCES: usize = 2;
-
-const SELF_ORG_ALIASES: &[&str] = &[
-    "loonaro",
-    "guardrails",
-    "guardrailsadr",
-    "theguardrailsadrauthors",
-    "grdr",
-    "internal",
-    "self",
-];
-
-const OSSF_ALIASES: &[&str] = &["ossf", "openssf", "openssfmaliciouspackages"];
-const GHSA_ALIASES: &[&str] = &[
-    "ghsa",
-    "github",
-    "githubadvisorydatabase",
-    "githubsecurityadvisory",
-];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -371,18 +354,22 @@ pub fn normalize_org_token(raw: &str) -> String {
         return String::new();
     }
     let compact: String = words.concat();
-    if SELF_ORG_ALIASES.contains(&compact.as_str())
-        || words.iter().any(|w| SELF_ORG_ALIASES.contains(&w.as_str()))
-        || compact.contains("loonaro")
-        || compact.contains("guardrails")
-        || compact.starts_with("theguardrailsadrauthors")
-    {
+    let Ok(gov) = default_intel_governance() else {
         return "__self__".to_owned();
-    }
-    if OSSF_ALIASES.contains(&compact.as_str()) {
+    };
+    let is_self = gov
+        .self_org_aliases
+        .iter()
+        .any(|a| a == &compact || words.iter().any(|w| w == a))
+        || gov
+            .self_org_substring_aliases
+            .iter()
+            .any(|a| compact.contains(a.as_str()));
+    if is_self {
+        return "__self__".to_owned();
+    } else if gov.ossf_aliases.iter().any(|a| a == &compact) {
         return "ossf".to_owned();
-    }
-    if GHSA_ALIASES.contains(&compact.as_str()) {
+    } else if gov.ghsa_aliases.iter().any(|a| a == &compact) {
         return "ghsa".to_owned();
     }
     compact
@@ -863,6 +850,10 @@ mod tests {
         // 4. Embedded brand names normalize to "__self__".
         assert_eq!(normalize_org_token("ACME Loonaro Security"), "__self__");
         assert_eq!(normalize_org_token("MyGuardrailsTeam"), "__self__");
+        assert_eq!(
+            normalize_org_token("CustomTheGuardrailsADRAuthorsTeam"),
+            "__self__"
+        );
         assert_eq!(
             normalize_basis_url("HTTPS://Blog.Example:443/report-1#sec"),
             normalize_basis_url("https://blog.example/report-1/")

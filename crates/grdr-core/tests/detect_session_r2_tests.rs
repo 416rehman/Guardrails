@@ -264,9 +264,10 @@ fn response_builtins_correlation_and_restore_bounds_enforced() {
     assert!(empty_plan.intent.simulated);
     assert_eq!(empty_plan.breaker_state, ResponseBreakerState::Closed);
 
-    // Same-author approver differing only in case/whitespace cannot self-approve remediate verbs.
+    // Same-author approver differing only in case/whitespace cannot self-approve remediate verbs,
+    // and unsigned grdr.det.core content cannot spoof Official Remediate provenance.
     let self_rem = "title: \"Self\"\nid: 00000000-0000-0000-0000-000000000091\nstatus: stable\nauthor: \"The Guardrails ADR Authors\"\nlogsource:\n  product: grdr\n  category: any\n  service: any\ndetection:\n  sel:\n    action_class: exec\n  condition: sel\nx_grdr:\n  row: 91\n  rule_id: unit.rem\n  version: \"1.0.0\"\n  finding_class: threat\n  ceiling: remediate\n  response:\n    mode: live\n    verbs: [cut-session-egress]\n    max_scope: session\n    max_share_bp: 500\n";
-    let (mut rem_eng, rem_rep) = SigmaDetectionEngine::load(
+    let (_, unsigned_rep) = SigmaDetectionEngine::load(
         &VerifiedDetectionContent {
             pack_id: "grdr.det.core".into(),
             version: "1.0.0".into(),
@@ -275,7 +276,55 @@ fn response_builtins_correlation_and_restore_bounds_enforced() {
         },
         &host_profile(DeploymentScope::Any),
     )
-    .expect("load");
+    .expect("load unsigned");
+    assert!(unsigned_rep.loaded_rules.is_empty());
+
+    let kp = grdr_crypto::SigningKeypair::generate().expect("kp");
+    let pub_b64 = kp.public_key_b64();
+    let rule_rel = "rules/r91.yaml";
+    let rule_sha = sha256_hex(self_rem.as_bytes());
+    let manifest_text = format!(
+        "grdr.pack.manifest.v1\ngrdr.det.core\n1.0.0\n{rule_rel} {rule_sha} {}",
+        self_rem.len()
+    );
+    let manifest_sha = sha256_hex(manifest_text.as_bytes());
+    let sig_b64 = kp.sign_bytes("grdr.pack.manifest.v1", manifest_text.as_bytes());
+    let sig_json = serde_json::json!({
+        "format": "grdr.pack.signature.v1",
+        "pack_id": "grdr.det.core",
+        "version": "1.0.0",
+        "domain": "grdr.pack.manifest.v1",
+        "signer_ref": "test-release-v1",
+        "verifier_ed25519_b64": pub_b64,
+        "manifest_sha256": manifest_sha,
+        "files": [{"path": rule_rel, "sha256": rule_sha, "length": self_rem.len()}],
+        "signature_b64": sig_b64
+    })
+    .to_string();
+    let trust_toml = format!(
+        "format = \"grdr.trust-roots.v1\"\n[[signers]]\nsigner_ref = \"test-release-v1\"\nverifier_ed25519_b64 = \"{pub_b64}\"\nstatus = \"active\"\n"
+    );
+    let rem_tmp = std::env::temp_dir().join(format!("grdr-r2-signed-rem-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&rem_tmp);
+    std::fs::create_dir_all(rem_tmp.join("rules")).expect("mkdir");
+    std::fs::write(rem_tmp.join(rule_rel), self_rem).expect("write rule");
+    std::fs::write(rem_tmp.join("signature.json"), sig_json).expect("write sig");
+    let trust_file = rem_tmp.with_extension("trust.toml");
+    std::fs::write(&trust_file, trust_toml).expect("write trust");
+    let mut rem_host = host_profile(DeploymentScope::Any);
+    rem_host
+        .remediate_approvers
+        .insert("unit.rem".into(), " the guardrails adr authors ".into());
+    let (mut rem_eng, rem_rep) = SigmaDetectionEngine::load_signed_pack(
+        &rem_tmp,
+        &trust_file,
+        "grdr.det.core",
+        Mode::Block,
+        &rem_host,
+    )
+    .expect("load signed");
+    let _ = std::fs::remove_dir_all(&rem_tmp);
+    let _ = std::fs::remove_file(&trust_file);
     assert_eq!(rem_rep.loaded_rules.len(), 1);
     let mut out = DetectOutput::default();
     rem_eng.on_event(

@@ -2,14 +2,21 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 //! Bounded string/segment scanners for Cedar signal extraction (destructive, pipe-to-shell, host).
 
+use crate::analyze::pack_lists::{NetEndpointCatalog, SignalPatternCatalog};
+
 pub(crate) fn has_traversal_segment(s: &str) -> bool {
     s.trim().split(['/', '\\']).any(|seg| seg == "..")
 }
 
-pub(crate) fn contains_any(raw_lower: &str, norm_lower: &str, needles: &[&str]) -> bool {
-    needles
-        .iter()
-        .any(|needle| raw_lower.contains(needle) || norm_lower.contains(needle))
+pub(crate) fn contains_any<S: AsRef<str>>(
+    raw_lower: &str,
+    norm_lower: &str,
+    needles: &[S],
+) -> bool {
+    needles.iter().any(|needle| {
+        let pat = needle.as_ref();
+        raw_lower.contains(pat) || norm_lower.contains(pat)
+    })
 }
 
 pub(crate) fn contains_path_segment(haystack: &str, segment: &str) -> bool {
@@ -240,92 +247,109 @@ fn host_matches(host: &str, domain: &str) -> bool {
             .is_some_and(|prefix| prefix.ends_with('.'))
 }
 
-pub(crate) fn detect_cloud_provider(raw: &str, norm: &str) -> String {
+pub(crate) fn detect_cloud_provider_with_catalog(
+    raw: &str,
+    norm: &str,
+    endpoints: &NetEndpointCatalog,
+) -> String {
     let mut hosts = extract_url_hosts(raw);
     hosts.extend(extract_url_hosts(norm));
     if !hosts.is_empty() {
         for host in hosts {
-            if matches!(
-                host,
-                "169.254.169.254"
-                    | "169.254.170.2"
-                    | "0xa9fea9fe"
-                    | "fd00:ec2::254"
-                    | "fd00:0ec2::254"
-                    | "::ffff:169.254.169.254"
-            ) || host_matches(host, "amazonaws.com")
-                || host_matches(host, "aws.amazon.com")
+            if endpoints.cloud_aws_ips.iter().any(|ip| host == ip)
+                || endpoints
+                    .cloud_aws_domains
+                    .iter()
+                    .any(|dom| host_matches(host, dom))
             {
                 return "aws".into();
             }
-            if host_matches(host, "metadata.google.internal")
-                || host_matches(host, "googleapis.com")
+            if endpoints
+                .cloud_gcp_domains
+                .iter()
+                .any(|dom| host_matches(host, dom))
             {
                 return "gcp".into();
             }
-            if host_matches(host, "azure.com") {
+            if endpoints
+                .cloud_azure_domains
+                .iter()
+                .any(|dom| host_matches(host, dom))
+            {
                 return "azure".into();
             }
         }
         return String::new();
     }
-    if contains_path_segment(raw, "aws")
-        || contains_path_segment(norm, "aws")
-        || contains_path_segment(raw, "amazonaws.com")
-        || contains_any(
-            raw,
-            norm,
-            &[
-                "169.254.169.254",
-                "169.254.170.2",
-                "0xa9fea9fe",
-                "fd00:ec2::254",
-                "fd00:0ec2::254",
-                "::ffff:169.254.169.254",
-            ],
-        )
+    if endpoints
+        .cloud_aws_segments
+        .iter()
+        .any(|seg| contains_path_segment(raw, seg) || contains_path_segment(norm, seg))
+        || contains_any(raw, norm, &endpoints.cloud_aws_ips)
     {
         "aws".into()
-    } else if contains_path_segment(raw, "gcloud")
-        || contains_path_segment(raw, "metadata.google.internal")
+    } else if endpoints
+        .cloud_gcp_segments
+        .iter()
+        .any(|seg| contains_path_segment(raw, seg) || contains_path_segment(norm, seg))
     {
         "gcp".into()
-    } else if contains_path_segment(raw, "az") || contains_path_segment(raw, "azure.com") {
+    } else if endpoints
+        .cloud_azure_segments
+        .iter()
+        .any(|seg| contains_path_segment(raw, seg) || contains_path_segment(norm, seg))
+    {
         "azure".into()
     } else {
         String::new()
     }
 }
 
-pub(crate) fn detect_llm_provider(raw: &str, norm: &str) -> String {
+pub(crate) fn detect_llm_provider_with_catalog(
+    raw: &str,
+    norm: &str,
+    endpoints: &NetEndpointCatalog,
+) -> String {
     let mut hosts = extract_url_hosts(raw);
     hosts.extend(extract_url_hosts(norm));
     if !hosts.is_empty() {
         for host in hosts {
-            if host_matches(host, "anthropic.com") || host_matches(host, "claude.ai") {
+            if endpoints
+                .llm_anthropic_domains
+                .iter()
+                .any(|dom| host_matches(host, dom))
+            {
                 return "anthropic".into();
             }
-            if host_matches(host, "openai.com") {
+            if endpoints
+                .llm_openai_domains
+                .iter()
+                .any(|dom| host_matches(host, dom))
+            {
                 return "openai".into();
             }
-            if matches!(host, "localhost" | "127.0.0.1" | "::1") {
+            if endpoints.llm_local_hosts.iter().any(|h| host == h) {
                 return "local".into();
             }
         }
         return "unknown".into();
     }
-    if contains_path_segment(raw, "anthropic.com")
-        || contains_path_segment(raw, "claude.ai")
-        || contains_path_segment(raw, "anthropic")
-        || contains_path_segment(raw, "claude")
+    if endpoints
+        .llm_anthropic_segments
+        .iter()
+        .any(|seg| contains_path_segment(raw, seg))
     {
         "anthropic".into()
-    } else if contains_path_segment(raw, "openai.com") || contains_path_segment(raw, "openai") {
+    } else if endpoints
+        .llm_openai_segments
+        .iter()
+        .any(|seg| contains_path_segment(raw, seg))
+    {
         "openai".into()
-    } else if contains_path_segment(raw, "ollama")
-        || contains_path_segment(raw, "llamafile")
-        || contains_path_segment(raw, "localhost")
-        || contains_path_segment(raw, "127.0.0.1")
+    } else if endpoints
+        .llm_local_segments
+        .iter()
+        .any(|seg| contains_path_segment(raw, seg))
     {
         "local".into()
     } else {
@@ -357,10 +381,11 @@ fn split_camel_and_sep(raw: &str) -> Vec<String> {
     tokens
 }
 
-pub(crate) fn is_mcp_write_capable(
+pub(crate) fn is_mcp_write_capable_with_catalog(
     raw_target: &str,
     read_only_hint: Option<bool>,
     has_write_risk_tag: bool,
+    signals: &SignalPatternCatalog,
 ) -> bool {
     if has_write_risk_tag || read_only_hint == Some(false) {
         return true;
@@ -374,23 +399,17 @@ pub(crate) fn is_mcp_write_capable(
     } else {
         without_scheme
     };
-    let write_tokens = [
-        "write", "delete", "del", "push", "create", "execute", "exec", "shell", "run", "update",
-        "put", "post", "patch", "remove", "rm", "drop", "send", "upload", "publish", "modify",
-        "edit", "set", "add", "append", "insert", "mutate", "apply", "invoke", "trigger",
-        "dispatch", "deploy", "email", "forward", "reply", "merge", "commit", "chmod", "chown",
-        "kill", "eval", "sql",
-    ];
-    let read_tokens = [
-        "read", "get", "list", "search", "query", "describe", "inspect", "status", "ping",
-        "version", "fetch", "view", "info",
-    ];
     let tokens = split_camel_and_sep(tool_name);
-    if tokens.iter().any(|t| write_tokens.contains(&t.as_str())) {
+    if tokens
+        .iter()
+        .any(|t| signals.mcp_write_tokens.iter().any(|w| w == t))
+    {
         return true;
     }
     if read_only_hint == Some(true) {
         return false;
     }
-    !tokens.iter().any(|t| read_tokens.contains(&t.as_str()))
+    !tokens
+        .iter()
+        .any(|t| signals.mcp_read_tokens.iter().any(|r| r == t))
 }

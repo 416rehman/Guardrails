@@ -23,14 +23,15 @@ use crate::detect::corr::{
 use crate::detect::eval::{
     CompiledSigmaRule, compile_sigma_rule, evaluate_compiled_rule, scope_permits_rule,
 };
+use crate::detect::pack_sig::load_signed_detection_pack_from_dir;
 use crate::detect::response::{ResponseBreakerState, ResponseExecutor, ResponsePlanRequest};
 use crate::detect::sigma::parse_sigma_rule_for_verified_pack;
 use crate::detect::types::{
     DEFAULT_DETECT_LAG_BACKLOG_EVENTS, DEFAULT_DETECT_LAG_MS, DetectError, DetectOutput,
     DetectState, DetectionEngine, EventView, HostProfile, LoadReport,
     MAX_CORRELATION_ENTRIES_PER_LINEAGE, MAX_ENGINE_DEDUP_KEYS, MAX_ENGINE_LINEAGES,
-    MAX_GROUP_KEYS_PER_LINEAGE, MAX_GROUP_KEYS_PER_RULE, MAX_PROBE_BUCKETS, RuleOrigin, SigmaRule,
-    SkippedRule, VerifiedDetectionContent,
+    MAX_GROUP_KEYS_PER_LINEAGE, MAX_GROUP_KEYS_PER_RULE, MAX_PROBE_BUCKETS, SigmaRule, SkippedRule,
+    VerifiedDetectionContent,
 };
 
 const JUDGE_PROBE_WINDOW_SECS: i64 = 600;
@@ -61,6 +62,120 @@ fn detections_max_mb_cached() -> usize {
 impl SigmaDetectionEngine {
     pub fn loaded_rules(&self) -> impl Iterator<Item = &SigmaRule> {
         self.rules.iter().map(|compiled| &compiled.rule)
+    }
+
+    /// Loads and cryptographically verifies a signed detection pack directory directly from disk (`P14`).
+    pub fn load_signed_pack(
+        pack_dir: &std::path::Path,
+        trust_roots_path: &std::path::Path,
+        expected_pack_id: &str,
+        pack_mode: Mode,
+        host: &HostProfile,
+    ) -> Result<(Self, LoadReport), DetectError> {
+        let (content, verified) = load_signed_detection_pack_from_dir(
+            pack_dir,
+            trust_roots_path,
+            expected_pack_id,
+            pack_mode,
+        )?;
+        Self::load_with_verified_digests(&content, host, Some(&verified.verified_rule_sha256s))
+    }
+
+    fn load_with_verified_digests(
+        content: &VerifiedDetectionContent,
+        host: &HostProfile,
+        verified_rule_digests: Option<&BTreeSet<String>>,
+    ) -> Result<(Self, LoadReport), DetectError> {
+        let max_mb = detections_max_mb_cached();
+        let max_bytes = max_mb.saturating_mul(BYTES_PER_MIB);
+        let total_bytes: usize = content.raw_rules_yaml.iter().map(String::len).sum();
+        if total_bytes > max_bytes {
+            return Err(DetectError::InvalidRule(format!(
+                "detection pack size ({total_bytes} bytes) exceeds schema limit {max_bytes} bytes"
+            )));
+        }
+
+        let mut rules = Vec::new();
+        let mut loaded_ids = BTreeSet::new();
+        let mut report = LoadReport::default();
+        let mut max_span: i64 = 3_600;
+        let allow_official_origin = matches!(
+            content.pack_id.as_str(),
+            "grdr.det.core" | "grdr.det.experimental" | "grdr.det.tripwires"
+        );
+        let verify_shipped_core =
+            verified_rule_digests.is_none() && content.pack_id == "grdr.det.core";
+
+        for (idx, raw) in content.raw_rules_yaml.iter().enumerate() {
+            match parse_sigma_rule_for_verified_pack(
+                raw,
+                allow_official_origin,
+                verified_rule_digests,
+                verify_shipped_core,
+            ) {
+                Ok(rule) => {
+                    if rule.status == crate::detect::types::SigmaStatus::Deprecated {
+                        report.skipped_rules.push(SkippedRule {
+                            rule_id: rule.rule_id,
+                            reason: "could not evaluate: deprecated rules are replay-only".into(),
+                        });
+                        continue;
+                    }
+                    if !scope_permits_rule(host.scope, rule.scope) {
+                        report.skipped_rules.push(SkippedRule {
+                            rule_id: rule.rule_id,
+                            reason: "could not evaluate: host placement scope mismatch".into(),
+                        });
+                        continue;
+                    }
+                    if !loaded_ids.insert(rule.rule_id.clone()) {
+                        report.skipped_rules.push(SkippedRule {
+                            rule_id: rule.rule_id,
+                            reason: "could not evaluate: duplicate rule_id".into(),
+                        });
+                        continue;
+                    }
+                    match compile_sigma_rule(&rule, host) {
+                        Ok(compiled) => {
+                            if let Some(corr) = &compiled.rule.correlation {
+                                let span_i64 =
+                                    i64::try_from(corr.timespan_secs).unwrap_or(i64::MAX);
+                                max_span = max_span.max(span_i64);
+                            }
+                            report.loaded_rules.push(compiled.rule.rule_id.clone());
+                            rules.push(compiled);
+                        }
+                        Err(err) => {
+                            loaded_ids.remove(&rule.rule_id);
+                            report.skipped_rules.push(SkippedRule {
+                                rule_id: rule.rule_id,
+                                reason: format!("could not evaluate: {err}"),
+                            });
+                        }
+                    }
+                }
+                Err(err) => {
+                    report.skipped_rules.push(SkippedRule {
+                        rule_id: format!("rule-index-{idx}"),
+                        reason: format!("could not evaluate: {err}"),
+                    });
+                }
+            }
+        }
+
+        Ok((
+            Self {
+                rules,
+                loaded_ids,
+                pack_mode: content.pack_mode,
+                host: host.clone(),
+                state: DetectState::default(),
+                executor: ResponseExecutor::default(),
+                fleet_active_devices: 1,
+                max_rule_timespan_secs: max_span,
+            },
+            report,
+        ))
     }
 
     pub fn set_fleet_active_devices(&mut self, count: usize) {
@@ -256,94 +371,7 @@ impl DetectionEngine for SigmaDetectionEngine {
         content: &VerifiedDetectionContent,
         host: &HostProfile,
     ) -> Result<(Self, LoadReport), DetectError> {
-        let max_mb = detections_max_mb_cached();
-        let max_bytes = max_mb.saturating_mul(BYTES_PER_MIB);
-        let total_bytes: usize = content.raw_rules_yaml.iter().map(String::len).sum();
-        if total_bytes > max_bytes {
-            return Err(DetectError::InvalidRule(format!(
-                "detection pack size ({total_bytes} bytes) exceeds schema limit {max_bytes} bytes"
-            )));
-        }
-
-        let mut rules = Vec::new();
-        let mut loaded_ids = BTreeSet::new();
-        let mut report = LoadReport::default();
-        let mut max_span: i64 = 3_600;
-        let is_official_pack = content.pack_id == "grdr.det.core"
-            || content.pack_id == "grdr.det.experimental"
-            || content.pack_id == "grdr.det.tripwires";
-
-        for (idx, raw) in content.raw_rules_yaml.iter().enumerate() {
-            match parse_sigma_rule_for_verified_pack(raw, is_official_pack) {
-                Ok(mut rule) => {
-                    if rule.status == crate::detect::types::SigmaStatus::Deprecated {
-                        report.skipped_rules.push(SkippedRule {
-                            rule_id: rule.rule_id,
-                            reason: "could not evaluate: deprecated rules are replay-only".into(),
-                        });
-                        continue;
-                    }
-                    if !rule.origin_declared
-                        && is_official_pack
-                        && rule.author == "The Guardrails ADR Authors"
-                    {
-                        rule.origin = RuleOrigin::Official;
-                    }
-                    if !scope_permits_rule(host.scope, rule.scope) {
-                        report.skipped_rules.push(SkippedRule {
-                            rule_id: rule.rule_id,
-                            reason: "could not evaluate: host placement scope mismatch".into(),
-                        });
-                        continue;
-                    }
-                    if !loaded_ids.insert(rule.rule_id.clone()) {
-                        report.skipped_rules.push(SkippedRule {
-                            rule_id: rule.rule_id,
-                            reason: "could not evaluate: duplicate rule_id".into(),
-                        });
-                        continue;
-                    }
-                    match compile_sigma_rule(&rule, host) {
-                        Ok(compiled) => {
-                            if let Some(corr) = &compiled.rule.correlation {
-                                let span_i64 =
-                                    i64::try_from(corr.timespan_secs).unwrap_or(i64::MAX);
-                                max_span = max_span.max(span_i64);
-                            }
-                            report.loaded_rules.push(compiled.rule.rule_id.clone());
-                            rules.push(compiled);
-                        }
-                        Err(err) => {
-                            loaded_ids.remove(&rule.rule_id);
-                            report.skipped_rules.push(SkippedRule {
-                                rule_id: rule.rule_id,
-                                reason: format!("could not evaluate: {err}"),
-                            });
-                        }
-                    }
-                }
-                Err(err) => {
-                    report.skipped_rules.push(SkippedRule {
-                        rule_id: format!("rule-index-{idx}"),
-                        reason: format!("could not evaluate: {err}"),
-                    });
-                }
-            }
-        }
-
-        Ok((
-            Self {
-                rules,
-                loaded_ids,
-                pack_mode: content.pack_mode,
-                host: host.clone(),
-                state: DetectState::default(),
-                executor: ResponseExecutor::default(),
-                fleet_active_devices: 1,
-                max_rule_timespan_secs: max_span,
-            },
-            report,
-        ))
+        Self::load_with_verified_digests(content, host, None)
     }
 
     fn on_event(&mut self, ev: &EventView<'_>, out: &mut DetectOutput) {
