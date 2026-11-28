@@ -22,6 +22,7 @@ use grdr_updater::cohort_fips::{
 };
 use grdr_updater::compat_config::{
     COMPAT_MATRIX_DSSE_PAYLOAD_TYPE, SignedCompatMatrixPayload, load_support_toml_compat_matrix,
+    verify_signed_compat_dsse,
 };
 use grdr_updater::error::UpdaterError;
 use grdr_updater::slots::UpdateAuthority;
@@ -404,6 +405,7 @@ fn run_fips_pq_handshake_test() -> Result<(), Box<dyn Error>> {
             },
             required_capabilities: vec![ProtocolCapability::SignedReceipts],
         }],
+        contract_error: None,
     };
     let custom_bytes = serde_json::to_vec(&SignedCompatMatrixPayload {
         version: 2,
@@ -602,7 +604,7 @@ fn run_fips_pq_handshake_test() -> Result<(), Box<dyn Error>> {
         rec_base.clone(),
         UpdaterWorkerConfig {
             authority: UpdateAuthority::SelfManaged,
-            project_root: Some(signed_worker_root),
+            project_root: Some(signed_worker_root.clone()),
             deployment_root: None,
         },
         &clock,
@@ -663,7 +665,7 @@ fn run_fips_pq_handshake_test() -> Result<(), Box<dyn Error>> {
     let recovery_v3_bytes = serde_json::to_vec(&SignedCompatMatrixPayload {
         version: 3,
         expires: ts(1_780_000_000),
-        matrix: custom_matrix,
+        matrix: custom_matrix.clone(),
     })?;
     let recovery_v3_env =
         sign_dsse_envelope(COMPAT_MATRIX_DSSE_PAYLOAD_TYPE, &recovery_v3_bytes, &[&k1])?;
@@ -683,6 +685,49 @@ fn run_fips_pq_handshake_test() -> Result<(), Box<dyn Error>> {
     check(
         recovered_ok.ok,
         "newer valid compat_matrix_dsse (v3) must recover cleanly past expired persisted v2",
+    )?;
+    let mut broken_matrix = custom_matrix;
+    broken_matrix.contract_error = Some("contract broken".into());
+    let broken_v4_bytes = serde_json::to_vec(&SignedCompatMatrixPayload {
+        version: 4,
+        expires: ts(1_780_000_000),
+        matrix: broken_matrix,
+    })?;
+    let broken_v4_env =
+        sign_dsse_envelope(COMPAT_MATRIX_DSSE_PAYLOAD_TYPE, &broken_v4_bytes, &[&k1])?;
+    let direct_broken = verify_signed_compat_dsse(&broken_v4_env, &signed_worker_root, now);
+    check(
+        matches!(
+            direct_broken,
+            Err(UpdaterError::CompatibilityRejected {
+                ref component,
+                ref code,
+                ref reason,
+            }) if component == "compat-matrix"
+                && code == "GRDR-COMPAT-0003"
+                && reason == "contract broken"
+        ),
+        "verify_signed_compat_dsse must reject signed matrix carrying contract_error with GRDR-COMPAT-0003",
+    )?;
+    let broken_denied = rec_worker.handle_command(
+        &UpdaterCommandFrame {
+            command_id: "hs-broken-contract".into(),
+            action: "verify_handshake".into(),
+            security_floor: 0,
+            payload: serde_json::to_vec(&serde_json::json!({
+                "offer": rec_offer,
+                "policy": policy,
+                "compat_matrix_dsse": broken_v4_env
+            }))?,
+        },
+        &clock,
+    );
+    check(
+        !broken_denied.ok
+            && broken_denied.error_code == "GRDR-UPDATER-0002"
+            && broken_denied.detail.contains("GRDR-COMPAT-0003")
+            && broken_denied.detail.contains("contract broken"),
+        "verify_handshake must reject signed compat_matrix_dsse carrying contract_error",
     )?;
     let _ = std::fs::remove_dir_all(&rec_base);
 

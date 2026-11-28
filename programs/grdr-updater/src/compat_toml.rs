@@ -107,6 +107,7 @@ fn parse_support_toml_compat_matrix(
     let matrix = CompatMatrix {
         protocol_version: SemVer::new(support.proto_major, 0, 0),
         entries,
+        contract_error: None,
     };
     validate_compat_matrix(&matrix)?;
     Ok(matrix)

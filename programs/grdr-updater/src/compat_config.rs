@@ -225,6 +225,9 @@ pub(crate) fn parse_capability_name(raw: &str) -> Option<ProtocolCapability> {
 }
 
 pub(crate) fn validate_compat_matrix(matrix: &CompatMatrix) -> Result<(), UpdaterError> {
+    if let Some(err) = &matrix.contract_error {
+        return Err(compat_cfg_err("compat-matrix", err));
+    }
     if matrix.entries.is_empty() {
         return Err(compat_cfg_err(
             "compat-matrix",
