@@ -3,14 +3,21 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::arithmetic_side_effects)]
 
+mod compaction;
 mod crypto;
 mod erasure;
 mod flush;
+mod fuse_filter;
+mod manifest_verify;
+mod parquet_codec;
+mod parquet_modular;
+mod parquet_schema;
 mod query;
 mod query_eval;
 mod retention;
 mod schema;
 mod store;
+mod thrift_compact;
 
 pub use store::LakeStore;
 
@@ -426,5 +433,141 @@ mod tests {
             )
             .unwrap();
         assert_eq!(res.rows.len(), 1);
+    }
+
+    #[test]
+    fn lake_parquet_par1_codec_and_thrift_metadata_roundtrip() {
+        let now_ms = 1_700_000_000_000i64;
+        let mut r1 = test_record("evt-par1-1", "sess-par1", now_ms, now_ms);
+        r1.tool_call_id = Some("tc-1".into());
+        let r2 = test_record("evt-par1-2", "sess-par1", now_ms + 500, now_ms + 500);
+
+        let mut kv = BTreeMap::new();
+        kv.insert("grdr.org_id".into(), "org-par1".into());
+        let par1 = parquet_codec::encode_standard_par1(&[r1.clone(), r2.clone()], &kv).unwrap();
+        assert_eq!(&par1[..4], b"PAR1");
+        assert_eq!(&par1[par1.len() - 4..], b"PAR1");
+
+        let meta = parquet_codec::decode_par1_footer(&par1).unwrap();
+        assert_eq!(meta.num_rows, 2);
+        assert_eq!(meta.columns.len(), parquet_codec::LAKE_COLUMNS.len());
+        assert_eq!(
+            meta.key_value_metadata
+                .get("grdr.org_id")
+                .map(String::as_str),
+            Some("org-par1")
+        );
+
+        let kek = AeadKey::generate().unwrap();
+        let org = OrgId::new("org-par1").unwrap();
+        let (key_id, day_dek) =
+            crypto::derive_segment_dek(&kek, &org, RetentionClass::Content.as_str(), "2023-11-14");
+        let rel_key = "class=content/day=2023-11-14/seg-test.parquet";
+        let sealed = parquet_modular::seal_modular_parquet(
+            &org,
+            RetentionClass::Content,
+            "2023-11-14",
+            rel_key,
+            &key_id,
+            &day_dek,
+            &[r1.clone(), r2.clone()],
+        )
+        .unwrap();
+        let opened = parquet_modular::open_modular_parquet(
+            &org,
+            RetentionClass::Content,
+            "2023-11-14",
+            rel_key,
+            &day_dek,
+            &sealed,
+            None,
+        )
+        .unwrap();
+        assert_eq!(opened, vec![r1, r2]);
+    }
+
+    #[test]
+    fn lake_thrift_dos_bool_list_varint_overflow_pare_bounds_and_fuse_filter() {
+        use grdr_ports::{CODE_LAKE_IO, RetentionClass};
+
+        // 11-byte Thrift bool-list DoS payload claiming massive list len over zero-byte booleans.
+        let mut r_bool = thrift_compact::CompactReader::new(&[
+            0x19, 0xF1, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F, 0x00,
+        ]);
+        let err_skip = r_bool.skip_field(thrift_compact::CT_STRUCT).unwrap_err();
+        assert_eq!(err_skip.code, CODE_LAKE_IO);
+
+        // Standalone bool list with 2^64-1 elements must fail in O(1) against remaining_bytes().
+        let err_meta = parquet_schema::decode_file_metadata(&[
+            0x19, 0xF1, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F, 0x00,
+        ])
+        .unwrap_err();
+        assert_eq!(err_meta.code, CODE_LAKE_IO);
+
+        // 10th byte > 1 overflows u64 varint cleanly.
+        let err_varint = parquet_schema::decode_file_metadata(&[
+            0x36, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02, 0x00,
+        ])
+        .unwrap_err();
+        assert_eq!(err_varint.code, CODE_LAKE_IO);
+
+        // Oversized Parquet row count is rejected before allocation.
+        let mut w_huge_rows = thrift_compact::CompactWriter::new();
+        w_huge_rows.begin_struct();
+        w_huge_rows.write_i64_field(3, 2_000_000_000);
+        w_huge_rows.end_struct();
+        assert_eq!(
+            parquet_schema::decode_file_metadata(&w_huge_rows.into_bytes())
+                .unwrap_err()
+                .code,
+            CODE_LAKE_IO
+        );
+
+        // Fuse filter rejects segment_len mismatches and non-empty zero-segment payloads.
+        let bad_seg = [0u8; 8]
+            .into_iter()
+            .chain(100u64.to_le_bytes())
+            .chain([1u8, 2u8])
+            .collect::<Vec<_>>();
+        assert!(fuse_filter::ObservableFuseFilter::decode(&bad_seg).is_none());
+        let bad_zero = [0u8; 8]
+            .into_iter()
+            .chain(0u64.to_le_bytes())
+            .chain([1u8, 2u8])
+            .collect::<Vec<_>>();
+        assert!(fuse_filter::ObservableFuseFilter::decode(&bad_zero).is_none());
+        let empty = fuse_filter::ObservableFuseFilter::build(&[]);
+        assert!(fuse_filter::ObservableFuseFilter::decode(&empty.encode()).is_some());
+
+        // Oversized PARE header length in tail fails closed before calling get_range for header.
+        let blobs = MemoryBlobStore::default();
+        let org = OrgId::new("org-pare-bounds").unwrap();
+        let sctx = SingleCtx::new(org.clone());
+        let tctx = TenantCtx::Single(sctx.clone());
+        let path = TenantPath::parse(&sctx, "class=content/day=2023-11-14/bad.parquet").unwrap();
+        let mut forged = vec![0u8; 32];
+        forged.extend_from_slice(&(64_000_000u32).to_le_bytes());
+        forged.extend_from_slice(parquet_modular::PARQUET_MAGIC_PARE);
+        let size_hint = u64::try_from(forged.len()).unwrap();
+        blobs.put(&sctx, &path, &forged).unwrap();
+        let kek = AeadKey::generate().unwrap();
+        let (_, dek) =
+            crypto::derive_segment_dek(&kek, &org, RetentionClass::Content.as_str(), "2023-11-14");
+        let err_pare = parquet_modular::read_modular_parquet_projected(
+            &blobs,
+            &tctx,
+            &path,
+            size_hint,
+            &parquet_modular::ParquetSliceDecryptCtx {
+                org_id: &org,
+                class: RetentionClass::Content,
+                day: "2023-11-14",
+                rel_key: "class=content/day=2023-11-14/bad.parquet",
+                day_dek: &dek,
+            },
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(err_pare.code, CODE_LAKE_IO);
     }
 }

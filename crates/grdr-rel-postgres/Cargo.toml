@@ -11,16 +11,23 @@ surface = "internal"
 renders = "none"
 
 [dependencies]
+base64 = { workspace = true }
+grdr-crypto = { workspace = true }
 grdr-model = { workspace = true }
 grdr-ports = { workspace = true }
 jiff = { workspace = true }
 rusqlite = { workspace = true }
+rustls = { workspace = true }
+rustls-native-certs = { workspace = true }
+rustls-pki-types = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+unicode-normalization = { workspace = true }
+webpki-root-certs = { workspace = true }
+zeroize = { workspace = true }
 
 [dev-dependencies]
-grdr-crypto = { workspace = true }
 grdr-ports-testkit = { workspace = true }
 
 [lints]

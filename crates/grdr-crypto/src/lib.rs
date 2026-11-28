@@ -239,6 +239,31 @@ pub fn domain_hmac_sha256(key: &[u8], domain: &str, data: &[u8]) -> [u8; SHA256_
     hmac_sha256(key, &msg)
 }
 
+pub fn pbkdf2_hmac_sha256(
+    ikm: &[u8],
+    salt: &[u8],
+    iterations: u32,
+) -> Result<Zeroizing<[u8; SHA256_DIGEST_LEN]>, CryptoError> {
+    let count = std::num::NonZeroU32::new(iterations)
+        .ok_or_else(|| CryptoError::InvalidKey("PBKDF2 iteration count must be positive".into()))?;
+    let mut out = Zeroizing::new([0u8; SHA256_DIGEST_LEN]);
+    aws_lc_rs::pbkdf2::derive(
+        aws_lc_rs::pbkdf2::PBKDF2_HMAC_SHA256,
+        count,
+        salt,
+        ikm,
+        out.as_mut(),
+    );
+    Ok(out)
+}
+
+pub fn random_bytes_16() -> Result<[u8; 16], CryptoError> {
+    let rng = aws_lc_rs::rand::SystemRandom::new();
+    let rnd: aws_lc_rs::rand::Random<[u8; 16]> = aws_lc_rs::rand::generate(&rng)
+        .map_err(|_| CryptoError::Entropy("aws-lc-rs RNG failure".into()))?;
+    Ok(rnd.expose())
+}
+
 #[must_use]
 pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     bool::from(a.ct_eq(b))
@@ -506,5 +531,21 @@ mod tests {
         }
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pbkdf2_hmac_sha256_matches_one_round_hmac_and_rejects_zero() {
+        let ikm = random_bytes_16().unwrap();
+        let salt = random_bytes_16().unwrap();
+
+        assert!(pbkdf2_hmac_sha256(&ikm, &salt, 0).is_err());
+
+        let derived1 = pbkdf2_hmac_sha256(&ikm, &salt, 1).unwrap();
+        let mut salt_blk = salt.to_vec();
+        salt_blk.extend_from_slice(&1u32.to_be_bytes());
+        assert_eq!(*derived1, hmac_sha256(&ikm, &salt_blk));
+
+        let derived4096 = pbkdf2_hmac_sha256(&ikm, &salt, 4096).unwrap();
+        assert_ne!(*derived4096, *derived1);
     }
 }
