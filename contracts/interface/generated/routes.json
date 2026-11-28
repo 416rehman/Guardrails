@@ -1,0 +1,290 @@
+[
+  {
+    "id": "home",
+    "title_token": "console.nav.home",
+    "icon_key": "nav.home",
+    "area": "console",
+    "scopes": [
+      "device",
+      "organisation"
+    ],
+    "requires": "daemon",
+    "path": "/",
+    "shell_nav": true
+  },
+  {
+    "id": "first-run",
+    "title_token": "console.nav.first_run",
+    "icon_key": "nav.first_run",
+    "area": "console",
+    "scopes": [
+      "device",
+      "organisation"
+    ],
+    "requires": "daemon",
+    "path": "/first-run",
+    "shell_nav": true
+  },
+  {
+    "id": "users",
+    "title_token": "console.nav.users",
+    "icon_key": "nav.users",
+    "area": "console",
+    "scopes": [
+      "device",
+      "organisation"
+    ],
+    "requires": "daemon",
+    "path": "/users",
+    "shell_nav": true
+  },
+  {
+    "id": "inventory",
+    "title_token": "console.nav.inventory",
+    "icon_key": "nav.inventory",
+    "area": "console",
+    "scopes": [
+      "device",
+      "organisation"
+    ],
+    "requires": "daemon",
+    "path": "/inventory",
+    "shell_nav": true
+  },
+  {
+    "id": "sessions",
+    "title_token": "console.nav.sessions",
+    "icon_key": "nav.sessions",
+    "area": "console",
+    "scopes": [
+      "device",
+      "organisation"
+    ],
+    "requires": "daemon",
+    "path": "/sessions",
+    "shell_nav": true
+  },
+  {
+    "id": "protect",
+    "title_token": "console.nav.protect",
+    "icon_key": "nav.protect",
+    "area": "console",
+    "scopes": [
+      "device",
+      "organisation"
+    ],
+    "requires": "daemon",
+    "path": "/protect",
+    "shell_nav": true
+  },
+  {
+    "id": "review",
+    "title_token": "console.nav.review",
+    "icon_key": "nav.review",
+    "area": "console",
+    "scopes": [
+      "organisation"
+    ],
+    "requires": "server",
+    "path": "/review",
+    "shell_nav": true
+  },
+  {
+    "id": "respond",
+    "title_token": "console.nav.respond",
+    "icon_key": "nav.respond",
+    "area": "console",
+    "scopes": [
+      "device",
+      "organisation"
+    ],
+    "requires": "daemon",
+    "path": "/respond",
+    "shell_nav": true
+  },
+  {
+    "id": "why",
+    "title_token": "console.nav.why",
+    "icon_key": "nav.why",
+    "area": "console",
+    "scopes": [
+      "device",
+      "organisation"
+    ],
+    "requires": "daemon",
+    "path": "/why/$reference",
+    "shell_nav": false
+  },
+  {
+    "id": "compliance",
+    "title_token": "console.nav.compliance",
+    "icon_key": "nav.compliance",
+    "area": "console",
+    "scopes": [
+      "device",
+      "organisation"
+    ],
+    "requires": "server",
+    "path": "/compliance",
+    "shell_nav": true
+  },
+  {
+    "id": "settings",
+    "title_token": "console.nav.settings",
+    "icon_key": "nav.settings",
+    "area": "console",
+    "scopes": [
+      "device",
+      "organisation"
+    ],
+    "requires": "daemon",
+    "path": "/settings",
+    "shell_nav": true
+  },
+  {
+    "id": "provider",
+    "title_token": "console.nav.provider",
+    "icon_key": "nav.provider",
+    "area": "console",
+    "scopes": [
+      "provider"
+    ],
+    "requires": "provider",
+    "path": "/provider",
+    "shell_nav": true
+  },
+  {
+    "id": "coverage",
+    "title_token": "console.nav.coverage",
+    "icon_key": "nav.coverage",
+    "area": "console",
+    "scopes": [
+      "device",
+      "organisation"
+    ],
+    "requires": "daemon",
+    "path": "/coverage",
+    "shell_nav": true
+  },
+  {
+    "id": "tester",
+    "title_token": "console.nav.tester",
+    "icon_key": "nav.tester",
+    "area": "console",
+    "scopes": [
+      "device",
+      "organisation"
+    ],
+    "requires": "daemon",
+    "path": "/tester",
+    "shell_nav": true
+  },
+  {
+    "id": "integrations",
+    "title_token": "console.nav.integrations",
+    "icon_key": "nav.integrations",
+    "area": "console",
+    "scopes": [
+      "organisation"
+    ],
+    "requires": "server",
+    "path": "/integrations",
+    "shell_nav": false
+  },
+  {
+    "id": "op-overview",
+    "title_token": "operator.nav.overview",
+    "icon_key": "nav.operator_overview",
+    "area": "operator",
+    "scopes": [
+      "operator"
+    ],
+    "requires": "operator-api",
+    "path": "/overview",
+    "shell_nav": true
+  },
+  {
+    "id": "op-health",
+    "title_token": "operator.nav.health",
+    "icon_key": "nav.operator_health",
+    "area": "operator",
+    "scopes": [
+      "operator"
+    ],
+    "requires": "operator-api",
+    "path": "/health",
+    "shell_nav": true
+  },
+  {
+    "id": "op-settings",
+    "title_token": "operator.nav.settings",
+    "icon_key": "nav.operator_settings",
+    "area": "operator",
+    "scopes": [
+      "operator"
+    ],
+    "requires": "operator-api",
+    "path": "/settings",
+    "shell_nav": true
+  },
+  {
+    "id": "op-upgrades",
+    "title_token": "operator.nav.upgrades",
+    "icon_key": "nav.operator_upgrades",
+    "area": "operator",
+    "scopes": [
+      "operator"
+    ],
+    "requires": "operator-api",
+    "path": "/upgrades",
+    "shell_nav": true
+  },
+  {
+    "id": "op-orgs",
+    "title_token": "operator.nav.orgs",
+    "icon_key": "nav.operator_orgs",
+    "area": "operator",
+    "scopes": [
+      "operator"
+    ],
+    "requires": "operator-api",
+    "path": "/orgs",
+    "shell_nav": false
+  },
+  {
+    "id": "op-keys",
+    "title_token": "operator.nav.keys",
+    "icon_key": "nav.operator_keys",
+    "area": "operator",
+    "scopes": [
+      "operator"
+    ],
+    "requires": "operator-api",
+    "path": "/keys",
+    "shell_nav": false
+  },
+  {
+    "id": "op-backups",
+    "title_token": "operator.nav.backups",
+    "icon_key": "nav.operator_backups",
+    "area": "operator",
+    "scopes": [
+      "operator"
+    ],
+    "requires": "operator-api",
+    "path": "/backups",
+    "shell_nav": true
+  },
+  {
+    "id": "op-audit",
+    "title_token": "operator.nav.audit",
+    "icon_key": "nav.operator_audit",
+    "area": "operator",
+    "scopes": [
+      "operator"
+    ],
+    "requires": "operator-api",
+    "path": "/audit",
+    "shell_nav": true
+  }
+]

@@ -71,10 +71,15 @@ container_ephemeral = "supported"
 ci_oidc = "supported"
 
 [compatibility_matrix]
+protocol_version = "1.0.0"
 wire_major = 1
 schema_rev = 1
 sensor_skew_behind = 2
 sensor_skew_ahead = 1
+pack_format_min = "1.0.0"
+pack_format_max_exclusive = "2.0.0"
+driver_interface_min = "1.0.0"
+driver_interface_max_exclusive = "2.0.0"
 
 [[compatibility_matrix.contracts]]
 name = "grdr.ingest"
@@ -106,3 +111,21 @@ name = "grdr.pack"
 version = "v1alpha1"
 min_wire_major = 1
 max_wire_major = 1
+
+[[compatibility_matrix.components]]
+component = "grdr-daemon"
+min_inclusive = "0.1.0"
+max_exclusive = "2.0.0"
+required_capabilities = ["signed_receipts", "session_labels", "fastpath_floor"]
+
+[[compatibility_matrix.components]]
+component = "grdr-mcp"
+min_inclusive = "0.1.0"
+max_exclusive = "2.0.0"
+required_capabilities = ["mcp_tool_pinning", "step_up_approval"]
+
+[[compatibility_matrix.components]]
+component = "grdr-desktop"
+min_inclusive = "0.1.0"
+max_exclusive = "2.0.0"
+required_capabilities = ["step_up_approval"]

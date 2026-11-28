@@ -1,0 +1,186 @@
+# Guardrails ADR CLI grammar, verbs, and exit codes (design/23 section 11, ARCH-023).
+schema = "grdr.cli.v1alpha1"
+
+[[exit_code]]
+code = 0
+name = "success"
+desc = "Success or positive answer"
+
+[[exit_code]]
+code = 1
+name = "negative"
+desc = "Check failed, health other than Protected, or verdict other than Allow"
+
+[[exit_code]]
+code = 2
+name = "usage"
+desc = "Invalid CLI arguments or syntax"
+
+[[exit_code]]
+code = 3
+name = "proposal"
+desc = "Widening proposal created and awaiting approval"
+
+[[exit_code]]
+code = 4
+name = "refused"
+desc = "Refused due to agent caller, declined step-up, or permission denied"
+
+[[exit_code]]
+code = 5
+name = "unreachable"
+desc = "Local daemon or remote server unreachable"
+
+[[command]]
+name = "init"
+kind = "top-level"
+desc = "Initialize local agent protection profile and run discovery scan"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = true
+
+[[command]]
+name = "scan"
+kind = "top-level"
+desc = "Scan endpoint for coding agents, MCP servers, skills, and rules"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = true
+
+[[command]]
+name = "protect"
+kind = "top-level"
+desc = "Enable boundary protection for discovered agents"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = false
+
+[[command]]
+name = "join"
+kind = "top-level"
+desc = "Enroll this endpoint into a Guardrails server organisation"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = false
+
+[[command]]
+name = "leave"
+kind = "top-level"
+desc = "Disconnect endpoint from remote organisation back to local mode"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = false
+
+[[command]]
+name = "uninstall"
+kind = "top-level"
+desc = "Remove local hooks, autostart registrations, and endpoint state"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = false
+
+[[command]]
+name = "status"
+kind = "top-level"
+desc = "Show current protection mode, daemon health, and assurance levels"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = true
+
+[[command]]
+name = "why"
+kind = "top-level"
+desc = "Explain a blocked, held, changed, or delayed receipt reference"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = true
+
+[[command]]
+name = "run"
+kind = "top-level"
+desc = "Launch a wrapped coding agent inside the OS boundary"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = false
+
+[[command]]
+name = "doctor"
+kind = "top-level"
+desc = "Diagnose hook health, script fonts, daemon connectivity, and canary"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = true
+
+[[command]]
+name = "egress"
+kind = "top-level"
+desc = "Inspect or verify local egress proxy routing"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = true
+
+[[command]]
+name = "support-bundle"
+kind = "top-level"
+desc = "Generate redacted diagnostic archive without secret or prompt content"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = false
+
+[[command]]
+name = "login"
+kind = "top-level"
+desc = "Authenticate console or CLI session against remote server"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = false
+
+[[command]]
+name = "logout"
+kind = "top-level"
+desc = "Clear active console or CLI authentication session"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = false
+
+[[command]]
+name = "policy"
+kind = "noun"
+verbs = ["list", "get", "create", "update", "delete", "replay"]
+desc = "Manage policy packs and rules"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = true
+
+[[command]]
+name = "mode"
+kind = "noun"
+verbs = ["get", "set"]
+desc = "Inspect or switch rule enforcement modes"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = false
+
+[[command]]
+name = "privacy"
+kind = "noun"
+verbs = ["get", "set", "export"]
+desc = "Inspect privacy capture rules and local exclusions"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = true
+
+[[command]]
+name = "console"
+kind = "noun"
+verbs = ["serve", "open"]
+desc = "Launch local Web console server"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = false
+
+[[command]]
+name = "response"
+kind = "noun"
+verbs = ["list", "approve", "deny", "kill", "release"]
+desc = "Inspect approvals, findings, and kill switches"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = false
+
+[[command]]
+name = "server"
+kind = "noun"
+verbs = ["preflight", "migrate", "airgap-import"]
+desc = "Administer self-hosted Guardrails server lifecycle"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = false
+
+[[command]]
+name = "operator"
+kind = "noun"
+verbs = ["config-export", "config-apply", "backup", "restore-drill"]
+desc = "Execute operator plane runtime administration tasks"
+flags = ["--json", "--plain", "--lang", "--context"]
+agent_callable = false

@@ -1,50 +1,81 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
-use std::path::{Path, PathBuf};
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
 
-use crate::model::{
-    BaseTokensFile, ExtendedTokensFile, ForbiddenTerm, GenError, IconSpec, InterfaceBundle,
-    LocaleSpec, MessageSpec, PresentationSpec, RouteSpec, TokenBundle, VocabularySpec,
-    VocabularyTerm,
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::Path;
+
+use crate::loader_extra::{
+    ensure_not_symlink, load_optional_cli, load_optional_notifications, load_optional_shortcuts,
+    load_routes, load_translations, opt_str, opt_str_array, opt_table_array, parse_toml_file,
+    req_str, req_table, req_table_array, sorted_mf2_files,
 };
-use crate::toml_doc::{TomlValue, parse_toml_table};
+use crate::model::{
+    BaseTokensFile, BrandSpec, ExtendedTokensFile, ForbiddenTerm, GenError, HarnessIconSpec,
+    IconCatalogSpec, IconSpec, InterfaceBundle, LocaleSpec, MessageSpec, OsIconSpec,
+    PresentationSpec, TokenBundle, VocabularySpec, VocabularyTerm,
+};
+use crate::toml_doc::TomlValue;
+use crate::validate::validate_bundle;
 
 /// Loads and validates all single-source specs under `contracts/interface/`.
 pub fn load_interface_bundle(repo_root: &Path) -> Result<InterfaceBundle, GenError> {
     let iface = repo_root.join("contracts").join("interface");
+    let brand = load_brand(&iface.join("brand").join("brand.toml"))?;
     let tokens = load_tokens(&iface)?;
     let locales = load_locales(&iface.join("strings").join("locales.toml"))?;
     let messages = load_messages(&iface.join("strings").join("src"))?;
+    let translations = load_translations(&iface.join("strings").join("tr"))?;
     let vocabulary = load_vocabulary(&iface.join("vocabulary.toml"))?;
-    let icons = load_icons(&iface.join("icons.toml"))?;
+    let icon_catalog = load_icons(&iface.join("icons.toml"))?;
     let presentations = load_presentations(&iface.join("presentation.toml"))?;
     let routes = load_routes(&iface.join("routes.toml"))?;
+    let cli = load_optional_cli(&iface.join("cli.toml"))?;
+    let shortcuts = load_optional_shortcuts(&iface.join("shortcuts.toml"))?;
+    let notifications = load_optional_notifications(&iface.join("notifications.toml"))?;
 
     let bundle = InterfaceBundle {
+        brand,
         tokens,
         locales,
         messages,
+        translations,
         vocabulary,
-        icons,
+        icons: icon_catalog.icons,
+        harness_icons: icon_catalog.harnesses,
+        os_icons: icon_catalog.operating_systems,
         presentations,
         routes,
+        cli,
+        shortcuts,
+        notifications,
     };
-    validate_bundle(&bundle)?;
+    validate_bundle(&bundle, repo_root)?;
     Ok(bundle)
 }
 
 fn read_text(path: &Path) -> Result<String, GenError> {
+    ensure_not_symlink(path, "contracts/interface")?;
     fs::read_to_string(path).map_err(|source| GenError::Io {
         path: path.to_path_buf(),
         source,
     })
 }
 
-fn parse_toml_file(path: &Path) -> Result<BTreeMap<String, TomlValue>, GenError> {
-    let text = read_text(path)?;
-    parse_toml_table(&text).map_err(|source| GenError::Toml {
-        path: path.to_path_buf(),
-        source,
+fn load_brand(path: &Path) -> Result<BrandSpec, GenError> {
+    let doc = parse_toml_file(path)?;
+    let file = "contracts/interface/brand/brand.toml".to_owned();
+    let identity = req_table(&doc, "identity", &file)?;
+    let tokens = req_table(&doc, "tokens", &file)?;
+    Ok(BrandSpec {
+        product_name: req_str(identity, "product_name", &file)?,
+        short_name: req_str(identity, "short_name", &file)?,
+        accent: req_str(tokens, "accent", &file)?,
+        accent_dark: req_str(tokens, "accent_dark", &file)?,
+        surface_light: req_str(tokens, "surface_light", &file)?,
+        surface_dark: req_str(tokens, "surface_dark", &file)?,
+        font_sans: req_str(tokens, "font_sans", &file)?,
+        font_mono: req_str(tokens, "font_mono", &file)?,
     })
 }
 
@@ -124,53 +155,26 @@ fn lookup_token_ref<'a>(token_ref: &str, base: &'a BaseTokensFile) -> Option<&'a
 fn load_locales(path: &Path) -> Result<Vec<LocaleSpec>, GenError> {
     let doc = parse_toml_file(path)?;
     let file = "contracts/interface/strings/locales.toml".to_owned();
-    let rows = doc
-        .get("locale")
-        .and_then(TomlValue::as_table_array)
-        .ok_or_else(|| GenError::Validation {
-            file: file.clone(),
-            detail: "missing [[locale]] entries".to_owned(),
-        })?;
-
+    let rows = req_table_array(&doc, "locale", &file)?;
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
+        let tag = req_str(row, "tag", &file)?;
         out.push(LocaleSpec {
-            tag: req_str(row, "tag", &file)?,
+            native_name: opt_str(row, "native_name").unwrap_or_else(|| tag.clone()),
             rust_variant: req_str(row, "rust_variant", &file)?,
             tier: req_str(row, "tier", &file)?,
             script: req_str(row, "script", &file)?,
             direction: req_str(row, "direction", &file)?,
-            aliases: row
-                .get("aliases")
-                .and_then(TomlValue::as_str_array)
-                .unwrap_or_default(),
+            fallback: opt_str(row, "fallback").unwrap_or_else(|| "en-US".to_owned()),
+            aliases: opt_str_array(row, "aliases"),
+            tag,
         });
     }
     Ok(out)
 }
 
 fn load_messages(dir: &Path) -> Result<Vec<MessageSpec>, GenError> {
-    let mut paths: Vec<PathBuf> = Vec::new();
-    let entries = fs::read_dir(dir).map_err(|source| GenError::Io {
-        path: dir.to_path_buf(),
-        source,
-    })?;
-    for entry in entries {
-        let entry = entry.map_err(|source| GenError::Io {
-            path: dir.to_path_buf(),
-            source,
-        })?;
-        let path = entry.path();
-        if path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| n.ends_with(".mf2.toml"))
-        {
-            paths.push(path);
-        }
-    }
-    paths.sort();
-
+    let paths = sorted_mf2_files(dir)?;
     let mut out = Vec::new();
     for path in paths {
         let ns = path
@@ -189,17 +193,10 @@ fn load_messages(dir: &Path) -> Result<Vec<MessageSpec>, GenError> {
             out.push(MessageSpec {
                 id,
                 namespace: ns.clone(),
-                rust_variant: table
-                    .get("rust_variant")
-                    .and_then(TomlValue::as_str)
-                    .map(str::to_owned),
+                rust_variant: opt_str(table, "rust_variant"),
                 desc: req_str(table, "desc", &file)?,
                 max: table.get("max").and_then(TomlValue::as_i64),
-                risk: table
-                    .get("risk")
-                    .and_then(TomlValue::as_str)
-                    .unwrap_or("normal")
-                    .to_owned(),
+                risk: opt_str(table, "risk").unwrap_or_else(|| "normal".to_owned()),
                 msg: req_str(table, "msg", &file)?,
             });
         }
@@ -210,23 +207,11 @@ fn load_messages(dir: &Path) -> Result<Vec<MessageSpec>, GenError> {
 fn load_vocabulary(path: &Path) -> Result<VocabularySpec, GenError> {
     let doc = parse_toml_file(path)?;
     let file = "contracts/interface/vocabulary.toml".to_owned();
-    let brand_tbl = doc
-        .get("brand")
-        .and_then(TomlValue::as_table)
-        .ok_or_else(|| GenError::Validation {
-            file: file.clone(),
-            detail: "missing [brand] table".to_owned(),
-        })?;
+    let brand_tbl = req_table(&doc, "brand", &file)?;
     let brand_name = req_str(brand_tbl, "name", &file)?;
     let brand_short_name = req_str(brand_tbl, "short_name", &file)?;
 
-    let term_rows = doc
-        .get("term")
-        .and_then(TomlValue::as_table_array)
-        .ok_or_else(|| GenError::Validation {
-            file: file.clone(),
-            detail: "missing [[term]] entries".to_owned(),
-        })?;
+    let term_rows = req_table_array(&doc, "term", &file)?;
     let mut terms = Vec::with_capacity(term_rows.len());
     for row in term_rows {
         terms.push(VocabularyTerm {
@@ -240,10 +225,7 @@ fn load_vocabulary(path: &Path) -> Result<VocabularySpec, GenError> {
         });
     }
 
-    let forbidden_rows = doc
-        .get("forbidden")
-        .and_then(TomlValue::as_table_array)
-        .unwrap_or_default();
+    let forbidden_rows = opt_table_array(&doc, "forbidden");
     let mut forbidden = Vec::with_capacity(forbidden_rows.len());
     for row in forbidden_rows {
         forbidden.push(ForbiddenTerm {
@@ -260,188 +242,72 @@ fn load_vocabulary(path: &Path) -> Result<VocabularySpec, GenError> {
     })
 }
 
-fn load_icons(path: &Path) -> Result<Vec<IconSpec>, GenError> {
+fn load_icons(path: &Path) -> Result<IconCatalogSpec, GenError> {
     let doc = parse_toml_file(path)?;
     let file = "contracts/interface/icons.toml".to_owned();
-    let rows = doc
-        .get("icon")
-        .and_then(TomlValue::as_table_array)
-        .ok_or_else(|| GenError::Validation {
-            file: file.clone(),
-            detail: "missing [[icon]] entries".to_owned(),
-        })?;
-    let mut out = Vec::with_capacity(rows.len());
-    for row in rows {
-        out.push(IconSpec {
+    let icon_rows = req_table_array(&doc, "icon", &file)?;
+    let mut icons = Vec::with_capacity(icon_rows.len());
+    for row in icon_rows {
+        icons.push(IconSpec {
             key: req_str(row, "key", &file)?,
             lucide: req_str(row, "lucide", &file)?,
             mirror: row
                 .get("mirror")
                 .and_then(TomlValue::as_bool)
                 .unwrap_or(false),
-            same_as: row
-                .get("same_as")
-                .and_then(TomlValue::as_str)
-                .map(str::to_owned),
+            same_as: opt_str(row, "same_as"),
         });
     }
-    Ok(out)
+
+    let harness_rows = opt_table_array(&doc, "harness_icon");
+    let mut harnesses = Vec::with_capacity(harness_rows.len());
+    for row in harness_rows {
+        harnesses.push(HarnessIconSpec {
+            id: req_str(row, "id", &file)?,
+            display_name: req_str(row, "display_name", &file)?,
+            vendor: opt_str(row, "vendor").unwrap_or_default(),
+            kind: opt_str(row, "kind").unwrap_or_else(|| "coding-agent".to_owned()),
+            aliases: opt_str_array(row, "aliases"),
+            simple_icon: opt_str(row, "simple_icon").unwrap_or_default(),
+            lucide: req_str(row, "lucide", &file)?,
+            tone: opt_str(row, "tone").unwrap_or_else(|| "primary".to_owned()),
+        });
+    }
+
+    let os_rows = opt_table_array(&doc, "os_icon");
+    let mut operating_systems = Vec::with_capacity(os_rows.len());
+    for row in os_rows {
+        operating_systems.push(OsIconSpec {
+            id: req_str(row, "id", &file)?,
+            display_name: req_str(row, "display_name", &file)?,
+            aliases: opt_str_array(row, "aliases"),
+            simple_icon: opt_str(row, "simple_icon").unwrap_or_default(),
+            lucide: req_str(row, "lucide", &file)?,
+            tone: opt_str(row, "tone").unwrap_or_else(|| "primary".to_owned()),
+        });
+    }
+
+    Ok(IconCatalogSpec {
+        icons,
+        harnesses,
+        operating_systems,
+    })
 }
 
 fn load_presentations(path: &Path) -> Result<Vec<PresentationSpec>, GenError> {
     let doc = parse_toml_file(path)?;
     let file = "contracts/interface/presentation.toml".to_owned();
-    let rows = doc
-        .get("entry")
-        .and_then(TomlValue::as_table_array)
-        .ok_or_else(|| GenError::Validation {
-            file: file.clone(),
-            detail: "missing [[entry]] entries".to_owned(),
-        })?;
+    let rows = req_table_array(&doc, "entry", &file)?;
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
         out.push(PresentationSpec {
             enum_name: req_str(row, "enum", &file)?,
             value: req_str(row, "value", &file)?,
             label: req_str(row, "label", &file)?,
-            description: row
-                .get("description")
-                .and_then(TomlValue::as_str)
-                .map(str::to_owned),
+            description: opt_str(row, "description"),
             icon: req_str(row, "icon", &file)?,
             tone: req_str(row, "tone", &file)?,
         });
     }
     Ok(out)
-}
-
-fn load_routes(path: &Path) -> Result<Vec<RouteSpec>, GenError> {
-    let doc = parse_toml_file(path)?;
-    let file = "contracts/interface/routes.toml".to_owned();
-    let rows = doc
-        .get("route")
-        .and_then(TomlValue::as_table_array)
-        .ok_or_else(|| GenError::Validation {
-            file: file.clone(),
-            detail: "missing [[route]] entries".to_owned(),
-        })?;
-    let mut out = Vec::with_capacity(rows.len());
-    for row in rows {
-        out.push(RouteSpec {
-            id: req_str(row, "id", &file)?,
-            title: req_str(row, "title", &file)?,
-            icon: req_str(row, "icon", &file)?,
-            area: req_str(row, "area", &file)?,
-            scopes: row
-                .get("scopes")
-                .and_then(TomlValue::as_str_array)
-                .unwrap_or_default(),
-            requires: req_str(row, "requires", &file)?,
-        });
-    }
-    Ok(out)
-}
-
-fn req_str(table: &BTreeMap<String, TomlValue>, key: &str, file: &str) -> Result<String, GenError> {
-    table
-        .get(key)
-        .and_then(TomlValue::as_str)
-        .map(str::to_owned)
-        .ok_or_else(|| GenError::Validation {
-            file: file.to_owned(),
-            detail: format!("missing string field '{key}'"),
-        })
-}
-
-fn validate_bundle(bundle: &InterfaceBundle) -> Result<(), GenError> {
-    let icon_keys: BTreeSet<&str> = bundle.icons.iter().map(|i| i.key.as_str()).collect();
-    let msg_keys: BTreeSet<&str> = bundle.messages.iter().map(|m| m.id.as_str()).collect();
-
-    for icon in &bundle.icons {
-        if let Some(same_as) = &icon.same_as
-            && !icon_keys.contains(same_as.as_str())
-        {
-            return Err(GenError::Validation {
-                file: "contracts/interface/icons.toml".to_owned(),
-                detail: format!("icon '{}' references missing same_as '{same_as}'", icon.key),
-            });
-        }
-    }
-
-    for entry in &bundle.presentations {
-        if !icon_keys.contains(entry.icon.as_str()) {
-            return Err(GenError::Validation {
-                file: "contracts/interface/presentation.toml".to_owned(),
-                detail: format!(
-                    "entry '{}::{}' references missing icon '{}'",
-                    entry.enum_name, entry.value, entry.icon
-                ),
-            });
-        }
-        if !msg_keys.contains(entry.label.as_str()) {
-            return Err(GenError::Validation {
-                file: "contracts/interface/presentation.toml".to_owned(),
-                detail: format!(
-                    "entry '{}::{}' references missing label token '{}'",
-                    entry.enum_name, entry.value, entry.label
-                ),
-            });
-        }
-        if let Some(desc_key) = &entry.description
-            && !msg_keys.contains(desc_key.as_str())
-        {
-            return Err(GenError::Validation {
-                file: "contracts/interface/presentation.toml".to_owned(),
-                detail: format!(
-                    "entry '{}::{}' references missing description token '{}'",
-                    entry.enum_name, entry.value, desc_key
-                ),
-            });
-        }
-    }
-
-    for route in &bundle.routes {
-        if !icon_keys.contains(route.icon.as_str()) {
-            return Err(GenError::Validation {
-                file: "contracts/interface/routes.toml".to_owned(),
-                detail: format!(
-                    "route '{}' references missing icon '{}'",
-                    route.id, route.icon
-                ),
-            });
-        }
-        if !msg_keys.contains(route.title.as_str()) {
-            return Err(GenError::Validation {
-                file: "contracts/interface/routes.toml".to_owned(),
-                detail: format!(
-                    "route '{}' references missing title token '{}'",
-                    route.id, route.title
-                ),
-            });
-        }
-    }
-
-    for msg in &bundle.messages {
-        for bad in &bundle.vocabulary.forbidden {
-            if contains_word_ci(&msg.msg, &bad.word) {
-                return Err(GenError::Validation {
-                    file: format!("contracts/interface/strings/src/{}.mf2.toml", msg.namespace),
-                    detail: format!(
-                        "token '{}' uses forbidden term '{}' (use '{}' instead)",
-                        msg.id, bad.word, bad.replacement
-                    ),
-                });
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn contains_word_ci(haystack: &str, needle: &str) -> bool {
-    let lower_hay = haystack.to_ascii_lowercase();
-    let lower_needle = needle.to_ascii_lowercase();
-    lower_hay
-        .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
-        .any(|tok| tok == lower_needle)
 }

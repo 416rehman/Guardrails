@@ -2,7 +2,29 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 #![deny(clippy::arithmetic_side_effects)]
 
+pub mod codes;
+pub mod dialer;
+mod dialer_net;
 pub mod endpoint;
+pub use codes::{
+    CODE_WIRE_CODEC, CODE_WIRE_CRYPTO, CODE_WIRE_EGRESS_BLOCKED, CODE_WIRE_EXPIRED_TIMESTAMP,
+    CODE_WIRE_FLOOR_EMPTY_KEYS, CODE_WIRE_FLOOR_EXPIRED, CODE_WIRE_FLOOR_INVALID_HEADER,
+    CODE_WIRE_FLOOR_MALFORMED_FIELD, CODE_WIRE_FLOOR_TOO_LARGE, CODE_WIRE_FLOOR_TOO_MANY_RULES,
+    CODE_WIRE_FLOOR_TRUNCATED, CODE_WIRE_FLOOR_UNTRUSTED_SIGNATURE, CODE_WIRE_FRAME_TOO_LARGE,
+    CODE_WIRE_INVALID_MAGIC, CODE_WIRE_IPC_CREDIT_EXHAUSTED, CODE_WIRE_IPC_CREDIT_OVERFLOW,
+    CODE_WIRE_IPC_EMPTY_PAYLOAD, CODE_WIRE_IPC_END_OF_STREAM, CODE_WIRE_IPC_FRAME_TOO_LARGE,
+    CODE_WIRE_IPC_INVALID_PROTOBUF, CODE_WIRE_IPC_IO, CODE_WIRE_IPC_LIMITS_UNAVAILABLE,
+    CODE_WIRE_IPC_PROTOCOL_VERSION, CODE_WIRE_IPC_TIMED_OUT, CODE_WIRE_IPC_TRUNCATED_FRAME,
+    CODE_WIRE_IPC_ZERO_LENGTH, CODE_WIRE_PEER_FOREIGN_UID, CODE_WIRE_PEER_PID_REUSE,
+    CODE_WIRE_PEER_PRIVILEGE_TOO_LOW, CODE_WIRE_PEER_PROFILE_MISMATCH,
+    CODE_WIRE_PEER_PROTOCOL_REJECTED, CODE_WIRE_PEER_TRANSIENT_RESTART,
+    CODE_WIRE_PEER_UNAUTHENTICATED, CODE_WIRE_PEER_UNSAFE_PATH, CODE_WIRE_PEER_UNTRUSTED_SERVER,
+    CODE_WIRE_REPLAY_DETECTED, CODE_WIRE_TRUNCATED_FRAME, CODE_WIRE_UNSUPPORTED_VERSION,
+};
+pub use dialer::{
+    DialPurpose, Dialer, EgressDialPlan, EgressDialReceipt, EgressDialRequest, EgressRouteError,
+    IsolatedAllowRule, NetworkMode, ProxySelection, validate_egress_request,
+};
 pub mod floor_bin;
 mod floor_cursor;
 pub mod frame;
@@ -14,6 +36,7 @@ pub mod peer_types;
 
 #[cfg(feature = "json-envelope")]
 use std::collections::HashMap;
+use std::fmt;
 
 #[cfg(feature = "json-envelope")]
 use grdr_crypto::{SigningKeypair, verify_bytes};
@@ -42,23 +65,15 @@ const MAX_NONCE_LEN: usize = 256;
 #[cfg(feature = "json-envelope")]
 const MAX_REPLAY_SKEW_S: i64 = 31_536_000;
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WireError {
-    #[error("GRDR-WIRE-0001: wire frame size {size} exceeds maximum {max}")]
     FrameTooLarge { size: usize, max: usize },
-    #[error("GRDR-WIRE-0002: wire frame truncated (needed {needed} bytes, got {available})")]
     TruncatedFrame { needed: usize, available: usize },
-    #[error("GRDR-WIRE-0003: invalid wire frame magic header")]
     InvalidMagic,
-    #[error("GRDR-WIRE-0004: unsupported wire protocol version {0}")]
     UnsupportedVersion(u16),
-    #[error("GRDR-WIRE-0005: wire codec error: {0}")]
     Codec(String),
-    #[error("GRDR-WIRE-0006: wire signature verification error: {0}")]
     Crypto(String),
-    #[error("GRDR-WIRE-0007: duplicate nonce replayed")]
     ReplayDetected { key_id: String, nonce: String },
-    #[error("GRDR-WIRE-0008: wire envelope timestamp outside allowed skew window")]
     ExpiredTimestamp,
 }
 
@@ -95,17 +110,58 @@ impl WireError {
     #[must_use]
     pub const fn code(&self) -> &'static str {
         match self {
-            Self::FrameTooLarge { .. } => "GRDR-WIRE-0001",
-            Self::TruncatedFrame { .. } => "GRDR-WIRE-0002",
-            Self::InvalidMagic => "GRDR-WIRE-0003",
-            Self::UnsupportedVersion(_) => "GRDR-WIRE-0004",
-            Self::Codec(_) => "GRDR-WIRE-0005",
-            Self::Crypto(_) => "GRDR-WIRE-0006",
-            Self::ReplayDetected { .. } => "GRDR-WIRE-0007",
-            Self::ExpiredTimestamp => "GRDR-WIRE-0008",
+            Self::FrameTooLarge { .. } => codes::CODE_WIRE_FRAME_TOO_LARGE,
+            Self::TruncatedFrame { .. } => codes::CODE_WIRE_TRUNCATED_FRAME,
+            Self::InvalidMagic => codes::CODE_WIRE_INVALID_MAGIC,
+            Self::UnsupportedVersion(_) => codes::CODE_WIRE_UNSUPPORTED_VERSION,
+            Self::Codec(_) => codes::CODE_WIRE_CODEC,
+            Self::Crypto(_) => codes::CODE_WIRE_CRYPTO,
+            Self::ReplayDetected { .. } => codes::CODE_WIRE_REPLAY_DETECTED,
+            Self::ExpiredTimestamp => codes::CODE_WIRE_EXPIRED_TIMESTAMP,
         }
     }
 }
+
+impl fmt::Display for WireError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::FrameTooLarge { size, max } => write!(
+                f,
+                "{}: wire frame size {size} exceeds maximum {max}",
+                self.code()
+            ),
+            Self::TruncatedFrame { needed, available } => write!(
+                f,
+                "{}: wire frame truncated (needed {needed} bytes, got {available})",
+                self.code()
+            ),
+            Self::InvalidMagic => write!(f, "{}: invalid wire frame magic header", self.code()),
+            Self::UnsupportedVersion(ver) => {
+                write!(
+                    f,
+                    "{}: unsupported wire protocol version {ver}",
+                    self.code()
+                )
+            }
+            Self::Codec(detail) => write!(f, "{}: wire codec error: {detail}", self.code()),
+            Self::Crypto(detail) => {
+                write!(
+                    f,
+                    "{}: wire signature verification error: {detail}",
+                    self.code()
+                )
+            }
+            Self::ReplayDetected { .. } => write!(f, "{}: duplicate nonce replayed", self.code()),
+            Self::ExpiredTimestamp => write!(
+                f,
+                "{}: wire envelope timestamp outside allowed skew window",
+                self.code()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for WireError {}
 
 pub fn generate_nonce() -> Result<String, WireError> {
     let mut raw = [0u8; 16];

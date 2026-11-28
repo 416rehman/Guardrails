@@ -69,6 +69,9 @@ prost = { version = "0.14", default-features = false, features = ["derive", "std
 regex = "1.13"
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "charset"] }
 rusqlite = { version = "0.43", default-features = false, features = ["bundled"] }
+rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs", "std", "tls12"] }
+rustls-native-certs = "0.8"
+rustls-pki-types = { version = "1.16", default-features = false, features = ["std"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.11"
@@ -83,6 +86,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 unicode-normalization = "0.1"
 url = "2"
 uuid = { version = "1.11", features = ["v7", "serde"] }
+webpki-root-certs = "1.0"
 zeroize = { version = "1.9", default-features = false, features = ["alloc"] }
 
 [workspace.lints.rust]

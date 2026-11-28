@@ -1,55 +1,74 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
 import {
   BRAND_NAME,
   BRAND_SHORT_NAME,
+  HARNESS_CATALOG_ICONS,
   ICON_REGISTRY,
   INTERFACE_ROUTES,
   MESSAGES,
+  OS_CATALOG_ICONS,
   PRESENTATION_REGISTRY,
   SUPPORTED_LOCALES,
+  TRANSLATIONS,
   VOCABULARY_TERMS,
+  getLocale,
+  getLocaleMeta,
+  initLocale,
   lookupMessage,
+  resolveLocaleTag,
+  setLocale,
+  subscribeLocale,
+  syncDocumentLocale,
   t,
+  type AllConsoleRouteId,
+  type AllOperatorRouteId,
+  type ConsoleRouteId,
+  type InterfaceRouteId,
   type LocaleCode,
+  type LocaleDirection,
+  type LocaleScript,
+  type MessageArgs,
   type MessageKey,
+  type OperatorRouteId,
 } from "./generated";
+import { capitalizeLabel, resolveOsCatalogEntry } from "./present";
 
 export {
   BRAND_NAME,
   BRAND_SHORT_NAME,
+  HARNESS_CATALOG_ICONS,
   ICON_REGISTRY,
   INTERFACE_ROUTES,
   MESSAGES,
+  OS_CATALOG_ICONS,
   PRESENTATION_REGISTRY,
   SUPPORTED_LOCALES,
+  TRANSLATIONS,
   VOCABULARY_TERMS,
+  getLocale,
+  getLocaleMeta,
+  initLocale,
   lookupMessage,
+  resolveLocaleTag,
+  setLocale,
+  subscribeLocale,
+  syncDocumentLocale,
   t,
+  type AllConsoleRouteId,
+  type AllOperatorRouteId,
+  type ConsoleRouteId,
+  type InterfaceRouteId,
   type LocaleCode,
+  type LocaleDirection,
+  type LocaleScript,
+  type MessageArgs,
   type MessageKey,
+  type OperatorRouteId,
 };
 
-export type ConsoleRouteId =
-  | "home"
-  | "first-run"
-  | "users"
-  | "inventory"
-  | "sessions"
-  | "protect"
-  | "review"
-  | "respond"
-  | "compliance"
-  | "settings"
-  | "provider"
-  | "coverage"
-  | "tester";
-
-export type OperatorRouteId =
-  | "op-overview"
-  | "op-health"
-  | "op-settings"
-  | "op-upgrades"
-  | "op-backups"
-  | "op-audit";
+export * from "./present";
 
 export type InventorySectionId =
   | "endpoints"
@@ -64,13 +83,13 @@ export type ProtectSectionId = "rules" | "browser";
 
 export interface ConsoleNavChild {
   id: string;
-  labelKey: MessageKey | string;
+  labelKey: MessageKey;
   iconKey: string;
 }
 
 export interface ConsoleNavItem {
   id: ConsoleRouteId;
-  labelKey: MessageKey | string;
+  labelKey: MessageKey;
   iconKey: string;
   children?: ReadonlyArray<ConsoleNavChild>;
 }
@@ -81,39 +100,39 @@ export interface ConsoleNavGroup {
   items: ReadonlyArray<ConsoleNavItem>;
 }
 
-const EXTRA_ROUTE_LABELS: Record<string, string> = {
-  "console.nav.first_run": "First run",
-  "console.nav.review": "Review queue",
-  "console.nav.compliance": "Compliance",
-  "console.nav.settings": "Settings & privacy",
-  "console.nav.provider": "Provider",
-  "operator.nav.upgrades": "Upgrades",
-  "operator.nav.backups": "Backups",
-};
-
-export function routeLabel(key: MessageKey | string): string {
+export function routeLabel(key: MessageKey | string, locale?: LocaleCode): string {
   if (key in MESSAGES) {
-    return t(key as MessageKey);
+    return t(key as MessageKey, undefined, locale ?? getLocale());
   }
-  return EXTRA_ROUTE_LABELS[key] ?? key;
+  return key;
 }
+
+export const ALL_CONSOLE_ROUTES = INTERFACE_ROUTES.filter((r) => r.area === "console");
+export const ALL_OPERATOR_ROUTES = INTERFACE_ROUTES.filter((r) => r.area === "operator");
 
 export const CONSOLE_ROUTES: ReadonlyArray<{
   id: ConsoleRouteId;
-  labelKey: MessageKey | string;
+  labelKey: MessageKey;
   iconKey: string;
-}> = [
-  ...INTERFACE_ROUTES.filter((r) => r.area === "console").map((r) => ({
-    id: r.id as ConsoleRouteId,
-    labelKey: r.titleKey,
-    iconKey: r.iconKey,
-  })),
-  { id: "first-run", labelKey: "console.nav.first_run", iconKey: "nav.first_run" },
-  { id: "review", labelKey: "console.nav.review", iconKey: "nav.review" },
-  { id: "compliance", labelKey: "console.nav.compliance", iconKey: "nav.compliance" },
-  { id: "settings", labelKey: "console.nav.settings", iconKey: "nav.settings" },
-  { id: "provider", labelKey: "console.nav.provider", iconKey: "nav.provider" },
-];
+  path: string;
+}> = INTERFACE_ROUTES.filter((r) => r.area === "console" && r.shellNav).map((r) => ({
+  id: r.id as ConsoleRouteId,
+  labelKey: r.titleKey as MessageKey,
+  iconKey: r.iconKey,
+  path: r.path,
+}));
+
+export const OPERATOR_ROUTES: ReadonlyArray<{
+  id: OperatorRouteId;
+  labelKey: MessageKey;
+  iconKey: string;
+  path: string;
+}> = INTERFACE_ROUTES.filter((r) => r.area === "operator" && r.shellNav).map((r) => ({
+  id: r.id as OperatorRouteId,
+  labelKey: r.titleKey as MessageKey,
+  iconKey: r.iconKey,
+  path: r.path,
+}));
 
 export const CONSOLE_NAV_GROUPS: ReadonlyArray<ConsoleNavGroup> = [
   {
@@ -177,80 +196,99 @@ export const CONSOLE_NAV_GROUPS: ReadonlyArray<ConsoleNavGroup> = [
   },
 ];
 
-export const OPERATOR_ROUTES: ReadonlyArray<{
-  id: OperatorRouteId;
-  labelKey: MessageKey | string;
-  iconKey: string;
-}> = [
-  ...INTERFACE_ROUTES.filter((r) => r.area === "operator")
-    .filter((r) => r.id !== "op-audit")
-    .map((r) => ({
-      id: r.id as OperatorRouteId,
-      labelKey: r.titleKey,
-      iconKey: r.iconKey,
-    })),
-  { id: "op-upgrades", labelKey: "operator.nav.upgrades", iconKey: "nav.operator_upgrades" },
-  { id: "op-backups", labelKey: "operator.nav.backups", iconKey: "nav.operator_backups" },
-  ...INTERFACE_ROUTES.filter((r) => r.id === "op-audit").map((r) => ({
-    id: r.id as OperatorRouteId,
-    labelKey: r.titleKey,
-    iconKey: r.iconKey,
-  })),
-];
-
-export function pluralize(count: number, singular: string, plural?: string): string {
-  const form = count === 1 ? singular : (plural ?? `${singular}s`);
-  return `${count} ${form}`;
+function toIntlLocaleTag(locale: LocaleCode): string {
+  switch (locale) {
+    case "en-XA":
+      return "en-US";
+    case "ar-XB":
+      return "ar";
+    case "ja-XC":
+      return "ja-JP";
+    default:
+      return locale;
+  }
 }
 
-export function formatOsName(os: string): string {
-  const norm = os.trim().toLowerCase();
-  if (norm === "macos" || norm === "darwin") return "macOS";
-  if (norm === "linux") return "Linux";
-  if (norm === "windows") return "Windows";
-  return os;
+export function pluralize(
+  count: number,
+  singular: string,
+  plural?: string,
+  locale?: LocaleCode,
+): string {
+  const active = locale ?? getLocale();
+  const intlTag = toIntlLocaleTag(active);
+  let form: string;
+  try {
+    const category = new Intl.PluralRules(intlTag).select(count);
+    form = category === "one" ? singular : (plural ?? `${singular}s`);
+  } catch {
+    form = count === 1 ? singular : (plural ?? `${singular}s`);
+  }
+  const numText = new Intl.NumberFormat(intlTag).format(count);
+  return `${numText} ${form}`;
 }
 
-export * from "./present";
-import { capitalizeLabel } from "./present";
+export function formatOsName(os: string, locale?: LocaleCode): string {
+  const entry = resolveOsCatalogEntry(os);
+  if (!entry) return os;
+  const active = locale ?? getLocale();
+  if (entry.id === "macos") return t("os.macos", undefined, active);
+  if (entry.id === "windows") return t("os.windows", undefined, active);
+  if (entry.id === "linux") return t("os.linux", undefined, active);
+  return entry.displayName;
+}
 
-export function presentMode(mode: "off" | "watch" | "ask" | "block"): {
+function findPresentationEntry(enumName: string, value: string) {
+  return PRESENTATION_REGISTRY.find(
+    (item) => item.enumName === enumName && item.value === value,
+  );
+}
+
+export function presentMode(
+  mode: "off" | "watch" | "ask" | "block",
+  locale?: LocaleCode,
+): {
   label: string;
   iconKey: string;
   tone: "neutral" | "info" | "warning" | "danger";
 } {
-  switch (mode) {
-    case "off":
-      return { label: MESSAGES["mode.off.label"], iconKey: "mode.off", tone: "neutral" };
-    case "watch":
-      return { label: MESSAGES["mode.watch.label"], iconKey: "mode.watch", tone: "info" };
-    case "ask":
-      return { label: MESSAGES["mode.ask.label"], iconKey: "mode.ask", tone: "warning" };
-    case "block":
-      return { label: MESSAGES["mode.block.label"], iconKey: "mode.block", tone: "danger" };
+  const entry = findPresentationEntry("Mode", mode);
+  const active = locale ?? getLocale();
+  if (entry) {
+    return {
+      label: t(entry.labelKey as MessageKey, undefined, active),
+      iconKey: entry.iconKey,
+      tone: entry.tone as "neutral" | "info" | "warning" | "danger",
+    };
   }
+  return { label: capitalizeLabel(mode), iconKey: "mode.off", tone: "neutral" };
 }
 
-export function presentVerdict(verdict: "allow" | "modify" | "step_up" | "defer" | "deny"): {
+export function presentVerdict(
+  verdict: "allow" | "modify" | "step_up" | "defer" | "deny",
+  locale?: LocaleCode,
+): {
   label: string;
   iconKey: string;
   tone: "success" | "info" | "warning" | "neutral" | "danger";
 } {
-  switch (verdict) {
-    case "allow":
-      return { label: MESSAGES["console.verdict.allow"], iconKey: "verdict.allow", tone: "success" };
-    case "modify":
-      return { label: MESSAGES["console.verdict.modify"], iconKey: "verdict.modify", tone: "info" };
-    case "step_up":
-      return { label: MESSAGES["console.verdict.step_up"], iconKey: "verdict.step_up", tone: "warning" };
-    case "defer":
-      return { label: MESSAGES["console.verdict.defer"], iconKey: "verdict.defer", tone: "neutral" };
-    case "deny":
-      return { label: MESSAGES["console.verdict.deny"], iconKey: "verdict.deny", tone: "danger" };
+  const entry = findPresentationEntry("Verdict", verdict);
+  const active = locale ?? getLocale();
+  if (entry) {
+    return {
+      label: t(entry.labelKey as MessageKey, undefined, active),
+      iconKey: entry.iconKey,
+      tone: entry.tone as "success" | "info" | "warning" | "neutral" | "danger",
+    };
   }
+  return { label: capitalizeLabel(verdict), iconKey: "verdict.allow", tone: "neutral" };
 }
 
-export function presentAssurance(level: "AL0" | "AL1" | "AL2" | "AL3" | "AL4", control: string): {
+export function presentAssurance(
+  level: "AL0" | "AL1" | "AL2" | "AL3" | "AL4",
+  control: string,
+  locale?: LocaleCode,
+): {
   level: string;
   label: string;
   description: string;
@@ -258,146 +296,133 @@ export function presentAssurance(level: "AL0" | "AL1" | "AL2" | "AL3" | "AL4", c
   iconKey: string;
   tone: "success" | "warning" | "neutral";
 } {
-  const isBoundary = control.includes("boundary");
-  const isRequest = control === "request";
-  const mapped: Record<typeof level, { label: string; description: string }> = {
-    AL0: { label: "Observed", description: "Discovered on device. No hook is active yet." },
-    AL1: { label: "App hook", description: "Checked by the agent's hook before execution" },
-    AL2: { label: "Tool proxy", description: "Routed through the local tool broker" },
-    AL3: { label: "Sandboxed", description: "Isolated inside an operating-system boundary" },
-    AL4: { label: "Enforced", description: "Tamper-resistant boundary enforcement verified" },
-  };
-  const info = mapped[level];
+  const active = locale ?? getLocale();
+  const normLevel = level.trim().toUpperCase();
+  const entry = findPresentationEntry("AssuranceLevel", normLevel);
+  const labelKey = (entry?.labelKey ?? `assurance.${normLevel.toLowerCase()}`) as MessageKey;
+  const descKey = (entry?.descriptionKey ?? `assurance.${normLevel.toLowerCase()}.desc`) as MessageKey;
+  const normCtrl = control.trim().toLowerCase();
+  const isBoundary = normCtrl.includes("boundary");
+  const isRequest =
+    !isBoundary &&
+    (normCtrl === "request" ||
+      /\brequest\b/.test(normCtrl) ||
+      normCtrl.includes("proxy") ||
+      normCtrl.includes("broker"));
+  const controlKey: MessageKey = isBoundary
+    ? "assurance.control.boundary"
+    : isRequest
+      ? "assurance.control.request"
+      : "assurance.control.observe";
+  const registryTone = entry?.tone;
+  const tone: "success" | "warning" | "neutral" =
+    registryTone === "success" || registryTone === "warning" ? registryTone : "neutral";
   return {
-    level,
-    label: info.label,
-    description: info.description,
-    controlLabel: isBoundary ? "Boundary" : isRequest ? "Request" : "Observe",
-    iconKey: `assurance.${level.toLowerCase()}`,
-    tone: isBoundary ? "success" : isRequest ? "warning" : "neutral",
+    level: normLevel,
+    label: t(labelKey, undefined, active),
+    description: descKey in MESSAGES ? t(descKey, undefined, active) : "",
+    controlLabel: t(controlKey, undefined, active),
+    iconKey: entry?.iconKey ?? `assurance.${normLevel.toLowerCase()}`,
+    tone,
   };
 }
 
-export function presentMdmFormat(format: string): string {
-  switch (format) {
-    case "intune_win32":
-      return "Intune Win32 (.intunewin / PS1)";
-    case "jamf_mobileconfig":
-      return "Jamf Pro (.mobileconfig)";
-    case "hexnode":
-      return "Hexnode MDM";
-    case "tanium":
-      return "Tanium Deploy";
-    case "chrome_enterprise":
-      return "Chrome / Edge Enterprise";
-    case "firefox_gpo":
-      return "Firefox AD GPO / policies.json";
-    case "linux_repo":
-      return "Linux apt / dnf config";
-    default:
-      return capitalizeLabel(format);
-  }
+export function presentMdmFormat(format: string, locale?: LocaleCode): string {
+  const entry = findPresentationEntry("MdmFormat", format);
+  return entry
+    ? t(entry.labelKey as MessageKey, undefined, locale ?? getLocale())
+    : capitalizeLabel(format);
 }
 
-export function presentIntegrationCategory(category: string): string {
-  switch (category) {
-    case "directory_sync":
-      return "Directory sync";
-    case "saas_connector":
-      return "SaaS activity";
-    case "export_sink":
-      return "Export sink";
-    default:
-      return capitalizeLabel(category);
-  }
+export function presentIntegrationCategory(category: string, locale?: LocaleCode): string {
+  const entry = findPresentationEntry("IntegrationCategory", category);
+  return entry
+    ? t(entry.labelKey as MessageKey, undefined, locale ?? getLocale())
+    : capitalizeLabel(category);
 }
 
-export function presentIntegrationHealth(state: string): {
+export function presentIntegrationHealth(
+  state: string,
+  locale?: LocaleCode,
+): {
   label: string;
   tone: "allow" | "ask" | "block" | "neutral";
 } {
-  switch (state) {
-    case "connected":
-      return { label: "Connected", tone: "allow" };
-    case "at_risk":
-      return { label: "At risk", tone: "ask" };
-    case "degraded":
-      return { label: "Degraded", tone: "block" };
-    case "not_configured":
-    default:
-      return { label: "Not configured", tone: "neutral" };
-  }
+  const entry =
+    findPresentationEntry("IntegrationHealth", state) ??
+    findPresentationEntry("IntegrationHealth", "not_configured");
+  const label = entry
+    ? t(entry.labelKey as MessageKey, undefined, locale ?? getLocale())
+    : capitalizeLabel(state);
+  const tone = (entry?.tone ?? "neutral") as "allow" | "ask" | "block" | "neutral";
+  return { label, tone };
 }
 
-export function presentDeploymentKeyStatus(status: string): {
+export function presentDeploymentKeyStatus(
+  status: string,
+  locale?: LocaleCode,
+): {
   label: string;
   tone: "allow" | "ask" | "block" | "neutral";
 } {
-  switch (status) {
-    case "active":
-      return { label: "Active", tone: "allow" };
-    case "exhausted":
-      return { label: "Quota reached", tone: "ask" };
-    case "expired":
-      return { label: "Expired", tone: "neutral" };
-    case "revoked":
-    default:
-      return { label: "Revoked", tone: "block" };
-  }
+  const entry =
+    findPresentationEntry("DeploymentKeyStatus", status) ??
+    findPresentationEntry("DeploymentKeyStatus", "revoked");
+  const label = entry
+    ? t(entry.labelKey as MessageKey, undefined, locale ?? getLocale())
+    : capitalizeLabel(status);
+  const tone = (entry?.tone ?? "block") as "allow" | "ask" | "block" | "neutral";
+  return { label, tone };
 }
 
-export function presentInstallProfile(profile: string): string {
-  switch (profile) {
-    case "standard":
-      return "Standard";
-    case "enforced":
-      return "Enforced boundary";
-    case "watch":
-      return "Watch baseline";
-    default:
-      return capitalizeLabel(profile);
-  }
+export function presentInstallProfile(profile: string, locale?: LocaleCode): string {
+  const entry = findPresentationEntry("InstallProfile", profile);
+  return entry
+    ? t(entry.labelKey as MessageKey, undefined, locale ?? getLocale())
+    : capitalizeLabel(profile);
 }
 
-export function presentBrowserDlpClass(cls: string): string {
-  switch (cls) {
-    case "file_upload":
-      return "File upload";
-    case "paste_secret":
-      return "Secret paste";
-    case "source_code":
-      return "Source code";
-    case "customer_pii":
-      return "Customer PII";
-    default:
-      return capitalizeLabel(cls);
-  }
+export function presentBrowserDlpClass(cls: string, locale?: LocaleCode): string {
+  const entry = findPresentationEntry("BrowserDlpClass", cls);
+  return entry
+    ? t(entry.labelKey as MessageKey, undefined, locale ?? getLocale())
+    : capitalizeLabel(cls);
 }
 
 export function presentSessionLabel(
   label: "credential_accessed" | "untrusted_web_fetched" | "repeated_denials" | "tainted_exfil_risk",
-): { text: string; tone: "warning" | "info" | "danger" } {
-  switch (label) {
-    case "credential_accessed":
-      return { text: MESSAGES["console.session_label.credential_accessed"], tone: "warning" };
-    case "untrusted_web_fetched":
-      return { text: MESSAGES["console.session_label.untrusted_web_fetched"], tone: "info" };
-    case "repeated_denials":
-      return { text: MESSAGES["console.session_label.repeated_denials"], tone: "danger" };
-    case "tainted_exfil_risk":
-      return { text: MESSAGES["console.session_label.tainted_exfil_risk"], tone: "danger" };
-  }
+  locale?: LocaleCode,
+): {
+  text: string;
+  iconKey: string;
+  tone: "warning" | "info" | "danger" | "neutral" | "success";
+} {
+  const entry = findPresentationEntry("SessionLabel", label);
+  const key = (entry?.labelKey ?? `session_label.${label}`) as MessageKey;
+  const tone = (entry?.tone ?? "warning") as "warning" | "info" | "danger" | "neutral" | "success";
+  return {
+    text: t(key, undefined, locale ?? getLocale()),
+    iconKey: entry?.iconKey ?? "security.alert",
+    tone,
+  };
 }
 
-export function formatTimestamp(iso: string | null | undefined): string {
+export function formatTimestamp(
+  iso: string | null | undefined,
+  locale?: LocaleCode,
+  timeZone?: string,
+): string {
   if (!iso) return "";
   const parsed = new Date(iso);
   if (!Number.isFinite(parsed.getTime())) return iso;
-  return parsed.toLocaleString("en-US", {
+  const active = locale ?? getLocale();
+  const intlTag = toIntlLocaleTag(active);
+  return parsed.toLocaleString(intlTag, {
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+    ...(timeZone ? { timeZone } : {}),
   });
 }

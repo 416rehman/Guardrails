@@ -1,0 +1,65 @@
+# Guardrails ADR notification classes and prompt budget registry (design/18 section 10, design/28 section 8).
+schema = "grdr.notifications.v1alpha1"
+
+[[notification]]
+class = "page"
+channels = ["tray", "webhook", "pager"]
+dedup_window_secs = 60
+quiet_hours = false
+tone = "danger"
+icon = "security.alert"
+title_token = "desktop.why.blocked"
+
+[[notification]]
+class = "approval.request"
+channels = ["tray", "native-prompt", "console"]
+dedup_window_secs = 10
+quiet_hours = false
+tone = "warning"
+icon = "verdict.step_up"
+title_token = "desktop.why.step_up"
+
+[[notification]]
+class = "incident.update"
+channels = ["console", "webhook", "email"]
+dedup_window_secs = 300
+quiet_hours = true
+tone = "danger"
+icon = "nav.respond"
+title_token = "console.nav.respond"
+
+[[notification]]
+class = "health"
+channels = ["tray", "console", "operator"]
+dedup_window_secs = 600
+quiet_hours = true
+tone = "warning"
+icon = "nav.operator_health"
+title_token = "operator.nav.health"
+
+[[notification]]
+class = "digest"
+channels = ["email", "console"]
+dedup_window_secs = 86400
+quiet_hours = true
+tone = "info"
+icon = "nav.compliance"
+title_token = "console.nav.compliance"
+
+[[notification]]
+class = "block"
+channels = ["tray", "console"]
+dedup_window_secs = 30
+quiet_hours = false
+tone = "danger"
+icon = "mode.block"
+title_token = "desktop.why.blocked"
+
+[[notification]]
+class = "promotion"
+channels = ["console", "webhook"]
+dedup_window_secs = 300
+quiet_hours = true
+tone = "info"
+icon = "nav.protect"
+title_token = "console.nav.protect"

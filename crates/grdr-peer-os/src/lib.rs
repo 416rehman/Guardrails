@@ -15,6 +15,14 @@ pub mod win_peer;
 #[cfg(windows)]
 mod win_proc;
 #[cfg(windows)]
+mod win_tcb;
+#[cfg(windows)]
+mod win_tcb_signer;
+#[cfg(windows)]
+mod win_tcb_sys;
+#[cfg(windows)]
+mod win_tcb_trust;
+#[cfg(windows)]
 mod win_token;
 #[cfg(windows)]
 mod win_toolhelp;
@@ -90,18 +98,6 @@ pub struct OsProcessSnapshotEntry {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OsPeerReader;
 
-#[cfg(windows)]
-pub fn enumerate_windows_processes() -> Result<Vec<OsProcessSnapshotEntry>, PeerError> {
-    win_toolhelp::enumerate_windows_processes_native()
-}
-
-#[cfg(not(windows))]
-pub fn enumerate_windows_processes() -> Result<Vec<OsProcessSnapshotEntry>, PeerError> {
-    Err(PeerError::Unverifiable(
-        "native Windows process snapshot is only available on Windows hosts".to_owned(),
-    ))
-}
-
 impl From<PeerError> for CodedError {
     fn from(err: PeerError) -> Self {
         let code = match &err {
@@ -159,6 +155,18 @@ impl PeerReader for OsPeerReader {
             PathCheckOutcome::NoPath
         }
     }
+}
+
+#[cfg(windows)]
+pub fn enumerate_windows_processes() -> Result<Vec<OsProcessSnapshotEntry>, PeerError> {
+    win_toolhelp::enumerate_windows_processes_native()
+}
+
+#[cfg(not(windows))]
+pub fn enumerate_windows_processes() -> Result<Vec<OsProcessSnapshotEntry>, PeerError> {
+    Err(PeerError::Unverifiable(
+        "native Windows process snapshot is only available on Windows hosts".to_owned(),
+    ))
 }
 
 pub fn collect_parent_chain(

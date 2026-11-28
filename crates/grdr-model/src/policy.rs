@@ -12,6 +12,7 @@ use crate::domain::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RuleMatch {
     pub action_classes: Vec<ActionClass>,
     pub target_prefixes: Vec<String>,
@@ -20,6 +21,7 @@ pub struct RuleMatch {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PolicyRule {
     pub id: String,
     pub title: String,
@@ -38,6 +40,7 @@ pub struct PolicyRule {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PolicyPack {
     pub id: String,
     pub name: String,

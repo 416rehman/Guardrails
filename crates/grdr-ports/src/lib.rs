@@ -7,6 +7,8 @@ pub mod ai;
 pub mod blob;
 pub mod bus;
 pub mod clock;
+pub mod dist;
+mod dist_parse;
 pub mod dlp;
 pub mod events;
 pub mod fs;
@@ -33,6 +35,10 @@ pub use bus::{
     CODE_BUS_BEYOND_LOG, CODE_BUS_INVALID_INPUT, CODE_BUS_IO, CODE_BUS_STALE_FENCE,
 };
 pub use clock::Clock;
+pub use dist::{
+    CODE_CFG_PROFILE_CLOSURE, DistManifest, ProfileAdapterRule, ProfileClosureRequest,
+    ResolvedProfileClosure, load_embedded_dist_manifest, parse_dist_toml, resolve_profile_closure,
+};
 pub use dlp::{
     BaselineLifecycle, CODE_DLP_BASELINE_FAILED, CODE_DLP_DECLASSIFY_MISMATCH, CODE_DLP_HONEYTOKEN,
     CODE_DLP_IO, CODE_DLP_MASS_CHANGE, CaptureScope, ConfidenceMethod,

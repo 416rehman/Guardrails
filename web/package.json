@@ -9,7 +9,7 @@
     "build": "vite --config apps/console/vite.config.ts build && vite --config apps/operator/vite.config.ts build",
     "preview": "vite --config apps/console/vite.config.ts preview",
     "typecheck": "tsc --noEmit && tsc -p apps/console/tsconfig.json --noEmit && tsc -p apps/operator/tsconfig.json --noEmit",
-    "test": "vitest run",
+    "test": "vitest run && vitest run --config packages/i18n/vitest.config.ts && vitest run --config packages/ui/vitest.config.ts",
     "test:e2e": "playwright test"
   },
   "devDependencies": {

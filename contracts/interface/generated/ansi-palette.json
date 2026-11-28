@@ -1,0 +1,42 @@
+{
+  "accent": {
+    "ansi16": "brightBlue",
+    "darkHex": "#3B82F6",
+    "lightHex": "#2563EB"
+  },
+  "allow": {
+    "ansi16": "green",
+    "darkHex": "#34D399",
+    "lightHex": "#15803D"
+  },
+  "ask": {
+    "ansi16": "yellow",
+    "darkHex": "#FACC15",
+    "lightHex": "#A16207"
+  },
+  "block": {
+    "ansi16": "red",
+    "darkHex": "#F87171",
+    "lightHex": "#B91C1C"
+  },
+  "ink": {
+    "ansi16": "white",
+    "darkHex": "#F1F5F9",
+    "lightHex": "#0F172A"
+  },
+  "muted": {
+    "ansi16": "brightBlack",
+    "darkHex": "#7C8798",
+    "lightHex": "#64748B"
+  },
+  "neutral": {
+    "ansi16": "gray",
+    "darkHex": "#94A3B8",
+    "lightHex": "#475569"
+  },
+  "watch": {
+    "ansi16": "blue",
+    "darkHex": "#60A5FA",
+    "lightHex": "#1D4ED8"
+  }
+}

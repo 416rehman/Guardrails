@@ -1,4 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
 import { useEffect, type ReactNode } from "react";
+import { t } from "@grdr/i18n";
 import { createAgent, type AgentComponent } from "@ui-sdk/react/agent";
 import {
   Drawer,
@@ -13,6 +17,7 @@ import {
   SegmentedControlItem,
 } from "@ui-sdk/react/segmented-control";
 import { Button, GrdrIcon } from "./components";
+import { useGrdrLocale } from "./theme";
 
 export interface SegmentedOption<T extends string> {
   value: T;
@@ -74,6 +79,7 @@ export function UiSdkDrawer({
   description?: string;
   children: ReactNode;
 }) {
+  const { locale } = useGrdrLocale();
   return (
     <Drawer
       open={open}
@@ -92,8 +98,8 @@ export function UiSdkDrawer({
           <Button
             variant="secondary"
             size="sm"
-            label="Close"
-            aria-label={`Close ${title}`}
+            label={t("kit.drawer.close", undefined, locale)}
+            aria-label={t("kit.drawer.close_named", { title }, locale)}
             icon={<GrdrIcon name="x" size={14} />}
             onClick={onClose}
           />

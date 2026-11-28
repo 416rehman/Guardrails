@@ -32,6 +32,10 @@ pub enum PostgresWireState {
 pub enum BackendWireMessage {
     AuthenticationOk,
     AuthenticationCleartextPassword,
+    AuthenticationMd5Password,
+    AuthenticationSasl { mechanisms: Vec<String> },
+    AuthenticationSaslContinue { data: Vec<u8> },
+    AuthenticationSaslFinal { data: Vec<u8> },
     ParseComplete,
     BindComplete,
     ReadyForQuery { status: TransactionStatus },
@@ -40,6 +44,21 @@ pub enum BackendWireMessage {
     CommandComplete { tag: String },
     ErrorResponse { message: String },
     Other { tag: u8 },
+}
+
+pub(crate) fn encode_ssl_request() -> [u8; 8] {
+    let mut ssl_req = [0u8; 8];
+    let len_bytes = 8u32.to_be_bytes();
+    let code_bytes = PG_SSL_REQUEST_CODE.to_be_bytes();
+    ssl_req[0] = len_bytes[0];
+    ssl_req[1] = len_bytes[1];
+    ssl_req[2] = len_bytes[2];
+    ssl_req[3] = len_bytes[3];
+    ssl_req[4] = code_bytes[0];
+    ssl_req[5] = code_bytes[1];
+    ssl_req[6] = code_bytes[2];
+    ssl_req[7] = code_bytes[3];
+    ssl_req
 }
 
 pub fn encode_startup_packet(
@@ -179,6 +198,44 @@ pub fn encode_terminate_message() -> [u8; 5] {
     [b'X', 0, 0, 0, 4]
 }
 
+pub(crate) fn encode_sasl_initial_response(
+    mechanism: &str,
+    client_first: &[u8],
+) -> Result<Vec<u8>, CodedError> {
+    reject_nul("sasl_mechanism", mechanism)?;
+    let data_len_i32 = i32::try_from(client_first.len()).map_err(|_| {
+        CodedError::new(
+            CODE_PG_WIRE,
+            "SASL initial response exceeds i32 length.",
+            "Reduce SASL initial payload size.",
+        )
+    })?;
+    let total_len = 4usize
+        .saturating_add(mechanism.len())
+        .saturating_add(1)
+        .saturating_add(4)
+        .saturating_add(client_first.len());
+    let len_u32 = checked_frame_len(total_len)?;
+    let mut buf = Vec::with_capacity(1usize.saturating_add(total_len));
+    buf.push(b'p');
+    buf.extend_from_slice(&len_u32.to_be_bytes());
+    buf.extend_from_slice(mechanism.as_bytes());
+    buf.push(0);
+    buf.extend_from_slice(&data_len_i32.to_be_bytes());
+    buf.extend_from_slice(client_first);
+    Ok(buf)
+}
+
+pub(crate) fn encode_sasl_response(client_final: &[u8]) -> Result<Vec<u8>, CodedError> {
+    let total_len = 4usize.saturating_add(client_final.len());
+    let len_u32 = checked_frame_len(total_len)?;
+    let mut buf = Vec::with_capacity(1usize.saturating_add(total_len));
+    buf.push(b'p');
+    buf.extend_from_slice(&len_u32.to_be_bytes());
+    buf.extend_from_slice(client_final);
+    Ok(buf)
+}
+
 pub fn decode_backend_message<R: Read>(reader: &mut R) -> Result<BackendWireMessage, CodedError> {
     let mut header = [0u8; 5];
     reader.read_exact(&mut header).map_err(wire_io_err)?;
@@ -197,13 +254,28 @@ pub fn decode_backend_message<R: Read>(reader: &mut R) -> Result<BackendWireMess
 
     match tag {
         b'R' => {
-            let auth_code = match body.get(..4) {
-                Some([b0, b1, b2, b3]) => i32::from_be_bytes([*b0, *b1, *b2, *b3]),
-                _ => -1,
+            let Some([b0, b1, b2, b3]) = body.get(..4) else {
+                return Err(wire_malformed_err(
+                    "truncated PostgreSQL authentication frame",
+                ));
             };
+            let auth_code = i32::from_be_bytes([*b0, *b1, *b2, *b3]);
+            let rest = body
+                .get(4..)
+                .ok_or_else(|| wire_malformed_err("truncated PostgreSQL authentication payload"))?;
             match auth_code {
                 0 => Ok(BackendWireMessage::AuthenticationOk),
                 3 => Ok(BackendWireMessage::AuthenticationCleartextPassword),
+                5 => Ok(BackendWireMessage::AuthenticationMd5Password),
+                10 => Ok(BackendWireMessage::AuthenticationSasl {
+                    mechanisms: parse_sasl_mechanisms(rest)?,
+                }),
+                11 => Ok(BackendWireMessage::AuthenticationSaslContinue {
+                    data: rest.to_vec(),
+                }),
+                12 => Ok(BackendWireMessage::AuthenticationSaslFinal {
+                    data: rest.to_vec(),
+                }),
                 other => Err(CodedError::new(
                     CODE_PG_WIRE,
                     format!("Unsupported PostgreSQL wire auth method code {other}."),
@@ -222,14 +294,18 @@ pub fn decode_backend_message<R: Read>(reader: &mut R) -> Result<BackendWireMess
                 None => TransactionStatus::Unknown(0),
             },
         }),
-        b'C' => Ok(BackendWireMessage::CommandComplete {
-            tag: String::from_utf8_lossy(trim_nul(&body)).to_string(),
-        }),
+        b'C' => {
+            let tag_str = std::str::from_utf8(trim_nul(&body))
+                .map_err(|_| wire_malformed_err("non-UTF-8 CommandComplete tag"))?;
+            Ok(BackendWireMessage::CommandComplete {
+                tag: tag_str.to_string(),
+            })
+        }
         b'E' => Ok(BackendWireMessage::ErrorResponse {
             message: parse_error_fields(&body),
         }),
-        b'T' => Ok(parse_row_description(&body)),
-        b'D' => Ok(parse_data_row(&body)),
+        b'T' => parse_row_description(&body),
+        b'D' => parse_data_row(&body),
         _ => Ok(BackendWireMessage::Other { tag }),
     }
 }
@@ -250,6 +326,14 @@ pub(crate) fn wire_io_err(err: std::io::Error) -> CodedError {
         CODE_PG_WIRE,
         format!("PostgreSQL wire I/O failed: {err}"),
         "Check PostgreSQL socket connection.",
+    )
+}
+
+fn wire_malformed_err(detail: &str) -> CodedError {
+    CodedError::new(
+        CODE_PG_WIRE,
+        format!("Malformed PostgreSQL wire protocol frame: {detail}."),
+        "Verify PostgreSQL 18 server wire protocol framing and UTF-8 encoding.",
     )
 }
 
@@ -308,50 +392,106 @@ fn parse_error_fields(body: &[u8]) -> String {
     message.unwrap_or_else(|| "unknown PostgreSQL error".into())
 }
 
-fn parse_row_description(body: &[u8]) -> BackendWireMessage {
-    let count = match body.get(..2) {
-        Some([b0, b1]) => u16::from_be_bytes([*b0, *b1]) as usize,
-        _ => 0,
+fn parse_row_description(body: &[u8]) -> Result<BackendWireMessage, CodedError> {
+    let Some([b0, b1]) = body.get(..2) else {
+        return Err(wire_malformed_err("truncated RowDescription column count"));
     };
-    let capped = count.min(body.len() / 19);
-    let mut cols = Vec::with_capacity(capped);
+    let count = usize::from(u16::from_be_bytes([*b0, *b1]));
+    let max_cols = body.len().saturating_sub(2) / 19;
+    if count > max_cols {
+        return Err(wire_malformed_err(
+            "RowDescription column count exceeds payload length",
+        ));
+    }
+    let mut cols = Vec::with_capacity(count);
     let mut idx = 2usize;
-    for _ in 0..capped {
+    for _ in 0..count {
         let Some(rel_nul) = body.get(idx..).and_then(|s| s.iter().position(|&b| b == 0)) else {
-            break;
+            return Err(wire_malformed_err(
+                "unterminated RowDescription column name",
+            ));
         };
         let end = idx.saturating_add(rel_nul);
-        if let Some(name_slice) = body.get(idx..end) {
-            cols.push(String::from_utf8_lossy(name_slice).to_string());
-        }
-        idx = end.saturating_add(1).saturating_add(18);
+        let Some(name_slice) = body.get(idx..end) else {
+            return Err(wire_malformed_err("truncated RowDescription column name"));
+        };
+        let name = std::str::from_utf8(name_slice)
+            .map_err(|_| wire_malformed_err("non-UTF-8 RowDescription column name"))?;
+        let next_idx = end
+            .checked_add(19)
+            .filter(|&n| n <= body.len())
+            .ok_or_else(|| wire_malformed_err("truncated RowDescription column attributes"))?;
+        cols.push(name.to_string());
+        idx = next_idx;
     }
-    BackendWireMessage::RowDescription { columns: cols }
+    if idx != body.len() {
+        return Err(wire_malformed_err("trailing bytes in RowDescription"));
+    }
+    Ok(BackendWireMessage::RowDescription { columns: cols })
 }
 
-fn parse_data_row(body: &[u8]) -> BackendWireMessage {
-    let count = match body.get(..2) {
-        Some([b0, b1]) => u16::from_be_bytes([*b0, *b1]) as usize,
-        _ => 0,
+fn parse_data_row(body: &[u8]) -> Result<BackendWireMessage, CodedError> {
+    let Some([b0, b1]) = body.get(..2) else {
+        return Err(wire_malformed_err("truncated DataRow column count"));
     };
-    let capped = count.min(body.len() / 4);
-    let mut values = Vec::with_capacity(capped);
+    let count = usize::from(u16::from_be_bytes([*b0, *b1]));
+    let max_cols = body.len().saturating_sub(2) / 4;
+    if count > max_cols {
+        return Err(wire_malformed_err(
+            "DataRow column count exceeds payload length",
+        ));
+    }
+    let mut values = Vec::with_capacity(count);
     let mut idx = 2usize;
-    for _ in 0..capped {
+    for _ in 0..count {
         let Some([b0, b1, b2, b3]) = body.get(idx..idx.saturating_add(4)) else {
-            break;
+            return Err(wire_malformed_err("truncated DataRow column length"));
         };
         let col_len = i32::from_be_bytes([*b0, *b1, *b2, *b3]);
         idx = idx.saturating_add(4);
-        if col_len < 0 {
+        if col_len == -1 {
             values.push(None);
+        } else if col_len < -1 {
+            return Err(wire_malformed_err("invalid negative DataRow column length"));
         } else {
-            let ulen = usize::try_from(col_len).unwrap_or(0);
-            let end = idx.saturating_add(ulen);
-            let slice = body.get(idx..end).unwrap_or(&[]);
-            values.push(Some(String::from_utf8_lossy(slice).to_string()));
+            let ulen = usize::try_from(col_len)
+                .map_err(|_| wire_malformed_err("invalid DataRow column length"))?;
+            let end = idx
+                .checked_add(ulen)
+                .ok_or_else(|| wire_malformed_err("DataRow column length overflow"))?;
+            let Some(slice) = body.get(idx..end) else {
+                return Err(wire_malformed_err("truncated DataRow column payload"));
+            };
+            let val = std::str::from_utf8(slice)
+                .map_err(|_| wire_malformed_err("non-UTF-8 DataRow column value"))?;
+            values.push(Some(val.to_string()));
             idx = end;
         }
     }
-    BackendWireMessage::DataRow { values }
+    if idx != body.len() {
+        return Err(wire_malformed_err("trailing bytes in DataRow"));
+    }
+    Ok(BackendWireMessage::DataRow { values })
+}
+
+fn parse_sasl_mechanisms(body: &[u8]) -> Result<Vec<String>, CodedError> {
+    let mut mechanisms = Vec::new();
+    let mut start = 0usize;
+    while let Some(rel) = body
+        .get(start..)
+        .and_then(|s| s.iter().position(|&b| b == 0))
+    {
+        if rel == 0 {
+            return Ok(mechanisms);
+        }
+        let end = start.saturating_add(rel);
+        let slice = body
+            .get(start..end)
+            .ok_or_else(|| wire_malformed_err("truncated SASL mechanism name"))?;
+        let name = std::str::from_utf8(slice)
+            .map_err(|_| wire_malformed_err("non-UTF-8 SASL mechanism name"))?;
+        mechanisms.push(name.to_string());
+        start = end.saturating_add(1);
+    }
+    Err(wire_malformed_err("unterminated SASL mechanism list"))
 }

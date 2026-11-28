@@ -3,10 +3,45 @@
   "fontImports": [
     "@fontsource/dm-sans/latin-400.css",
     "@fontsource/dm-sans/latin-500.css",
+    "@fontsource/dm-sans/latin-600.css",
     "@fontsource/dm-sans/latin-700.css",
+    "@fontsource/dm-sans/latin-ext-400.css",
+    "@fontsource/dm-sans/latin-ext-500.css",
+    "@fontsource/dm-sans/latin-ext-600.css",
+    "@fontsource/dm-sans/latin-ext-700.css",
     "@fontsource/ibm-plex-mono/latin-400.css",
-    "@fontsource/ibm-plex-mono/latin-500.css"
+    "@fontsource/ibm-plex-mono/latin-500.css",
+    "@fontsource/ibm-plex-mono/latin-ext-400.css",
+    "@fontsource/ibm-plex-mono/latin-ext-500.css",
+    "@fontsource/ibm-plex-mono/cyrillic-400.css",
+    "@fontsource/ibm-plex-mono/cyrillic-500.css"
   ],
+  "scripts": {
+    "latn": {
+      "fontSans": "\"DM Sans\", system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+      "minFontSizePx": 12,
+      "lineHeightStep": 1.45,
+      "allowItalic": true
+    },
+    "cyrl": {
+      "fontSans": "\"DM Sans\", \"Noto Sans\", system-ui, sans-serif",
+      "minFontSizePx": 12,
+      "lineHeightStep": 1.45,
+      "allowItalic": true
+    },
+    "arab": {
+      "fontSans": "\"Noto Sans Arabic\", \"Geeza Pro\", \"Tahoma\", \"DM Sans\", sans-serif",
+      "minFontSizePx": 14,
+      "lineHeightStep": 1.65,
+      "allowItalic": false
+    },
+    "jpan": {
+      "fontSans": "\"Noto Sans JP\", \"Hiragino Sans\", \"Yu Gothic UI\", \"DM Sans\", sans-serif",
+      "minFontSizePx": 12,
+      "lineHeightStep": 1.65,
+      "allowItalic": false
+    }
+  },
   "spacing": {
     "space-0-5": "2px",
     "space-1": "4px",

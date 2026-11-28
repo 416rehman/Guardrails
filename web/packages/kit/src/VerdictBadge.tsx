@@ -1,8 +1,12 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
 import { presentAssurance, presentMode, presentSessionLabel, presentVerdict } from "@grdr/i18n";
-import { Badge, GrdrIcon, iconKeyToName, type BadgeVariant } from "@grdr/ui";
+import { Badge, GrdrIcon, iconKeyToName, useGrdrLocale, type BadgeVariant } from "@grdr/ui";
 
 export function ModeBadge({ mode }: { mode: "off" | "watch" | "ask" | "block" }) {
-  const pres = presentMode(mode);
+  const { locale } = useGrdrLocale();
+  const pres = presentMode(mode, locale);
   const variant: BadgeVariant =
     pres.tone === "danger"
       ? "error"
@@ -25,7 +29,8 @@ export function VerdictBadge({
 }: {
   verdict: "allow" | "modify" | "step_up" | "defer" | "deny";
 }) {
-  const pres = presentVerdict(verdict);
+  const { locale } = useGrdrLocale();
+  const pres = presentVerdict(verdict, locale);
   const variant: BadgeVariant =
     pres.tone === "danger"
       ? "error"
@@ -52,7 +57,8 @@ export function AssuranceBadge({
   level: "AL0" | "AL1" | "AL2" | "AL3" | "AL4";
   control: string;
 }) {
-  const pres = presentAssurance(level, control);
+  const { locale } = useGrdrLocale();
+  const pres = presentAssurance(level, control, locale);
   const variant: BadgeVariant =
     pres.tone === "success" ? "success" : pres.tone === "warning" ? "warning" : "neutral";
   return (
@@ -60,7 +66,7 @@ export function AssuranceBadge({
       <Badge
         variant={variant}
         icon={<GrdrIcon name={iconKeyToName(pres.iconKey)} size={12} />}
-        label={pres.label}
+        label={<bdi>{pres.label}</bdi>}
       />
     </span>
   );
@@ -71,21 +77,22 @@ export function SessionLabelBadge({
 }: {
   label: "credential_accessed" | "untrusted_web_fetched" | "repeated_denials" | "tainted_exfil_risk";
 }) {
-  const pres = presentSessionLabel(label);
+  const { locale } = useGrdrLocale();
+  const pres = presentSessionLabel(label, locale);
   const variant: BadgeVariant =
-    pres.tone === "danger" ? "error" : pres.tone === "warning" ? "warning" : "info";
-  const iconName =
-    label === "credential_accessed"
-      ? "key-round"
-      : label === "untrusted_web_fetched"
-        ? "globe"
-        : label === "repeated_denials"
-          ? "ban"
-          : "alert-triangle";
+    pres.tone === "danger"
+      ? "error"
+      : pres.tone === "warning"
+        ? "warning"
+        : pres.tone === "success"
+          ? "success"
+          : pres.tone === "neutral"
+            ? "neutral"
+            : "info";
   return (
     <Badge
       variant={variant}
-      icon={<GrdrIcon name={iconName} size={11} />}
+      icon={<GrdrIcon name={iconKeyToName(pres.iconKey)} size={11} />}
       label={pres.text}
     />
   );

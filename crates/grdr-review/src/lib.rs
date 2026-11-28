@@ -3,12 +3,17 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::arithmetic_side_effects)]
 
+pub mod inert;
 pub(crate) mod job_frame;
 pub mod nl2cedar;
+mod nl2cedar_probe;
+pub mod packs;
+pub mod packs_budget;
 pub mod pipeline;
 pub mod queue;
 pub mod reducer;
 pub(crate) mod span_bind;
+pub mod verifier;
 
 use std::collections::BTreeMap;
 

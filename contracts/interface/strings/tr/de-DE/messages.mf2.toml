@@ -1,0 +1,176 @@
+# German (de-DE) translated UI catalog (D-69).
+
+["grdr.brand.subtitle"]
+msg = "Agentenschutz"
+
+["grdr.brand.operator_subtitle"]
+msg = "Betriebsebene"
+
+["mode.off.label"]
+msg = "Aus"
+
+["mode.watch.label"]
+msg = "Beobachten"
+
+["mode.ask.label"]
+msg = "Nachfragen"
+
+["mode.block.label"]
+msg = "Blockieren"
+
+["verdict.allow"]
+msg = "Zulassen"
+
+["verdict.modify"]
+msg = "Geändert"
+
+["verdict.step_up"]
+msg = "Nachfragen"
+
+["verdict.defer"]
+msg = "Zurückgestellt"
+
+["verdict.deny"]
+msg = "Verweigern"
+
+["assurance.al0"]
+msg = "AL0 Inventarisiert"
+
+["assurance.al1"]
+msg = "AL1 Beobachtet"
+
+["assurance.al2"]
+msg = "AL2 Geführt"
+
+["assurance.al3"]
+msg = "AL3 Eingegrenzt"
+
+["assurance.al4"]
+msg = "AL4 Durchgesetzt"
+
+["console.nav.home"]
+msg = "Start"
+
+["console.nav.first_run"]
+msg = "Erster Start"
+
+["console.nav.users"]
+msg = "Benutzer"
+
+["console.nav.inventory"]
+msg = "Inventar"
+
+["console.nav.sessions"]
+msg = "Sitzungen"
+
+["console.nav.protect"]
+msg = "Schutz"
+
+["console.nav.review"]
+msg = "Prüfliste"
+
+["console.nav.respond"]
+msg = "Reaktion"
+
+["console.nav.why"]
+msg = "Begründung"
+
+["console.nav.compliance"]
+msg = "Compliance"
+
+["console.nav.settings"]
+msg = "Einstellungen"
+
+["console.nav.provider"]
+msg = "Anbieter"
+
+["console.nav.coverage"]
+msg = "Abdeckung"
+
+["console.nav.tester"]
+msg = "Live-Tester"
+
+["console.nav.integrations"]
+msg = "Integrationen"
+
+["operator.nav.overview"]
+msg = "Übersicht"
+
+["operator.nav.health"]
+msg = "Status"
+
+["operator.nav.settings"]
+msg = "Einstellungen"
+
+["operator.nav.upgrades"]
+msg = "Aktualisierungen"
+
+["operator.nav.orgs"]
+msg = "Organisationen"
+
+["operator.nav.keys"]
+msg = "Schlüssel"
+
+["operator.nav.backups"]
+msg = "Sicherungen"
+
+["operator.nav.audit"]
+msg = "Prüfprotokoll"
+
+["common.count.sandboxed_devices"]
+msg = '''
+.input {$count :number}
+.match $count
+one {{{$count} eingegrenztes Gerät}}
+* {{{$count} eingegrenzte Geräte}}
+'''
+
+["common.count.hook_agents"]
+msg = '''
+.input {$count :number}
+.match $count
+one {{{$count} App-Hook-Agent}}
+* {{{$count} App-Hook-Agenten}}
+'''
+
+["kit.approval.deny"]
+msg = "Verweigern"
+
+["kit.approval.why"]
+msg = "Warum?"
+
+["kit.approval.allow_once"]
+msg = "Einmal erlauben"
+
+["kit.approval.allow_session"]
+msg = "Für Sitzung erlauben"
+
+["kit.approval.allow_hour"]
+msg = "Für eine Stunde erlauben"
+
+["kit.approval.arming"]
+msg = "Bereitmachen (1s)..."
+
+["kit.approval.confirm_prefix"]
+msg = "{$scopeLabel} bestätigen"
+
+["kit.mode_control.scope_with_requests"]
+msg = "{$modeLabel} auf {$boundaryDevicesText} und {$requestAgentsText}."
+
+["kit.mode_control.scope_boundary_only"]
+msg = "Gilt im Modus {$modeLabel} auf {$boundaryDevicesText}."
+
+["kit.locale.label"]
+msg = "Sprache"
+
+["kit.approval.requested_on"]
+msg = "forderte {$action} auf"
+
+["kit.drawer.close"]
+msg = "Schließen"
+
+["kit.drawer.close_named"]
+msg = "{$title} schließen"
+
+["kit.quoted.bidi_badge"]
+msg = "Steuerzeichen entfernt"

@@ -8,7 +8,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use rusqlite::{Connection, OptionalExtension};
 
-use grdr_crypto::AeadKey;
+use grdr_crypto::{AeadKey, SigningKeypair};
 use grdr_model::CodedError;
 use grdr_ports::{
     BlobPort, CODE_LAKE_IO, CODE_LAKE_STALE_FENCE, ErasureReceipt, EventsPort, FencingToken,
@@ -16,22 +16,46 @@ use grdr_ports::{
     LegalHold, LegalHoldRequest, OrgId, SingleCtx, TenantCtx,
 };
 
+use crate::compaction::read_daily_put_stats;
 use crate::crypto::{SessionKeyLookup, ensure_session_key, seal_content_fields};
-use crate::erasure::{erase_session_records, place_hold_record, release_hold_record};
+use crate::erasure::{
+    ErasureRequest, erase_session_records, place_hold_record, release_hold_record,
+};
 use crate::flush::{FlushContext, flush_org_batches, json_io_err};
+use crate::manifest_verify::{
+    daily_agg_rows_conn, export_segment_as_par1_conn, verify_manifest_chain_conn,
+};
 use crate::query::run_lake_query;
 use crate::retention::run_retention_and_compaction;
 use crate::schema::{configure_and_migrate_catalogue, lake_sql_err};
 
 const DEFAULT_PITR_LAG_MS: i64 = 7 * 86_400_000;
 
-#[derive(Debug)]
 pub struct LakeStore<B: BlobPort> {
     blobs: B,
     catalogue: Mutex<Connection>,
     memtable: Mutex<BTreeMap<String, Vec<LakeBatch>>>,
     org_kek: AeadKey,
     pitr_lag_ms: i64,
+    signing_key: Option<SigningKeypair>,
+    trusted_manifest_keys: Vec<[u8; 32]>,
+}
+
+impl<B: BlobPort + std::fmt::Debug> std::fmt::Debug for LakeStore<B> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LakeStore")
+            .field("blobs", &self.blobs)
+            .field("pitr_lag_ms", &self.pitr_lag_ms)
+            .field(
+                "signing_key",
+                &self.signing_key.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field(
+                "trusted_manifest_keys_count",
+                &self.trusted_manifest_keys.len(),
+            )
+            .finish_non_exhaustive()
+    }
 }
 
 impl<B: BlobPort> LakeStore<B> {
@@ -58,6 +82,8 @@ impl<B: BlobPort> LakeStore<B> {
             memtable: Mutex::new(BTreeMap::new()),
             org_kek,
             pitr_lag_ms: DEFAULT_PITR_LAG_MS,
+            signing_key: None,
+            trusted_manifest_keys: Vec::new(),
         })
     }
 
@@ -70,6 +96,8 @@ impl<B: BlobPort> LakeStore<B> {
             memtable: Mutex::new(BTreeMap::new()),
             org_kek,
             pitr_lag_ms: DEFAULT_PITR_LAG_MS,
+            signing_key: None,
+            trusted_manifest_keys: Vec::new(),
         })
     }
 
@@ -78,8 +106,64 @@ impl<B: BlobPort> LakeStore<B> {
         self
     }
 
+    pub fn with_signing_key(mut self, signing_key: SigningKeypair) -> Self {
+        let pk = signing_key.public_key_bytes();
+        if !self.trusted_manifest_keys.contains(&pk) {
+            self.trusted_manifest_keys.push(pk);
+        }
+        self.signing_key = Some(signing_key);
+        self
+    }
+
+    pub fn with_trusted_manifest_keys(mut self, keys: Vec<[u8; 32]>) -> Self {
+        for pk in keys {
+            if !self.trusted_manifest_keys.contains(&pk) {
+                self.trusted_manifest_keys.push(pk);
+            }
+        }
+        self
+    }
+
     pub fn blobs(&self) -> &B {
         &self.blobs
+    }
+
+    pub fn daily_put_stats(&self, ctx: &SingleCtx, day: &str) -> Result<(u64, u64), CodedError> {
+        let conn = self.lock_cat()?;
+        read_daily_put_stats(&conn, ctx.organisation_id(), day)
+    }
+
+    pub fn daily_agg_rows(
+        &self,
+        ctx: &SingleCtx,
+        day: &str,
+    ) -> Result<Vec<(String, String, u64)>, CodedError> {
+        let conn = self.lock_cat()?;
+        daily_agg_rows_conn(&conn, ctx.organisation_id(), day)
+    }
+
+    pub fn export_segment_as_par1(
+        &self,
+        ctx: &TenantCtx,
+        org_id: &OrgId,
+        object_key: &str,
+    ) -> Result<Vec<u8>, CodedError> {
+        let conn = self.lock_cat()?;
+        export_segment_as_par1_conn(&conn, &self.blobs, &self.org_kek, ctx, org_id, object_key)
+    }
+
+    pub fn verify_manifest_chain(&self, ctx: &TenantCtx) -> Result<usize, CodedError> {
+        let conn = self.lock_cat()?;
+        verify_manifest_chain_conn(&conn, ctx, &self.trusted_manifest_keys)
+    }
+
+    pub fn verify_manifest_chain_with_keys(
+        &self,
+        ctx: &TenantCtx,
+        trusted_pubkeys: &[[u8; 32]],
+    ) -> Result<usize, CodedError> {
+        let conn = self.lock_cat()?;
+        verify_manifest_chain_conn(&conn, ctx, trusted_pubkeys)
     }
 
     #[cfg(test)]
@@ -216,6 +300,7 @@ impl<B: BlobPort> EventsPort for LakeStore<B> {
                 snapshot_seq,
                 manifest_seq,
                 now_ms,
+                signing_key: self.signing_key.as_ref(),
             },
             due_batches,
         )?;
@@ -265,14 +350,19 @@ impl<B: BlobPort> EventsPort for LakeStore<B> {
         now_ms: i64,
     ) -> Result<ErasureReceipt, CodedError> {
         let mut conn = self.lock_cat()?;
+        let mut mem = self.lock_mem()?;
+        let org_mem = mem.get_mut(ctx.organisation_id().as_str());
         erase_session_records(
             &mut conn,
             &self.blobs,
             &self.org_kek,
-            ctx,
-            root_session_id,
-            reason,
-            now_ms,
+            org_mem,
+            ErasureRequest {
+                ctx,
+                root_session_id,
+                reason,
+                now_ms,
+            },
         )
     }
 
@@ -284,7 +374,14 @@ impl<B: BlobPort> EventsPort for LakeStore<B> {
     ) -> Result<LakeCompactionResult, CodedError> {
         let mut conn = self.lock_cat()?;
         check_and_advance_fence(&conn, ctx.organisation_id(), fence)?;
-        run_retention_and_compaction(&mut conn, &self.blobs, ctx, now_ms, self.pitr_lag_ms)
+        run_retention_and_compaction(
+            &mut conn,
+            &self.blobs,
+            &self.org_kek,
+            ctx,
+            now_ms,
+            self.pitr_lag_ms,
+        )
     }
 
     fn manifest(&self, ctx: &TenantCtx) -> Result<Option<LakeManifest>, CodedError> {
