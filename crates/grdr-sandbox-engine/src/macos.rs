@@ -8,11 +8,11 @@ mod macos_sys;
 
 #[cfg(target_os = "macos")]
 use std::ffi::CString;
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 use std::os::unix::fs::DirBuilderExt;
 #[cfg(target_os = "macos")]
 use std::os::unix::process::CommandExt;
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 use std::path::Path;
 use std::process::Command;
 
@@ -265,7 +265,7 @@ pub fn execute_macos(
     ))
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 fn ensure_scoped_tmpdir_from_env(env_pairs: &[(String, String)]) -> Result<(), SandboxError> {
     let Some((_, tmpdir)) = env_pairs.iter().find(|(k, _)| k == "TMPDIR") else {
         return Ok(());

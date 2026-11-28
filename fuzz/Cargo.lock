@@ -1254,7 +1254,6 @@ dependencies = [
  "grdr-model",
  "libc",
  "serde",
- "serde_json",
  "thiserror",
  "windows-sys 0.61.2",
 ]
