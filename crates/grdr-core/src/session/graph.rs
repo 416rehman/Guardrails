@@ -5,7 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use grdr_crypto::{domain_sha256_digest, encode_lower_hex};
+use grdr_crypto::{domain_hmac_sha256, encode_lower_hex};
 use grdr_model::{
     ActionClass, ApprovalGrade, CodedError, IdentityMode, Mode, sanitize_log_fragment,
 };
@@ -263,28 +263,29 @@ impl LineageGraph {
     }
 }
 
-#[must_use]
-pub fn format_outward_identity(
+pub fn try_format_outward_identity(
     mode: IdentityMode,
     raw_session_id: &str,
-    tenant_salt: &str,
-) -> String {
+    hmac_key: &[u8],
+) -> Result<String, CodedError> {
     match mode {
-        IdentityMode::Named => sanitize_log_fragment(raw_session_id, raw_session_id.len()),
+        IdentityMode::Named => Ok(sanitize_log_fragment(raw_session_id, raw_session_id.len())),
         IdentityMode::Pseudonymous => {
-            let input = format!(
-                "{}:{}:{}:{}",
-                tenant_salt.len(),
-                tenant_salt,
-                raw_session_id.len(),
-                raw_session_id
-            );
-            let digest = encode_lower_hex(&domain_sha256_digest(
+            if hmac_key.len() < 32 {
+                return Err(CodedError::new(
+                    "GRDR-SESS-0003",
+                    "outward identity HMAC key must be at least 32 bytes",
+                    "Provide a >= 32-byte per-tenant HMAC key.",
+                ));
+            }
+            let input = format!("{}:{}", raw_session_id.len(), raw_session_id);
+            let digest = encode_lower_hex(&domain_hmac_sha256(
+                hmac_key,
                 OUTWARD_PSEUDONYM_DOMAIN,
                 input.as_bytes(),
             ));
             let prefix: String = digest.chars().take(16).collect();
-            format!("ses_{prefix}")
+            Ok(format!("ses_{prefix}"))
         }
     }
 }

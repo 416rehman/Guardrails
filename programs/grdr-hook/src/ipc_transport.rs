@@ -167,7 +167,9 @@ pub(crate) fn probe_guardrails_scm() -> ScmProbeResult {
 
 #[cfg(windows)]
 pub(crate) fn probe_guardrails_scm() -> ScmProbeResult {
-    grdr_peer_os::win_peer::probe_scm_services(&["Guardrails", "GuardrailsHandover"])
+    let names = crate::brand::HookBrandConfig::embedded().windows_scm_services();
+    let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    grdr_peer_os::win_peer::probe_scm_services(&refs)
 }
 
 #[cfg(unix)]
@@ -198,10 +200,12 @@ pub(crate) fn extract_server_claims(
     pre_scm: &ScmProbeResult,
 ) -> Result<(OsPeerClaims, u64, PeerHoldGuard), String> {
     let connected_at = grdr_peer_os::win_peer::current_filetime_100ns();
+    let names = crate::brand::HookBrandConfig::embedded().windows_scm_services();
+    let refs: Vec<&str> = names.iter().map(String::as_str).collect();
     let claims = grdr_peer_os::win_peer::read_windows_pipe_server(
         link.borrowed_handle(),
         profile,
-        &["Guardrails", "GuardrailsHandover"],
+        &refs,
         pre_scm,
     )
     .map_err(|e| e.to_string())?;

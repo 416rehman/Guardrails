@@ -14,8 +14,8 @@ use grdr_core::session::{
     JoinConsumptionState, JoinContext, JoinResult, K4MatchStrength, LineageEdge, LineageGraph,
     ProcessRoleHint, ProvenanceKind, ReconciliationInput, SensorObservation, SessionActorKind,
     SessionCloseTrigger, SessionConstraints, SessionLifecyclePhase, SessionRegistry, StartBasis,
-    format_outward_identity, grade_for_evidence, reconcile_session_evidence,
-    resolve_correlation_join, satisfies_unless_floor, supersede_attribution,
+    grade_for_evidence, reconcile_session_evidence, resolve_correlation_join,
+    satisfies_unless_floor, supersede_attribution, try_format_outward_identity,
 };
 use grdr_model::{ActionClass, ApprovalGrade, IdentityMode, Mode};
 
@@ -331,8 +331,17 @@ fn doc06_lineage_graph_constraints_outward_identity_and_reconciliation() {
         vec!["sess-child"]
     );
 
-    let p_named = format_outward_identity(IdentityMode::Named, "sess-123", "salt");
-    let p_pseudo = format_outward_identity(IdentityMode::Pseudonymous, "sess-123", "salt");
+    let outward_key = b"0123456789abcdef0123456789abcdef";
+    let p_named =
+        try_format_outward_identity(IdentityMode::Named, "sess-123", outward_key).unwrap();
+    let p_pseudo =
+        try_format_outward_identity(IdentityMode::Pseudonymous, "sess-123", outward_key).unwrap();
+    assert_eq!(
+        try_format_outward_identity(IdentityMode::Pseudonymous, "sess-123", b"short")
+            .unwrap_err()
+            .code,
+        "GRDR-SESS-0003"
+    );
     assert_eq!(p_named, "sess-123");
     assert!(p_pseudo.starts_with("ses_"));
     assert_ne!(p_pseudo, "sess-123");
@@ -538,12 +547,16 @@ fn doc05_doc06_security_invariants_freeze_downgrade_missing_hook_and_cycles() {
     let breaks = g.detect_lineage_breaks(&known);
     assert!(breaks.iter().any(|(id, kind)| id == "pid-42"
         && *kind == grdr_core::session::LineageBreakKind::PidReuseMismatch));
+    let key_a = b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1";
+    let key_b = b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2";
     assert_ne!(
-        format_outward_identity(IdentityMode::Pseudonymous, "c", "a:b"),
-        format_outward_identity(IdentityMode::Pseudonymous, "b:c", "a")
+        try_format_outward_identity(IdentityMode::Pseudonymous, "c", key_a).unwrap(),
+        try_format_outward_identity(IdentityMode::Pseudonymous, "b:c", key_b).unwrap()
     );
     assert!(
-        !format_outward_identity(IdentityMode::Named, "ok\u{202E}bad", "s").contains('\u{202E}')
+        !try_format_outward_identity(IdentityMode::Named, "ok\u{202E}bad", key_a)
+            .unwrap()
+            .contains('\u{202E}')
     );
 
     // Aggregating multiple HookObservations on the same session suppresses false
@@ -593,5 +606,24 @@ fn doc05_doc06_security_invariants_freeze_downgrade_missing_hook_and_cycles() {
             DivergenceKind::HookDark | DivergenceKind::HookSilent
         )),
         "active hook observation on session must prevent false HookSilent/HookDark: {agg_findings:?}"
+    );
+
+    // Git notes glob refspecs flag outside-org transfers across wildcard and character classes.
+    for risky_ref in [
+        "refs/notes/g*",
+        "refs/n*",
+        "refs/notes/?rdr",
+        "refs/notes/[g]rdr",
+        "+refs/*:refs/notes/backup",
+    ] {
+        assert_eq!(
+            grdr_core::session::assess_git_notes_push(&["push", "origin", risky_ref], false),
+            grdr_core::session::GitNotesPushAssessment::PushOutsideOrgViolation,
+            "expected notes push detection for `{risky_ref}`"
+        );
+    }
+    assert_eq!(
+        grdr_core::session::assess_git_notes_push(&["push", "origin", "refs/heads/main"], false),
+        grdr_core::session::GitNotesPushAssessment::NotesNotTransferred
     );
 }

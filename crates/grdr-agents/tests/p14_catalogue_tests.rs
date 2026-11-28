@@ -275,7 +275,33 @@ hook:
 
     let manifest = custom_cat.resolve("novabot").unwrap();
     let probe = r#"{"session_id":"s-nova","tool_name":"Bash","tool_input":{"command":"ls"}}"#;
-    let canary = verify_hook_canary(manifest, &home, "grdr-hook", probe, &custom_cat, &TestFs);
+    let static_canary =
+        verify_hook_canary(manifest, &home, "grdr-hook", probe, &custom_cat, &TestFs);
+    assert_eq!(static_canary.canary, CanaryStatus::Missed);
+    assert_eq!(static_canary.health, HookHealthState::Configured);
+    let mut passive_ok = grdr_agents::PassiveCanaryState::new();
+    passive_ok.apply(grdr_agents::PassiveCanaryEvent::SessionStart {
+        pid: 99,
+        session_key: "s-nova".into(),
+        at_ms: 100,
+    });
+    passive_ok.apply(grdr_agents::PassiveCanaryEvent::HookPreTool {
+        session_key: "s-nova".into(),
+        at_ms: 110,
+    });
+    passive_ok.apply(grdr_agents::PassiveCanaryEvent::OsSensorToolEffect {
+        pid: 99,
+        at_ms: 120,
+    });
+    let canary = grdr_agents::verify_hook_canary_with_passive(
+        manifest,
+        &home,
+        "grdr-hook",
+        probe,
+        &passive_ok,
+        &custom_cat,
+        &TestFs,
+    );
     assert_eq!(canary.canary, CanaryStatus::Passed);
     assert_eq!(canary.health, HookHealthState::Effective);
 
@@ -327,8 +353,8 @@ hook:
         .find(|a| a.kind == "novabot")
         .unwrap();
     assert!(agent.hook_installed);
-    assert_eq!(agent.assurance.control, ControlStrength::Request);
-    assert_eq!(agent.assurance_level, AssuranceLevel::Al2Guided);
+    assert_eq!(agent.assurance.control, ControlStrength::None);
+    assert_eq!(agent.assurance_level, AssuranceLevel::Al1Observed);
     assert_eq!(
         four_pass.pass1[0].match_state,
         Pass1MatchState::InstalledMatched
@@ -994,4 +1020,859 @@ hook:
     );
 
     let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn passive_canary_al2_cap_layer_precedence_and_containment_tiers() {
+    use grdr_agents::{
+        ConfigLayerScope, ContainmentTier, HookLayerDisposition, HookLayerObservation,
+        PassiveCanaryEvent, PassiveCanaryPhase, PassiveCanaryState, check_adapter_version_support,
+        evaluate_hook_assurance, hook_status_with_canary, probe_hook_layer_precedence,
+    };
+
+    // Pending passive canary holds Protected hooks at AL1 Observed, then verified -> AL2 Guided, never AL3.
+    let pending = evaluate_hook_assurance(
+        InstallProfile::Protected,
+        true,
+        HookHealthState::Configured,
+        true,
+        ContainmentTier::HookOnly,
+    );
+    assert_eq!(pending.control, ControlStrength::None);
+    assert_eq!(pending.level(), AssuranceLevel::Al1Observed);
+
+    let verified_hook = evaluate_hook_assurance(
+        InstallProfile::Protected,
+        true,
+        HookHealthState::Effective,
+        true,
+        ContainmentTier::HookOnly,
+    );
+    assert_eq!(verified_hook.control, ControlStrength::Request);
+    assert_eq!(verified_hook.level(), AssuranceLevel::Al2Guided);
+
+    let scoped = evaluate_hook_assurance(
+        InstallProfile::Protected,
+        true,
+        HookHealthState::Effective,
+        true,
+        ContainmentTier::ScopedSandbox,
+    );
+    assert_eq!(scoped.level(), AssuranceLevel::Al3Contained);
+
+    let enforced = evaluate_hook_assurance(
+        InstallProfile::Protected,
+        true,
+        HookHealthState::Effective,
+        true,
+        ContainmentTier::MandatoryKernelFailClosed,
+    );
+    assert_eq!(enforced.level(), AssuranceLevel::Al4Enforced);
+
+    // Passive SessionStart + PreToolUse verification & macOS transcript fallback canary-missed.
+    let mut canary = PassiveCanaryState::new();
+    canary.apply(PassiveCanaryEvent::SessionStart {
+        pid: 4200,
+        session_key: "sess-a".into(),
+        at_ms: 1000,
+    });
+    canary.apply(PassiveCanaryEvent::HookPreTool {
+        session_key: "sess-a".into(),
+        at_ms: 1020,
+    });
+    assert_eq!(
+        canary.apply(PassiveCanaryEvent::OsSensorToolEffect {
+            pid: 4200,
+            at_ms: 1040,
+        }),
+        HookHealthState::Effective
+    );
+    assert_eq!(canary.phase, PassiveCanaryPhase::Verified);
+
+    let mut missed = PassiveCanaryState::new();
+    missed.apply(PassiveCanaryEvent::SessionStart {
+        pid: 4201,
+        session_key: "sess-b".into(),
+        at_ms: 2000,
+    });
+    missed.apply(PassiveCanaryEvent::TranscriptToolFallback {
+        session_key: "sess-b".into(),
+        at_ms: 2100,
+    });
+    assert_eq!(
+        missed.advance_clock(2200),
+        HookHealthState::ConfiguredNotEffective
+    );
+    assert_eq!(missed.finding_rule.as_deref(), Some("canary-missed"));
+
+    assert_eq!(
+        probe_hook_layer_precedence(
+            &[
+                HookLayerObservation {
+                    scope: ConfigLayerScope::ManagedPolicy,
+                    disposition: HookLayerDisposition::DisabledAllHooks,
+                },
+                HookLayerObservation {
+                    scope: ConfigLayerScope::UserConfig,
+                    disposition: HookLayerDisposition::HasGrdrHook,
+                },
+            ],
+            false,
+        ),
+        HookHealthState::Shadowed
+    );
+    assert_eq!(
+        check_adapter_version_support(Some("99.0.0"), (1, 0), Some((3, 9))),
+        HookHealthState::UnknownVersion
+    );
+
+    let root = std::env::temp_dir().join(format!("grdr-pcanary-{}", uuid::Uuid::now_v7()));
+    let state_dir = root.join("state");
+    fs::create_dir_all(root.join(".claude")).unwrap();
+    install_hook_in_state_dir(
+        HookTargetKind::ClaudeCode,
+        &root,
+        &state_dir,
+        "grdr-hook",
+        false,
+        &TestFs,
+    )
+    .unwrap();
+    let cat = AgentCatalogue::embedded().unwrap();
+    let unverified = hook_status_with_canary(
+        &HookTargetKind::ClaudeCode,
+        &root,
+        "grdr-hook",
+        None,
+        &cat,
+        &TestFs,
+    )
+    .unwrap();
+    assert_eq!(unverified.health, HookHealthState::Configured);
+    let passed = hook_status_with_canary(
+        &HookTargetKind::ClaudeCode,
+        &root,
+        "grdr-hook",
+        Some(true),
+        &cat,
+        &TestFs,
+    )
+    .unwrap();
+    assert_eq!(passed.health, HookHealthState::Effective);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn multi_language_pass2_scanners_and_budget_enforcement() {
+    use grdr_agents::{
+        ScanBudget, has_corroborated_mcp_sdk, scan_embedded_binary_markers,
+        scan_workspace_building_blocks_with_budget,
+    };
+    use grdr_core::discover::ScanBlockedReason;
+
+    let root = std::env::temp_dir().join(format!("grdr-pass2-lang-{}", uuid::Uuid::now_v7()));
+    fs::create_dir_all(root.join(".venv/lib/python3.12/site-packages/langgraph.dist-info"))
+        .unwrap();
+    fs::write(
+        root.join(".venv/lib/python3.12/site-packages/langgraph.dist-info/METADATA"),
+        "Metadata-Version: 2.1\nName: langgraph\nVersion: 0.2.0\n",
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("node_modules/@modelcontextprotocol/sdk")).unwrap();
+    fs::write(
+        root.join("node_modules/@modelcontextprotocol/sdk/package.json"),
+        r#"{"name":"@modelcontextprotocol/sdk","version":"1.2.0"}"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("go.mod"),
+        "module acme/bot\nrequire (\n  github.com/cloudwego/eino v0.3.0\n)\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("Cargo.lock"),
+        "[[package]]\nname = \"rig-core\"\nversion = \"0.6.0\"\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("pom.xml"),
+        "<project><dependencies><dependency><groupId>dev.langchain4j</groupId><artifactId>langchain4j</artifactId></dependency></dependencies></project>",
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("bin")).unwrap();
+    fs::write(
+        root.join("bin/Agent.deps.json"),
+        r#"{"libraries":{"Microsoft.SemanticKernel/1.0.0":{"type":"package"}}}"#,
+    )
+    .unwrap();
+
+    let blocks = BuildingBlockCatalogue::embedded().unwrap();
+    let res = scan_workspace_building_blocks_with_budget(
+        Some(&root),
+        &blocks,
+        ScanBudget::default(),
+        &TestFs,
+    );
+    assert_eq!(res.blocked_reason, None);
+    let ids: BTreeSet<&str> = res.detected.iter().map(|d| d.block_id.as_str()).collect();
+    for expected in [
+        "langgraph",
+        "mcp-sdks",
+        "eino-adk",
+        "rig",
+        "langchain4j",
+        "semantic-kernel",
+    ] {
+        assert!(
+            ids.contains(expected),
+            "missing block {expected} in {ids:?}"
+        );
+    }
+    assert!(!has_corroborated_mcp_sdk(&res.detected, false));
+    assert!(has_corroborated_mcp_sdk(&res.detected, true));
+
+    let tight = scan_workspace_building_blocks_with_budget(
+        Some(&root),
+        &blocks,
+        ScanBudget {
+            max_ms: 200,
+            max_stats: 2,
+            max_manifests: 100,
+            max_bytes: 1024 * 1024,
+        },
+        &TestFs,
+    );
+    assert_eq!(
+        tight.blocked_reason,
+        Some(ScanBlockedReason::BudgetExceeded)
+    );
+
+    let embedded = scan_embedded_binary_markers(
+        b"go.buildinfo github.com/cloudwego/eino",
+        "custom-agent-bin",
+        &blocks,
+    );
+    assert!(embedded.iter().any(|b| b.block_id == "eino-adk"));
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn pass4_fleet_triage_org_fingerprint_endpoints_creds_importers_and_abom() {
+    use grdr_agents::{
+        CredentialExposure, FleetDeclarationRecord, FleetInventoryState, ModelEndpointRegistry,
+        ModelEndpointState, OrgEntryAttributes, QuarantineList, TriageDisposition, TriageItem,
+        TriageObservationUpdate, TriageReopenTrigger, apply_triage_disposition,
+        build_credential_inventory_record, diff_agent_boms, evaluate_triage_reopen,
+        export_cyclonedx_1_7, export_ocsf_5020, generate_org_catalogue_entry, import_acp_registry,
+        import_ai_detection_spec, import_uber_adr_signatures, lint_catalogue_pack_yaml,
+        lint_cedar_block_on_advisory, parse_grdr_agent_toml, reconcile_fleet_states,
+        sanitize_upstream_proposal,
+    };
+
+    // Fleet 6-state matrix: separated declared-unseen vs declared-blind.
+    let mut incumbent = BTreeSet::new();
+    incumbent.insert("defender-only-bot".to_owned());
+    let decls = vec![FleetDeclarationRecord {
+        agent_id: "absent-bot".into(),
+        declared_at_epoch_secs: 100,
+        expected_signer: None,
+        allowed_hosts: BTreeSet::new(),
+        approved_artifacts: BTreeMap::new(),
+    }];
+    let blind_rows = reconcile_fleet_states(&decls, &[], true, &incumbent, 100 + 8 * 86_400);
+    assert!(
+        blind_rows.iter().any(|r| {
+            r.agent_id == "absent-bot" && r.state == FleetInventoryState::DeclaredBlind
+        })
+    );
+    assert!(blind_rows.iter().any(|r| {
+        r.agent_id == "defender-only-bot" && r.state == FleetInventoryState::IncumbentOnly
+    }));
+    let unseen_rows =
+        reconcile_fleet_states(&decls, &[], false, &BTreeSet::new(), 100 + 8 * 86_400);
+    assert_eq!(unseen_rows[0].state, FleetInventoryState::DeclaredUnseen);
+    assert_eq!(
+        unseen_rows[0].finding_rule.as_deref(),
+        Some("discovery.declaration-stale")
+    );
+
+    // Triage widening discipline, reopen triggers & P8 HMAC org fingerprint.
+    let mut item = TriageItem {
+        org_id: "org-1".into(),
+        program_id: "src:private-repo:hash".into(),
+        device_ids: BTreeSet::new(),
+        verdict: BehaviorVerdict::LlmClient,
+        observed_signer: Some("Vendor A".into()),
+        observed_hosts: ["api.anthropic.com".into()].into_iter().collect(),
+        observed_package: Some("acme-bot".into()),
+        building_blocks: BTreeSet::new(),
+        disposition: None,
+        decided_at_epoch_secs: None,
+        expires_at_epoch_secs: None,
+        reopened_by: None,
+    };
+    let same_approver_err = apply_triage_disposition(
+        &mut item,
+        TriageDisposition::Snooze {
+            owner: "alice".into(),
+            approver: Some("alice".into()),
+            justification: "bench".into(),
+            ttl_days: 10,
+        },
+        true,
+        1_000,
+    )
+    .unwrap_err();
+    assert_eq!(same_approver_err.code, "GRDR-AGENTS-0005");
+    apply_triage_disposition(
+        &mut item,
+        TriageDisposition::LlmClientNotAgent {
+            owner: "alice".into(),
+            approver: Some("bob".into()),
+            justification: "etl job".into(),
+            ttl_days: 180,
+        },
+        true,
+        1_000,
+    )
+    .unwrap();
+    let reopen = evaluate_triage_reopen(
+        &mut item,
+        &TriageObservationUpdate {
+            verdict: BehaviorVerdict::AgentSuspected,
+            observed_signer: Some("Vendor B".into()),
+            observed_hosts: ["api.anthropic.com".into()].into_iter().collect(),
+            observed_package: Some("acme-bot".into()),
+            building_blocks: BTreeSet::new(),
+            now_epoch_secs: 2_000,
+        },
+    );
+    assert_eq!(reopen, Some(TriageReopenTrigger::SignerChanged));
+
+    let priv_id = ProgramIdentity::from_hints(&IdentityHints {
+        workspace_id: Some("corp/secret-bot".into()),
+        tree_digest: Some("sha1".into()),
+        executable_path: "/home/alice/secret/run".into(),
+        ..IdentityHints::default()
+    });
+    let tenant_salt = b"0123456789abcdef0123456789abcdef";
+    let org_entry = generate_org_catalogue_entry(
+        &priv_id,
+        tenant_salt,
+        &["github.com".into()],
+        OrgEntryAttributes {
+            agent_kind: "coding-agent".into(),
+            sponsor_team: "platform-sec".into(),
+            building_blocks: vec!["langgraph".into()],
+            inference_hosts: vec!["llm-gw.internal".into()],
+            env_markers: vec![],
+        },
+    )
+    .unwrap();
+    assert!(org_entry.id.starts_with("agt_x_"));
+    assert!(org_entry.primary_route.starts_with("src:hmac_"));
+    assert!(sanitize_upstream_proposal(&org_entry).is_none());
+
+    // Model endpoint learn / declare / reject & secret-free credential inventory.
+    let mut reg = ModelEndpointRegistry::new(tenant_salt).unwrap();
+    let gw = reg.declare_endpoint("openai", "gw.corp.internal", Some("corp"), Some("spki123"));
+    assert_eq!(gw.state, ModelEndpointState::Declared);
+    let learned = reg
+        .learn_from_http_shape("127.0.0.1:8080", "/v1/messages", &[])
+        .unwrap()
+        .unwrap();
+    assert_eq!(learned.state, ModelEndpointState::Learned);
+    assert!(
+        reg.learn_from_env_base_url("OPENAI_BASE_URL", "https://user:pw@llm.local/v1")
+            .unwrap()
+            .is_some()
+    );
+    assert!(reg.in_inference_set("llm.local"));
+    assert_eq!(reg.reject_endpoint("llm.local").unwrap(), "audit.admin");
+    assert!(!reg.in_inference_set("llm.local"));
+
+    let secret_raw = ["sk", "-", "ant", "-api03-secretvalue123456"].concat();
+    let cred = build_credential_inventory_record(
+        tenant_salt,
+        "mcp.github.env.ANTHROPIC_API_KEY",
+        Some("user"),
+        Some(&secret_raw),
+        Some(500),
+    )
+    .unwrap();
+    assert!(cred.id.starts_with("crd_"));
+    assert_eq!(cred.exposure, CredentialExposure::Plaintext);
+    assert!(cred.policy_violation_finding);
+    let cred_json = serde_json::to_string(&cred).unwrap();
+    assert!(!cred_json.contains(&secret_raw));
+
+    // P7 linter, importers w/ quarantine.json, grdr-agent.toml, CycloneDX 1.7 / OCSF 5020 + diff.
+    let bad_p7 = "id: evil\ncommands: [\"rm -rf /\"]\n";
+    assert_eq!(
+        lint_catalogue_pack_yaml(bad_p7).unwrap_err().code,
+        "GRDR-AGENTS-0004"
+    );
+    assert_eq!(
+        lint_cedar_block_on_advisory(
+            "forbid(principal, action, resource) when { context.agent_suspected == true };"
+        )
+        .unwrap_err()
+        .code,
+        "GRDR-AGENTS-0004"
+    );
+
+    let quar = QuarantineList::from_json(r#"{"quarantined":["bad-agent"]}"#).unwrap();
+    let ai_imp = import_ai_detection_spec(
+        "agents:\n  - id: bad-agent\n    name: Bad\n  - id: good-agent\n    name: Good\n    binaries: [good]\n",
+        &quar,
+    )
+    .unwrap();
+    assert_eq!(ai_imp.skipped_quarantined, 1);
+    assert_eq!(ai_imp.imported[0].catalogue_tier, "B");
+    assert_eq!(
+        import_uber_adr_signatures(
+            r#"{"agents":[{"id":"u-agent","process_names":["uagent"]}]}"#,
+            &quar
+        )
+        .unwrap()
+        .imported
+        .len(),
+        1
+    );
+    assert_eq!(
+        import_acp_registry(
+            r#"{"agents":[{"id":"acp-agent","command":"acp-bin"}]}"#,
+            &quar
+        )
+        .unwrap()
+        .imported[0]
+            .adapter,
+        "acp"
+    );
+
+    let toml_decl = parse_grdr_agent_toml(
+        r#"
+schema = "grdr.agent/v1alpha1"
+slug = "invoice-bot"
+sponsor_team = "finance-platform"
+identity = { pkg = "pypi:acme-invoice" }
+session_exclusive = true
+tools = [ { name = "run_sql", action_class = "net.request" } ]
+model_endpoints = [ "https://llm.acme.internal" ]
+expected_children = [ "psql" ]
+"#,
+    )
+    .unwrap();
+    assert!(toml_decl.expected_children_inert);
+    let bom_before = build_agent_bom("dev-1", &[], &[]);
+    let obs_one = ObservedAgentState {
+        agent_id: "invoice-bot".into(),
+        program_identity: toml_decl.identity.clone(),
+        presence: PresenceState::Running,
+        observed_signer: None,
+        observed_hosts: BTreeSet::new(),
+        observed_artifacts: BTreeMap::new(),
+    };
+    let diff_one = reconcile_inventory_diff(
+        &[toml_decl.to_agent_declaration()],
+        std::slice::from_ref(&obs_one),
+    );
+    let bom_after = build_agent_bom("dev-1", &diff_one, &[obs_one]);
+    let cdx = export_cyclonedx_1_7(&bom_after, tenant_salt).unwrap();
+    assert_eq!(cdx["specVersion"], "1.7");
+    let ocsf = export_ocsf_5020(&bom_after, tenant_salt).unwrap();
+    assert_eq!(ocsf["class_uid"], 5020);
+    assert_eq!(diff_agent_boms(&bom_before, &bom_after).len(), 1);
+}
+
+#[test]
+fn section5_adversarial_canary_p8_secret_triage_abom_and_importer_checks() {
+    use grdr_agents::{
+        AgentDeclaration, CredentialExposure, ModelEndpointRegistry, ObservedAgentState,
+        OrgEntryAttributes, PassiveCanaryEvent, PassiveCanaryPhase, PassiveCanaryState,
+        PresenceState, QuarantineList, TriageDisposition, TriageItem, TriageObservationUpdate,
+        TriageReopenTrigger, apply_triage_disposition, build_agent_bom,
+        build_credential_inventory_record, check_adapter_version_support, evaluate_triage_reopen,
+        export_cyclonedx_1_7, export_ocsf_5020, generate_org_catalogue_entry,
+        lint_catalogue_pack_yaml, lint_cedar_block_on_advisory, parse_grdr_agent_toml,
+        reconcile_inventory_diff, sanitize_upstream_proposal, scan_workspace_building_blocks,
+        verify_hook_canary_exec,
+    };
+    use grdr_core::discover::{BehaviorVerdict, IdentityHints, ProgramIdentity};
+    use std::collections::{BTreeMap, BTreeSet};
+
+    // 1. Passive canary rejects pre-SessionStart, session rebind, HookPreTool-only self-verify,
+    //    TranscriptToolFallback without OS effect, and expired HookPreTool timestamps.
+    assert_eq!(
+        check_adapter_version_support(None, (1, 0), Some((3, 9))),
+        HookHealthState::UnknownVersion
+    );
+    let mut passive = PassiveCanaryState::new();
+    passive.apply(PassiveCanaryEvent::HookPreTool {
+        session_key: "s1".into(),
+        at_ms: 100,
+    });
+    assert_eq!(passive.phase, PassiveCanaryPhase::Idle);
+    passive.apply(PassiveCanaryEvent::SessionStart {
+        pid: 10,
+        session_key: "s1".into(),
+        at_ms: 200,
+    });
+    passive.apply(PassiveCanaryEvent::SessionStart {
+        pid: 99,
+        session_key: "hijack".into(),
+        at_ms: 210,
+    });
+    assert_eq!(passive.pid, Some(10));
+    assert_eq!(passive.session_key.as_deref(), Some("s1"));
+    assert_eq!(
+        passive.apply(PassiveCanaryEvent::HookPreTool {
+            session_key: "s1".into(),
+            at_ms: 220,
+        }),
+        HookHealthState::Configured
+    );
+    assert_eq!(passive.phase, PassiveCanaryPhase::AwaitingFirstTool);
+    passive.advance_clock(400);
+    assert!(passive.first_hook_pre_ms.is_none());
+    passive.apply(PassiveCanaryEvent::HookPreTool {
+        session_key: "s1".into(),
+        at_ms: 450,
+    });
+    assert_eq!(
+        passive.apply(PassiveCanaryEvent::TranscriptToolFallback {
+            session_key: "s1".into(),
+            at_ms: 460,
+        }),
+        HookHealthState::Configured
+    );
+    assert_ne!(passive.phase, PassiveCanaryPhase::Verified);
+
+    let root = std::env::temp_dir().join(format!("grdr-sec5-{}", uuid::Uuid::now_v7()));
+    let _ = fs::create_dir_all(&root);
+    let cat = AgentCatalogue::embedded().unwrap();
+    let claude = cat.resolve("claude-code").unwrap();
+    let exec_fail = verify_hook_canary_exec(
+        claude,
+        &root,
+        "/nonexistent/grdr-hook-missing",
+        r#"{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"ls"}}"#,
+        &cat,
+        &TestFs,
+    );
+    assert_ne!(exec_fail.health, HookHealthState::Effective);
+    let _ = fs::remove_dir_all(&root);
+
+    // 2. Weak HMAC salts are rejected; plaintext secrets are never masked by keystore/vault field names;
+    //    benign hyphenated tokens don't trigger locators; query/userinfo stripped cleanly.
+    let strong_salt = [0x5Au8; 32];
+    assert!(ModelEndpointRegistry::new(b"too-short").is_err());
+    assert!(build_credential_inventory_record(b"short", "a", None, Some("val"), None).is_err());
+    let mut reg = ModelEndpointRegistry::new(&strong_salt).unwrap();
+    let rec = reg
+        .learn_from_env_base_url("OPENAI_BASE_URL", "https://user:pw@llm.local?api=1#frag")
+        .unwrap()
+        .unwrap();
+    assert_eq!(rec.origin, "llm.local");
+    let raw_secret = ["sk", "-", "ant", "-api03-leakunderkeychain123"].concat();
+    let leaked_in_keychain = build_credential_inventory_record(
+        &strong_salt,
+        "mcp.keychain.token",
+        None,
+        Some(&raw_secret),
+        None,
+    )
+    .unwrap();
+    assert_eq!(leaked_in_keychain.exposure, CredentialExposure::Plaintext);
+    assert!(leaked_in_keychain.policy_violation_finding);
+    let benign_disk = build_credential_inventory_record(
+        &strong_salt,
+        "notes.disk_label",
+        None,
+        Some("${DISK_USAGE_REF}"),
+        None,
+    )
+    .unwrap();
+    assert_eq!(benign_disk.exposure, CredentialExposure::SafeReference);
+
+    // 3. Sanitize upstream proposal scrubs private fields; SignerChanged suppressed when expected_signer None.
+    let pkg_id = ProgramIdentity::from_hints(&IdentityHints {
+        ecosystem: Some("npm".into()),
+        package_name: Some("public-agent".into()),
+        package_version: Some("1.0.0".into()),
+        ..IdentityHints::default()
+    });
+    let org_entry = generate_org_catalogue_entry(
+        &pkg_id,
+        &strong_salt,
+        &[],
+        OrgEntryAttributes {
+            agent_kind: "coding-agent".into(),
+            sponsor_team: "sec-team".into(),
+            building_blocks: vec!["private-sdk".into()],
+            inference_hosts: vec!["internal-gw.corp".into()],
+            env_markers: vec!["PRIVATE_ENV_TOKEN".into()],
+        },
+    )
+    .unwrap();
+    let prop = sanitize_upstream_proposal(&org_entry).unwrap();
+    assert!(prop.building_blocks.is_empty());
+    assert!(prop.env_markers.is_empty());
+    assert!(prop.inference_hosts.is_empty());
+
+    let no_signer_diff = reconcile_inventory_diff(
+        &[AgentDeclaration {
+            agent_id: "public-agent".into(),
+            expected_program_id: Some(pkg_id.canonical_id()),
+            expected_signer: None,
+            allowed_hosts: BTreeSet::new(),
+            approved_artifacts: BTreeMap::new(),
+        }],
+        &[ObservedAgentState {
+            agent_id: "public-agent".into(),
+            program_identity: pkg_id.clone(),
+            presence: PresenceState::Running,
+            observed_signer: Some("Vendor".into()),
+            observed_hosts: BTreeSet::new(),
+            observed_artifacts: BTreeMap::new(),
+        }],
+    );
+    assert!(
+        !no_signer_diff[0]
+            .drift_kinds
+            .contains(&grdr_agents::DriftKind::SignerChanged)
+    );
+
+    // 4. Triage reopen from empty observed_hosts + escalation across Snooze -> AgentSuspected.
+    let mut item = TriageItem {
+        org_id: "org".into(),
+        program_id: pkg_id.canonical_id(),
+        device_ids: BTreeSet::new(),
+        verdict: BehaviorVerdict::LlmClient,
+        observed_signer: None,
+        observed_hosts: BTreeSet::new(),
+        observed_package: Some("public-agent".into()),
+        building_blocks: BTreeSet::new(),
+        disposition: None,
+        decided_at_epoch_secs: None,
+        expires_at_epoch_secs: None,
+        reopened_by: None,
+    };
+    apply_triage_disposition(
+        &mut item,
+        TriageDisposition::Snooze {
+            owner: "alice".into(),
+            approver: Some("bob".into()),
+            justification: "watch".into(),
+            ttl_days: 7,
+        },
+        true,
+        1_000,
+    )
+    .unwrap();
+    assert_eq!(
+        evaluate_triage_reopen(
+            &mut item,
+            &TriageObservationUpdate {
+                verdict: BehaviorVerdict::LlmClient,
+                observed_signer: None,
+                observed_hosts: ["new.egress.test".into()].into_iter().collect(),
+                observed_package: Some("public-agent".into()),
+                building_blocks: BTreeSet::new(),
+                now_epoch_secs: 1_100,
+            }
+        ),
+        Some(TriageReopenTrigger::RemoteEndpointAdded)
+    );
+    apply_triage_disposition(
+        &mut item,
+        TriageDisposition::NotAi {
+            owner: "alice".into(),
+            approver: Some("bob".into()),
+            justification: "utility".into(),
+            ttl_days: 7,
+        },
+        true,
+        1_200,
+    )
+    .unwrap();
+    assert_eq!(
+        evaluate_triage_reopen(
+            &mut item,
+            &TriageObservationUpdate {
+                verdict: BehaviorVerdict::AgentSuspected,
+                observed_signer: None,
+                observed_hosts: ["new.egress.test".into()].into_iter().collect(),
+                observed_package: Some("public-agent".into()),
+                building_blocks: BTreeSet::new(),
+                now_epoch_secs: 1_300,
+            }
+        ),
+        Some(TriageReopenTrigger::OutcomeEscalatedToSuspected)
+    );
+
+    // 5. TOML sections/empty identity rejection + P8 pseudonymized CycloneDX/OCSF + Importers hardening.
+    assert!(
+        parse_grdr_agent_toml(
+            r#"
+schema = "grdr.agent/v1alpha1"
+slug = "empty-id"
+sponsor_team = "sec"
+identity = {}
+"#
+        )
+        .is_err()
+    );
+    let sec_toml = parse_grdr_agent_toml(
+        r#"
+schema = "grdr.agent/v1alpha1"
+slug = "clean-bot"
+sponsor_team = "sec"
+identity = { src = 'org/private-bot' }
+model_endpoints = [ "https://tok:pw@gw.local?secret=1#h" ]
+
+[other]
+slug = "overwritten-if-buggy"
+"#,
+    )
+    .unwrap();
+    assert_eq!(sec_toml.slug, "clean-bot");
+    let decl_hosts = sec_toml.to_agent_declaration().allowed_hosts;
+    assert!(decl_hosts.contains("gw.local"));
+
+    let priv_bom = build_agent_bom(
+        "alice-macbook-secret",
+        &[],
+        &[ObservedAgentState {
+            agent_id: "clean-bot".into(),
+            program_identity: ProgramIdentity::RawPath {
+                path: "/Users/alice/secret-agent".into(),
+            },
+            presence: PresenceState::Running,
+            observed_signer: None,
+            observed_hosts: BTreeSet::new(),
+            observed_artifacts: BTreeMap::new(),
+        }],
+    );
+    let cdx_json =
+        serde_json::to_string(&export_cyclonedx_1_7(&priv_bom, &strong_salt).unwrap()).unwrap();
+    assert!(!cdx_json.contains("alice-macbook-secret"));
+    assert!(!cdx_json.contains("/Users/alice/secret-agent"));
+    let ocsf_json =
+        serde_json::to_string(&export_ocsf_5020(&priv_bom, &strong_salt).unwrap()).unwrap();
+    assert!(!ocsf_json.contains("alice-macbook-secret"));
+    assert!(!ocsf_json.contains("/Users/alice/secret-agent"));
+
+    assert!(QuarantineList::from_json(r#"{"wrong":[]}"#).is_err());
+    assert!(lint_catalogue_pack_yaml("id: bad\ncommand: bash\n").is_err());
+    assert!(
+        lint_cedar_block_on_advisory(
+            "// allow; comment\nforbid(principal, action, resource) when { context.kind == \"agent-suspected\" };"
+        )
+        .is_err()
+    );
+    assert!(
+        lint_cedar_block_on_advisory(
+            "permit(principal, action, resource) unless { context.basis == \"traffic\" };"
+        )
+        .is_err()
+    );
+
+    // 6. POM <groupId> scoping does not leak <project><groupId> into dependencies without <groupId>.
+    let pom_ws = std::env::temp_dir().join(format!("grdr-pom-{}", uuid::Uuid::now_v7()));
+    fs::create_dir_all(&pom_ws).unwrap();
+    fs::write(
+        pom_ws.join("pom.xml"),
+        "<project><groupId>com.openai</groupId><dependencies><dependency><artifactId>openai-java</artifactId></dependency></dependencies></project>",
+    )
+    .unwrap();
+    let block_cat = grdr_agents::BuildingBlockCatalogue::embedded().unwrap();
+    let pom_scan = scan_workspace_building_blocks(Some(&pom_ws), &block_cat, &TestFs);
+    assert!(pom_scan.blocked_reason.is_none());
+    let _ = fs::remove_dir_all(&pom_ws);
+
+    // 7. Private container registry ImageDigest is stripped on sanitize_upstream_proposal.
+    let priv_img = ProgramIdentity::from_hints(&IdentityHints {
+        image_repository: Some("registry.corp.internal/team/bot@sha256:abcdef".into()),
+        executable_path: "/usr/local/bin/bot".into(),
+        ..IdentityHints::default()
+    });
+    let priv_img_entry = generate_org_catalogue_entry(
+        &priv_img,
+        &strong_salt,
+        &[],
+        OrgEntryAttributes {
+            agent_kind: "coding-agent".into(),
+            sponsor_team: "platform".into(),
+            building_blocks: vec![],
+            inference_hosts: vec![],
+            env_markers: vec![],
+        },
+    )
+    .unwrap();
+    assert!(sanitize_upstream_proposal(&priv_img_entry).is_none());
+    let mut mixed_img = org_entry.clone();
+    mixed_img.image_repository = Some("registry.corp.internal/team/bot@sha256:abcdef".into());
+    let san_mixed = sanitize_upstream_proposal(&mixed_img).unwrap();
+    assert!(san_mixed.image_repository.is_none());
+
+    // BehaviorVerdict::AgentClassified creates triage findings and reopens Snooze/NotAi.
+    let classified_assessment = grdr_core::discover::BehavioralAssessment {
+        process_name: "agent".into(),
+        verdict: BehaviorVerdict::AgentClassified,
+        disposition: grdr_core::discover::ClassifierDisposition::AdvisoryOnly,
+        cycle_count: 3,
+        coincidence_ratio_bp: 9000,
+        noisy_or_score_bp: 9000,
+        reason: "classified loop".into(),
+    };
+    let mut classified_item =
+        grdr_agents::triage_finding_from_assessment("org", "dev", &pkg_id, &classified_assessment)
+            .expect("AgentClassified must open triage finding");
+    classified_item.verdict = BehaviorVerdict::LlmClient;
+    apply_triage_disposition(
+        &mut classified_item,
+        TriageDisposition::Snooze {
+            owner: "alice".into(),
+            approver: Some("bob".into()),
+            justification: "checking".into(),
+            ttl_days: 7,
+        },
+        true,
+        2_000,
+    )
+    .unwrap();
+    assert_eq!(
+        evaluate_triage_reopen(
+            &mut classified_item,
+            &TriageObservationUpdate {
+                verdict: BehaviorVerdict::AgentClassified,
+                observed_signer: None,
+                observed_hosts: BTreeSet::new(),
+                observed_package: None,
+                building_blocks: BTreeSet::new(),
+                now_epoch_secs: 2_100,
+            }
+        ),
+        Some(TriageReopenTrigger::OutcomeEscalatedToSuspected)
+    );
+
+    // unquote_toml preserves trailing escaped backslashes; control/bidi chars fail closed.
+    let esc_toml = parse_grdr_agent_toml(
+        r#"
+schema = "grdr.agent/v1alpha1"
+slug = "esc-bot"
+sponsor_team = "sec-team"
+identity = { pkg = "npm:esc-bot" }
+credential_mode = "foo\\"
+"#,
+    )
+    .unwrap();
+    assert_eq!(esc_toml.credential_mode, r"foo\");
+    assert!(
+        parse_grdr_agent_toml(
+            "schema = \"grdr.agent/v1alpha1\"\nslug = \"bidi-bot\"\nsponsor_team = \"sec\u{202E}bad\"\nidentity = { pkg = \"npm:b\" }\n"
+        )
+        .is_err()
+    );
 }

@@ -169,7 +169,9 @@ pub(crate) fn verify_unix_server_path_post(
 
 #[cfg(windows)]
 pub(crate) fn probe_guardrails_scm() -> ScmProbeResult {
-    grdr_peer_os::win_peer::probe_scm_services(&["Guardrails", "GuardrailsHandover"])
+    let names = crate::brand::AcpBrandConfig::embedded().windows_scm_services();
+    let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    grdr_peer_os::win_peer::probe_scm_services(&refs)
 }
 
 #[cfg(not(windows))]
@@ -207,10 +209,12 @@ pub(crate) fn extract_server_claims(
     pre_scm: &ScmProbeResult,
 ) -> Result<(OsPeerClaims, u64, PeerHoldGuard), String> {
     let connected_at = grdr_peer_os::win_peer::current_filetime_100ns();
+    let names = crate::brand::AcpBrandConfig::embedded().windows_scm_services();
+    let refs: Vec<&str> = names.iter().map(String::as_str).collect();
     let claims = grdr_peer_os::win_peer::read_windows_pipe_server(
         link.borrowed_handle(),
         profile,
-        &["Guardrails", "GuardrailsHandover"],
+        &refs,
         pre_scm,
     )
     .map_err(|e| e.to_string())?;
@@ -257,46 +261,100 @@ pub(crate) fn boot_mono_ms(clock: &SystemClock) -> Result<u64, String> {
 }
 
 pub(crate) fn default_state_dir(protected: bool) -> PathBuf {
+    let brand = crate::brand::AcpBrandConfig::embedded();
     if protected {
         return system_state_dir();
     }
     #[cfg(windows)]
-    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-        return PathBuf::from(local).join("Guardrails").join("state");
+    if let Some(local) = std::env::var_os("LOCALAPPDATA")
+        && let Some(text) = local.to_str()
+        && !text.trim().is_empty()
+    {
+        let candidate = PathBuf::from(text)
+            .join(&brand.windows_data_dir)
+            .join("state");
+        if is_safe_non_temp_candidate(&candidate) {
+            return candidate;
+        }
     }
-    if let Some(xdg) = std::env::var_os("XDG_STATE_HOME") {
-        return PathBuf::from(xdg).join("guardrails");
+    if let Some(xdg) = std::env::var_os("XDG_STATE_HOME")
+        && let Some(text) = xdg.to_str()
+        && !text.trim().is_empty()
+    {
+        let candidate = PathBuf::from(text).join(&brand.namespace);
+        if is_safe_non_temp_candidate(&candidate) {
+            return candidate;
+        }
     }
-    if let Some(rt) = std::env::var_os("XDG_RUNTIME_DIR") {
-        return PathBuf::from(rt).join("guardrails");
+    if let Some(rt) = std::env::var_os("XDG_RUNTIME_DIR")
+        && let Some(text) = rt.to_str()
+        && !text.trim().is_empty()
+    {
+        let candidate = PathBuf::from(text).join(&brand.namespace);
+        if is_safe_non_temp_candidate(&candidate) {
+            return candidate;
+        }
     }
-    if let Some(home) = std::env::var_os("HOME") {
-        return PathBuf::from(home)
+    if let Some(home) = std::env::var_os("HOME")
+        && let Some(text) = home.to_str()
+        && !text.trim().is_empty()
+    {
+        let candidate = PathBuf::from(text)
             .join(".local")
             .join("state")
-            .join("guardrails");
+            .join(&brand.namespace);
+        if is_safe_non_temp_candidate(&candidate) {
+            return candidate;
+        }
     }
     system_state_dir()
 }
 
 pub(crate) fn system_state_dir() -> PathBuf {
-    #[cfg(windows)]
+    crate::brand::AcpBrandConfig::embedded().protected_state_dir()
+}
+
+pub(crate) fn is_safe_non_temp_candidate(path: &std::path::Path) -> bool {
+    use std::path::{Component, Path};
+    if !path.is_absolute()
+        || path
+            .components()
+            .any(|c| matches!(c, Component::CurDir | Component::ParentDir))
     {
-        PathBuf::from(
-            std::env::var_os("ProgramData")
-                .unwrap_or_else(|| std::ffi::OsString::from("C:\\ProgramData")),
-        )
-        .join("Guardrails")
-        .join("state")
+        return false;
     }
-    #[cfg(target_os = "macos")]
-    {
-        PathBuf::from("/Library/Application Support/grdr/state")
+    if matches_temp_prefix(path, &std::env::temp_dir()) {
+        return false;
     }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        PathBuf::from("/var/lib/guardrails")
+    for key in ["TEMP", "TMP", "TMPDIR"] {
+        if let Some(val) = std::env::var_os(key)
+            && matches_temp_prefix(path, Path::new(&val))
+        {
+            return false;
+        }
     }
+    for prefix in ["/tmp", "/var/tmp", "/private/tmp", "/dev/shm"] {
+        if matches_temp_prefix(path, Path::new(prefix)) {
+            return false;
+        }
+    }
+    grdr_peer_os::fs_open::check_no_ancestor_symlinks(path).is_ok()
+}
+
+fn matches_temp_prefix(path: &std::path::Path, prefix: &std::path::Path) -> bool {
+    let norm = |p: &std::path::Path| {
+        p.to_string_lossy()
+            .replace('\\', "/")
+            .trim_end_matches('/')
+            .to_ascii_lowercase()
+    };
+    let lhs = norm(path);
+    let rhs = norm(prefix);
+    !rhs.is_empty()
+        && (lhs == rhs
+            || lhs
+                .strip_prefix(&rhs)
+                .is_some_and(|rest| rest.starts_with('/')))
 }
 
 fn current_platform() -> PlatformKind {

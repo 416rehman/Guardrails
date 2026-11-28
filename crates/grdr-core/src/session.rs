@@ -6,8 +6,11 @@
 pub mod baseline;
 mod baseline_guard;
 pub mod graph;
+pub mod hops;
 pub mod join;
+pub mod k_join;
 pub mod lifecycle;
+pub mod outward;
 pub mod reconcile;
 pub mod replay;
 pub mod rules;
@@ -20,7 +23,13 @@ use grdr_model::{ActionAttempt, ActionClass, ApprovalGrade, SessionLabel, Verdic
 
 pub use graph::{
     ChildSessionSpawnPlan, ChildSpawnRequest, EdgeKind, GraphNodeKind, LineageBreakKind,
-    LineageEdge, LineageGraph, format_outward_identity,
+    LineageEdge, LineageGraph, try_format_outward_identity,
+};
+pub use hops::{
+    ActorDetermination, ActorOriginCandidate, ActorResolutionInput, AttributionHopsPack,
+    BasisEvidenceItem, BasisValue, HopMediationState, HopObservation, HopResolution, HopRuleSpec,
+    HumanDisqualifier, SensorScopeVisibility, compute_attribution_score, determine_actor_kind,
+    evaluate_hop, provenance_floor_met, resolve_basis_grade,
 };
 pub use join::{
     AttributionRecord, CorrelationKeyKind, EvidenceGrade, HostSharingMode, JoinCandidate,
@@ -28,13 +37,24 @@ pub use join::{
     ProvenanceKind, SessionActorKind, grade_for_evidence, resolve_correlation_join,
     satisfies_unless_floor, supersede_attribution,
 };
+pub use k_join::{
+    EffectJoinOutcome, EffectOriginRole, ExpectationConsumption, ExpectationMultiplicity,
+    HostExclusivity, K4MatchKind, ObservedEffect, ProcessKey, ToolExpectation, UnboundEffectClass,
+    resolve_effect_join,
+};
 pub use lifecycle::{
     ClaimClosureState, GrantInheritancePolicy, SessionCloseTrigger, SessionConstraints,
     SessionLifecyclePhase, SessionRecord, SessionRegistry, StartBasis, stricter_mode,
 };
+pub use outward::{
+    GitNotesPushAssessment, GitOutwardReceipt, OutwardGrade, OutwardLaunchTags,
+    assess_git_notes_push, build_git_outward_receipt, format_session_pseudonym_sp,
+    outward_launch_tags,
+};
 pub use reconcile::{
-    DivergenceKind, HookObservation, ReconciliationFinding, ReconciliationInput, SensorObservation,
-    reconcile_session_evidence,
+    DivergenceKind, HookObservation, HousekeepingCalibration, ReconciliationFinding,
+    ReconciliationInput, ReconciliationV2Input, SensorObservation, SessionTelemetryAnomaly,
+    reconcile_session_evidence, reconcile_session_evidence_v2,
 };
 pub use replay::{attach_session_labels, replay_session_states, replay_session_states_checked};
 

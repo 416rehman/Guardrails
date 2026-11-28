@@ -1,0 +1,16 @@
+schema: grdr.building-block/v1alpha1
+id: langchain4j
+name: LangChain4j & Spring AI
+role: orchestrator
+agentic: yes
+ecosystems:
+  pypi: []
+  npm: []
+  cargo: []
+  go: []
+  jvm: [dev.langchain4j:langchain4j, dev.langchain4j:langchain4j-agentic, org.springframework.ai:spring-ai-core]
+  dotnet: []
+binaries: []
+env_markers: [OPENAI_API_KEY]
+net: []
+classifier_boost_bp: 4500

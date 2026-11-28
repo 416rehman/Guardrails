@@ -761,7 +761,7 @@ fn run_ipc_client_adversarial_checks() -> Result<(), Box<dyn Error>> {
                             1,
                             1,
                             WirePayload::Error(ErrorFrame {
-                                code: "GRDR-DAEMON-0009".to_string(),
+                                code: "GRDR-DAEM-0003".to_string(),
                                 message: "overloaded".to_string(),
                                 retryable: false,
                             }),
@@ -900,7 +900,7 @@ fn run_ipc_client_adversarial_checks() -> Result<(), Box<dyn Error>> {
                             1,
                             1,
                             WirePayload::Error(ErrorFrame {
-                                code: "GRDR-DAEMON-0009".to_string(),
+                                code: "GRDR-DAEM-0003".to_string(),
                                 message: "overloaded".to_string(),
                                 retryable: false,
                             }),
@@ -974,4 +974,387 @@ fn serde_json_handover_literal(created_ms: u64, expires_ms: u64) -> String {
     format!(
         "{{\"version\":1,\"marker_status\":\"active\",\"target_slot\":\"slot_a\",\"target_binary_path\":\"a.bin\",\"target_sha256\":\"00\",\"created_mono_ms\":{created_ms},\"expires_mono_ms\":{expires_ms},\"issued_wall_unix_ms\":0,\"expires_wall_unix_ms\":0}}"
     )
+}
+
+#[test]
+fn hook_brand_paths_dynamic_dialects_retry_token_modify_native_messaging_and_command_hook() {
+    use grdr_hook::brand::HookBrandConfig;
+    use grdr_hook::dialect::{DecisionRenderExtras, format_dialect_decision_ext};
+    use grdr_hook::dialect_pack::{DialectRegistry, ResponseEnvelope};
+    use grdr_hook::offline_spool::system_state_dir;
+    use grdr_hook::provider_exec::{
+        parse_provider_index_entry, read_native_messaging_frame, write_native_messaging_frame,
+    };
+    use std::io::Read;
+
+    let brand = HookBrandConfig::embedded();
+    assert_eq!(brand.namespace, "grdr");
+    assert_eq!(brand.windows_data_dir, "grdr");
+    let sys_dir = system_state_dir();
+    let sys_str = sys_dir.to_string_lossy();
+    assert!(
+        !sys_str.contains("Guardrails"),
+        "system state dir must come from brand.toml, got {sys_str}"
+    );
+
+    let custom_yaml = r#"
+schema: grdr.hook-dialects/v1alpha1
+default_dialect: acme-bot
+dialects:
+  - id: acme-bot
+    agent_id: acme-bot
+    aliases: [acme, bot99]
+    session_keys: [acme_sess]
+    event_hints: [AcmePreTool]
+    tool_hints: [acme_exec]
+    response_format: decision-reason
+    modify_field: rewrittenInput
+    default_event: AcmePreTool
+"#;
+    let reg = DialectRegistry::from_yaml_str(custom_yaml);
+    let acme = reg.resolve("bot99").expect("custom yaml dialect resolves");
+    assert_eq!(acme.id, "acme-bot");
+    assert_eq!(acme.response_format, ResponseEnvelope::DecisionReason);
+    let inferred = reg
+        .infer("AcmePreTool", "", "")
+        .expect("infers by event hint");
+    assert_eq!(inferred.id, "acme-bot");
+
+    for alias in [
+        "claude", "cursor", "codex", "copilot", "gemini", "opencode", "windsurf",
+    ] {
+        let d = HookDialect::from_cli_name(alias).expect("dialect from yaml");
+        let ask_out = format_dialect_decision_ext(
+            d,
+            "PreToolUse",
+            WireVerdict::Ask,
+            "approval required",
+            "R-ASK",
+            DecisionRenderExtras {
+                retry_token: Some("rty_0123456789abcdef0123456789abcdef"),
+                modified_target: None,
+            },
+        );
+        assert!(
+            ask_out.contains("rty_0123456789abcdef0123456789abcdef"),
+            "missing retry_token for {alias}: {ask_out}"
+        );
+    }
+
+    let claude = HookDialect::from_cli_name("claude").unwrap();
+    let mod_out = format_dialect_decision_ext(
+        claude,
+        "PreToolUse",
+        WireVerdict::Allow,
+        "sanitized",
+        "R-MOD",
+        DecisionRenderExtras {
+            retry_token: None,
+            modified_target: Some("echo safe"),
+        },
+    );
+    assert!(
+        mod_out.contains("\"updatedInput\":\"echo safe\""),
+        "{mod_out}"
+    );
+
+    // Native messaging binary length-prefixed framing against compiled grdr-hook binary
+    let dir = temp_state_dir("natmsg").expect("temp dir");
+    write_test_floor(&dir, vec![], None).expect("floor");
+    let exe = env!("CARGO_BIN_EXE_grdr-hook");
+    let missing_sock = if cfg!(windows) {
+        r"\\.\pipe\grdr-nonexistent-nm-9991".to_string()
+    } else {
+        dir.join("missing.sock").to_string_lossy().into_owned()
+    };
+    let payload =
+        br#"{"session_id":"nm-1","tool_name":"Read","tool_input":{"file_path":"README.md"}}"#;
+    let mut framed_in = Vec::new();
+    write_native_messaging_frame(&mut framed_in, payload).expect("frame");
+    let mut child = Command::new(exe)
+        .args([
+            "--agent",
+            "claude",
+            "--native-messaging",
+            "--strict",
+            "--socket",
+            &missing_sock,
+            "--state-dir",
+        ])
+        .arg(&dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn grdr-hook");
+    child.stdin.take().unwrap().write_all(&framed_in).unwrap();
+    let mut out_bytes = Vec::new();
+    child
+        .stdout
+        .take()
+        .unwrap()
+        .read_to_end(&mut out_bytes)
+        .unwrap();
+    let status = child.wait().unwrap();
+    assert!(status.success(), "native messaging allow status={status:?}");
+    let mut cursor = std::io::Cursor::new(out_bytes);
+    let reply = read_native_messaging_frame(&mut cursor, 64 * 1024).expect("decode nm reply");
+    let reply_str = String::from_utf8(reply).unwrap();
+    assert!(
+        reply_str.contains("\"permissionDecision\":\"allow\""),
+        "{reply_str}"
+    );
+
+    use grdr_crypto::SigningKeypair;
+    use grdr_hook::dialect::is_shell_tool;
+    use grdr_hook::floor_fallback::evaluate_signed_floor_fallback;
+    use grdr_hook::provider_exec::{
+        CommandHookOutput, ProviderFailureMode, ProviderIndexEntry, evaluate_command_hook_outcome,
+        execute_command_hook, lookup_provider_index, read_native_messaging_frame_bounded,
+    };
+
+    assert!(is_shell_tool("pwsh"));
+    assert!(!is_shell_tool("Read"));
+
+    let entry = parse_provider_index_entry(
+        "com.example.dlp\t/usr/bin/dlp-hook\t--check,--json\t1500\tfail_closed\n",
+        "com.example.dlp",
+    )
+    .expect("provider index entry parses");
+    assert_eq!(entry.timeout_ms, 1000);
+    assert_eq!(entry.on_failure, ProviderFailureMode::FailClosed);
+
+    // StepUp on_failure column is preserved, never coerced to Ignore.
+    let stepup_entry = parse_provider_index_entry(
+        "com.example.dlp\t/usr/bin/dlp-hook\t\t500\tstep_up\n",
+        "com.example.dlp",
+    )
+    .expect("step_up entry parses");
+    assert_eq!(stepup_entry.on_failure, ProviderFailureMode::StepUp);
+    assert!(stepup_entry.is_fail_closed());
+
+    // Relative command path fails closed.
+    assert!(parse_provider_index_entry("p\tdlp-hook\t\t100\tfail_closed\n", "p").is_err());
+
+    // Unsigned provider-index.tsv fails closed; signed Ed25519 index passes; tampered footer fails.
+    let kp = SigningKeypair::generate().unwrap();
+    fs::write(
+        dir.join("floor.pub"),
+        format!("{}:{}", kp.key_id(), kp.public_key_b64()),
+    )
+    .unwrap();
+    let idx_body = "# header\ncom.example.dlp\t/usr/bin/dlp-hook\t--check\t200\tstep_up\n";
+    fs::write(dir.join("provider-index.tsv"), idx_body).unwrap();
+    assert!(lookup_provider_index(&dir, "com.example.dlp", false).is_err());
+    let sig = kp.sign_bytes("grdr.provider-index.v1", idx_body.as_bytes());
+    fs::write(
+        dir.join("provider-index.tsv"),
+        format!("{idx_body}# sig_v1:{}:{sig}\n", kp.key_id()),
+    )
+    .unwrap();
+    let verified = lookup_provider_index(&dir, "com.example.dlp", false).expect("signed index ok");
+    assert_eq!(verified.on_failure, ProviderFailureMode::StepUp);
+    fs::write(
+        dir.join("provider-index.tsv"),
+        format!(
+            "{idx_body}# sig_v1:{}:{sig}\nevil\t/bin/sh\t\t10\tignore\n",
+            kp.key_id()
+        ),
+    )
+    .unwrap();
+    assert!(lookup_provider_index(&dir, "com.example.dlp", false).is_err());
+
+    // Command hook stdout decision parsing + overrun + malformed fail-closed checks.
+    let deny_json = evaluate_command_hook_outcome(
+        &verified,
+        &CommandHookOutput {
+            provider_id: "com.example.dlp".into(),
+            exit_code: 0,
+            stdout_bounded: br#"{"decision":"deny","reason":"dlp hit"}"#.to_vec(),
+            stdout_truncated: false,
+            timed_out: false,
+        },
+    );
+    assert_eq!(deny_json.verdict, WireVerdict::Block);
+    let overrun_stepup = evaluate_command_hook_outcome(
+        &verified,
+        &CommandHookOutput {
+            provider_id: "com.example.dlp".into(),
+            exit_code: 0,
+            stdout_bounded: b"{}".to_vec(),
+            stdout_truncated: true,
+            timed_out: false,
+        },
+    );
+    assert_eq!(overrun_stepup.verdict, WireVerdict::Ask);
+    let malformed = evaluate_command_hook_outcome(
+        &entry,
+        &CommandHookOutput {
+            provider_id: "com.example.dlp".into(),
+            exit_code: 0,
+            stdout_bounded: b"not-json".to_vec(),
+            stdout_truncated: false,
+            timed_out: false,
+        },
+    );
+    assert_eq!(malformed.verdict, WireVerdict::Block);
+
+    // Exit-0 empty stdout applies entry.on_failure (never Allow under FailClosed/StepUp).
+    let empty_fail_closed = evaluate_command_hook_outcome(
+        &entry,
+        &CommandHookOutput {
+            provider_id: "com.example.dlp".into(),
+            exit_code: 0,
+            stdout_bounded: b"  \r\n ".to_vec(),
+            stdout_truncated: false,
+            timed_out: false,
+        },
+    );
+    assert_eq!(empty_fail_closed.verdict, WireVerdict::Block);
+    assert_eq!(
+        empty_fail_closed.degraded_reason,
+        "provider.command_hook.empty_stdout"
+    );
+    let empty_stepup = evaluate_command_hook_outcome(
+        &verified,
+        &CommandHookOutput {
+            provider_id: "com.example.dlp".into(),
+            exit_code: 0,
+            stdout_bounded: Vec::new(),
+            stdout_truncated: false,
+            timed_out: false,
+        },
+    );
+    assert_eq!(empty_stepup.verdict, WireVerdict::Ask);
+    assert_eq!(
+        empty_stepup.degraded_reason,
+        "provider.command_hook.empty_stdout"
+    );
+
+    // Subprocess checks for execute_command_hook: path trust, .env_clear(), stdout cap, and timeout kill.
+    let non_file_entry = ProviderIndexEntry {
+        provider_id: "p.dir".into(),
+        command: dir.to_string_lossy().into_owned(),
+        args: Vec::new(),
+        timeout_ms: 200,
+        on_failure: ProviderFailureMode::FailClosed,
+    };
+    assert!(execute_command_hook(&non_file_entry, b"{}", false).is_err());
+
+    #[cfg(unix)]
+    let (shell_cmd, env_args, flood_args, sleep_cmd, sleep_args) = (
+        PathBuf::from("/bin/sh"),
+        vec![
+            "-c".into(),
+            "if [ -n \"$CARGO_MANIFEST_DIR\" ] || [ -n \"$PATH\" ]; then echo LEAK; else echo CLEAN; fi".into(),
+        ],
+        vec!["-c".into(), "head -c 70000 /dev/zero | tr '\\0' 'A'".into()],
+        PathBuf::from("/bin/sh"),
+        vec!["-c".into(), "sleep 5".into()],
+    );
+    #[cfg(windows)]
+    let (shell_cmd, env_args, flood_args, sleep_cmd, sleep_args) = {
+        let sys_root = std::env::var_os("SystemRoot")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+        let cmd_exe = sys_root.join(r"System32\cmd.exe");
+        let chunk = "A".repeat(100);
+        (
+            cmd_exe.clone(),
+            vec![
+                "/Q".into(),
+                "/C".into(),
+                "if defined CARGO_MANIFEST_DIR (echo LEAK) else (echo CLEAN)".into(),
+            ],
+            vec![
+                "/Q".into(),
+                "/C".into(),
+                format!("for /L %i in (1,1,750) do @echo {chunk}"),
+            ],
+            cmd_exe,
+            vec![
+                "/Q".into(),
+                "/C".into(),
+                "for /L %i in (1,1,50000000) do @echo off".into(),
+            ],
+        )
+    };
+    if shell_cmd.is_file() {
+        let shell_str = shell_cmd.to_string_lossy().into_owned();
+        let env_entry = ProviderIndexEntry {
+            provider_id: "p.env".into(),
+            command: shell_str.clone(),
+            args: env_args,
+            timeout_ms: 1_000,
+            on_failure: ProviderFailureMode::FailClosed,
+        };
+        let env_out = execute_command_hook(&env_entry, b"{}", false).expect("env check runs");
+        assert!(!env_out.timed_out);
+        assert_eq!(env_out.exit_code, 0);
+        let env_stdout = String::from_utf8_lossy(&env_out.stdout_bounded);
+        assert_eq!(env_stdout.trim(), "CLEAN");
+
+        let flood_entry = ProviderIndexEntry {
+            provider_id: "p.flood".into(),
+            command: shell_str,
+            args: flood_args,
+            timeout_ms: 1_000,
+            on_failure: ProviderFailureMode::FailClosed,
+        };
+        let flood_out = execute_command_hook(&flood_entry, b"{}", false).expect("flood check runs");
+        assert!(!flood_out.timed_out);
+        assert!(flood_out.stdout_truncated);
+        assert_eq!(
+            evaluate_command_hook_outcome(&flood_entry, &flood_out).verdict,
+            WireVerdict::Block
+        );
+    }
+    if sleep_cmd.is_file() {
+        let sleep_entry = ProviderIndexEntry {
+            provider_id: "p.sleep".into(),
+            command: sleep_cmd.to_string_lossy().into_owned(),
+            args: sleep_args,
+            timeout_ms: 100,
+            on_failure: ProviderFailureMode::FailClosed,
+        };
+        let started = std::time::Instant::now();
+        let sleep_out = execute_command_hook(&sleep_entry, b"{}", false).expect("timeout runs");
+        assert!(sleep_out.timed_out, "expected timeout, got {sleep_out:?}");
+        assert!(started.elapsed() < Duration::from_secs(4));
+        assert_eq!(
+            evaluate_command_hook_outcome(&sleep_entry, &sleep_out).verdict,
+            WireVerdict::Block
+        );
+    }
+
+    // Stateless floor fallback omits retry_token even for StepUp rules.
+    write_test_floor(
+        &dir,
+        vec![grdr_wire::floor_bin::FloorRuleRecord {
+            action_class: grdr_fastpath::FastActionClass::Exec,
+            verdict: grdr_fastpath::FastVerdict::StepUp,
+            match_kind: grdr_wire::floor_bin::FloorMatchKind::Contains,
+            rule_id: "R-STEPUP".into(),
+            pattern: "danger".into(),
+            agents: Vec::new(),
+        }],
+        None,
+    )
+    .unwrap();
+    let stepup_input = grdr_hook::scan_hook_json(
+        br#"{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"run danger"}}"#,
+        "claude",
+    )
+    .unwrap();
+    let floor_out = evaluate_signed_floor_fallback(&stepup_input, &dir, false, "down");
+    assert_eq!(floor_out.verdict, WireVerdict::Ask);
+    assert!(floor_out.retry_token.is_none());
+
+    // Bounded native messaging stdin rejects empty/EOF within deadline.
+    let err = read_native_messaging_frame_bounded(
+        std::io::Cursor::new(Vec::<u8>::new()),
+        1024,
+        Duration::from_millis(50),
+    );
+    assert!(err.is_err());
+    let _ = fs::remove_dir_all(&dir);
 }

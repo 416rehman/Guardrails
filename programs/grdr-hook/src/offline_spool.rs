@@ -60,14 +60,7 @@ pub fn resolve_offline_spool_dir(protected: bool, state_dir: &Path) -> PathBuf {
 
 #[must_use]
 pub fn system_state_dir() -> PathBuf {
-    #[cfg(windows)]
-    {
-        PathBuf::from(r"C:\ProgramData\Guardrails\state")
-    }
-    #[cfg(not(windows))]
-    {
-        PathBuf::from("/var/lib/guardrails/state")
-    }
+    crate::brand::HookBrandConfig::embedded().protected_state_dir()
 }
 
 pub fn enqueue_offline_metadata(
@@ -132,13 +125,14 @@ pub fn enqueue_offline_metadata(
 }
 
 fn user_default_state_dir() -> Option<PathBuf> {
+    let brand = crate::brand::HookBrandConfig::embedded();
     #[cfg(windows)]
     {
         if let Some(local_app) = std::env::var_os("LOCALAPPDATA")
             && let Some(text) = local_app.to_str()
             && !text.trim().is_empty()
         {
-            let candidate = PathBuf::from(text).join("Guardrails").join("state");
+            let candidate = brand.user_state_candidate_local_appdata(text);
             if is_safe_non_temp_candidate(&candidate) {
                 return Some(candidate);
             }
@@ -151,7 +145,7 @@ fn user_default_state_dir() -> Option<PathBuf> {
             && let Some(text) = xdg_state.to_str()
             && !text.trim().is_empty()
         {
-            let candidate = PathBuf::from(text).join("guardrails");
+            let candidate = brand.user_state_candidate_xdg(text);
             if is_safe_non_temp_candidate(&candidate) {
                 return Some(candidate);
             }
@@ -160,7 +154,7 @@ fn user_default_state_dir() -> Option<PathBuf> {
             && let Some(text) = home.to_str()
             && !text.trim().is_empty()
         {
-            let candidate = PathBuf::from(text).join(".local/state/guardrails");
+            let candidate = brand.user_state_candidate_home(text);
             if is_safe_non_temp_candidate(&candidate) {
                 return Some(candidate);
             }

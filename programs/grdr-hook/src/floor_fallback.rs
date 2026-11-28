@@ -33,6 +33,9 @@ pub struct HookVerdictOutcome {
     pub receipt_id: String,
     pub floor_fallback: bool,
     pub degraded_reason: String,
+    pub retry_token: Option<String>,
+    pub modified_target: Option<String>,
+    pub run_provider_ids: Vec<String>,
 }
 
 pub fn evaluate_signed_floor_fallback(
@@ -116,18 +119,26 @@ pub fn evaluate_signed_floor_fallback(
         &input.target,
     );
     if let Some(rule) = matched {
+        let product = &crate::brand::HookBrandConfig::embedded().product_name;
         let wire_verdict = match rule.verdict {
             FastVerdict::Allow => WireVerdict::Allow,
             FastVerdict::StepUp => WireVerdict::Ask,
             FastVerdict::Deny => WireVerdict::Block,
         };
+        // Doc 07: stateless floor fallback never mints a retry_token; daemon issues CSPRNG `rty_`.
         return HookVerdictOutcome {
             verdict: wire_verdict,
             rule_id: rule.rule_id.clone(),
-            reason: format!("floor fallback matched ({daemon_err})"),
+            reason: format!(
+                "{product} offline rule {} ({daemon_err}; run grdr doctor)",
+                rule.rule_id
+            ),
             receipt_id: String::new(),
             floor_fallback: true,
             degraded_reason: format!("daemon-unreachable-floor-hit{stale_tag}"),
+            retry_token: None,
+            modified_target: None,
+            run_provider_ids: Vec::new(),
         };
     }
 
@@ -139,6 +150,9 @@ pub fn evaluate_signed_floor_fallback(
             receipt_id: String::new(),
             floor_fallback: true,
             degraded_reason: format!("daemon-unreachable-offline{stale_tag}"),
+            retry_token: None,
+            modified_target: None,
+            run_provider_ids: Vec::new(),
         }
     } else {
         HookVerdictOutcome {
@@ -148,6 +162,9 @@ pub fn evaluate_signed_floor_fallback(
             receipt_id: String::new(),
             floor_fallback: true,
             degraded_reason: format!("daemon-unreachable-floor{stale_tag}"),
+            retry_token: None,
+            modified_target: None,
+            run_provider_ids: Vec::new(),
         }
     }
 }
@@ -210,6 +227,9 @@ pub(crate) fn fail_closed_outcome(control_point: u32, detail: &str) -> HookVerdi
             receipt_id: String::new(),
             floor_fallback: true,
             degraded_reason: "daemon-unreachable".to_string(),
+            retry_token: None,
+            modified_target: None,
+            run_provider_ids: Vec::new(),
         };
     }
     HookVerdictOutcome {
@@ -219,5 +239,8 @@ pub(crate) fn fail_closed_outcome(control_point: u32, detail: &str) -> HookVerdi
         receipt_id: String::new(),
         floor_fallback: false,
         degraded_reason: "fail-closed".to_string(),
+        retry_token: None,
+        modified_target: None,
+        run_provider_ids: Vec::new(),
     }
 }

@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+schema_version: 1
+base_url_allowlist:
+  - ANTHROPIC_BASE_URL
+  - OPENAI_BASE_URL
+  - OPENAI_API_BASE
+  - OLLAMA_HOST
+  - LITELLM_PROXY_URL
+honeytoken_prefixes:
+  - GRDR_HONEY_
+api_shapes:
+  - provider: anthropic
+    path_contains_any:
+      - /v1/messages
+    headers_any:
+      - anthropic-version
+  - provider: openai
+    path_contains_any:
+      - /v1/chat/completions
+      - /v1/responses
+      - /v1/completions
+      - /v1/embeddings
+  - provider: azure-openai
+    path_contains_any:
+      - /openai/deployments/
+  - provider: bedrock
+    path_contains_all:
+      - /model/
+      - /converse
+  - provider: vertex
+    path_contains_any:
+      - :streamgeneratecontent
+  - provider: ollama
+    path_contains_any:
+      - /api/chat
+      - /api/generate
+  - provider: self-hosted-runtime
+    path_contains_any:
+      - /completion
+      - /generate
+      - /v2/models/
+  - provider: stainless-llm-sdk
+    header_prefixes_any:
+      - x-stainless-

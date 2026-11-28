@@ -9,7 +9,10 @@ use grdr_fastpath::FastActionClass;
 use grdr_wire::limits::embedded_limits;
 use thiserror::Error;
 
-use crate::dialect::{HookDialect, classify_action, classify_control_point, infer_dialect};
+use crate::dialect::{
+    HookDialect, classify_action, classify_control_point, infer_dialect_with_session_key,
+};
+use crate::dialect_pack::DialectRegistry;
 use crate::json_lexer::{JsonScanner, bounded_utf8_prefix, first_non_empty};
 
 pub const MAX_HOOK_STDIN_BYTES: usize = 1024 * 1024;
@@ -51,14 +54,6 @@ enum ExtractScope {
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
-enum DialectHint {
-    #[default]
-    None,
-    Cursor,
-    Codex,
-}
-
-#[derive(Default, Clone, Copy, PartialEq, Eq)]
 enum EventOrigin {
     #[default]
     None,
@@ -69,7 +64,7 @@ enum EventOrigin {
 #[derive(Default)]
 struct ExtractedFields {
     session_id: String,
-    dialect_hint: DialectHint,
+    session_key_hint: String,
     event_origin: EventOrigin,
     event_name: String,
     tool_name: String,
@@ -123,12 +118,18 @@ pub fn scan_hook_json(
         });
     }
 
-    let dialect =
-        HookDialect::from_cli_name(agent_override).unwrap_or_else(|| match fields.dialect_hint {
-            DialectHint::Cursor => HookDialect::Cursor,
-            DialectHint::Codex => HookDialect::Codex,
-            DialectHint::None => infer_dialect(&fields.event_name, &fields.tool_name),
-        });
+    let dialect = HookDialect::from_cli_name(agent_override)
+        .or_else(|| {
+            infer_dialect_with_session_key(
+                &fields.event_name,
+                &fields.tool_name,
+                &fields.session_key_hint,
+            )
+        })
+        .or_else(HookDialect::default_dialect)
+        .ok_or_else(|| HookCodecError::MalformedJson {
+            detail: "hook dialect registry empty".to_string(),
+        })?;
     let command = first_non_empty(&[fields.input_command.as_str(), fields.root_command.as_str()]);
     let file_path = first_non_empty(&[
         fields.input_file_path.as_str(),
@@ -309,20 +310,21 @@ fn scan_array(
 }
 
 fn assign_field(scope: ExtractScope, key: &str, val: String, out: &mut ExtractedFields) {
+    if scope == ExtractScope::Root {
+        let is_dialect_session_key = DialectRegistry::embedded()
+            .dialects
+            .iter()
+            .any(|d| !d.session_keys.is_empty() && d.session_keys.iter().any(|k| k == key));
+        if is_dialect_session_key {
+            if out.session_key_hint.is_empty() && key != "session_id" && key != "sessionId" {
+                out.session_key_hint = key.to_string();
+            }
+            set_non_blank(&mut out.session_id, val);
+            return;
+        }
+    }
     match (scope, key) {
         (ExtractScope::Root, "session_id" | "sessionId") => set_non_blank(&mut out.session_id, val),
-        (ExtractScope::Root, "conversation_id") => {
-            if out.dialect_hint == DialectHint::None {
-                out.dialect_hint = DialectHint::Cursor;
-            }
-            set_non_blank(&mut out.session_id, val);
-        }
-        (ExtractScope::Root, "thread_id") => {
-            if out.dialect_hint == DialectHint::None {
-                out.dialect_hint = DialectHint::Codex;
-            }
-            set_non_blank(&mut out.session_id, val);
-        }
         (ExtractScope::Root, "hook_event_name" | "hookEventName" | "event_name" | "eventName") => {
             if !val.trim().is_empty() {
                 out.event_name = val;
@@ -330,9 +332,6 @@ fn assign_field(scope: ExtractScope, key: &str, val: String, out: &mut Extracted
             }
         }
         (ExtractScope::Root, "event") => {
-            if out.dialect_hint == DialectHint::None {
-                out.dialect_hint = DialectHint::Codex;
-            }
             if out.event_origin != EventOrigin::ExplicitHookEvent && !val.trim().is_empty() {
                 out.event_name = val;
                 out.event_origin = EventOrigin::FallbackEvent;

@@ -7,6 +7,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
+use serde::{Deserialize, Serialize};
 
 use grdr_core::discover::{IdentityHints, ProgramIdentity};
 use grdr_model::{
@@ -23,6 +24,17 @@ use crate::parse::{
 use crate::windows_process_parse::{WindowsProcessEntry, executable_basename};
 
 const MAX_CONFIG_READ_BYTES: u64 = 1_048_576;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ContainmentTier {
+    #[default]
+    HookOnly,
+    PartialSandbox,
+    ScopedSandbox,
+    MandatoryKernelOpen,
+    MandatoryKernelFailClosed,
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn scan_manifest_filesystem_routes(
@@ -220,20 +232,76 @@ pub(crate) fn find_matching_process<'a>(
     })
 }
 
-pub(crate) fn assurance_for_hook(hook_installed: bool, profile: InstallProfile) -> AssuranceRecord {
-    // Doc 07: hooks provide Request-level (AL2) control at most, never ScopedBoundary (AL3).
-    let (control, tamper) = match (hook_installed, profile) {
-        (true, InstallProfile::Protected) => (ControlStrength::Request, TamperGrade::Admin),
-        (true, InstallProfile::User) => (ControlStrength::Request, TamperGrade::User),
-        (false, InstallProfile::Protected) => (ControlStrength::None, TamperGrade::Admin),
-        (false, InstallProfile::User) => (ControlStrength::None, TamperGrade::User),
+#[must_use]
+pub fn evaluate_hook_assurance(
+    profile: InstallProfile,
+    hook_installed: bool,
+    health: crate::canary::HookHealthState,
+    fail_closed_declared: bool,
+    containment: ContainmentTier,
+) -> AssuranceRecord {
+    use crate::canary::HookHealthState;
+    let tamper = match profile {
+        InstallProfile::Protected => TamperGrade::Admin,
+        InstallProfile::User => TamperGrade::User,
     };
-    AssuranceRecord {
-        visibility: Visibility::Claimed,
-        control,
-        on_failure: OnFailure::Open,
-        tamper,
+    match containment {
+        ContainmentTier::MandatoryKernelFailClosed => AssuranceRecord {
+            visibility: Visibility::CrossChecked,
+            control: ControlStrength::MandatoryBoundary,
+            on_failure: OnFailure::Closed,
+            tamper,
+        },
+        ContainmentTier::MandatoryKernelOpen => AssuranceRecord {
+            visibility: Visibility::CrossChecked,
+            control: ControlStrength::MandatoryBoundary,
+            on_failure: OnFailure::Open,
+            tamper,
+        },
+        ContainmentTier::ScopedSandbox => AssuranceRecord {
+            visibility: Visibility::Observed,
+            control: ControlStrength::ScopedBoundary,
+            on_failure: OnFailure::Closed,
+            tamper,
+        },
+        ContainmentTier::PartialSandbox | ContainmentTier::HookOnly => {
+            // Doc 07: hooks provide Request-level (AL2) at most once passive canary passes,
+            // never ScopedBoundary (AL3), even under InstallProfile::Protected.
+            if hook_installed && health == HookHealthState::Effective {
+                let on_failure = if profile == InstallProfile::Protected && fail_closed_declared {
+                    OnFailure::Closed
+                } else {
+                    OnFailure::Open
+                };
+                AssuranceRecord {
+                    visibility: Visibility::Claimed,
+                    control: ControlStrength::Request,
+                    on_failure,
+                    tamper,
+                }
+            } else {
+                AssuranceRecord {
+                    visibility: Visibility::Claimed,
+                    control: ControlStrength::None,
+                    on_failure: OnFailure::Open,
+                    tamper,
+                }
+            }
+        }
     }
+}
+
+pub(crate) fn assurance_for_hook(hook_installed: bool, profile: InstallProfile) -> AssuranceRecord {
+    // Static discovery only observes installed config entries; live canary corroboration
+    // is required before claiming Request/AL2 effectiveness.
+    let _ = hook_installed;
+    evaluate_hook_assurance(
+        profile,
+        hook_installed,
+        crate::canary::HookHealthState::Configured,
+        false,
+        ContainmentTier::HookOnly,
+    )
 }
 
 pub(crate) fn empty_report(device_name: &str, profile: InstallProfile) -> DiscoveryReport {

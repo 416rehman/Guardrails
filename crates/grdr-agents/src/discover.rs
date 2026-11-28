@@ -363,7 +363,7 @@ mod tests {
         assert!(!json.contains("ghp_super_secret_token_do_not_leak"));
         assert!(report.agents.iter().any(|a| a.kind == "claude-code"
             && a.hook_installed
-            && a.assurance_level == AssuranceLevel::Al2Guided));
+            && a.assurance_level == AssuranceLevel::Al1Observed));
         assert!(report.agents.iter().any(|a| a.kind == "cursor"
             && !a.hook_installed
             && a.assurance_level == AssuranceLevel::Al1Observed));
@@ -378,8 +378,8 @@ mod tests {
         assert!(report.mcp_servers.iter().any(|m| m.name == "docs"));
 
         let protected = assurance_for_hook(true, InstallProfile::Protected);
-        assert_eq!(protected.control, ControlStrength::Request);
-        assert_eq!(protected.level(), AssuranceLevel::Al2Guided);
+        assert_eq!(protected.control, ControlStrength::None);
+        assert_eq!(protected.level(), AssuranceLevel::Al1Observed);
 
         let _ = fs::remove_dir_all(&root);
     }

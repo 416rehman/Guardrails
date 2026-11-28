@@ -21,12 +21,22 @@ use crate::catalogue::{
 
 const EMBEDDED_BLOCKS_YAML: &str =
     include_str!("../../../packs/building-blocks/building-blocks.yaml");
+const MAX_BLOCKS_DIR_ENTRIES: usize = 512;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EcosystemPackages {
+    #[serde(default)]
     pub pypi: Vec<String>,
+    #[serde(default)]
     pub npm: Vec<String>,
+    #[serde(default)]
     pub cargo: Vec<String>,
+    #[serde(default)]
+    pub go: Vec<String>,
+    #[serde(default)]
+    pub jvm: Vec<String>,
+    #[serde(default)]
+    pub dotnet: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -148,17 +158,38 @@ impl BuildingBlockCatalogue {
         {
             RegularEntryKind::Missing => {}
             RegularEntryKind::Dir => {
-                let mut entries = Vec::new();
-                for path in fs
+                let raw_entries = fs
                     .read_dir_entries(&blocks_dir)
-                    .map_err(|e| cat_err("GRDR-AGENTS-0005", e))?
-                {
+                    .map_err(|e| cat_err("GRDR-AGENTS-0005", e))?;
+                if raw_entries.len() > MAX_BLOCKS_DIR_ENTRIES {
+                    return Err(cat_err(
+                        "GRDR-AGENTS-0005",
+                        format!(
+                            "blocks dir exceeds maximum {MAX_BLOCKS_DIR_ENTRIES} entries: {}",
+                            blocks_dir.display()
+                        ),
+                    ));
+                }
+                let mut entries = Vec::new();
+                for path in raw_entries {
                     if path
                         .extension()
                         .and_then(|s| s.to_str())
                         .is_some_and(|ext| ext == "yaml" || ext == "yml")
                     {
-                        entries.push(path);
+                        match fs
+                            .inspect_nofollow(&path)
+                            .map_err(|e| cat_err("GRDR-AGENTS-0005", e))?
+                        {
+                            RegularEntryKind::File => entries.push(path),
+                            RegularEntryKind::Missing => {}
+                            RegularEntryKind::Dir | RegularEntryKind::UnsafeOrOther => {
+                                return Err(cat_err(
+                                    "GRDR-AGENTS-0005",
+                                    format!("unsafe blocks manifest file: {}", path.display()),
+                                ));
+                            }
+                        }
                     }
                 }
                 entries.sort();
@@ -233,7 +264,16 @@ fn parse_block_map(m: &BTreeMap<String, YamlValue>) -> Result<BuildingBlockManif
         ecosystems: EcosystemPackages {
             pypi: eco.map(|e| str_list(e, "pypi")).unwrap_or_default(),
             npm: eco.map(|e| str_list(e, "npm")).unwrap_or_default(),
-            cargo: eco.map(|e| str_list(e, "cargo")).unwrap_or_default(),
+            cargo: eco
+                .map(|e| {
+                    let mut v = str_list(e, "cargo");
+                    v.extend(str_list(e, "rust"));
+                    v
+                })
+                .unwrap_or_default(),
+            go: eco.map(|e| str_list(e, "go")).unwrap_or_default(),
+            jvm: eco.map(|e| str_list(e, "jvm")).unwrap_or_default(),
+            dotnet: eco.map(|e| str_list(e, "dotnet")).unwrap_or_default(),
         },
         binaries: str_list(m, "binaries"),
         env_markers: str_list(m, "env_markers"),

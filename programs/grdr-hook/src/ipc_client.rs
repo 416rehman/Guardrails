@@ -25,6 +25,7 @@ use grdr_wire::peer_auth::{ClientIdentityPolicy, Profile, open};
 use crate::floor_fallback::{
     HookVerdictOutcome, evaluate_signed_floor_fallback, fail_closed_outcome,
 };
+use crate::handover::active_handover_remaining_ms_for_profile;
 use crate::ipc_transport::{
     TimeoutConfigurableStream, boot_mono_ms, client_identity_policy, extract_server_claims,
     probe_guardrails_scm, remaining_dur, resolve_decide_address, verify_unix_server_path_post,
@@ -32,7 +33,6 @@ use crate::ipc_transport::{
 };
 use crate::json_lexer::bounded_utf8_prefix;
 use crate::json_scan::ScannedHookInput;
-use crate::offline_spool::active_handover_remaining_ms;
 
 pub const DEFAULT_ACK_TIMEOUT_MS: u64 = 250;
 pub const MAX_VERDICT_BUDGET_MS: u64 = 1800;
@@ -52,21 +52,18 @@ enum RoundError {
 
 #[must_use]
 pub fn is_protected_profile_active() -> bool {
-    #[cfg(target_os = "linux")]
+    let brand = crate::brand::HookBrandConfig::embedded();
+    #[cfg(target_os = "windows")]
     {
-        Path::new("/run/guardrails").exists() || Path::new("/var/lib/guardrails/state").exists()
-    }
-    #[cfg(target_os = "macos")]
-    {
-        Path::new("/Library/Application Support/grdr").exists()
-            || Path::new("/var/lib/guardrails/state").exists()
-    }
-    #[cfg(windows)]
-    {
-        grdr_peer_os::win_peer::probe_scm_services(&["Guardrails", "GuardrailsHandover"])
+        let names = brand.windows_scm_services();
+        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        grdr_peer_os::win_peer::probe_scm_services(&refs)
             .into_iter()
             .any(|probe| probe.is_some())
-            || crate::offline_spool::system_state_dir().exists()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        brand.protected_run_dirs().iter().any(|p| p.exists())
     }
 }
 
@@ -83,7 +80,7 @@ pub fn evaluate_against_daemon_or_floor(
     let clock = SystemClock::new();
     let now_mono = boot_mono_ms(&clock);
     let (ack_default_ms, verdict_budget_ms, max_frame_bytes) = runtime_ipc_budgets();
-    let handover_ms = active_handover_remaining_ms(state_dir, now_mono);
+    let handover_ms = active_handover_remaining_ms_for_profile(state_dir, now_mono, protected);
     let ack_ceiling_ms = handover_ms.map_or(ack_default_ms, |h| h.min(verdict_budget_ms));
 
     match call_daemon_decide(
@@ -107,6 +104,26 @@ pub fn evaluate_against_daemon_or_floor(
                     "daemon returned unspecified WireVerdict",
                 );
             }
+            let retry_token = verdict
+                .labels
+                .iter()
+                .find_map(|l| l.strip_prefix("retry_token:"))
+                .filter(|tok| is_valid_daemon_retry_token(tok))
+                .map(str::to_string);
+            let modified_target = verdict
+                .labels
+                .iter()
+                .find_map(|l| l.strip_prefix("modified_target:"))
+                .map(str::to_string);
+            let mut run_provider_ids = Vec::new();
+            for label in &verdict.labels {
+                if let Some(pid) = label.strip_prefix("run_provider:") {
+                    let trimmed = pid.trim();
+                    if !trimmed.is_empty() && !run_provider_ids.iter().any(|p| p == trimmed) {
+                        run_provider_ids.push(trimmed.to_string());
+                    }
+                }
+            }
             HookVerdictOutcome {
                 verdict: decoded,
                 rule_id: verdict.rule_id,
@@ -114,6 +131,9 @@ pub fn evaluate_against_daemon_or_floor(
                 receipt_id: verdict.receipt_id,
                 floor_fallback: verdict.floor_fallback,
                 degraded_reason: verdict.degraded_reason,
+                retry_token,
+                modified_target,
+                run_provider_ids,
             }
         }
         Err(DaemonCallError::Unreachable(err_reason)) => {
@@ -123,6 +143,13 @@ pub fn evaluate_against_daemon_or_floor(
             fail_closed_outcome(input.control_point, &reason)
         }
     }
+}
+
+pub(crate) fn is_valid_daemon_retry_token(tok: &str) -> bool {
+    let Some(hex_part) = tok.strip_prefix("rty_") else {
+        return false;
+    };
+    hex_part.len() >= 16 && hex_part.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 fn runtime_ipc_budgets() -> (u64, u64, usize) {

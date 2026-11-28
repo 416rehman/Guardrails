@@ -138,6 +138,11 @@ impl SessionRecord {
     pub fn accepts_events(&self, event_boot_id: &str) -> bool {
         self.boot_id == event_boot_id && !matches!(self.phase, SessionLifecyclePhase::Ended)
     }
+
+    #[must_use]
+    pub fn started_before_install(&self) -> bool {
+        self.taint_labels.contains("hook.started-before-install")
+    }
 }
 
 impl SessionRegistry {
@@ -412,6 +417,36 @@ impl SessionRegistry {
     #[must_use]
     pub fn sessions(&self) -> &BTreeMap<String, SessionRecord> {
         &self.sessions
+    }
+
+    pub fn adopt_running_session(
+        &mut self,
+        session_id: impl Into<String>,
+        agent_id: impl Into<String>,
+        started_before_hook_install: bool,
+        constraints: SessionConstraints,
+        now_ms: u64,
+    ) -> Result<&SessionRecord, CodedError> {
+        let sid = session_id.into();
+        let opened = self.open_session(
+            sid.clone(),
+            agent_id,
+            StartBasis::Adopted,
+            constraints,
+            now_ms,
+        )?;
+        let _ = opened;
+        self.add_taint(&sid, "adopted")?;
+        if started_before_hook_install {
+            self.add_taint(&sid, "hook.started-before-install")?;
+        }
+        self.sessions.get(&sid).ok_or_else(|| {
+            CodedError::new(
+                "GRDR-SESS-0001",
+                "missing adopted session",
+                "Retry adopting running agent session.",
+            )
+        })
     }
 }
 

@@ -7,14 +7,24 @@
 
 pub mod brand;
 pub mod breaker;
+pub mod command_hook;
 pub mod fanout;
 mod fanout_exec;
 pub mod mcp_llm;
 pub mod providers;
+mod providers_parse;
+mod secret_rules;
 mod worker_pool;
 
 pub use brand::BrokerBrand;
 pub use breaker::CircuitBreakerState;
+pub use command_hook::{
+    AgentCapabilityMatrixInput, CANONICAL_HOOK_EVENTS, CapabilitySupportClaim,
+    CommandHookEvalOutcome, CommandHookInstruction, ForeignHookEntry,
+    MAX_COMMAND_HOOK_STDOUT_BYTES, build_capabilities_json, collect_command_hook_instructions,
+    evaluate_command_hook_result, list_foreign_hooks, render_provider_index_tsv,
+    render_signed_provider_index_tsv, verify_provider_request_minimization,
+};
 pub use fanout::{
     FanoutDecision, HookBrokerEngine, ProviderEvalError, ProviderEvalRequest, ProviderVerdictKind,
     ProviderVerdictResponse, VerdictProvider,
@@ -22,7 +32,7 @@ pub use fanout::{
 pub use mcp_llm::{BrokerError, BrokerOutcome, BrokerState, LlmBroker, McpBroker};
 pub use providers::{
     DEFAULT_PROVIDER_DEADLINE_MS, MAX_PROVIDER_DEADLINE_MS, ProviderCapabilities,
-    ProviderCaptureCeiling, ProviderManifest, ProviderOnFailure, ProviderTrustModel,
+    ProviderCaptureCeiling, ProviderKind, ProviderManifest, ProviderOnFailure, ProviderTrustModel,
     load_providers_dir, validate_provider_set,
 };
 
