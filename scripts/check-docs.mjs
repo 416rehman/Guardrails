@@ -119,6 +119,43 @@ export function checkMarkdownLinks(root) {
   return errors;
 }
 
+const BANNED_CDN_HOSTS = new Set([
+  'fonts.googleapis.com',
+  'fonts.gstatic.com',
+  'cdn.jsdelivr.net',
+  'unpkg.com',
+  'www.googletagmanager.com',
+  'www.google-analytics.com',
+]);
+
+export function stripMarkdownCodeAndComments(raw) {
+  let out = '';
+  let i = 0;
+  while (i < raw.length) {
+    if (raw.startsWith('```', i)) {
+      const end = raw.indexOf('```', i + 3);
+      if (end === -1) break;
+      i = end + 3;
+      continue;
+    }
+    if (raw[i] === '`') {
+      const end = raw.indexOf('`', i + 1);
+      if (end === -1) break;
+      i = end + 1;
+      continue;
+    }
+    if (raw.startsWith('<!--', i)) {
+      const end = raw.indexOf('-->', i + 4);
+      if (end === -1) break;
+      i = end + 3;
+      continue;
+    }
+    out += raw[i];
+    i += 1;
+  }
+  return out;
+}
+
 export function checkVocabularyAndHygiene(root) {
   const errors = [];
   const scanFiles = [
@@ -137,7 +174,6 @@ export function checkVocabularyAndHygiene(root) {
     { re: /\u2014/, msg: 'Unicode em dash is forbidden' },
     { re: /\bposture\b/i, msg: 'Use Guardrails vocabulary instead of banned term "posture"' },
     { re: /curl\s+[^\n|]*\|\s*(?:ba)?sh/i, msg: 'Pipe-to-shell install commands are forbidden' },
-    { re: /https?:\/\/(?:fonts\.googleapis\.com|fonts\.gstatic\.com|cdn\.jsdelivr\.net|unpkg\.com|www\.googletagmanager\.com|www\.google-analytics\.com)/i, msg: 'Third-party CDN/analytics URLs are forbidden' },
     { re: /\/api\/v1\//, msg: 'Stale prototype /api/v1/ reference detected' },
     { re: /grdr-daemon\s+--bind\b/, msg: 'Stale grdr-daemon --bind flag (daemon uses IPC, not HTTP TCP bind)' },
   ];
@@ -152,11 +188,7 @@ export function checkVocabularyAndHygiene(root) {
   ];
   for (const d of mdxDirs) {
     for (const file of listMarkdownRecursive(d)) {
-      const stripped = fs
-        .readFileSync(file, 'utf8')
-        .replace(/```[\s\S]*?```/g, '')
-        .replace(/`[^`]*`/g, '')
-        .replace(/<!--[\s\S]*?-->/g, '');
+      const stripped = stripMarkdownCodeAndComments(fs.readFileSync(file, 'utf8'));
       if (/<[A-Za-z0-9=]/.test(stripped)) {
         errors.push(`${path.relative(root, file).replace(/\\/g, '/')}: unescaped '<' outside code block triggers MDX JSX parser error`);
       }
@@ -215,6 +247,16 @@ export function checkVocabularyAndHygiene(root) {
       if (re.test(text)) {
         errors.push(`${rel}: ${msg}`);
       }
+    }
+    for (const rawUrl of text.match(/https?:\/\/[^\s)>'"`]+/gi) ?? []) {
+      const cleaned = rawUrl.replace(/[.,;:!?]+$/, '');
+      try {
+        const parsed = new URL(cleaned);
+        if (BANNED_CDN_HOSTS.has(parsed.hostname.toLowerCase())) {
+          errors.push(`${rel}: Third-party CDN/analytics URLs are forbidden (${parsed.hostname})`);
+          break;
+        }
+      } catch {}
     }
   }
   return errors;

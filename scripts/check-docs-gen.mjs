@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -175,10 +175,19 @@ function parseSurfaces(root) {
 
 function parseSupportSummary(root) {
   const raw = fs.readFileSync(path.join(root, 'contracts/support.toml'), 'utf8');
-  const pick = (key) => {
-    const m = raw.match(new RegExp(`^${key}\\s*=\\s*(.+)$`, 'm'));
-    return m ? m[1].trim() : 'n/a';
-  };
+  const values = new Map();
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('[')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const val = trimmed.slice(eq + 1).trim();
+    if (key && !values.has(key)) {
+      values.set(key, val);
+    }
+  }
+  const pick = (key) => values.get(key) ?? 'n/a';
   return {
     cadence: pick('cadence'),
     supportedMinorsBehind: pick('supported_minors_behind'),
@@ -381,12 +390,26 @@ export function syncGeneratedDocs({ root = REPO_ROOT, write = false } = {}) {
   const drifted = [];
   for (const [rel, content] of expected.entries()) {
     const full = path.join(root, rel);
-    const exists = fs.existsSync(full);
-    const current = exists ? fs.readFileSync(full, 'utf8') : null;
+    let current = null;
+    try {
+      current = fs.readFileSync(full, 'utf8');
+    } catch (err) {
+      if (err?.code !== 'ENOENT') throw err;
+    }
     if (current !== content) {
       if (write) {
-        fs.mkdirSync(path.dirname(full), { recursive: true });
-        fs.writeFileSync(full, content, 'utf8');
+        const dir = path.dirname(full);
+        fs.mkdirSync(dir, { recursive: true });
+        const tmp = path.join(dir, `.tmp-${path.basename(full)}-${process.pid}-${randomBytes(6).toString('hex')}`);
+        try {
+          fs.writeFileSync(tmp, content, { encoding: 'utf8', flag: 'wx' });
+          fs.renameSync(tmp, full);
+        } catch (err) {
+          try {
+            fs.rmSync(tmp, { force: true });
+          } catch {}
+          throw err;
+        }
       } else {
         drifted.push(rel);
       }

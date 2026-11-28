@@ -13,6 +13,7 @@ import {
   checkProductAndRunbooks,
   checkVocabularyAndHygiene,
   runAllDocsChecks,
+  stripMarkdownCodeAndComments,
 } from './check-docs.mjs';
 import { REPO_ROOT, syncGeneratedDocs } from './check-docs-gen.mjs';
 
@@ -173,6 +174,28 @@ test('checkVocabularyAndHygiene flags DEP codes, --plan flag, and Rust identifie
     assert.ok(errs.some((e) => e.includes('DEP-0001')));
     assert.ok(errs.some((e) => e.includes('preflight --plan')));
     assert.ok(errs.some((e) => e.includes('InMemoryUsageLedger')));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('stripMarkdownCodeAndComments and URL hostname check ignore code/comments and catch nested leaks', () => {
+  const cleaned = stripMarkdownCodeAndComments('Hello <!-- outer <!<!--nested--> `<Tag>` ```\n<Code>\n``` world <Bad>');
+  assert.ok(!cleaned.includes('<Tag>'));
+  assert.ok(!cleaned.includes('<Code>'));
+  assert.ok(cleaned.includes('<Bad>'));
+
+  const dir = makeTempRoot();
+  try {
+    fs.mkdirSync(path.join(dir, 'docs/product'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'docs/product/sample.md'),
+      '<!-- ok -->\n`<Safe>`\n<UnsafeTag>\nhttps://fonts.googleapis.com/css2?family=DM+Sans\n',
+      'utf8',
+    );
+    const errs = checkVocabularyAndHygiene(dir);
+    assert.ok(errs.some((e) => e.includes('unescaped \'<\' outside code block')));
+    assert.ok(errs.some((e) => e.includes('fonts.googleapis.com')));
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
