@@ -35,6 +35,7 @@ grdr-review = { workspace = true }
 grdr-strings = { workspace = true }
 jiff = { workspace = true }
 prost = { workspace = true }
+reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

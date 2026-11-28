@@ -161,6 +161,14 @@ rto_relational_minutes = 5
 rto_events_hours = 4
 rollback_circuit_breaker_pct = 15
 
+[server.rest]
+rate_limit_default_per_min = 120
+
+[server.mcp]
+read_limit_per_min = 60
+propose_limit_per_hour = 10
+propose_window_secs = 3600
+
 [endpoint.linux_sensor]
 catalogue_file_max_bytes = 1048576
 seccheck_line_max_bytes = 32768

@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grdr-api"
+version = "0.1.0"
+description = "Guardrails ADR Control-Plane REST /v1 and Webhooks SDK (docs/design/23)"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["grdr_api*"]

@@ -1,0 +1,16 @@
+{
+  "name": "@grdr/api",
+  "version": "0.1.0",
+  "description": "Guardrails ADR Control-Plane REST /v1 and Standard Webhooks SDK (docs/design/23)",
+  "type": "module",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/api.test.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

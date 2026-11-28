@@ -147,6 +147,18 @@ impl<'a> BinaryFloorTable<'a> {
         self.rule_count
     }
 
+    pub fn uses_labels(&self) -> bool {
+        for idx in 0..usize::from(self.rule_count) {
+            let Ok(rule) = self.read_rule(idx) else {
+                return true;
+            };
+            if rule.label_mask != 0 {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn evaluate(
         &self,
         action: FastActionClass,

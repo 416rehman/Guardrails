@@ -3,6 +3,7 @@
 //! Bounded zero-alloc hook payload scanner for `#![no_std]` fastpath inspection.
 
 use crate::contains_norm_icase;
+use crate::manifest::FastpathTablesManifest;
 use crate::scanner_json::{
     decode_json_string_into, decode_utf8_prefix, has_malformed_quotes, scan_json_quoted_span,
     skip_ws,
@@ -27,72 +28,6 @@ pub const FLAG_TRUNCATED: u32 = 1 << 11;
 const MAX_KEY_DECODE_BYTES: usize = 128;
 const MAX_TARGET_SLOTS: usize = 16;
 
-const PATTERN_RULES: &[(u32, &str)] = &[
-    (FLAG_BYPASS_PERMISSION, "--dangerously-skip-permissions"),
-    (FLAG_BYPASS_PERMISSION, "--no-verify"),
-    (FLAG_BYPASS_PERMISSION, "--no-sandbox"),
-    (FLAG_BYPASS_PERMISSION, "--disable-sandbox"),
-    (FLAG_BYPASS_PERMISSION, "--yolo"),
-    (FLAG_HOOKS_DISABLED, "--disable-hooks"),
-    (FLAG_GRDR_DISABLE, "grdr_disable"),
-    (FLAG_SUBSHELL, "$("),
-    (FLAG_BACKTICK, "`"),
-    (FLAG_ENCODED_CMD, "-encodedcommand"),
-    (FLAG_ENCODED_CMD, " -enc "),
-    (FLAG_PIPE_SHELL, "| sh"),
-    (FLAG_PIPE_SHELL, "| bash"),
-    (FLAG_PIPE_SHELL, "| zsh"),
-    (FLAG_PIPE_SHELL, "| /bin/sh"),
-    (FLAG_PIPE_SHELL, "| /bin/bash"),
-    (FLAG_RECURSIVE_FORCE, "-rf"),
-    (FLAG_RECURSIVE_FORCE, "-fr"),
-    (FLAG_RECURSIVE_FORCE, "rm -r -f"),
-    (FLAG_RECURSIVE_FORCE, "remove-item -recurse -force"),
-    (FLAG_CRED_PATH, ".ssh/"),
-    (FLAG_CRED_PATH, ".aws/"),
-    (FLAG_CRED_PATH, ".gnupg/"),
-    (FLAG_CRED_PATH, ".config/gh/"),
-    (FLAG_CRED_PATH, "id_rsa"),
-    (FLAG_CRED_PATH, "id_ed25519"),
-    (FLAG_CRED_PATH, ".env.production"),
-    (FLAG_CONTROL_PATH, ".claude/"),
-    (FLAG_CONTROL_PATH, ".claude.json"),
-    (FLAG_CONTROL_PATH, ".cursor/"),
-    (FLAG_CONTROL_PATH, ".codex/"),
-    (FLAG_CONTROL_PATH, ".gemini/"),
-    (FLAG_CONTROL_PATH, ".windsurf/"),
-    (FLAG_CONTROL_PATH, ".grdr/"),
-    (FLAG_CONTROL_PATH, "grdr-data/"),
-];
-
-const FILE_TOOLS: &[&str] = &[
-    "read",
-    "edit",
-    "write",
-    "multiedit",
-    "delete",
-    "file_read",
-    "file_write",
-    "file_delete",
-    "notebookedit",
-    "write_to_file",
-    "replace_file_content",
-    "multi_replace_file_content",
-    "create_file",
-    "apply_patch",
-    "view_file",
-    "read_file",
-    "write_file",
-    "delete_file",
-    "removefile",
-    "editfile",
-    "writetofile",
-    "afterfileedit",
-    "beforereadfile",
-];
-
-const NET_TOOLS: &[&str] = &["webfetch", "websearch", "net_request"];
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HookScanResult<'a> {
     pub flags: u32,
@@ -110,6 +45,15 @@ struct RootHeaders<'a> {
 }
 
 pub fn scan_hook_payload<'a>(raw: &'a [u8], max_bytes: usize) -> HookScanResult<'a> {
+    let manifest = FastpathTablesManifest::embedded();
+    scan_hook_payload_with_manifest(raw, max_bytes, &manifest)
+}
+
+pub fn scan_hook_payload_with_manifest<'a>(
+    raw: &'a [u8],
+    max_bytes: usize,
+    manifest: &FastpathTablesManifest<'_>,
+) -> HookScanResult<'a> {
     let cap = max_bytes.min(MAX_HOOK_SCAN_BYTES);
     let mut flags: u32 = 0;
     let bounded = if raw.len() > cap {
@@ -123,7 +67,7 @@ pub fn scan_hook_payload<'a>(raw: &'a [u8], max_bytes: usize) -> HookScanResult<
         Some(valid) => valid,
         None => {
             return HookScanResult {
-                flags: flags | FLAG_MALFORMED_QUOTES | scan_raw_ascii_flags(bounded),
+                flags: flags | FLAG_MALFORMED_QUOTES | scan_raw_ascii_flags(bounded, manifest),
                 tool_name: "",
                 target: "",
                 agent: "",
@@ -139,10 +83,10 @@ pub fn scan_hook_payload<'a>(raw: &'a [u8], max_bytes: usize) -> HookScanResult<
 
     let mut tool_buf = [0u8; MAX_KEY_DECODE_BYTES];
     let (decoded_tool, _) = decode_json_string_into(hdr.tool_name, &mut tool_buf);
-    let target_keys = target_keys_for_tool(decoded_tool);
-    let checks_quotes = target_checks_shell_quotes(decoded_tool);
+    let target_section = target_section_for_tool(decoded_tool, manifest);
+    let checks_quotes = target_checks_shell_quotes(decoded_tool, manifest);
     let (target, target_trunc, scan_flags) =
-        extract_targets_and_flags(text, target_keys, checks_quotes);
+        extract_targets_and_flags(text, target_section, checks_quotes, manifest);
     flags |= scan_flags;
     if target_trunc {
         flags |= FLAG_TRUNCATED;
@@ -157,117 +101,57 @@ pub fn scan_hook_payload<'a>(raw: &'a [u8], max_bytes: usize) -> HookScanResult<
     }
 }
 
-fn is_file_tool(tool_name: &str) -> bool {
-    FILE_TOOLS.iter().any(|name| eq_tool_ascii(tool_name, name))
+fn target_checks_shell_quotes(tool_name: &str, manifest: &FastpathTablesManifest<'_>) -> bool {
+    !(manifest.contains_list_item_icase("file_tools", tool_name)
+        || manifest.contains_list_item_icase("net_tools", tool_name))
 }
 
-fn is_net_tool(tool_name: &str) -> bool {
-    NET_TOOLS.iter().any(|name| eq_tool_ascii(tool_name, name))
-}
-
-fn target_checks_shell_quotes(tool_name: &str) -> bool {
-    !(is_file_tool(tool_name) || is_net_tool(tool_name))
-}
-
-fn target_keys_for_tool(tool_name: &str) -> &'static [&'static str] {
+fn target_section_for_tool(tool_name: &str, manifest: &FastpathTablesManifest<'_>) -> &'static str {
     if crate::starts_with_norm_icase(tool_name, "mcp__")
-        || eq_tool_ascii(tool_name, "mcp_call")
-        || eq_tool_ascii(tool_name, "mcp_connect")
+        || tool_name.eq_ignore_ascii_case("mcp_call")
+        || tool_name.eq_ignore_ascii_case("mcp_connect")
     {
-        &[
-            "path",
-            "file_path",
-            "TargetFile",
-            "AbsolutePath",
-            "url",
-            "Url",
-            "uri",
-            "target",
-            "command",
-            "cmd",
-            "CommandLine",
-            "command_line",
-            "script",
-            "server",
-            "tool",
-            "input",
-        ]
-    } else if is_file_tool(tool_name) {
-        &[
-            "file_path",
-            "target_file",
-            "TargetFile",
-            "AbsolutePath",
-            "notebook_path",
-            "path",
-            "patch",
-            "target",
-            "command",
-            "cmd",
-            "CommandLine",
-            "url",
-            "Url",
-            "input",
-        ]
-    } else if is_net_tool(tool_name) {
-        &[
-            "url",
-            "Url",
-            "uri",
-            "query",
-            "target",
-            "command",
-            "cmd",
-            "CommandLine",
-            "file_path",
-            "path",
-        ]
+        "mcp_target_keys"
+    } else if manifest.contains_list_item_icase("file_tools", tool_name) {
+        "file_target_keys"
+    } else if manifest.contains_list_item_icase("net_tools", tool_name) {
+        "net_target_keys"
     } else {
-        &[
-            "command",
-            "cmd",
-            "CommandLine",
-            "command_line",
-            "script",
-            "file_path",
-            "target_file",
-            "TargetFile",
-            "AbsolutePath",
-            "notebook_path",
-            "path",
-            "patch",
-            "target",
-            "url",
-            "Url",
-            "input",
-        ]
+        "default_target_keys"
     }
 }
 
-fn key_checks_shell_quotes(key: &str) -> bool {
-    matches!(
-        key,
-        "command" | "cmd" | "CommandLine" | "command_line" | "script" | "target"
-    )
+fn find_target_slot(
+    manifest: &FastpathTablesManifest<'_>,
+    section: &str,
+    key_name: &str,
+) -> Option<usize> {
+    let mut slot_idx: usize = 0;
+    let mut matched: Option<usize> = None;
+    manifest.visit_array_items(section, &mut |item| {
+        if matched.is_none() && slot_idx < MAX_TARGET_SLOTS {
+            if item == key_name {
+                matched = Some(slot_idx);
+            }
+            slot_idx = slot_idx.saturating_add(1);
+        }
+    });
+    matched
 }
 
-fn eq_tool_ascii(a: &str, b: &str) -> bool {
-    a.eq_ignore_ascii_case(b)
-}
-
-fn scan_str_flags(text: &str) -> u32 {
+fn scan_str_flags(text: &str, manifest: &FastpathTablesManifest<'_>) -> u32 {
     let mut flags: u32 = 0;
-    for &(bit, pattern) in PATTERN_RULES {
+    manifest.visit_scanner_patterns(|bit, pattern| {
         if contains_norm_icase(text, pattern) {
             flags |= bit;
         }
-    }
+    });
     flags
 }
 
-fn scan_raw_ascii_flags(bytes: &[u8]) -> u32 {
+fn scan_raw_ascii_flags(bytes: &[u8], manifest: &FastpathTablesManifest<'_>) -> u32 {
     let mut flags: u32 = 0;
-    for &(bit, pattern) in PATTERN_RULES {
+    manifest.visit_scanner_patterns(|bit, pattern| {
         let pat = pattern.as_bytes();
         if !pat.is_empty()
             && bytes.len() >= pat.len()
@@ -279,7 +163,7 @@ fn scan_raw_ascii_flags(bytes: &[u8]) -> u32 {
         {
             flags |= bit;
         }
-    }
+    });
     flags
 }
 
@@ -355,8 +239,9 @@ fn extract_root_headers<'a>(text: &'a str) -> RootHeaders<'a> {
 
 fn extract_targets_and_flags<'a>(
     text: &'a str,
-    keys: &[&str],
+    target_section: &str,
     checks_quotes: bool,
+    manifest: &FastpathTablesManifest<'_>,
 ) -> (&'a str, bool, u32) {
     let bytes = text.as_bytes();
     let mut i: usize = 0;
@@ -407,7 +292,7 @@ fn extract_targets_and_flags<'a>(
                         let in_ti_root = tool_input_depth.is_some_and(|d| depth == d);
                         let in_ti_any = tool_input_depth.is_some_and(|d| depth >= d);
                         let key_idx = if !ktrunc && (in_ti_root || depth == 1) {
-                            keys.iter().take(MAX_TARGET_SLOTS).position(|&k| k == kdec)
+                            find_target_slot(manifest, target_section, kdec)
                         } else {
                             None
                         };
@@ -426,10 +311,10 @@ fn extract_targets_and_flags<'a>(
                             if val_trunc || dec_trunc {
                                 flags |= FLAG_TRUNCATED;
                             }
-                            flags |= scan_str_flags(decoded);
+                            flags |= scan_str_flags(decoded, manifest);
                             if key_idx.is_some()
                                 && checks_quotes
-                                && key_checks_shell_quotes(kdec)
+                                && manifest.matches_any_list_exact("shell_quote_keys", kdec)
                                 && has_malformed_quotes(decoded)
                             {
                                 flags |= FLAG_MALFORMED_QUOTES;
@@ -446,7 +331,7 @@ fn extract_targets_and_flags<'a>(
                         if dec_trunc {
                             flags |= FLAG_TRUNCATED;
                         }
-                        flags |= scan_str_flags(decoded);
+                        flags |= scan_str_flags(decoded, manifest);
                     }
                     i = after_key;
                 }

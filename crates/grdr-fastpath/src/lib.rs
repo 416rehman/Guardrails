@@ -6,6 +6,8 @@
 
 pub mod binary;
 pub mod codec;
+pub mod host;
+pub mod manifest;
 pub mod scanner;
 mod scanner_json;
 
@@ -15,12 +17,22 @@ pub use binary::{
     LABEL_TAINTED_EXFIL, LABEL_UNTRUSTED_WEB, MAX_BINARY_RULES, MAX_BINARY_SLICES,
     PRINCIPAL_PROCESS, PRINCIPAL_SESSION,
 };
-pub use codec::{encode_binary_floor, encoded_binary_floor_size, evaluate_failsafe};
+pub use codec::{
+    encode_binary_floor, encoded_binary_floor_size, evaluate_failsafe,
+    evaluate_failsafe_with_manifest,
+};
+pub use host::{
+    AssuranceVerdict, FastpathBrandManifest, FastpathHostStatus, FastpathInterestView,
+    HostCapabilityState, HostEvalOutcome, HostProfile, HostRuleRequirements, LabelBundleState,
+    REQ_COMMAND_PARSER, REQ_NET_EGRESS_SENSOR, REQ_OS_FILE_SENSOR, REQ_SESSION_STORE,
+    REQ_USER_IDENTITY, evaluate_floor_with_host,
+};
+pub use manifest::{FailsafeRuleRow, FastpathTablesManifest};
 pub use scanner::{
     FLAG_BACKTICK, FLAG_BYPASS_PERMISSION, FLAG_CONTROL_PATH, FLAG_CRED_PATH, FLAG_ENCODED_CMD,
     FLAG_GRDR_DISABLE, FLAG_HOOKS_DISABLED, FLAG_MALFORMED_QUOTES, FLAG_PIPE_SHELL,
     FLAG_RECURSIVE_FORCE, FLAG_SUBSHELL, FLAG_TRUNCATED, HookScanResult, MAX_EXTRACTED_FIELD_BYTES,
-    MAX_HOOK_SCAN_BYTES, scan_hook_payload,
+    MAX_HOOK_SCAN_BYTES, scan_hook_payload, scan_hook_payload_with_manifest,
 };
 
 pub const FLOOR_FORMAT_MAGIC: &[u8; 8] = b"GRDRFLT1";

@@ -179,6 +179,20 @@ pub struct ServerLimits {
     pub preflight: ServerPreflightLimits,
     pub enrolment: ServerEnrolmentLimits,
     pub operator: ServerOperatorLimits,
+    pub rest: ServerRestLimits,
+    pub mcp: ServerMcpLimits,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServerRestLimits {
+    pub rate_limit_default_per_min: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServerMcpLimits {
+    pub read_limit_per_min: u32,
+    pub propose_limit_per_hour: u32,
+    pub propose_window_secs: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

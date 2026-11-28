@@ -1,0 +1,13 @@
+{
+  "schema": "grdr.conformance.webhooks.v1alpha1",
+  "standard_webhooks": {
+    "webhook_id": "msg_20261127_0001",
+    "webhook_timestamp": 1795737600,
+    "tolerance_seconds": 300,
+    "hmac_secret_b64": "whsec_dGhpcy1pcy1hLWRldGVybWluaXN0aWMtdGVzdC1rZXk=",
+    "ed25519_seed_hex": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+    "ed25519_public_hex": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+    "payload": "{\"id\":\"evt_01\",\"topic\":\"finding.opened\",\"tenantId\":\"org-acme\"}",
+    "expected_signed_input": "msg_20261127_0001.1795737600.{\"id\":\"evt_01\",\"topic\":\"finding.opened\",\"tenantId\":\"org-acme\"}"
+  }
+}

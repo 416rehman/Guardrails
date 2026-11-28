@@ -6,7 +6,7 @@ schema = "grdr.unsafe-register.v1"
 crate = "grdr-fastpath-ffi"
 file = "crates/grdr-fastpath-ffi/src/lib.rs"
 symbol = "read_utf8_arg"
-lines = "64-78"
+lines = "83-97"
 invariant = "Null pointer, zero length, and MAX_FASTPATH_STR_BYTES upper bound are checked before calling slice::from_raw_parts."
 owner = "core"
 verification = ["cargo test -p grdr-fastpath-ffi", "miri", "asan"]
@@ -15,17 +15,26 @@ verification = ["cargo test -p grdr-fastpath-ffi", "miri", "asan"]
 crate = "grdr-fastpath-ffi"
 file = "crates/grdr-fastpath-ffi/src/lib.rs"
 symbol = "grdr_fastpath_eval_rules"
-lines = "86-172"
-invariant = "Caller passes valid writable output pointers and bounded rule slices; rules_len <= MAX_FASTPATH_RULES is enforced before slice construction."
+lines = "129-265"
+invariant = "Caller passes valid writable aligned non-overlapping output pointers and bounded rule slices with struct_size == size_of::<GrdrFastRuleC>(); all inputs are validated before writing outputs."
 owner = "core"
 verification = ["cargo test -p grdr-fastpath-ffi", "kani", "asan"]
+
+[[entry]]
+crate = "grdr-fastpath-ffi"
+file = "crates/grdr-fastpath-ffi/src/lib.rs"
+symbol = "grdr_fastpath_assess_host_profile"
+lines = "271-289"
+invariant = "Null pointer, alignment, and struct_size == size_of::<GrdrFpHostProfileC>() checks enforced before reading GrdrFpHostProfileC by value."
+owner = "core"
+verification = ["cargo test -p grdr-fastpath-ffi", "asan"]
 
 [[entry]]
 crate = "grdr-ffi"
 file = "crates/grdr-ffi/src/lib.rs"
 symbol = "grdr_ffi_eval_json"
-lines = "80-99"
-invariant = "Null pointer, zero length, and MAX_FFI_JSON_BYTES are checked before slice::from_raw_parts; UTF-8 validity is checked without panic."
+lines = "218-240"
+invariant = "Null pointer, zero length, and MAX_FFI_JSON_BYTES are checked inside catch_unwind before slice::from_raw_parts."
 owner = "core"
 verification = ["cargo test -p grdr-ffi", "miri", "asan"]
 
@@ -33,8 +42,8 @@ verification = ["cargo test -p grdr-ffi", "miri", "asan"]
 crate = "grdr-ffi"
 file = "crates/grdr-ffi/src/lib.rs"
 symbol = "grdr_ffi_essentials_pack_json"
-lines = "104-109"
-invariant = "Unique exported C ABI symbol name across workspace; zero raw pointer dereferences."
+lines = "245-253"
+invariant = "Unique exported C ABI symbol wrapped in catch_unwind; zero raw pointer dereferences."
 owner = "core"
 verification = ["cargo test -p grdr-ffi"]
 
@@ -42,10 +51,64 @@ verification = ["cargo test -p grdr-ffi"]
 crate = "grdr-ffi"
 file = "crates/grdr-ffi/src/lib.rs"
 symbol = "grdr_ffi_free_string"
-lines = "115-123"
-invariant = "Null pointer returns immediately; non-null pointers originate from CString::into_raw within grdr-ffi."
+lines = "259-269"
+invariant = "Null pointer returns immediately inside catch_unwind; non-null pointers originate from CString::into_raw within grdr-ffi."
 owner = "core"
 verification = ["cargo test -p grdr-ffi", "miri", "asan"]
+
+[[entry]]
+crate = "grdr-wasm"
+file = "crates/grdr-wasm/src/abi.rs"
+symbol = "grdr_alloc"
+lines = "71-89"
+invariant = "Allocates bounded 1..=MAX_WASM_ABI_BYTES zeroed buffer inside catch_unwind and records pointer/size in ALLOCATED_BUFFERS."
+owner = "core"
+verification = ["cargo test -p grdr-wasm"]
+
+[[entry]]
+crate = "grdr-wasm"
+file = "crates/grdr-wasm/src/abi.rs"
+symbol = "grdr_free"
+lines = "95-117"
+invariant = "Validates null, bounds, and exact pointer/length match removed atomically from ALLOCATED_BUFFERS before dealloc."
+owner = "core"
+verification = ["cargo test -p grdr-wasm"]
+
+[[entry]]
+crate = "grdr-wasm"
+file = "crates/grdr-wasm/src/abi.rs"
+symbol = "grdr_wasm_abi_version"
+lines = "121-125"
+invariant = "Unique exported C-ABI version accessor; zero pointer operations."
+owner = "core"
+verification = ["cargo test -p grdr-wasm"]
+
+[[entry]]
+crate = "grdr-wasm"
+file = "crates/grdr-wasm/src/abi.rs"
+symbol = "grdr_wasm_eval_attempt"
+lines = "132-181"
+invariant = "Null pointer, non-zero length, and MAX_WASM_ABI_BYTES bounds checked inside catch_unwind before slice::from_raw_parts."
+owner = "core"
+verification = ["cargo test -p grdr-wasm"]
+
+[[entry]]
+crate = "grdr-wasm"
+file = "crates/grdr-wasm/src/abi.rs"
+symbol = "grdr_result_ptr"
+lines = "185-189"
+invariant = "Unique exported C-ABI symbol returning RESULT_BUFFER pointer; valid under single-threaded Wasm linear memory or sequential C-ABI host access until next grdr_wasm_eval_attempt call."
+owner = "core"
+verification = ["cargo test -p grdr-wasm"]
+
+[[entry]]
+crate = "grdr-wasm"
+file = "crates/grdr-wasm/src/abi.rs"
+symbol = "grdr_result_len"
+lines = "193-197"
+invariant = "Unique exported C-ABI symbol returning synchronized RESULT_BUFFER byte length matching grdr_result_ptr."
+owner = "core"
+verification = ["cargo test -p grdr-wasm"]
 
 [[entry]]
 crate = "grdr-ipc-os"

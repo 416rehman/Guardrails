@@ -1,0 +1,29 @@
+{
+  "schema": "grdr.conformance.rest-gitops.v1alpha1",
+  "policy_change_transitions": [
+    {
+      "name": "human_narrowing_autostarts_rollout",
+      "proposer_kind": "human",
+      "diff_effect": "narrowing",
+      "expected_after_apply": "ROLLING_OUT"
+    },
+    {
+      "name": "human_widening_requires_approval",
+      "proposer_kind": "human",
+      "diff_effect": "widening",
+      "expected_after_apply": "AWAITING_APPROVAL"
+    },
+    {
+      "name": "agent_narrowing_still_requires_approval",
+      "proposer_kind": "agent_session",
+      "diff_effect": "narrowing",
+      "expected_after_apply": "AWAITING_APPROVAL"
+    }
+  ],
+  "gitops_lock_rules": {
+    "locked_source": "git",
+    "ui_write_error_code": "GITOPS_LOCKED",
+    "ui_write_http_status": 412,
+    "edit_anyway_min_approvers": 2
+  }
+}
