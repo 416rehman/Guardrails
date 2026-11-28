@@ -1,0 +1,16 @@
+schema: grdr.building-block/v1alpha1
+id: semantic-kernel
+name: Semantic Kernel & MS Agent Framework
+role: orchestrator
+agentic: yes
+ecosystems:
+  pypi: [semantic-kernel, agent-framework]
+  npm: []
+  cargo: []
+  go: []
+  jvm: []
+  dotnet: [Microsoft.SemanticKernel, Microsoft.Agents.AI]
+binaries: []
+env_markers: [AZURE_OPENAI_API_KEY, OPENAI_API_KEY]
+net: []
+classifier_boost_bp: 4500

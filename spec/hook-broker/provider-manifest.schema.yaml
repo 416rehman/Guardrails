@@ -8,12 +8,22 @@ fields:
   id:
     type: string
     pattern: reverse-dns
+  kind:
+    type: enum
+    values: [native, command-hook, acs]
+    default: native
   enabled:
     type: bool
     default: true
   endpoint:
     type: string
     allowed_transports: [unix-socket, named-pipe, loopback-ipc]
+  command:
+    type: string
+    constraint: "required when kind == command-hook; executed only by unprivileged shim"
+  args:
+    type: list<string>
+    default: []
   capabilities:
     action_classes:
       type: list<string>

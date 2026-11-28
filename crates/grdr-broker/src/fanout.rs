@@ -8,6 +8,8 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
+use grdr_core::session::format_session_pseudonym_sp;
+use grdr_model::eval::SigningKeypair;
 use grdr_model::{ActionAttempt, CodedError, Verdict};
 use grdr_ports::DecisionEnginePort;
 use grdr_strings::sanitize_untrusted_text;
@@ -83,6 +85,7 @@ pub struct HookBrokerEngine {
     brand: BrokerBrand,
     fanout_deadline_ms: u64,
     worker_pool: BrokerWorkerPool,
+    pseudonym_key: [u8; 32],
 }
 
 impl Drop for HookBrokerEngine {
@@ -192,13 +195,32 @@ impl HookBrokerEngine {
                 p.capabilities().provider_id.clone(),
             )
         });
+        let kp = SigningKeypair::generate().map_err(|e| {
+            CodedError::new(
+                "GRDR-BRK-0005",
+                format!("failed generating broker pseudonym key: {e}"),
+                "Ensure OS CSPRNG is available.",
+            )
+        })?;
+        let raw_sig = kp.sign_ed25519_raw(b"grdr.broker.session_pseudonym.v1");
+        let mut pseudonym_key = [0u8; 32];
+        if let Some(first_half) = raw_sig.get(..32) {
+            pseudonym_key.copy_from_slice(first_half);
+        }
         Ok(Self {
             providers,
             breakers: BTreeMap::new(),
             brand,
             fanout_deadline_ms,
             worker_pool: BrokerWorkerPool::from_limits(),
+            pseudonym_key,
         })
+    }
+
+    #[must_use]
+    pub fn with_pseudonym_key(mut self, pseudonym_key: [u8; 32]) -> Self {
+        self.pseudonym_key = pseudonym_key;
+        self
     }
 
     #[must_use]
@@ -315,9 +337,33 @@ impl HookBrokerEngine {
             .unwrap_or(0);
         let effective_deadline_ms = active_max_timeout_ms.min(self.fanout_deadline_ms);
 
+        let session_sp = match format_session_pseudonym_sp(&attempt.session_id, &self.pseudonym_key)
+        {
+            Ok(sp) => sp,
+            Err(err) => {
+                let message = format_broker_notice(
+                    &self.brand,
+                    attempt,
+                    &action_class_str,
+                    ProviderVerdictKind::Deny,
+                    "GRDR-BRK-0005",
+                    &err.display_line(),
+                );
+                return FanoutDecision {
+                    verdict: ProviderVerdictKind::Deny,
+                    winning_provider_id: Some("grdr.core".into()),
+                    reason_code: "GRDR-BRK-0005".into(),
+                    message,
+                    rewritten_target: None,
+                    reevaluated_after_modify: false,
+                    diagnostics,
+                };
+            }
+        };
+
         let base_req = ProviderEvalRequest {
             request_id: attempt.id.clone(),
-            session_id: attempt.session_id.clone(),
+            session_id: session_sp,
             action_class: action_class_str.clone(),
             target_preview: attempt.target.clone(),
             deadline_ms: effective_deadline_ms,

@@ -1,0 +1,163 @@
+schema: grdr.attribution-hops/v1alpha1
+default_window_ms: 5000
+hops:
+  - id: docker
+    aliases: [podman, containerd]
+    elevates: true
+    requires_elevate_decision: true
+    broker_executables: [dockerd, containerd, podman, docker]
+    socket_patterns:
+      - "/var/run/docker.sock"
+      - "/run/docker.sock"
+      - "/run/podman/podman.sock"
+      - "//./pipe/docker_engine"
+    mediated_env_vars: [DOCKER_HOST]
+    mediated_grade: 3
+    mediated_basis: exec-tag
+    unmediated_grade: 1
+    unmediated_basis: brokered
+    edge_kind: brokered
+    min_sensor_tier: 1
+    requires_vm_guest_sensor_on_non_linux: true
+
+  - id: ssh-localhost
+    aliases: [ssh]
+    elevates: false
+    requires_elevate_decision: false
+    broker_executables: [sshd, ssh]
+    socket_patterns: []
+    mediated_env_vars: [SSH_AUTH_SOCK]
+    mediated_grade: 4
+    mediated_basis: session-credential
+    unmediated_grade: 1
+    unmediated_basis: brokered
+    edge_kind: brokered
+    min_sensor_tier: 1
+
+  - id: ssh-remote
+    aliases: [ssh-cross-device]
+    elevates: false
+    requires_elevate_decision: false
+    broker_executables: [sshd, ssh]
+    socket_patterns: []
+    mediated_env_vars: [SSH_AUTH_SOCK]
+    mediated_grade: 4
+    mediated_basis: session-credential
+    unmediated_grade: 1
+    unmediated_basis: brokered
+    edge_kind: brokered
+    min_sensor_tier: 1
+
+  - id: kubectl
+    aliases: [kube-exec, kubectl-run]
+    elevates: false
+    requires_elevate_decision: false
+    broker_executables: [kubectl]
+    socket_patterns: []
+    mediated_env_vars: [KUBECONFIG]
+    mediated_grade: 3
+    mediated_basis: exec-tag
+    unmediated_grade: 1
+    unmediated_basis: connector
+    edge_kind: brokered
+    min_sensor_tier: 1
+
+  - id: cron-at
+    aliases: [cron, at, crontab]
+    elevates: true
+    requires_elevate_decision: true
+    broker_executables: [crontab, at, crond, atd]
+    socket_patterns: []
+    mediated_env_vars: []
+    mediated_grade: 1
+    mediated_basis: influenced
+    unmediated_grade: 1
+    unmediated_basis: influenced
+    edge_kind: influenced-by
+    min_sensor_tier: 1
+
+  - id: systemd
+    aliases: [systemd-run, dbus]
+    elevates: true
+    requires_elevate_decision: true
+    broker_executables: [systemd-run, systemctl, dbus-daemon]
+    socket_patterns: ["/run/systemd/private", "/run/dbus/system_bus_socket"]
+    mediated_env_vars: []
+    mediated_grade: 1
+    mediated_basis: brokered
+    unmediated_grade: 1
+    unmediated_basis: brokered
+    edge_kind: brokered
+    min_sensor_tier: 1
+
+  - id: launchd-xpc
+    aliases: [launchd, launchctl, xpc, osascript]
+    elevates: true
+    requires_elevate_decision: true
+    broker_executables: [launchctl, osascript, launchd]
+    socket_patterns: []
+    mediated_env_vars: []
+    mediated_grade: 1
+    mediated_basis: brokered
+    unmediated_grade: 1
+    unmediated_basis: brokered
+    edge_kind: ipc
+    min_sensor_tier: 3
+
+  - id: windows-service-task-wmi
+    aliases: [schtasks, wmi, com, dcom, services]
+    elevates: true
+    requires_elevate_decision: true
+    broker_executables: [svchost.exe, WmiPrvSE.exe, services.exe, schtasks.exe, sc.exe]
+    socket_patterns: []
+    mediated_env_vars: []
+    mediated_grade: 1
+    mediated_basis: brokered
+    unmediated_grade: 1
+    unmediated_basis: brokered
+    edge_kind: brokered
+    min_sensor_tier: 1
+
+  - id: windows-uac
+    aliases: [uac, appinfo]
+    elevates: true
+    requires_elevate_decision: true
+    broker_executables: [consent.exe, svchost.exe]
+    socket_patterns: []
+    mediated_env_vars: []
+    mediated_grade: 3
+    mediated_basis: exec-tag
+    unmediated_grade: 1
+    unmediated_basis: brokered
+    edge_kind: brokered
+    min_sensor_tier: 1
+    requires_vm_guest_sensor_on_non_linux: true
+
+  - id: windows-wsl
+    aliases: [wsl]
+    elevates: false
+    requires_elevate_decision: false
+    broker_executables: [wsl.exe, wslhost.exe]
+    socket_patterns: []
+    mediated_env_vars: [WSLENV]
+    mediated_grade: 3
+    mediated_basis: exec-tag
+    unmediated_grade: 1
+    unmediated_basis: brokered
+    edge_kind: brokered
+    min_sensor_tier: 1
+    requires_vm_guest_sensor_on_non_linux: true
+
+  - id: tmux
+    aliases: [screen, zellij]
+    elevates: false
+    requires_elevate_decision: false
+    broker_executables: [tmux, screen, zellij]
+    socket_patterns: ["/tmp/tmux-"]
+    mediated_env_vars: [TMUX]
+    mediated_grade: 1
+    mediated_basis: brokered
+    unmediated_grade: 1
+    unmediated_basis: lineage
+    edge_kind: brokered
+    min_sensor_tier: 1

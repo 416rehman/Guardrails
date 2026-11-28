@@ -11,9 +11,10 @@ use serde_json::Value;
 use grdr_model::{ActionClass, DecisionReceipt, Verdict};
 use grdr_strings::sanitize_untrusted_text;
 
+use crate::conductor_fs::{default_workspace_root, evaluate_modify_decision};
 use crate::{
     AcpError, DecisionClient, NormalizedControlCall, build_attempt, classify_action_kind,
-    fail_closed_receipt,
+    extract_daemon_retry_token, fail_closed_receipt,
 };
 
 const OWASP_VERSIONS: &[&str] = &["0.1.0", "0.1.4"];
@@ -90,6 +91,10 @@ pub struct OwaspAcsResponse {
     pub rule_id: Option<String>,
     pub receipt_id: String,
     pub receipt_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modified_target: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -114,6 +119,10 @@ pub struct MsAgentHookResponse {
     pub decision: MsHookDecision,
     pub message: String,
     pub receipt_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modified_target: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -137,6 +146,10 @@ pub struct AcpConductorResponse {
     pub verdict: AcpConductorOutcome,
     pub reason: String,
     pub receipt_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modified_target: Option<String>,
 }
 
 impl AcpProtocolDialect {
@@ -213,6 +226,32 @@ async fn evaluate_dialect_inner<C: DecisionClient>(
     let call = parse_dialect_payload(dialect, raw)?;
     let attempt = build_attempt(&call, now);
     let receipt = match client.decide(&attempt).await {
+        Ok(r) if r.verdict == Verdict::Modify => {
+            let root = default_workspace_root();
+            match evaluate_modify_decision(client, &root, &call, &attempt, &r).await {
+                Ok((mut final_receipt, rewritten)) => {
+                    final_receipt.verdict = Verdict::Modify;
+                    final_receipt.target = rewritten;
+                    final_receipt.key_id = None;
+                    final_receipt.signature = None;
+                    final_receipt.signature_verified = None;
+                    final_receipt.receipt_digest = grdr_core::policy::compute_receipt_digest(
+                        &grdr_core::policy::ReceiptDigestInput {
+                            attempt_id: &final_receipt.attempt_id,
+                            session_id: &final_receipt.session_id,
+                            agent_name: &final_receipt.agent_name,
+                            action_class: final_receipt.action_class,
+                            target: &final_receipt.target,
+                            verdict: final_receipt.verdict,
+                            rule_id: final_receipt.rule_id.as_deref(),
+                            decided_at: final_receipt.decided_at,
+                        },
+                    );
+                    final_receipt
+                }
+                Err(reason) => fail_closed_receipt(&attempt, &reason, now),
+            }
+        }
         Ok(r) => r,
         Err(err) => fail_closed_receipt(&attempt, &err.to_string(), now),
     };
@@ -304,6 +343,15 @@ pub fn format_dialect_response(
     receipt: &DecisionReceipt,
 ) -> Value {
     let reason = sanitize_untrusted_text(&receipt.reason);
+    let retry_token = extract_daemon_retry_token(receipt);
+    let modified_target = if receipt.verdict == Verdict::Modify
+        && !receipt.target.trim().is_empty()
+        && receipt.target != call.target
+    {
+        Some(sanitize_untrusted_text(&receipt.target))
+    } else {
+        None
+    };
     match dialect {
         AcpProtocolDialect::OwaspAcs => {
             let verdict = match receipt.verdict {
@@ -320,6 +368,8 @@ pub fn format_dialect_response(
                 rule_id: receipt.rule_id.clone(),
                 receipt_id: receipt.receipt_id.clone(),
                 receipt_digest: receipt.receipt_digest.clone(),
+                retry_token,
+                modified_target,
             })
         }
         AcpProtocolDialect::MicrosoftAgentHooks => {
@@ -335,6 +385,8 @@ pub fn format_dialect_response(
                 decision,
                 message: reason,
                 receipt_digest: receipt.receipt_digest.clone(),
+                retry_token,
+                modified_target,
             })
         }
         AcpProtocolDialect::AcpConductor => {
@@ -351,6 +403,8 @@ pub fn format_dialect_response(
                 verdict,
                 reason,
                 receipt_id: receipt.receipt_id.clone(),
+                retry_token,
+                modified_target,
             })
         }
     }

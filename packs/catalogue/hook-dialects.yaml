@@ -1,0 +1,181 @@
+schema: grdr.hook-dialects/v1alpha1
+default_dialect: claude-code
+classification:
+  mcp_prefixes:
+    - "mcp__"
+  mcp_events:
+    - beforeMCPExecution
+  prompt_events:
+    - beforeSubmitPrompt
+    - UserPromptSubmit
+    - BeforeAgent
+  post_event_prefixes:
+    - Post
+    - post
+    - after
+    - After
+  exec_exact:
+    - exec
+    - sh
+    - cmd
+    - pwsh
+    - powershell
+  exec_substrings:
+    - bash
+    - shell
+    - command
+  exec_events:
+    - beforeShellExecution
+  delete_exact:
+    - unlink
+  delete_substrings:
+    - delete
+    - remove
+  write_exact:
+    - create_file
+    - save_file
+  write_substrings:
+    - write
+    - edit
+    - patch
+    - replace_file
+  write_events:
+    - afterFileEdit
+  read_substrings:
+    - read
+    - view
+  read_events:
+    - beforeReadFile
+  net_substrings:
+    - fetch
+    - web
+    - http
+  mcp_substrings:
+    - mcp
+dialects:
+  - id: claude-code
+    agent_id: claude-code
+    aliases: [claude, claude-code, claude_code]
+    session_keys: [session_id, sessionId]
+    event_hints: [PreToolUse, PostToolUse, SessionStart, SessionEnd, UserPromptSubmit, PermissionRequest, ConfigChange]
+    tool_hints: []
+    response_format: hook-specific-output
+    modify_field: updatedInput
+    default_event: PreToolUse
+  - id: cursor
+    agent_id: cursor
+    aliases: [cursor, cursor-agent]
+    session_keys: [conversation_id]
+    event_hints: [beforeShellExecution, beforeReadFile, afterFileEdit, beforeMCPExecution, beforeSubmitPrompt, preToolUse]
+    tool_hints: []
+    response_format: continue-permission
+    modify_field: updated_input
+    default_event: preToolUse
+  - id: codex
+    agent_id: codex
+    aliases: [codex, codex-cli, openai-codex]
+    session_keys: [thread_id]
+    event_hints: [PreModelRequest]
+    tool_hints: []
+    response_format: hook-specific-output
+    modify_field: updatedInput
+    default_event: PreToolUse
+  - id: gemini
+    agent_id: gemini
+    aliases: [gemini, gemini-cli, antigravity, agy]
+    session_keys: [session_id]
+    event_hints: [BeforeTool, BeforeAgent, BeforeModel, AfterTool]
+    tool_hints: [write_to_file, run_command, view_file, replace_file_content]
+    response_format: decision-reason
+    modify_field: overwrite
+    default_event: BeforeTool
+  - id: copilot
+    agent_id: copilot-cli
+    aliases: [copilot, copilot-cli, gh-copilot, github-copilot]
+    session_keys: [session_id]
+    event_hints: [preToolUse, permissionRequest, userPromptSubmitted]
+    tool_hints: []
+    response_format: permission-decision
+    modify_field: modifiedArgs
+    default_event: preToolUse
+  - id: opencode
+    agent_id: opencode
+    aliases: [opencode, open-code]
+    session_keys: [session_id]
+    event_hints: [tool.execute.before]
+    tool_hints: []
+    response_format: hook-specific-output
+    modify_field: updatedInput
+    default_event: PreToolUse
+  - id: windsurf
+    agent_id: windsurf
+    aliases: [windsurf, codeium-windsurf, cascade]
+    session_keys: [session_id]
+    event_hints: [pre_run_command, pre_write_code, pre_mcp_tool_use, post_run_command]
+    tool_hints: []
+    response_format: decision-reason
+    modify_field: updatedInput
+    default_event: pre_run_command
+  - id: cline
+    agent_id: cline
+    aliases: [cline]
+    session_keys: [session_id]
+    event_hints: [beforeTool]
+    tool_hints: []
+    response_format: decision-reason
+    modify_field: updatedInput
+    default_event: beforeTool
+  - id: factory-droid
+    agent_id: factory-droid
+    aliases: [factory, droid, factory-droid]
+    session_keys: [session_id]
+    event_hints: []
+    tool_hints: []
+    response_format: hook-specific-output
+    modify_field: updatedInput
+    default_event: PreToolUse
+  - id: auggie
+    agent_id: auggie
+    aliases: [auggie, augment]
+    session_keys: [session_id]
+    event_hints: [PromptSubmit]
+    tool_hints: []
+    response_format: hook-specific-output
+    modify_field: updatedInput
+    default_event: PreToolUse
+  - id: devin
+    agent_id: devin
+    aliases: [devin, devin-local]
+    session_keys: [session_id]
+    event_hints: []
+    tool_hints: []
+    response_format: decision-reason
+    modify_field: updatedInput
+    default_event: PreToolUse
+  - id: kiro
+    agent_id: kiro
+    aliases: [kiro]
+    session_keys: [session_id]
+    event_hints: []
+    tool_hints: []
+    response_format: decision-reason
+    modify_field: ""
+    default_event: PreToolUse
+  - id: goose
+    agent_id: goose
+    aliases: [goose]
+    session_keys: [session_id]
+    event_hints: []
+    tool_hints: []
+    response_format: decision-reason
+    modify_field: ""
+    default_event: PreToolUse
+  - id: openhands
+    agent_id: openhands
+    aliases: [openhands]
+    session_keys: [session_id]
+    event_hints: []
+    tool_hints: []
+    response_format: decision-reason
+    modify_field: ""
+    default_event: PreToolUse

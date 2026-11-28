@@ -20,3 +20,8 @@ circuit_breaker:
   error_rate_threshold_bp: 500
   cooldown_secs: 60
   event_code: provider-suspend
+command_hook_bounds:
+  no_daemon_spawn: true
+  max_stdout_bytes: 65536
+  max_deadline_ms: 1000
+canonical_events_count: 18

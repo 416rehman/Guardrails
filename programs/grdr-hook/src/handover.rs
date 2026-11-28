@@ -7,7 +7,10 @@
 use std::io::Read;
 use std::path::Path;
 
-use grdr_peer_os::fs_open::{OpenNofollowAccess, open_nofollow_file, verify_open_file_trust};
+use grdr_peer_os::fs_open::{
+    OpenNofollowAccess, open_nofollow_dir, open_nofollow_file, verify_open_dir_trust,
+    verify_open_file_trust,
+};
 
 use crate::json_lexer::JsonScanner;
 
@@ -34,13 +37,27 @@ struct HandoverFields {
 /// and return remaining milliseconds only inside `(0..=2000]`.
 #[must_use]
 pub fn active_handover_remaining_ms(state_dir: &Path, now_ms: u64) -> Option<u64> {
+    active_handover_remaining_ms_for_profile(state_dir, now_ms, false)
+}
+
+/// Validate `<state_dir>/handover` enforcing profile-appropriate directory and file trust.
+#[must_use]
+pub fn active_handover_remaining_ms_for_profile(
+    state_dir: &Path,
+    now_ms: u64,
+    protected: bool,
+) -> Option<u64> {
+    let dir_file = open_nofollow_dir(state_dir).ok()?;
+    if verify_open_dir_trust(&dir_file, state_dir, protected).is_err() {
+        return None;
+    }
     let marker = state_dir.join("handover");
     let file = open_nofollow_file(&marker, OpenNofollowAccess::ReadOnly, 0o600).ok()?;
     let meta = file.metadata().ok()?;
     if meta.len() > MAX_HANDOVER_MARKER_BYTES {
         return None;
     }
-    if verify_open_file_trust(&file, false).is_err() {
+    if verify_open_file_trust(&file, protected).is_err() {
         return None;
     }
     let mut buf = Vec::new();

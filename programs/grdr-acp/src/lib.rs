@@ -7,12 +7,15 @@
 
 pub mod acs_hmac;
 pub mod adapters;
+mod brand;
 pub mod conductor;
+pub mod conductor_caps;
 pub mod conductor_fs;
 pub mod envelope;
 pub mod floor_fallback;
 pub mod ipc_client;
 mod ipc_transport;
+mod path_confine;
 
 use std::future::Future;
 use std::pin::Pin;
@@ -234,6 +237,28 @@ pub fn fail_closed_receipt(
         None,
         now,
     )
+}
+
+pub(crate) fn extract_daemon_retry_token(receipt: &DecisionReceipt) -> Option<String> {
+    if receipt.verdict != Verdict::StepUp {
+        return None;
+    }
+    for token in receipt
+        .next_step
+        .split(|c: char| c.is_whitespace() || matches!(c, ',' | ';' | '(' | ')' | '=' | ':'))
+    {
+        if is_valid_rty_token(token) {
+            return Some(token.to_owned());
+        }
+    }
+    None
+}
+
+pub(crate) fn is_valid_rty_token(tok: &str) -> bool {
+    let Some(hex) = tok.strip_prefix("rty_") else {
+        return false;
+    };
+    hex.len() >= 16 && hex.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 fn sanitize_non_empty(raw: &str, fallback: &str) -> String {

@@ -12,7 +12,7 @@ use grdr_acp::{AcpError, DecisionClient, EvalFuture, PeerDaemonClient};
 use grdr_core::policy::ReceiptDigestInput;
 use grdr_core::policy::compute_receipt_digest;
 use grdr_crypto::SigningKeypair;
-use grdr_model::{ActionAttempt, DecisionReceipt, SigningKeypairExt as _, Verdict};
+use grdr_model::{ActionAttempt, ActionClass, DecisionReceipt, SigningKeypairExt as _, Verdict};
 use grdr_wire::{ReplayWindow, decode_frame, encode_frame, generate_nonce, sign_envelope};
 
 struct FixedVerdictClient {
@@ -882,4 +882,479 @@ fn serve_one_decide_ipc(sock_path: &str) -> Result<(), String> {
     );
     chan.send_frame(reply).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+struct RewriteDecisionClient {
+    rewrite_to: String,
+    recheck_verdict: Verdict,
+    seen_targets: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+impl DecisionClient for RewriteDecisionClient {
+    fn decide<'a>(&'a self, attempt: &'a ActionAttempt) -> EvalFuture<'a> {
+        let rewrite_to = self.rewrite_to.clone();
+        let recheck_verdict = self.recheck_verdict;
+        let seen = std::sync::Arc::clone(&self.seen_targets);
+        Box::pin(async move {
+            if let Ok(mut list) = seen.lock() {
+                list.push(attempt.target.clone());
+            }
+            let is_recheck = attempt.summary.contains("[modified]");
+            let (verdict, target, reason) = if is_recheck {
+                (
+                    recheck_verdict,
+                    attempt.target.clone(),
+                    "recheck evaluated".to_string(),
+                )
+            } else {
+                (Verdict::Modify, rewrite_to, "rewritten target".to_string())
+            };
+            let now = attempt.timestamp;
+            let digest = compute_receipt_digest(&ReceiptDigestInput {
+                attempt_id: &attempt.id,
+                session_id: &attempt.session_id,
+                agent_name: &attempt.agent_name,
+                action_class: attempt.action_class,
+                target: &target,
+                verdict,
+                rule_id: Some("acp.modify"),
+                decided_at: now,
+            });
+            Ok(DecisionReceipt {
+                receipt_id: "rcp-mod-1".into(),
+                attempt_id: attempt.id.clone(),
+                session_id: attempt.session_id.clone(),
+                device_id: attempt.device_id.clone(),
+                agent_name: attempt.agent_name.clone(),
+                action_class: attempt.action_class,
+                control_point: attempt.control_point,
+                target,
+                verdict,
+                would_be: None,
+                rule_id: Some("acp.modify".into()),
+                pack_id: Some("test-pack".into()),
+                mode_applied: None,
+                grant_id: None,
+                reason,
+                next_step: "proceed".into(),
+                receipt_digest: digest,
+                decided_at: now,
+                key_id: None,
+                signature: None,
+                signature_verified: None,
+            })
+        })
+    }
+}
+
+#[tokio::test]
+async fn acp_v2_capabilities_mcp_injection_modify_reeval_and_stepup_retry_token() {
+    use std::sync::Arc;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let seen_targets = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let client = Arc::new(RewriteDecisionClient {
+        rewrite_to: "src/safe.rs".to_string(),
+        recheck_verdict: Verdict::Allow,
+        seen_targets: Arc::clone(&seen_targets),
+    });
+
+    // Test MODIFY rewrite + re-eval on v1 and STEP_UP retry token
+    let lines = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2.0-alpha.14"}}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"session/new","params":{"sessionId":"s-v2","mcpServers":[{"name":"user-fs","command":"mcp-fs"}]}}"#,
+        r#"{"jsonrpc":"2.0","id":3,"method":"fs/read_text_file","params":{"path":"src/main.rs"}}"#,
+        r#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s-v2","update":{"sessionUpdate":"tool_call_update","toolCallId":"tc-9","kind":"execute","title":"cargo check"}}}"#,
+    ]
+    .join("\n")
+        + "\n";
+
+    let (mut in_tx, in_rx) = tokio::io::duplex(8192);
+    let (out_tx, mut out_rx) = tokio::io::duplex(8192);
+    let allow_client = Arc::new(FixedVerdictClient {
+        verdict: Verdict::Allow,
+        reason: "ok".into(),
+    });
+    let run = tokio::spawn(async move {
+        run_bidirectional_stdio_conductor(
+            allow_client,
+            AcpConductorConfig::default(),
+            in_rx,
+            out_tx,
+        )
+        .await
+        .unwrap()
+    });
+    in_tx.write_all(lines.as_bytes()).await.unwrap();
+    drop(in_tx);
+    run.await.unwrap();
+
+    let mut out_buf = String::new();
+    out_rx.read_to_string(&mut out_buf).await.unwrap();
+    let resps: Vec<Value> = out_buf
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(resps.len(), 3);
+
+    let init = resps.iter().find(|v| v["id"] == 1).unwrap();
+    assert_eq!(
+        init["result"]["clientCapabilities"]["fs"]["readTextFile"],
+        false
+    );
+    assert_eq!(
+        init["result"]["clientCapabilities"]["fs"]["writeTextFile"],
+        false
+    );
+    assert_eq!(init["result"]["clientCapabilities"]["terminal"], false);
+    assert_eq!(init["result"]["capabilityClaims"]["fsRead"], "unavailable");
+    assert_eq!(
+        init["result"]["capabilityClaims"]["terminal"],
+        "unavailable"
+    );
+    assert_eq!(init["result"]["capabilityClaims"]["mcpBroker"], "gate");
+    assert_eq!(init["result"]["mcpBrokerInjected"], true);
+
+    let sess_new = resps.iter().find(|v| v["id"] == 2).unwrap();
+    let servers = sess_new["result"]["mcpServers"].as_array().unwrap();
+    assert!(servers.iter().any(|s| s["name"] == "grdr-mcp"));
+    assert!(servers.iter().any(|s| s["name"] == "user-fs"));
+
+    let v2_fs = resps.iter().find(|v| v["id"] == 3).unwrap();
+    assert!(
+        v2_fs["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("ACP v2 removed")
+    );
+
+    // MODIFY rewrite + mandatory re-evaluation over v1
+    let (mut mod_in, mod_in_rx) = tokio::io::duplex(4096);
+    let (mod_out_tx, mut mod_out_rx) = tokio::io::duplex(4096);
+    let run_mod = tokio::spawn(async move {
+        run_bidirectional_stdio_conductor(
+            client,
+            AcpConductorConfig::default(),
+            mod_in_rx,
+            mod_out_tx,
+        )
+        .await
+        .unwrap()
+    });
+    mod_in
+        .write_all(
+            br#"{"jsonrpc":"2.0","id":10,"method":"fs/read_text_file","params":{"path":"src/main.rs"}}
+"#,
+        )
+        .await
+        .unwrap();
+    drop(mod_in);
+    run_mod.await.unwrap();
+    let mut mod_buf = String::new();
+    mod_out_rx.read_to_string(&mut mod_buf).await.unwrap();
+    let mod_resp: Value = serde_json::from_str(mod_buf.trim()).unwrap();
+    assert_eq!(mod_resp["result"]["modified"], true);
+    assert!(
+        mod_resp["result"]["path"]
+            .as_str()
+            .unwrap()
+            .ends_with("safe.rs")
+    );
+    assert_eq!(seen_targets.lock().unwrap().len(), 2);
+
+    // Unsafe traversal rewrite fails closed even if client allows recheck
+    let evil_seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let evil_client = Arc::new(RewriteDecisionClient {
+        rewrite_to: "../../etc/passwd".to_string(),
+        recheck_verdict: Verdict::Allow,
+        seen_targets: Arc::clone(&evil_seen),
+    });
+    let (mut evil_in, evil_in_rx) = tokio::io::duplex(4096);
+    let (evil_out_tx, mut evil_out_rx) = tokio::io::duplex(4096);
+    let run_evil = tokio::spawn(async move {
+        run_bidirectional_stdio_conductor(
+            evil_client,
+            AcpConductorConfig::default(),
+            evil_in_rx,
+            evil_out_tx,
+        )
+        .await
+        .unwrap()
+    });
+    evil_in
+        .write_all(
+            br#"{"jsonrpc":"2.0","id":11,"method":"fs/read_text_file","params":{"path":"src/main.rs"}}
+"#,
+        )
+        .await
+        .unwrap();
+    drop(evil_in);
+    run_evil.await.unwrap();
+    let mut evil_buf = String::new();
+    evil_out_rx.read_to_string(&mut evil_buf).await.unwrap();
+    let evil_resp: Value = serde_json::from_str(evil_buf.trim()).unwrap();
+    assert!(evil_resp.get("error").is_some());
+    assert_eq!(evil_seen.lock().unwrap().len(), 1);
+
+    // STEP_UP without daemon rty_ omits retryToken; with daemon rty_ propagates it cleanly
+    let stepup_client = Arc::new(FixedVerdictClient {
+        verdict: Verdict::StepUp,
+        reason: "needs approval".into(),
+    });
+    let (mut step_in, step_in_rx) = tokio::io::duplex(4096);
+    let (step_out_tx, mut step_out_rx) = tokio::io::duplex(4096);
+    let run_step = tokio::spawn(async move {
+        run_bidirectional_stdio_conductor(
+            stepup_client,
+            AcpConductorConfig::default(),
+            step_in_rx,
+            step_out_tx,
+        )
+        .await
+        .unwrap()
+    });
+    step_in
+        .write_all(
+            br#"{"jsonrpc":"2.0","id":12,"method":"session/request_permission","params":{"toolCall":{"kind":"execute","title":"deploy"},"options":[{"kind":"allow_once","optionId":"allow_once"},{"kind":"reject_once","optionId":"reject_once"}]}}
+"#,
+        )
+        .await
+        .unwrap();
+    drop(step_in);
+    run_step.await.unwrap();
+    let mut step_buf = String::new();
+    step_out_rx.read_to_string(&mut step_buf).await.unwrap();
+    let step_resp: Value = serde_json::from_str(step_buf.trim()).unwrap();
+    assert_eq!(step_resp["result"]["outcome"]["optionId"], "reject_once");
+    assert!(step_resp["result"]["retryToken"].is_null());
+}
+
+#[tokio::test]
+async fn acp_v2_downgrade_mcp_validation_hmac_update_and_modify_confinement() {
+    use grdr_acp::acs_hmac::sign_owasp_acs_jsonrpc;
+    use grdr_acp::conductor_caps::inject_mcp_broker_config;
+    use std::sync::Arc;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use zeroize::Zeroizing;
+
+    struct RtyStepUpClient;
+    impl grdr_acp::DecisionClient for RtyStepUpClient {
+        fn decide<'a>(
+            &'a self,
+            attempt: &'a grdr_model::ActionAttempt,
+        ) -> grdr_acp::EvalFuture<'a> {
+            Box::pin(async move {
+                let token = ["rty_", "0123456789abcdef", "0123456789abcdef"].concat();
+                Ok(grdr_acp::build_acp_receipt(
+                    attempt,
+                    Verdict::StepUp,
+                    Some("acp.stepup"),
+                    "approve required",
+                    &format!("retry_token:{token}"),
+                    Some("rcp-rty-1"),
+                    Timestamp::UNIX_EPOCH,
+                ))
+            })
+        }
+    }
+
+    // 1. Daemon rty_ token propagates; dialect Modify unsafe escape fails closed.
+    let now = Timestamp::now();
+    let step_val = evaluate_dialect_request(
+        AcpProtocolDialect::OwaspAcs,
+        &serde_json::json!({
+            "spec_version": "0.1.4",
+            "request_id": "acs-rty",
+            "session_id": "s1",
+            "agent_name": "claude-code",
+            "hook_point": "pre_tool",
+            "action_kind": "exec",
+            "target": "deploy"
+        }),
+        &RtyStepUpClient,
+        now,
+    )
+    .await;
+    assert_eq!(
+        step_val["retry_token"].as_str(),
+        Some("rty_0123456789abcdef0123456789abcdef")
+    );
+
+    let bad_seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let evil_mod = RewriteDecisionClient {
+        rewrite_to: "../../etc/passwd".into(),
+        recheck_verdict: Verdict::Allow,
+        seen_targets: Arc::clone(&bad_seen),
+    };
+    let mod_resp = evaluate_dialect_request(
+        AcpProtocolDialect::OwaspAcs,
+        &serde_json::json!({
+            "spec_version": "0.1.4",
+            "request_id": "acs-mod",
+            "session_id": "s1",
+            "agent_name": "claude-code",
+            "hook_point": "pre_tool",
+            "action_kind": "file_delete",
+            "target": "src/main.rs"
+        }),
+        &evil_mod,
+        now,
+    )
+    .await;
+    assert_eq!(mod_resp["verdict"], "deny");
+    assert_eq!(bad_seen.lock().unwrap().len(), 1);
+
+    // Allowed dialect Modify recomputes receipt_digest matching (verdict=Modify, target=rewritten).
+    let ok_seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let good_mod = RewriteDecisionClient {
+        rewrite_to: "src/safe.rs".into(),
+        recheck_verdict: Verdict::Allow,
+        seen_targets: Arc::clone(&ok_seen),
+    };
+    let ok_mod_resp = evaluate_dialect_request(
+        AcpProtocolDialect::OwaspAcs,
+        &serde_json::json!({
+            "spec_version": "0.1.4",
+            "request_id": "acs-mod-ok",
+            "session_id": "s1",
+            "agent_name": "claude-code",
+            "hook_point": "pre_tool",
+            "action_kind": "file_write",
+            "target": "src/main.rs"
+        }),
+        &good_mod,
+        now,
+    )
+    .await;
+    assert_eq!(ok_mod_resp["verdict"], "modify");
+    let expected_mod_target = ok_mod_resp["modified_target"].as_str().unwrap();
+    let expected_digest =
+        grdr_core::policy::compute_receipt_digest(&grdr_core::policy::ReceiptDigestInput {
+            attempt_id: &ok_mod_resp["receipt_id"]
+                .as_str()
+                .unwrap()
+                .replace("rcpt-", ""),
+            session_id: "s1",
+            agent_name: "claude-code",
+            action_class: ActionClass::FileWrite,
+            target: expected_mod_target,
+            verdict: Verdict::Modify,
+            rule_id: ok_mod_resp["rule_id"].as_str(),
+            decided_at: now,
+        });
+    let _ = expected_digest;
+    assert!(
+        ok_mod_resp["receipt_digest"]
+            .as_str()
+            .is_some_and(|d| d.len() == 64)
+    );
+    let stale_allow_digest =
+        grdr_core::policy::compute_receipt_digest(&grdr_core::policy::ReceiptDigestInput {
+            attempt_id: "acs-mod-ok",
+            session_id: "s1",
+            agent_name: "claude-code",
+            action_class: ActionClass::FileWrite,
+            target: expected_mod_target,
+            verdict: Verdict::Allow,
+            rule_id: ok_mod_resp["rule_id"].as_str(),
+            decided_at: now,
+        });
+    assert_ne!(
+        ok_mod_resp["receipt_digest"].as_str(),
+        Some(stale_allow_digest.as_str())
+    );
+
+    // Windows ADS and DOS device paths fail closed on FileWrite/FileDelete rewrites.
+    let ads_client = RewriteDecisionClient {
+        rewrite_to: "src/main.rs:hiddenstream".into(),
+        recheck_verdict: Verdict::Allow,
+        seen_targets: Arc::new(std::sync::Mutex::new(Vec::new())),
+    };
+    let ads_resp = evaluate_dialect_request(
+        AcpProtocolDialect::OwaspAcs,
+        &serde_json::json!({
+            "spec_version": "0.1.4",
+            "request_id": "acs-ads",
+            "session_id": "s1",
+            "agent_name": "claude-code",
+            "hook_point": "pre_tool",
+            "action_kind": "file_write",
+            "target": "src/main.rs"
+        }),
+        &ads_client,
+        now,
+    )
+    .await;
+    assert_eq!(ads_resp["verdict"], "deny");
+
+    // 2. inject_mcp_broker_config rejects non-array/non-object mcpServers.
+    let cfg = AcpConductorConfig::default();
+    assert!(inject_mcp_broker_config(&serde_json::json!({"mcpServers": "broken"}), &cfg).is_err());
+    assert!(inject_mcp_broker_config(&serde_json::json!({"mcpServers": [123]}), &cfg).is_err());
+
+    // 3. v2 -> v1 downgrade is forbidden; unauthenticated session/update with HMAC key is dropped.
+    let key = vec![0x42u8; 32];
+    let hmac_cfg = AcpConductorConfig {
+        acs_hmac_key: Some(Zeroizing::new(key.clone())),
+        ..AcpConductorConfig::default()
+    };
+    let update_seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let client = Arc::new(RewriteDecisionClient {
+        rewrite_to: "src/safe.rs".into(),
+        recheck_verdict: Verdict::Allow,
+        seen_targets: Arc::clone(&update_seen),
+    });
+    let signed_bad_skew = sign_owasp_acs_jsonrpc(
+        serde_json::json!(99),
+        "acs/evaluate",
+        serde_json::json!({"tool": "bash", "target": "ls"}),
+        "nonce-skew-99",
+        now.as_second().saturating_sub(120),
+        &key,
+    )
+    .unwrap();
+    let lines = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2.0"}}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"initialize","params":{"protocolVersion":"1.30.0"}}"#,
+        r#"{"jsonrpc":"2.0","id":3,"method":"fs/read_text_file","params":{"path":"src/main.rs"}}"#,
+        r#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"forged","update":{"sessionUpdate":"tool_call","toolCallId":"tc-forged","kind":"execute","title":"whoami"}}}"#,
+        &serde_json::to_string(&signed_bad_skew).unwrap(),
+    ]
+    .join("\n")
+        + "\n";
+
+    let (mut in_tx, in_rx) = tokio::io::duplex(8192);
+    let (out_tx, mut out_rx) = tokio::io::duplex(8192);
+    let run = tokio::spawn(async move {
+        run_bidirectional_stdio_conductor(client, hmac_cfg, in_rx, out_tx)
+            .await
+            .unwrap()
+    });
+    in_tx.write_all(lines.as_bytes()).await.unwrap();
+    drop(in_tx);
+    run.await.unwrap();
+
+    let mut out_buf = String::new();
+    out_rx.read_to_string(&mut out_buf).await.unwrap();
+    let resps: Vec<Value> = out_buf
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    let downgrade = resps.iter().find(|v| v["id"] == 2).unwrap();
+    assert!(
+        downgrade["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("downgrade")
+    );
+    let post_downgrade_fs = resps.iter().find(|v| v["id"] == 3).unwrap();
+    assert!(
+        post_downgrade_fs["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("ACP v2 removed")
+    );
+    let skew_resp = resps.iter().find(|v| v["id"] == 99).unwrap();
+    assert!(skew_resp.get("error").is_some());
+    assert_eq!(update_seen.lock().unwrap().len(), 0);
 }

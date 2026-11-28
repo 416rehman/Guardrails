@@ -1,24 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
-use std::io::ErrorKind;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use grdr_crypto::sha256_hex;
-use grdr_model::{ActionClass, Verdict};
+use grdr_model::{ActionAttempt, ActionClass, DecisionReceipt, Verdict};
 use grdr_os_clock::{Clock, SystemClock};
+use grdr_strings::sanitize_untrusted_text;
 use jiff::Timestamp;
 use serde_json::{Value, json};
 
 use crate::conductor::AcpConductorConfig;
-use crate::{AcpError, DecisionClient, NormalizedControlCall, build_attempt};
+pub(crate) use crate::path_confine::{
+    resolve_confined_path, validate_modify_target, validate_terminal_create_params,
+};
+use crate::{
+    AcpError, DecisionClient, NormalizedControlCall, build_attempt, extract_daemon_retry_token,
+};
 
 const ACP_PROTOCOL_VERSION: &str = "2025-03-26";
-
-pub(crate) struct ValidatedTerminalSpec {
-    pub(crate) target: String,
-    pub(crate) summary: String,
-}
+const MAX_SESSION_ID_CHARS: usize = 256;
 
 pub fn default_workspace_root() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
@@ -31,12 +32,27 @@ pub(crate) fn current_ts() -> Result<Timestamp, AcpError> {
 }
 
 pub(crate) fn extract_session(params: &Value, default_session: &str) -> String {
-    params
+    let raw = params
         .get("sessionId")
         .and_then(Value::as_str)
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or(default_session)
-        .to_string()
+        .unwrap_or(default_session);
+    sanitize_session_id(raw, default_session)
+}
+
+pub(crate) fn sanitize_session_id(raw: &str, fallback: &str) -> String {
+    let cleaned = sanitize_untrusted_text(raw);
+    let trimmed: String = cleaned.trim().chars().take(MAX_SESSION_ID_CHARS).collect();
+    if trimmed.is_empty() {
+        let clean_fb = sanitize_untrusted_text(fallback);
+        let fb_trimmed = clean_fb.trim();
+        if fb_trimmed.is_empty() {
+            "acp-session".to_string()
+        } else {
+            fb_trimmed.chars().take(MAX_SESSION_ID_CHARS).collect()
+        }
+    } else {
+        trimmed
+    }
 }
 
 pub(crate) fn make_control_call(
@@ -72,14 +88,29 @@ pub(crate) fn jsonrpc_error(id: Value, code: i64, message: &str) -> Result<Strin
     .map_err(|e| AcpError::InvalidPayload(e.to_string()))
 }
 
+pub(crate) fn jsonrpc_error_with_data(
+    id: Value,
+    code: i64,
+    message: &str,
+    data: Value,
+) -> Result<String, AcpError> {
+    serde_json::to_string(&json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": { "code": code, "message": message, "data": data }
+    }))
+    .map_err(|e| AcpError::InvalidPayload(e.to_string()))
+}
+
 pub(crate) async fn evaluate_or_jsonrpc<C: DecisionClient>(
     client: &C,
+    cfg: &AcpConductorConfig,
     call: &NormalizedControlCall,
     req_id: Value,
     mut allow_payload: Value,
 ) -> String {
     let Ok(now) = current_ts() else {
-        return jsonrpc_error(req_id, -32001, "wall clock unavailable").unwrap_or_default();
+        return encode_err_fallback(req_id, -32001, "wall clock unavailable");
     };
     let attempt = build_attempt(call, now);
     match client.decide(&attempt).await {
@@ -87,10 +118,11 @@ pub(crate) async fn evaluate_or_jsonrpc<C: DecisionClient>(
             if let Some(obj) = allow_payload.as_object_mut() {
                 obj.insert("receiptId".to_string(), Value::String(receipt.receipt_id));
             }
-            serde_json::to_string(
-                &json!({ "jsonrpc": "2.0", "id": req_id, "result": allow_payload }),
-            )
-            .unwrap_or_default()
+            encode_jsonrpc_ok(req_id, allow_payload)
+        }
+        Ok(receipt) if receipt.verdict == Verdict::Modify => {
+            evaluate_modify_rewrite(client, cfg, call, &attempt, receipt, req_id, allow_payload)
+                .await
         }
         Ok(receipt) => {
             let code = if receipt.verdict == Verdict::StepUp {
@@ -98,10 +130,135 @@ pub(crate) async fn evaluate_or_jsonrpc<C: DecisionClient>(
             } else {
                 -32001
             };
-            jsonrpc_error(req_id, code, &receipt.reason).unwrap_or_default()
+            if receipt.verdict == Verdict::StepUp {
+                let retry_token = extract_daemon_retry_token(&receipt);
+                let reason = if let Some(ref tok) = retry_token {
+                    format!("{} (retry_token={tok})", receipt.reason)
+                } else {
+                    receipt.reason.clone()
+                };
+                let mut data = json!({
+                    "verdict": "step_up",
+                    "receiptId": receipt.receipt_id,
+                    "nextStep": receipt.next_step,
+                });
+                if let (Some(tok), Some(obj)) = (retry_token, data.as_object_mut()) {
+                    obj.insert("retryToken".to_string(), Value::String(tok));
+                }
+                return jsonrpc_error_with_data(req_id.clone(), code, &reason, data)
+                    .unwrap_or_else(|_| encode_err_fallback(req_id, code, &reason));
+            }
+            encode_err_fallback(req_id, code, &receipt.reason)
         }
-        Err(err) => jsonrpc_error(req_id, -32001, &err.to_string()).unwrap_or_default(),
+        Err(err) => encode_err_fallback(req_id, -32001, &err.to_string()),
     }
+}
+
+pub(crate) async fn evaluate_modify_decision<C: DecisionClient>(
+    client: &C,
+    workspace_root: &Path,
+    call: &NormalizedControlCall,
+    attempt: &ActionAttempt,
+    receipt: &DecisionReceipt,
+) -> Result<(DecisionReceipt, String), String> {
+    let candidate = extract_rewritten_target(receipt, &call.target)
+        .ok_or_else(|| "modify verdict missing target; failing closed".to_string())?;
+    let rewritten = validate_modify_target(workspace_root, call.action_class, &candidate)
+        .map_err(|err| format!("unsafe rewrite: {err}"))?;
+    let mut recheck = attempt.clone();
+    recheck.target = rewritten.clone();
+    recheck.summary = format!("{} [modified]", call.summary);
+    let mut final_receipt = client
+        .decide(&recheck)
+        .await
+        .map_err(|_| "rewrite re-evaluation unavailable".to_string())?;
+    if final_receipt.verdict != Verdict::Allow {
+        return Err(final_receipt.reason);
+    }
+    final_receipt.verdict = Verdict::Modify;
+    final_receipt.target = rewritten.clone();
+    final_receipt.key_id = None;
+    final_receipt.signature = None;
+    final_receipt.signature_verified = None;
+    final_receipt.receipt_digest =
+        grdr_core::policy::compute_receipt_digest(&grdr_core::policy::ReceiptDigestInput {
+            attempt_id: &final_receipt.attempt_id,
+            session_id: &final_receipt.session_id,
+            agent_name: &final_receipt.agent_name,
+            action_class: final_receipt.action_class,
+            target: &final_receipt.target,
+            verdict: final_receipt.verdict,
+            rule_id: final_receipt.rule_id.as_deref(),
+            decided_at: final_receipt.decided_at,
+        });
+    Ok((final_receipt, rewritten))
+}
+
+async fn evaluate_modify_rewrite<C: DecisionClient>(
+    client: &C,
+    cfg: &AcpConductorConfig,
+    call: &NormalizedControlCall,
+    attempt: &ActionAttempt,
+    receipt: DecisionReceipt,
+    req_id: Value,
+    mut allow_payload: Value,
+) -> String {
+    let (final_receipt, rewritten) = match evaluate_modify_decision(
+        client,
+        &cfg.workspace_root,
+        call,
+        attempt,
+        &receipt,
+    )
+    .await
+    {
+        Ok(res) => res,
+        Err(reason) => return encode_err_fallback(req_id, -32001, &reason),
+    };
+    if let Some(obj) = allow_payload.as_object_mut() {
+        obj.insert(
+            "receiptId".to_string(),
+            Value::String(final_receipt.receipt_id),
+        );
+        obj.insert("modified".to_string(), Value::Bool(true));
+        obj.insert(
+            "originalDigest".to_string(),
+            Value::String(sha256_hex(call.target.as_bytes())),
+        );
+        obj.insert(
+            "rewrittenDigest".to_string(),
+            Value::String(sha256_hex(rewritten.as_bytes())),
+        );
+        obj.insert(
+            "rewrittenTarget".to_string(),
+            Value::String(rewritten.clone()),
+        );
+        if obj.contains_key("path") {
+            obj.insert("path".to_string(), Value::String(rewritten));
+        }
+    }
+    encode_jsonrpc_ok(req_id, allow_payload)
+}
+
+pub(crate) fn extract_rewritten_target(
+    receipt: &DecisionReceipt,
+    original_target: &str,
+) -> Option<String> {
+    let trimmed_target = receipt.target.trim();
+    if !trimmed_target.is_empty() && trimmed_target != original_target {
+        return Some(trimmed_target.to_string());
+    }
+    let next = receipt.next_step.trim();
+    if let Some(rest) = next
+        .strip_prefix("modify:")
+        .or_else(|| next.strip_prefix("rewrite:"))
+    {
+        let clean = rest.trim();
+        if !clean.is_empty() {
+            return Some(clean.to_string());
+        }
+    }
+    None
 }
 
 pub(crate) async fn handle_fs_read<C: DecisionClient>(
@@ -111,12 +268,11 @@ pub(crate) async fn handle_fs_read<C: DecisionClient>(
     params: &Value,
 ) -> String {
     let Some(raw_path) = params.get("path").and_then(Value::as_str) else {
-        return jsonrpc_error(req_id, -32602, "fs/read_text_file requires string path")
-            .unwrap_or_default();
+        return encode_err_fallback(req_id, -32602, "fs/read_text_file requires string path");
     };
     let confined = match resolve_confined_path(&cfg.workspace_root, raw_path, false) {
         Ok(p) => p,
-        Err(err) => return jsonrpc_error(req_id, -32602, err).unwrap_or_default(),
+        Err(err) => return encode_err_fallback(req_id, -32602, err),
     };
     let call = make_control_call(
         &req_id,
@@ -128,6 +284,7 @@ pub(crate) async fn handle_fs_read<C: DecisionClient>(
     );
     evaluate_or_jsonrpc(
         client,
+        cfg,
         &call,
         req_id,
         json!({ "allowed": true, "path": confined }),
@@ -142,12 +299,11 @@ pub(crate) async fn handle_fs_write<C: DecisionClient>(
     params: &Value,
 ) -> String {
     let Some(raw_path) = params.get("path").and_then(Value::as_str) else {
-        return jsonrpc_error(req_id, -32602, "fs/write_text_file requires string path")
-            .unwrap_or_default();
+        return encode_err_fallback(req_id, -32602, "fs/write_text_file requires string path");
     };
     let confined = match resolve_confined_path(&cfg.workspace_root, raw_path, false) {
         Ok(p) => p,
-        Err(err) => return jsonrpc_error(req_id, -32602, err).unwrap_or_default(),
+        Err(err) => return encode_err_fallback(req_id, -32602, err),
     };
     let digest = params
         .get("content")
@@ -164,6 +320,7 @@ pub(crate) async fn handle_fs_write<C: DecisionClient>(
     );
     evaluate_or_jsonrpc(
         client,
+        cfg,
         &call,
         req_id,
         json!({ "allowed": true, "path": confined }),
@@ -179,7 +336,7 @@ pub(crate) async fn handle_terminal_create<C: DecisionClient>(
 ) -> String {
     let spec = match validate_terminal_create_params(&cfg.workspace_root, params) {
         Ok(s) => s,
-        Err(err) => return jsonrpc_error(req_id, -32602, err).unwrap_or_default(),
+        Err(err) => return encode_err_fallback(req_id, -32602, err),
     };
     let call = make_control_call(
         &req_id,
@@ -189,169 +346,17 @@ pub(crate) async fn handle_terminal_create<C: DecisionClient>(
         &spec.target,
         spec.summary,
     );
-    evaluate_or_jsonrpc(client, &call, req_id, json!({ "allowed": true })).await
+    evaluate_or_jsonrpc(client, cfg, &call, req_id, json!({ "allowed": true })).await
 }
 
-/// Resolve a caller-supplied path and confine it inside `workspace_root`.
-/// Rejects empty strings, control characters, traversal components (`..`),
-/// root escapes, symlinks, and Windows reparse points.
-pub(crate) fn resolve_confined_path(
-    workspace_root: &Path,
-    raw_path: &str,
-    require_existing_dir: bool,
-) -> Result<String, &'static str> {
-    if raw_path.trim().is_empty() || raw_path.chars().any(char::is_control) {
-        return Err("path contains empty or control characters");
+fn encode_jsonrpc_ok(id: Value, result: Value) -> String {
+    match serde_json::to_string(&json!({ "jsonrpc": "2.0", "id": id, "result": result })) {
+        Ok(line) => line,
+        Err(err) => encode_err_fallback(id, -32603, &err.to_string()),
     }
-    if workspace_root.as_os_str().is_empty() {
-        return Err("workspace_root is empty");
-    }
-    let root_meta =
-        std::fs::symlink_metadata(workspace_root).map_err(|_| "workspace_root inaccessible")?;
-    if is_symlink_or_reparse(&root_meta) {
-        return Err("workspace_root cannot be a symlink or reparse point");
-    }
-    let canon_root = std::fs::canonicalize(workspace_root).map_err(|_| "invalid workspace_root")?;
-
-    let candidate = Path::new(raw_path);
-    let rel_path = if candidate.is_absolute() {
-        candidate
-            .strip_prefix(workspace_root)
-            .or_else(|_| candidate.strip_prefix(&canon_root))
-            .map_err(|_| "absolute path escapes workspace_root")?
-    } else {
-        candidate
-    };
-
-    let mut normal_segments = Vec::new();
-    for component in rel_path.components() {
-        match component {
-            Component::Normal(seg) => normal_segments.push(seg),
-            Component::CurDir => {}
-            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
-                return Err("path traversal or root prefix is prohibited");
-            }
-        }
-    }
-    if normal_segments.is_empty() && !require_existing_dir {
-        return Err("file path must reference a child inside workspace_root");
-    }
-
-    let mut cur = canon_root.clone();
-    let mut missing_seen = false;
-    for seg in normal_segments {
-        cur.push(seg);
-        if missing_seen {
-            continue;
-        }
-        match std::fs::symlink_metadata(&cur) {
-            Ok(meta) => {
-                if is_symlink_or_reparse(&meta) {
-                    return Err("symlink or reparse point rejected");
-                }
-                let canon_cur =
-                    std::fs::canonicalize(&cur).map_err(|_| "canonicalize child failed")?;
-                if !canon_cur.starts_with(&canon_root) {
-                    return Err("canonical child escapes workspace_root");
-                }
-            }
-            Err(err) if err.kind() == ErrorKind::NotFound => {
-                missing_seen = true;
-            }
-            Err(_) => return Err("path metadata inspection failed"),
-        }
-    }
-
-    if require_existing_dir {
-        let dir_meta =
-            std::fs::symlink_metadata(&cur).map_err(|_| "cwd does not exist inside workspace")?;
-        if is_symlink_or_reparse(&dir_meta) || !dir_meta.is_dir() {
-            return Err("cwd must be a real non-symlink directory inside workspace");
-        }
-    }
-    Ok(cur.to_string_lossy().into_owned())
 }
 
-pub(crate) fn validate_terminal_create_params(
-    workspace_root: &Path,
-    params: &Value,
-) -> Result<ValidatedTerminalSpec, &'static str> {
-    let Some(cmd) = params
-        .get("command")
-        .and_then(Value::as_str)
-        .filter(|c| !c.trim().is_empty() && !c.chars().any(char::is_control))
-    else {
-        return Err("terminal/create requires valid non-control command string");
-    };
-
-    let mut arg_tokens = Vec::new();
-    if let Some(raw_args) = params.get("args") {
-        let Some(arr) = raw_args.as_array() else {
-            return Err("terminal/create args must be an array of strings");
-        };
-        for item in arr {
-            let Some(arg) = item.as_str() else {
-                return Err("terminal/create args elements must be strings");
-            };
-            if arg.chars().any(char::is_control) {
-                return Err("terminal/create arg contains prohibited control characters");
-            }
-            arg_tokens.push(arg);
-        }
-    }
-
-    let confined_cwd = match params.get("cwd") {
-        None | Some(Value::Null) => resolve_confined_path(workspace_root, ".", true)?,
-        Some(Value::String(raw_cwd)) => resolve_confined_path(workspace_root, raw_cwd, true)?,
-        Some(_) => return Err("terminal/create cwd must be a string"),
-    };
-
-    let mut env_keys = Vec::new();
-    if let Some(raw_env) = params.get("env") {
-        let Some(obj) = raw_env.as_object() else {
-            return Err("terminal/create env must be an object");
-        };
-        for (k, v) in obj {
-            if k.trim().is_empty()
-                || k.contains('=')
-                || k.chars().any(char::is_control)
-                || !v.is_string()
-            {
-                return Err(
-                    "terminal/create env entries must have safe key names and string values",
-                );
-            }
-            env_keys.push(k.as_str());
-        }
-        env_keys.sort_unstable();
-    }
-
-    let full_cmd = if arg_tokens.is_empty() {
-        cmd.to_string()
-    } else {
-        format!("{cmd} {}", arg_tokens.join(" "))
-    };
-    let env_tag = if env_keys.is_empty() {
-        "none".to_string()
-    } else {
-        env_keys.join(",")
-    };
-    let summary = format!("ACP terminal/create {full_cmd} cwd={confined_cwd} env_keys={env_tag}");
-    let target = format!("{full_cmd} [cwd:{confined_cwd} env:{env_tag}]");
-    Ok(ValidatedTerminalSpec { target, summary })
-}
-
-fn is_symlink_or_reparse(meta: &std::fs::Metadata) -> bool {
-    if meta.file_type().is_symlink() {
-        return true;
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0400;
-        if (meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT) != 0 {
-            return true;
-        }
-    }
-    false
+fn encode_err_fallback(id: Value, code: i64, message: &str) -> String {
+    jsonrpc_error(id, code, message)
+        .unwrap_or_else(|_| r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"internal serialization failure"}}"#.to_string())
 }

@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use grdr_core::policy::{ReceiptDigestInput, compute_receipt_digest};
 use grdr_llm_proto::LlmRequestMeta;
 use grdr_mcp_proto::{
     McpAttemptContext, McpMethod, McpProtoError, McpRequest, PinVerification, ToolDescriptor,
@@ -18,8 +19,7 @@ use grdr_ports::DecisionEnginePort;
 use grdr_strings::sanitize_untrusted_text;
 
 use crate::brand::BrokerBrand;
-
-const SECRET_PREFIXES: &[&str] = &["sk-", "ghp_", "github_pat_", "AKIA", "Bearer "];
+use crate::secret_rules::contains_secret_indicator;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum BrokerError {
@@ -174,9 +174,20 @@ impl<E: DecisionEnginePort> McpBroker<E> {
                 let attempt = mcp_call_to_attempt(req, ctx)?;
                 let mut receipt = self.engine.evaluate(&attempt)?;
                 receipt.verdict = Verdict::Deny;
+                receipt.rule_id = Some("essentials.mcp-pin-drift".into());
                 receipt.reason = format!(
                     "MCP tool schema pin drifted for {safe_name}: expected {expected}, saw {actual}"
                 );
+                receipt.receipt_digest = compute_receipt_digest(&ReceiptDigestInput {
+                    attempt_id: &receipt.attempt_id,
+                    session_id: &receipt.session_id,
+                    agent_name: &receipt.agent_name,
+                    action_class: receipt.action_class,
+                    target: &receipt.target,
+                    verdict: receipt.verdict,
+                    rule_id: receipt.rule_id.as_deref(),
+                    decided_at: receipt.decided_at,
+                });
                 let message = format_agent_message(&AgentNoticeInput {
                     brand: self.brand.product_name.clone(),
                     verb: AgentVerb::Blocked,
@@ -192,7 +203,10 @@ impl<E: DecisionEnginePort> McpBroker<E> {
         }
 
         let attempt = mcp_call_to_attempt(req, ctx)?;
-        let receipt = self.engine.evaluate(&attempt)?;
+        let mut receipt = self.engine.evaluate(&attempt)?;
+        if self.state == BrokerState::DegradedOffline && receipt.verdict == Verdict::Allow {
+            escalate_degraded_receipt(&mut receipt);
+        }
         Ok(outcome_from_receipt(&self.brand.product_name, receipt))
     }
 }
@@ -238,7 +252,7 @@ impl<E: DecisionEnginePort> LlmBroker<E> {
 
         let safe_provider = sanitize_uri_segment(&meta.provider);
         let safe_model = sanitize_uri_segment(meta.model.as_deref().unwrap_or("default"));
-        let secret_hit = SECRET_PREFIXES.iter().any(|p| prompt_preview.contains(p));
+        let secret_hit = contains_secret_indicator(prompt_preview);
         let target = if secret_hit {
             format!("llm://{safe_provider}/secret-egress-detected")
         } else {
@@ -264,9 +278,30 @@ impl<E: DecisionEnginePort> LlmBroker<E> {
             ..Default::default()
         };
 
-        let receipt = self.engine.evaluate(&attempt)?;
+        let mut receipt = self.engine.evaluate(&attempt)?;
+        if self.state == BrokerState::DegradedOffline && receipt.verdict == Verdict::Allow {
+            escalate_degraded_receipt(&mut receipt);
+        }
         Ok(outcome_from_receipt(&self.brand.product_name, receipt))
     }
+}
+
+fn escalate_degraded_receipt(receipt: &mut DecisionReceipt) {
+    receipt.verdict = Verdict::StepUp;
+    receipt.rule_id = Some("broker.degraded_offline".into());
+    receipt.reason =
+        "broker operating in degraded offline mode; owner step-up confirmation required".into();
+    receipt.next_step = "Approve or retry after daemon connection is restored.".into();
+    receipt.receipt_digest = compute_receipt_digest(&ReceiptDigestInput {
+        attempt_id: &receipt.attempt_id,
+        session_id: &receipt.session_id,
+        agent_name: &receipt.agent_name,
+        action_class: receipt.action_class,
+        target: &receipt.target,
+        verdict: receipt.verdict,
+        rule_id: receipt.rule_id.as_deref(),
+        decided_at: receipt.decided_at,
+    });
 }
 
 fn sanitize_uri_segment(raw: &str) -> String {

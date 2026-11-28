@@ -117,6 +117,9 @@ blocks:
       pypi: [mcp, fastmcp]
       npm: ['@modelcontextprotocol/sdk']
       cargo: [rmcp]
+      go: [github.com/modelcontextprotocol/go-sdk]
+      jvm: [io.modelcontextprotocol.sdk:mcp]
+      dotnet: [ModelContextProtocol]
     binaries: [mcp-proxy]
     env_markers: []
     net: []
@@ -159,4 +162,100 @@ blocks:
     binaries: [ollama]
     env_markers: [OLLAMA_HOST]
     net: [127.0.0.1:11434]
+    classifier_boost_bp: 1000
+
+  - id: rig
+    name: Rig & Rust Agent Crates
+    role: orchestrator
+    agentic: yes
+    ecosystems:
+      pypi: []
+      npm: []
+      cargo: [rig-core, swiftide]
+      go: []
+      jvm: []
+      dotnet: []
+    binaries: []
+    env_markers: [OPENAI_API_KEY, ANTHROPIC_API_KEY]
+    net: []
+    classifier_boost_bp: 4500
+
+  - id: langchain4j
+    name: LangChain4j & Spring AI
+    role: orchestrator
+    agentic: yes
+    ecosystems:
+      pypi: []
+      npm: []
+      cargo: []
+      go: []
+      jvm: [dev.langchain4j:langchain4j, dev.langchain4j:langchain4j-agentic, org.springframework.ai:spring-ai-core]
+      dotnet: []
+    binaries: []
+    env_markers: [OPENAI_API_KEY]
+    net: []
+    classifier_boost_bp: 4500
+
+  - id: semantic-kernel
+    name: Semantic Kernel & MS Agent Framework
+    role: orchestrator
+    agentic: yes
+    ecosystems:
+      pypi: [semantic-kernel, agent-framework]
+      npm: []
+      cargo: []
+      go: []
+      jvm: []
+      dotnet: [Microsoft.SemanticKernel, Microsoft.Agents.AI]
+    binaries: []
+    env_markers: [AZURE_OPENAI_API_KEY, OPENAI_API_KEY]
+    net: []
+    classifier_boost_bp: 4500
+
+  - id: eino-adk
+    name: Go Agent Orchestrators
+    role: orchestrator
+    agentic: yes
+    ecosystems:
+      pypi: []
+      npm: []
+      cargo: []
+      go: [github.com/cloudwego/eino, github.com/tmc/langchaingo, google.golang.org/adk]
+      jvm: []
+      dotnet: []
+    binaries: []
+    env_markers: [GOOGLE_API_KEY, OPENAI_API_KEY]
+    net: []
+    classifier_boost_bp: 4500
+
+  - id: litellm
+    name: LiteLLM Proxy & Router
+    role: runtime
+    agentic: no
+    ecosystems:
+      pypi: [litellm]
+      npm: []
+      cargo: []
+      go: []
+      jvm: []
+      dotnet: []
+    binaries: [litellm]
+    env_markers: [LITELLM_MASTER_KEY]
+    net: [127.0.0.1:4000]
+    classifier_boost_bp: 1000
+
+  - id: vllm
+    name: vLLM & llama.cpp Inference Runtimes
+    role: runtime
+    agentic: no
+    ecosystems:
+      pypi: [vllm]
+      npm: []
+      cargo: []
+      go: []
+      jvm: []
+      dotnet: []
+    binaries: [vllm, llama-server, llama-cli]
+    env_markers: [VLLM_API_KEY]
+    net: [127.0.0.1:8000, 127.0.0.1:8080]
     classifier_boost_bp: 1000

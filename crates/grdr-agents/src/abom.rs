@@ -129,7 +129,7 @@ fn diff_matched_agent(
     {
         drift_kinds.insert(DriftKind::ProgramIdentityChanged);
     }
-    if decl.expected_signer != obs.observed_signer {
+    if decl.expected_signer.is_some() && decl.expected_signer != obs.observed_signer {
         drift_kinds.insert(DriftKind::SignerChanged);
     }
     if !decl.allowed_hosts.is_empty()

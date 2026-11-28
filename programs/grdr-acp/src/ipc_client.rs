@@ -342,10 +342,19 @@ fn verdict_to_receipt(
     } else {
         frame.reason
     };
+    let rty_token = frame
+        .labels
+        .iter()
+        .find_map(|l| l.strip_prefix("retry_token:"))
+        .filter(|tok| crate::is_valid_rty_token(tok))
+        .map(str::to_owned);
     let next_step = match verdict {
-        Verdict::Allow => "",
-        Verdict::StepUp => "Step-up approval required",
-        _ => "Denied by daemon policy",
+        Verdict::Allow => String::new(),
+        Verdict::StepUp => match rty_token {
+            Some(tok) => format!("Step-up approval required; retry_token:{tok}"),
+            None => "Step-up approval required".to_string(),
+        },
+        _ => "Denied by daemon policy".to_string(),
     };
     let receipt_id = if frame.receipt_id.is_empty() {
         attempt.id.as_str()
@@ -358,7 +367,7 @@ fn verdict_to_receipt(
         verdict,
         rule,
         &reason,
-        next_step,
+        &next_step,
         Some(receipt_id),
         now,
     )

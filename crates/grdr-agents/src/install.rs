@@ -12,6 +12,7 @@ use serde_json::Value;
 
 use grdr_ports::{LocalFsPort, RegularEntryKind, validate_safe_rel_path};
 
+use crate::canary::HookHealthState;
 use crate::catalogue::{AgentCatalogue, AgentManifest};
 use crate::install_entries::{
     MAX_CONFIG_BYTES, MergeOutcome, compute_hook_preview, read_existing_regular_config,
@@ -48,6 +49,7 @@ pub enum HookInstallState {
 pub struct HookStatusReport {
     pub agent: String,
     pub state: HookInstallState,
+    pub health: HookHealthState,
     pub installed: bool,
     pub config_path: PathBuf,
 }
@@ -58,6 +60,7 @@ pub struct HookInstallReport {
     pub config_path: PathBuf,
     pub journal_path: PathBuf,
     pub outcome: InstallOutcome,
+    pub health: HookHealthState,
     pub preview_json: String,
 }
 
@@ -210,13 +213,40 @@ pub fn hook_status_with_catalogue(
     } else {
         HookInstallState::NotConfigured
     };
+    let health = if installed {
+        HookHealthState::Configured
+    } else {
+        HookHealthState::NotConfigured
+    };
 
     Ok(HookStatusReport {
         agent: manifest.id.clone(),
         state,
+        health,
         installed,
         config_path,
     })
+}
+
+pub fn hook_status_with_canary(
+    target: &HookTargetKind,
+    home_dir: &Path,
+    hook_command: &str,
+    canary_verified: Option<bool>,
+    catalogue: &AgentCatalogue,
+    fs: &dyn LocalFsPort,
+) -> Result<HookStatusReport, String> {
+    let mut report = hook_status_with_catalogue(target, home_dir, hook_command, catalogue, fs)?;
+    if report.installed {
+        report.health = match canary_verified {
+            Some(true) => HookHealthState::Effective,
+            Some(false) => HookHealthState::ConfiguredNotEffective,
+            None => HookHealthState::Configured,
+        };
+    } else {
+        report.health = HookHealthState::NotConfigured;
+    }
+    Ok(report)
 }
 
 pub fn dry_run_hook_diff(
@@ -334,11 +364,17 @@ pub fn install_hook_with_catalogue(
         }
     };
 
+    let health = match outcome {
+        InstallOutcome::Applied | InstallOutcome::AlreadyInstalled => HookHealthState::Configured,
+        InstallOutcome::DryRunPreview | InstallOutcome::Unchanged => HookHealthState::NotConfigured,
+    };
+
     Ok(HookInstallReport {
         agent: manifest.id.clone(),
         config_path,
         journal_path,
         outcome,
+        health,
         preview_json,
     })
 }
@@ -383,6 +419,7 @@ pub fn uninstall_hook_with_catalogue(
             config_path,
             journal_path,
             outcome: InstallOutcome::Applied,
+            health: HookHealthState::NotConfigured,
             preview_json,
         });
     }
@@ -393,6 +430,7 @@ pub fn uninstall_hook_with_catalogue(
             config_path,
             journal_path,
             outcome: InstallOutcome::Unchanged,
+            health: HookHealthState::NotConfigured,
             preview_json: String::new(),
         });
     }
@@ -426,6 +464,7 @@ pub fn uninstall_hook_with_catalogue(
         } else {
             InstallOutcome::Unchanged
         },
+        health: HookHealthState::NotConfigured,
         preview_json,
     })
 }

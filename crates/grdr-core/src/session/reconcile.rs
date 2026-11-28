@@ -26,6 +26,38 @@ pub enum DivergenceKind {
     SessionClaimMismatch,
     TagConflict,
     UndeclaredHop,
+    CanaryMissed,
+    HookTimeoutOpen,
+    BypassFlag,
+    TelemetryModelTrafficUndeclared,
+    TelemetryProxyBypassed,
+    TelemetryClaimUnsupported,
+    AttributionLate,
+    PostSessionActivity,
+    UncalibratedCrossCheck,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HousekeepingCalibration {
+    #[default]
+    Calibrated,
+    Uncalibrated,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionTelemetryAnomaly {
+    #[default]
+    None,
+    CanaryMissed,
+    HookTimeoutOpen,
+    BypassFlagDetected,
+    ModelTrafficUndeclared,
+    ProxyBypassed,
+    ClaimUnsupportedByTranscript,
+    AttributionLate,
+    PostSessionEgressOrCredRead,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -56,6 +88,13 @@ pub struct ReconciliationInput {
     pub sensors: Vec<SensorObservation>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ReconciliationV2Input {
+    pub base: ReconciliationInput,
+    pub housekeeping: HousekeepingCalibration,
+    pub anomalies: Vec<(String, SessionTelemetryAnomaly, String)>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReconciliationFinding {
     pub kind: DivergenceKind,
@@ -63,6 +102,89 @@ pub struct ReconciliationFinding {
     pub session_id: String,
     pub detail: String,
     pub recommended_grade: ApprovalGrade,
+}
+
+#[must_use]
+pub fn reconcile_session_evidence_v2(input: &ReconciliationV2Input) -> Vec<ReconciliationFinding> {
+    let mut findings = reconcile_session_evidence(&input.base);
+    if input.housekeeping == HousekeepingCalibration::Uncalibrated {
+        findings.retain(|f| {
+            !matches!(
+                f.kind,
+                DivergenceKind::HookSilent | DivergenceKind::UndeclaredActivity
+            ) || f.recommended_grade < ApprovalGrade::G2
+        });
+        findings.push(ReconciliationFinding {
+            kind: DivergenceKind::UncalibratedCrossCheck,
+            detection_rule_id: RULE_UNDECLARED_EXEC,
+            session_id: "host".into(),
+            detail: "cross-check not calibrated; housekeeping profile missing".into(),
+            recommended_grade: ApprovalGrade::G0,
+        });
+    }
+    for (sid, anomaly, detail) in &input.anomalies {
+        if let Some(finding) = anomaly_to_finding(sid, *anomaly, detail) {
+            findings.push(finding);
+        }
+    }
+    findings
+}
+
+fn anomaly_to_finding(
+    session_id: &str,
+    anomaly: SessionTelemetryAnomaly,
+    detail: &str,
+) -> Option<ReconciliationFinding> {
+    let (kind, rule_id, grade) = match anomaly {
+        SessionTelemetryAnomaly::None => return None,
+        SessionTelemetryAnomaly::CanaryMissed => (
+            DivergenceKind::CanaryMissed,
+            RULE_HOOK_DARK,
+            ApprovalGrade::G2,
+        ),
+        SessionTelemetryAnomaly::HookTimeoutOpen => (
+            DivergenceKind::HookTimeoutOpen,
+            RULE_HOOK_DARK,
+            ApprovalGrade::G1,
+        ),
+        SessionTelemetryAnomaly::BypassFlagDetected => (
+            DivergenceKind::BypassFlag,
+            RULE_UNDECLARED_EXEC,
+            ApprovalGrade::G3,
+        ),
+        SessionTelemetryAnomaly::ModelTrafficUndeclared => (
+            DivergenceKind::TelemetryModelTrafficUndeclared,
+            RULE_UNDECLARED_EXEC,
+            ApprovalGrade::G1,
+        ),
+        SessionTelemetryAnomaly::ProxyBypassed => (
+            DivergenceKind::TelemetryProxyBypassed,
+            RULE_HOOK_DARK,
+            ApprovalGrade::G3,
+        ),
+        SessionTelemetryAnomaly::ClaimUnsupportedByTranscript => (
+            DivergenceKind::TelemetryClaimUnsupported,
+            RULE_EFFECT_MISMATCH,
+            ApprovalGrade::G1,
+        ),
+        SessionTelemetryAnomaly::AttributionLate => (
+            DivergenceKind::AttributionLate,
+            RULE_SESSION_CONFLICT,
+            ApprovalGrade::G0,
+        ),
+        SessionTelemetryAnomaly::PostSessionEgressOrCredRead => (
+            DivergenceKind::PostSessionActivity,
+            RULE_UNDECLARED_EXEC,
+            ApprovalGrade::G2,
+        ),
+    };
+    Some(ReconciliationFinding {
+        kind,
+        detection_rule_id: rule_id,
+        session_id: session_id.to_owned(),
+        detail: detail.to_owned(),
+        recommended_grade: grade,
+    })
 }
 
 #[must_use]
@@ -167,6 +289,7 @@ pub fn reconcile_session_evidence(input: &ReconciliationInput) -> Vec<Reconcilia
                         .unwrap_or_else(|| sensor.observed_at_ms.saturating_sub(sess.opened_at_ms));
                     if silent_ms > input.hook_dark_threshold_ms
                         && total_calls > 0
+                        && !sess.started_before_install()
                         && dark_reported.insert(sid.as_str())
                     {
                         findings.push(ReconciliationFinding {

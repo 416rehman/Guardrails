@@ -1,0 +1,16 @@
+schema: grdr.building-block/v1alpha1
+id: litellm
+name: LiteLLM Proxy & Router
+role: runtime
+agentic: no
+ecosystems:
+  pypi: [litellm]
+  npm: []
+  cargo: []
+  go: []
+  jvm: []
+  dotnet: []
+binaries: [litellm]
+env_markers: [LITELLM_MASTER_KEY]
+net: [127.0.0.1:4000]
+classifier_boost_bp: 1000

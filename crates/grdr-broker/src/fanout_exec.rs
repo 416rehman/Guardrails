@@ -20,29 +20,11 @@ use crate::fanout::{
     ProviderVerdictResponse, VerdictProvider,
 };
 use crate::providers::{ProviderCapabilities, ProviderCaptureCeiling};
+use crate::secret_rules::contains_secret_indicator;
 use crate::worker_pool::BrokerWorkerPool;
 
 const ARGUMENT_PREVIEW_MAX_CHARS: usize = 256;
 const FULL_MINIMISED_MAX_CHARS: usize = 2_048;
-const SECRET_MARKERS_LOWER: &[&str] = &[
-    "sk-",
-    "ghp_",
-    "gho_",
-    "ghs_",
-    "ghu_",
-    "github_pat_",
-    "akia",
-    "asia",
-    "bearer ",
-    "basic ",
-    "xoxb-",
-    "xoxp-",
-    "aiza",
-    "password=",
-    "token=",
-    "secret=",
-    "api_key=",
-];
 
 pub(crate) fn preview_for_ceiling(raw_target: &str, ceiling: ProviderCaptureCeiling) -> String {
     match ceiling {
@@ -58,17 +40,12 @@ pub(crate) fn preview_for_ceiling(raw_target: &str, ceiling: ProviderCaptureCeil
 
 fn scrub_preview(raw_target: &str, max_chars: usize) -> String {
     let safe = sanitize_untrusted_text(raw_target);
-    let lower = safe.to_ascii_lowercase();
-    if SECRET_MARKERS_LOWER.iter().any(|m| lower.contains(m)) {
+    if contains_secret_indicator(&safe) {
         return "[REDACTED]".into();
     }
     let scrubbed_tokens: Vec<String> = safe.split_whitespace().map(scrub_url_token).collect();
     let joined = scrubbed_tokens.join(" ");
-    let joined_lower = joined.to_ascii_lowercase();
-    if SECRET_MARKERS_LOWER
-        .iter()
-        .any(|m| joined_lower.contains(m))
-    {
+    if contains_secret_indicator(&joined) {
         return "[REDACTED]".into();
     }
     let count = joined.chars().count();
@@ -132,6 +109,21 @@ pub(crate) fn execute_bounded_fanout(
         local_req.deadline_ms = caps.timeout_ms.min(fanout_deadline_ms);
         local_req.target_preview =
             preview_for_ceiling(&base_req.target_preview, caps.max_capture_level);
+        if let Err(err) =
+            crate::command_hook::verify_provider_request_minimization(&caps, &local_req)
+        {
+            if tx
+                .send((
+                    idx,
+                    Err(ProviderEvalError::Unavailable(err.display_line())),
+                    0,
+                ))
+                .is_err()
+            {
+                diagnostics_send_dropped();
+            }
+            continue;
+        }
         let sender = tx.clone();
         let cancel_flag = Arc::clone(&cancelled);
 
@@ -144,11 +136,17 @@ pub(crate) fn execute_bounded_fanout(
                 )),
             };
             let elapsed = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-            let _ = sender.send((idx, res, elapsed));
+            if sender.send((idx, res, elapsed)).is_err() {
+                diagnostics_send_dropped();
+            }
         });
 
-        if let Err(err) = worker_pool.dispatch(job, cancel_flag) {
-            let _ = tx.send((idx, Err(ProviderEvalError::Unavailable(err)), 0));
+        if let Err(err) = worker_pool.dispatch(job, cancel_flag)
+            && tx
+                .send((idx, Err(ProviderEvalError::Unavailable(err)), 0))
+                .is_err()
+        {
+            diagnostics_send_dropped();
         }
     }
     drop(tx);
@@ -378,4 +376,8 @@ pub(crate) fn format_action_class(class: grdr_model::ActionClass) -> String {
         .ok()
         .and_then(|v| v.as_str().map(str::to_owned))
         .unwrap_or_else(|| format!("{class:?}").to_ascii_lowercase())
+}
+
+fn diagnostics_send_dropped() {
+    // Receiver already timed out at fan-out deadline.
 }
