@@ -1,0 +1,10 @@
+format: grdr.l0-vars.v1
+pack_id: grdr.lists.l0
+vars:
+  grdr_agent_images:
+    - claude
+    - codex
+    - cursor
+    - gemini
+    - opencode
+    - aider

@@ -4,6 +4,8 @@
 
 mod caps;
 mod compile_down;
+mod compile_down_render;
+mod compile_down_targets;
 mod compile_down_verify;
 mod compiler;
 mod engine;
@@ -17,6 +19,7 @@ mod layers;
 mod lint;
 mod lint_scan;
 mod matrix;
+mod pack_meta;
 mod render;
 mod replay;
 mod request;
@@ -35,6 +38,12 @@ pub use compile_down::{
     compile_down_claude_code, compile_down_codex, render_claude_settings_json,
     render_codex_requirements_toml, verify_compile_down_subset,
 };
+pub use compile_down_render::parse_compile_targets_yaml;
+pub use compile_down_targets::{
+    CompileTargetProfile, CompiledTargetBundle, TargetRenderFormat, TargetRuleSpec,
+    compile_down_for_target, compile_down_with_profile, default_compile_targets,
+    load_compile_targets_from_dir,
+};
 pub use compiler::{
     CompileOptions, CompiledPolicyBundle, CompiledRuleMeta, compile_packs_with_options,
 };
@@ -42,7 +51,10 @@ pub use engine::Engine;
 pub use engine_types::{
     EngineInput, EngineOutput, EngineSnapshot, InterestSet, SessionSnapshotEntry, VerifiedBundle,
 };
-pub use essentials_cedar::ESSENTIALS_PARITY_CEDAR;
+pub use essentials_cedar::{
+    ESSENTIALS_DISK_CEDAR, ESSENTIALS_PARITY_CEDAR, canonical_essentials_pack,
+    compile_cedar_pack_from_sources,
+};
 pub use grdr_model::eval::{essentials_pack, sha256_hex};
 use grdr_model::{
     ActionAttempt, ActionClass, ApprovalGrade, BoundaryObserver, CommandParseStatus,
@@ -61,6 +73,7 @@ pub(crate) use lint_scan::{
     strip_comments_and_strings as strip_comments_for_compile,
 };
 pub use matrix::{degrade_verdict, derive_verdict, effective_timelock_allowance};
+pub use pack_meta::{load_cedar_policy_pack_from_dir, load_signed_cedar_policy_pack_from_dir};
 pub use render::{render_rule_cedar, validate_cedar_rule};
 pub use replay::{FourBucketReplayResult, ReplayAttemptRecord, replay_pack_4bucket, replay_rule};
 pub use request::{

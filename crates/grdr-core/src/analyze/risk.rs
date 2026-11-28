@@ -9,14 +9,16 @@ use grdr_model::{ActionClass, CommandParseStatus};
 
 use crate::analyze::cmd::{CommandTree, canonicalise_shell_plausible};
 use crate::analyze::cmd_wrappers::unwrap_prefix_command;
+use crate::analyze::content::try_scan_deterministic_content;
 use crate::analyze::net::{
     HostClass, HostClassifierConfig, HostSyntax, IpExposureClass, NormalizedHostUrl,
     UserinfoPresence, classify_url_or_host,
 };
+use crate::analyze::pack_lists::{SignalPatternCatalog, default_signal_pattern_catalog};
 use crate::analyze::path::{
-    ProtectedPathClass, canonicalize_path_lex, canonicalize_windows_path_lex,
-    classify_protected_path, split_ntfs_ads,
+    ProtectedPathClass, canonicalize_path_lex, canonicalize_windows_path_lex, split_ntfs_ads,
 };
+use crate::analyze::path_rules::try_classify_protected_path;
 use crate::analyze::types::{Resolution, ShellLimits};
 
 pub(crate) fn evaluate_exec_target(
@@ -191,7 +193,12 @@ fn extract_exec_url_candidate<'a>(arg: &'a str, bin: &str) -> Option<&'a str> {
 }
 
 pub(crate) fn apply_path_class_risk(path: &str, risk_tags: &mut Vec<String>, risk_score: &mut u32) {
-    for cls in classify_protected_path(path) {
+    let Ok(classes) = try_classify_protected_path(path) else {
+        add_risk(risk_tags, risk_score, "agent-control-file", 90);
+        add_risk(risk_tags, risk_score, "catalog.unavailable", 90);
+        return;
+    };
+    for cls in classes {
         match cls {
             ProtectedPathClass::AgentControl
             | ProtectedPathClass::GrdrControl
@@ -253,6 +260,29 @@ pub(crate) fn apply_net_risk(
     }
 }
 
+pub(crate) fn apply_content_risk(
+    target: &str,
+    case_corpus: &str,
+    command_status: &mut CommandParseStatus,
+    risk_tags: &mut Vec<String>,
+    risk_score: &mut u32,
+) {
+    match (
+        try_scan_deterministic_content(target.as_bytes()),
+        try_scan_deterministic_content(case_corpus.as_bytes()),
+    ) {
+        (Ok(raw_content), Ok(decoded_content)) => {
+            if !raw_content.matches.is_empty() || !decoded_content.matches.is_empty() {
+                add_risk(risk_tags, risk_score, "content.secret", 60);
+            }
+        }
+        _ => {
+            *command_status = CommandParseStatus::Malformed;
+            add_risk(risk_tags, risk_score, "catalog.unavailable", 90);
+        }
+    }
+}
+
 pub(crate) fn apply_pattern_risk(
     raw_lower: &str,
     corpus: &str,
@@ -260,92 +290,57 @@ pub(crate) fn apply_pattern_risk(
     risk_tags: &mut Vec<String>,
     risk_score: &mut u32,
 ) {
-    if matches_either(
+    let Ok(signals) = default_signal_pattern_catalog() else {
+        add_risk(risk_tags, risk_score, "catalog.unavailable", 90);
+        return;
+    };
+    apply_pattern_risk_with_catalog(
         raw_lower,
         corpus,
-        &[
-            ".claude/",
-            ".claude.json",
-            ".cursor/",
-            ".codex/",
-            ".gemini/",
-            "grdr-data/",
-            "security/",
-        ],
-    ) {
+        action_class,
+        signals,
+        risk_tags,
+        risk_score,
+    );
+}
+
+pub(crate) fn apply_pattern_risk_with_catalog(
+    raw_lower: &str,
+    corpus: &str,
+    action_class: ActionClass,
+    signals: &SignalPatternCatalog,
+    risk_tags: &mut Vec<String>,
+    risk_score: &mut u32,
+) {
+    if matches_either(raw_lower, corpus, &signals.agent_control_risk_patterns) {
         add_risk(risk_tags, risk_score, "agent-control-file", 70);
     }
-    if matches_either(
-        raw_lower,
-        corpus,
-        &[
-            ".ssh/",
-            ".aws/",
-            ".gnupg/",
-            ".config/gh/",
-            "id_rsa",
-            "id_ed25519",
-            ".env.production",
-        ],
-    ) {
+    if matches_either(raw_lower, corpus, &signals.credential_risk_patterns) {
         add_risk(risk_tags, risk_score, "sensitive-credential", 65);
     }
-    if matches_either(
-        raw_lower,
-        corpus,
-        &[
-            "--dangerously-skip-permissions",
-            "--no-verify",
-            "--disable-hooks",
-            "grdr_disable",
-        ],
-    ) {
+    if matches_either(raw_lower, corpus, &signals.hook_bypass_risk_patterns) {
         add_risk(risk_tags, risk_score, "hook-bypass", 75);
     }
-    if matches_either(
-        raw_lower,
-        corpus,
-        &[
-            "rm -rf",
-            "rm -fr",
-            "remove-item -recurse -force",
-            "git reset --hard",
-            "mkfs.",
-        ],
-    ) || action_class == ActionClass::FileDelete
+    if matches_either(raw_lower, corpus, &signals.destructive_risk_patterns)
+        || action_class == ActionClass::FileDelete
     {
         add_risk(risk_tags, risk_score, "destructive-action", 45);
     }
-    if matches_either(
-        raw_lower,
-        corpus,
-        &["sudo ", "doas ", "runas ", "verb runas"],
-    ) || action_class == ActionClass::Elevate
+    if matches_either(raw_lower, corpus, &signals.privilege_escalation_patterns)
+        || action_class == ActionClass::Elevate
     {
         add_risk(risk_tags, risk_score, "privilege-escalation", 50);
     }
-    if matches_either(
-        raw_lower,
-        corpus,
-        &[
-            "curl ",
-            "invoke-webrequest",
-            "pastebin",
-            "webhook.site",
-            "transfer.sh",
-        ],
-    ) || matches!(
-        action_class,
-        ActionClass::NetRequest | ActionClass::NetConnect | ActionClass::DataFlow
-    ) {
+    if matches_either(raw_lower, corpus, &signals.external_network_risk_patterns)
+        || matches!(
+            action_class,
+            ActionClass::NetRequest | ActionClass::NetConnect | ActionClass::DataFlow
+        )
+    {
         add_risk(risk_tags, risk_score, "external-network", 30);
     }
     if matches!(action_class, ActionClass::McpCall | ActionClass::McpConnect)
-        && matches_either(
-            raw_lower,
-            corpus,
-            &["write", "delete", "push", "create", "execute"],
-        )
+        && matches_either(raw_lower, corpus, &signals.mcp_write_verbs)
     {
         add_risk(risk_tags, risk_score, "mcp-write", 35);
     }
@@ -488,8 +483,8 @@ fn is_destructive_git(lower_args: &[String]) -> bool {
     false
 }
 
-fn matches_either(raw: &str, normalized: &str, needles: &[&str]) -> bool {
+fn matches_either(raw: &str, normalized: &str, needles: &[String]) -> bool {
     needles
         .iter()
-        .any(|needle| raw.contains(needle) || normalized.contains(needle))
+        .any(|needle| raw.contains(needle.as_str()) || normalized.contains(needle.as_str()))
 }
