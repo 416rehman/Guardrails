@@ -1,0 +1,439 @@
+# Arabic (ar) translated UI catalog (D-69).
+
+["grdr.brand.subtitle"]
+msg = "حماية الوكلاء"
+
+["grdr.brand.operator_subtitle"]
+msg = "لوحة المشغل"
+
+["mode.off.label"]
+msg = "معطل"
+
+["mode.off.desc"]
+msg = "القاعدة لا تقيم الإجراءات"
+
+["mode.watch.label"]
+msg = "مراقبة"
+
+["mode.watch.desc"]
+msg = "يسجل المطابقات دون مقاطعة أو حظر"
+
+["mode.ask.label"]
+msg = "طلب إذن"
+
+["mode.ask.desc"]
+msg = "يوقف الإجراء مؤقتا حتى يقرر المعتمد"
+
+["mode.block.label"]
+msg = "حظر"
+
+["mode.block.desc"]
+msg = "يرفض الإجراء ويعرض السبب"
+
+["verdict.allow"]
+msg = "سماح"
+
+["verdict.modify"]
+msg = "تم التعديل"
+
+["verdict.step_up"]
+msg = "طلب إذن"
+
+["verdict.defer"]
+msg = "مؤجل"
+
+["verdict.deny"]
+msg = "رفض"
+
+["assurance.al0"]
+msg = "AL0 مفهرس"
+
+["assurance.al1"]
+msg = "AL1 مرصود"
+
+["assurance.al2"]
+msg = "AL2 موجه"
+
+["assurance.al3"]
+msg = "AL3 معزول"
+
+["assurance.al4"]
+msg = "AL4 مفروض"
+
+["assurance.control.boundary"]
+msg = "حد النظام"
+
+["assurance.control.request"]
+msg = "طلب خطاف"
+
+["assurance.control.observe"]
+msg = "رصد فقط"
+
+["console.nav.home"]
+msg = "الرئيسية"
+
+["console.nav.first_run"]
+msg = "البدء الأول"
+
+["console.nav.users"]
+msg = "المستخدمون"
+
+["console.nav.inventory"]
+msg = "الجرد"
+
+["console.nav.inventory.endpoints"]
+msg = "الأجهزة"
+
+["console.nav.inventory.agents"]
+msg = "الوكلاء"
+
+["console.nav.inventory.mcps"]
+msg = "خوادم MCP"
+
+["console.nav.inventory.skills"]
+msg = "المهارات والقواعد"
+
+["console.nav.inventory.connect"]
+msg = "الربط وMDM"
+
+["console.nav.sessions"]
+msg = "الجلسات"
+
+["console.nav.protect"]
+msg = "الحماية"
+
+["console.nav.review"]
+msg = "قائمة المراجعة"
+
+["console.nav.respond"]
+msg = "الاستجابة"
+
+["console.nav.why"]
+msg = "تفسير القرار"
+
+["console.nav.compliance"]
+msg = "الامتثال"
+
+["console.nav.settings"]
+msg = "الإعدادات والخصوصية"
+
+["console.nav.provider"]
+msg = "المزود"
+
+["console.nav.coverage"]
+msg = "التغطية"
+
+["console.nav.tester"]
+msg = "الاختبار الحي"
+
+["console.nav.integrations"]
+msg = "التكاملات"
+
+["console.nav.group.overview"]
+msg = "نظرة عامة"
+
+["console.nav.group.fleet"]
+msg = "الأسطول والنشاط"
+
+["console.nav.group.protection"]
+msg = "الحماية والاستجابة"
+
+["console.verdict.allow"]
+msg = "سماح"
+
+["console.verdict.modify"]
+msg = "تم التعديل"
+
+["console.verdict.step_up"]
+msg = "طلب إذن"
+
+["console.verdict.defer"]
+msg = "مؤجل"
+
+["console.verdict.deny"]
+msg = "رفض"
+
+["console.stream.connected"]
+msg = "البث المباشر متصل"
+
+["console.stream.reconnecting"]
+msg = "التحديثات متوقفة، جاري إعادة الاتصال"
+
+["console.coverage.title"]
+msg = "التغطية"
+
+["console.coverage.subtitle"]
+msg = "قوة الحماية عبر الوكلاء وأنظمة التشغيل."
+
+["operator.nav.overview"]
+msg = "نظرة عامة"
+
+["operator.nav.health"]
+msg = "الصحة"
+
+["operator.nav.settings"]
+msg = "الإعدادات"
+
+["operator.nav.upgrades"]
+msg = "الترقيات"
+
+["operator.nav.orgs"]
+msg = "المؤسسات"
+
+["operator.nav.keys"]
+msg = "المفاتيح"
+
+["operator.nav.backups"]
+msg = "النسخ الاحتياطي"
+
+["operator.nav.audit"]
+msg = "سجل التدقيق"
+
+["common.count.sandboxed_devices"]
+msg = '''
+.input {$count :number}
+.match $count
+zero {{{$count} أجهزة معزولة}}
+one {{جهاز معزول واحد}}
+two {{جهازان معزولان}}
+few {{{$count} أجهزة معزولة}}
+many {{{$count} جهازًا معزولًا}}
+* {{{$count} جهاز معزول}}
+'''
+
+["common.count.hook_agents"]
+msg = '''
+.input {$count :number}
+.match $count
+zero {{{$count} وكلاء بخطاف تطبيق}}
+one {{وكيل واحد بخطاف تطبيق}}
+two {{وكيلان بخطاف تطبيق}}
+few {{{$count} وكلاء بخطاف تطبيق}}
+many {{{$count} وكيلاً بخطاف تطبيق}}
+* {{{$count} وكيل بخطاف تطبيق}}
+'''
+
+["kit.approval.deny"]
+msg = "رفض"
+
+["kit.approval.why"]
+msg = "لماذا؟"
+
+["kit.approval.allow_once"]
+msg = "سماح لمرة واحدة"
+
+["kit.approval.allow_session"]
+msg = "سماح لهذه الجلسة"
+
+["kit.approval.allow_hour"]
+msg = "سماح لمدة ساعة"
+
+["kit.approval.arming"]
+msg = "جاري التجهيز (1 ث)..."
+
+["kit.approval.confirm_prefix"]
+msg = "تأكيد {$scopeLabel}"
+
+["kit.mode_control.aria_label"]
+msg = "وضع فرض القاعدة"
+
+["kit.mode_control.scope_with_requests"]
+msg = "وضع {$modeLabel}: {$boundaryDevicesText} و{$requestAgentsText}."
+
+["kit.mode_control.scope_boundary_only"]
+msg = "يطبق وضع {$modeLabel}: {$boundaryDevicesText}."
+
+["kit.view_state.empty"]
+msg = "لا توجد سجلات بعد"
+
+["kit.view_state.error"]
+msg = "فشل الاتصال"
+
+["kit.view_state.read_only"]
+msg = "عرض للقراءة فقط"
+
+["kit.why.default_title"]
+msg = "تفسير القرار"
+
+["kit.why.verified_receipt"]
+msg = "إيصال موثق"
+
+["kit.why.unsigned_record"]
+msg = "سجل غير موقع"
+
+["kit.quoted.untrusted"]
+msg = "مدخل وكيل غير موثوق"
+
+["kit.locale.label"]
+msg = "اللغة"
+
+["kit.approval.requested_on"]
+msg = "طلب {$action} على"
+
+["kit.drawer.close"]
+msg = "إغلاق"
+
+["kit.drawer.close_named"]
+msg = "إغلاق {$title}"
+
+["kit.quoted.bidi_badge"]
+msg = "تمت إزالة محارف التحكم"
+
+["kit.why.receipt_id"]
+msg = "الإيصال {$receiptId}"
+
+["kit.why.ref_id"]
+msg = "المرجع {$reference}"
+
+["kit.why.what_happened"]
+msg = "ما الذي حدث"
+
+["kit.why.requested"]
+msg = "طلب"
+
+["kit.why.on"]
+msg = "على"
+
+["kit.why.rule_and_pack"]
+msg = "القاعدة وحزمة السياسات"
+
+["kit.why.session"]
+msg = "الجلسة"
+
+["kit.why.required_approver"]
+msg = "المعتمد المطلوب: {$approver}"
+
+["kit.why.agent_told"]
+msg = "ما أُبلغ به الوكيل (بحد أقصى 600 حرف)"
+
+["kit.why.key_label"]
+msg = "المفتاح: {$keyId}"
+
+["kit.why.key_ephemeral"]
+msg = "محلي مؤقت"
+
+["kit.device.title"]
+msg = "مصفوفة ضمان الجهاز"
+
+["kit.device.profile_protected"]
+msg = "محمي"
+
+["kit.device.profile_user"]
+msg = "وضع المستخدم"
+
+["kit.device.hook_active"]
+msg = "الخطاف نشط"
+
+["kit.device.hook_absent"]
+msg = "الخطاف غير مثبت"
+
+["kit.device.discovery_only"]
+msg = "اكتشاف فقط"
+
+["kit.device.topology"]
+msg = "طوبولوجيا أصول الجهاز"
+
+["kit.device.agent_protection"]
+msg = "حماية الوكلاء ({$count})"
+
+["kit.device.no_agents"]
+msg = "لم يتم الإبلاغ عن وكلاء محليين لهذا الجهاز."
+
+["kit.device.col_agent"]
+msg = "الوكيل"
+
+["kit.device.col_protection"]
+msg = "الحماية"
+
+["kit.device.col_verification"]
+msg = "التحقق"
+
+["kit.device.col_config"]
+msg = "التكوين"
+
+["kit.device.mcp_inventory"]
+msg = "جرد خوادم MCP ({$count})"
+
+["kit.device.no_mcp"]
+msg = "لا توجد خوادم MCP مرتبطة بهذا الجهاز."
+
+["kit.device.col_server"]
+msg = "الخادم"
+
+["kit.device.col_transport"]
+msg = "النقل"
+
+["kit.device.col_digest_pin"]
+msg = "تثبيت البصمة"
+
+["kit.device.control_boundary"]
+msg = "حد النظام"
+
+["kit.device.control_request"]
+msg = "طلب خطاف"
+
+["kit.device.control_observe"]
+msg = "رصد فقط"
+
+["kit.device.vis_verified"]
+msg = "متحقق منه"
+
+["kit.device.vis_unverified"]
+msg = "غير متحقق منه"
+
+["kit.device.fail_closed"]
+msg = "يحظر عند التجاوز"
+
+["kit.device.fail_open"]
+msg = "يسمح عند التجاوز"
+
+["kit.device.tamper_admin"]
+msg = "مقفل من المسؤول"
+
+["kit.device.tamper_user"]
+msg = "قابل للتعديل من المستخدم"
+
+["kit.device.badge_host"]
+msg = "الجهاز"
+
+["kit.device.badge_pinned"]
+msg = "مثبت"
+
+["kit.device.badge_unpinned"]
+msg = "غير مثبت"
+
+["kit.quoted.bidi_flagged"]
+msg = "يحتوي على محارف تحكم مخفية أو ثنائية الاتجاه"
+
+["kit.entity.open_label"]
+msg = "فتح {$kind}: {$label}"
+
+["kit.why.default_desc"]
+msg = "فحص تطابق السياسة الدقيق والهدف المقتبس وإشعار الوكيل"
+
+["kit.why.loading"]
+msg = "جاري تحميل تفسير الإيصال الموقع..."
+
+["action.exec"]
+msg = "تشغيل أمر"
+
+["action.file_read"]
+msg = "قراءة ملف"
+
+["action.file_write"]
+msg = "كتابة ملف"
+
+["action.cred_use"]
+msg = "استخدام بيانات الاعتماد"
+
+["action.mcp_call"]
+msg = "استدعاء أداة MCP"
+
+["approval.grade.g1"]
+msg = "موافقة مطلوبة"
+
+["approval.grade.g2"]
+msg = "موافقة المسؤول"
+
+["approval.grade.g3"]
+msg = "موافقة ثنائية"

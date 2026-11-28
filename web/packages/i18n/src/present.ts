@@ -1,87 +1,250 @@
-const AGENT_DISPLAY_MAP: Record<string, string> = {
-  "claude-code": "Claude Code",
-  claude: "Claude",
-  codex: "Codex",
-  cursor: "Cursor",
-  gemini: "Gemini",
-  "gemini-cli": "Gemini CLI",
-  "github-copilot": "GitHub Copilot",
-  opencode: "OpenCode",
-  windsurf: "Windsurf",
-};
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
+import {
+  HARNESS_CATALOG_ICONS,
+  OS_CATALOG_ICONS,
+  PRESENTATION_REGISTRY,
+  getLocale,
+  t,
+  type LocaleCode,
+  type MessageKey,
+} from "./generated";
+
+export interface CatalogHarnessPresentation {
+  id: string;
+  displayName: string;
+  vendor: string;
+  kind: string;
+  aliases: readonly string[];
+  simpleIcon: string;
+  lucide: string;
+  tone: string;
+}
+
+export interface CatalogOsPresentation {
+  id: string;
+  displayName: string;
+  aliases: readonly string[];
+  simpleIcon: string;
+  lucide: string;
+  tone: string;
+}
+
+const HARNESS_SLUGS: readonly string[] = Array.from(
+  new Set(
+    HARNESS_CATALOG_ICONS.flatMap((entry) => [entry.id, ...entry.aliases]).filter(
+      (s) => s.includes("-") || s.includes("_"),
+    ),
+  ),
+).sort((a, b) => b.length - a.length);
+
+const ACTION_LOOKUP: ReadonlyMap<string, MessageKey> = (() => {
+  const map = new Map<string, MessageKey>();
+  for (const entry of PRESENTATION_REGISTRY) {
+    if (entry.enumName !== "ActionClass") continue;
+    const raw = entry.value.toLowerCase();
+    const labelKey = entry.labelKey as MessageKey;
+    map.set(raw, labelKey);
+    map.set(raw.replace(/\./g, "_"), labelKey);
+    const pascal = entry.value
+      .split(".")
+      .map((part) => capitalizeLabel(part))
+      .join("");
+    map.set(pascal.toLowerCase(), labelKey);
+  }
+  return map;
+})();
+
+const ACTION_TOKENS: readonly string[] = Array.from(
+  new Set(
+    PRESENTATION_REGISTRY.filter((e) => e.enumName === "ActionClass").flatMap((e) => [
+      e.value,
+      e.value
+        .split(".")
+        .map((p) => capitalizeLabel(p))
+        .join(""),
+    ]),
+  ),
+).sort((a, b) => b.length - a.length);
 
 export function capitalizeLabel(value: string): string {
   if (!value) return value;
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-export function presentAgentName(raw: string): string {
-  const trimmed = raw.trim();
-  return AGENT_DISPLAY_MAP[trimmed.toLowerCase()] ?? trimmed;
+function isAsciiAlphaNum(code: number): boolean {
+  return (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
 }
 
-export function formatActionLabel(actionClass: string): string {
-  switch (actionClass) {
-    case "exec":
-    case "Exec":
-      return "Command run";
-    case "file.read":
-    case "FileRead":
-      return "File read";
-    case "file.write":
-    case "FileWrite":
-      return "File write";
-    case "file.delete":
-    case "FileDelete":
-      return "File delete";
-    case "net.connect":
-    case "NetConnect":
-      return "Network connect";
-    case "net.request":
-    case "NetRequest":
-      return "Network request";
-    case "llm.request":
-    case "LlmRequest":
-      return "LLM request";
-    case "mcp.connect":
-    case "McpConnect":
-      return "MCP connect";
-    case "mcp.call":
-    case "McpCall":
-      return "Tool call";
-    case "cred.use":
-    case "CredUse":
-      return "Credential access";
-    case "agent.spawn":
-    case "AgentSpawn":
-      return "Agent spawn";
-    case "config.change":
-    case "ConfigChange":
-      return "Config change";
-    case "elevate":
-    case "Elevate":
-      return "Privilege elevation";
-    case "ui.act":
-    case "UiAct":
-      return "UI action";
-    case "data.flow":
-    case "DataFlow":
-      return "Data transfer";
-    default:
-      return actionClass;
+function hasAsciiBoundaryMatch(haystack: string, needle: string): boolean {
+  if (!needle) return false;
+  let idx = haystack.indexOf(needle);
+  while (idx !== -1) {
+    const leftOk = idx === 0 || !isAsciiAlphaNum(haystack.charCodeAt(idx - 1));
+    const end = idx + needle.length;
+    const rightOk = end >= haystack.length || !isAsciiAlphaNum(haystack.charCodeAt(end));
+    if (leftOk && rightOk) return true;
+    idx = haystack.indexOf(needle, idx + 1);
   }
+  return false;
 }
 
-export function presentFindingTitle(rawTitle: string, agentName?: string): string {
-  let clean = rawTitle
-    .replace(
-      /\b(?:exec|file\.read|file\.write|file\.delete|net\.connect|net\.request|llm\.request|mcp\.connect|mcp\.call|cred\.use|agent\.spawn|config\.change|elevate|ui\.act|data\.flow|Exec|FileRead|FileWrite|FileDelete|NetConnect|NetRequest|LlmRequest|McpConnect|McpCall|CredUse|AgentSpawn|ConfigChange|Elevate|UiAct|DataFlow)\b/g,
-      (token) => formatActionLabel(token),
-    )
-    .replace(
-      /\b(?:claude-code|gemini-cli|github-copilot)\b/gi,
-      (slug) => presentAgentName(slug),
-    );
+function isJsWordChar(code: number): boolean {
+  return isAsciiAlphaNum(code) || code === 95;
+}
+
+function replaceBoundedTokens(
+  input: string,
+  targets: readonly string[],
+  caseInsensitive: boolean,
+  replacer: (matched: string) => string,
+): string {
+  if (!input || targets.length === 0) return input;
+  const haystack = caseInsensitive ? input.toLowerCase() : input;
+  const needles = caseInsensitive ? targets.map((item) => item.toLowerCase()) : targets;
+  let out = "";
+  let lastFlush = 0;
+  let i = 0;
+  while (i < input.length) {
+    const code = input.charCodeAt(i);
+    const atWordStart = isJsWordChar(code) && (i === 0 || !isJsWordChar(input.charCodeAt(i - 1)));
+    if (atWordStart) {
+      let matchedLen = 0;
+      for (const needle of needles) {
+        const end = i + needle.length;
+        if (
+          end <= input.length &&
+          haystack.startsWith(needle, i) &&
+          (end === input.length || !isJsWordChar(input.charCodeAt(end)))
+        ) {
+          matchedLen = needle.length;
+          break;
+        }
+      }
+      if (matchedLen > 0) {
+        out += input.slice(lastFlush, i) + replacer(input.slice(i, i + matchedLen));
+        i += matchedLen;
+        lastFlush = i;
+        continue;
+      }
+    }
+    i += 1;
+  }
+  return lastFlush === 0 ? input : out + input.slice(lastFlush);
+}
+
+function matchesExactCatalogCandidate(norm: string, compact: string, candidate: string): boolean {
+  const cand = candidate.trim().toLowerCase();
+  if (!cand) return false;
+  if (norm === cand) return true;
+  const candCompact = cand.replace(/[^a-z0-9]/g, "");
+  return candCompact.length >= 3 && compact === candCompact;
+}
+
+function matchesBoundedCatalogCandidate(
+  norm: string,
+  tokens: readonly string[],
+  candidate: string,
+): boolean {
+  const cand = candidate.trim().toLowerCase();
+  if (!cand) return false;
+  if (cand.length < 4) {
+    return tokens.includes(cand);
+  }
+  return hasAsciiBoundaryMatch(norm, cand);
+}
+
+export function resolveHarnessCatalogEntry(
+  raw: string,
+  extraCatalog?: ReadonlyArray<CatalogHarnessPresentation>,
+): CatalogHarnessPresentation | null {
+  const norm = raw.trim().toLowerCase();
+  if (!norm) return null;
+  const compact = norm.replace(/[^a-z0-9]/g, "");
+  const tokens = norm.split(/[^a-z0-9]+/).filter(Boolean);
+  const catalog = extraCatalog?.length
+    ? [...extraCatalog, ...HARNESS_CATALOG_ICONS]
+    : HARNESS_CATALOG_ICONS;
+
+  for (const entry of catalog) {
+    if (
+      matchesExactCatalogCandidate(norm, compact, entry.id) ||
+      matchesExactCatalogCandidate(norm, compact, entry.displayName) ||
+      entry.aliases.some((alias) => matchesExactCatalogCandidate(norm, compact, alias))
+    ) {
+      return entry;
+    }
+  }
+  const sortedBySpecificity = [...catalog].sort((a, b) => b.id.length - a.id.length);
+  for (const entry of sortedBySpecificity) {
+    if (
+      matchesBoundedCatalogCandidate(norm, tokens, entry.id) ||
+      matchesBoundedCatalogCandidate(norm, tokens, entry.displayName) ||
+      entry.aliases.some((alias) => matchesBoundedCatalogCandidate(norm, tokens, alias))
+    ) {
+      return entry;
+    }
+  }
+  return null;
+}
+
+export function resolveOsCatalogEntry(raw: string): CatalogOsPresentation | null {
+  const norm = raw.trim().toLowerCase();
+  if (!norm) return null;
+  const compact = norm.replace(/[^a-z0-9]/g, "");
+  const tokens = norm.split(/[^a-z0-9]+/).filter(Boolean);
+  for (const entry of OS_CATALOG_ICONS) {
+    if (
+      matchesExactCatalogCandidate(norm, compact, entry.id) ||
+      matchesExactCatalogCandidate(norm, compact, entry.displayName) ||
+      entry.aliases.some((alias) => matchesExactCatalogCandidate(norm, compact, alias))
+    ) {
+      return entry;
+    }
+  }
+  const sortedBySpecificity = [...OS_CATALOG_ICONS].sort((a, b) => b.id.length - a.id.length);
+  for (const entry of sortedBySpecificity) {
+    if (
+      matchesBoundedCatalogCandidate(norm, tokens, entry.id) ||
+      matchesBoundedCatalogCandidate(norm, tokens, entry.displayName) ||
+      entry.aliases.some((alias) => matchesBoundedCatalogCandidate(norm, tokens, alias))
+    ) {
+      return entry;
+    }
+  }
+  return null;
+}
+
+export function presentAgentName(
+  raw: string,
+  extraCatalog?: ReadonlyArray<CatalogHarnessPresentation>,
+): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return trimmed;
+  const match = resolveHarnessCatalogEntry(trimmed, extraCatalog);
+  if (match) return match.displayName;
+  return trimmed;
+}
+
+export function formatActionLabel(actionClass: string, locale?: LocaleCode): string {
+  const key = ACTION_LOOKUP.get(actionClass.trim().toLowerCase());
+  if (key) {
+    return t(key, undefined, locale ?? getLocale());
+  }
+  return actionClass;
+}
+
+export function presentFindingTitle(
+  rawTitle: string,
+  agentName?: string,
+  locale?: LocaleCode,
+): string {
+  const active = locale ?? getLocale();
+  let clean = replaceBoundedTokens(rawTitle, ACTION_TOKENS, false, (token) =>
+    formatActionLabel(token, active),
+  );
+  clean = replaceBoundedTokens(clean, HARNESS_SLUGS, true, (slug) => presentAgentName(slug));
   if (agentName) {
     const candidates = Array.from(
       new Set([
@@ -108,71 +271,48 @@ export function presentFindingTitle(rawTitle: string, agentName?: string): strin
 }
 
 export function presentIncidentTitle(rawTitle: string): string {
-  return rawTitle
-    .replace(
-      /\b(?:claude-code|gemini-cli|github-copilot|opencode|windsurf|cursor|codex)\b/gi,
-      (slug) => presentAgentName(slug),
-    )
-    .trim();
+  return replaceBoundedTokens(rawTitle, HARNESS_SLUGS, true, (slug) => presentAgentName(slug)).trim();
 }
 
-export function presentIncidentSummary(rawSummary: string): string {
-  const cleaned = rawSummary
-    .replace(
-      /\b(?:exec|file\.read|file\.write|file\.delete|net\.connect|net\.request|mcp\.call|cred\.use|elevate|config\.change|data\.flow)\b/g,
-      (token) => formatActionLabel(token).toLowerCase(),
-    )
-    .replace(
-      /\b(?:claude-code|gemini-cli|github-copilot)\b/gi,
-      (slug) => presentAgentName(slug),
-    )
-    .replace(/\s*;\s*/g, ". ")
-    .trim();
+export function presentIncidentSummary(rawSummary: string, locale?: LocaleCode): string {
+  const active = locale ?? getLocale();
+  let cleaned = replaceBoundedTokens(rawSummary, ACTION_TOKENS, false, (token) =>
+    formatActionLabel(token, active).toLowerCase(),
+  );
+  cleaned = replaceBoundedTokens(cleaned, HARNESS_SLUGS, true, (slug) => presentAgentName(slug));
+  cleaned = cleaned
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(". ");
   if (!cleaned) return cleaned;
-  return /[.!?]$/.test(cleaned) ? cleaned : `${cleaned}.`;
+  return cleaned.endsWith(".") || cleaned.endsWith("!") || cleaned.endsWith("?")
+    ? cleaned
+    : `${cleaned}.`;
 }
 
-export function presentArtifactKind(kind: string): string {
-  switch (kind) {
-    case "skill":
-      return "Skill";
-    case "rule":
-      return "Rule";
-    case "plugin":
-      return "Plugin";
-    case "command":
-      return "Command";
-    case "subagent":
-      return "Subagent";
-    default:
-      return capitalizeLabel(kind);
+function presentByEnum(enumName: string, value: string, locale?: LocaleCode): string {
+  const entry = PRESENTATION_REGISTRY.find(
+    (item) => item.enumName === enumName && item.value === value,
+  );
+  if (entry) {
+    return t(entry.labelKey as MessageKey, undefined, locale ?? getLocale());
   }
+  return capitalizeLabel(value.replace(/[_-]/g, " "));
 }
 
-export function presentArtifactScope(scope: string): string {
-  switch (scope) {
-    case "user":
-      return "User";
-    case "workspace":
-      return "Workspace";
-    case "managed":
-      return "Managed";
-    default:
-      return capitalizeLabel(scope);
-  }
+export function presentArtifactKind(kind: string, locale?: LocaleCode): string {
+  return presentByEnum("ArtifactKind", kind, locale);
 }
 
-export function presentArtifactRiskFlag(flag: string): string {
-  switch (flag) {
-    case "has-scripts":
-      return "Has scripts";
-    case "requests-broad-tools":
-      return "Broad tools";
-    case "bidi-obfuscation":
-      return "Bidi obfuscation";
-    case "unpinned-digest":
-      return "Unpinned digest";
-    default:
-      return capitalizeLabel(flag.replace(/-/g, " "));
-  }
+export function presentArtifactScope(scope: string, locale?: LocaleCode): string {
+  return presentByEnum("ArtifactScope", scope, locale);
+}
+
+export function presentArtifactRiskFlag(flag: string, locale?: LocaleCode): string {
+  return presentByEnum("ArtifactRiskFlag", flag, locale);
+}
+
+export function presentApprovalGrade(grade: string, locale?: LocaleCode): string {
+  return presentByEnum("ApprovalGrade", grade, locale);
 }

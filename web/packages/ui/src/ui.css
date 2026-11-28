@@ -617,3 +617,11 @@
     padding: var(--space-3);
   }
 }
+
+[dir="rtl"] .grdr-icon-mirror {
+  transform: scaleX(-1);
+}
+
+[dir="rtl"] .grdr-hero-wave-img {
+  transform: scaleX(-1);
+}

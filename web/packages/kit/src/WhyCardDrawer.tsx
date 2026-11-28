@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
 import {
   Badge,
   Banner,
@@ -10,10 +13,11 @@ import {
   Text,
   UiSdkDrawer,
   VStack,
+  useGrdrLocale,
 } from "@grdr/ui";
-import { formatActionLabel, formatTimestamp, presentFindingTitle } from "@grdr/i18n";
+import { formatActionLabel, formatTimestamp, presentFindingTitle, t } from "@grdr/i18n";
 import { EntityLink, type EntityTarget } from "./EntityLink";
-import { Quoted } from "./Quoted";
+import { Quoted, sanitizeUntrustedText } from "./Quoted";
 import { VerdictBadge } from "./VerdictBadge";
 
 export interface WhyExplanationView {
@@ -59,24 +63,29 @@ export function WhyCardDrawer({
   onOpenEntity?: (target: EntityTarget) => void;
   onNavigateAction?: (routePath: string) => void;
 }) {
+  const { locale } = useGrdrLocale();
   const open = Boolean(explanation || loading || errorMessage);
 
   return (
     <UiSdkDrawer
       open={open}
       onClose={onClose}
-      title={explanation?.heading ?? "Decision explanation"}
+      title={
+        explanation
+          ? sanitizeUntrustedText(explanation.heading).safeText
+          : t("kit.why.default_title", undefined, locale)
+      }
       description={
         explanation
           ? `${explanation.status_code} · ${explanation.component}`
-          : "Inspect exact policy match, quoted target, and agent notice"
+          : t("kit.why.default_desc", undefined, locale)
       }
     >
       {loading && (
         <HStack gap={2} align="center">
           <GrdrIcon name="clock" size={15} />
           <Text size="sm" color="secondary">
-            Loading signed receipt explanation...
+            {t("kit.why.loading", undefined, locale)}
           </Text>
         </HStack>
       )}
@@ -96,8 +105,8 @@ export function WhyCardDrawer({
                   icon={<GrdrIcon name="key-round" size={11} />}
                   label={
                     explanation.signature_status === "verified"
-                      ? "Verified receipt"
-                      : "Unsigned record"
+                      ? t("kit.why.verified_receipt", undefined, locale)
+                      : t("kit.why.unsigned_record", undefined, locale)
                   }
                 />
               </HStack>
@@ -111,14 +120,17 @@ export function WhyCardDrawer({
                 wordBreak: "normal",
               }}
             >
-              {`Receipt ${explanation.receipt_id}${explanation.reference !== explanation.receipt_id ? ` · Ref ${explanation.reference}` : ""}`}
+              {t("kit.why.receipt_id", { receiptId: explanation.receipt_id }, locale)}
+              {explanation.reference !== explanation.receipt_id
+                ? ` · ${t("kit.why.ref_id", { reference: explanation.reference }, locale)}`
+                : ""}
             </span>
           </VStack>
 
           <Card padding={3}>
             <VStack gap={2}>
               <Text size="sm" color="secondary" weight="semibold">
-                What happened
+                {t("kit.why.what_happened", undefined, locale)}
               </Text>
               <HStack gap={1} align="center" style={{ flexWrap: "wrap", columnGap: 6, rowGap: 4 }}>
                 <EntityLink
@@ -128,11 +140,14 @@ export function WhyCardDrawer({
                   onSelect={onOpenEntity}
                 />
                 <Text size="sm" color="secondary">
-                  requested
+                  {t("kit.why.requested", undefined, locale)}
                 </Text>
-                <Badge variant="neutral" label={formatActionLabel(explanation.action_class)} />
+                <Badge
+                  variant="neutral"
+                  label={<bdi>{formatActionLabel(explanation.action_class, locale)}</bdi>}
+                />
                 <Text size="sm" color="secondary">
-                  on
+                  {t("kit.why.on", undefined, locale)}
                 </Text>
                 <EntityLink
                   kind="device"
@@ -143,7 +158,7 @@ export function WhyCardDrawer({
                 />
               </HStack>
               <Quoted text={explanation.target_quoted} />
-              <Text size="sm">{explanation.reason}</Text>
+              <Text size="sm"><bdi>{sanitizeUntrustedText(explanation.reason).safeText}</bdi></Text>
             </VStack>
           </Card>
 
@@ -151,14 +166,17 @@ export function WhyCardDrawer({
             <VStack gap={2}>
               <HStack justify="between" align="center" style={{ flexWrap: "wrap", gap: 8 }}>
                 <Text size="sm" color="secondary" weight="semibold">
-                  Rule and policy pack
+                  {t("kit.why.rule_and_pack", undefined, locale)}
                 </Text>
                 <Text size="sm" color="secondary" className="mono">
-                  {explanation.pack_id}
+                  <bdi dir="ltr">{explanation.pack_id}</bdi>
                 </Text>
               </HStack>
               <HStack justify="between" align="center" style={{ flexWrap: "wrap", gap: 8 }}>
-                <Heading level={4}>{presentFindingTitle(explanation.rule_title)}</Heading>
+                {/* untrusted rule title fallback */}
+                <Heading level={4}>
+                  <bdi>{sanitizeUntrustedText(presentFindingTitle(explanation.rule_title, undefined, locale)).safeText}</bdi>
+                </Heading>
                 <EntityLink
                   kind="rule"
                   id={explanation.rule_id}
@@ -169,7 +187,7 @@ export function WhyCardDrawer({
               </HStack>
               <HStack gap={2} align="center" style={{ flexWrap: "wrap" }}>
                 <Text size="sm" color="secondary">
-                  Session
+                  {t("kit.why.session", undefined, locale)}
                 </Text>
                 <EntityLink
                   kind="session"
@@ -181,7 +199,7 @@ export function WhyCardDrawer({
               </HStack>
               {explanation.approver_label && (
                 <Text size="sm" color="secondary">
-                  {`Required approver: ${explanation.approver_label}`}
+                  {t("kit.why.required_approver", { approver: explanation.approver_label }, locale)}
                 </Text>
               )}
             </VStack>
@@ -192,7 +210,7 @@ export function WhyCardDrawer({
               <HStack gap={2} align="center">
                 <GrdrIcon name="terminal" size={14} />
                 <Text size="sm" color="secondary" weight="semibold">
-                  What the agent was told (max 600 chars)
+                  {t("kit.why.agent_told", undefined, locale)}
                 </Text>
               </HStack>
               <Quoted text={explanation.agent_told} />
@@ -204,10 +222,14 @@ export function WhyCardDrawer({
           <HStack justify="between" align="center" style={{ flexWrap: "wrap", gap: 8 }}>
             <VStack gap={0}>
               <Text size="sm" color="secondary" className="mono">
-                {`Key: ${explanation.key_id ?? "local-ephemeral"}`}
+                {t(
+                  "kit.why.key_label",
+                  { keyId: explanation.key_id ?? t("kit.why.key_ephemeral", undefined, locale) },
+                  locale,
+                )}
               </Text>
               <Text size="sm" color="secondary" hasTabularNumbers>
-                {formatTimestamp(explanation.timestamp)}
+                {formatTimestamp(explanation.timestamp, locale)}
               </Text>
             </VStack>
             <Button

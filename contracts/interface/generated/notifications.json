@@ -1,0 +1,90 @@
+[
+  {
+    "class": "page",
+    "channels": [
+      "tray",
+      "webhook",
+      "pager"
+    ],
+    "dedup_window_secs": 60,
+    "quiet_hours": false,
+    "tone": "danger",
+    "icon": "security.alert",
+    "title_token": "desktop.why.blocked"
+  },
+  {
+    "class": "approval.request",
+    "channels": [
+      "tray",
+      "native-prompt",
+      "console"
+    ],
+    "dedup_window_secs": 10,
+    "quiet_hours": false,
+    "tone": "warning",
+    "icon": "verdict.step_up",
+    "title_token": "desktop.why.step_up"
+  },
+  {
+    "class": "incident.update",
+    "channels": [
+      "console",
+      "webhook",
+      "email"
+    ],
+    "dedup_window_secs": 300,
+    "quiet_hours": true,
+    "tone": "danger",
+    "icon": "nav.respond",
+    "title_token": "console.nav.respond"
+  },
+  {
+    "class": "health",
+    "channels": [
+      "tray",
+      "console",
+      "operator"
+    ],
+    "dedup_window_secs": 600,
+    "quiet_hours": true,
+    "tone": "warning",
+    "icon": "nav.operator_health",
+    "title_token": "operator.nav.health"
+  },
+  {
+    "class": "digest",
+    "channels": [
+      "email",
+      "console"
+    ],
+    "dedup_window_secs": 86400,
+    "quiet_hours": true,
+    "tone": "info",
+    "icon": "nav.compliance",
+    "title_token": "console.nav.compliance"
+  },
+  {
+    "class": "block",
+    "channels": [
+      "tray",
+      "console"
+    ],
+    "dedup_window_secs": 30,
+    "quiet_hours": false,
+    "tone": "danger",
+    "icon": "mode.block",
+    "title_token": "desktop.why.blocked"
+  },
+  {
+    "class": "promotion",
+    "channels": [
+      "console",
+      "webhook"
+    ],
+    "dedup_window_secs": 300,
+    "quiet_hours": true,
+    "tone": "info",
+    "icon": "nav.protect",
+    "title_token": "console.nav.protect"
+  }
+]

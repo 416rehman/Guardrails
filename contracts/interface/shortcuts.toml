@@ -1,0 +1,65 @@
+# Guardrails ADR keyboard shortcuts registry (design/27 section 3).
+schema = "grdr.shortcuts.v1alpha1"
+
+[[shortcut]]
+action = "command-palette.open"
+scope = "global"
+keys = "Ctrl+K"
+macos_keys = "Cmd+K"
+desc = "Open search and command palette"
+
+[[shortcut]]
+action = "sidebar.toggle"
+scope = "global"
+keys = "Ctrl+B"
+macos_keys = "Cmd+B"
+desc = "Collapse or expand navigation sidebar"
+
+[[shortcut]]
+action = "theme.toggle"
+scope = "global"
+keys = "Alt+T"
+macos_keys = "Option+T"
+desc = "Switch between Porcelain Light and Carbon Obsidian"
+
+[[shortcut]]
+action = "drawer.close"
+scope = "drawer"
+keys = "Escape"
+macos_keys = "Escape"
+desc = "Close active drawer without discarding input"
+
+[[shortcut]]
+action = "approval.deny"
+scope = "approval"
+keys = "Escape"
+macos_keys = "Escape"
+desc = "Deny the focused approval request"
+
+[[shortcut]]
+action = "approval.activate"
+scope = "approval"
+keys = "Enter"
+macos_keys = "Return"
+desc = "Activate the focused approval button"
+
+[[shortcut]]
+action = "nav.home"
+scope = "console"
+keys = "G then H"
+macos_keys = "G then H"
+desc = "Jump to Home view"
+
+[[shortcut]]
+action = "nav.sessions"
+scope = "console"
+keys = "G then S"
+macos_keys = "G then S"
+desc = "Jump to Sessions view"
+
+[[shortcut]]
+action = "nav.respond"
+scope = "console"
+keys = "G then R"
+macos_keys = "G then R"
+desc = "Jump to Respond view"
