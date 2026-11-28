@@ -14,6 +14,7 @@ mod win_acl;
 pub mod win_peer;
 #[cfg(windows)]
 mod win_proc;
+#[cfg(windows)]
 mod win_tcb;
 #[cfg(windows)]
 mod win_tcb_signer;
