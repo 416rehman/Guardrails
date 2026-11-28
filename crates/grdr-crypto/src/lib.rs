@@ -16,7 +16,15 @@ use subtle::ConstantTimeEq as _;
 use zeroize::{Zeroize, Zeroizing};
 
 mod aead;
+mod fips;
 pub use aead::{AeadKey, open_token, seal_token};
+pub use fips::{
+    FIPS_REQUIRE_VALIDATED_ENV, FipsBuildProfile, FipsPlatformEligibility, FipsSbomClaim,
+    FipsSelfTestReport, FipsStartupMode, FipsTlsPolicy, FipsValidationState, TlsCipherSuite,
+    TlsKeyExchangeGroup, compiled_fips_profile, evaluate_sbom_fips_claim, filter_tls_cipher_suites,
+    filter_tls_kx_groups, parse_fips_startup_mode, run_startup_crypto_self_test,
+    startup_crypto_self_test_from_env, startup_fips_mode_from_env,
+};
 
 pub const SHA256_DIGEST_LEN: usize = 32;
 pub const SHA256_HEX_LEN: usize = 64;
@@ -43,6 +51,10 @@ pub enum CryptoError {
     AeadEncrypt(String),
     #[error("GRDR-CRYPTO-0008: invalid or tampered sealed token")]
     InvalidToken,
+    #[error("GRDR-CRYPTO-0009: startup crypto self-test failed: {0}")]
+    FipsSelfTestFailed(String),
+    #[error("GRDR-CRYPTO-0010: validated FIPS module required but unavailable: {0}")]
+    FipsModuleUnavailable(String),
 }
 
 #[derive(Clone)]

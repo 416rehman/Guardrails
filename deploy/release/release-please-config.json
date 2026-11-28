@@ -11,7 +11,69 @@
   "include-v-in-tag": true,
   "tag-separator": "-",
   "plugins": [
-    { "type": "cargo-workspace", "merge": false }
+    {
+      "type": "cargo-workspace",
+      "merge": false,
+      "updateAllPackages": false
+    }
   ],
-  "packages": {}
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "component": "grdr",
+      "package-name": "grdr-bundle",
+      "version-file": "deploy/release/VERSION",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "deploy/release/VERSION"
+        }
+      ]
+    },
+    "crates/grdr-compat": {},
+    "crates/grdr-core": {},
+    "crates/grdr-crypto": {},
+    "crates/grdr-fastpath": {},
+    "crates/grdr-fastpath-ffi": {},
+    "crates/grdr-ffi": {},
+    "crates/grdr-intel": {},
+    "crates/grdr-llm-proto": {},
+    "crates/grdr-mcp-proto": {},
+    "crates/grdr-model": {},
+    "crates/grdr-ports": {},
+    "crates/grdr-ports-testkit": {},
+    "crates/grdr-proto": {},
+    "crates/grdr-review": {},
+    "crates/grdr-schema": {},
+    "crates/grdr-strings": {},
+    "crates/grdr-wasm": {},
+    "crates/grdr-wire": {},
+    "programs/grdr": {
+      "component": "grdr-cli",
+      "package-name": "grdr"
+    },
+    "programs/grdr-server": {},
+    "bpf/grdr-sensor-linux-bpf": {},
+    "desktop/grdr-desktop": {},
+    "deploy/helm/grdr-server": {
+      "release-type": "helm",
+      "component": "chart-grdr-server"
+    },
+    "deploy/helm/grdr-node-sensor": {
+      "release-type": "helm",
+      "component": "chart-grdr-node-sensor"
+    },
+    "deploy/terraform/aws": {
+      "release-type": "terraform-module",
+      "component": "tf-aws"
+    },
+    "deploy/terraform/gcp": {
+      "release-type": "terraform-module",
+      "component": "tf-gcp"
+    },
+    "deploy/terraform/azure": {
+      "release-type": "terraform-module",
+      "component": "tf-azure"
+    }
+  }
 }

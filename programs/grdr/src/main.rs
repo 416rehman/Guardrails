@@ -221,6 +221,12 @@ enum Command {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    if !matches!(cli.command, Command::Doctor { .. })
+        && let Err(err) = grdr_crypto::startup_crypto_self_test_from_env()
+    {
+        eprintln!("{err}");
+        return ExitCode::FAILURE;
+    }
     match cli.command {
         Command::Scan { json, profile } => run_scan(json, profile),
         Command::Status { daemon } => run_status(&daemon),

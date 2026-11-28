@@ -1,0 +1,97 @@
+# syntax=docker/dockerfile:1.7
+# Multi-arch FIPS server image (<version>-fips) for Linux (docs/design/24 section 13, E5.5).
+# macOS carries no FIPS build or claim; Windows ships MSI with shared module.
+
+ARG RUST_IMAGE=docker.io/library/rust:1.99.1-bookworm@sha256:e6f2cff35d0f309acf8433b4f05878ed77092602c5065cc81801177da0bb3a9c
+ARG NODE_IMAGE=docker.io/library/node:22-bookworm-slim@sha256:be979e5523c76fa4d5ca4ebd3099078f220aa47ec39c48ad5b5df9314debd6eb
+
+FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS web-builder
+WORKDIR /src/web
+RUN corepack enable
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
+COPY web/apps/console/package.json ./apps/console/
+COPY web/packages/api/package.json ./packages/api/
+COPY web/packages/i18n/package.json ./packages/i18n/
+COPY web/packages/kit/package.json ./packages/kit/
+COPY web/packages/tokens/package.json ./packages/tokens/
+COPY web/packages/ui/package.json ./packages/ui/
+COPY web/apps/operator/package.json ./apps/operator/
+RUN pnpm install --frozen-lockfile --ignore-scripts
+COPY web/ ./
+RUN pnpm run build
+
+FROM ${RUST_IMAGE} AS rust-builder
+ARG TARGETARCH
+WORKDIR /src
+
+# Base images pinned strictly by immutable SHA-256 digest above. Builder apt packages install
+# from the digest-pinned Bookworm base snapshot with --no-install-recommends and record exact
+# installed versions into /rootfs/usr/share/grdr/fips-builder-dpkg.txt for SBOM provenance.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      clang \
+      cmake \
+      golang \
+      libclang-dev \
+      musl-tools \
+      nasm \
+      perl \
+      pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY crates ./crates
+COPY programs ./programs
+COPY contracts ./contracts
+COPY bpf ./bpf
+
+RUN case "${TARGETARCH}" in \
+      amd64) MUSL_TARGET="x86_64-unknown-linux-musl" ;; \
+      arm64) MUSL_TARGET="aarch64-unknown-linux-musl" ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && rustup target add "${MUSL_TARGET}" \
+    && CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 cargo build --release --locked --target "${MUSL_TARGET}" -p grdr-server -p grdr --features fips \
+    && mkdir -p \
+         /rootfs/usr/local/bin \
+         /rootfs/usr/libexec/grdr \
+         /rootfs/usr/lib/grdr/engines \
+         /rootfs/usr/share/grdr/web \
+         /rootfs/etc/ssl/certs \
+         /rootfs/var/lib/grdr \
+         /rootfs/tmp \
+    && install -m 0755 "target/${MUSL_TARGET}/release/grdr-server" /rootfs/usr/local/bin/grdr-server \
+    && install -m 0755 "target/${MUSL_TARGET}/release/grdr" /rootfs/usr/local/bin/grdr \
+    && dpkg-query -W -f='${Package}=${Version}\n' | sort > /rootfs/usr/share/grdr/fips-builder-dpkg.txt \
+    && cp /etc/ssl/certs/ca-certificates.crt /rootfs/etc/ssl/certs/ca-certificates.crt \
+    && printf 'grdr:x:65532:65532:Guardrails ADR:/var/lib/grdr:/sbin/nologin\n' > /rootfs/etc/passwd \
+    && printf 'grdr:x:65532:\n' > /rootfs/etc/group \
+    && chown -R 65532:65532 /rootfs/var/lib/grdr \
+    && chmod 0750 /rootfs/var/lib/grdr \
+    && chmod 1777 /rootfs/tmp
+
+COPY --from=web-builder /src/web/dist /rootfs/usr/share/grdr/web
+
+FROM scratch AS runtime
+LABEL org.opencontainers.image.title="grdr-server-fips" \
+      org.opencontainers.image.description="Guardrails ADR FIPS build variant server image (Linux only)" \
+      org.opencontainers.image.vendor="Loonaro" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.source="https://github.com/416rehman/Guardrails" \
+      grdr.fips.profile="fips" \
+      grdr.fips.cmvp-status="unvalidated-pending-sp-24-2"
+
+COPY --from=rust-builder /rootfs /
+
+USER 65532:65532
+EXPOSE 8787 44444 9090
+VOLUME ["/var/lib/grdr"]
+
+ENV GRDR_DATA_DIR=/var/lib/grdr \
+    GRDR_WEB_DIR=/usr/share/grdr/web \
+    GRDR_SERVER_BIND=0.0.0.0:8787 \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+    GRDR_FIPS_REQUIRE_VALIDATED_MODULE=0
+
+ENTRYPOINT ["/usr/local/bin/grdr-server"]
+CMD ["--bind", "0.0.0.0:8787", "--data-dir", "/var/lib/grdr", "--web-dir", "/usr/share/grdr/web"]

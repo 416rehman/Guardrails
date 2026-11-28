@@ -1,0 +1,12 @@
+# External Security Audit Register (`docs/plan/preconditions.toml`: `pre-external-audit`, W5-4 [EXT]).
+schema = "grdr.external-audits.v1alpha1"
+precondition_id = "pre-external-audit"
+blocking_phase = "public_production_ga_seal"
+non_blocking_for_dev_build = true
+
+[[engagements]]
+id = "AUDIT-TRUST-CORE-01"
+scope = "security/trust-core.paths (crypto, policy evaluator, TUF updater, IPC daemon, eBPF/OS shims)"
+status = "pending_external_precondition"
+published_report_path = ""
+notes = "Requires external security review budget/sponsor before final GA publication; internal dual-model and CI gates active."

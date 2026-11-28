@@ -115,6 +115,8 @@ fn main() -> ExitCode {
 }
 
 fn run_self_test(args: &Args) -> Result<(), DaemonError> {
+    grdr_crypto::startup_crypto_self_test_from_env()
+        .map_err(|e| DaemonError::InitFailed(e.to_string()))?;
     if args.profile == CliProfile::Protected {
         return Err(DaemonError::InitFailed(
             "Protected profile prohibits --self-test".to_string(),
@@ -131,6 +133,8 @@ fn run_self_test(args: &Args) -> Result<(), DaemonError> {
 }
 
 fn run_daemon(args: &Args) -> Result<(), DaemonError> {
+    grdr_crypto::startup_crypto_self_test_from_env()
+        .map_err(|e| DaemonError::InitFailed(e.to_string()))?;
     install_signal_handlers().map_err(|e| DaemonError::InitFailed(e.to_string()))?;
     if let Err(err) = register_scm_handler("Guardrails") {
         tracing::debug!(error = %err, "SCM handler registration skipped");

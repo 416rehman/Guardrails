@@ -840,3 +840,147 @@ fn rejects_role_confusion_dsse_mismatch_snapshot_len_airgap_traversal_and_stagin
         }
     ));
 }
+
+#[test]
+fn verify_initial_tuf_and_sigstore_root_fixtures() {
+    use base64::Engine as _;
+    use base64::engine::general_purpose::STANDARD as B64;
+    use grdr_crypto::sha256_digest;
+    use std::collections::BTreeSet;
+
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let root_path = manifest_dir.join("../../deploy/release/tuf/1.root.json");
+    let raw = std::fs::read_to_string(&root_path).expect("read 1.root.json");
+    let parsed: SignedMetadata<RootMetadata> =
+        serde_json::from_str(&raw).expect("parse 1.root.json");
+    assert_eq!(parsed.signed.root_kind, TufRootKind::Project);
+    assert_eq!(parsed.signed.version, 1);
+    assert!(
+        !parsed.signed.roles.contains_key(&TufRole::Fleet),
+        "D-37 project root must not declare deployment fleet role"
+    );
+    assert!(parsed.signatures.len() >= 2);
+    let now: Timestamp = "2026-11-27T00:00:00Z".parse().expect("now");
+    assert!(
+        parsed.signed.expires > now,
+        "1.root.json must not be expired"
+    );
+
+    let root_kids: BTreeSet<&str> = parsed
+        .signed
+        .roles
+        .get(&TufRole::Root)
+        .expect("root role")
+        .key_ids
+        .iter()
+        .map(String::as_str)
+        .collect();
+    assert!(root_kids.len() >= 2);
+    let mut online_kids = BTreeSet::new();
+    for online_role in [
+        TufRole::Timestamp,
+        TufRole::Snapshot,
+        TufRole::Content,
+        TufRole::Rollout,
+    ] {
+        let role = parsed
+            .signed
+            .roles
+            .get(&online_role)
+            .expect("online role present");
+        for kid in &role.key_ids {
+            assert!(
+                !root_kids.contains(kid.as_str()),
+                "root key reused by online role {online_role:?}"
+            );
+            assert!(
+                online_kids.insert(kid.as_str()),
+                "online role {online_role:?} reused another online role key"
+            );
+        }
+    }
+
+    let trust = UpdateTrust::new(parsed, now).expect("verify initial 1.root.json");
+    assert_eq!(trust.project_root_version(), 1);
+
+    let sigstore_path = manifest_dir.join("../../deploy/release/sigstore/trusted_root.json");
+    let sigstore_raw = std::fs::read_to_string(&sigstore_path).expect("read trusted_root.json");
+    let sigstore_json: serde_json::Value =
+        serde_json::from_str(&sigstore_raw).expect("parse trusted_root.json");
+    assert_eq!(
+        sigstore_json.get("mediaType").and_then(|v| v.as_str()),
+        Some("application/vnd.dev.sigstore.trustedroot+json;version=0.1")
+    );
+    for log_section in ["tlogs", "ctlogs"] {
+        let logs = sigstore_json
+            .get(log_section)
+            .and_then(|v| v.as_array())
+            .expect("log array");
+        assert!(!logs.is_empty(), "{log_section} must not be empty");
+        for entry in logs {
+            let spki_b64 = entry
+                .get("publicKey")
+                .and_then(|pk| pk.get("rawBytes"))
+                .and_then(|v| v.as_str())
+                .expect("rawBytes");
+            let spki_der = B64.decode(spki_b64).expect("base64 SPKI");
+            assert!(spki_der.len() >= 44 && spki_der.first() == Some(&0x30));
+            let key_id_b64 = entry
+                .get("logId")
+                .and_then(|lid| lid.get("keyId"))
+                .and_then(|v| v.as_str())
+                .expect("logId.keyId");
+            let key_id = B64.decode(key_id_b64).expect("base64 keyId");
+            assert_eq!(key_id.len(), 32);
+            let base_url = entry
+                .get("baseUrl")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            if log_section == "ctlogs" || base_url == "https://rekor.sigstore.dev" {
+                assert_eq!(key_id.as_slice(), &sha256_digest(&spki_der));
+            }
+        }
+    }
+    assert!(
+        sigstore_json["tlogs"]
+            .as_array()
+            .expect("tlogs")
+            .iter()
+            .any(
+                |e| e.get("baseUrl").and_then(|v| v.as_str()) == Some("https://rekor.sigstore.dev")
+            )
+    );
+    assert!(
+        sigstore_json["certificateAuthorities"]
+            .as_array()
+            .expect("certificateAuthorities")
+            .iter()
+            .any(|e| e.get("uri").and_then(|v| v.as_str()) == Some("https://fulcio.sigstore.dev"))
+    );
+    for auth_section in ["certificateAuthorities", "timestampAuthorities"] {
+        let authorities = sigstore_json
+            .get(auth_section)
+            .and_then(|v| v.as_array())
+            .expect("authority array");
+        assert!(!authorities.is_empty(), "{auth_section} must not be empty");
+        for entry in authorities {
+            let certs = entry
+                .get("certChain")
+                .and_then(|c| c.get("certificates"))
+                .and_then(|c| c.as_array())
+                .expect("certChain.certificates");
+            assert!(
+                !certs.is_empty(),
+                "{auth_section} certChain must not be empty"
+            );
+            for cert in certs {
+                let raw_b64 = cert
+                    .get("rawBytes")
+                    .and_then(|v| v.as_str())
+                    .expect("cert rawBytes");
+                let der = B64.decode(raw_b64).expect("base64 X.509 cert");
+                assert!(der.len() >= 100 && der.first() == Some(&0x30));
+            }
+        }
+    }
+}

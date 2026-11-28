@@ -28,6 +28,33 @@ pub enum WindowsProcessDoctorSection {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DoctorFipsProfile {
+    Standard,
+    Fips,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DoctorFipsValidationState {
+    ValidatedModuleActive,
+    SelfTestPassedNonFipsModule,
+    UnsupportedPlatform,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DoctorFipsSection {
+    pub profile: DoctorFipsProfile,
+    pub validation_state: DoctorFipsValidationState,
+    pub fips_runtime_mode: bool,
+    pub awslc_version: Option<String>,
+    pub fips_module_version: Option<u32>,
+    pub passed_kats: Vec<String>,
+    pub detail: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DoctorReport {
     pub device_name: String,
@@ -35,6 +62,7 @@ pub struct DoctorReport {
     pub arch: String,
     pub install_profile: InstallProfile,
     pub worst_severity: DoctorSeverity,
+    pub crypto_fips: DoctorFipsSection,
     pub windows_telemetry: WindowsTelemetryAdvisory,
     pub windows_process_observation: WindowsProcessDoctorSection,
     pub discovered_agent_count: usize,
@@ -131,7 +159,78 @@ pub fn build_doctor_report_with(
         WindowsProcessDoctorSection::NotApplicable
     };
 
-    let worst_severity = windows_telemetry.severity;
+    let (crypto_fips, fips_failed) = match grdr_crypto::startup_crypto_self_test_from_env() {
+        Ok(report) => {
+            let unvalidated_fips_build = report.profile == grdr_crypto::FipsBuildProfile::Fips
+                && report.state != grdr_crypto::FipsValidationState::ValidatedModuleActive;
+            let detail = if unvalidated_fips_build {
+                Some(
+                    "FIPS build profile compiled without an active CMVP-validated cryptographic module (SP-24-2 pending)"
+                        .to_string(),
+                )
+            } else {
+                None
+            };
+            (
+                DoctorFipsSection {
+                    profile: match report.profile {
+                        grdr_crypto::FipsBuildProfile::Standard => DoctorFipsProfile::Standard,
+                        grdr_crypto::FipsBuildProfile::Fips => DoctorFipsProfile::Fips,
+                    },
+                    validation_state: match report.state {
+                        grdr_crypto::FipsValidationState::ValidatedModuleActive => {
+                            DoctorFipsValidationState::ValidatedModuleActive
+                        }
+                        grdr_crypto::FipsValidationState::SelfTestPassedNonFipsModule => {
+                            DoctorFipsValidationState::SelfTestPassedNonFipsModule
+                        }
+                        grdr_crypto::FipsValidationState::UnsupportedPlatform => {
+                            DoctorFipsValidationState::UnsupportedPlatform
+                        }
+                        grdr_crypto::FipsValidationState::Failed => {
+                            DoctorFipsValidationState::Failed
+                        }
+                    },
+                    fips_runtime_mode: report.fips_runtime_mode,
+                    awslc_version: report.awslc_version.map(ToOwned::to_owned),
+                    fips_module_version: report.fips_module_version,
+                    passed_kats: report
+                        .passed_kats
+                        .into_iter()
+                        .map(ToOwned::to_owned)
+                        .collect(),
+                    detail,
+                },
+                false,
+            )
+        }
+        Err(err) => (
+            DoctorFipsSection {
+                profile: match grdr_crypto::compiled_fips_profile() {
+                    grdr_crypto::FipsBuildProfile::Standard => DoctorFipsProfile::Standard,
+                    grdr_crypto::FipsBuildProfile::Fips => DoctorFipsProfile::Fips,
+                },
+                validation_state: DoctorFipsValidationState::Failed,
+                fips_runtime_mode: false,
+                awslc_version: None,
+                fips_module_version: None,
+                passed_kats: Vec::new(),
+                detail: Some(err.to_string()),
+            },
+            true,
+        ),
+    };
+
+    let unvalidated_fips_build = !fips_failed
+        && crypto_fips.profile == DoctorFipsProfile::Fips
+        && crypto_fips.validation_state != DoctorFipsValidationState::ValidatedModuleActive;
+    let worst_severity = if fips_failed || windows_telemetry.severity == DoctorSeverity::Error {
+        DoctorSeverity::Error
+    } else if unvalidated_fips_build || windows_telemetry.severity == DoctorSeverity::Advisory {
+        DoctorSeverity::Advisory
+    } else {
+        DoctorSeverity::Info
+    };
 
     DoctorReport {
         device_name: device_name.into(),
@@ -139,6 +238,7 @@ pub fn build_doctor_report_with(
         arch: std::env::consts::ARCH.into(),
         install_profile: profile,
         worst_severity,
+        crypto_fips,
         windows_telemetry,
         windows_process_observation,
         discovered_agent_count,
@@ -163,6 +263,13 @@ fn print_human_report(report: &DoctorReport) {
     println!(
         "Inventory: {} configured agent(s), {} MCP server(s)",
         report.discovered_agent_count, report.discovered_mcp_count
+    );
+    println!(
+        "Crypto profile: {:?} (state: {:?}, fips_runtime_mode: {}, fips_module_version: {:?})",
+        report.crypto_fips.profile,
+        report.crypto_fips.validation_state,
+        report.crypto_fips.fips_runtime_mode,
+        report.crypto_fips.fips_module_version
     );
 
     let state_label = match report.windows_telemetry.state {
@@ -259,8 +366,20 @@ mod tests {
             linux_report.windows_telemetry.state,
             WindowsOptionalTelemetryState::NotApplicable
         );
-        assert_eq!(linux_report.worst_severity, DoctorSeverity::Info);
-        assert_eq!(exit_code_for_report(&linux_report, true), ExitCode::SUCCESS);
+        #[cfg(feature = "fips")]
+        {
+            assert_eq!(linux_report.worst_severity, DoctorSeverity::Advisory);
+            assert_eq!(
+                exit_code_for_report(&linux_report, false),
+                ExitCode::SUCCESS
+            );
+            assert_eq!(exit_code_for_report(&linux_report, true), ExitCode::FAILURE);
+        }
+        #[cfg(not(feature = "fips"))]
+        {
+            assert_eq!(linux_report.worst_severity, DoctorSeverity::Info);
+            assert_eq!(exit_code_for_report(&linux_report, true), ExitCode::SUCCESS);
+        }
 
         let win_exposed = build_doctor_report_with(
             "win-endpoint",

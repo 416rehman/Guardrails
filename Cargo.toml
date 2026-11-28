@@ -7,6 +7,7 @@ exclude = ["bpf/grdr-sensor-linux-bpf", "desktop/grdr-desktop", "fuzz"]
 store = { path = "security/supply-chain" }
 
 [workspace.dependencies]
+aws-lc-rs = { version = "1.19", default-features = false, features = ["aws-lc-sys", "prebuilt-nasm"] }
 axum = { version = "0.8", features = ["json", "macros"] }
 base64 = "0.23"
 cedar-policy = "4.15"

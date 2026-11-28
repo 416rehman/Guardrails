@@ -54,6 +54,13 @@ jobs:
       # A refused path fails this job, and every job that needs it is skipped.
       - name: Check the paths of the commit's tree
         run: python3 -I -B .github/actions/tree-paths/check_tree.py --rev HEAD
+      - name: Check release config, advisories, and support.toml CI matrix drift
+        run: |
+          python3 -I -B deploy/release/release_tools.py check-config
+          python3 -I -B deploy/release/release_tools.py support-matrix --check-workflow .github/workflows/release.yml
+          python3 -I -B deploy/release/test_release_tools.py -v
+          python3 -I -B security/advisories/generate_advisories.py --check-dir security/advisories/records
+          python3 -I -B security/advisories/test_advisories.py -v
       - id: plan
         env:
           GH_TOKEN: ${{ github.token }}
@@ -136,6 +143,9 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --locked --all-targets -- -D warnings
       - run: cargo test --workspace --locked
+      - name: Verify FIPS crypto self-test across FIPS-enabled packages on Linux and Windows
+        if: matrix.os != 'macos-26'
+        run: cargo test -p grdr-crypto -p grdr -p grdr-daemon -p grdr-server -p grdr-updater --locked --features fips
 
   deny:
     needs: plan
@@ -172,8 +182,142 @@ jobs:
           RUSTUP_TOOLCHAIN: ${{ env.RUSTUP_TOOLCHAIN }}
         with:
           command: check
+          arguments: --all-features --config security/deny.embedded.toml
+      - uses: EmbarkStudios/cargo-deny-action@17aeb3c839e42274e2b8adf721c8c65edfdc74dd # v2.1.3
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.RUSTUP_TOOLCHAIN }}
+        with:
+          command: check
           manifest-path: fuzz/Cargo.toml
           arguments: --all-features --config fuzz/deny.toml
+      - name: Check GPL control fixture
+        uses: EmbarkStudios/cargo-deny-action@17aeb3c839e42274e2b8adf721c8c65edfdc74dd # v2.1.3
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.RUSTUP_TOOLCHAIN }}
+        with:
+          command: check
+          manifest-path: security/supply-chain/fixtures/deny/gpl-crate-control/Cargo.toml
+          arguments: --all-features --config security/deny.toml bans licenses sources
+      - name: Check banned-crate control fixture
+        uses: EmbarkStudios/cargo-deny-action@17aeb3c839e42274e2b8adf721c8c65edfdc74dd # v2.1.3
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.RUSTUP_TOOLCHAIN }}
+        with:
+          command: check
+          manifest-path: security/supply-chain/fixtures/deny/banned-crate-control/Cargo.toml
+          arguments: --all-features --config security/deny.toml bans licenses sources
+      - name: Check git-source control fixture
+        uses: EmbarkStudios/cargo-deny-action@17aeb3c839e42274e2b8adf721c8c65edfdc74dd # v2.1.3
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.RUSTUP_TOOLCHAIN }}
+        with:
+          command: check
+          manifest-path: security/supply-chain/fixtures/deny/git-source-control/Cargo.toml
+          arguments: --all-features --config security/deny.toml bans licenses sources
+      - id: neg-gpl
+        name: Reject seeded GPL crate fixture
+        continue-on-error: true
+        uses: EmbarkStudios/cargo-deny-action@17aeb3c839e42274e2b8adf721c8c65edfdc74dd # v2.1.3
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.RUSTUP_TOOLCHAIN }}
+        with:
+          command: check
+          manifest-path: security/supply-chain/fixtures/deny/gpl-crate/Cargo.toml
+          arguments: --all-features --config security/deny.toml licenses
+      - id: neg-banned
+        name: Reject seeded banned crate fixture
+        continue-on-error: true
+        uses: EmbarkStudios/cargo-deny-action@17aeb3c839e42274e2b8adf721c8c65edfdc74dd # v2.1.3
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.RUSTUP_TOOLCHAIN }}
+        with:
+          command: check
+          manifest-path: security/supply-chain/fixtures/deny/banned-crate/Cargo.toml
+          arguments: --all-features --config security/deny.toml bans
+      - id: neg-mpl
+        name: Reject seeded MPL-2.0 embedded closure fixture
+        continue-on-error: true
+        uses: EmbarkStudios/cargo-deny-action@17aeb3c839e42274e2b8adf721c8c65edfdc74dd # v2.1.3
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.RUSTUP_TOOLCHAIN }}
+        with:
+          command: check
+          manifest-path: security/supply-chain/fixtures/deny/mpl-closure/Cargo.toml
+          arguments: --all-features --config security/deny.embedded.toml licenses
+      - name: Assert negative cargo-deny fixtures failed as required
+        env:
+          NEG_GPL: ${{ steps.neg-gpl.outcome }}
+          NEG_BANNED: ${{ steps.neg-banned.outcome }}
+          NEG_MPL: ${{ steps.neg-mpl.outcome }}
+        run: |
+          test "$NEG_GPL" = "failure"
+          test "$NEG_BANNED" = "failure"
+          test "$NEG_MPL" = "failure"
+
+  contracts-and-helm:
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
+    name: Architecture lint, licence lint, and Helm verification
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Run architecture, licence, and Helm checks
+        run: |
+          node scripts/check-architecture.mjs
+          node scripts/licence-lint.mjs
+          if command -v helm >/dev/null 2>&1; then
+            helm lint deploy/helm/grdr-server --set image.digest=sha256:1111111111111111111111111111111111111111111111111111111111111111
+            helm lint deploy/helm/grdr-node-sensor --set image.digest=sha256:1111111111111111111111111111111111111111111111111111111111111111
+          fi
+
+  cargo-vet-and-unsafe:
+    needs: plan
+    if: needs.plan.outputs.run == 'true' && needs.plan.outputs.rust == 'true'
+    name: Supply-chain vet store and trust-core unsafe checks
+    runs-on: ubuntu-26.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: toolchain
+        uses: $/.github/actions/tree-paths
+      - name: Write RUSTUP_TOOLCHAIN to GITHUB_ENV
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        run: echo "RUSTUP_TOOLCHAIN=${CHANNEL:?}" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Verify cargo-vet store metadata and unsafe-register test suites
+        run: |
+          test -f security/supply-chain/config.toml
+          test -f security/supply-chain/audits.toml
+          test -f security/supply-chain/imports.lock
+          cargo test -p grdr-fastpath-ffi -p grdr-ffi -p grdr-ipc-os -p grdr-crypto --locked
+          if [ -n "$(sed '/^#/d;/^\[/d;/^$/d' security/supply-chain/imports.lock)" ] && command -v cargo-vet >/dev/null 2>&1; then
+            cargo vet --locked --no-all-features
+          fi
 
   tools:
     needs: plan
