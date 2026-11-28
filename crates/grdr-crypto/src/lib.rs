@@ -16,7 +16,13 @@ use subtle::ConstantTimeEq as _;
 use zeroize::{Zeroize, Zeroizing};
 
 mod aead;
+pub mod codes;
 pub use aead::{AeadKey, open_token, seal_token};
+pub use codes::{
+    CODE_CRYPTO_AEAD_ENCRYPT, CODE_CRYPTO_ENTROPY, CODE_CRYPTO_INVALID_KEY,
+    CODE_CRYPTO_INVALID_SIGNATURE, CODE_CRYPTO_INVALID_TOKEN, CODE_CRYPTO_IO,
+    CODE_CRYPTO_SERIALIZATION, CODE_CRYPTO_VERIFICATION_FAILED, CryptoError,
+};
 
 pub const SHA256_DIGEST_LEN: usize = 32;
 pub const SHA256_HEX_LEN: usize = 64;
@@ -24,26 +30,6 @@ const HMAC_BLOCK_BYTES: usize = 64;
 const HASH_DOMAIN_PREFIX: &[u8] = b"grdr.hash.v1\0";
 const SIGNATURE_DOMAIN_PREFIX: &[u8] = b"grdr.sig.v1\0";
 const SIGNATURE_V2_DOMAIN_PREFIX: &[u8] = b"grdr.sig.v2\0";
-
-#[derive(Debug, thiserror::Error)]
-pub enum CryptoError {
-    #[error("GRDR-CRYPTO-0001: OS entropy generation failed: {0}")]
-    Entropy(String),
-    #[error("GRDR-CRYPTO-0002: invalid Ed25519 key material: {0}")]
-    InvalidKey(String),
-    #[error("GRDR-CRYPTO-0003: invalid Ed25519 signature encoding: {0}")]
-    InvalidSignature(String),
-    #[error("GRDR-CRYPTO-0004: signature verification failed")]
-    VerificationFailed,
-    #[error("GRDR-CRYPTO-0005: canonical payload serialization failed: {0}")]
-    Serialization(String),
-    #[error("GRDR-CRYPTO-0006: key storage I/O failed: {0}")]
-    Io(String),
-    #[error("GRDR-CRYPTO-0007: token encryption failed: {0}")]
-    AeadEncrypt(String),
-    #[error("GRDR-CRYPTO-0008: invalid or tampered sealed token")]
-    InvalidToken,
-}
 
 #[derive(Clone)]
 pub struct SigningKeypair {

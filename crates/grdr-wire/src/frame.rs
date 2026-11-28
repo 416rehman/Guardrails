@@ -4,9 +4,11 @@
 
 //! Bounded protobuf `WireFrame` codec and credit flow controller (`docs/design/11`).
 
-use prost::Message;
-use thiserror::Error;
+use std::fmt;
 
+use prost::Message;
+
+use crate::codes;
 use crate::limits::embedded_limits;
 use crate::messages::{
     BundleLoadFrame, CreditGrantFrame, DecideAckFrame, DecideRequestFrame, DecideVerdictFrame,
@@ -20,33 +22,19 @@ pub const IPC_FRAME_HEADER_LEN: usize = 4;
 pub const DEFAULT_INITIAL_CREDIT: u32 = 64;
 pub const MAX_CREDIT_WINDOW: u32 = 4096;
 
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IpcFrameError {
-    #[error("GRDR-WIRE-0009: failed loading embedded IPC frame limit: {detail}")]
     LimitsUnavailable { detail: String },
-    #[error("GRDR-WIRE-0010: IPC frame length {len} exceeds maximum {max} bytes")]
     FrameTooLarge { len: usize, max: usize },
-    #[error("GRDR-WIRE-0011: truncated IPC frame (expected {expected} bytes, have {available})")]
     TruncatedFrame { expected: usize, available: usize },
-    #[error("GRDR-WIRE-0012: zero-length IPC frame is not permitted")]
     ZeroLengthFrame,
-    #[error("GRDR-WIRE-0013: invalid protobuf frame payload: {detail}")]
     InvalidProtobuf { detail: String },
-    #[error("GRDR-WIRE-0014: IPC wire frame has no payload variant")]
     EmptyPayload,
-    #[error(
-        "GRDR-WIRE-0015: outbound IPC credit exhausted (available {available}, required {required})"
-    )]
     CreditExhausted { available: u32, required: u32 },
-    #[error("GRDR-WIRE-0016: IPC credit window overflow")]
     CreditOverflow,
-    #[error("GRDR-WIRE-0017: unsupported IPC protocol version {found}, expected {expected}")]
     InvalidProtocolVersion { found: u32, expected: u32 },
-    #[error("GRDR-WIRE-0036: clean end-of-stream before IPC frame header")]
     EndOfStream,
-    #[error("GRDR-WIRE-0037: IPC frame operation timed out after {timeout_ms} ms")]
     TimedOut { timeout_ms: u64 },
-    #[error("GRDR-WIRE-0038: IPC frame stream I/O error: {detail}")]
     Io { detail: String },
 }
 
@@ -114,21 +102,88 @@ impl IpcFrameError {
     #[must_use]
     pub const fn code(&self) -> &'static str {
         match self {
-            Self::LimitsUnavailable { .. } => "GRDR-WIRE-0009",
-            Self::FrameTooLarge { .. } => "GRDR-WIRE-0010",
-            Self::TruncatedFrame { .. } => "GRDR-WIRE-0011",
-            Self::ZeroLengthFrame => "GRDR-WIRE-0012",
-            Self::InvalidProtobuf { .. } => "GRDR-WIRE-0013",
-            Self::EmptyPayload => "GRDR-WIRE-0014",
-            Self::CreditExhausted { .. } => "GRDR-WIRE-0015",
-            Self::CreditOverflow => "GRDR-WIRE-0016",
-            Self::InvalidProtocolVersion { .. } => "GRDR-WIRE-0017",
-            Self::EndOfStream => "GRDR-WIRE-0036",
-            Self::TimedOut { .. } => "GRDR-WIRE-0037",
-            Self::Io { .. } => "GRDR-WIRE-0038",
+            Self::LimitsUnavailable { .. } => codes::CODE_WIRE_IPC_LIMITS_UNAVAILABLE,
+            Self::FrameTooLarge { .. } => codes::CODE_WIRE_IPC_FRAME_TOO_LARGE,
+            Self::TruncatedFrame { .. } => codes::CODE_WIRE_IPC_TRUNCATED_FRAME,
+            Self::ZeroLengthFrame => codes::CODE_WIRE_IPC_ZERO_LENGTH,
+            Self::InvalidProtobuf { .. } => codes::CODE_WIRE_IPC_INVALID_PROTOBUF,
+            Self::EmptyPayload => codes::CODE_WIRE_IPC_EMPTY_PAYLOAD,
+            Self::CreditExhausted { .. } => codes::CODE_WIRE_IPC_CREDIT_EXHAUSTED,
+            Self::CreditOverflow => codes::CODE_WIRE_IPC_CREDIT_OVERFLOW,
+            Self::InvalidProtocolVersion { .. } => codes::CODE_WIRE_IPC_PROTOCOL_VERSION,
+            Self::EndOfStream => codes::CODE_WIRE_IPC_END_OF_STREAM,
+            Self::TimedOut { .. } => codes::CODE_WIRE_IPC_TIMED_OUT,
+            Self::Io { .. } => codes::CODE_WIRE_IPC_IO,
         }
     }
 }
+
+impl fmt::Display for IpcFrameError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::LimitsUnavailable { detail } => write!(
+                f,
+                "{}: failed loading embedded IPC frame limit: {detail}",
+                self.code()
+            ),
+            Self::FrameTooLarge { len, max } => write!(
+                f,
+                "{}: IPC frame length {len} exceeds maximum {max} bytes",
+                self.code()
+            ),
+            Self::TruncatedFrame {
+                expected,
+                available,
+            } => write!(
+                f,
+                "{}: truncated IPC frame (expected {expected} bytes, have {available})",
+                self.code()
+            ),
+            Self::ZeroLengthFrame => {
+                write!(f, "{}: zero-length IPC frame is not permitted", self.code())
+            }
+            Self::InvalidProtobuf { detail } => {
+                write!(
+                    f,
+                    "{}: invalid protobuf frame payload: {detail}",
+                    self.code()
+                )
+            }
+            Self::EmptyPayload => {
+                write!(f, "{}: IPC wire frame has no payload variant", self.code())
+            }
+            Self::CreditExhausted {
+                available,
+                required,
+            } => write!(
+                f,
+                "{}: outbound IPC credit exhausted (available {available}, required {required})",
+                self.code()
+            ),
+            Self::CreditOverflow => write!(f, "{}: IPC credit window overflow", self.code()),
+            Self::InvalidProtocolVersion { found, expected } => write!(
+                f,
+                "{}: unsupported IPC protocol version {found}, expected {expected}",
+                self.code()
+            ),
+            Self::EndOfStream => write!(
+                f,
+                "{}: clean end-of-stream before IPC frame header",
+                self.code()
+            ),
+            Self::TimedOut { timeout_ms } => write!(
+                f,
+                "{}: IPC frame operation timed out after {timeout_ms} ms",
+                self.code()
+            ),
+            Self::Io { detail } => {
+                write!(f, "{}: IPC frame stream I/O error: {detail}", self.code())
+            }
+        }
+    }
+}
+
+impl std::error::Error for IpcFrameError {}
 
 impl WireFrame {
     #[must_use]

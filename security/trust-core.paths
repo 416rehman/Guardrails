@@ -24,10 +24,13 @@ crates/grdr-sensor-macos/**
 crates/grdr-sensor-windows/**
 crates/grdr-export/**
 crates/grdr-store-local/**
+crates/grdr-compat/**
+crates/grdr-model/src/log_safe.rs
+crates/grdr-model/src/query_ir.rs
 crates/grdr-model/src/signing.rs
 crates/grdr-model/src/eval.rs
-
-# Tenant witness, storage migrations, RLS/repos, and conformance testkit
+crates/grdr-ports/src/dist.rs
+crates/grdr-ports/src/dist_parse.rs
 crates/grdr-ports/src/tenant.rs
 crates/grdr-ports-testkit/**
 crates/grdr-rel-postgres/src/migrations.rs
@@ -41,6 +44,7 @@ crates/grdr-rel-sqlite/src/store.rs
 crates/grdr-rel-sqlite/src/repos_policy_user.rs
 
 # Endpoint and server trust-core programs & security modules
+programs/grdr/src/audit/**
 programs/grdr-approve/**
 programs/grdr-daemon/**
 programs/grdr-engine/**
@@ -68,6 +72,7 @@ contracts/limits.toml
 contracts/architecture.toml
 contracts/surfaces.toml
 contracts/support.toml
+contracts/upgrade-path.json
 contracts/codes/**
 crates/grdr-schema/capture.toml
 crates/grdr-schema/reclassifications.toml
