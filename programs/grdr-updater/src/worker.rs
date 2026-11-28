@@ -9,7 +9,6 @@
 
 use std::path::PathBuf;
 
-use grdr_compat::CompatMatrix;
 use grdr_crypto::load_or_create_keypair;
 use grdr_os_clock::{Clock, SystemClock};
 use grdr_update::{
@@ -19,6 +18,8 @@ use grdr_update::{
 use grdr_wire::messages::{UpdaterCommandFrame, UpdaterEventFrame};
 use serde::Deserialize;
 
+use crate::cohort_fips::{worker_fips_self_test, worker_verify_handshake};
+use crate::compat_config::resolve_worker_compat_matrix;
 use crate::error::UpdaterError;
 use crate::fs_safe::{confine_path_under_root, ensure_safe_dir, path_exists_nofollow};
 use crate::handover::{DEFAULT_HANDOVER_WINDOW_MS, HandoverCoordinator, boot_mono_ms};
@@ -66,6 +67,8 @@ struct VerifyAndActivateDirective {
     binaries_targets: Option<SignedMetadata<TargetsMetadata>>,
     freshness: Option<SignedMetadata<FreshnessStatement>>,
     dsse_envelope: DsseEnvelope,
+    #[serde(default)]
+    compat_matrix_dsse: Option<DsseEnvelope>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -80,6 +83,7 @@ pub struct UpdaterWorkerState {
     slots: SlotActivationManager,
     handover: HandoverCoordinator,
     verifier: Option<DualRootVerifier>,
+    project_root: Option<SignedMetadata<RootMetadata>>,
 }
 
 impl Default for UpdaterWorkerConfig {
@@ -138,6 +142,7 @@ impl UpdaterWorkerState {
                 INITIAL_SLOT_A_IMAGE,
             )?
         };
+        let project_root = config.project_root.clone();
         let verifier = match config.project_root {
             Some(proj) => Some(DualRootVerifier::open_or_init(
                 &state_root,
@@ -154,6 +159,7 @@ impl UpdaterWorkerState {
             slots,
             handover,
             verifier,
+            project_root,
         })
     }
 
@@ -176,6 +182,28 @@ impl UpdaterWorkerState {
             "rotate_root" => self.handle_rotate_root(cmd, clock),
             "verify_and_activate" => self.handle_verify_and_activate(cmd, clock),
             "verify_pack_p7" => self.handle_verify_p7(cmd),
+            "fips_self_test" => {
+                let a = self.slots.active_slot();
+                worker_fips_self_test(
+                    cmd,
+                    slot_label(a.slot),
+                    &a.version,
+                    self.slots.security_floor(),
+                    clock,
+                )
+            }
+            "verify_handshake" => {
+                let a = self.slots.active_slot();
+                worker_verify_handshake(
+                    cmd,
+                    &self.state_root,
+                    self.project_root.as_ref(),
+                    slot_label(a.slot),
+                    &a.version,
+                    self.slots.security_floor(),
+                    clock,
+                )
+            }
             other => Err(UpdaterError::SlotTransitionInvalid {
                 detail: format!("unsupported updater action `{other}`"),
             }),
@@ -345,7 +373,12 @@ impl UpdaterWorkerState {
         let now = clock.now_wall().map_err(|e| UpdaterError::ClockFailed {
             detail: e.to_string(),
         })?;
-        verifier.rotate_root(dir.root_kind, dir.next_root, now)?;
+        let root_kind = dir.root_kind;
+        let next_root = dir.next_root.clone();
+        verifier.rotate_root(root_kind, dir.next_root, now)?;
+        if root_kind == TufRootKind::Project {
+            self.project_root = Some(next_root);
+        }
         let active = self.slots.active_slot();
         Ok(UpdaterEventFrame {
             command_id: cmd.command_id.clone(),
@@ -364,12 +397,11 @@ impl UpdaterWorkerState {
         cmd: &UpdaterCommandFrame,
         clock: &dyn Clock,
     ) -> Result<UpdaterEventFrame, UpdaterError> {
-        let verifier = self
-            .verifier
-            .as_mut()
-            .ok_or_else(|| UpdaterError::TufVerification {
+        if self.verifier.is_none() {
+            return Err(UpdaterError::TufVerification {
                 detail: "refusing update verification without pinned TUF roots".to_string(),
-            })?;
+            });
+        }
         let directive: VerifyAndActivateDirective =
             serde_json::from_slice(&cmd.payload).map_err(|e| UpdaterError::TufVerification {
                 detail: format!("invalid verify_and_activate JSON: {e}"),
@@ -377,7 +409,18 @@ impl UpdaterWorkerState {
         let now = clock.now_wall().map_err(|e| UpdaterError::ClockFailed {
             detail: e.to_string(),
         })?;
-        let trusted_compat = CompatMatrix::default_v1();
+        let trusted_compat = resolve_worker_compat_matrix(
+            Some(&self.state_root),
+            self.project_root.as_ref(),
+            directive.compat_matrix_dsse.as_ref(),
+            now,
+        )?;
+        let verifier = self
+            .verifier
+            .as_mut()
+            .ok_or_else(|| UpdaterError::TufVerification {
+                detail: "refusing update verification without pinned TUF roots".to_string(),
+            })?;
         let verified = verifier.verify_bundle(
             &StagedUpdateBundle {
                 root_kind: TufRootKind::Project,

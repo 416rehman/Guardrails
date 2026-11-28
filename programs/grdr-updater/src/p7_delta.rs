@@ -76,29 +76,75 @@ pub enum DeltaOp {
     Insert { data: Vec<u8> },
 }
 
+pub struct PackBudgetConfig {
+    pub binary_bytes: u64,
+    pub schema_policy_fallback_bytes: u64,
+    pub detection_fallback_bytes: u64,
+    pub intel_fallback_bytes: u64,
+    pub structured_pack_bytes: u64,
+    pub dictionary_bytes: u64,
+    pub model_bytes: u64,
+    pub rollout_bytes: u64,
+}
+
+impl Default for PackBudgetConfig {
+    fn default() -> Self {
+        Self {
+            binary_bytes: 134_217_728,
+            schema_policy_fallback_bytes: 524_288,
+            detection_fallback_bytes: 4_194_304,
+            intel_fallback_bytes: 16_777_216,
+            structured_pack_bytes: 2_097_152,
+            dictionary_bytes: 1_048_576,
+            model_bytes: 67_108_864,
+            rollout_bytes: 524_288,
+        }
+    }
+}
+
 /// Hard per-channel size ceiling sourced from embedded `contracts/limits.toml` before parsing.
 #[must_use]
 pub fn max_bytes_for_pack(pack_kind: PackKind) -> u64 {
+    max_bytes_for_pack_with_config(pack_kind, &PackBudgetConfig::default())
+}
+
+#[must_use]
+pub fn max_bytes_for_pack_with_config(pack_kind: PackKind, cfg: &PackBudgetConfig) -> u64 {
     let lim = embedded_limits().ok();
     match pack_kind {
-        PackKind::Binary => 134_217_728,
+        PackKind::Binary => cfg.binary_bytes,
         PackKind::SchemaPolicy => lim
             .and_then(|l| u64::try_from(l.essentials_max_bytes).ok())
             .filter(|&v| v > 0)
-            .unwrap_or(524_288),
+            .unwrap_or(cfg.schema_policy_fallback_bytes),
         PackKind::Detection => lim
             .and_then(|l| u64::try_from(l.detections_max_bytes).ok())
             .filter(|&v| v > 0)
-            .unwrap_or(4_194_304),
+            .unwrap_or(cfg.detection_fallback_bytes),
         PackKind::Intel | PackKind::OrgIntel => lim
             .and_then(|l| u64::try_from(l.max_pack_bundle_bytes).ok())
             .filter(|&v| v > 0)
-            .unwrap_or(16_777_216),
+            .unwrap_or(cfg.intel_fallback_bytes),
         PackKind::Integration
         | PackKind::LayerDocument
         | PackKind::AgentConfig
-        | PackKind::OrgCatalogue => 2_097_152,
-        PackKind::Rollout => 524_288,
+        | PackKind::AgentAdapter
+        | PackKind::Catalogue
+        | PackKind::BuildingBlocks
+        | PackKind::Detector
+        | PackKind::Tripwire
+        | PackKind::L0
+        | PackKind::AnalyserVocab
+        | PackKind::Prompt
+        | PackKind::ReviewSettings
+        | PackKind::AttributionHops
+        | PackKind::Tile
+        | PackKind::Report
+        | PackKind::AuthenticatorList
+        | PackKind::OrgCatalogue => cfg.structured_pack_bytes,
+        PackKind::ZstdDictionary => cfg.dictionary_bytes,
+        PackKind::Model => cfg.model_bytes,
+        PackKind::Rollout => cfg.rollout_bytes,
     }
 }
 
@@ -309,24 +355,7 @@ pub fn check_bundle_compatibility(
         match negotiate_compatibility(matrix, &req) {
             NegotiationOutcome::Compatible { .. } => {}
             NegotiationOutcome::CompatibleWithWarnings { warnings, .. } => {
-                if let Some(entry) = matrix
-                    .entries
-                    .iter()
-                    .find(|e| e.component == spec.component)
-                {
-                    for cap in &entry.required_capabilities {
-                        if !host_capabilities.contains(cap) {
-                            return Err(UpdaterError::CompatibilityRejected {
-                                component: spec.component.clone(),
-                                code: "GRDR-COMPAT-0003".to_string(),
-                                reason: format!(
-                                    "host missing matrix required capability {:?}",
-                                    cap
-                                ),
-                            });
-                        }
-                    }
-                }
+                verify_entry_host_capabilities(matrix, &spec.component, host_capabilities)?;
                 for w in warnings {
                     out_warnings.push(format!("{}: {w}", spec.component));
                 }
@@ -341,4 +370,24 @@ pub fn check_bundle_compatibility(
         }
     }
     Ok(out_warnings)
+}
+
+fn verify_entry_host_capabilities(
+    matrix: &CompatMatrix,
+    component: &str,
+    host_capabilities: &[ProtocolCapability],
+) -> Result<(), UpdaterError> {
+    let Some(entry) = matrix.entries.iter().find(|e| e.component == component) else {
+        return Ok(());
+    };
+    for cap in &entry.required_capabilities {
+        if !host_capabilities.contains(cap) {
+            return Err(UpdaterError::CompatibilityRejected {
+                component: component.to_owned(),
+                code: "GRDR-COMPAT-0003".to_string(),
+                reason: format!("host missing matrix required capability {:?}", cap),
+            });
+        }
+    }
+    Ok(())
 }

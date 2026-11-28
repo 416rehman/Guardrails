@@ -6,6 +6,9 @@
 
 //! Guardrails ADR Layer 4 privileged update verifier and atomic A/B slot manager (`grdr-updater`).
 
+pub mod cohort_fips;
+pub mod compat_config;
+mod compat_toml;
 mod dsse_guard;
 pub mod error;
 pub mod fs_safe;

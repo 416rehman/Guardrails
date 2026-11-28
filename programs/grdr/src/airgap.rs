@@ -1,6 +1,41 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
-//! Air-gap CLI commands (`grdr airgap build|verify`) and offline S-31 TUF/DSSE verification.
+//! Air-gap CLI commands and offline S-31 TUF/DSSE/Sigstore verification.
+
+#[path = "airgap_bundle_tuf.rs"]
+pub mod airgap_bundle_tuf;
+#[path = "airgap_ceremony.rs"]
+pub mod airgap_ceremony;
+#[path = "airgap_cli_args.rs"]
+pub mod airgap_cli_args;
+#[path = "airgap_import.rs"]
+pub mod airgap_import;
+#[path = "airgap_import_ops.rs"]
+pub mod airgap_import_ops;
+#[path = "airgap_mirror.rs"]
+pub mod airgap_mirror;
+#[path = "airgap_mirror_export.rs"]
+pub mod airgap_mirror_export;
+#[path = "airgap_policy.rs"]
+pub mod airgap_policy;
+#[path = "airgap_s31.rs"]
+pub mod airgap_s31;
+#[path = "airgap_s31_artefact.rs"]
+pub mod airgap_s31_artefact;
+#[path = "airgap_s31_extended.rs"]
+pub mod airgap_s31_extended;
+#[path = "airgap_state.rs"]
+pub mod airgap_state;
+#[path = "verify_artefact.rs"]
+pub mod verify_artefact;
+#[path = "verify_artefact_binding.rs"]
+pub mod verify_artefact_binding;
+#[path = "verify_artefact_manifest.rs"]
+pub mod verify_artefact_manifest;
+#[path = "verify_artefact_sigstore.rs"]
+pub mod verify_artefact_sigstore;
+#[path = "verify_artefact_types.rs"]
+pub mod verify_artefact_types;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -13,57 +48,51 @@ use grdr_update::{
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
-use crate::airgap_bundle::{
-    AirgapBuildRequest, PATH_MANIFEST_JSON, build_airgap_tar, root_fingerprint,
+use crate::airgap::airgap_cli_args::{
+    AirgapBuildArgs, AirgapVerifyArgs, handle_build_args, handle_verify_args, print_json_pretty,
 };
+use crate::airgap::airgap_import::{
+    ServerAirgapCommand, ServerAirgapImportArgs, handle_server_airgap_command,
+};
+use crate::airgap::airgap_mirror::{
+    KeysCeremonyArgs, MirrorExportArgs, MirrorSyncArgs, MirrorVouchArgs, run_keys_ceremony,
+    run_mirror_export, run_mirror_sync, run_mirror_vouch,
+};
+use crate::airgap::airgap_s31::run_s31_offline_suite;
+use crate::airgap::airgap_state::{
+    check_and_update_watermarks, load_yanks_for_verify, resolve_and_persist_trust_anchor,
+    yanks_to_halts,
+};
+use crate::airgap::verify_artefact::{VerifyArtefactCliArgs, handle_verify_artefact_args};
+use crate::airgap_bundle::{PATH_MANIFEST_JSON, root_fingerprint};
 use crate::airgap_verify::{
     extract_verified_artifacts, load_parsed_tar_bundle, read_root_metadata_file,
-    resolve_trust_anchor, verify_required_bundle_envelope,
+    verify_extended_bundle_rules, verify_required_bundle_envelope,
 };
+use crate::fs_safe::read_bounded_regular;
 
 #[derive(Debug, Subcommand)]
 pub enum AirgapCommand {
-    /// Package signed content packs into an offline OCI-layout / POSIX tar air-gap bundle.
-    Build {
-        #[arg(long, default_value = "packs")]
-        packs_dir: PathBuf,
+    /// Package signed packs and optional site assets into an offline OCI-layout / POSIX tar bundle.
+    Build(Box<AirgapBuildArgs>),
+    /// Verify an air-gap bundle (or `.parts.json` split parts) offline against project TUF/DSSE roots.
+    Verify(Box<AirgapVerifyArgs>),
+    /// Verify an individual artefact offline using Sigstore bundle, inclusion proof, and trusted_root.json.
+    VerifyArtefact(Box<VerifyArtefactCliArgs>),
+    /// Server-side air-gap bundle importer (resumable blob import, audit log, zero egress).
+    ServerImport(Box<ServerAirgapImportArgs>),
+    /// Synchronize a site TUF mirror from an upstream origin directory with immutable caching.
+    MirrorSync(Box<MirrorSyncArgs>),
+    /// Export a delta, content, or metadata bundle from a site TUF mirror.
+    MirrorExport(Box<MirrorExportArgs>),
+    /// Issue a deployment-signed freshness statement vouching for imported TUF snapshot freshness.
+    MirrorVouch(Box<MirrorVouchArgs>),
+    /// Run a TUF project (2-of-2) or deployment root ceremony writing `1.root.json` and transcript.
+    KeysCeremony(Box<KeysCeremonyArgs>),
+    /// Execute offline S-31 air-gap supply-chain and verification conformance checks.
+    S31 {
         #[arg(long)]
-        out: PathBuf,
-        #[arg(long, default_value = "grdr-airgap-bundle")]
-        bundle_id: String,
-        #[arg(long, default_value = "0.1.0")]
-        version: String,
-        #[arg(long, default_value_t = 365)]
-        expires_days: i64,
-        #[arg(long = "halt")]
-        halts: Vec<String>,
-        #[arg(long)]
-        key_dir: Option<PathBuf>,
-        #[arg(long, default_value_t = false)]
-        ephemeral_dev_keys: bool,
-        #[arg(long, default_value_t = false)]
-        json: bool,
-    },
-    /// Verify an air-gap bundle offline against project TUF/DSSE roots before extraction.
-    Verify {
-        #[arg(long)]
-        bundle: PathBuf,
-        #[arg(long)]
-        root: Option<PathBuf>,
-        #[arg(long)]
-        expected_fingerprint: Option<String>,
-        #[arg(long)]
-        state_dir: Option<PathBuf>,
-        #[arg(long, default_value_t = false)]
-        print_root: bool,
-        #[arg(long)]
-        accept_terms: Option<String>,
-        #[arg(long, default_value = "local-operator")]
-        operator_id: String,
-        #[arg(long = "halt")]
-        halts: Vec<String>,
-        #[arg(long)]
-        extract: Option<PathBuf>,
+        work_dir: Option<PathBuf>,
         #[arg(long, default_value_t = false)]
         json: bool,
     },
@@ -90,102 +119,85 @@ pub enum AirgapCliError {
 }
 
 pub fn handle_airgap_command(cmd: AirgapCommand) -> ExitCode {
-    match run_airgap(cmd) {
-        Ok(code) => code,
-        Err(err) => {
-            eprintln!("{err}");
-            ExitCode::FAILURE
+    match cmd {
+        AirgapCommand::VerifyArtefact(args) => handle_verify_artefact_args(*args),
+        AirgapCommand::ServerImport(args) => {
+            handle_server_airgap_command(ServerAirgapCommand::Import(*args))
         }
+        other => match run_airgap(other) {
+            Ok(code) => code,
+            Err(err) => {
+                eprintln!("{err}");
+                ExitCode::FAILURE
+            }
+        },
     }
 }
 
 fn run_airgap(cmd: AirgapCommand) -> Result<ExitCode, AirgapCliError> {
     match cmd {
-        AirgapCommand::Build {
-            packs_dir,
-            out,
-            bundle_id,
-            version,
-            expires_days,
-            halts,
-            key_dir,
-            ephemeral_dev_keys,
-            json,
-        } => {
-            let halted = parse_halts(&halts)?;
-            let summary = build_airgap_tar(&AirgapBuildRequest {
-                packs_dir: &packs_dir,
-                out: &out,
-                bundle_id: &bundle_id,
-                version: &version,
-                expires_days,
-                halted_releases: &halted,
-                key_dir: key_dir.as_deref(),
-                allow_ephemeral_dev_keys: ephemeral_dev_keys,
-            })?;
-            if json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&summary)
-                        .map_err(|e| AirgapCliError::InvalidInput(e.to_string()))?
-                );
+        AirgapCommand::Build(args) => handle_build_args(&args),
+        AirgapCommand::Verify(args) => handle_verify_args(&args),
+        AirgapCommand::MirrorSync(args) => {
+            let summary = run_mirror_sync(&args)?;
+            if args.json {
+                print_json_pretty(&summary)?;
             } else {
                 println!(
-                    "Built {}@{} ({} entries) -> {} (root_fp={} manifest_sha256={})",
-                    summary.bundle_id,
-                    summary.bundle_version,
-                    summary.entries_count,
-                    summary.out,
-                    summary.root_fingerprint,
-                    summary.manifest_sha256
+                    "Mirror sync: synced={} cache_hits={} converged={}",
+                    summary.synced_files,
+                    summary.cache_hits_immutable,
+                    summary.active_snapshot_committed
                 );
             }
             Ok(ExitCode::SUCCESS)
         }
-        AirgapCommand::Verify {
-            bundle,
-            root,
-            expected_fingerprint,
-            state_dir,
-            print_root,
-            accept_terms,
-            operator_id,
-            halts,
-            extract,
-            json,
-        } => {
-            if print_root {
-                let report = inspect_bundle_root(&bundle, root.as_deref())?;
-                if json {
-                    println!(
-                        "{}",
-                        serde_json::to_string_pretty(&report)
-                            .map_err(|e| AirgapCliError::InvalidInput(e.to_string()))?
-                    );
-                } else {
-                    println!(
-                        "Project root_fp={} version={} expires={} manifest_sha256={} (unverified; confirm out-of-band)",
-                        report.root_fingerprint,
-                        report.root_version,
-                        report.root_expires,
-                        report.manifest_sha256
-                    );
-                }
-                return Ok(ExitCode::SUCCESS);
+        AirgapCommand::MirrorExport(args) => {
+            let summary = run_mirror_export(&args)?;
+            if args.json {
+                print_json_pretty(&summary)?;
+            } else {
+                println!(
+                    "Mirror exported {} files -> {} (parts={})",
+                    summary.files_exported, summary.out, summary.parts_count
+                );
             }
-            let halted = parse_halts(&halts)?;
-            let res = verify_airgap_tar_file(
-                &bundle,
-                root.as_deref(),
-                expected_fingerprint.as_deref(),
-                state_dir.as_deref(),
-                accept_terms.as_deref(),
-                &operator_id,
-                &halted,
-                extract.as_deref(),
-            );
-            print_verify_result(res, json)
+            Ok(ExitCode::SUCCESS)
         }
+        AirgapCommand::MirrorVouch(args) => {
+            run_mirror_vouch(&args)?;
+            println!(
+                "Issued deployment freshness vouch -> {}",
+                args.out.display()
+            );
+            Ok(ExitCode::SUCCESS)
+        }
+        AirgapCommand::KeysCeremony(args) => {
+            let fp = run_keys_ceremony(&args)?;
+            if args.json {
+                print_json_pretty(&serde_json::json!({"root_fingerprint": fp}))?;
+            } else {
+                println!("Completed ceremony {} -> {fp}", args.ceremony_id);
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        AirgapCommand::S31 { work_dir, json } => {
+            let dir = work_dir.unwrap_or_else(|| {
+                std::env::temp_dir().join(format!("grdr-s31-cli-{}", uuid::Uuid::now_v7().simple()))
+            });
+            let report = run_s31_offline_suite(&dir)?;
+            if json {
+                print_json_pretty(&report)?;
+            } else {
+                println!("S-31 suite passed: {} scenarios", report.scenarios.len());
+            }
+            Ok(if report.all_passed {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            })
+        }
+        AirgapCommand::VerifyArtefact(_) | AirgapCommand::ServerImport(_) => Ok(ExitCode::SUCCESS),
     }
 }
 
@@ -221,20 +233,45 @@ pub fn verify_airgap_tar_file(
     external_halts: &[RolloutHaltEntry],
     extract_dir: Option<&Path>,
 ) -> Result<(AirgapVerificationOutcome, String), AirgapCliError> {
-    let parsed = load_parsed_tar_bundle(bundle_path)?;
-    let trusted_root =
-        resolve_trust_anchor(override_root, state_dir, expected_fingerprint, &parsed)?;
-    let actual_root_fp = root_fingerprint(&trusted_root.signed)?;
-    if let Some(expected_fp) = expected_fingerprint
-        && actual_root_fp != expected_fp
-    {
-        return Err(UpdateError::UnauthorizedRoot(format!(
-            "project root fingerprint `{actual_root_fp}` != expected `{expected_fp}`"
-        ))
-        .into());
-    }
+    verify_airgap_tar_with_base(
+        bundle_path,
+        override_root,
+        expected_fingerprint,
+        state_dir,
+        None,
+        accept_terms_digest,
+        operator_id,
+        external_halts,
+        None,
+        extract_dir,
+    )
+}
 
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn verify_airgap_tar_with_base(
+    bundle_path: &Path,
+    override_root: Option<&Path>,
+    expected_fingerprint: Option<&str>,
+    state_dir: Option<&Path>,
+    installed_base_override: Option<&str>,
+    accept_terms_digest: Option<&str>,
+    operator_id: &str,
+    external_halts: &[RolloutHaltEntry],
+    yanks_file: Option<&Path>,
+    extract_dir: Option<&Path>,
+) -> Result<(AirgapVerificationOutcome, String), AirgapCliError> {
+    let parsed = load_parsed_tar_bundle(bundle_path)?;
     let now = Timestamp::now();
+    let trusted_root = resolve_and_persist_trust_anchor(
+        override_root,
+        state_dir,
+        expected_fingerprint,
+        &parsed,
+        now,
+        false,
+    )?;
+    let actual_root_fp = root_fingerprint(&trusted_root.signed)?;
+    let root_version = trusted_root.signed.version;
     let trust = UpdateTrust::new(trusted_root, now)?;
     let approval = match accept_terms_digest {
         None => BundleApprovalState::AwaitingTermsAcceptance,
@@ -259,95 +296,73 @@ pub fn verify_airgap_tar_file(
         .into());
     }
 
+    let external_yanks = load_yanks_for_verify(state_dir, yanks_file)?;
+    let mut combined_halts = external_halts.to_vec();
+    combined_halts.extend(yanks_to_halts(&external_yanks));
     let outcome = verify_airgap_bundle(
         &trust,
         &parsed.envelope,
         &parsed.artifacts,
         &approval,
-        external_halts,
+        &combined_halts,
         now,
     )?;
-
     verify_required_bundle_envelope(&parsed, &outcome, &actual_root_fp)?;
+
+    let installed_base = match installed_base_override {
+        Some(v) => Some(v.to_owned()),
+        None => state_dir
+            .map(|d| d.join("installed-manifest.sha256"))
+            .filter(|p| p.is_file())
+            .and_then(|p| read_bounded_regular(&p, 256).ok())
+            .and_then(|b| String::from_utf8(b).ok())
+            .map(|s| s.trim().to_owned()),
+    };
+    verify_extended_bundle_rules(
+        &parsed,
+        &outcome,
+        installed_base.as_deref(),
+        &external_yanks,
+    )?;
+    if let Some(dir) = state_dir {
+        check_and_update_watermarks(
+            dir,
+            &outcome,
+            root_version,
+            parsed.manifest.created_at,
+            &parsed.manifest_sha256,
+            false,
+        )?;
+    }
 
     if let Some(dest) = extract_dir {
         extract_verified_artifacts(dest, &parsed.artifacts)?;
     }
+    if let Some(dir) = state_dir {
+        resolve_and_persist_trust_anchor(
+            override_root,
+            Some(dir),
+            expected_fingerprint,
+            &parsed,
+            now,
+            true,
+        )?;
+        check_and_update_watermarks(
+            dir,
+            &outcome,
+            root_version,
+            parsed.manifest.created_at,
+            &parsed.manifest_sha256,
+            true,
+        )?;
+    }
     Ok((outcome, parsed.manifest_sha256))
-}
-
-fn print_verify_result(
-    res: Result<(AirgapVerificationOutcome, String), AirgapCliError>,
-    json: bool,
-) -> Result<ExitCode, AirgapCliError> {
-    match res {
-        Ok((verified, manifest_sha)) => {
-            if json {
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "apiVersion": "grdr.cli.v1alpha1",
-                        "type": "airgap.verify",
-                        "verified": true,
-                        "manifest_sha256": manifest_sha,
-                        "outcome": verified,
-                    })
-                );
-            } else {
-                println!(
-                    "Verified air-gap bundle {}@{} ({} entries, operator={})",
-                    verified.bundle_id,
-                    verified.bundle_version,
-                    verified.verified_entries,
-                    verified.operator_id
-                );
-            }
-            Ok(ExitCode::SUCCESS)
-        }
-        Err(err) => {
-            if json {
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "apiVersion": "grdr.cli.v1alpha1",
-                        "type": "airgap.verify",
-                        "verified": false,
-                        "error": err.to_string(),
-                    })
-                );
-            } else {
-                eprintln!("{err}");
-            }
-            Ok(ExitCode::FAILURE)
-        }
-    }
-}
-
-fn parse_halts(raw: &[String]) -> Result<Vec<RolloutHaltEntry>, AirgapCliError> {
-    let mut out = Vec::with_capacity(raw.len());
-    for item in raw {
-        let Some((pack_and_ver, reason)) = item.split_once(':') else {
-            return Err(AirgapCliError::InvalidInput(format!(
-                "halt `{item}` must be `<pack>@<ver>:<reason>`"
-            )));
-        };
-        let Some((pack_id, version)) = pack_and_ver.split_once('@') else {
-            return Err(AirgapCliError::InvalidInput(format!(
-                "halt `{item}` missing `@<ver>`"
-            )));
-        };
-        out.push(RolloutHaltEntry {
-            pack_id: pack_id.to_owned(),
-            version: version.to_owned(),
-            reason: reason.to_owned(),
-        });
-    }
-    Ok(out)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::airgap_bundle::{AirgapBuildRequest, AirgapFullBuildRequest, build_full_airgap_tar};
     use std::fs;
 
     #[test]
@@ -363,18 +378,96 @@ mod tests {
         )
         .unwrap();
         let tar_path = base.join("grdr-airgap.tar");
-        let summary = build_airgap_tar(&AirgapBuildRequest {
-            packs_dir: &packs_dir,
-            out: &tar_path,
-            bundle_id: "test-airgap",
-            version: "1.0.0",
-            expires_days: 90,
-            halted_releases: &[],
-            key_dir: Some(&keys_dir),
-            allow_ephemeral_dev_keys: false,
+        let missing_keys_err = build_full_airgap_tar(&AirgapFullBuildRequest {
+            base: AirgapBuildRequest {
+                packs_dir: &packs_dir,
+                out: &tar_path,
+                bundle_id: "test-airgap",
+                version: "1.0.0",
+                expires_days: 90,
+                halted_releases: &[],
+                key_dir: Some(&keys_dir),
+                allow_ephemeral_dev_keys: false,
+            },
+            binaries_dir: None,
+            images_dir: None,
+            charts_dir: None,
+            apt_dir: None,
+            rpm_dir: None,
+            docs_dir: None,
+            terraform_dir: None,
+            models_dir: None,
+            csaf_dir: None,
+            sources_dir: None,
+            sbom_path: None,
+            vex_path: None,
+            dependencies_lock_path: None,
+            release_manifest_path: None,
+            trusted_root_path: None,
+            rollout_path: None,
+            platforms: &[],
+            delta_from_version: None,
+            delta_from_manifest_sha256: None,
+            minimum_base_version: None,
+            yanked_releases: &[],
+            split_bytes: None,
+        });
+        assert!(matches!(
+            missing_keys_err,
+            Err(AirgapCliError::InvalidInput(_))
+        ));
+
+        let summary = build_full_airgap_tar(&AirgapFullBuildRequest {
+            base: AirgapBuildRequest {
+                packs_dir: &packs_dir,
+                out: &tar_path,
+                bundle_id: "test-airgap",
+                version: "1.0.0",
+                expires_days: 90,
+                halted_releases: &[],
+                key_dir: Some(&keys_dir),
+                allow_ephemeral_dev_keys: true,
+            },
+            binaries_dir: None,
+            images_dir: None,
+            charts_dir: None,
+            apt_dir: None,
+            rpm_dir: None,
+            docs_dir: None,
+            terraform_dir: None,
+            models_dir: None,
+            csaf_dir: None,
+            sources_dir: None,
+            sbom_path: None,
+            vex_path: None,
+            dependencies_lock_path: None,
+            release_manifest_path: None,
+            trusted_root_path: None,
+            rollout_path: None,
+            platforms: &[],
+            delta_from_version: None,
+            delta_from_manifest_sha256: None,
+            minimum_base_version: None,
+            yanked_releases: &[],
+            split_bytes: None,
         })
         .unwrap();
         assert_eq!(summary.entries_count, 4);
+
+        let wrong_fp = verify_airgap_tar_file(
+            &tar_path,
+            None,
+            Some("fp_0000"),
+            None,
+            Some(&summary.manifest_sha256),
+            "op-1",
+            &[],
+            None,
+        );
+        assert!(matches!(
+            wrong_fp,
+            Err(AirgapCliError::Update(UpdateError::UnauthorizedRoot(_)))
+        ));
 
         let no_anchor = verify_airgap_tar_file(
             &tar_path,
@@ -406,27 +499,13 @@ mod tests {
             Err(AirgapCliError::Update(UpdateError::TermsNotAccepted))
         ));
 
-        let wrong_fp = verify_airgap_tar_file(
-            &tar_path,
-            None,
-            Some("fp_wrong"),
-            None,
-            Some(&summary.manifest_sha256),
-            "op-1",
-            &[],
-            None,
-        );
-        assert!(matches!(
-            wrong_fp,
-            Err(AirgapCliError::Update(UpdateError::UnauthorizedRoot(_)))
-        ));
-
+        let state_dir = base.join("state");
         let extract_dir = base.join("out-packs");
         let (ok, _) = verify_airgap_tar_file(
             &tar_path,
             None,
             Some(&summary.root_fingerprint),
-            None,
+            Some(&state_dir),
             Some(&summary.manifest_sha256),
             "op-1",
             &[],
@@ -435,6 +514,58 @@ mod tests {
         .unwrap();
         assert_eq!(ok.verified_entries, 4);
         assert!(extract_dir.join("packs/essentials/pack.toml").is_file());
+        assert!(state_dir.join("project-root.json").is_file());
+
+        let old_tar = base.join("old.tar");
+        let old_sum = build_full_airgap_tar(&AirgapFullBuildRequest {
+            base: AirgapBuildRequest {
+                packs_dir: &packs_dir,
+                out: &old_tar,
+                bundle_id: "test-airgap",
+                version: "0.9.0",
+                expires_days: 90,
+                halted_releases: &[],
+                key_dir: Some(&keys_dir),
+                allow_ephemeral_dev_keys: false,
+            },
+            binaries_dir: None,
+            images_dir: None,
+            charts_dir: None,
+            apt_dir: None,
+            rpm_dir: None,
+            docs_dir: None,
+            terraform_dir: None,
+            models_dir: None,
+            csaf_dir: None,
+            sources_dir: None,
+            sbom_path: None,
+            vex_path: None,
+            dependencies_lock_path: None,
+            release_manifest_path: None,
+            trusted_root_path: None,
+            rollout_path: None,
+            platforms: &[],
+            delta_from_version: None,
+            delta_from_manifest_sha256: None,
+            minimum_base_version: None,
+            yanked_releases: &[],
+            split_bytes: None,
+        })
+        .unwrap();
+        let rollback_err = verify_airgap_tar_file(
+            &old_tar,
+            None,
+            None,
+            Some(&state_dir),
+            Some(&old_sum.manifest_sha256),
+            "op-1",
+            &[],
+            None,
+        );
+        assert!(matches!(
+            rollback_err,
+            Err(AirgapCliError::Update(UpdateError::RollbackDetected { .. }))
+        ));
         let _ = fs::remove_dir_all(&base);
     }
 }

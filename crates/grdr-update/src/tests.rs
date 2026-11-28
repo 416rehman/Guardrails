@@ -272,10 +272,13 @@ fn dual_root_separates_binaries_from_deployment_policy() {
     assert!(matches!(
         trust.verify_target_artifact(
             TufRootKind::Project,
+            &proj_snap,
             &proj_bins,
+            None,
             "binaries/linux/x86_64/grdr-daemon/1.0.0",
             binary_payload,
             Some(&partial_dsse),
+            now,
         ),
         Err(UpdateError::InvalidSignature(_))
     ));
@@ -289,10 +292,13 @@ fn dual_root_separates_binaries_from_deployment_policy() {
     let desc = trust
         .verify_target_artifact(
             TufRootKind::Project,
+            &proj_snap,
             &proj_bins,
+            None,
             "binaries/linux/x86_64/grdr-daemon/1.0.0",
             binary_payload,
             Some(&dsse),
+            now,
         )
         .expect("verified binary");
     assert_eq!(desc.generation, 11);
@@ -300,10 +306,13 @@ fn dual_root_separates_binaries_from_deployment_policy() {
     let err = trust
         .verify_target_artifact(
             TufRootKind::Deployment,
+            &proj_snap,
             &proj_bins,
+            None,
             "binaries/linux/x86_64/grdr-daemon/1.0.0",
             binary_payload,
             None,
+            now,
         )
         .expect_err("deployment root must not authorize binary");
     assert!(matches!(err, UpdateError::UnauthorizedRoot(_)));
@@ -332,6 +341,23 @@ fn dual_root_separates_binaries_from_deployment_policy() {
         &[&fleet],
     )
     .expect("dep targets");
+    let dep_targets_bytes = serde_json::to_vec(&dep_targets.signed).expect("dep targets json");
+    let dep_snap = sign_metadata(
+        SnapshotMetadata {
+            version: 1,
+            expires,
+            meta: BTreeMap::from([(
+                TufRole::Targets,
+                SnapshotTargetRef {
+                    version: 1,
+                    sha256: canonical_sha256(&dep_targets_bytes),
+                    length: u64::try_from(dep_targets_bytes.len()).expect("len"),
+                },
+            )]),
+        },
+        &[&fleet],
+    )
+    .expect("dep snap");
     let dep_dsse = sign_dsse_envelope(
         "application/vnd.grdr.pack-manifest+json",
         policy_bytes,
@@ -342,10 +368,13 @@ fn dual_root_separates_binaries_from_deployment_policy() {
         trust
             .verify_target_artifact(
                 TufRootKind::Deployment,
+                &dep_snap,
                 &dep_targets,
+                None,
                 "policy/org/layer-1",
                 policy_bytes,
                 Some(&dep_dsse),
+                now,
             )
             .is_ok()
     );
@@ -621,11 +650,11 @@ fn rejects_role_confusion_dsse_mismatch_snapshot_len_airgap_traversal_and_stagin
         1,
         ts(now.as_second().saturating_add(86_400 * 365)),
     );
-    let (mut proj_ts, mut proj_snap, proj_targets, proj_bins) =
+    let (proj_ts, proj_snap, proj_targets, proj_bins) =
         build_project_chain_with_keys(&release_signer, &rebuilder, expires, 1, b"bin-v1");
     let (_fleet, dep_root) = build_deployment_root(ts(now.as_second().saturating_add(86_400 * 30)));
 
-    let trust = UpdateTrust::new(proj_root, now)
+    let mut trust = UpdateTrust::new(proj_root, now)
         .expect("proj trust")
         .with_deployment_root(dep_root.clone(), now)
         .expect("dep trust");
@@ -674,14 +703,16 @@ fn rejects_role_confusion_dsse_mismatch_snapshot_len_airgap_traversal_and_stagin
     ));
 
     // Reject snapshot length tampering even if sha256 matches or vice versa.
-    if let Some(targets_ref) = proj_snap.signed.meta.get_mut(&TufRole::Targets) {
+    let mut tampered_snap_body = proj_snap.signed.clone();
+    if let Some(targets_ref) = tampered_snap_body.meta.get_mut(&TufRole::Targets) {
         targets_ref.length = targets_ref.length.saturating_add(1);
     }
-    let tampered_snap = sign_metadata(proj_snap.signed.clone(), &[&release_signer]).expect("snap");
+    let tampered_snap = sign_metadata(tampered_snap_body, &[&release_signer]).expect("snap");
     let snap_bytes = serde_json::to_vec(&tampered_snap.signed).expect("snap json");
-    proj_ts.signed.snapshot.sha256 = canonical_sha256(&snap_bytes);
-    proj_ts.signed.snapshot.length = u64::try_from(snap_bytes.len()).expect("len");
-    let tampered_ts = sign_metadata(proj_ts.signed.clone(), &[&release_signer]).expect("ts");
+    let mut tampered_ts_body = proj_ts.signed.clone();
+    tampered_ts_body.snapshot.sha256 = canonical_sha256(&snap_bytes);
+    tampered_ts_body.snapshot.length = u64::try_from(snap_bytes.len()).expect("len");
+    let tampered_ts = sign_metadata(tampered_ts_body, &[&release_signer]).expect("ts");
     let mut trust_len = trust.clone();
     assert!(matches!(
         trust_len.verify_project_chain(
@@ -705,10 +736,13 @@ fn rejects_role_confusion_dsse_mismatch_snapshot_len_airgap_traversal_and_stagin
     assert!(matches!(
         trust.verify_target_artifact(
             TufRootKind::Project,
+            &proj_snap,
             &proj_bins,
+            None,
             "binaries/linux/x86_64/grdr-daemon/1.0.0",
             b"bin-v1",
             Some(&unrelated_dsse),
+            now,
         ),
         Err(UpdateError::MixAndMatchDetected(_))
     ));
@@ -730,20 +764,40 @@ fn rejects_role_confusion_dsse_mismatch_snapshot_len_airgap_traversal_and_stagin
     let proj_layer_meta = sign_metadata(
         TargetsMetadata {
             role: TufRole::Targets,
-            version: 1,
+            version: 2,
             expires,
             targets: layer_targets,
         },
         &[&release_signer],
     )
     .expect("proj layer meta");
+    let layer_bytes = serde_json::to_vec(&proj_layer_meta.signed).expect("layer json");
+    let layer_snap = sign_metadata(
+        SnapshotMetadata {
+            version: 2,
+            expires,
+            meta: BTreeMap::from([(
+                TufRole::Targets,
+                SnapshotTargetRef {
+                    version: 2,
+                    sha256: canonical_sha256(&layer_bytes),
+                    length: u64::try_from(layer_bytes.len()).expect("len"),
+                },
+            )]),
+        },
+        &[&release_signer],
+    )
+    .expect("layer snap");
     assert!(matches!(
         trust.verify_target_artifact(
             TufRootKind::Project,
+            &layer_snap,
             &proj_layer_meta,
+            None,
             "policy/org/evil",
             b"{}",
             None,
+            now,
         ),
         Err(UpdateError::UnauthorizedRoot(_))
     ));
@@ -765,22 +819,205 @@ fn rejects_role_confusion_dsse_mismatch_snapshot_len_airgap_traversal_and_stagin
     let ts_role_meta = sign_metadata(
         TargetsMetadata {
             role: TufRole::Targets,
-            version: 1,
+            version: 3,
             expires,
             targets: ts_role_content,
         },
         &[&release_signer],
     )
     .expect("ts role meta");
+    let ts_role_bytes = serde_json::to_vec(&ts_role_meta.signed).expect("ts role json");
+    let ts_role_snap = sign_metadata(
+        SnapshotMetadata {
+            version: 3,
+            expires,
+            meta: BTreeMap::from([(
+                TufRole::Targets,
+                SnapshotTargetRef {
+                    version: 3,
+                    sha256: canonical_sha256(&ts_role_bytes),
+                    length: u64::try_from(ts_role_bytes.len()).expect("len"),
+                },
+            )]),
+        },
+        &[&release_signer],
+    )
+    .expect("ts role snap");
     assert!(matches!(
         trust.verify_target_artifact(
             TufRootKind::Project,
+            &ts_role_snap,
             &ts_role_meta,
+            None,
             "content/detection/spoof",
             b"rule",
             None,
+            now,
         ),
         Err(UpdateError::UnauthorizedRoot(_))
+    ));
+
+    // Reject 1-of-1 Content signer smuggling binaries into an airgap bundle.
+    let bin_bytes = b"evil-binary";
+    let smuggled_bin_manifest = AirgapBundleManifest {
+        bundle_id: "bndl-bin".into(),
+        bundle_version: "1.0.0".into(),
+        created_at: now,
+        entries: vec![AirgapBundleEntry {
+            path: "binaries/linux-amd64/grdr".into(),
+            pack_id: "grdr.bundle".into(),
+            version: "1.0.0".into(),
+            sha256: canonical_sha256(bin_bytes),
+            length: u64::try_from(bin_bytes.len()).expect("len"),
+        }],
+        halted_releases: Vec::new(),
+    };
+    let single_content_env = sign_dsse_envelope(
+        "application/vnd.grdr.airgap-manifest+json",
+        &serde_json::to_vec(&smuggled_bin_manifest).expect("json"),
+        &[&release_signer],
+    )
+    .expect("single content env");
+    let accepted = BundleApprovalState::TermsAccepted {
+        operator_id: "op_1".into(),
+        accepted_at: now,
+    };
+    assert!(
+        verify_airgap_bundle(
+            &trust,
+            &single_content_env,
+            &[AirgapArtifact {
+                path: "binaries/linux-amd64/grdr".into(),
+                bytes: bin_bytes.to_vec(),
+            }],
+            &accepted,
+            &[],
+            now,
+        )
+        .is_err()
+    );
+
+    // Enforce expiry, snapshot link, and monotonic rollback on delegated ContentPolicy role.
+    let mut policy_map = BTreeMap::new();
+    policy_map.insert(
+        "packs/policy/base.json".into(),
+        TargetDescriptor {
+            role: TufRole::ContentPolicy,
+            pack_kind: PackKind::SchemaPolicy,
+            signer_class: SignerClass::ProjectContent,
+            version: "2.0.0".into(),
+            generation: 2,
+            sha256: canonical_sha256(b"{}"),
+            length: 2,
+        },
+    );
+    let mut del_root = build_project_root(
+        &release_signer,
+        &rebuilder,
+        1,
+        ts(now.as_second().saturating_add(86_400 * 365)),
+    );
+    del_root.signed.roles.insert(
+        TufRole::ContentPolicy,
+        RootKeyRole {
+            key_ids: vec![release_signer.key_id().to_owned()],
+            threshold: 1,
+        },
+    );
+    let signed_del_root =
+        sign_metadata(del_root.signed, &[&release_signer, &rebuilder]).expect("r");
+    let mut del_trust = UpdateTrust::new(signed_del_root, now).expect("trust");
+    let del_v2 = sign_metadata(
+        TargetsMetadata {
+            role: TufRole::ContentPolicy,
+            version: 2,
+            expires,
+            targets: policy_map.clone(),
+        },
+        &[&release_signer],
+    )
+    .expect("del v2");
+    let del_v2_bytes = serde_json::to_vec(&del_v2.signed).expect("json");
+    let del_snap_v2 = sign_metadata(
+        SnapshotMetadata {
+            version: 2,
+            expires,
+            meta: BTreeMap::from([(
+                TufRole::ContentPolicy,
+                SnapshotTargetRef {
+                    version: 2,
+                    sha256: canonical_sha256(&del_v2_bytes),
+                    length: u64::try_from(del_v2_bytes.len()).expect("len"),
+                },
+            )]),
+        },
+        &[&release_signer],
+    )
+    .expect("del snap");
+    del_trust
+        .verify_target_artifact(
+            TufRootKind::Project,
+            &del_snap_v2,
+            &del_v2,
+            None,
+            "packs/policy/base.json",
+            b"{}",
+            None,
+            now,
+        )
+        .expect("delegated content v2 ok");
+    let del_v1 = sign_metadata(
+        TargetsMetadata {
+            role: TufRole::ContentPolicy,
+            version: 1,
+            expires,
+            targets: policy_map,
+        },
+        &[&release_signer],
+    )
+    .expect("del v1");
+    let del_v1_bytes = serde_json::to_vec(&del_v1.signed).expect("json");
+    let del_snap_v1_bad_roll = sign_metadata(
+        SnapshotMetadata {
+            version: 3,
+            expires,
+            meta: BTreeMap::from([(
+                TufRole::ContentPolicy,
+                SnapshotTargetRef {
+                    version: 1,
+                    sha256: canonical_sha256(&del_v1_bytes),
+                    length: u64::try_from(del_v1_bytes.len()).expect("len"),
+                },
+            )]),
+        },
+        &[&release_signer],
+    )
+    .expect("del snap v3");
+    assert!(matches!(
+        del_trust.verify_target_artifact(
+            TufRootKind::Project,
+            &del_snap_v1_bad_roll,
+            &del_v1,
+            None,
+            "packs/policy/base.json",
+            b"{}",
+            None,
+            now,
+        ),
+        Err(UpdateError::RollbackDetected { .. })
+    ));
+    assert!(matches!(
+        del_trust.verify_target_artifact(
+            TufRootKind::Project,
+            &del_snap_v2,
+            &del_v2,
+            None,
+            "packs/policy/base.json",
+            b"{}",
+            None,
+            ts(expires.as_second().saturating_add(1)),
+        ),
+        Err(UpdateError::MetadataExpired { .. })
     ));
 
     // Air-gap path traversal and unmanifested artifacts must fail closed.

@@ -1,32 +1,40 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
-//! Air-gap tar verification, OCI index validation, and symlink-safe atomic extraction.
+//! Air-gap tar verification, OCI index validation, delta/split validation, and atomic extraction.
 
-use std::fs;
 use std::path::Path;
 
 use grdr_update::{
-    AirgapArtifact, AirgapVerificationOutcome, DsseEnvelope, RootMetadata, SignedMetadata,
-    UpdateError, canonical_sha256,
+    AirgapArtifact, AirgapBundleManifest, AirgapVerificationOutcome, DsseEnvelope, RootMetadata,
+    SignedMetadata, SnapshotMetadata, TargetsMetadata, TimestampMetadata, UpdateError, YankRecord,
+    canonical_sha256,
 };
 
 use crate::airgap::AirgapCliError;
+use crate::airgap::airgap_policy::{
+    BundleTransferKind, ExtendedBundleDescriptor, PATH_BUNDLE_EXTENDED, reassemble_verified_parts,
+};
+use crate::airgap::airgap_state::check_yank_slice;
 use crate::airgap_bundle::{
     AIRGAP_PAYLOAD_TYPE, OCI_LAYOUT_BYTES, PATH_INDEX_JSON, PATH_MANIFEST_DSSE, PATH_MANIFEST_JSON,
-    PATH_NOTICES, PATH_OCI_LAYOUT, PATH_PROJECT_ROOT, PATH_TERMS, root_fingerprint,
+    PATH_NOTICES, PATH_OCI_LAYOUT, PATH_PROJECT_ROOT, PATH_TERMS, PATH_TUF_SNAPSHOT,
+    PATH_TUF_TARGETS, PATH_TUF_TIMESTAMP, root_fingerprint,
 };
 use crate::fs_safe::{
     atomic_write_bytes, ensure_safe_dir_all, read_bounded_regular,
     reject_symlinks_on_existing_prefixes,
 };
-use crate::tar_archive::{read_tar_file, validate_archive_rel_path};
+use crate::tar_archive::{decode_tar, read_tar_file, validate_archive_rel_path};
 
 const MAX_ROOT_METADATA_BYTES: u64 = 1024 * 1024;
-const PINNED_ROOT_FILE: &str = "project-root.json";
 
 pub struct ParsedTarBundle {
     pub embedded_root: Option<SignedMetadata<RootMetadata>>,
+    pub tuf_timestamp: Option<SignedMetadata<TimestampMetadata>>,
+    pub tuf_snapshot: Option<SignedMetadata<SnapshotMetadata>>,
+    pub tuf_targets: Option<SignedMetadata<TargetsMetadata>>,
     pub envelope: DsseEnvelope,
+    pub manifest: AirgapBundleManifest,
     pub manifest_bytes: Vec<u8>,
     pub manifest_sha256: String,
     pub index_bytes: Vec<u8>,
@@ -34,9 +42,21 @@ pub struct ParsedTarBundle {
 }
 
 pub fn load_parsed_tar_bundle(bundle_path: &Path) -> Result<ParsedTarBundle, AirgapCliError> {
-    let entries =
-        read_tar_file(bundle_path).map_err(|e| AirgapCliError::InvalidInput(e.to_string()))?;
+    let is_parts_manifest = bundle_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.ends_with(".parts.json"));
+    let entries = if is_parts_manifest {
+        let reassembled = reassemble_verified_parts(bundle_path)?;
+        decode_tar(&reassembled).map_err(|e| AirgapCliError::InvalidInput(e.to_string()))?
+    } else {
+        read_tar_file(bundle_path).map_err(|e| AirgapCliError::InvalidInput(e.to_string()))?
+    };
+
     let mut root_bytes: Option<Vec<u8>> = None;
+    let mut ts_bytes: Option<Vec<u8>> = None;
+    let mut snap_bytes: Option<Vec<u8>> = None;
+    let mut targets_bytes: Option<Vec<u8>> = None;
     let mut dsse_bytes: Option<Vec<u8>> = None;
     let mut manifest_bytes: Option<Vec<u8>> = None;
     let mut index_bytes: Option<Vec<u8>> = None;
@@ -46,6 +66,9 @@ pub fn load_parsed_tar_bundle(bundle_path: &Path) -> Result<ParsedTarBundle, Air
     for entry in entries {
         match entry.path.as_str() {
             PATH_PROJECT_ROOT => root_bytes = Some(entry.bytes),
+            PATH_TUF_TIMESTAMP => ts_bytes = Some(entry.bytes),
+            PATH_TUF_SNAPSHOT => snap_bytes = Some(entry.bytes),
+            PATH_TUF_TARGETS => targets_bytes = Some(entry.bytes),
             PATH_MANIFEST_DSSE => dsse_bytes = Some(entry.bytes),
             PATH_MANIFEST_JSON => manifest_bytes = Some(entry.bytes),
             PATH_INDEX_JSON => index_bytes = Some(entry.bytes),
@@ -68,7 +91,10 @@ pub fn load_parsed_tar_bundle(bundle_path: &Path) -> Result<ParsedTarBundle, Air
     let raw_manifest = manifest_bytes.ok_or_else(|| {
         UpdateError::MalformedMetadata("missing meta/airgap-manifest.json".into())
     })?;
+    let manifest: AirgapBundleManifest = serde_json::from_slice(&raw_manifest)
+        .map_err(|e| UpdateError::MalformedMetadata(format!("invalid manifest JSON: {e}")))?;
     let manifest_sha256 = canonical_sha256(&raw_manifest);
+
     if blobs.len() != 1 {
         return Err(UpdateError::ArtifactIntegrity {
             target: "blobs/sha256".into(),
@@ -89,17 +115,14 @@ pub fn load_parsed_tar_bundle(bundle_path: &Path) -> Result<ParsedTarBundle, Air
     }
     let idx_raw =
         index_bytes.ok_or_else(|| UpdateError::MalformedMetadata("missing index.json".into()))?;
-    let embedded_root = match root_bytes {
-        Some(raw) => Some(
-            serde_json::from_slice::<SignedMetadata<RootMetadata>>(&raw)
-                .map_err(|e| UpdateError::MalformedMetadata(e.to_string()))?,
-        ),
-        None => None,
-    };
 
     Ok(ParsedTarBundle {
-        embedded_root,
+        embedded_root: parse_opt_json(root_bytes, "project-root.json")?,
+        tuf_timestamp: parse_opt_json(ts_bytes, "timestamp.json")?,
+        tuf_snapshot: parse_opt_json(snap_bytes, "snapshot.json")?,
+        tuf_targets: parse_opt_json(targets_bytes, "targets.json")?,
         envelope,
+        manifest,
         manifest_bytes: raw_manifest,
         manifest_sha256,
         index_bytes: idx_raw,
@@ -107,38 +130,16 @@ pub fn load_parsed_tar_bundle(bundle_path: &Path) -> Result<ParsedTarBundle, Air
     })
 }
 
-pub fn resolve_trust_anchor(
-    override_root: Option<&Path>,
-    state_dir: Option<&Path>,
-    expected_fingerprint: Option<&str>,
-    parsed: &ParsedTarBundle,
-) -> Result<SignedMetadata<RootMetadata>, AirgapCliError> {
-    if let Some(root_path) = override_root {
-        return read_root_metadata_file(root_path);
+fn parse_opt_json<T: serde::de::DeserializeOwned>(
+    raw: Option<Vec<u8>>,
+    label: &str,
+) -> Result<Option<T>, AirgapCliError> {
+    match raw {
+        Some(bytes) => serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(|e| UpdateError::MalformedMetadata(format!("invalid {label}: {e}")).into()),
+        None => Ok(None),
     }
-    if let Some(dir) = state_dir {
-        let pinned = dir.join(PINNED_ROOT_FILE);
-        if fs::symlink_metadata(&pinned).is_ok() {
-            return read_root_metadata_file(&pinned);
-        }
-    }
-    let Some(expected_fp) = expected_fingerprint else {
-        return Err(UpdateError::UnauthorizedRoot(
-            "no trust anchor provided: supply --root, an initialized --state-dir/project-root.json, or --expected-fingerprint verified via --print-root".into(),
-        )
-        .into());
-    };
-    let embedded = parsed.embedded_root.clone().ok_or_else(|| {
-        UpdateError::MalformedMetadata("missing meta/project-root.json in bundle".into())
-    })?;
-    let actual_fp = root_fingerprint(&embedded.signed)?;
-    if actual_fp != expected_fp {
-        return Err(UpdateError::UnauthorizedRoot(format!(
-            "project root fingerprint `{actual_fp}` != expected `{expected_fp}`"
-        ))
-        .into());
-    }
-    Ok(embedded)
 }
 
 pub fn read_root_metadata_file(
@@ -211,6 +212,10 @@ pub fn verify_required_bundle_envelope(
         }
         .into());
     }
+    let expected_ann_fp = match parsed.embedded_root.as_ref() {
+        Some(emb) => root_fingerprint(&emb.signed)?,
+        None => actual_root_fp.to_owned(),
+    };
     let annotations = desc
         .get("annotations")
         .and_then(|v| v.as_object())
@@ -226,7 +231,7 @@ pub fn verify_required_bundle_envelope(
         || annotations
             .get("org.guardrails.airgap.root_fingerprint")
             .and_then(|v| v.as_str())
-            != Some(actual_root_fp)
+            != Some(expected_ann_fp.as_str())
     {
         return Err(UpdateError::ArtifactIntegrity {
             target: PATH_INDEX_JSON.into(),
@@ -235,6 +240,60 @@ pub fn verify_required_bundle_envelope(
         .into());
     }
     Ok(())
+}
+
+pub fn verify_extended_bundle_rules(
+    parsed: &ParsedTarBundle,
+    outcome: &AirgapVerificationOutcome,
+    installed_base_sha256: Option<&str>,
+    external_yanks: &[YankRecord],
+) -> Result<Option<ExtendedBundleDescriptor>, AirgapCliError> {
+    check_yank_slice(
+        external_yanks,
+        outcome,
+        &parsed.manifest_sha256,
+        &parsed.manifest.entries,
+    )?;
+
+    let Some(ext_item) = parsed
+        .artifacts
+        .iter()
+        .find(|a| a.path == PATH_BUNDLE_EXTENDED)
+    else {
+        return Ok(None);
+    };
+
+    let ext: ExtendedBundleDescriptor = serde_json::from_slice(&ext_item.bytes).map_err(|e| {
+        UpdateError::MalformedMetadata(format!("invalid bundle-extended JSON: {e}"))
+    })?;
+
+    if let BundleTransferKind::Delta {
+        base_version,
+        base_manifest_sha256,
+    } = &ext.bundle_kind
+    {
+        match installed_base_sha256 {
+            Some(installed) if installed == base_manifest_sha256 => {}
+            other => {
+                return Err(UpdateError::ArtifactIntegrity {
+                    target: format!("delta-base@{base_version}"),
+                    detail: format!(
+                        "missing required delta base `{base_version}` (expected sha256:{base_manifest_sha256}, installed:{other:?})"
+                    ),
+                }
+                .into());
+            }
+        }
+    }
+
+    check_yank_slice(
+        &ext.yanked_releases,
+        outcome,
+        &parsed.manifest_sha256,
+        &parsed.manifest.entries,
+    )?;
+
+    Ok(Some(ext))
 }
 
 pub fn extract_verified_artifacts(

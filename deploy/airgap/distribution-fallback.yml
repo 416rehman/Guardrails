@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: The Guardrails ADR Authors
+version: 0.1
+log:
+  level: info
+  formatter: json
+storage:
+  filesystem:
+    rootdirectory: /var/lib/registry
+http:
+  addr: ":5000"
+  tls:
+    certificate: /etc/grdr/tls/registry.crt
+    key: /etc/grdr/tls/registry.key
+    minimumtls: tls1.2
+  headers:
+    X-Content-Type-Options: [nosniff]
+health:
+  storagedriver:
+    enabled: true
+    interval: 10s
+    threshold: 3

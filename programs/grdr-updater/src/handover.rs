@@ -247,7 +247,7 @@ pub fn run_updater_self_test(clock: &dyn Clock) -> Result<(), UpdaterError> {
     let _wall = clock.now_wall().map_err(|e| UpdaterError::ClockFailed {
         detail: e.to_string(),
     })?;
-    let _matrix = grdr_compat::CompatMatrix::default_v1();
+    let _matrix = crate::compat_config::load_support_toml_compat_matrix()?;
     Ok(())
 }
 

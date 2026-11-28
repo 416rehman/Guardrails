@@ -159,6 +159,34 @@ fn verify_end_to_end_ops_cli_flow() -> Result<(), Box<dyn Error>> {
         "build without --key-dir must fail",
     )?;
 
+    // Empty --key-dir without existing keys or --ephemeral-dev-keys refuses.
+    fs::create_dir_all(&keys_dir)?;
+    let empty_keys_build = run_cli(
+        &[
+            "airgap",
+            "build",
+            "--packs-dir",
+            p_str(&packs_dir)?,
+            "--key-dir",
+            p_str(&keys_dir)?,
+            "--out",
+            p_str(&tar_path)?,
+            "--json",
+        ],
+        &dir,
+    )?;
+    check(
+        !empty_keys_build.status.success(),
+        "build with empty --key-dir without --ephemeral-dev-keys must fail",
+    )?;
+    check(
+        String::from_utf8_lossy(&empty_keys_build.stderr).contains("GRDR-AIRGAP-0003"),
+        &format!(
+            "expected GRDR-AIRGAP-0003 on empty --key-dir, got: {}",
+            String::from_utf8_lossy(&empty_keys_build.stderr)
+        ),
+    )?;
+
     let build = run_cli(
         &[
             "airgap",
@@ -167,6 +195,7 @@ fn verify_end_to_end_ops_cli_flow() -> Result<(), Box<dyn Error>> {
             p_str(&packs_dir)?,
             "--key-dir",
             p_str(&keys_dir)?,
+            "--ephemeral-dev-keys",
             "--out",
             p_str(&tar_path)?,
             "--json",
