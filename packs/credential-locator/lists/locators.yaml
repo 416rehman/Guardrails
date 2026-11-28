@@ -282,3 +282,331 @@ locators:
     public_part_extractor: file_basename
     readable_expiry: false
     honeytoken: true
+
+  - id: aws-sso-cache
+    credential_class: cloud
+    store_kind: json_token_cache
+    path_globs:
+      - "~/.aws/sso/cache/*.json"
+      - "%USERPROFILE%/.aws/sso/cache/*.json"
+    content_regex: '"accessToken"\s*:\s*"([^"]{16,})"'
+    prefix: "aws_sso_"
+    length_class: variable
+    public_part_extractor: json_client_id
+    readable_expiry: true
+    honeytoken: false
+
+  - id: aws-cli-cache
+    credential_class: cloud
+    store_kind: json_token_cache
+    path_globs:
+      - "~/.aws/cli/cache/*.json"
+      - "%USERPROFILE%/.aws/cli/cache/*.json"
+    content_regex: '"SecretAccessKey"\s*:\s*"([^"]{16,})"'
+    prefix: "ASIA"
+    length_class: variable
+    public_part_extractor: access_key_prefix
+    readable_expiry: true
+    honeytoken: false
+
+  - id: gcp-gcloud-legacy-creds
+    credential_class: cloud
+    store_kind: json_oauth
+    path_globs:
+      - "~/.config/gcloud/credentials.db"
+      - "%APPDATA%/gcloud/credentials.db"
+    content_regex: '(?:refresh_token|1//[A-Za-z0-9_-]{20,})'
+    prefix: "gcp_db_"
+    length_class: variable
+    public_part_extractor: file_basename
+    readable_expiry: false
+    honeytoken: false
+
+  - id: terraform-cli-credentials
+    credential_class: cloud
+    store_kind: json_token_cache
+    path_globs:
+      - "~/.terraform.d/credentials.tfrc.json"
+      - "%APPDATA%/terraform.d/credentials.tfrc.json"
+    content_regex: '"token"\s*:\s*"([^"]{12,})"'
+    prefix: "tfc_"
+    length_class: variable
+    public_part_extractor: json_client_id
+    readable_expiry: false
+    honeytoken: false
+
+  - id: pulumi-credentials
+    credential_class: cloud
+    store_kind: json_oauth
+    path_globs:
+      - "~/.pulumi/credentials.json"
+      - "%USERPROFILE%/.pulumi/credentials.json"
+    content_regex: '"accessToken"\s*:\s*"(pul-[^"]{12,}|[^"]{12,})"'
+    prefix: "pul-"
+    length_class: variable
+    public_part_extractor: json_account_uuid
+    readable_expiry: false
+    honeytoken: false
+
+  - id: hashicorp-vault-token-file
+    credential_class: production
+    store_kind: plaintext_file
+    path_globs:
+      - "~/.vault-token"
+      - "%USERPROFILE%/.vault-token"
+    content_regex: '(hvs\.[A-Za-z0-9_-]{16,}|s\.[A-Za-z0-9]{16,})'
+    prefix: "hvs."
+    length_class: variable
+    public_part_extractor: file_basename
+    readable_expiry: false
+    honeytoken: false
+
+  - id: k8s-serviceaccount-token
+    credential_class: production
+    store_kind: kubeconfig
+    path_globs:
+      - "/var/run/secrets/kubernetes.io/serviceaccount/token"
+      - "**/secrets/kubernetes.io/serviceaccount/token"
+    content_regex: 'eyJ[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}'
+    prefix: "k8s_sa_"
+    length_class: variable
+    public_part_extractor: cluster_context
+    readable_expiry: true
+    honeytoken: false
+
+  - id: helm-registry-config
+    credential_class: publish
+    store_kind: docker_config
+    path_globs:
+      - "~/.config/helm/registry/config.json"
+      - "%APPDATA%/helm/registry/config.json"
+    content_regex: '"auth"\s*:\s*"([A-Za-z0-9+/=]{12,})"'
+    prefix: "helm_"
+    length_class: variable
+    public_part_extractor: registry_host
+    readable_expiry: false
+    honeytoken: false
+
+  - id: cargo-registry-credentials
+    credential_class: publish
+    store_kind: ini_token
+    path_globs:
+      - "~/.cargo/credentials.toml"
+      - "~/.cargo/credentials"
+      - "%USERPROFILE%/.cargo/credentials.toml"
+    content_regex: '(?i)token\s*=\s*"(cio[A-Za-z0-9]{16,}|[^"\s]{12,})"'
+    prefix: "cio"
+    length_class: medium
+    public_part_extractor: key_name
+    readable_expiry: false
+    honeytoken: false
+
+  - id: uv-registry-credentials
+    credential_class: publish
+    store_kind: ini_token
+    path_globs:
+      - "~/.config/uv/credentials.toml"
+      - "%APPDATA%/uv/credentials.toml"
+    content_regex: '(?i)password\s*=\s*"([^"\s]{12,})"'
+    prefix: "uv_"
+    length_class: variable
+    public_part_extractor: key_name
+    readable_expiry: false
+    honeytoken: false
+
+  - id: poetry-auth-credentials
+    credential_class: publish
+    store_kind: ini_token
+    path_globs:
+      - "~/.config/pypoetry/auth.toml"
+      - "%APPDATA%/pypoetry/auth.toml"
+    content_regex: '(?i)(?:password|token)\s*=\s*"([^"\s]{12,})"'
+    prefix: "poetry_"
+    length_class: variable
+    public_part_extractor: key_name
+    readable_expiry: false
+    honeytoken: false
+
+  - id: pip-index-config
+    credential_class: publish
+    store_kind: plaintext_file
+    path_globs:
+      - "~/.config/pip/pip.conf"
+      - "%APPDATA%/pip/pip.ini"
+    content_regex: 'https://([^:\s/@]+):([^@\s]+)@([^\s/]+)'
+    prefix: "pip_"
+    length_class: variable
+    public_part_extractor: url_host_and_user
+    readable_expiry: false
+    honeytoken: false
+
+  - id: rubygems-credentials
+    credential_class: publish
+    store_kind: yaml_hosts
+    path_globs:
+      - "~/.gem/credentials"
+      - "~/.local/share/gem/credentials"
+      - "%USERPROFILE%/.gem/credentials"
+    content_regex: '(?i):rubygems_api_key:\s*(rubygems_[^\s]+|[^\s]{12,})'
+    prefix: "rubygems_"
+    length_class: medium
+    public_part_extractor: key_name
+    readable_expiry: false
+    honeytoken: false
+
+  - id: nuget-config-token
+    credential_class: publish
+    store_kind: plaintext_file
+    path_globs:
+      - "~/.nuget/NuGet/NuGet.Config"
+      - "%APPDATA%/NuGet/NuGet.Config"
+    content_regex: '(?i)ClearTextPassword"\s+value="([^"]{8,})"'
+    prefix: "nuget_"
+    length_class: variable
+    public_part_extractor: key_name
+    readable_expiry: false
+    honeytoken: false
+
+  - id: maven-settings-xml
+    credential_class: publish
+    store_kind: plaintext_file
+    path_globs:
+      - "~/.m2/settings.xml"
+      - "%USERPROFILE%/.m2/settings.xml"
+    content_regex: '<password>([^<]{8,})</password>'
+    prefix: "mvn_"
+    length_class: variable
+    public_part_extractor: file_basename
+    readable_expiry: false
+    honeytoken: false
+
+  - id: gradle-properties-token
+    credential_class: publish
+    store_kind: ini_profile
+    path_globs:
+      - "~/.gradle/gradle.properties"
+      - "%USERPROFILE%/.gradle/gradle.properties"
+    content_regex: '(?i)(?:password|token|secret|key)\s*=\s*([^\s#]{8,})'
+    prefix: "gradle_"
+    length_class: variable
+    public_part_extractor: key_name
+    readable_expiry: false
+    honeytoken: false
+
+  - id: composer-auth-json
+    credential_class: publish
+    store_kind: json_token_cache
+    path_globs:
+      - "~/.composer/auth.json"
+      - "%APPDATA%/Composer/auth.json"
+    content_regex: '"(?:github-oauth|gitlab-token|http-basic)"'
+    prefix: "composer_"
+    length_class: variable
+    public_part_extractor: json_client_id
+    readable_expiry: false
+    honeytoken: false
+
+  - id: glab-cli-hosts
+    credential_class: forge
+    store_kind: yaml_hosts
+    path_globs:
+      - "~/.config/glab-cli/config.yml"
+      - "%APPDATA%/glab-cli/config.yml"
+    content_regex: '(?i)token:\s*(glpat-[^\s]+|[^\s]{12,})'
+    prefix: "glpat-"
+    length_class: medium
+    public_part_extractor: yaml_host_user
+    readable_expiry: false
+    honeytoken: false
+
+  - id: hub-cli-hosts
+    credential_class: forge
+    store_kind: yaml_hosts
+    path_globs:
+      - "~/.config/hub"
+      - "%USERPROFILE%/.config/hub"
+    content_regex: '(?i)oauth_token:\s*([^\s]{12,})'
+    prefix: "hub_"
+    length_class: medium
+    public_part_extractor: yaml_host_user
+    readable_expiry: false
+    honeytoken: false
+
+  - id: agent-windsurf-mcp
+    credential_class: model
+    store_kind: mcp_env
+    path_globs:
+      - "~/.codeium/windsurf/mcp_config.json"
+      - "%USERPROFILE%/.codeium/windsurf/mcp_config.json"
+    content_regex: '"(?:API_KEY|TOKEN|SECRET|PASSWORD)"\s*:\s*"([^"]{8,})"'
+    prefix: "ws_"
+    length_class: variable
+    public_part_extractor: key_name
+    readable_expiry: false
+    honeytoken: false
+
+  - id: agent-continue-store
+    credential_class: model
+    store_kind: agent_store
+    path_globs:
+      - "~/.continue/config.json"
+      - "%USERPROFILE%/.continue/config.json"
+    content_regex: '"apiKey"\s*:\s*"([^"]{8,})"'
+    prefix: "cnt_"
+    length_class: variable
+    public_part_extractor: json_account_uuid
+    readable_expiry: false
+    honeytoken: false
+
+  - id: agent-gemini-oauth
+    credential_class: model
+    store_kind: json_oauth
+    path_globs:
+      - "~/.gemini/oauth_creds.json"
+      - "%USERPROFILE%/.gemini/oauth_creds.json"
+    content_regex: '"(?:refresh_token|access_token)"\s*:\s*"([^"]{12,})"'
+    prefix: "gem_"
+    length_class: variable
+    public_part_extractor: json_account_uuid
+    readable_expiry: true
+    honeytoken: false
+
+  - id: agent-aider-config
+    credential_class: model
+    store_kind: agent_store
+    path_globs:
+      - "~/.aider.conf.yml"
+      - "**/.aider.conf.yml"
+    content_regex: '(?i)(?:openai-api-key|anthropic-api-key|api-key):\s*([^\s#]{8,})'
+    prefix: "aider_"
+    length_class: variable
+    public_part_extractor: key_name
+    readable_expiry: false
+    honeytoken: false
+
+  - id: shell-history-secrets
+    credential_class: model
+    store_kind: shell_profile
+    path_globs:
+      - "~/.zsh_history"
+      - "~/.bash_history"
+      - "%APPDATA%/Microsoft/Windows/PowerShell/PSReadLine/ConsoleHost_history.txt"
+    content_regex: '(?i)(?:ANTHROPIC_API_KEY|OPENAI_API_KEY|GH_TOKEN|AWS_SECRET_ACCESS_KEY|NPM_TOKEN)=([^\s"''#]{8,})'
+    prefix: "hist_"
+    length_class: variable
+    public_part_extractor: key_name
+    readable_expiry: false
+    honeytoken: false
+
+  - id: git-config-credentials-file
+    credential_class: forge
+    store_kind: plaintext_file
+    path_globs:
+      - "~/.config/git/credentials"
+      - "%USERPROFILE%/.config/git/credentials"
+    content_regex: 'https://([^:\s/@]+):([^@\s]+)@([^\s/]+)'
+    prefix: "git_"
+    length_class: medium
+    public_part_extractor: url_host_and_user
+    readable_expiry: false
+    honeytoken: false

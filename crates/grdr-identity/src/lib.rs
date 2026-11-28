@@ -2,21 +2,33 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 #![deny(clippy::arithmetic_side_effects)]
 
+pub mod attest;
 pub mod broker;
 mod broker_revoke;
 pub mod broker_types;
+pub mod ceiling_ref;
+pub mod cred_bindings;
 pub mod cred_helpers;
-mod http_security;
+pub mod http_security;
 pub mod issuer;
 pub mod issuer_helpers;
+pub mod jwt_keys;
+pub mod keystore;
 pub mod locator;
 mod locator_extract;
 mod locator_parse;
+pub mod locator_scan;
+pub mod model_cred;
 pub mod oauth_issuer;
 pub mod openbao_store;
+pub mod phantom;
 pub mod pseudonym;
+pub mod registry_correlation;
 pub mod secret_store;
 pub mod spiffe;
+pub mod ssh_agent;
+pub mod standards_adapters;
+pub mod token_exchange;
 pub mod vault;
 pub mod vault_types;
 
@@ -28,6 +40,8 @@ mod dpapi_fs;
 mod linux_keyring;
 
 #[cfg(test)]
+mod federation_tests;
+#[cfg(test)]
 mod issuer_tests;
 #[cfg(test)]
 mod locator_tests;
@@ -35,6 +49,7 @@ mod locator_tests;
 mod tests;
 
 pub use broker::CredentialBroker;
+pub use broker_revoke::RevocationScope;
 pub use broker_types::{
     BrokerPolicy, BrokerRequest, BrokeredToken, Ceiling, ContainmentStatus, CredentialBinding,
     CredentialClass, CredentialMode, LeaseRecord, LeaseState, SessionRevocationReport,

@@ -10,6 +10,8 @@ mod connect_tests;
 mod demo;
 mod demo_devices;
 mod exports;
+#[deny(clippy::arithmetic_side_effects)]
+mod federation;
 mod routes;
 mod rpc;
 mod store;
@@ -175,6 +177,10 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if let Err(err) = crate::federation::FederationState::try_new(state.clone()) {
+        error!(code = %err.code, message = %err.message, "Failed initializing federation state");
+        return ExitCode::FAILURE;
+    }
 
     let Ok((api_token, api_ephemeral)) =
         resolve_plane_token(args.api_token, &args.bind, "--api-token")

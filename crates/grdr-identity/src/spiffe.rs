@@ -145,6 +145,34 @@ impl SpiffeId {
         Self::parse(&raw)
     }
 
+    pub fn device(org_id: &str, device_id: &str) -> Result<Self, IdentityError> {
+        validate_single_segment(org_id, "org_id")?;
+        validate_single_segment(device_id, "device_id")?;
+        let domain = format!("org-{}", org_id.to_ascii_lowercase());
+        let raw = format!("{SPIFFE_SCHEME}{domain}/dev/{device_id}");
+        Self::parse(&raw)
+    }
+
+    pub fn gateway(org_id: &str, gateway_id: &str) -> Result<Self, IdentityError> {
+        validate_single_segment(org_id, "org_id")?;
+        validate_single_segment(gateway_id, "gateway_id")?;
+        let domain = format!("org-{}", org_id.to_ascii_lowercase());
+        let raw = format!("{SPIFFE_SCHEME}{domain}/gw/{gateway_id}");
+        Self::parse(&raw)
+    }
+
+    pub fn workload(
+        trust_domain: &str,
+        kind: &str,
+        workload_id: &str,
+    ) -> Result<Self, IdentityError> {
+        validate_single_segment(kind, "kind")?;
+        validate_single_segment(workload_id, "workload_id")?;
+        let domain = trust_domain.to_ascii_lowercase();
+        let raw = format!("{SPIFFE_SCHEME}{domain}/wl/{kind}/{workload_id}");
+        Self::parse(&raw)
+    }
+
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.uri
@@ -205,4 +233,85 @@ fn validate_single_segment(value: &str, label: &str) -> Result<(), IdentityError
         )));
     }
     Ok(())
+}
+
+fn append_len_prefixed(dst: &mut Vec<u8>, bytes: &[u8]) {
+    let len = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+    dst.extend_from_slice(&len.to_le_bytes());
+    dst.extend_from_slice(bytes);
+    dst.push(0);
+}
+
+#[must_use]
+pub fn derive_agi_id(device_key: &[u8; 32], binary_sha256: &str, config_hash: &str) -> String {
+    let mut payload = Vec::with_capacity(
+        16_usize
+            .saturating_add(binary_sha256.len())
+            .saturating_add(config_hash.len()),
+    );
+    append_len_prefixed(&mut payload, binary_sha256.as_bytes());
+    append_len_prefixed(&mut payload, config_hash.as_bytes());
+    let mac = grdr_crypto::domain_hmac_sha256(device_key, "grdr.identity.agi.v1", &payload);
+    let hex = grdr_crypto::encode_lower_hex(&mac);
+    format!("agi_{}", hex.get(..32).unwrap_or(&hex))
+}
+
+#[must_use]
+pub fn derive_aid_id(org_key: &[u8; 32], agi_id: &str, epoch: u32) -> String {
+    let mut payload = Vec::with_capacity(16_usize.saturating_add(agi_id.len()));
+    append_len_prefixed(&mut payload, &epoch.to_le_bytes());
+    append_len_prefixed(&mut payload, agi_id.as_bytes());
+    let mac = grdr_crypto::domain_hmac_sha256(org_key, "grdr.identity.aid.v1", &payload);
+    let hex = grdr_crypto::encode_lower_hex(&mac);
+    format!("aid_{epoch}_{}", hex.get(..32).unwrap_or(&hex))
+}
+
+pub fn derive_k8s_workload_key(
+    namespace: &str,
+    service_account: &str,
+    image_digest: &str,
+) -> Result<String, IdentityError> {
+    validate_single_segment(namespace, "k8s_namespace")?;
+    validate_single_segment(service_account, "k8s_service_account")?;
+    if image_digest.trim().is_empty() {
+        return Err(IdentityError::InvalidSpiffeId(
+            "k8s workload requires non-empty image digest".to_string(),
+        ));
+    }
+    let mut payload = Vec::with_capacity(
+        32_usize
+            .saturating_add(namespace.len())
+            .saturating_add(service_account.len())
+            .saturating_add(image_digest.len()),
+    );
+    append_len_prefixed(&mut payload, b"k8s");
+    append_len_prefixed(&mut payload, namespace.as_bytes());
+    append_len_prefixed(&mut payload, service_account.as_bytes());
+    append_len_prefixed(&mut payload, image_digest.as_bytes());
+    let hex = grdr_crypto::sha256_hex(&payload);
+    Ok(format!("wl_k8s_{}", hex.get(..24).unwrap_or(&hex)))
+}
+
+pub fn derive_ci_workload_key(
+    issuer: &str,
+    repository: &str,
+    workflow_ref: &str,
+) -> Result<String, IdentityError> {
+    if issuer.trim().is_empty() || repository.trim().is_empty() || workflow_ref.trim().is_empty() {
+        return Err(IdentityError::InvalidSpiffeId(
+            "CI workload key requires non-empty issuer, repository, and workflow_ref".to_string(),
+        ));
+    }
+    let mut payload = Vec::with_capacity(
+        32_usize
+            .saturating_add(issuer.len())
+            .saturating_add(repository.len())
+            .saturating_add(workflow_ref.len()),
+    );
+    append_len_prefixed(&mut payload, b"ci");
+    append_len_prefixed(&mut payload, issuer.as_bytes());
+    append_len_prefixed(&mut payload, repository.as_bytes());
+    append_len_prefixed(&mut payload, workflow_ref.as_bytes());
+    let hex = grdr_crypto::sha256_hex(&payload);
+    Ok(format!("wl_ci_{}", hex.get(..24).unwrap_or(&hex)))
 }

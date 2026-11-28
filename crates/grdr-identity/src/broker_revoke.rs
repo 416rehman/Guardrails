@@ -2,10 +2,21 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 #![deny(clippy::arithmetic_side_effects)]
 
+use serde::{Deserialize, Serialize};
+
 use crate::IdentityError;
 use crate::broker::CredentialBroker;
 use crate::broker_types::{LeaseRecord, LeaseState, SessionRevocationReport};
 use crate::issuer::CredentialIssuer;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RevocationScope {
+    Session(String),
+    Instance(String),
+    Device(String),
+    Principal(String),
+}
 
 impl CredentialBroker {
     pub async fn revoke_lease_with_issuer<I: CredentialIssuer>(
@@ -84,6 +95,36 @@ impl CredentialBroker {
 
     pub fn revoke_by_instance(&mut self, instance_spiffe_id: &str) -> usize {
         self.revoke_matching(|lease| lease.instance_spiffe_id == instance_spiffe_id)
+    }
+
+    pub fn register_lease_principal(&mut self, lease_id: &str, principal_id: &str) {
+        if self.leases.contains_key(lease_id) && !principal_id.trim().is_empty() {
+            self.lease_principals
+                .insert(lease_id.to_owned(), principal_id.to_owned());
+        }
+    }
+
+    pub fn revoke_by_device(&mut self, device_id: &str) -> usize {
+        self.revoke_matching(|lease| lease.device_id == device_id)
+    }
+
+    pub fn revoke_by_principal(&mut self, principal_id: &str) -> usize {
+        let matching_ids: Vec<String> = self
+            .lease_principals
+            .iter()
+            .filter(|(_, p)| *p == principal_id)
+            .map(|(lid, _)| lid.clone())
+            .collect();
+        self.revoke_matching(|lease| matching_ids.contains(&lease.lease_id))
+    }
+
+    pub fn revoke_scope(&mut self, scope: &RevocationScope) -> usize {
+        match scope {
+            RevocationScope::Session(id) => self.revoke_by_session(id),
+            RevocationScope::Instance(id) => self.revoke_by_instance(id),
+            RevocationScope::Device(id) => self.revoke_by_device(id),
+            RevocationScope::Principal(id) => self.revoke_by_principal(id),
+        }
     }
 
     fn revoke_matching<F>(&mut self, mut predicate: F) -> usize
