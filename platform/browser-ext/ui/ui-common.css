@@ -1,0 +1,439 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-FileCopyrightText: The Guardrails ADR Authors */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--bg-canvas);
+  color: var(--ink-primary);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.ext-body-popup {
+  inline-size: 360px;
+  min-block-size: 420px;
+}
+
+.ext-popup-shell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.ext-options-shell {
+  max-inline-size: 1120px;
+  margin-inline: auto;
+  padding: var(--space-4) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ext-header,
+.ext-options-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.ext-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ext-mark {
+  border-radius: var(--radius-sm);
+  display: block;
+}
+
+.ext-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.ext-h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.ext-h2 {
+  margin: 0 0 var(--space-2);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.ext-subtitle,
+.ext-muted {
+  margin: 0;
+  color: var(--ink-secondary);
+  font-size: 12px;
+}
+
+.ext-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ext-degraded-alert {
+  background: var(--tone-ask-bg);
+  border: 1px solid var(--tone-ask-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ext-row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.ext-row-gap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.ext-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--ink-muted);
+}
+
+.ext-site-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ext-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.ext-badge {
+  display: inline-flex;
+  align-items: center;
+  padding-block: 3px;
+  padding-inline: 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-recessed);
+  color: var(--ink-secondary);
+}
+
+.ext-badge.tone-neutral {
+  color: var(--tone-neutral);
+  background: var(--tone-neutral-bg);
+  border-color: var(--tone-neutral-border);
+}
+
+.ext-badge.tone-ok {
+  color: var(--tone-allow);
+  background: var(--tone-allow-bg);
+  border-color: var(--tone-allow-border);
+}
+
+.ext-badge.tone-watch {
+  color: var(--tone-watch);
+  background: var(--tone-watch-bg);
+  border-color: var(--tone-watch-border);
+}
+
+.ext-badge.tone-warn {
+  color: var(--tone-ask);
+  background: var(--tone-ask-bg);
+  border-color: var(--tone-ask-border);
+}
+
+.ext-badge.tone-danger {
+  color: var(--tone-block);
+  background: var(--tone-block-bg);
+  border-color: var(--tone-block-border);
+}
+
+.ext-segmented {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  min-inline-size: 236px;
+  background: var(--bg-recessed);
+  padding: 3px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.ext-seg-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-secondary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding-block: 5px;
+  padding-inline: 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.ext-seg-btn:focus-visible,
+.ext-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.ext-seg-btn.is-active {
+  background: var(--bg-surface);
+  color: var(--ink-primary);
+  font-weight: 600;
+  border-color: var(--border-subtle);
+}
+
+.ext-seg-btn.is-active.tone-neutral {
+  color: var(--tone-neutral);
+  background: var(--bg-surface);
+  border-color: var(--tone-neutral-border);
+}
+
+.ext-seg-btn.is-active.tone-watch {
+  color: var(--tone-watch);
+  background: var(--tone-watch-bg);
+  border-color: var(--tone-watch-border);
+}
+
+.ext-seg-btn.is-active.tone-warn {
+  color: var(--tone-ask);
+  background: var(--tone-ask-bg);
+  border-color: var(--tone-ask-border);
+}
+
+.ext-seg-btn.is-active.tone-danger {
+  color: var(--tone-block);
+  background: var(--tone-block-bg);
+  border-color: var(--tone-block-border);
+}
+
+.ext-seg-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.ext-stats-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.ext-stat-cell {
+  background: var(--bg-rail);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.ext-stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.ext-options-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.ext-kpi-value {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.ext-options-2col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.ext-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ext-list-item {
+  border-top: 1px solid var(--border-subtle);
+  padding-block-start: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ext-list-item:first-child {
+  border-top: 0;
+  padding-block-start: 0;
+}
+
+.ext-item-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ext-mono-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg-recessed);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding-block: 2px;
+  padding-inline: 6px;
+  display: inline-block;
+  margin-inline-end: 4px;
+  margin-block-end: 4px;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.ext-table-wrap {
+  overflow-x: auto;
+}
+
+.ext-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.ext-table th,
+.ext-table td {
+  text-align: start;
+  padding-block: 8px;
+  padding-inline: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+
+.ext-table th {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.ext-td-strong {
+  font-weight: 600;
+}
+
+.ext-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.ext-btn {
+  appearance: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding-block: 7px;
+  padding-inline: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--ink-primary);
+  cursor: pointer;
+}
+
+.ext-btn-primary {
+  background: var(--action-primary-bg);
+  border-color: var(--action-primary-bg);
+  color: var(--action-primary-ink);
+}
+
+@media (max-width: 900px) {
+  .ext-options-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ext-options-2col {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .ext-options-shell {
+    padding: var(--space-3) var(--space-2);
+  }
+  .ext-options-kpis {
+    grid-template-columns: 1fr;
+  }
+  .ext-table thead {
+    display: none;
+  }
+  .ext-table,
+  .ext-table tbody {
+    display: block;
+    inline-size: 100%;
+  }
+  .ext-table tr {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    border-bottom: 1px solid var(--border-subtle);
+    padding-block: var(--space-2);
+  }
+  .ext-table tr:last-child {
+    border-bottom: 0;
+  }
+  .ext-table td {
+    display: block;
+    inline-size: 100%;
+    padding: 0;
+    border: 0;
+  }
+  .ext-segmented {
+    inline-size: 100%;
+    min-inline-size: 0;
+  }
+}

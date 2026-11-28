@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<policyDefinitionResources xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" revision="1.0" schemaVersion="1.0" xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
+  <displayName>Guardrails ADR Firefox Extension Policy</displayName>
+  <description>Configures force-installed Guardrails ADR browser extension and hardened developer settings for Mozilla Firefox.</description>
+  <resources>
+    <stringTable>
+      <string id="GuardrailsBrowser">Guardrails Browser Protection</string>
+      <string id="ForceInstallExtensionSettings">Force-install Guardrails ADR Firefox Extension</string>
+      <string id="ForceInstallExtensionSettings_Help">Install adr@guardrails.dev from https://guardrails.internal:8443/extensions/guardrails-firefox-0.1.0.xpi via Mozilla ExtensionSettings policy.</string>
+    </stringTable>
+  </resources>
+</policyDefinitionResources>

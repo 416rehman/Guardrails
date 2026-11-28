@@ -1,0 +1,37 @@
+[workspace]
+
+[package]
+name = "grdr-browser-wasm"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+grdr-fastpath = { path = "../../../crates/grdr-fastpath" }
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+arithmetic_side_effects = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+indexing_slicing = "deny"
+string_slice = "deny"
+get_unwrap = "deny"
+panic_in_result_fn = "deny"
+exit = "deny"
+
+[profile.release]
+opt-level = "s"
+lto = true
+panic = "abort"
+strip = true

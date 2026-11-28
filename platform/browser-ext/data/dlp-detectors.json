@@ -1,0 +1,141 @@
+{
+  "schema": "grdr.browser.dlp-detectors.v1",
+  "version": "1.0.0",
+  "maxInspectBytes": 65536,
+  "rules": [
+    {
+      "id": "dlp.secret.aws-access-key",
+      "kind": "secret",
+      "severity": "deny",
+      "label": "AWS Access Key ID",
+      "clauses": [
+        {
+          "type": "prefixed_token",
+          "prefixes": ["AKIA", "ASIA"],
+          "charset": "upper_alnum",
+          "minTailLen": 16,
+          "maxTailLen": 16,
+          "wordBoundary": true
+        }
+      ]
+    },
+    {
+      "id": "dlp.secret.github-token",
+      "kind": "secret",
+      "severity": "deny",
+      "label": "GitHub Personal or Fine-Grained Token",
+      "clauses": [
+        {
+          "type": "prefixed_token",
+          "prefixes": ["ghp_", "gho_", "ghu_", "ghs_", "ghr_"],
+          "charset": "alnum",
+          "minTailLen": 20,
+          "maxTailLen": 64,
+          "wordBoundary": true
+        },
+        {
+          "type": "prefixed_token",
+          "prefixes": ["github_pat_"],
+          "charset": "alnum_underscore",
+          "minTailLen": 22,
+          "maxTailLen": 120,
+          "wordBoundary": true
+        }
+      ]
+    },
+    {
+      "id": "dlp.secret.anthropic-key",
+      "kind": "secret",
+      "severity": "deny",
+      "label": "Anthropic API Key",
+      "clauses": [
+        {
+          "type": "prefixed_token",
+          "prefixes": ["sk-ant-api03-"],
+          "charset": "alnum_dash_underscore",
+          "minTailLen": 20,
+          "maxTailLen": 120,
+          "wordBoundary": true
+        }
+      ]
+    },
+    {
+      "id": "dlp.secret.openai-key",
+      "kind": "secret",
+      "severity": "deny",
+      "label": "OpenAI API Key",
+      "clauses": [
+        {
+          "type": "prefixed_token",
+          "prefixes": ["sk-proj-", "sk-live-", "sk-svcacct-"],
+          "charset": "alnum_dash_underscore",
+          "minTailLen": 20,
+          "maxTailLen": 160,
+          "wordBoundary": true
+        }
+      ]
+    },
+    {
+      "id": "dlp.secret.slack-token",
+      "kind": "secret",
+      "severity": "deny",
+      "label": "Slack API Token",
+      "clauses": [
+        {
+          "type": "prefixed_token",
+          "prefixes": ["xoxb-", "xoxa-", "xoxp-", "xoxr-", "xoxs-"],
+          "charset": "alnum_dash",
+          "minTailLen": 16,
+          "maxTailLen": 120,
+          "wordBoundary": true
+        }
+      ]
+    },
+    {
+      "id": "dlp.secret.private-key-pem",
+      "kind": "secret",
+      "severity": "deny",
+      "label": "PEM Private Key Block",
+      "clauses": [
+        {
+          "type": "framed_marker",
+          "start": "-----BEGIN ",
+          "middleOptions": ["", "RSA ", "EC ", "DSA ", "OPENSSH ", "PGP "],
+          "end": "PRIVATE KEY-----"
+        }
+      ]
+    },
+    {
+      "id": "dlp.secret.stripe-live",
+      "kind": "secret",
+      "severity": "deny",
+      "label": "Stripe Live Secret Key",
+      "clauses": [
+        {
+          "type": "prefixed_token",
+          "prefixes": ["sk_live_", "rk_live_"],
+          "charset": "alnum",
+          "minTailLen": 16,
+          "maxTailLen": 96,
+          "wordBoundary": true
+        }
+      ]
+    },
+    {
+      "id": "dlp.pii.us-ssn",
+      "kind": "pii",
+      "severity": "stepup",
+      "label": "US Social Security Number Pattern",
+      "clauses": [
+        {
+          "type": "delimited_digits",
+          "segments": [3, 2, 4],
+          "delimiter": "-",
+          "disallowedFirstPrefixes": ["000", "666", "9"],
+          "disallowAllZeroSegment": true,
+          "wordBoundary": true
+        }
+      ]
+    }
+  ]
+}

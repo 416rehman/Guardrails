@@ -1,0 +1,37 @@
+{
+  "schema": "grdr.mdm.hexnode.v1",
+  "profileName": "Guardrails ADR Browser Protection",
+  "chromeExtensionForcelist": [
+    "grdrkjhmpfghijklmno;https://guardrails.internal:8443/extensions/chrome-update.xml"
+  ],
+  "edgeExtensionForcelist": [
+    "grdrkjhmpfghijklmno;https://guardrails.internal:8443/extensions/chrome-update.xml"
+  ],
+  "firefoxExtensionId": "adr@guardrails.dev",
+  "firefoxXpiUrl": "https://guardrails.internal:8443/extensions/guardrails-firefox-0.1.0.xpi",
+  "managedConfiguration": {
+    "organizationId": "org-corp-prod",
+    "serverOrigin": "https://guardrails.internal:8443",
+    "failClosedOnDegraded": false,
+    "blockAnonymousSessions": true,
+    "tenantRestrictions": {
+      "anthropic": [
+        "org-corp-prod"
+      ],
+      "openai_chatgpt": [
+        "ws-corp-enterprise"
+      ],
+      "google_workspace": [
+        "corp.example"
+      ],
+      "github_enterprise": [
+        "corp-enterprise"
+      ]
+    },
+    "appModes": {
+      "chatgpt": "ask",
+      "claude-web": "ask",
+      "perplexity": "block"
+    }
+  }
+}

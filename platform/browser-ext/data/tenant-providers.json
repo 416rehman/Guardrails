@@ -1,0 +1,82 @@
+{
+  "schema": "grdr.browser.tenant-providers.v1",
+  "version": "1.0.0",
+  "maxDnrRules": 5000,
+  "headerOperation": "set",
+  "providers": [
+    {
+      "id": "anthropic",
+      "name": "Anthropic / Claude",
+      "headerName": "anthropic-allowed-org-ids",
+      "requestDomains": ["claude.ai", "api.anthropic.com", "claude.com", "anthropic.com"],
+      "hostPermissions": [
+        "https://claude.ai/*",
+        "https://api.anthropic.com/*",
+        "https://claude.com/*",
+        "https://anthropic.com/*"
+      ],
+      "multiValueSeparator": ",",
+      "omitConsumerAccountsHeader": false,
+      "blockUrlFilters": [],
+      "notes": "Enterprise org allowlist applied via modifyHeaders set operation."
+    },
+    {
+      "id": "openai_chatgpt",
+      "name": "OpenAI / ChatGPT",
+      "headerName": "ChatGPT-Allowed-Workspace-Id",
+      "requestDomains": ["chatgpt.com", "chat.openai.com"],
+      "hostPermissions": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
+      "multiValueSeparator": ",",
+      "omitConsumerAccountsHeader": false,
+      "blockUrlFilters": ["||chatgpt.com/backend-anon/"],
+      "notes": "Restricts ChatGPT sessions to workspace ID and blocks unauthenticated backend-anon."
+    },
+    {
+      "id": "google_workspace",
+      "name": "Google Workspace / Gemini",
+      "headerName": "X-GoogApps-Allowed-Domains",
+      "requestDomains": ["google.com"],
+      "hostPermissions": ["https://*.google.com/*"],
+      "multiValueSeparator": ",",
+      "omitConsumerAccountsHeader": true,
+      "blockUrlFilters": [],
+      "notes": "Requires corp Google domains on *.google.com without setting consumer_accounts."
+    },
+    {
+      "id": "entra_id",
+      "name": "Microsoft Entra ID / Copilot",
+      "headerName": "sec-Restrict-Tenant-Access-Policy",
+      "requestDomains": [
+        "login.microsoftonline.com",
+        "login.microsoft.com",
+        "login.windows.net",
+        "login.live.com"
+      ],
+      "hostPermissions": [
+        "https://login.microsoftonline.com/*",
+        "https://login.microsoft.com/*",
+        "https://login.windows.net/*",
+        "https://login.live.com/*"
+      ],
+      "multiValueSeparator": " ",
+      "omitConsumerAccountsHeader": false,
+      "blockUrlFilters": [],
+      "notes": "Applies Entra TRv2 Restrict-Access-To-Tenants token header on login origins."
+    },
+    {
+      "id": "github_enterprise",
+      "name": "GitHub Enterprise Cloud / Copilot",
+      "headerName": "sec-GitHub-allowed-enterprise",
+      "requestDomains": ["github.com", "api.github.com", "githubcopilot.com"],
+      "hostPermissions": [
+        "https://github.com/*",
+        "https://api.github.com/*",
+        "https://*.githubcopilot.com/*"
+      ],
+      "multiValueSeparator": ",",
+      "omitConsumerAccountsHeader": false,
+      "blockUrlFilters": ["||individual.githubcopilot.com/"],
+      "notes": "Constrains Copilot and GitHub sessions to managed enterprise and blocks personal Copilot endpoints."
+    }
+  ]
+}

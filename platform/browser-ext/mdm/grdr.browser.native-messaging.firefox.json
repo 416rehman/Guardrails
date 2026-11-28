@@ -1,0 +1,9 @@
+{
+  "name": "grdr.browser",
+  "description": "Guardrails ADR native policy verdict host for Mozilla Firefox",
+  "path": "/usr/local/bin/grdr-hook",
+  "type": "stdio",
+  "allowed_extensions": [
+    "adr@guardrails.dev"
+  ]
+}

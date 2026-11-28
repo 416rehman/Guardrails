@@ -1,0 +1,121 @@
+{
+  "schema": "grdr.browser.destinations.v1",
+  "version": "1.0.0",
+  "sensitiveFileExtensions": [
+    ".env",
+    ".pem",
+    ".key",
+    ".p12",
+    ".pfx",
+    ".kdbx",
+    ".sqlite",
+    ".db",
+    ".sql",
+    ".csv",
+    ".tsv",
+    ".parquet",
+    ".kubeconfig"
+  ],
+  "destinations": [
+    {
+      "id": "chatgpt",
+      "name": "ChatGPT",
+      "category": "consumer_ai",
+      "hosts": ["chatgpt.com", "chat.openai.com"],
+      "hostPermissions": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
+      "uploadPathHints": ["/backend-api/files", "/backend-api/conversation", "/backend-anon/"],
+      "anonymousPathHints": ["/backend-anon/"],
+      "defaultMode": "ask",
+      "blockFileUploads": true,
+      "blockSecretPayloads": true,
+      "tenantProviderId": "openai_chatgpt"
+    },
+    {
+      "id": "claude-web",
+      "name": "Claude Web",
+      "category": "consumer_ai",
+      "hosts": ["claude.ai", "api.anthropic.com", "claude.com", "anthropic.com"],
+      "hostPermissions": [
+        "https://claude.ai/*",
+        "https://api.anthropic.com/*",
+        "https://claude.com/*",
+        "https://anthropic.com/*"
+      ],
+      "uploadPathHints": ["/api/organizations/", "/upload", "/v1/messages", "/completion"],
+      "anonymousPathHints": [],
+      "defaultMode": "ask",
+      "blockFileUploads": true,
+      "blockSecretPayloads": true,
+      "tenantProviderId": "anthropic"
+    },
+    {
+      "id": "gemini",
+      "name": "Google Gemini",
+      "category": "consumer_ai",
+      "hosts": ["gemini.google.com", "aistudio.google.com", "generativelanguage.googleapis.com"],
+      "hostPermissions": [
+        "https://gemini.google.com/*",
+        "https://aistudio.google.com/*",
+        "https://generativelanguage.googleapis.com/*"
+      ],
+      "uploadPathHints": ["/upload", "/_/BardChatUi", "/v1beta/"],
+      "anonymousPathHints": [],
+      "defaultMode": "watch",
+      "blockFileUploads": false,
+      "blockSecretPayloads": true,
+      "tenantProviderId": "google_workspace"
+    },
+    {
+      "id": "perplexity",
+      "name": "Perplexity",
+      "category": "ai_search",
+      "hosts": ["perplexity.ai", "www.perplexity.ai"],
+      "hostPermissions": ["https://perplexity.ai/*", "https://www.perplexity.ai/*"],
+      "uploadPathHints": ["/rest/uploads", "/rest/sse/perplexity_ask"],
+      "anonymousPathHints": [],
+      "defaultMode": "block",
+      "blockFileUploads": true,
+      "blockSecretPayloads": true,
+      "tenantProviderId": null
+    },
+    {
+      "id": "m365-copilot",
+      "name": "Microsoft 365 Copilot",
+      "category": "enterprise_ai",
+      "hosts": [
+        "copilot.microsoft.com",
+        "m365.cloud.microsoft",
+        "copilot.cloud.microsoft"
+      ],
+      "hostPermissions": [
+        "https://copilot.microsoft.com/*",
+        "https://m365.cloud.microsoft/*",
+        "https://copilot.cloud.microsoft/*"
+      ],
+      "uploadPathHints": ["/c/api/", "/conversations", "/attachments"],
+      "anonymousPathHints": [],
+      "defaultMode": "watch",
+      "blockFileUploads": false,
+      "blockSecretPayloads": true,
+      "tenantProviderId": "entra_id"
+    },
+    {
+      "id": "github-copilot",
+      "name": "GitHub Copilot",
+      "category": "coding_ai",
+      "hosts": ["github.com", "api.github.com"],
+      "wildcardHosts": ["*.githubcopilot.com"],
+      "hostPermissions": [
+        "https://github.com/*",
+        "https://api.github.com/*",
+        "https://*.githubcopilot.com/*"
+      ],
+      "uploadPathHints": ["/github/chat/threads", "/agents", "/copilot_internal"],
+      "anonymousPathHints": [],
+      "defaultMode": "watch",
+      "blockFileUploads": false,
+      "blockSecretPayloads": true,
+      "tenantProviderId": "github_enterprise"
+    }
+  ]
+}
