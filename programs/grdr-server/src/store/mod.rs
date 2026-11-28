@@ -22,6 +22,73 @@ mod surfaces_operator;
 mod surfaces_operator_helpers;
 mod surfaces_operator_ops;
 mod surfaces_provider;
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "Exposed via RPC/routes in Post-Wave Integration (#145/#144); tracked in integration_seams.md"
+    )
+)]
+mod surfaces_respond;
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "Exposed via RPC/routes in Post-Wave Integration (#145/#144); tracked in integration_seams.md"
+    )
+)]
+mod surfaces_respond_cacao;
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "Exposed via RPC/routes in Post-Wave Integration (#145/#144); tracked in integration_seams.md"
+    )
+)]
+mod surfaces_respond_hunts;
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "Exposed via RPC/routes in Post-Wave Integration (#145/#144); tracked in integration_seams.md"
+    )
+)]
+mod surfaces_respond_ops;
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "Exposed via RPC/routes in Post-Wave Integration (#145/#144); tracked in integration_seams.md"
+    )
+)]
+mod surfaces_respond_playbooks;
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "Exposed via RPC/routes in Post-Wave Integration (#145/#144); tracked in integration_seams.md"
+    )
+)]
+mod surfaces_respond_soar_sup;
+mod surfaces_respond_store;
+#[cfg(test)]
+mod surfaces_respond_tests;
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "Exposed via RPC/routes in Post-Wave Integration (#145/#144); tracked in integration_seams.md"
+    )
+)]
+mod surfaces_respond_triage;
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "Exposed via RPC/routes in Post-Wave Integration (#145/#144); tracked in integration_seams.md"
+    )
+)]
+mod surfaces_respond_webauthn;
 mod surfaces_review;
 mod surfaces_types;
 mod surfaces_why;
@@ -90,6 +157,8 @@ pub struct StoreData {
     pub audit: Vec<AuditEntry>,
     #[serde(default)]
     pub surfaces: surfaces_types::SurfacesGovernanceState,
+    #[serde(default)]
+    pub respond: surfaces_respond::RespondOperationsState,
 }
 
 #[derive(Debug, Clone)]
@@ -242,6 +311,7 @@ impl Default for StoreData {
             kill_switch: KillSwitchState::Inactive,
             audit: Vec::new(),
             surfaces: surfaces_types::SurfacesGovernanceState::default(),
+            respond: surfaces_respond::RespondOperationsState::default(),
         }
     }
 }
@@ -318,6 +388,12 @@ impl AppState {
             Some(store) => store.load_store_data()?,
             None => StoreData::default(),
         };
+        if let Some(respond) =
+            surfaces_respond_store::load_persisted_respond(&backend, &signing_key)?
+        {
+            data.respond = respond;
+        }
+        data.respond.validate_on_restore()?;
 
         if demo_seed && data.devices.is_empty() && data.attempts.is_empty() {
             let seed = demo::build_demo_seed(now);
@@ -414,6 +490,11 @@ impl AppState {
         if let Some(store) = &self.storage {
             store.persist_store_data(data)?;
         }
+        surfaces_respond_store::save_persisted_respond(
+            &self.backend,
+            &self.signing_key,
+            &data.respond,
+        )?;
         Ok(())
     }
 

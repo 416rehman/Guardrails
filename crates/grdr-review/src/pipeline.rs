@@ -98,6 +98,43 @@ pub enum ReviewPipelineOutcome {
     CouldNotLook { reason: String },
 }
 
+pub(crate) struct VerifiedCorpus<'a> {
+    pub source_by_id: BTreeMap<&'a str, &'a SourceSegment>,
+    pub grouped_offsets: Option<BTreeMap<&'a str, Vec<&'a SpanOffsetMapEntry>>>,
+    pub framed_by_tag: BTreeMap<&'a str, (&'a FramedJobRecord, String)>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct VerifiedQuoteSpan {
+    pub record_id: String,
+    pub keyed_rec_id: String,
+    pub exact_quote: String,
+    pub claimed_class: DataClass,
+    pub span_start: u64,
+    pub span_end: u64,
+    pub class_commitment_sha256: String,
+    pub record_was_elided: bool,
+}
+
+pub struct FinderOffsetMapRequest<'a> {
+    pub job_mac_key: &'a [u8; 32],
+    pub class_salt: &'a [u8; 32],
+    pub expected_job_id: &'a str,
+    pub transcript_partial: bool,
+    pub framed_records: &'a [FramedJobRecord],
+    pub source_segments: &'a [SourceSegment],
+    pub offset_map: &'a [SpanOffsetMapEntry],
+    pub raw_finder: &'a FinderRawResponse,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum QuoteVerifyFailure {
+    MissingRecord,
+    PolicyOnly,
+    QuoteMismatch,
+    CommitmentOrSpanMismatch,
+}
+
 impl ReviewFindingLabel {
     #[must_use]
     pub fn parse_strict(raw: &str) -> Option<Self> {
@@ -127,66 +164,133 @@ pub fn run_finder_verifier(
     source_segments: &[SourceSegment],
     raw_finder: &FinderRawResponse,
 ) -> ReviewPipelineOutcome {
-    run_finder_verifier_with_offset_map(
+    run_finder_verifier_with_offset_map(&FinderOffsetMapRequest {
         job_mac_key,
         class_salt,
         expected_job_id,
         transcript_partial,
         framed_records,
         source_segments,
-        &[],
+        offset_map: &[],
         raw_finder,
-    )
+    })
 }
 
 /// Runs Finder `QuoteCheck`, salted `SpanBind` commitment verification with optional
 /// `ReducedTranscript::offset_map` mapping, and P2 Verifier.
 #[must_use]
-#[allow(clippy::too_many_arguments)]
 pub fn run_finder_verifier_with_offset_map(
-    job_mac_key: &[u8; 32],
-    class_salt: &[u8; 32],
-    expected_job_id: &str,
-    transcript_partial: bool,
-    framed_records: &[FramedJobRecord],
-    source_segments: &[SourceSegment],
-    offset_map: &[SpanOffsetMapEntry],
-    raw_finder: &FinderRawResponse,
+    req: &FinderOffsetMapRequest<'_>,
 ) -> ReviewPipelineOutcome {
-    let Some(action) = parse_restrict_only_action(&raw_finder.action) else {
+    let Some(action) = parse_restrict_only_action(&req.raw_finder.action) else {
         return could_not_look(
             CODE_REV_FRAMING_INVALID,
             "permissive or invalid P2 action rejected",
         );
     };
-    if raw_finder.findings.len() > MAX_FINDER_CANDIDATES {
+    if req.raw_finder.findings.len() > MAX_FINDER_CANDIDATES {
         return could_not_look(
             CODE_REV_QUOTE_CHECK_FAILED,
             "candidate findings exceed bound",
         );
     }
 
+    let corpus = match prepare_verified_corpus(
+        req.job_mac_key,
+        req.class_salt,
+        req.expected_job_id,
+        req.transcript_partial,
+        req.framed_records,
+        req.source_segments,
+        req.offset_map,
+    ) {
+        Ok(c) => c,
+        Err((code, msg)) => return could_not_look(code, msg),
+    };
+
+    if req.transcript_partial && action == ReviewAdvisoryAction::NoChange {
+        return could_not_look(
+            CODE_REV_QUOTE_CHECK_FAILED,
+            "partial transcript cannot be verified as no_change",
+        );
+    }
+
+    if (action != ReviewAdvisoryAction::NoChange || req.raw_finder.risk_score > 0)
+        && req.raw_finder.findings.is_empty()
+    {
+        return could_not_look(
+            CODE_REV_QUOTE_CHECK_FAILED,
+            "non-trivial action or score requires grounded findings",
+        );
+    }
+
+    let mut verified_findings = Vec::with_capacity(req.raw_finder.findings.len());
+    for candidate in &req.raw_finder.findings {
+        let Some(label) = ReviewFindingLabel::parse_strict(&candidate.label) else {
+            return could_not_look(
+                CODE_REV_QUOTE_CHECK_FAILED,
+                "unknown advisory label rejected",
+            );
+        };
+        let verified = match verify_and_locate_quote(
+            &corpus,
+            &candidate.record_id,
+            &candidate.exact_quote,
+            candidate.claimed_class,
+            candidate.start_hint,
+        ) {
+            Ok(span) => span,
+            Err((_, code, msg)) => return could_not_look(code, msg),
+        };
+        verified_findings.push(VerifiedFinding {
+            record_id: verified.record_id,
+            keyed_rec_id: verified.keyed_rec_id,
+            label,
+            exact_quote: verified.exact_quote,
+            claimed_class: verified.claimed_class,
+            span_start: verified.span_start,
+            span_end: verified.span_end,
+            class_commitment_sha256: verified.class_commitment_sha256,
+        });
+    }
+
+    ReviewPipelineOutcome::Verified(VerifiedFinderOutcome {
+        action,
+        bounded_risk_score: req.raw_finder.risk_score.min(250),
+        verified_findings,
+    })
+}
+
+pub(crate) fn prepare_verified_corpus<'a>(
+    job_mac_key: &[u8; 32],
+    class_salt: &[u8; 32],
+    expected_job_id: &str,
+    transcript_partial: bool,
+    framed_records: &'a [FramedJobRecord],
+    source_segments: &'a [SourceSegment],
+    offset_map: &'a [SpanOffsetMapEntry],
+) -> Result<VerifiedCorpus<'a>, (&'static str, &'static str)> {
     let mut source_by_id: BTreeMap<&str, &SourceSegment> = BTreeMap::new();
     for seg in source_segments {
         if source_by_id.insert(seg.record_id.as_str(), seg).is_some() {
-            return could_not_look(CODE_REV_FRAMING_INVALID, "duplicate source record_id");
+            return Err((CODE_REV_FRAMING_INVALID, "duplicate source record_id"));
         }
     }
     if !transcript_partial && framed_records.len() != source_segments.len() {
-        return could_not_look(
+        return Err((
             CODE_REV_FRAMING_INVALID,
             "full transcript framed record count mismatch",
-        );
+        ));
     }
 
     let grouped_offsets = if offset_map.is_empty() {
         None
     } else {
         let Ok(map) = validate_offset_map(offset_map, &source_by_id, class_salt) else {
-            return could_not_look(
+            return Err((
                 CODE_REV_SPAN_BIND_FAILED,
                 "reduced transcript offset_map verification failed",
-            );
+            ));
         };
         Some(map)
     };
@@ -195,27 +299,27 @@ pub fn run_finder_verifier_with_offset_map(
     let mut framed_by_tag: BTreeMap<&str, (&FramedJobRecord, String)> = BTreeMap::new();
     for f in framed_records {
         let Ok(decoded_text) = verify_job_record(job_mac_key, expected_job_id, f) else {
-            return could_not_look(CODE_REV_FRAMING_INVALID, "job frame verification failed");
+            return Err((CODE_REV_FRAMING_INVALID, "job frame verification failed"));
         };
         if framed_by_tag.contains_key(f.keyed_rec_id.as_str())
             || !seen_ids.insert(f.record_id.as_str())
         {
-            return could_not_look(
+            return Err((
                 CODE_REV_FRAMING_INVALID,
                 "duplicate framed record identifier",
-            );
+            ));
         }
         let Some(src) = source_by_id.get(f.record_id.as_str()) else {
-            return could_not_look(
+            return Err((
                 CODE_REV_FRAMING_INVALID,
                 "framed record missing source segment",
-            );
+            ));
         };
         if src.data_class != f.data_class || src.kind != f.kind {
-            return could_not_look(
+            return Err((
                 CODE_REV_SPAN_BIND_FAILED,
                 "framed content or class mismatch",
-            );
+            ));
         }
         let expected_commit =
             salted_class_commitment(class_salt, &src.record_id, src.data_class, &src.text);
@@ -223,17 +327,17 @@ pub fn run_finder_verifier_with_offset_map(
             expected_commit.as_bytes(),
             f.class_commitment_sha256.as_bytes(),
         ) {
-            return could_not_look(
+            return Err((
                 CODE_REV_SPAN_BIND_FAILED,
                 "sensor class commitment mismatch",
-            );
+            ));
         }
         if let Some(ref map) = grouped_offsets {
             let Some(entries) = map.get(f.record_id.as_str()) else {
-                return could_not_look(
+                return Err((
                     CODE_REV_SPAN_BIND_FAILED,
                     "reduced framed record missing offset_map entries",
-                );
+                ));
             };
             if !verify_decoded_against_offset_map(
                 &decoded_text,
@@ -241,134 +345,140 @@ pub fn run_finder_verifier_with_offset_map(
                 entries,
                 transcript_partial,
             ) {
-                return could_not_look(
+                return Err((
                     CODE_REV_SPAN_BIND_FAILED,
                     "reduced record text diverges from offset_map or source",
-                );
+                ));
             }
         } else if decoded_text != src.text {
-            return could_not_look(
+            return Err((
                 CODE_REV_SPAN_BIND_FAILED,
                 "framed content or class mismatch",
-            );
+            ));
         }
         framed_by_tag.insert(f.keyed_rec_id.as_str(), (f, decoded_text));
     }
 
-    if transcript_partial && action == ReviewAdvisoryAction::NoChange {
-        return could_not_look(
+    Ok(VerifiedCorpus {
+        source_by_id,
+        grouped_offsets,
+        framed_by_tag,
+    })
+}
+
+pub(crate) fn verify_and_locate_quote(
+    corpus: &VerifiedCorpus<'_>,
+    keyed_rec_id: &str,
+    exact_quote: &str,
+    claimed_class: DataClass,
+    start_hint: Option<u64>,
+) -> Result<VerifiedQuoteSpan, (QuoteVerifyFailure, &'static str, &'static str)> {
+    let Some(&(framed, ref decoded_text)) = corpus.framed_by_tag.get(keyed_rec_id) else {
+        return Err((
+            QuoteVerifyFailure::MissingRecord,
             CODE_REV_QUOTE_CHECK_FAILED,
-            "partial transcript cannot be verified as no_change",
-        );
-    }
-
-    if (action != ReviewAdvisoryAction::NoChange || raw_finder.risk_score > 0)
-        && raw_finder.findings.is_empty()
-    {
-        return could_not_look(
+            "unknown or unframed record_id",
+        ));
+    };
+    let Some(src) = corpus.source_by_id.get(framed.record_id.as_str()) else {
+        return Err((
+            QuoteVerifyFailure::MissingRecord,
             CODE_REV_QUOTE_CHECK_FAILED,
-            "non-trivial action or score requires grounded findings",
-        );
+            "source record missing",
+        ));
+    };
+    if src.kind == ReviewRecordKind::Policy {
+        return Err((
+            QuoteVerifyFailure::PolicyOnly,
+            CODE_REV_QUOTE_CHECK_FAILED,
+            "findings cannot cite trusted policy records",
+        ));
+    }
+    if exact_quote.is_empty() || exact_quote.len() > MAX_RAW_QUOTE_BYTES {
+        return Err((
+            QuoteVerifyFailure::QuoteMismatch,
+            CODE_REV_QUOTE_CHECK_FAILED,
+            "raw quote byte length outside 1..=2048 bound",
+        ));
     }
 
-    let mut verified_findings = Vec::with_capacity(raw_finder.findings.len());
-    for candidate in &raw_finder.findings {
-        let Some(label) = ReviewFindingLabel::parse_strict(&candidate.label) else {
-            return could_not_look(
-                CODE_REV_QUOTE_CHECK_FAILED,
-                "unknown advisory label rejected",
-            );
-        };
-        let Some(&(framed, ref decoded_text)) = framed_by_tag.get(candidate.record_id.as_str())
-        else {
-            return could_not_look(CODE_REV_QUOTE_CHECK_FAILED, "unknown or unframed record_id");
-        };
-        let Some(src) = source_by_id.get(framed.record_id.as_str()) else {
-            return could_not_look(CODE_REV_QUOTE_CHECK_FAILED, "source record missing");
-        };
-        if src.kind == ReviewRecordKind::Policy {
-            return could_not_look(
-                CODE_REV_QUOTE_CHECK_FAILED,
-                "findings cannot cite trusted policy records",
-            );
-        }
-        if candidate.exact_quote.is_empty() || candidate.exact_quote.len() > MAX_RAW_QUOTE_BYTES {
-            return could_not_look(
-                CODE_REV_QUOTE_CHECK_FAILED,
-                "raw quote byte length outside 1..=2048 bound",
-            );
-        }
-
-        let norm_quote = normalize_for_quotecheck(&candidate.exact_quote);
-        let q_chars = norm_quote.chars().count();
-        if !(MIN_QUOTE_CHARS..=MAX_QUOTE_CHARS).contains(&q_chars) {
-            return could_not_look(
-                CODE_REV_QUOTE_CHECK_FAILED,
-                "quote length outside 12..=300 char bound",
-            );
-        }
-        if candidate.claimed_class != framed.data_class {
-            return could_not_look(CODE_REV_SPAN_BIND_FAILED, "claimed data_class mismatch");
-        }
-        let Some((red_start, red_end)) = locate_verified_span(
-            decoded_text,
-            &candidate.exact_quote,
-            &norm_quote,
-            candidate.start_hint,
-        ) else {
-            return could_not_look(
-                CODE_REV_SPAN_BIND_FAILED,
-                "span could not be uniquely located in source record",
-            );
-        };
-        if red_end.saturating_sub(red_start) > MAX_RAW_QUOTE_BYTES {
-            return could_not_look(
-                CODE_REV_QUOTE_CHECK_FAILED,
-                "located span exceeds maximum quote byte bound",
-            );
-        }
-
-        let (span_start, span_end) = if let Some(ref map) = grouped_offsets {
-            let Some(entries) = map.get(framed.record_id.as_str()) else {
-                return could_not_look(CODE_REV_SPAN_BIND_FAILED, "missing record offset entries");
-            };
-            let Some(mapped) = map_reduced_span_to_source(entries, red_start, red_end) else {
-                return could_not_look(
-                    CODE_REV_SPAN_BIND_FAILED,
-                    "span overlaps elision marker or unmapped region",
-                );
-            };
-            mapped
-        } else {
-            (red_start, red_end)
-        };
-
-        let Some(verified_slice) = src.text.get(span_start..span_end) else {
-            return could_not_look(
-                CODE_REV_SPAN_BIND_FAILED,
-                "mapped source span out of bounds",
-            );
-        };
-        if decoded_text.get(red_start..red_end) != Some(verified_slice) {
-            return could_not_look(CODE_REV_SPAN_BIND_FAILED, "mapped source slice mismatch");
-        }
-
-        verified_findings.push(VerifiedFinding {
-            record_id: framed.record_id.clone(),
-            keyed_rec_id: framed.keyed_rec_id.clone(),
-            label,
-            exact_quote: verified_slice.to_owned(),
-            claimed_class: framed.data_class,
-            span_start: u64::try_from(span_start).unwrap_or(u64::MAX),
-            span_end: u64::try_from(span_end).unwrap_or(u64::MAX),
-            class_commitment_sha256: framed.class_commitment_sha256.clone(),
-        });
+    let norm_quote = normalize_for_quotecheck(exact_quote);
+    let q_chars = norm_quote.chars().count();
+    if !(MIN_QUOTE_CHARS..=MAX_QUOTE_CHARS).contains(&q_chars) {
+        return Err((
+            QuoteVerifyFailure::QuoteMismatch,
+            CODE_REV_QUOTE_CHECK_FAILED,
+            "quote length outside 12..=300 char bound",
+        ));
+    }
+    if claimed_class != framed.data_class {
+        return Err((
+            QuoteVerifyFailure::CommitmentOrSpanMismatch,
+            CODE_REV_SPAN_BIND_FAILED,
+            "claimed data_class mismatch",
+        ));
+    }
+    let Some((red_start, red_end)) =
+        locate_verified_span(decoded_text, exact_quote, &norm_quote, start_hint)
+    else {
+        return Err((
+            QuoteVerifyFailure::CommitmentOrSpanMismatch,
+            CODE_REV_SPAN_BIND_FAILED,
+            "span could not be uniquely located in source record",
+        ));
+    };
+    if red_end.saturating_sub(red_start) > MAX_RAW_QUOTE_BYTES {
+        return Err((
+            QuoteVerifyFailure::QuoteMismatch,
+            CODE_REV_QUOTE_CHECK_FAILED,
+            "located span exceeds maximum quote byte bound",
+        ));
     }
 
-    ReviewPipelineOutcome::Verified(VerifiedFinderOutcome {
-        action,
-        bounded_risk_score: raw_finder.risk_score.min(250),
-        verified_findings,
+    let (span_start, span_end) = if let Some(ref map) = corpus.grouped_offsets {
+        let Some(entries) = map.get(framed.record_id.as_str()) else {
+            return Err((
+                QuoteVerifyFailure::CommitmentOrSpanMismatch,
+                CODE_REV_SPAN_BIND_FAILED,
+                "missing record offset entries",
+            ));
+        };
+        let Some(mapped) = map_reduced_span_to_source(entries, red_start, red_end) else {
+            return Err((
+                QuoteVerifyFailure::CommitmentOrSpanMismatch,
+                CODE_REV_SPAN_BIND_FAILED,
+                "span overlaps elision marker or unmapped region",
+            ));
+        };
+        mapped
+    } else {
+        (red_start, red_end)
+    };
+
+    let Some(verified_slice) = src.text.get(span_start..span_end) else {
+        return Err((
+            QuoteVerifyFailure::CommitmentOrSpanMismatch,
+            CODE_REV_SPAN_BIND_FAILED,
+            "mapped source span out of bounds",
+        ));
+    };
+    if decoded_text.get(red_start..red_end) != Some(verified_slice) {
+        return Err((
+            QuoteVerifyFailure::CommitmentOrSpanMismatch,
+            CODE_REV_SPAN_BIND_FAILED,
+            "mapped source slice mismatch",
+        ));
+    }
+
+    Ok(VerifiedQuoteSpan {
+        record_id: framed.record_id.clone(),
+        keyed_rec_id: framed.keyed_rec_id.clone(),
+        exact_quote: verified_slice.to_owned(),
+        claimed_class: framed.data_class,
+        span_start: u64::try_from(span_start).unwrap_or(u64::MAX),
+        span_end: u64::try_from(span_end).unwrap_or(u64::MAX),
+        class_commitment_sha256: framed.class_commitment_sha256.clone(),
+        record_was_elided: decoded_text.contains(ELISION_MARKER),
     })
 }
 
@@ -378,7 +488,7 @@ fn could_not_look(code: &str, safe_msg: &str) -> ReviewPipelineOutcome {
     }
 }
 
-fn parse_restrict_only_action(raw: &str) -> Option<ReviewAdvisoryAction> {
+pub(crate) fn parse_restrict_only_action(raw: &str) -> Option<ReviewAdvisoryAction> {
     match raw {
         "no_change" => Some(ReviewAdvisoryAction::NoChange),
         "add_advisory_label" => Some(ReviewAdvisoryAction::AddAdvisoryLabel),
