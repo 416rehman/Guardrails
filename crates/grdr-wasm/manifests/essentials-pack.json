@@ -1,0 +1,198 @@
+{
+  "id": "pack-essentials-slice0",
+  "name": "Essentials",
+  "description": "Baseline protections for control files, credentials, destructive actions, and egress.",
+  "version": "1.0.0",
+  "channel": "schema-policy",
+  "rules": [
+    {
+      "id": "essentials.agent-control-files",
+      "title": "Protect agent and Guardrails control files",
+      "description": "Stop agent-initiated writes to agent hooks, MCP configs, and security configuration files.",
+      "mode": "block",
+      "min_grade": "G2",
+      "enabled": true,
+      "locked": true,
+      "matcher": {
+        "action_classes": ["file.write", "file.delete", "config.change"],
+        "target_prefixes": [],
+        "target_contains": [
+          ".claude/",
+          ".claude.json",
+          ".cursor/",
+          ".codex/",
+          ".gemini/",
+          "grdr-data/",
+          "security/"
+        ],
+        "agents": []
+      },
+      "hits": 0,
+      "would_ask_hits": 0,
+      "would_block_hits": 0,
+      "reason_template": "Agents cannot modify agent hook settings or Guardrails control files.",
+      "cedar": "@id(\"essentials.agent-control-files\")\n@class(\"config-tamper\")\n@final(\"true\")\n@steer(\"Do not edit hook, settings or MCP configuration. Ask the user to make this change.\")\nforbid (\n  principal is Grdr::Session,\n  action in [Grdr::Action::\"file.write\", Grdr::Action::\"file.delete\", Grdr::Action::\"config.change\"],\n  resource\n)\nwhen { resource.classes.containsAny([\"agent-control\", \"grdr-control\", \"monitoring-config\"]) };"
+    },
+    {
+      "id": "essentials.hook-bypass",
+      "title": "Prevent hook disabling and security bypass flags",
+      "description": "Block commands that disable hooks, remove verification checks, or bypass sandboxing.",
+      "mode": "block",
+      "min_grade": "G2",
+      "enabled": true,
+      "locked": true,
+      "matcher": {
+        "action_classes": ["exec", "agent.spawn", "config.change"],
+        "target_prefixes": [],
+        "target_contains": [
+          "--dangerously-skip-permissions",
+          "--no-verify",
+          "--disable-hooks",
+          "--no-sandbox",
+          "--disable-sandbox",
+          "--yolo",
+          "GRDR_DISABLE"
+        ],
+        "agents": []
+      },
+      "hits": 0,
+      "would_ask_hits": 0,
+      "would_block_hits": 0,
+      "reason_template": "Bypassing security hooks or permission boundaries is blocked by Essentials.",
+      "cedar": "@id(\"essentials.hook-bypass\")\n@class(\"config-tamper\")\n@final(\"true\")\nforbid (\n  principal is Grdr::Session,\n  action in [Grdr::Action::\"exec\", Grdr::Action::\"agent.spawn\", Grdr::Action::\"config.change\"],\n  resource\n)\nwhen { context.facts.containsAny([\"flag.bypass-permissions\", \"flag.hooks-disabled\", \"flag.no-sandbox\", \"grdr.disable\"]) };"
+    },
+    {
+      "id": "essentials.credential-stores",
+      "title": "Guard credential stores and private keys",
+      "description": "Require approval before an agent reads SSH keys, cloud credentials, or token caches.",
+      "mode": "ask",
+      "min_grade": "G1",
+      "enabled": true,
+      "locked": false,
+      "matcher": {
+        "action_classes": ["file.read", "cred.use", "exec"],
+        "target_prefixes": [],
+        "target_contains": [
+          ".ssh/",
+          ".aws/",
+          ".gnupg/",
+          ".config/gh/",
+          "id_rsa",
+          "id_ed25519",
+          ".env.production"
+        ],
+        "agents": []
+      },
+      "hits": 0,
+      "would_ask_hits": 0,
+      "would_block_hits": 0,
+      "reason_template": "Reading private keys or credential stores requires an explicit approval grant.",
+      "cedar": "@id(\"essentials.credential-stores\")\n@class(\"secret\")\n@max_mode(\"Ask\")\n@approver(\"self\")\n@min_grade(\"G1\")\n@message(\"Reading credential stores and private keys needs your approval.\")\n@steer(\"If you need a token, use the configured credential helper or ask the user.\")\nforbid (\n  principal is Grdr::Session,\n  action in [Grdr::Action::\"file.read\", Grdr::Action::\"cred.use\", Grdr::Action::\"exec\"],\n  resource\n)\nwhen { resource.classes.containsAny([\"cred-store\", \"private-key\"]) };"
+    },
+    {
+      "id": "essentials.destructive-delete",
+      "title": "Review destructive shell commands",
+      "description": "Require approval for recursive force deletes, disk wipes, and destructive resets.",
+      "mode": "ask",
+      "min_grade": "G1",
+      "enabled": true,
+      "locked": false,
+      "matcher": {
+        "action_classes": ["exec", "file.delete"],
+        "target_prefixes": [],
+        "target_contains": [
+          "rm -rf",
+          "rm -fr",
+          "Remove-Item -Recurse -Force",
+          "git reset --hard",
+          "mkfs."
+        ],
+        "agents": []
+      },
+      "hits": 0,
+      "would_ask_hits": 0,
+      "would_block_hits": 0,
+      "reason_template": "Recursive or irreversible deletion requires human approval.",
+      "cedar": "@id(\"essentials.destructive-delete\")\n@class(\"irreversible\")\n@max_mode(\"Ask\")\n@min_grade(\"G1\")\nforbid (\n  principal is Grdr::Session,\n  action in [Grdr::Action::\"exec\", Grdr::Action::\"file.delete\"],\n  resource\n)\nwhen { resource.classes.contains(\"destructive-delete\") };"
+    },
+    {
+      "id": "essentials.privilege-elevation",
+      "title": "Gate privilege elevation attempts",
+      "description": "Ask before running sudo, doas, or elevated admin shells from an agent session.",
+      "mode": "ask",
+      "min_grade": "G1",
+      "enabled": true,
+      "locked": false,
+      "matcher": {
+        "action_classes": ["elevate", "exec"],
+        "target_prefixes": [],
+        "target_contains": [
+          "sudo ",
+          "doas ",
+          "runas ",
+          "Start-Process -Verb RunAs"
+        ],
+        "agents": []
+      },
+      "hits": 0,
+      "would_ask_hits": 0,
+      "would_block_hits": 0,
+      "reason_template": "Privilege elevation from an agent session requires approval.",
+      "cedar": "@id(\"essentials.privilege-elevation\")\n@class(\"elevate\")\n@max_mode(\"Ask\")\n@min_grade(\"G1\")\nforbid (\n  principal is Grdr::Session,\n  action in [Grdr::Action::\"elevate\", Grdr::Action::\"exec\"],\n  resource\n)\nwhen { action == Grdr::Action::\"elevate\" || resource.classes.contains(\"privilege-elevate\") };"
+    },
+    {
+      "id": "essentials.secret-exfil-egress",
+      "title": "Observe outbound paste and webhook transfers",
+      "description": "Observe external uploads via curl/Invoke-RestMethod before promoting to Ask or Block.",
+      "mode": "watch",
+      "min_grade": "G1",
+      "enabled": true,
+      "locked": false,
+      "matcher": {
+        "action_classes": ["net.request", "net.connect", "data.flow", "exec"],
+        "target_prefixes": [],
+        "target_contains": [
+          "curl ",
+          "Invoke-WebRequest",
+          "pastebin",
+          "webhook.site",
+          "transfer.sh"
+        ],
+        "agents": []
+      },
+      "hits": 0,
+      "would_ask_hits": 0,
+      "would_block_hits": 0,
+      "reason_template": "Unreviewed outbound upload pattern matched telemetry Watch rule.",
+      "cedar": "@id(\"essentials.secret-exfil-egress\")\n@class(\"out-of-boundary\")\nforbid (\n  principal is Grdr::Session,\n  action in [Grdr::Action::\"net.request\", Grdr::Action::\"net.connect\", Grdr::Action::\"data.flow\", Grdr::Action::\"exec\"],\n  resource\n)\nwhen { resource.classes.contains(\"egress-exfil\") };"
+    },
+    {
+      "id": "essentials.mcp-unpinned-write",
+      "title": "Monitor write-capable MCP tool invocations",
+      "description": "Track external MCP state-mutating calls while baselines build.",
+      "mode": "watch",
+      "min_grade": "G1",
+      "enabled": true,
+      "locked": false,
+      "matcher": {
+        "action_classes": ["mcp.call", "mcp.connect"],
+        "target_prefixes": [],
+        "target_contains": [
+          "write",
+          "delete",
+          "push",
+          "create",
+          "execute"
+        ],
+        "agents": []
+      },
+      "hits": 0,
+      "would_ask_hits": 0,
+      "would_block_hits": 0,
+      "reason_template": "State-changing MCP tool invocation matched Watch monitoring rule.",
+      "cedar": "@id(\"essentials.mcp-unpinned-write\")\n@class(\"out-of-boundary\")\nforbid (\n  principal is Grdr::Session,\n  action in [Grdr::Action::\"mcp.call\", Grdr::Action::\"mcp.connect\"],\n  resource\n)\nwhen { resource.classes.contains(\"mcp-write\") };"
+    }
+  ],
+  "key_id": null,
+  "signature": null
+}

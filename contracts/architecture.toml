@@ -112,4 +112,4 @@ os_adapters = [
   "grdr-sensor-macos",
   "grdr-sensor-windows",
 ]
-ffi_crates = ["grdr-fastpath-ffi", "grdr-ffi"]
+ffi_crates = ["grdr-fastpath-ffi", "grdr-ffi", "grdr-wasm"]

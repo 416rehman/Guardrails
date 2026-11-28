@@ -271,7 +271,7 @@ GRDR-MIGRATE-0001 = { owner = "grdr", file = "programs/grdr/src/server_migrate.r
 GRDR-MIGRATE-0002 = { owner = "grdr", file = "programs/grdr/src/server_migrate.rs" }
 GRDR-MIGRATE-0003 = { owner = "grdr", file = "programs/grdr/src/server_migrate.rs" }
 GRDR-MIGRATE-0004 = { owner = "grdr", file = "programs/grdr/src/server_migrate.rs" }
-GRDR-MODEL-0001 = { owner = "grdr-model", file = "crates/grdr-model/src/error.rs" }
+GRDR-MODEL-0001 = { owner = "grdr-model", file = "crates/grdr-model/src/error.rs", shared_with = ["grdr-wasm"] }
 GRDR-NATS-0001 = { owner = "grdr-bus-nats", file = "crates/grdr-bus-nats/src/config.rs" }
 GRDR-NATS-0002 = { owner = "grdr-bus-nats", file = "crates/grdr-bus-nats/src/config.rs" }
 GRDR-NATS-0003 = { owner = "grdr-bus-nats", file = "crates/grdr-bus-nats/src/config.rs" }

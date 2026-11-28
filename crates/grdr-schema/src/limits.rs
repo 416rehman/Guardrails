@@ -158,7 +158,7 @@ fn parse_retry(sections: &SectionMap<'_>) -> Result<RetryLimits, LimitsError> {
 }
 
 fn parse_server(sections: &SectionMap<'_>) -> Result<ServerLimits, LimitsError> {
-    let (i, l, r, t, p, e, o) = (
+    let (i, l, r, t, p, e, o, rest, mcp) = (
         "server.ingest",
         "server.lake",
         "server.relational",
@@ -166,6 +166,8 @@ fn parse_server(sections: &SectionMap<'_>) -> Result<ServerLimits, LimitsError> 
         "server.preflight",
         "server.enrolment",
         "server.operator",
+        "server.rest",
+        "server.mcp",
     );
     Ok(ServerLimits {
         ingest: ServerIngestLimits {
@@ -238,6 +240,14 @@ fn parse_server(sections: &SectionMap<'_>) -> Result<ServerLimits, LimitsError> 
             rto_events_hours: req_u32(sections, o, "rto_events_hours")?,
             rollback_circuit_breaker_pct: req_u32(sections, o, "rollback_circuit_breaker_pct")?,
         },
+        rest: ServerRestLimits {
+            rate_limit_default_per_min: req_u32(sections, rest, "rate_limit_default_per_min")?,
+        },
+        mcp: ServerMcpLimits {
+            read_limit_per_min: req_u32(sections, mcp, "read_limit_per_min")?,
+            propose_limit_per_hour: req_u32(sections, mcp, "propose_limit_per_hour")?,
+            propose_window_secs: req_u64(sections, mcp, "propose_window_secs")?,
+        },
     })
 }
 
@@ -256,6 +266,10 @@ mod tests {
         assert_eq!(cfg.retry.uplink_reconnect.max_attempts, 16);
         assert_eq!(cfg.server.ingest.max_body_bytes, 10_485_760);
         assert_eq!(cfg.server.operator.rollback_circuit_breaker_pct, 15);
+        assert_eq!(cfg.server.rest.rate_limit_default_per_min, 120);
+        assert_eq!(cfg.server.mcp.read_limit_per_min, 60);
+        assert_eq!(cfg.server.mcp.propose_limit_per_hour, 10);
+        assert_eq!(cfg.server.mcp.propose_window_secs, 3600);
         assert_eq!(
             cfg.endpoint.linux_sensor.catalogue_file_max_bytes,
             1_048_576

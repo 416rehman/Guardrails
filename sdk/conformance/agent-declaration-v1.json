@@ -1,0 +1,47 @@
+{
+  "schema": "grdr.agent-declaration.v1alpha1",
+  "agent_name": "research-orchestrator",
+  "framework": "langgraph",
+  "framework_version": "0.2.0",
+  "control_point": "gateway",
+  "tools": [
+    {
+      "name": "bash_exec",
+      "action_class": "exec",
+      "description": "Execute bounded workspace commands"
+    },
+    {
+      "name": "repo_read",
+      "action_class": "file.read",
+      "description": "Read files inside workspace"
+    },
+    {
+      "name": "repo_write",
+      "action_class": "file.write",
+      "description": "Modify repository source files"
+    }
+  ],
+  "mcp_servers": [
+    {
+      "name": "docs-search",
+      "transport": "streamable-http",
+      "endpoint": "https://mcp.example.invalid/docs"
+    }
+  ],
+  "egress_hosts": [
+    "api.anthropic.com",
+    "mcp.example.invalid"
+  ],
+  "control_paths": [
+    "sdk:python:langgraph",
+    "gateway:/v1/guard"
+  ],
+  "covered_by": [
+    "grdr-sdk",
+    "grdr-hook"
+  ],
+  "uncovered_hosted_tools": [
+    "openai:web_search_preview",
+    "anthropic:code_execution"
+  ]
+}

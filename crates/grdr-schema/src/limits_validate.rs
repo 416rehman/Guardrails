@@ -294,6 +294,19 @@ fn validate_server(s: &ServerLimits) -> Result<(), LimitsError> {
             "server.enrolment.token_ttl_hours",
             u64::from(s.enrolment.token_ttl_hours),
         ),
+        (
+            "server.rest.rate_limit_default_per_min",
+            u64::from(s.rest.rate_limit_default_per_min),
+        ),
+        (
+            "server.mcp.read_limit_per_min",
+            u64::from(s.mcp.read_limit_per_min),
+        ),
+        (
+            "server.mcp.propose_limit_per_hour",
+            u64::from(s.mcp.propose_limit_per_hour),
+        ),
+        ("server.mcp.propose_window_secs", s.mcp.propose_window_secs),
     ] {
         ensure_positive_u64(k, v)?;
     }

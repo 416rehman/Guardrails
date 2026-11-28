@@ -231,6 +231,15 @@ const ALLOWED_SECTIONS: &[(&str, &[&str])] = &[
             "rollback_circuit_breaker_pct",
         ],
     ),
+    ("server.rest", &["rate_limit_default_per_min"]),
+    (
+        "server.mcp",
+        &[
+            "read_limit_per_min",
+            "propose_limit_per_hour",
+            "propose_window_secs",
+        ],
+    ),
     ("broker", &["max_worker_threads"]),
     (
         "broker.circuit_breaker",

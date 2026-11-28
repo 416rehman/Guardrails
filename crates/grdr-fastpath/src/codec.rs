@@ -1,209 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
-//! `#![no_std]` binary floor encoder and built-in fail-safe literal floor rules.
+//! `#![no_std]` binary floor encoder and manifest-driven failsafe rule evaluator.
 
 use crate::binary::{
     BINARY_HEADER_LEN, BINARY_RULE_LEN, BINARY_SLICE_DESC_LEN, BinaryFloorHit, BinaryRuleInput,
     FastpathError, MAX_BINARY_RULES, MAX_BINARY_SLICES, framing_crc32, verdict_rank,
 };
+use crate::manifest::FastpathTablesManifest;
 use crate::{
     FLOOR_FORMAT_MAGIC, FLOOR_FORMAT_VERSION, FastActionClass, FastVerdict, contains_norm_icase,
 };
-
-const CONTROL_FILE_ACTION_MASK: u32 = FastActionClass::FileWrite.bit()
-    | FastActionClass::FileDelete.bit()
-    | FastActionClass::ConfigChange.bit();
-const HOOK_BYPASS_ACTION_MASK: u32 = FastActionClass::Exec.bit()
-    | FastActionClass::AgentSpawn.bit()
-    | FastActionClass::ConfigChange.bit();
-const CRED_STORE_ACTION_MASK: u32 =
-    FastActionClass::FileRead.bit() | FastActionClass::CredUse.bit() | FastActionClass::Exec.bit();
-
-const FAILSAFE_ENTRIES: &[FailSafeEntry] = &[
-    FailSafeEntry {
-        rule_id: "essentials.agent-control-files",
-        reason: "Fail-safe blocked agent control file mutation.",
-        action_mask: CONTROL_FILE_ACTION_MASK,
-        needle: ".claude/",
-        verdict: FastVerdict::Deny,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.agent-control-files",
-        reason: "Fail-safe blocked agent settings mutation.",
-        action_mask: CONTROL_FILE_ACTION_MASK,
-        needle: ".claude.json",
-        verdict: FastVerdict::Deny,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.agent-control-files",
-        reason: "Fail-safe blocked agent control file mutation.",
-        action_mask: CONTROL_FILE_ACTION_MASK,
-        needle: ".cursor/",
-        verdict: FastVerdict::Deny,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.agent-control-files",
-        reason: "Fail-safe blocked agent control file mutation.",
-        action_mask: CONTROL_FILE_ACTION_MASK,
-        needle: ".codex/",
-        verdict: FastVerdict::Deny,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.agent-control-files",
-        reason: "Fail-safe blocked agent control file mutation.",
-        action_mask: CONTROL_FILE_ACTION_MASK,
-        needle: ".gemini/",
-        verdict: FastVerdict::Deny,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.agent-control-files",
-        reason: "Fail-safe blocked agent control file mutation.",
-        action_mask: CONTROL_FILE_ACTION_MASK,
-        needle: ".windsurf/",
-        verdict: FastVerdict::Deny,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.agent-control-files",
-        reason: "Fail-safe blocked Guardrails control mutation.",
-        action_mask: CONTROL_FILE_ACTION_MASK,
-        needle: ".grdr/",
-        verdict: FastVerdict::Deny,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.agent-control-files",
-        reason: "Fail-safe blocked Guardrails control mutation.",
-        action_mask: CONTROL_FILE_ACTION_MASK,
-        needle: "grdr-data/",
-        verdict: FastVerdict::Deny,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.agent-control-files",
-        reason: "Fail-safe blocked Guardrails security file mutation.",
-        action_mask: CONTROL_FILE_ACTION_MASK,
-        needle: "security/",
-        verdict: FastVerdict::Deny,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.hook-bypass",
-        reason: "Fail-safe blocked permission bypass flag.",
-        action_mask: HOOK_BYPASS_ACTION_MASK,
-        needle: "--dangerously-skip-permissions",
-        verdict: FastVerdict::Deny,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.hook-bypass",
-        reason: "Fail-safe blocked sandbox bypass flag.",
-        action_mask: HOOK_BYPASS_ACTION_MASK,
-        needle: "--no-sandbox",
-        verdict: FastVerdict::Deny,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.hook-bypass",
-        reason: "Fail-safe blocked sandbox bypass flag.",
-        action_mask: HOOK_BYPASS_ACTION_MASK,
-        needle: "--disable-sandbox",
-        verdict: FastVerdict::Deny,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.hook-bypass",
-        reason: "Fail-safe blocked permission bypass flag.",
-        action_mask: HOOK_BYPASS_ACTION_MASK,
-        needle: "--yolo",
-        verdict: FastVerdict::Deny,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.hook-bypass",
-        reason: "Fail-safe blocked verification bypass flag.",
-        action_mask: HOOK_BYPASS_ACTION_MASK,
-        needle: "--no-verify",
-        verdict: FastVerdict::Deny,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.hook-bypass",
-        reason: "Fail-safe blocked hook disablement.",
-        action_mask: HOOK_BYPASS_ACTION_MASK,
-        needle: "--disable-hooks",
-        verdict: FastVerdict::Deny,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.hook-bypass",
-        reason: "Fail-safe blocked Guardrails disable flag.",
-        action_mask: HOOK_BYPASS_ACTION_MASK,
-        needle: "grdr_disable",
-        verdict: FastVerdict::Deny,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.honeytoken.file",
-        reason: "Fail-safe blocked honeytoken access.",
-        action_mask: CONTROL_FILE_ACTION_MASK | FastActionClass::FileRead.bit(),
-        needle: "honeytoken",
-        verdict: FastVerdict::Deny,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.honeytoken.cred",
-        reason: "Fail-safe blocked honeytoken credential use.",
-        action_mask: FastActionClass::CredUse.bit() | FastActionClass::Exec.bit(),
-        needle: "honeytoken",
-        verdict: FastVerdict::Deny,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.credential-stores",
-        reason: "Fail-safe gated credential store access.",
-        action_mask: CRED_STORE_ACTION_MASK,
-        needle: ".ssh/",
-        verdict: FastVerdict::StepUp,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.credential-stores",
-        reason: "Fail-safe gated credential store access.",
-        action_mask: CRED_STORE_ACTION_MASK,
-        needle: ".aws/",
-        verdict: FastVerdict::StepUp,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.credential-stores",
-        reason: "Fail-safe gated credential store access.",
-        action_mask: CRED_STORE_ACTION_MASK,
-        needle: ".gnupg/",
-        verdict: FastVerdict::StepUp,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.credential-stores",
-        reason: "Fail-safe gated credential store access.",
-        action_mask: CRED_STORE_ACTION_MASK,
-        needle: ".config/gh/",
-        verdict: FastVerdict::StepUp,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.credential-stores",
-        reason: "Fail-safe gated credential store access.",
-        action_mask: CRED_STORE_ACTION_MASK,
-        needle: "id_rsa",
-        verdict: FastVerdict::StepUp,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.credential-stores",
-        reason: "Fail-safe gated credential store access.",
-        action_mask: CRED_STORE_ACTION_MASK,
-        needle: "id_ed25519",
-        verdict: FastVerdict::StepUp,
-    },
-    FailSafeEntry {
-        rule_id: "essentials.credential-stores",
-        reason: "Fail-safe gated credential store access.",
-        action_mask: CRED_STORE_ACTION_MASK,
-        needle: ".env.production",
-        verdict: FastVerdict::StepUp,
-    },
-];
-
-struct FailSafeEntry {
-    rule_id: &'static str,
-    reason: &'static str,
-    action_mask: u32,
-    needle: &'static str,
-    verdict: FastVerdict,
-}
 
 pub fn encoded_binary_floor_size(
     entries: &[BinaryRuleInput<'_>],
@@ -358,9 +164,18 @@ pub fn encode_binary_floor(
 }
 
 pub fn evaluate_failsafe(action: FastActionClass, target: &str) -> Option<BinaryFloorHit<'static>> {
+    let manifest = FastpathTablesManifest::embedded();
+    evaluate_failsafe_with_manifest(&manifest, action, target)
+}
+
+pub fn evaluate_failsafe_with_manifest<'a>(
+    manifest: &FastpathTablesManifest<'a>,
+    action: FastActionClass,
+    target: &str,
+) -> Option<BinaryFloorHit<'a>> {
     let bit = action.bit();
-    let mut best: Option<BinaryFloorHit<'static>> = None;
-    for entry in FAILSAFE_ENTRIES {
+    let mut best: Option<BinaryFloorHit<'a>> = None;
+    manifest.visit_failsafe_rules(|entry| {
         if (entry.action_mask & bit) != 0 && contains_norm_icase(target, entry.needle) {
             let hit = BinaryFloorHit {
                 rule_id: entry.rule_id,
@@ -374,7 +189,7 @@ pub fn evaluate_failsafe(action: FastActionClass, target: &str) -> Option<Binary
                 best = Some(hit);
             }
         }
-    }
+    });
     best
 }
 

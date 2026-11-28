@@ -1794,6 +1794,7 @@ dependencies = [
  "grdr-strings",
  "jiff 1.0.2",
  "prost",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",

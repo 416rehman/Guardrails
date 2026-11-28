@@ -37,3 +37,12 @@ paths = [
   '''^programs/grdr-server/src/store/connect_mdm\.rs$''',
   '''^web/tests/console\.test\.tsx$''',
 ]
+
+# Deterministic Standard Webhooks conformance test vector in sdk/conformance/webhooks-vectors.json.
+[[allowlists]]
+description = "deterministic Standard Webhooks HMAC test vector in conformance fixture"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^whsec_dGhpcy1pcy1hLWRldGVybWluaXN0aWMtdGVzdC1rZXk=$''']
+paths = ['''^sdk/conformance/webhooks-vectors\.json$''']

@@ -10,6 +10,7 @@ crates/grdr-core/**
 crates/grdr-fastpath/**
 crates/grdr-fastpath-ffi/**
 crates/grdr-ffi/**
+crates/grdr-wasm/**
 crates/grdr-wire/**
 crates/grdr-ipc-os/**
 crates/grdr-peer-os/**

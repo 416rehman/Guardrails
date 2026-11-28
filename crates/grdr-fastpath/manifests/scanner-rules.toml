@@ -1,0 +1,185 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: The Guardrails ADR Authors
+# Data-driven fastpath scanner and failsafe rule table (P14).
+
+schema = "grdr.fastpath-tables.v1alpha1"
+
+[tools]
+file_tools = [
+  "read",
+  "edit",
+  "write",
+  "multiedit",
+  "delete",
+  "file_read",
+  "file_write",
+  "file_delete",
+  "notebookedit",
+  "write_to_file",
+  "replace_file_content",
+  "multi_replace_file_content",
+  "create_file",
+  "apply_patch",
+  "view_file",
+  "read_file",
+  "write_file",
+  "delete_file",
+  "removefile",
+  "editfile",
+  "writetofile",
+  "afterfileedit",
+  "beforereadfile",
+]
+
+net_tools = [
+  "webfetch",
+  "websearch",
+  "net_request",
+]
+
+shell_quote_keys = [
+  "command",
+  "cmd",
+  "CommandLine",
+  "command_line",
+  "script",
+  "target",
+]
+
+mcp_target_keys = [
+  "path",
+  "file_path",
+  "TargetFile",
+  "AbsolutePath",
+  "url",
+  "Url",
+  "uri",
+  "target",
+  "command",
+  "cmd",
+  "CommandLine",
+  "command_line",
+  "script",
+  "server",
+  "tool",
+  "input",
+]
+
+file_target_keys = [
+  "file_path",
+  "target_file",
+  "TargetFile",
+  "AbsolutePath",
+  "notebook_path",
+  "path",
+  "patch",
+  "target",
+  "command",
+  "cmd",
+  "CommandLine",
+  "url",
+  "Url",
+  "input",
+]
+
+net_target_keys = [
+  "url",
+  "Url",
+  "uri",
+  "query",
+  "target",
+  "command",
+  "cmd",
+  "CommandLine",
+  "file_path",
+  "path",
+]
+
+default_target_keys = [
+  "command",
+  "cmd",
+  "CommandLine",
+  "command_line",
+  "script",
+  "file_path",
+  "target_file",
+  "TargetFile",
+  "AbsolutePath",
+  "notebook_path",
+  "path",
+  "patch",
+  "target",
+  "url",
+  "Url",
+  "input",
+]
+
+# Format: bit_name | pattern
+[scanner_patterns]
+entries = [
+  "BYPASS_PERMISSION|--dangerously-skip-permissions",
+  "BYPASS_PERMISSION|--no-verify",
+  "BYPASS_PERMISSION|--no-sandbox",
+  "BYPASS_PERMISSION|--disable-sandbox",
+  "BYPASS_PERMISSION|--yolo",
+  "HOOKS_DISABLED|--disable-hooks",
+  "GRDR_DISABLE|grdr_disable",
+  "SUBSHELL|$(",
+  "BACKTICK|`",
+  "ENCODED_CMD|-encodedcommand",
+  "ENCODED_CMD| -enc ",
+  "PIPE_SHELL|| sh",
+  "PIPE_SHELL|| bash",
+  "PIPE_SHELL|| zsh",
+  "PIPE_SHELL|| /bin/sh",
+  "PIPE_SHELL|| /bin/bash",
+  "RECURSIVE_FORCE|-rf",
+  "RECURSIVE_FORCE|-fr",
+  "RECURSIVE_FORCE|rm -r -f",
+  "RECURSIVE_FORCE|remove-item -recurse -force",
+  "CRED_PATH|.ssh/",
+  "CRED_PATH|.aws/",
+  "CRED_PATH|.gnupg/",
+  "CRED_PATH|.config/gh/",
+  "CRED_PATH|id_rsa",
+  "CRED_PATH|id_ed25519",
+  "CRED_PATH|.env.production",
+  "CONTROL_PATH|.claude/",
+  "CONTROL_PATH|.claude.json",
+  "CONTROL_PATH|.cursor/",
+  "CONTROL_PATH|.codex/",
+  "CONTROL_PATH|.gemini/",
+  "CONTROL_PATH|.windsurf/",
+  "CONTROL_PATH|.grdr/",
+  "CONTROL_PATH|grdr-data/",
+]
+
+# Format: action_kind | verdict | needle | rule_id | reason
+[failsafe_rules]
+entries = [
+  "control_file|deny|.claude/|essentials.agent-control-files|Fail-safe blocked agent control file mutation.",
+  "control_file|deny|.claude.json|essentials.agent-control-files|Fail-safe blocked agent settings mutation.",
+  "control_file|deny|.cursor/|essentials.agent-control-files|Fail-safe blocked agent control file mutation.",
+  "control_file|deny|.codex/|essentials.agent-control-files|Fail-safe blocked agent control file mutation.",
+  "control_file|deny|.gemini/|essentials.agent-control-files|Fail-safe blocked agent control file mutation.",
+  "control_file|deny|.windsurf/|essentials.agent-control-files|Fail-safe blocked agent control file mutation.",
+  "control_file|deny|.grdr/|essentials.agent-control-files|Fail-safe blocked agent control file mutation.",
+  "control_file|deny|grdr-data/|essentials.agent-control-files|Fail-safe blocked agent control file mutation.",
+  "control_file|deny|security/|essentials.agent-control-files|Fail-safe blocked agent security file mutation.",
+  "hook_bypass|deny|--dangerously-skip-permissions|essentials.hook-bypass|Fail-safe blocked permission bypass flag.",
+  "hook_bypass|deny|--no-sandbox|essentials.hook-bypass|Fail-safe blocked sandbox bypass flag.",
+  "hook_bypass|deny|--disable-sandbox|essentials.hook-bypass|Fail-safe blocked sandbox bypass flag.",
+  "hook_bypass|deny|--yolo|essentials.hook-bypass|Fail-safe blocked permission bypass flag.",
+  "hook_bypass|deny|--no-verify|essentials.hook-bypass|Fail-safe blocked verification bypass flag.",
+  "hook_bypass|deny|--disable-hooks|essentials.hook-bypass|Fail-safe blocked hook disablement.",
+  "hook_bypass|deny|grdr_disable|essentials.hook-bypass|Fail-safe blocked agent disable flag.",
+  "honeytoken_file|deny|honeytoken|essentials.honeytoken.file|Fail-safe blocked honeytoken access.",
+  "honeytoken_cred|deny|honeytoken|essentials.honeytoken.cred|Fail-safe blocked honeytoken credential use.",
+  "cred_store|step_up|.ssh/|essentials.credential-stores|Fail-safe gated credential store access.",
+  "cred_store|step_up|.aws/|essentials.credential-stores|Fail-safe gated credential store access.",
+  "cred_store|step_up|.gnupg/|essentials.credential-stores|Fail-safe gated credential store access.",
+  "cred_store|step_up|.config/gh/|essentials.credential-stores|Fail-safe gated credential store access.",
+  "cred_store|step_up|id_rsa|essentials.credential-stores|Fail-safe gated credential store access.",
+  "cred_store|step_up|id_ed25519|essentials.credential-stores|Fail-safe gated credential store access.",
+  "cred_store|step_up|.env.production|essentials.credential-stores|Fail-safe gated credential store access.",
+]

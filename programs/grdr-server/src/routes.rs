@@ -1,12 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+#[path = "gitops/mod.rs"]
+pub mod gitops;
+#[path = "mcp_server/mod.rs"]
+pub mod mcp_server;
+#[path = "rest/mod.rs"]
+pub mod rest;
+
 use std::path::PathBuf;
 
-use axum::Router;
 use axum::extract::DefaultBodyLimit;
-use axum::middleware;
 use axum::routing::{get, post};
+use axum::{Extension, Router, middleware};
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::auth::{
@@ -108,19 +114,23 @@ pub fn build_console_router_with_security(
         )
         .route(
             "/grdr.api.policy.v1alpha1.PolicyService/CreateRule",
-            post(rpc::policy::create_rule),
+            post(rpc::policy::create_rule)
+                .route_layer(middleware::from_fn(gitops::enforce_gitops_lock_middleware)),
         )
         .route(
             "/grdr.api.policy.v1alpha1.PolicyService/UpdateRule",
-            post(rpc::policy::update_rule),
+            post(rpc::policy::update_rule)
+                .route_layer(middleware::from_fn(gitops::enforce_gitops_lock_middleware)),
         )
         .route(
             "/grdr.api.policy.v1alpha1.PolicyService/DeleteRule",
-            post(rpc::policy::delete_rule),
+            post(rpc::policy::delete_rule)
+                .route_layer(middleware::from_fn(gitops::enforce_gitops_lock_middleware)),
         )
         .route(
             "/grdr.api.policy.v1alpha1.PolicyService/UpdateRuleMode",
-            post(rpc::policy::update_rule_mode),
+            post(rpc::policy::update_rule_mode)
+                .route_layer(middleware::from_fn(gitops::enforce_gitops_lock_middleware)),
         )
         .route(
             "/grdr.api.policy.v1alpha1.PolicyService/ReplayRule",
@@ -132,7 +142,8 @@ pub fn build_console_router_with_security(
         )
         .route(
             "/grdr.api.policy.v1alpha1.PolicyService/UpdateBrowserPolicy",
-            post(rpc::policy::update_browser_policy),
+            post(rpc::policy::update_browser_policy)
+                .route_layer(middleware::from_fn(gitops::enforce_gitops_lock_middleware)),
         )
         .route(
             "/grdr.api.inventory.v1alpha1.InventoryService/ListDevices",
@@ -308,15 +319,33 @@ pub fn build_console_router_with_security(
             post(rpc::surfaces::advance_provider_ring),
         )
         .layer(middleware::from_fn_with_state(
-            auth_state,
+            auth_state.clone(),
             require_console_auth,
         ));
+
+    let gitops_store = gitops::GitopsStore::default();
+    let idempotency_cache = rest::idempotency::IdempotencyCache::default();
+    let rate_limiter = rest::rate_limit::TenantRateLimiter::default();
+    let webhook_store = rest::WebhookStore::default();
+    let catalog_store = rest::ResourceCatalogStore::default();
+    let mcp_proposals = mcp_server::McpProposalStore::default();
 
     let api = Router::new()
         .merge(public_routes)
         .merge(device_routes)
         .merge(console_routes)
+        .merge(rest::public_v1_router())
+        .merge(rest::v1_router(auth_state.clone()))
+        .merge(mcp_server::mcp_public_router())
+        .merge(mcp_server::mcp_router(auth_state))
         .with_state(state)
+        .layer(Extension(gitops_store))
+        .layer(Extension(idempotency_cache))
+        .layer(Extension(rate_limiter))
+        .layer(Extension(webhook_store))
+        .layer(Extension(catalog_store))
+        .layer(Extension(mcp_proposals))
+        .layer(Extension(security.clone()))
         .layer(DefaultBodyLimit::max(security.max_body_bytes))
         .layer(cors);
 
@@ -389,14 +418,22 @@ pub fn build_operator_router_with_security(
             post(rpc::operator::run_backup_drill),
         )
         .layer(middleware::from_fn_with_state(
-            auth_state,
+            auth_state.clone(),
             require_dedicated_operator_auth,
         ));
+
+    let op_idempotency = rest::idempotency::IdempotencyCache::default();
+    let op_limiter = rest::rate_limit::TenantRateLimiter::default();
+    let op_catalog = rest::ResourceCatalogStore::default();
 
     let api = Router::new()
         .merge(public_routes)
         .merge(operator_routes)
+        .merge(rest::operator_v1_router(auth_state))
         .with_state(state)
+        .layer(Extension(op_idempotency))
+        .layer(Extension(op_limiter))
+        .layer(Extension(op_catalog))
         .layer(DefaultBodyLimit::max(security.max_body_bytes))
         .layer(cors);
 
