@@ -85,6 +85,8 @@ CREATE TABLE IF NOT EXISTS lake_manifests (
     object_key TEXT NOT NULL,
     created_at_ms INTEGER NOT NULL,
     entries_json TEXT NOT NULL,
+    signature_b64 TEXT,
+    signer_pubkey_b64 TEXT,
     PRIMARY KEY (organisation_id, manifest_seq)
 );
 
@@ -95,6 +97,31 @@ CREATE TABLE IF NOT EXISTS lake_observables (
     segment_id TEXT NOT NULL,
     event_id TEXT NOT NULL,
     PRIMARY KEY (organisation_id, observable_type, value, segment_id, event_id)
+);
+
+CREATE TABLE IF NOT EXISTS lake_segment_filters (
+    organisation_id TEXT NOT NULL,
+    segment_id TEXT NOT NULL,
+    filter_blob BLOB NOT NULL,
+    observable_count INTEGER NOT NULL,
+    PRIMARY KEY (organisation_id, segment_id)
+);
+
+CREATE TABLE IF NOT EXISTS lake_put_ledger (
+    organisation_id TEXT NOT NULL,
+    day TEXT NOT NULL,
+    put_count INTEGER NOT NULL,
+    data_objects_count INTEGER NOT NULL,
+    PRIMARY KEY (organisation_id, day)
+);
+
+CREATE TABLE IF NOT EXISTS lake_agg_daily (
+    organisation_id TEXT NOT NULL,
+    day TEXT NOT NULL,
+    retention_class TEXT NOT NULL,
+    category TEXT NOT NULL,
+    event_count INTEGER NOT NULL,
+    PRIMARY KEY (organisation_id, day, retention_class, category)
 );
 "#;
 

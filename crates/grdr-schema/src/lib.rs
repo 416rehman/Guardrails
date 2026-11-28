@@ -5,6 +5,7 @@
 pub mod brand;
 pub mod capture;
 pub mod cedar;
+pub mod codes;
 pub mod limits;
 mod limits_parse;
 mod limits_types;
@@ -12,6 +13,7 @@ mod limits_validate;
 pub mod registry;
 
 use std::collections::BTreeMap;
+use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -62,20 +64,59 @@ pub struct SchemaDocument {
     pub properties: Vec<SchemaProperty>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SchemaValidationError {
-    #[error("GRDR-SCHEMA-0001: payload root must be a JSON object")]
     NotObject,
-    #[error("GRDR-SCHEMA-0002: missing required field `{field}`")]
-    MissingRequiredField { field: String },
-    #[error("GRDR-SCHEMA-0003: field `{field}` must have JSON type {expected}")]
+    MissingRequiredField {
+        field: String,
+    },
     TypeMismatch {
         field: String,
         expected: &'static str,
     },
-    #[error("GRDR-SCHEMA-0004: field `{field}` cannot be an empty string")]
-    EmptyRequiredString { field: String },
+    EmptyRequiredString {
+        field: String,
+    },
 }
+
+impl SchemaValidationError {
+    #[must_use]
+    pub const fn code(&self) -> &'static str {
+        match self {
+            Self::NotObject => codes::CODE_SCHEMA_NOT_OBJECT,
+            Self::MissingRequiredField { .. } => codes::CODE_SCHEMA_MISSING_FIELD,
+            Self::TypeMismatch { .. } => codes::CODE_SCHEMA_TYPE_MISMATCH,
+            Self::EmptyRequiredString { .. } => codes::CODE_SCHEMA_EMPTY_STRING,
+        }
+    }
+}
+
+impl fmt::Display for SchemaValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotObject => write!(f, "{}: payload root must be a JSON object", self.code()),
+            Self::MissingRequiredField { field } => {
+                write!(f, "{}: missing required field `{field}`", self.code())
+            }
+            Self::TypeMismatch { field, expected } => {
+                write!(
+                    f,
+                    "{}: field `{field}` must have JSON type {expected}",
+                    self.code()
+                )
+            }
+            Self::EmptyRequiredString { field } => {
+                write!(
+                    f,
+                    "{}: field `{field}` cannot be an empty string",
+                    self.code()
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for SchemaValidationError {}
 
 impl JsonType {
     pub fn as_str(self) -> &'static str {
@@ -367,6 +408,15 @@ mod tests {
         assert!(CommitmentClass::Derived < CommitmentClass::Identifier);
         assert!(CommitmentClass::Identifier < CommitmentClass::ContentArgument);
         assert!(CommitmentClass::ContentArgument < CommitmentClass::ContentBody);
+        assert!(ContentKind::Argument < ContentKind::Body);
+        assert_eq!(
+            ContentKind::Argument.commitment_class(),
+            CommitmentClass::ContentArgument
+        );
+        assert_eq!(
+            ContentKind::Body.commitment_class(),
+            CommitmentClass::ContentBody
+        );
 
         assert_eq!(AuditLane::parse("spine"), Some(AuditLane::Spine));
         assert_eq!(AuditLane::parse("evidence"), Some(AuditLane::Evidence));

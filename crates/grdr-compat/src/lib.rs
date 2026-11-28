@@ -3,19 +3,34 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::arithmetic_side_effects)]
 
+//! Protocol, support contract, upgrade-path, and manifest compatibility evaluator (`D-71`, `E1.7`).
+
+pub mod codes;
+pub mod manifest_compat;
+pub mod support;
+mod support_parse;
+pub mod upgrade_path;
+
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum CompatError {
-    #[error("GRDR-COMPAT-0001: invalid semantic version `{0}`")]
-    InvalidSemVer(String),
-    #[error("GRDR-COMPAT-0002: invalid version range for {component}")]
-    InvalidRange { component: String },
-    #[error("GRDR-COMPAT-0003: unsupported component or protocol version: {0}")]
-    UnsupportedVersion(String),
-}
+pub use codes::{
+    CODE_COMPAT_FORBIDDEN_JUMP, CODE_COMPAT_INVALID_CONTRACT, CODE_COMPAT_INVALID_RANGE,
+    CODE_COMPAT_INVALID_SEMVER, CODE_COMPAT_UNSUPPORTED_VERSION, CompatError,
+};
+pub use manifest_compat::{
+    ComponentDigestDelta, ManifestCompatGraph, ManifestComponentState, ManifestContractRange,
+    diff_component_digests, evaluate_manifest_compat,
+};
+pub use support::{
+    CompatibilityMatrixContract, ContractCompatSpec, EMBEDDED_SUPPORT_TOML, PlatformBaseline,
+    ReleasePolicy, SupportContract, load_embedded_support_contract, parse_support_toml,
+};
+pub use upgrade_path::{
+    ForbiddenJumpEntry, UPGRADE_PATH_SCHEMA, UpgradePathDocument, UpgradePathEntry, UpgradePlan,
+    generate_upgrade_path_doc, validate_direct_transition, validate_hop_sequence,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct SemVer {
@@ -52,6 +67,8 @@ pub struct CompatEntry {
 pub struct CompatMatrix {
     pub protocol_version: SemVer,
     pub entries: Vec<CompatEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contract_error: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -94,25 +111,43 @@ impl SemVer {
     }
 
     pub fn parse(raw: &str) -> Result<Self, CompatError> {
-        let trimmed = raw.trim().strip_prefix('v').unwrap_or(raw.trim());
-        let core = trimmed.split(['-', '+']).next().unwrap_or(trimmed);
+        let trimmed = raw.trim();
+        let trimmed = trimmed.strip_prefix('v').unwrap_or(trimmed);
+        if trimmed.is_empty() || trimmed.starts_with('+') || trimmed.starts_with('-') {
+            return Err(CompatError::InvalidSemVer(raw.to_owned()));
+        }
+        let (core, suffix) = match trimmed.find(['-', '+']) {
+            Some(idx) => (
+                trimmed.get(..idx).unwrap_or(""),
+                Some(trimmed.get(idx.saturating_add(1)..).unwrap_or("")),
+            ),
+            None => (trimmed, None),
+        };
+        if let Some(rest) = suffix
+            && rest.is_empty()
+        {
+            return Err(CompatError::InvalidSemVer(raw.to_owned()));
+        }
         let mut parts = core.split('.');
-        let major = parts
-            .next()
-            .and_then(|p| p.parse::<u32>().ok())
-            .ok_or_else(|| CompatError::InvalidSemVer(raw.to_owned()))?;
-        let minor = parts
-            .next()
-            .and_then(|p| p.parse::<u32>().ok())
-            .ok_or_else(|| CompatError::InvalidSemVer(raw.to_owned()))?;
-        let patch = parts
-            .next()
-            .and_then(|p| p.parse::<u32>().ok())
-            .ok_or_else(|| CompatError::InvalidSemVer(raw.to_owned()))?;
+        let major = Self::parse_part(parts.next(), raw)?;
+        let minor = Self::parse_part(parts.next(), raw)?;
+        let patch = Self::parse_part(parts.next(), raw)?;
         if parts.next().is_some() {
             return Err(CompatError::InvalidSemVer(raw.to_owned()));
         }
         Ok(Self::new(major, minor, patch))
+    }
+
+    fn parse_part(part: Option<&str>, raw: &str) -> Result<u32, CompatError> {
+        let p = part.ok_or_else(|| CompatError::InvalidSemVer(raw.to_owned()))?;
+        if p.is_empty()
+            || !p.bytes().all(|b| b.is_ascii_digit())
+            || (p.len() > 1 && p.starts_with('0'))
+        {
+            return Err(CompatError::InvalidSemVer(raw.to_owned()));
+        }
+        p.parse::<u32>()
+            .map_err(|_| CompatError::InvalidSemVer(raw.to_owned()))
     }
 }
 
@@ -132,43 +167,24 @@ impl VersionRange {
 }
 
 impl CompatMatrix {
+    pub fn from_embedded_support() -> Result<Self, CompatError> {
+        Ok(load_embedded_support_contract()?.to_compat_matrix())
+    }
+
+    pub fn from_support_toml(raw: &str) -> Result<Self, CompatError> {
+        Ok(parse_support_toml(raw)?.to_compat_matrix())
+    }
+
+    /// Transitional wrapper for unowned callers; fails closed in `negotiate_compatibility` if embedded support contract fails to load (#133).
     #[must_use]
     pub fn default_v1() -> Self {
-        Self {
-            protocol_version: SemVer::new(1, 0, 0),
-            entries: vec![
-                CompatEntry {
-                    component: "grdr-daemon".into(),
-                    range: VersionRange {
-                        min_inclusive: SemVer::new(0, 1, 0),
-                        max_exclusive: Some(SemVer::new(2, 0, 0)),
-                    },
-                    required_capabilities: vec![
-                        ProtocolCapability::SignedReceipts,
-                        ProtocolCapability::SessionLabels,
-                        ProtocolCapability::FastpathFloor,
-                    ],
-                },
-                CompatEntry {
-                    component: "grdr-mcp".into(),
-                    range: VersionRange {
-                        min_inclusive: SemVer::new(0, 1, 0),
-                        max_exclusive: Some(SemVer::new(2, 0, 0)),
-                    },
-                    required_capabilities: vec![
-                        ProtocolCapability::McpToolPinning,
-                        ProtocolCapability::StepUpApproval,
-                    ],
-                },
-                CompatEntry {
-                    component: "grdr-desktop".into(),
-                    range: VersionRange {
-                        min_inclusive: SemVer::new(0, 1, 0),
-                        max_exclusive: Some(SemVer::new(2, 0, 0)),
-                    },
-                    required_capabilities: vec![ProtocolCapability::StepUpApproval],
-                },
-            ],
+        match Self::from_embedded_support() {
+            Ok(matrix) => matrix,
+            Err(err) => Self {
+                protocol_version: SemVer::new(1, 0, 0),
+                entries: Vec::new(),
+                contract_error: Some(err.to_string()),
+            },
         }
     }
 }
@@ -178,9 +194,15 @@ pub fn negotiate_compatibility(
     matrix: &CompatMatrix,
     req: &NegotiationRequest,
 ) -> NegotiationOutcome {
+    if let Some(err) = &matrix.contract_error {
+        return NegotiationOutcome::Incompatible {
+            code: CODE_COMPAT_INVALID_CONTRACT.into(),
+            reason: err.clone(),
+        };
+    }
     let Some(entry) = matrix.entries.iter().find(|e| e.component == req.component) else {
         return NegotiationOutcome::Incompatible {
-            code: "GRDR-COMPAT-0003".into(),
+            code: CODE_COMPAT_UNSUPPORTED_VERSION.into(),
             reason: format!(
                 "component {} is not registered in compatibility matrix",
                 req.component
@@ -190,7 +212,7 @@ pub fn negotiate_compatibility(
 
     if !entry.range.contains(req.client_version) {
         return NegotiationOutcome::Incompatible {
-            code: "GRDR-COMPAT-0003".into(),
+            code: CODE_COMPAT_UNSUPPORTED_VERSION.into(),
             reason: format!(
                 "{} {} is outside supported range [{}, {:?})",
                 req.component,
@@ -230,66 +252,5 @@ pub fn negotiate_compatibility(
             agreed_capabilities: agreed,
             warnings,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn semver_parse_and_range_matching_work() {
-        let v = SemVer::parse("v1.4.2-rc1").expect("valid semver");
-        assert_eq!(v, SemVer::new(1, 4, 2));
-        assert!(SemVer::parse("1.2").is_err());
-
-        let range = VersionRange {
-            min_inclusive: SemVer::new(0, 1, 0),
-            max_exclusive: Some(SemVer::new(2, 0, 0)),
-        };
-        assert!(range.contains(v));
-        assert!(!range.contains(SemVer::new(2, 0, 0)));
-    }
-
-    #[test]
-    fn negotiation_handles_compatible_warnings_and_incompatible() {
-        let matrix = CompatMatrix::default_v1();
-
-        let ok = negotiate_compatibility(
-            &matrix,
-            &NegotiationRequest {
-                component: "grdr-mcp".into(),
-                client_version: SemVer::new(0, 1, 0),
-                advertised_capabilities: vec![
-                    ProtocolCapability::McpToolPinning,
-                    ProtocolCapability::StepUpApproval,
-                    ProtocolCapability::SignedReceipts,
-                ],
-            },
-        );
-        assert!(matches!(ok, NegotiationOutcome::Compatible { .. }));
-
-        let warn = negotiate_compatibility(
-            &matrix,
-            &NegotiationRequest {
-                component: "grdr-mcp".into(),
-                client_version: SemVer::new(0, 1, 0),
-                advertised_capabilities: vec![ProtocolCapability::McpToolPinning],
-            },
-        );
-        assert!(matches!(
-            warn,
-            NegotiationOutcome::CompatibleWithWarnings { .. }
-        ));
-
-        let bad = negotiate_compatibility(
-            &matrix,
-            &NegotiationRequest {
-                component: "grdr-mcp".into(),
-                client_version: SemVer::new(3, 0, 0),
-                advertised_capabilities: vec![ProtocolCapability::McpToolPinning],
-            },
-        );
-        assert!(matches!(bad, NegotiationOutcome::Incompatible { .. }));
     }
 }

@@ -78,7 +78,7 @@ pub(crate) fn evaluate_rows(
                         && category
                             .as_ref()
                             .is_none_or(|c| rec.category.eq_ignore_ascii_case(c))
-                        && predicates_match(rec, predicates)
+                        && predicates_match(rec, predicates, *include_content)
                 })
                 .take(cap)
                 .map(|(org, rec, shredded)| {
@@ -102,7 +102,8 @@ pub(crate) fn evaluate_rows(
             let filtered: Vec<SealedRowRef<'_>> = rows
                 .iter()
                 .filter(|(_, rec, _)| {
-                    rec.retention_class == *retention_class && predicates_match(rec, predicates)
+                    rec.retention_class == *retention_class
+                        && predicates_match(rec, predicates, false)
                 })
                 .collect();
             let mut groups: BTreeMap<(OrgId, Vec<String>), Vec<SealedRowRef<'_>>> = BTreeMap::new();
@@ -336,9 +337,9 @@ fn record_to_row(
     }
 }
 
-fn predicates_match(rec: &LakeRecord, predicates: &[LakePredicate]) -> bool {
+fn predicates_match(rec: &LakeRecord, predicates: &[LakePredicate], include_content: bool) -> bool {
     predicates.iter().all(|p| {
-        let Some(val) = resolve_field(rec, &p.field) else {
+        let Some(val) = resolve_field_for_hunt(rec, &p.field, include_content) else {
             return false;
         };
         let eq_ok = p.equals.as_ref().is_none_or(|e| val == *e);

@@ -5,10 +5,12 @@
 //! Compact signed binary floor table (`GRDRFLT1`) shared between daemon compiler
 //! and fail-safe hook fallback without `serde_json` (`docs/design/11`, `docs/design/07`).
 
+use std::fmt;
+
 use grdr_crypto::{SigningKeypair, verify_bytes};
 use grdr_fastpath::{FLOOR_FORMAT_MAGIC, FLOOR_FORMAT_VERSION, FastActionClass, FastVerdict};
-use thiserror::Error;
 
+use crate::codes;
 use crate::floor_cursor::{
     Cursor, MAX_AGENTS_PER_RULE, MAX_PATTERN_LEN, MAX_RULE_ID_LEN, ascii_contains_icase,
     ascii_starts_with_icase, decode_floor_rule,
@@ -20,26 +22,28 @@ pub const MAX_FLOOR_RULES: usize = 512;
 const MAX_SIG_B64_LEN: usize = 256;
 const MIN_RULE_WIRE_LEN: usize = 10;
 
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FloorBinError {
-    #[error("GRDR-WIRE-0026: floor table truncated at offset {offset}")]
-    Truncated { offset: usize },
-    #[error("GRDR-WIRE-0027: invalid floor table magic or version")]
+    Truncated {
+        offset: usize,
+    },
     InvalidHeader,
-    #[error("GRDR-WIRE-0028: floor table rule count {count} exceeds maximum {max}")]
-    TooManyRules { count: usize, max: usize },
-    #[error("GRDR-WIRE-0029: floor table string or signature field malformed: {detail}")]
-    MalformedField { detail: String },
-    #[error("GRDR-WIRE-0030: floor table signature rejected or key untrusted")]
+    TooManyRules {
+        count: usize,
+        max: usize,
+    },
+    MalformedField {
+        detail: String,
+    },
     UntrustedSignature,
-    #[error("GRDR-WIRE-0031: floor table expired at {expires_at_unix_s} (now {now_unix_s})")]
     Expired {
         expires_at_unix_s: i64,
         now_unix_s: i64,
     },
-    #[error("GRDR-WIRE-0033: floor table size {len} exceeds maximum {max} bytes")]
-    TableTooLarge { len: usize, max: usize },
-    #[error("GRDR-WIRE-0034: trusted floor key set cannot be empty")]
+    TableTooLarge {
+        len: usize,
+        max: usize,
+    },
     EmptyTrustedKeys,
 }
 
@@ -86,17 +90,67 @@ impl FloorBinError {
     #[must_use]
     pub const fn code(&self) -> &'static str {
         match self {
-            Self::Truncated { .. } => "GRDR-WIRE-0026",
-            Self::InvalidHeader => "GRDR-WIRE-0027",
-            Self::TooManyRules { .. } => "GRDR-WIRE-0028",
-            Self::MalformedField { .. } => "GRDR-WIRE-0029",
-            Self::UntrustedSignature => "GRDR-WIRE-0030",
-            Self::Expired { .. } => "GRDR-WIRE-0031",
-            Self::TableTooLarge { .. } => "GRDR-WIRE-0033",
-            Self::EmptyTrustedKeys => "GRDR-WIRE-0034",
+            Self::Truncated { .. } => codes::CODE_WIRE_FLOOR_TRUNCATED,
+            Self::InvalidHeader => codes::CODE_WIRE_FLOOR_INVALID_HEADER,
+            Self::TooManyRules { .. } => codes::CODE_WIRE_FLOOR_TOO_MANY_RULES,
+            Self::MalformedField { .. } => codes::CODE_WIRE_FLOOR_MALFORMED_FIELD,
+            Self::UntrustedSignature => codes::CODE_WIRE_FLOOR_UNTRUSTED_SIGNATURE,
+            Self::Expired { .. } => codes::CODE_WIRE_FLOOR_EXPIRED,
+            Self::TableTooLarge { .. } => codes::CODE_WIRE_FLOOR_TOO_LARGE,
+            Self::EmptyTrustedKeys => codes::CODE_WIRE_FLOOR_EMPTY_KEYS,
         }
     }
 }
+
+impl fmt::Display for FloorBinError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Truncated { offset } => {
+                write!(
+                    f,
+                    "{}: floor table truncated at offset {offset}",
+                    self.code()
+                )
+            }
+            Self::InvalidHeader => {
+                write!(f, "{}: invalid floor table magic or version", self.code())
+            }
+            Self::TooManyRules { count, max } => write!(
+                f,
+                "{}: floor table rule count {count} exceeds maximum {max}",
+                self.code()
+            ),
+            Self::MalformedField { detail } => write!(
+                f,
+                "{}: floor table string or signature field malformed: {detail}",
+                self.code()
+            ),
+            Self::UntrustedSignature => write!(
+                f,
+                "{}: floor table signature rejected or key untrusted",
+                self.code()
+            ),
+            Self::Expired {
+                expires_at_unix_s,
+                now_unix_s,
+            } => write!(
+                f,
+                "{}: floor table expired at {expires_at_unix_s} (now {now_unix_s})",
+                self.code()
+            ),
+            Self::TableTooLarge { len, max } => write!(
+                f,
+                "{}: floor table size {len} exceeds maximum {max} bytes",
+                self.code()
+            ),
+            Self::EmptyTrustedKeys => {
+                write!(f, "{}: trusted floor key set cannot be empty", self.code())
+            }
+        }
+    }
+}
+
+impl std::error::Error for FloorBinError {}
 
 impl FloorRuleRecord {
     #[must_use]

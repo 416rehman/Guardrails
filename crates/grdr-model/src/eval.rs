@@ -1,18 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+use std::collections::BTreeSet;
+
 use jiff::Timestamp;
 
-use crate::domain::{ActionClass, ApprovalGrade, Mode};
-use crate::policy::{PolicyPack, PolicyRule, RuleMatch};
+use crate::api::TrustedKeyInfo;
+use crate::domain::{ActionClass, SignatureStatus};
+use crate::policy::PolicyPack;
+use crate::signing::verify_pack;
 
 use serde::{Deserialize, Serialize};
 
+pub use crate::eval_rules::essentials_rules;
 pub use grdr_crypto::{SigningKeypair, sha256_hex};
 
 const PACK_ESSENTIALS_ID: &str = "pack-essentials-slice0";
 const PACK_ESSENTIALS_VERSION: &str = "1.0.0";
 const MAX_HOLD_DEADLINE_MS: u64 = 30_000;
+pub const MAX_POLICY_PACK_JSON_BYTES: usize = 1024 * 1024;
+const EMBEDDED_ESSENTIALS_MANIFEST_TOML: &str = include_str!("../../../packs/essentials/pack.toml");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -63,6 +70,90 @@ pub struct FourBucketSummary {
     pub promotion_ready: bool,
 }
 
+pub fn essentials_manifest_toml() -> &'static str {
+    EMBEDDED_ESSENTIALS_MANIFEST_TOML
+}
+
+pub fn parse_policy_pack_json(raw: &str) -> Result<PolicyPack, crate::CodedError> {
+    if raw.trim().is_empty() || raw.len() > MAX_POLICY_PACK_JSON_BYTES {
+        return Err(crate::CodedError::new(
+            crate::CODE_INVALID_INPUT,
+            format!(
+                "PolicyPack JSON size {} is outside allowed bounds (1..={MAX_POLICY_PACK_JSON_BYTES} bytes)",
+                raw.len()
+            ),
+            "Provide a bounded PolicyPack JSON payload within size limits.",
+        ));
+    }
+    let pack: PolicyPack = serde_json::from_str(raw).map_err(|err| {
+        crate::CodedError::new(
+            crate::CODE_INVALID_INPUT,
+            format!("invalid PolicyPack JSON: {err}"),
+            "Provide a signed or valid PolicyPack JSON payload from packs/.",
+        )
+    })?;
+    validate_policy_pack_structure(&pack)?;
+    Ok(pack)
+}
+
+pub fn parse_verified_policy_pack_json(
+    raw: &str,
+    trusted_keys: &[TrustedKeyInfo],
+) -> Result<PolicyPack, crate::CodedError> {
+    let pack = parse_policy_pack_json(raw)?;
+    if verify_pack(&pack, trusted_keys) != SignatureStatus::Verified {
+        return Err(crate::CodedError::new(
+            crate::CODE_INVALID_INPUT,
+            format!(
+                "PolicyPack `{}` failed Ed25519 signature verification",
+                pack.id
+            ),
+            "Sign the PolicyPack with a trusted policy-signing key.",
+        ));
+    }
+    Ok(pack)
+}
+
+fn validate_policy_pack_structure(pack: &PolicyPack) -> Result<(), crate::CodedError> {
+    for (field, val) in [
+        ("id", pack.id.as_str()),
+        ("name", pack.name.as_str()),
+        ("version", pack.version.as_str()),
+        ("channel", pack.channel.as_str()),
+    ] {
+        if val.trim().is_empty() {
+            return Err(crate::CodedError::new(
+                crate::CODE_INVALID_INPUT,
+                format!("PolicyPack field `{field}` must not be empty"),
+                "Populate required PolicyPack metadata fields.",
+            ));
+        }
+    }
+    match (pack.key_id.as_deref(), pack.signature.as_deref()) {
+        (Some(k), Some(s)) if !k.trim().is_empty() && !s.trim().is_empty() => {}
+        (None, None) => {}
+        _ => {
+            return Err(crate::CodedError::new(
+                crate::CODE_INVALID_INPUT,
+                "PolicyPack `key_id` and `signature` must both be omitted or non-empty",
+                "Provide both non-empty `key_id` and `signature` or omit both.",
+            ));
+        }
+    }
+    let mut seen_ids = BTreeSet::new();
+    for rule in &pack.rules {
+        if rule.id.trim().is_empty() || !seen_ids.insert(rule.id.as_str()) {
+            return Err(crate::CodedError::new(
+                crate::CODE_INVALID_INPUT,
+                format!("invalid or duplicate PolicyRule id `{}`", rule.id),
+                "Assign a unique non-empty id to every rule in PolicyPack.",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Legacy transitional slice-0 pack preserved until Post-Wave callers load packs purely from signed store (#133).
 pub fn essentials_pack() -> PolicyPack {
     PolicyPack {
         id: PACK_ESSENTIALS_ID.into(),
@@ -76,303 +167,6 @@ pub fn essentials_pack() -> PolicyPack {
         key_id: None,
         signature: None,
     }
-}
-
-pub fn essentials_rules() -> Vec<PolicyRule> {
-    vec![
-        PolicyRule {
-            id: "essentials.agent-control-files".into(),
-            title: "Protect agent and Guardrails control files".into(),
-            description: "Stop agent-initiated writes to agent hooks, MCP configs, and security configuration files.".into(),
-            mode: Mode::Block,
-            min_grade: ApprovalGrade::G2,
-            enabled: true,
-            locked: true,
-            matcher: RuleMatch {
-                action_classes: vec![
-                    ActionClass::FileWrite,
-                    ActionClass::FileDelete,
-                    ActionClass::ConfigChange,
-                ],
-                target_prefixes: vec![],
-                target_contains: vec![
-                    ".claude/".into(),
-                    ".claude.json".into(),
-                    ".cursor/".into(),
-                    ".codex/".into(),
-                    ".gemini/".into(),
-                    "grdr-data/".into(),
-                    "security/".into(),
-                ],
-                agents: vec![],
-            },
-            hits: 0,
-            would_ask_hits: 0,
-            would_block_hits: 0,
-            reason_template: "Agents cannot modify agent hook settings or Guardrails control files.".into(),
-            cedar: Some(
-                r#"@id("essentials.agent-control-files")
-@class("config-tamper")
-@final("true")
-@steer("Do not edit hook, settings or MCP configuration. Ask the user to make this change.")
-forbid (
-  principal is Grdr::Session,
-  action in [Grdr::Action::"file.write", Grdr::Action::"file.delete", Grdr::Action::"config.change"],
-  resource
-)
-when { resource.classes.containsAny(["agent-control", "grdr-control", "monitoring-config"]) };"#
-                    .into(),
-            ),
-        },
-        PolicyRule {
-            id: "essentials.hook-bypass".into(),
-            title: "Prevent hook disabling and security bypass flags".into(),
-            description: "Block commands that disable hooks, remove verification checks, or bypass sandboxing.".into(),
-            mode: Mode::Block,
-            min_grade: ApprovalGrade::G2,
-            enabled: true,
-            locked: true,
-            matcher: RuleMatch {
-                action_classes: vec![
-                    ActionClass::Exec,
-                    ActionClass::AgentSpawn,
-                    ActionClass::ConfigChange,
-                ],
-                target_prefixes: vec![],
-                target_contains: vec![
-                    "--dangerously-skip-permissions".into(),
-                    "--no-verify".into(),
-                    "--disable-hooks".into(),
-                    "--no-sandbox".into(),
-                    "--disable-sandbox".into(),
-                    "--yolo".into(),
-                    "GRDR_DISABLE".into(),
-                ],
-                agents: vec![],
-            },
-            hits: 0,
-            would_ask_hits: 0,
-            would_block_hits: 0,
-            reason_template: "Bypassing security hooks or permission boundaries is blocked by Essentials.".into(),
-            cedar: Some(
-                r#"@id("essentials.hook-bypass")
-@class("config-tamper")
-@final("true")
-forbid (
-  principal is Grdr::Session,
-  action in [Grdr::Action::"exec", Grdr::Action::"agent.spawn", Grdr::Action::"config.change"],
-  resource
-)
-when { context.facts.containsAny(["flag.bypass-permissions", "flag.hooks-disabled", "flag.no-sandbox", "grdr.disable"]) };"#
-                    .into(),
-            ),
-        },
-        PolicyRule {
-            id: "essentials.credential-stores".into(),
-            title: "Guard credential stores and private keys".into(),
-            description: "Require approval before an agent reads SSH keys, cloud credentials, or token caches.".into(),
-            mode: Mode::Ask,
-            min_grade: ApprovalGrade::G1,
-            enabled: true,
-            locked: false,
-            matcher: RuleMatch {
-                action_classes: vec![
-                    ActionClass::FileRead,
-                    ActionClass::CredUse,
-                    ActionClass::Exec,
-                ],
-                target_prefixes: vec![],
-                target_contains: vec![
-                    ".ssh/".into(),
-                    ".aws/".into(),
-                    ".gnupg/".into(),
-                    ".config/gh/".into(),
-                    "id_rsa".into(),
-                    "id_ed25519".into(),
-                    ".env.production".into(),
-                ],
-                agents: vec![],
-            },
-            hits: 0,
-            would_ask_hits: 0,
-            would_block_hits: 0,
-            reason_template: "Reading private keys or credential stores requires an explicit approval grant.".into(),
-            cedar: Some(
-                r#"@id("essentials.credential-stores")
-@class("secret")
-@max_mode("Ask")
-@approver("self")
-@min_grade("G1")
-@message("Reading credential stores and private keys needs your approval.")
-@steer("If you need a token, use the configured credential helper or ask the user.")
-forbid (
-  principal is Grdr::Session,
-  action in [Grdr::Action::"file.read", Grdr::Action::"cred.use", Grdr::Action::"exec"],
-  resource
-)
-when { resource.classes.containsAny(["cred-store", "private-key"]) };"#
-                    .into(),
-            ),
-        },
-        PolicyRule {
-            id: "essentials.destructive-delete".into(),
-            title: "Review destructive shell commands".into(),
-            description: "Require approval for recursive force deletes, disk wipes, and destructive resets.".into(),
-            mode: Mode::Ask,
-            min_grade: ApprovalGrade::G1,
-            enabled: true,
-            locked: false,
-            matcher: RuleMatch {
-                action_classes: vec![ActionClass::Exec, ActionClass::FileDelete],
-                target_prefixes: vec![],
-                target_contains: vec![
-                    "rm -rf".into(),
-                    "rm -fr".into(),
-                    "Remove-Item -Recurse -Force".into(),
-                    "git reset --hard".into(),
-                    "mkfs.".into(),
-                ],
-                agents: vec![],
-            },
-            hits: 0,
-            would_ask_hits: 0,
-            would_block_hits: 0,
-            reason_template: "Recursive or irreversible deletion requires human approval.".into(),
-            cedar: Some(
-                r#"@id("essentials.destructive-delete")
-@class("irreversible")
-@max_mode("Ask")
-@min_grade("G1")
-forbid (
-  principal is Grdr::Session,
-  action in [Grdr::Action::"exec", Grdr::Action::"file.delete"],
-  resource
-)
-when { resource.classes.contains("destructive-delete") };"#
-                    .into(),
-            ),
-        },
-        PolicyRule {
-            id: "essentials.privilege-elevation".into(),
-            title: "Gate privilege elevation attempts".into(),
-            description: "Ask before running sudo, doas, or elevated admin shells from an agent session.".into(),
-            mode: Mode::Ask,
-            min_grade: ApprovalGrade::G1,
-            enabled: true,
-            locked: false,
-            matcher: RuleMatch {
-                action_classes: vec![
-                    ActionClass::Elevate,
-                    ActionClass::Exec,
-                ],
-                target_prefixes: vec![],
-                target_contains: vec![
-                    "sudo ".into(),
-                    "doas ".into(),
-                    "runas ".into(),
-                    "Start-Process -Verb RunAs".into(),
-                ],
-                agents: vec![],
-            },
-            hits: 0,
-            would_ask_hits: 0,
-            would_block_hits: 0,
-            reason_template: "Privilege elevation from an agent session requires approval.".into(),
-            cedar: Some(
-                r#"@id("essentials.privilege-elevation")
-@class("elevate")
-@max_mode("Ask")
-@min_grade("G1")
-forbid (
-  principal is Grdr::Session,
-  action in [Grdr::Action::"elevate", Grdr::Action::"exec"],
-  resource
-)
-when { action == Grdr::Action::"elevate" || resource.classes.contains("privilege-elevate") };"#
-                    .into(),
-            ),
-        },
-        PolicyRule {
-            id: "essentials.secret-exfil-egress".into(),
-            title: "Observe outbound paste and webhook transfers".into(),
-            description: "Observe external uploads via curl/Invoke-RestMethod before promoting to Ask or Block.".into(),
-            mode: Mode::Watch,
-            min_grade: ApprovalGrade::G1,
-            enabled: true,
-            locked: false,
-            matcher: RuleMatch {
-                action_classes: vec![
-                    ActionClass::NetRequest,
-                    ActionClass::NetConnect,
-                    ActionClass::DataFlow,
-                    ActionClass::Exec,
-                ],
-                target_prefixes: vec![],
-                target_contains: vec![
-                    "curl ".into(),
-                    "Invoke-WebRequest".into(),
-                    "pastebin".into(),
-                    "webhook.site".into(),
-                    "transfer.sh".into(),
-                ],
-                agents: vec![],
-            },
-            hits: 0,
-            would_ask_hits: 0,
-            would_block_hits: 0,
-            reason_template: "Unreviewed outbound upload pattern matched telemetry Watch rule.".into(),
-            cedar: Some(
-                r#"@id("essentials.secret-exfil-egress")
-@class("out-of-boundary")
-forbid (
-  principal is Grdr::Session,
-  action in [Grdr::Action::"net.request", Grdr::Action::"net.connect", Grdr::Action::"data.flow", Grdr::Action::"exec"],
-  resource
-)
-when { resource.classes.contains("egress-exfil") };"#
-                    .into(),
-            ),
-        },
-        PolicyRule {
-            id: "essentials.mcp-unpinned-write".into(),
-            title: "Monitor write-capable MCP tool invocations".into(),
-            description: "Track external MCP state-mutating calls while baselines build.".into(),
-            mode: Mode::Watch,
-            min_grade: ApprovalGrade::G1,
-            enabled: true,
-            locked: false,
-            matcher: RuleMatch {
-                action_classes: vec![
-                    ActionClass::McpCall,
-                    ActionClass::McpConnect,
-                ],
-                target_prefixes: vec![],
-                target_contains: vec![
-                    "write".into(),
-                    "delete".into(),
-                    "push".into(),
-                    "create".into(),
-                    "execute".into(),
-                ],
-                agents: vec![],
-            },
-            hits: 0,
-            would_ask_hits: 0,
-            would_block_hits: 0,
-            reason_template: "State-changing MCP tool invocation matched Watch monitoring rule.".into(),
-            cedar: Some(
-                r#"@id("essentials.mcp-unpinned-write")
-@class("out-of-boundary")
-forbid (
-  principal is Grdr::Session,
-  action in [Grdr::Action::"mcp.call", Grdr::Action::"mcp.connect"],
-  resource
-)
-when { resource.classes.contains("mcp-write") };"#
-                    .into(),
-            ),
-        },
-    ]
 }
 
 pub fn add_seconds(ts: Timestamp, seconds: i64) -> Timestamp {
@@ -554,5 +348,46 @@ mod tests {
         assert!(!promotion_gate_passes(6, 1, 2, 3, 8));
         assert!(promotion_gate_passes(7, 3, 8, 3, 8));
         assert!(!promotion_gate_passes(7, 4, 8, 3, 8));
+    }
+
+    #[test]
+    fn parse_policy_pack_json_enforces_schema_bounds_and_signatures() {
+        use crate::domain::Mode;
+        use crate::signing::SigningKeypairExt as _;
+
+        let mut pack = essentials_pack();
+        let unsigned_json = serde_json::to_string(&pack).unwrap();
+        let parsed = parse_policy_pack_json(&unsigned_json).unwrap();
+        assert_eq!(parsed.id, pack.id);
+
+        assert!(parse_policy_pack_json("").is_err());
+        let oversized = " ".repeat(MAX_POLICY_PACK_JSON_BYTES + 1);
+        assert!(parse_policy_pack_json(&oversized).is_err());
+
+        let mut with_unknown: serde_json::Value = serde_json::from_str(&unsigned_json).unwrap();
+        with_unknown["unexpected_extra"] = serde_json::json!(true);
+        assert!(parse_policy_pack_json(&with_unknown.to_string()).is_err());
+
+        let mut empty_id: serde_json::Value = serde_json::from_str(&unsigned_json).unwrap();
+        empty_id["id"] = serde_json::json!("  ");
+        assert!(parse_policy_pack_json(&empty_id.to_string()).is_err());
+
+        let mut half_signed: serde_json::Value = serde_json::from_str(&unsigned_json).unwrap();
+        half_signed["key_id"] = serde_json::json!("key-1");
+        assert!(parse_policy_pack_json(&half_signed.to_string()).is_err());
+
+        let kp = SigningKeypair::generate().unwrap();
+        let keys = vec![kp.public_info()];
+        assert!(parse_verified_policy_pack_json(&unsigned_json, &keys).is_err());
+
+        kp.sign_pack(&mut pack).unwrap();
+        let signed_json = serde_json::to_string(&pack).unwrap();
+        let verified = parse_verified_policy_pack_json(&signed_json, &keys).unwrap();
+        assert_eq!(verified.rules.len(), 7);
+
+        let mut tampered: PolicyPack = parse_policy_pack_json(&signed_json).unwrap();
+        tampered.rules[0].mode = Mode::Off;
+        let tampered_json = serde_json::to_string(&tampered).unwrap();
+        assert!(parse_verified_policy_pack_json(&tampered_json, &keys).is_err());
     }
 }

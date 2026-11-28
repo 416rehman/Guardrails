@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+use grdr_model::{AuditLane, CommitmentClass, FiveWayCommitments};
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
-use grdr_core::audit::{
-    AuditLane, AuditVerifyError, AuditVerifySummary, CommitmentClass, ExpectedAnchor,
-    FiveWayCommitments, LaneAuditRecord, LaneChainAnchor, LaneEntryKind, MerkleConsistencyInput,
-    MerkleInclusionInput, verify_lane_audit_chain_with_expected,
-    withheld_classes_for_capture_level,
+use super::commitments::withheld_classes_for_capture_level;
+use super::lane_chain::verify_lane_audit_chain_with_expected;
+use super::types::{
+    AuditVerifyError, AuditVerifySummary, ExpectedAnchor, LaneAuditRecord, LaneChainAnchor,
+    LaneEntryKind, MerkleConsistencyInput, MerkleInclusionInput,
 };
 
 use super::{extract_hash_strings, gap_err, lane_err, malformed, parse_line_obj_strict};

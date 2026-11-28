@@ -5,8 +5,9 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::log_safe::DataClass as LogDataClass;
 use crate::query_catalog::catalog_entities;
-use crate::{CodedError, IdentityMode};
+use crate::{CanonicalDataClass, CodedError, ContentKind, IdentityMode};
 
 pub const CODE_QUERY_RESTRICTED_COLUMN: &str = "GRDR-QUERY-0001";
 pub const CODE_QUERY_UNKNOWN_ENTITY: &str = "GRDR-QUERY-0002";
@@ -89,6 +90,73 @@ pub struct QuerySampleResponse {
     pub plan: QueryPlanResult,
     pub rows: Vec<BTreeMap<String, QueryCellValue>>,
     pub untrusted_warning: String,
+}
+
+impl SchemaDataClass {
+    #[must_use]
+    pub const fn sensitivity_rank(self) -> u8 {
+        match self {
+            Self::Metadata => 0,
+            Self::NamedIdentity => 1,
+            Self::Content => 2,
+            Self::Secret => 3,
+        }
+    }
+
+    #[must_use]
+    pub const fn canonical_class(self) -> CanonicalDataClass {
+        self.to_canonical().0
+    }
+
+    #[must_use]
+    pub const fn to_canonical(self) -> (CanonicalDataClass, Option<ContentKind>) {
+        match self {
+            Self::Metadata => (CanonicalDataClass::Structural, None),
+            Self::NamedIdentity => (CanonicalDataClass::Identifier, None),
+            Self::Content => (CanonicalDataClass::Content, Some(ContentKind::Body)),
+            Self::Secret => (CanonicalDataClass::Content, Some(ContentKind::Argument)),
+        }
+    }
+
+    #[must_use]
+    pub const fn from_canonical_with_kind(
+        class: CanonicalDataClass,
+        kind: Option<ContentKind>,
+    ) -> Self {
+        match (class, kind) {
+            (CanonicalDataClass::Structural | CanonicalDataClass::Derived, _) => Self::Metadata,
+            (CanonicalDataClass::Identifier, _) => Self::NamedIdentity,
+            (CanonicalDataClass::Content, Some(ContentKind::Body)) => Self::Content,
+            (CanonicalDataClass::Content, Some(ContentKind::Argument) | None) => Self::Secret,
+        }
+    }
+
+    #[must_use]
+    pub const fn to_log_safe_class(self) -> LogDataClass {
+        match self {
+            Self::Metadata => LogDataClass::Metadata,
+            Self::NamedIdentity => LogDataClass::Identifier,
+            Self::Content => LogDataClass::Content,
+            Self::Secret => LogDataClass::Secret,
+        }
+    }
+
+    #[must_use]
+    pub const fn is_secret(self) -> bool {
+        matches!(self, Self::Secret)
+    }
+}
+
+impl PartialOrd for SchemaDataClass {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SchemaDataClass {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.sensitivity_rank().cmp(&other.sensitivity_rank())
+    }
 }
 
 pub fn is_column_visible(column: &ColumnDef, scope: &QueryScope) -> bool {
@@ -279,5 +347,58 @@ mod tests {
         assert_eq!(plan.effective_limit, MAX_SAMPLE_LIMIT);
         assert_eq!(plan.hidden_columns_stripped, 1);
         assert!(!plan.selected_columns.iter().any(|c| c == "prompt_body"));
+    }
+
+    #[test]
+    fn schema_data_class_preserves_secret_without_downgrade() {
+        assert!(SchemaDataClass::Metadata < SchemaDataClass::NamedIdentity);
+        assert!(SchemaDataClass::NamedIdentity < SchemaDataClass::Content);
+        assert!(SchemaDataClass::Content < SchemaDataClass::Secret);
+
+        let (secret_canon, secret_kind) = SchemaDataClass::Secret.to_canonical();
+        assert_eq!(secret_canon, CanonicalDataClass::Content);
+        assert_eq!(secret_kind, Some(ContentKind::Argument));
+        assert_eq!(
+            SchemaDataClass::from_canonical_with_kind(secret_canon, secret_kind),
+            SchemaDataClass::Secret
+        );
+        assert_eq!(
+            SchemaDataClass::from_canonical_with_kind(CanonicalDataClass::Content, None),
+            SchemaDataClass::Secret
+        );
+        assert_eq!(
+            SchemaDataClass::from_canonical_with_kind(
+                CanonicalDataClass::Content,
+                Some(ContentKind::Body)
+            ),
+            SchemaDataClass::Content
+        );
+        assert_eq!(
+            SchemaDataClass::Secret.to_log_safe_class(),
+            LogDataClass::Secret
+        );
+        assert_eq!(
+            SchemaDataClass::Content.to_log_safe_class(),
+            LogDataClass::Content
+        );
+
+        let grant_scope = QueryScope {
+            allow_content_grant: true,
+            identity_mode: IdentityMode::Named,
+        };
+        let secret_col = ColumnDef {
+            name: "raw_secret".into(),
+            data_class: SchemaDataClass::Secret,
+            description: "Raw secret".into(),
+            sensitive: true,
+        };
+        let content_col = ColumnDef {
+            name: "prompt_body".into(),
+            data_class: SchemaDataClass::Content,
+            description: "Prompt body".into(),
+            sensitive: true,
+        };
+        assert!(!is_column_visible(&secret_col, &grant_scope));
+        assert!(is_column_visible(&content_col, &grant_scope));
     }
 }
