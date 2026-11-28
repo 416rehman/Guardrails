@@ -22,7 +22,18 @@ use super::{
     verify_audit_file_with_anchor,
 };
 
-const TEST_SALTS: [[u8; 32]; 5] = [[0xA1; 32], [0xB2; 32], [0xC3; 32], [0xD4; 32], [0xE5; 32]];
+fn generate_test_salts() -> [[u8; 32]; 5] {
+    std::array::from_fn(|idx| {
+        let mut hasher = Sha256::new();
+        hasher.update(uuid::Uuid::now_v7().as_bytes());
+        hasher.update(&[u8::try_from(idx).unwrap_or(0)]);
+        let mut digest = hasher.finalize_digest();
+        if digest.iter().all(|&b| b == 0) {
+            digest[0] = 1;
+        }
+        digest
+    })
+}
 
 fn make_chained_line(seq: u64, prev_hash: &str, event: &str) -> (String, String) {
     let mut obj = Map::new();
@@ -313,13 +324,8 @@ fn verify_audit_file_validates_reduced_copy_from_chained_full_and_rejects_smuggl
     fs::create_dir_all(&dir).unwrap();
     let path = dir.join("lane.jsonl");
 
-    let salts = [
-        &TEST_SALTS[0][..],
-        &TEST_SALTS[1][..],
-        &TEST_SALTS[2][..],
-        &TEST_SALTS[3][..],
-        &TEST_SALTS[4][..],
-    ];
+    let generated_salts = generate_test_salts();
+    let salts = generated_salts.each_ref().map(|s| s.as_slice());
     let payloads = [
         &b"alice@org"[..],
         &b"exec"[..],
