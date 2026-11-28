@@ -5,8 +5,9 @@ use jiff::Timestamp;
 use uuid::Uuid;
 
 use grdr_comply::{
-    default_registry, export_assessment_results, export_component_definition, export_evidence_csv,
-    export_evidence_markdown,
+    export_assessment_results, export_component_definition, export_evidence_csv,
+    export_evidence_markdown, format_utc_quarter, load_embedded_compliance_pack,
+    validate_oscal_assessment_json, validate_oscal_component_json,
 };
 use grdr_crypto::sha256_hex;
 use grdr_integrations::{GrcEvidenceInput, GrcTarget, build_grc_evidence_push};
@@ -17,7 +18,7 @@ use grdr_proto::api::surfaces::{ExportComplianceArtifactResponse, PushGrcEvidenc
 use crate::auth::AuthContext;
 
 use super::AppState;
-use super::surfaces_comply_helpers::{comply_to_coded, evaluate_live_evidence};
+use super::surfaces_comply_helpers::{comply_to_coded, evaluate_live_evidence_with_lake};
 use super::surfaces_comply_seed::ensure_compliance_seeded;
 use super::surfaces_holds::push_compliance_audit;
 use super::surfaces_types::DisclosureRecord;
@@ -30,21 +31,35 @@ impl AppState {
     ) -> Result<ExportComplianceArtifactResponse, CodedError> {
         let now = Timestamp::now();
         let format_norm = format.trim().to_ascii_lowercase();
-        let registry = default_registry();
+        let loaded = load_embedded_compliance_pack().map_err(comply_to_coded)?;
+        let registry = &loaded.registry;
+        let lake_result = match &self.storage {
+            Some(s) => match s.lake_manifest() {
+                Ok(manifest) => Ok(manifest),
+                Err(_) => Err(()),
+            },
+            None => Ok(None),
+        };
 
         let (items, mut guard) = {
             let mut g = self.inner.write().await;
             ensure_compliance_seeded(&mut g, now);
-            let evaluated = evaluate_live_evidence(&g, &self.signing_key, &auth.tenant_id, now);
+            let evaluated = evaluate_live_evidence_with_lake(
+                &g,
+                &self.signing_key,
+                &auth.tenant_id,
+                lake_result.as_ref().map(Option::as_ref).map_err(|_| ()),
+                now,
+            )?;
             (evaluated, g)
         };
 
         let (filename, content_type, payload, oscal_version) = match format_norm.as_str() {
             "oscal-component" | "oscal_component" => {
                 let doc = export_component_definition(
-                    &registry,
+                    registry,
                     "Guardrails ADR Control Definition",
-                    "1.0.0",
+                    &loaded.manifest.version,
                     now,
                 );
                 let json = serde_json::to_string_pretty(&doc).map_err(|e| {
@@ -54,6 +69,7 @@ impl AppState {
                         "Retry OSCAL export.",
                     )
                 })?;
+                validate_oscal_component_json(&json).map_err(comply_to_coded)?;
                 (
                     "guardrails-oscal-component-definition.json".to_owned(),
                     "application/json".to_owned(),
@@ -71,6 +87,7 @@ impl AppState {
                         "Retry OSCAL assessment export.",
                     )
                 })?;
+                validate_oscal_assessment_json(&json).map_err(comply_to_coded)?;
                 (
                     "guardrails-oscal-assessment-results.json".to_owned(),
                     "application/json".to_owned(),
@@ -114,7 +131,7 @@ impl AppState {
                     target_ref: filename.clone(),
                     legal_basis: "Audit and regulator evidence disclosure".to_owned(),
                     timestamp: now.to_string(),
-                    quarter: "2026-Q4".to_owned(),
+                    quarter: format_utc_quarter(now),
                     summary: format!("Exported {filename} ({format_norm}, sha256:{short_dig})"),
                 },
             );
@@ -158,9 +175,22 @@ impl AppState {
             }
         };
 
+        let lake_result = match &self.storage {
+            Some(s) => match s.lake_manifest() {
+                Ok(manifest) => Ok(manifest),
+                Err(_) => Err(()),
+            },
+            None => Ok(None),
+        };
         let mut guard = self.inner.write().await;
         ensure_compliance_seeded(&mut guard, now);
-        let evaluated = evaluate_live_evidence(&guard, &self.signing_key, &auth.tenant_id, now);
+        let evaluated = evaluate_live_evidence_with_lake(
+            &guard,
+            &self.signing_key,
+            &auth.tenant_id,
+            lake_result.as_ref().map(Option::as_ref).map_err(|_| ()),
+            now,
+        )?;
         let evidence_bytes = serde_json::to_vec(&evaluated).map_err(|e| {
             CodedError::new(
                 CODE_INVALID_INPUT,
@@ -215,7 +245,13 @@ impl AppState {
             )
         })?;
 
-        let preview = serde_json::to_string_pretty(&envelope).unwrap_or_default();
+        let preview = serde_json::to_string_pretty(&envelope).map_err(|e| {
+            CodedError::new(
+                CODE_INVALID_INPUT,
+                format!("Failed encoding GRC envelope preview: {e}"),
+                "Verify GRC payload fields.",
+            )
+        })?;
         let circuit_state = if let Some(ref mut comp) = guard.surfaces.compliance
             && let Some(conn) = comp.connectors.iter_mut().find(|c| c.id == target_norm)
         {

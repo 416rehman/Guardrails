@@ -3,15 +3,17 @@
 //! Compliance capability registry, framework catalogues, and crosswalks (`docs/design/29` s.1).
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use grdr_model::AssuranceLevel;
 use serde::{Deserialize, Serialize};
 
 use crate::ComplyError;
-use crate::catalog_capabilities::CAPABILITY_DEFS;
-use crate::catalog_crosswalks_a::CROSSWALK_DEFS_CORE;
-use crate::catalog_crosswalks_b::CROSSWALK_DEFS_GOVERNANCE;
-use crate::catalog_frameworks::FRAMEWORK_SPECS;
+use crate::evidence::EvidenceQuery;
+use crate::pack_loader::{
+    default_pack_digest_sha256, default_pack_evidence_queries, load_compliance_pack_from_dir,
+    load_embedded_compliance_pack,
+};
 
 pub type CapabilityId = String;
 
@@ -89,66 +91,34 @@ pub struct FrameworkCoverageReport {
     pub rows: Vec<ControlCoverageRow>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CapabilityRegistry {
     pub capabilities: BTreeMap<String, CapabilityRecord>,
     pub frameworks: BTreeMap<String, FrameworkCatalogue>,
     pub crosswalks: Vec<CrosswalkEntry>,
 }
 
-pub fn default_registry() -> CapabilityRegistry {
-    let mut capabilities = BTreeMap::new();
-    for (id, stmt, decisions, requires, assurance, query, resp) in CAPABILITY_DEFS {
-        capabilities.insert(
-            (*id).to_owned(),
-            CapabilityRecord {
-                id: (*id).to_owned(),
-                statement: (*stmt).to_owned(),
-                decisions: decisions.iter().map(|d| (*d).to_owned()).collect(),
-                requires: requires.iter().map(|r| (*r).to_owned()).collect(),
-                assurance_requirement: *assurance,
-                evidence_query: (*query).to_owned(),
-                responsibility: *resp,
-            },
-        );
-    }
+pub fn try_default_registry() -> Result<CapabilityRegistry, ComplyError> {
+    load_embedded_compliance_pack().map(|pack| pack.registry)
+}
 
-    let mut frameworks = BTreeMap::new();
-    for (doc_id, title, version, controls) in FRAMEWORK_SPECS {
-        frameworks.insert(
-            (*doc_id).to_owned(),
-            FrameworkCatalogue {
-                doc_id: (*doc_id).to_owned(),
-                title: (*title).to_owned(),
-                version: (*version).to_owned(),
-                controls: controls
-                    .iter()
-                    .map(|(cid, para)| ControlEntry {
-                        control_id: (*cid).to_owned(),
-                        paraphrase: (*para).to_owned(),
-                    })
-                    .collect(),
-            },
-        );
-    }
+pub fn default_registry() -> Result<CapabilityRegistry, ComplyError> {
+    try_default_registry()
+}
 
-    let crosswalks = CROSSWALK_DEFS_CORE
-        .iter()
-        .chain(CROSSWALK_DEFS_GOVERNANCE.iter())
-        .map(|(cap, fw, ctrl, rel, note)| CrosswalkEntry {
-            capability: (*cap).to_owned(),
-            framework_id: (*fw).to_owned(),
-            control_id: (*ctrl).to_owned(),
-            relation: *rel,
-            note: (*note).to_owned(),
-        })
-        .collect();
+pub fn load_registry_from_dir(
+    pack_dir: &Path,
+    trust_roots_path: Option<&Path>,
+) -> Result<CapabilityRegistry, ComplyError> {
+    load_compliance_pack_from_dir(pack_dir, trust_roots_path).map(|pack| pack.registry)
+}
 
-    CapabilityRegistry {
-        capabilities,
-        frameworks,
-        crosswalks,
-    }
+pub fn default_evidence_queries() -> Result<Vec<EvidenceQuery>, ComplyError> {
+    default_pack_evidence_queries()
+}
+
+pub fn default_compliance_pack_digest() -> Result<String, ComplyError> {
+    default_pack_digest_sha256()
 }
 
 pub fn eo14434_display_label(raw_title: &str) -> String {

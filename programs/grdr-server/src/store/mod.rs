@@ -111,11 +111,10 @@ use grdr_model::{
     DeploymentKey, Device, Finding, Grant, IntegrationEntry, KillSwitchState, LiveEvent,
     OrgPrivacyConfig, OtlpFanoutConfig, PolicyPack, SigningKeypairExt as _, StorageMode, Verdict,
 };
-use grdr_ports::ProfileKind;
+use grdr_ports::{ErasureReceipt, ProfileKind};
 #[cfg(test)]
 use grdr_ports::{
-    ErasureReceipt, LakeCompactionResult, LakeFlushResult, LakeManifest, LakeQueryIr,
-    LakeQueryResult,
+    LakeCompactionResult, LakeFlushResult, LakeManifest, LakeQueryIr, LakeQueryResult,
 };
 use grdr_proto::common::CollectionKind;
 
@@ -544,7 +543,6 @@ impl AppState {
         store.query_lake(query)
     }
 
-    #[cfg(test)]
     pub(crate) fn erase_lake_session(
         &self,
         root_session_id: &str,

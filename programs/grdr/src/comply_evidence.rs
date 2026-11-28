@@ -7,8 +7,8 @@ use std::path::Path;
 
 use grdr_comply::{
     BrokerReadiness, CertificationStatus, ConnectorCoverage, DeploymentTopology, EvidenceDataClass,
-    EvidenceItem, EvidencePipelineInput, EvidenceQuery, FieldRead, PlatformReadiness,
-    default_registry, evaluate_evidence_item,
+    EvidenceItem, EvidencePipelineInput, EvidenceQuery, FieldRead, LoadedCompliancePack,
+    PlatformReadiness, evaluate_evidence_item,
 };
 use grdr_crypto::{SigningKeypair, sha256_hex};
 use jiff::Timestamp;
@@ -32,15 +32,16 @@ pub fn build_local_evidence_items(
     audit_log: Option<&Path>,
     pipeline_lag: u64,
     max_lag: u64,
+    loaded: &LoadedCompliancePack,
     keypair: &SigningKeypair,
 ) -> Result<Vec<EvidenceItem>, ComplyCliError> {
-    let registry = default_registry();
+    let registry = &loaded.registry;
     let now = Timestamp::now();
     let period_start =
         Timestamp::from_second(now.as_second().saturating_sub(EVIDENCE_WINDOW_SECONDS))
             .unwrap_or(Timestamp::UNIX_EPOCH);
     let obs = collect_verified_observations(audit_log)?;
-    let pack_digest = compute_registry_pack_digest(&registry);
+    let pack_digest = loaded.digest_sha256.clone();
 
     let target_caps: Vec<String> = match capability_filter {
         Some(cap) => vec![cap.to_owned()],
@@ -54,23 +55,29 @@ pub fn build_local_evidence_items(
 
     let mut items = Vec::with_capacity(target_caps.len());
     for cap in target_caps {
-        let query = EvidenceQuery {
-            id: format!("q.{cap}"),
-            version: "1.0.0".into(),
-            capability: cap,
-            reads: vec![
-                FieldRead {
-                    field_path: "receipt.verdict".into(),
-                    data_class: EvidenceDataClass::Derived,
-                },
-                FieldRead {
-                    field_path: "receipt.action_class".into(),
-                    data_class: EvidenceDataClass::Structural,
-                },
-            ],
-            max_class: EvidenceDataClass::Derived,
-            group_by: vec!["capability".into(), "period".into()],
-        };
+        let query = loaded
+            .manifest
+            .evidence_queries
+            .iter()
+            .find(|q| q.capability == cap)
+            .cloned()
+            .unwrap_or_else(|| EvidenceQuery {
+                id: format!("q.{cap}"),
+                version: "1.0.0".into(),
+                capability: cap,
+                reads: vec![
+                    FieldRead {
+                        field_path: "receipt.verdict".into(),
+                        data_class: EvidenceDataClass::Derived,
+                    },
+                    FieldRead {
+                        field_path: "receipt.action_class".into(),
+                        data_class: EvidenceDataClass::Structural,
+                    },
+                ],
+                max_class: EvidenceDataClass::Derived,
+                group_by: vec!["capability".into(), "period".into()],
+            });
         let query_bytes =
             serde_json::to_vec(&query).map_err(|e| ComplyCliError::Domain(e.to_string()))?;
         let query_digest = sha256_hex(&query_bytes);
@@ -88,7 +95,7 @@ pub fn build_local_evidence_items(
             schema_rev: "v1alpha1".into(),
         };
         items.push(
-            evaluate_evidence_item(&query, &input, &registry, keypair)
+            evaluate_evidence_item(&query, &input, registry, keypair)
                 .map_err(|e| ComplyCliError::Domain(e.to_string()))?,
         );
     }
@@ -154,19 +161,6 @@ fn collect_verified_observations(
     })
 }
 
-fn compute_registry_pack_digest(registry: &grdr_comply::CapabilityRegistry) -> String {
-    let manifest_path = Path::new("packs/compliance/pack.toml");
-    if let Ok(raw) = read_bounded_utf8(manifest_path, MAX_COMPLY_INPUT_BYTES) {
-        return sha256_hex(raw.as_bytes());
-    }
-    let summary = format!(
-        "caps={}:fws={}",
-        registry.capabilities.len(),
-        registry.frameworks.len()
-    );
-    sha256_hex(summary.as_bytes())
-}
-
 pub fn build_platform_readiness(
     version: &str,
     topology: TopologyArg,
@@ -175,7 +169,7 @@ pub fn build_platform_readiness(
     acceptance_report: Option<&Path>,
 ) -> Result<PlatformReadiness, ComplyCliError> {
     if let Some(path) = audit_log {
-        let _ = verify_audit_file(path).map_err(|e| {
+        verify_audit_file(path).map_err(|e| {
             ComplyCliError::Domain(format!(
                 "GRDR-COMPLY-0103: audit log `{}` failed cryptographic verification: {e}",
                 path.display()

@@ -166,7 +166,7 @@ fn check_live_packs_and_mutations() -> Result<(), Box<dyn Error>> {
     let root = repo_root();
     let expected_rules = count_yaml_files(&root.join("packs/detections/rules"))?;
     let expected_signed_packs = count_signed_pack_dirs(&root.join("packs"))?;
-    let registry = default_registry();
+    let registry = default_registry()?;
 
     let summary = validate_live_packs(&root)?;
     if !summary.essentials_rules_ok

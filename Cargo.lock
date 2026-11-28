@@ -1102,6 +1102,7 @@ dependencies = [
 name = "grdr-comply"
 version = "0.1.0"
 dependencies = [
+ "grdr-core",
  "grdr-crypto",
  "grdr-model",
  "grdr-schema",

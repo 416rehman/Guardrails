@@ -25,7 +25,9 @@ fn full_green_acceptance_map() -> BTreeMap<String, bool> {
 
 #[test]
 fn registry_covers_all_fifteen_capabilities_nine_frameworks_and_paraphrase_bounds() {
-    let reg = default_registry();
+    let Ok(reg) = default_registry() else {
+        panic!("embedded compliance registry must load");
+    };
     assert_eq!(reg.capabilities.len(), 15);
 
     let expected_frameworks = [
@@ -63,7 +65,9 @@ fn registry_covers_all_fifteen_capabilities_nine_frameworks_and_paraphrase_bound
 
 #[test]
 fn evidence_query_enforces_derived_ceiling_allow_list_group_by_and_input_validation() {
-    let reg = default_registry();
+    let Ok(reg) = default_registry() else {
+        return;
+    };
     let kp_res = SigningKeypair::generate();
     assert!(kp_res.is_ok(), "generate keypair");
     let Ok(kp) = kp_res else {
@@ -203,7 +207,9 @@ fn evidence_query_enforces_derived_ceiling_allow_list_group_by_and_input_validat
 
 #[test]
 fn oscal_1_2_3_and_offline_auditor_bundle_verify_and_detect_forgery_and_injection() {
-    let reg = default_registry();
+    let Ok(reg) = default_registry() else {
+        return;
+    };
     let kp_res = SigningKeypair::generate();
     assert!(kp_res.is_ok());
     let Ok(kp) = kp_res else {
@@ -506,6 +512,7 @@ fn retention_rejects_floor_ceiling_conflicts_and_hot_overrides_and_enforces_hold
     let new_review =
         Timestamp::from_second(1_700_000_000 + 120 * 86_400).unwrap_or(Timestamp::UNIX_EPOCH);
     let renewed = ledger.renew_hold(
+        "org_de",
         &hold.hold_id,
         &["dpo_bob".into(), "owner_carol".into()],
         new_review,
@@ -521,6 +528,7 @@ fn retention_rejects_floor_ceiling_conflicts_and_hot_overrides_and_enforces_hold
     assert!(
         ledger
             .release_hold(
+                "org_de",
                 &hold.hold_id,
                 &["dpo_bob".into(), "owner_carol".into()],
                 "Matter settled",
@@ -545,7 +553,7 @@ fn rfp_generator_covers_t1_to_t17_and_fails_closed_on_missing_or_red_gates() {
         certification: CertificationStatus::NoneHeld,
         acceptance_tests_green: full_green_acceptance_map(),
     };
-    let report = generate_rfp_response(&readiness);
+    let report = generate_rfp_response(&readiness).expect("rfp response");
     assert_eq!(report.items.len(), 17);
     assert!(report.release_gate_passed);
 
@@ -569,14 +577,15 @@ fn rfp_generator_covers_t1_to_t17_and_fails_closed_on_missing_or_red_gates() {
     let empty_map_report = generate_rfp_response(&PlatformReadiness {
         acceptance_tests_green: BTreeMap::new(),
         ..readiness.clone()
-    });
+    })
+    .expect("rfp empty map");
     assert!(!empty_map_report.release_gate_passed);
 
     let mut failing_readiness = readiness;
     failing_readiness
         .acceptance_tests_green
         .insert("T2".into(), false);
-    let gated = generate_rfp_response(&failing_readiness);
+    let gated = generate_rfp_response(&failing_readiness).expect("rfp failing");
     assert!(!gated.release_gate_passed);
     assert_eq!(gated.failing_gate_items, vec!["T2"]);
 }

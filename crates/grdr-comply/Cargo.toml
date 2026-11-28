@@ -11,6 +11,7 @@ surface = "internal"
 renders = "none"
 
 [dependencies]
+grdr-core = { workspace = true }
 grdr-crypto = { workspace = true }
 grdr-model = { workspace = true }
 grdr-schema = { workspace = true }

@@ -31,10 +31,6 @@ pub enum SubjectRequestLifecycle {
     PendingHeld,
 }
 
-fn default_org_id() -> String {
-    "org-default".to_owned()
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubjectReqRecord {
     pub request_id: String,
@@ -115,10 +111,44 @@ pub struct PendingLegalHoldRecord {
     pub matter_ref: String,
     pub reason: String,
     pub target_ref: String,
+    #[serde(default)]
+    pub pseudonyms: Vec<String>,
+    #[serde(default)]
+    pub session_ids: Vec<String>,
     pub created_by: String,
     pub approvers: Vec<String>,
     pub created_at: String,
     pub review_by: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingCaptureChange {
+    pub target_capture_level: String,
+    pub requested_at: String,
+    pub effective_at: String,
+    pub notice_rule: String,
+    pub actor: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingProfileDowngrade {
+    pub target_profile: PrivacyCeilingProfile,
+    pub first_approver: String,
+    #[serde(default)]
+    pub presets: Vec<RetentionPreset>,
+    pub override_legal_basis: Option<String>,
+    #[serde(default)]
+    pub requested_capture_level: Option<String>,
+    pub requested_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CollectionExclusionRecord {
+    #[serde(default = "default_org_id")]
+    pub organisation: String,
+    pub request_id: String,
+    pub entry: String,
+    pub recorded_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -134,6 +164,16 @@ pub struct ComplianceGovernanceState {
     pub connectors: Vec<ConnectorRuntimeRecord>,
     pub reid_requests: Vec<ReidentificationRecord>,
     pub disclosures: Vec<DisclosureRecord>,
+    #[serde(default)]
+    pub co_approver_group: Vec<String>,
+    #[serde(default)]
+    pub recorded_legal_bases: BTreeMap<RetentionPreset, String>,
+    #[serde(default)]
+    pub exclusions: Vec<CollectionExclusionRecord>,
+    #[serde(default)]
+    pub pending_capture_change: Option<PendingCaptureChange>,
+    #[serde(default)]
+    pub pending_profile_downgrade: Option<PendingProfileDowngrade>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -300,4 +340,8 @@ impl Default for FirstRunPersistedState {
             step_up_enabled: false,
         }
     }
+}
+
+fn default_org_id() -> String {
+    "org-default".to_owned()
 }

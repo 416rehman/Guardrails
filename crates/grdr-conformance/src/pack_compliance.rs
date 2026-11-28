@@ -33,7 +33,7 @@ pub(crate) fn validate_compliance_pack(
         check_no_em_dash_or_vocab(p, t, vocab)?;
     }
 
-    let registry = default_registry();
+    let registry = default_registry().map_err(|e| conf_err("comply-pack", &e.to_string()))?;
     if registry.capabilities.is_empty() || registry.frameworks.is_empty() {
         return Err(conf_err(
             "comply-pack",

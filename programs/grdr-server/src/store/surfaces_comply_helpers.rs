@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use jiff::Timestamp;
 
 use grdr_comply::{
-    ComplyError, EvidenceDataClass, EvidenceItem, EvidencePipelineInput, EvidenceQuery,
-    EvidenceResult, FieldRead, HoldLifecycle, HoldNotice, PrivacyCeilingProfile, Responsibility,
-    RetentionPolicy, RetentionPreset, RetentionProposal, default_registry, evaluate_evidence_item,
-    resolve_retention_policy,
+    ComplyError, EvidenceItem, EvidencePipelineInput, EvidenceResult, HoldLifecycle, HoldNotice,
+    PrivacyCeilingProfile, Responsibility, RetentionPolicy, RetentionPreset, RetentionProposal,
+    default_compliance_pack_digest, default_evidence_queries, evaluate_evidence_item,
+    format_utc_quarter, resolve_retention_policy, try_default_registry,
 };
 use grdr_crypto::{SigningKeypair, sha256_hex};
 use grdr_model::error::CODE_INVALID_INPUT;
 use grdr_model::{ApprovalGrade, CodedError};
+use grdr_ports::LakeManifest;
 use grdr_proto::api::overview::SetupStep;
 use grdr_proto::api::surfaces::{
     DisclosureLedgerEntry, DisclosureMetrics, FirstRunState, ReidentificationRequestEntry,
@@ -25,14 +26,16 @@ use super::StoreData;
 use super::surfaces_types::{ComplianceGovernanceState, ReidLifecycle, ReidentificationRecord};
 
 const SECONDS_PER_DAY: i64 = 86_400;
+const MAX_COMPLIANCE_LAG_SECONDS: u64 = 300;
 
-pub(crate) fn evaluate_live_evidence(
+pub(crate) fn evaluate_live_evidence_with_lake(
     data: &StoreData,
     keypair: &SigningKeypair,
     organisation: &str,
+    lake_result: Result<Option<&LakeManifest>, ()>,
     now: Timestamp,
-) -> Vec<EvidenceItem> {
-    let registry = default_registry();
+) -> Result<Vec<EvidenceItem>, CodedError> {
+    let registry = try_default_registry().map_err(comply_to_coded)?;
     let total_agents =
         u64::try_from(data.devices.iter().map(|d| d.agents.len()).sum::<usize>()).unwrap_or(0);
     let covered_agents = u64::try_from(
@@ -64,6 +67,12 @@ pub(crate) fn evaluate_live_evidence(
     .unwrap_or(0);
     let start =
         Timestamp::from_second(now.as_second().saturating_sub(SECONDS_PER_DAY)).unwrap_or(now);
+    let pipeline_lag_seconds = match lake_result {
+        Ok(manifest) => compute_pipeline_lag_seconds(data, manifest, now),
+        Err(()) => MAX_COMPLIANCE_LAG_SECONDS.saturating_add(1),
+    };
+    let pack_digest = compute_live_pack_digest(data).map_err(comply_to_coded)?;
+    let pack_queries = default_evidence_queries().map_err(comply_to_coded)?;
 
     let specs = [
         ("cap.inventory.agents", total_agents, total_agents),
@@ -74,23 +83,30 @@ pub(crate) fn evaluate_live_evidence(
 
     let mut out = Vec::new();
     for (cap, covered, total) in specs {
-        let query = EvidenceQuery {
-            id: format!("q.{cap}"),
-            version: "1.0.0".to_owned(),
-            capability: cap.to_owned(),
-            reads: vec![FieldRead {
-                field_path: "decision.verdict".to_owned(),
-                data_class: EvidenceDataClass::Derived,
-            }],
-            max_class: EvidenceDataClass::Derived,
-            group_by: vec!["capability".to_owned(), "verdict".to_owned()],
-        };
+        let query = pack_queries
+            .iter()
+            .find(|q| q.capability == cap)
+            .ok_or_else(|| {
+                CodedError::new(
+                    CODE_INVALID_INPUT,
+                    format!("Missing evidence query for capability `{cap}` in compliance pack."),
+                    "Verify the signed compliance pack manifest contains all required evidence queries.",
+                )
+            })?;
+        let query_bytes = serde_json::to_vec(query).map_err(|e| {
+            CodedError::new(
+                CODE_INVALID_INPUT,
+                format!("Failed canonicalizing query `{cap}`: {e}"),
+                "Inspect compliance evidence query definition.",
+            )
+        })?;
+        let query_digest = sha256_hex(&query_bytes);
         let input = EvidencePipelineInput {
             organisation: organisation.to_owned(),
             period_start: start,
             period_end: now,
-            pipeline_lag_seconds: 12,
-            max_lag_seconds: 300,
+            pipeline_lag_seconds,
+            max_lag_seconds: MAX_COMPLIANCE_LAG_SECONDS,
             total_observations: total,
             covered_observations: covered.min(total),
             sample_ids: data
@@ -99,15 +115,59 @@ pub(crate) fn evaluate_live_evidence(
                 .take(4)
                 .map(|r| r.receipt_id.clone())
                 .collect(),
-            query_digest: sha256_hex(cap.as_bytes()),
-            pack_digest: sha256_hex(b"pack-essentials-slice0"),
+            query_digest,
+            pack_digest: pack_digest.clone(),
             schema_rev: "v1alpha1".to_owned(),
         };
-        if let Ok(item) = evaluate_evidence_item(&query, &input, &registry, keypair) {
-            out.push(item);
+        let item =
+            evaluate_evidence_item(query, &input, &registry, keypair).map_err(comply_to_coded)?;
+        out.push(item);
+    }
+    Ok(out)
+}
+
+pub(crate) fn compute_pipeline_lag_seconds(
+    data: &StoreData,
+    lake_manifest: Option<&LakeManifest>,
+    now: Timestamp,
+) -> u64 {
+    let receipted: BTreeSet<&str> = data
+        .receipts
+        .iter()
+        .map(|r| r.attempt_id.as_str())
+        .collect();
+    let oldest_unreceipted = data
+        .attempts
+        .iter()
+        .filter(|a| !receipted.contains(a.id.as_str()))
+        .map(|a| a.timestamp.as_second())
+        .min();
+    let mut lag = oldest_unreceipted
+        .map(|sec| u64::try_from(now.as_second().saturating_sub(sec).max(0)).unwrap_or(u64::MAX))
+        .unwrap_or(0);
+
+    if let Some(manifest) = lake_manifest
+        && let Some(newest_receipt) = data.receipts.iter().map(|r| r.decided_at.as_second()).max()
+    {
+        let manifest_sec = manifest.created_at_ms / 1_000;
+        if newest_receipt > manifest_sec {
+            let lake_lag = u64::try_from(now.as_second().saturating_sub(manifest_sec).max(0))
+                .unwrap_or(u64::MAX);
+            lag = lag.max(lake_lag);
         }
     }
-    out
+    lag
+}
+
+fn compute_live_pack_digest(data: &StoreData) -> Result<String, ComplyError> {
+    let mut material = default_compliance_pack_digest()?;
+    for pack in &data.packs {
+        material.push(':');
+        material.push_str(&pack.id);
+        material.push('@');
+        material.push_str(&pack.version);
+    }
+    Ok(sha256_hex(material.as_bytes()))
 }
 
 pub(crate) fn clean_customer_basis(raw: &str) -> String {
@@ -124,10 +184,45 @@ pub(crate) fn build_retention_summary(
 ) -> RetentionStateSummary {
     let mut basis_map = BTreeMap::new();
     for p in &comp.presets {
-        basis_map.insert(
-            *p,
-            clean_customer_basis(&grdr_comply::preset_spec(*p).legal_basis),
-        );
+        let spec = match grdr_comply::preset_spec(*p) {
+            Ok(spec) => spec,
+            Err(err) => {
+                return RetentionStateSummary {
+                    organisation: organisation.to_owned(),
+                    privacy_profile: profile_str(comp.privacy_profile).to_owned(),
+                    presets: comp
+                        .presets
+                        .iter()
+                        .map(|pr| preset_str(*pr).to_owned())
+                        .collect(),
+                    content_days: 0,
+                    activity_days: 0,
+                    decision_days: 0,
+                    audit_days: 0,
+                    hot_days: 0,
+                    backup_days_max: 0,
+                    legal_basis: Vec::new(),
+                    conflict_note: err.to_string(),
+                };
+            }
+        };
+        if spec.requires_recorded_basis {
+            if let Some(basis) = comp
+                .recorded_legal_bases
+                .get(p)
+                .cloned()
+                .or_else(|| comp.override_legal_basis.clone())
+            {
+                basis_map.insert(*p, clean_customer_basis(&basis));
+            }
+        } else {
+            let basis = comp
+                .recorded_legal_bases
+                .get(p)
+                .cloned()
+                .unwrap_or_else(|| clean_customer_basis(&spec.legal_basis));
+            basis_map.insert(*p, basis);
+        }
     }
     match resolve_retention_policy(&RetentionProposal {
         organisation: organisation.to_owned(),
@@ -186,7 +281,10 @@ pub(crate) fn retention_summary_from_policy(policy: &RetentionPolicy) -> Retenti
     }
 }
 
-pub(crate) fn compute_disclosure_metrics(entries: &[DisclosureLedgerEntry]) -> DisclosureMetrics {
+pub(crate) fn compute_disclosure_metrics(
+    entries: &[DisclosureLedgerEntry],
+    now: Timestamp,
+) -> DisclosureMetrics {
     let mut reids: u32 = 0;
     let mut holds: u32 = 0;
     let mut erasures: u32 = 0;
@@ -201,7 +299,7 @@ pub(crate) fn compute_disclosure_metrics(entries: &[DisclosureLedgerEntry]) -> D
         }
     }
     DisclosureMetrics {
-        quarter: "2026-Q4".to_owned(),
+        quarter: format_utc_quarter(now),
         total_reidentifications: reids,
         total_holds: holds,
         total_erasures: erasures,
