@@ -10,7 +10,15 @@ pub mod confusables;
 pub mod detector;
 pub mod framing;
 pub mod ipc;
+pub mod model_pack;
+pub(crate) mod model_pack_io;
 pub mod normalize;
+pub mod onnx_encode;
+pub(crate) mod onnx_ops;
+pub mod onnx_proto;
+pub mod onnx_runtime;
+pub(crate) mod onnx_tree;
+pub(crate) mod onnx_wire;
 pub(crate) mod quote_extract;
 
 use grdr_model::CodedError;

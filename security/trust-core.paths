@@ -45,6 +45,7 @@ programs/grdr-approve/**
 programs/grdr-daemon/**
 programs/grdr-engine/**
 programs/grdr-hook/**
+programs/grdr-infer/**
 programs/grdr-uplink/**
 programs/grdr-updater/**
 programs/grdr-proxy/**
@@ -57,6 +58,7 @@ programs/grdr-server/src/rpc/**
 programs/grdr-server/src/store/surfaces_operator.rs
 programs/grdr-server/src/store/surfaces_operator_helpers.rs
 programs/grdr-server/src/store/surfaces_operator_ops.rs
+programs/grdr-server/src/store/surfaces_respond*.rs
 programs/grdr-server/src/store/response_ops.rs
 
 # Contracts, security programme, CI workflows, and agent enforcement hooks
