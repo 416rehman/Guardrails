@@ -18,14 +18,16 @@ spec:
         - port: {{ .Values.service.targetPort }}
           protocol: TCP
       from:
-        - podSelector: {}
+        - podSelector:
+            matchLabels:
+              grdr.internal/api-client: "true"
         {{- range .Values.networkPolicy.allowIngressFromNamespaces }}
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: {{ . | quote }}
         {{- end }}
-    {{- if .Values.operator.enabled }}
-    # D-70: Operator port does not inherit tenant ingress namespace rules.
+    {{- if and .Values.operator.enabled .Values.operator.ingress.enabled }}
+    # D-70: Operator port does not inherit tenant ingress rules and is default-denied unless ingress is enabled.
     - ports:
         - port: {{ .Values.operator.listenPort }}
           protocol: TCP
@@ -35,6 +37,20 @@ spec:
             cidr: {{ . | quote }}
         {{- end }}
         {{- range .Values.operator.ingress.allowNamespaces }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . | quote }}
+        {{- end }}
+    {{- end }}
+    {{- if .Values.metrics.enabled }}
+    - ports:
+        - port: {{ .Values.metrics.port }}
+          protocol: TCP
+      from:
+        - podSelector:
+            matchLabels:
+              grdr.internal/metrics-scraper: "true"
+        {{- range .Values.metrics.allowNamespaces }}
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: {{ . | quote }}
@@ -50,6 +66,7 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+    {{- if or .Values.networkPolicy.allowEgressNamespaces .Values.networkPolicy.allowEgressCidrs }}
     - ports:
         - port: 5432
           protocol: TCP
@@ -60,7 +77,6 @@ spec:
         - port: 8333
           protocol: TCP
       to:
-        - podSelector: {}
         {{- range .Values.networkPolicy.allowEgressNamespaces }}
         - namespaceSelector:
             matchLabels:
@@ -70,10 +86,7 @@ spec:
         {{- if . }}
         - ipBlock:
             cidr: {{ . | quote }}
-            {{- if eq . "169.0.0.0/8" }}
-            except:
-              - "169.254.0.0/16"
-            {{- end }}
         {{- end }}
         {{- end }}
+    {{- end }}
 {{- end }}

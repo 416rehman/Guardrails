@@ -36,6 +36,42 @@ contents:
     dst: "/usr/bin/grdr-hook"
     file_info:
       mode: 0755
+  - src: "${GRDR_BIN_DIR}/grdr-uplink"
+    dst: "/usr/bin/grdr-uplink"
+    file_info:
+      mode: 0755
+  - src: "${GRDR_BIN_DIR}/grdr-updater"
+    dst: "/usr/bin/grdr-updater"
+    file_info:
+      mode: 0755
+  - src: "${GRDR_BIN_DIR}/grdr-proxy"
+    dst: "/usr/bin/grdr-proxy"
+    file_info:
+      mode: 0755
+  - src: "${GRDR_BIN_DIR}/grdr-run"
+    dst: "/usr/bin/grdr-run"
+    file_info:
+      mode: 0755
+  - src: "${GRDR_BIN_DIR}/grdr-mcp"
+    dst: "/usr/bin/grdr-mcp"
+    file_info:
+      mode: 0755
+  - src: "${GRDR_BIN_DIR}/grdr-acp"
+    dst: "/usr/bin/grdr-acp"
+    file_info:
+      mode: 0755
+  - src: "${GRDR_BIN_DIR}/grdr-approve"
+    dst: "/usr/bin/grdr-approve"
+    file_info:
+      mode: 0755
+  - src: "${GRDR_BIN_DIR}/grdr-tray"
+    dst: "/usr/bin/grdr-tray"
+    file_info:
+      mode: 0755
+  - src: "${GRDR_BIN_DIR}/grdr-infer"
+    dst: "/usr/bin/grdr-infer"
+    file_info:
+      mode: 0755
   - src: "deploy/packaging/systemd/grdr-daemon.service"
     dst: "/usr/lib/systemd/system/grdr-daemon.service"
     file_info:
@@ -59,15 +95,21 @@ contents:
   - dst: "/etc/grdr"
     type: dir
     file_info:
-      owner: grdr
-      group: grdr
+      owner: root
+      group: root
       mode: 0750
-  - dst: "/var/lib/grdr"
+  - dst: "/var/lib/guardrails"
     type: dir
     file_info:
-      owner: grdr
-      group: grdr
+      owner: root
+      group: root
       mode: 0750
+  - dst: "/run/guardrails"
+    type: dir
+    file_info:
+      owner: root
+      group: root
+      mode: 0755
 
 scripts:
   postinstall: "deploy/packaging/rpm/scripts/postinstall.sh"

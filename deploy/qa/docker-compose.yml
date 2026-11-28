@@ -4,17 +4,28 @@ services:
       context: ../..
       dockerfile: deploy/qa/Dockerfile
       target: server
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     command:
       - "--bind"
       - "0.0.0.0:8787"
+      - "--operator-bind"
+      - "0.0.0.0:44444"
       - "--profile"
       - "embedded"
       - "--data-dir"
       - "/var/lib/grdr"
       - "--web-dir"
       - "/opt/grdr/web"
+      - "--operator-web-dir"
+      - "/opt/grdr/operator-web"
     environment:
       RUST_LOG: info
+      GRDR_API_TOKEN: ${GRDR_API_TOKEN:?set GRDR_API_TOKEN before starting QA compose}
+      GRDR_OPERATOR_TOKEN: ${GRDR_OPERATOR_TOKEN:?set GRDR_OPERATOR_TOKEN before starting QA compose}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8787/grdr.api.overview.v1alpha1.OverviewService/GetHealth?encoding=json"]
       interval: 2s
@@ -23,6 +34,8 @@ services:
       start_period: 3s
     volumes:
       - grdr-server-data:/var/lib/grdr
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
     networks:
       - qa-internal
 
@@ -31,15 +44,24 @@ services:
       context: ../..
       dockerfile: deploy/qa/Dockerfile
       target: endpoint
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       grdr-server:
         condition: service_healthy
     environment:
       GRDR_SERVER_URL: "http://grdr-server:8787"
-      GRDR_DAEMON_BIND: "127.0.0.1:8788"
-      GRDR_DAEMON_URL: "http://127.0.0.1:8788"
-      GRDR_DEVICE_NAME: "qa-docker-endpoint"
+      GRDR_OPERATOR_URL: "http://grdr-server:44444"
+      XDG_RUNTIME_DIR: "/home/grdrqa/.local/state/grdr/run"
+      GRDR_DECIDE_ENDPOINT: "/home/grdrqa/.local/state/grdr/run/decide.sock"
+      GRDR_LOCAL_ENDPOINT: "/home/grdrqa/.local/state/grdr/run/local.sock"
       RUST_LOG: info
+    tmpfs:
+      - /home/grdrqa:rw,nosuid,nodev,uid=10001,gid=10001,size=64m
+      - /tmp:rw,noexec,nosuid,nodev,size=32m
     networks:
       - qa-internal
 
@@ -50,6 +72,10 @@ services:
       target: playwright-e2e
     profiles:
       - e2e
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       grdr-server:
         condition: service_healthy

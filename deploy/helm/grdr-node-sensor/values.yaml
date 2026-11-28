@@ -35,6 +35,7 @@ daemonset:
   allowPtrace: false
   allowSysAdminFallback: false
   pinBpfMaps: false
+  mountKernelFs: true
   priorityClassName: "system-node-critical"
   updateStrategy:
     type: "RollingUpdate"

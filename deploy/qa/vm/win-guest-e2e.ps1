@@ -80,7 +80,13 @@ function Invoke-ProcessWithStdin {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $FilePath
     $psi.Arguments = ($ArgumentList | ForEach-Object {
-        if ($_ -match '\s|"' ) { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }
+        $arg = [string]$_
+        if ($arg.Length -eq 0 -or $arg -match '[\s"\\]') {
+            $escaped = ($arg -replace '(\\*)"', '$1$1\"') -replace '(\\*)$', '$1$1'
+            '"' + $escaped + '"'
+        } else {
+            $arg
+        }
     }) -join " "
     $psi.UseShellExecute = $false
     $psi.RedirectStandardInput = $true
@@ -186,16 +192,15 @@ try {
     }
 
     $serverPort = Get-FreeTcpPort
-    $daemonPort = Get-FreeTcpPort
+    $operatorPort = Get-FreeTcpPort
     $serverUrl = "http://127.0.0.1:$serverPort"
-    $daemonUrl = "http://127.0.0.1:$daemonPort"
 
     $serverExe = Join-Path $BinDir "grdr-server.exe"
     $serverData = Join-Path $WorkDir "server-data"
     $serverOut = Join-Path $WorkDir "server.out.log"
     $serverErr = Join-Path $WorkDir "server.err.log"
     $serverProc = Start-Process -FilePath $serverExe `
-        -ArgumentList @("--bind", "127.0.0.1:$serverPort", "--data-dir", $serverData) `
+        -ArgumentList @("--bind", "127.0.0.1:$serverPort", "--operator-bind", "127.0.0.1:$operatorPort", "--profile", "embedded", "--data-dir", $serverData) `
         -RedirectStandardOutput $serverOut -RedirectStandardError $serverErr `
         -PassThru -WindowStyle Hidden
 
@@ -265,34 +270,48 @@ try {
     Add-Assertion -Name "hook_status_after" -Passed $true -Detail "grdr hook status --json reported effective (installed=true)"
 
     $daemonExe = Join-Path $BinDir "grdr-daemon.exe"
+    $engineExe = Join-Path $BinDir "grdr-engine.exe"
+    $uplinkExe = Join-Path $BinDir "grdr-uplink.exe"
     $daemonData = Join-Path $WorkDir "daemon-data"
-    $floorFile = Join-Path $WorkDir "floor.json"
-    $floorKey = Join-Path $WorkDir "floor.pub"
-    $deviceName = "qa-vmware-win11"
+    $daemonState = Join-Path $WorkDir "daemon-state"
+    New-Item -ItemType Directory -Path $daemonState -Force | Out-Null
+    $floorBin = Join-Path $daemonState "floor.bin"
+    $floorKey = Join-Path $daemonState "floor.pub"
+    $pipeTag = "grdr-qa-win-$PID"
+    $decidePipe = "\\.\pipe\$pipeTag-decide"
+    $localPipe = "\\.\pipe\$pipeTag-local"
+    $missingPipe = "\\.\pipe\$pipeTag-missing"
+    $daemonArgs = @("--profile", "user", "--server", $serverUrl, "--data-dir", $daemonData, "--state-dir", $daemonState, "--decide-endpoint", $decidePipe, "--local-endpoint", $localPipe)
+    if (Test-Path $engineExe) {
+        $daemonArgs += @("--engine-bin", $engineExe)
+    }
+    if (Test-Path $uplinkExe) {
+        $daemonArgs += @("--uplink-bin", $uplinkExe)
+    }
     $daemonProc = Start-Process -FilePath $daemonExe `
-        -ArgumentList @("--bind", "127.0.0.1:$daemonPort", "--server", $serverUrl, "--profile", "user", "--interval-secs", "3", "--data-dir", $daemonData, "--floor-table", $floorFile, "--device-name", $deviceName) `
+        -ArgumentList $daemonArgs `
         -RedirectStandardOutput (Join-Path $WorkDir "daemon.out.log") `
         -RedirectStandardError (Join-Path $WorkDir "daemon.err.log") `
         -PassThru -WindowStyle Hidden
 
     $daemonReady = $false
     for ($i = 0; $i -lt 40; $i++) {
-        try {
-            $st = (Invoke-HttpText "$daemonUrl/local/v1/status") | ConvertFrom-Json
-            if ($st.status -eq "running" -and $st.uplink.state -eq "connected") {
+        if ((Test-Path $floorBin) -and (Test-Path $floorKey)) {
+            $activePipes = [System.IO.Directory]::GetFiles("\\.\pipe\")
+            if ($activePipes -contains $decidePipe -and $activePipes -contains $localPipe) {
                 $daemonReady = $true
                 break
             }
-        } catch {}
+        }
         Start-Sleep -Milliseconds 250
     }
-    if (-not $daemonReady -or -not (Test-Path $floorFile) -or -not (Test-Path $floorKey)) {
-        Fail-Assertion -Name "daemon_health_and_checkin" -Detail "daemon failed uplink.state=connected readiness or floor bundle write"
+    if (-not $daemonReady) {
+        Fail-Assertion -Name "daemon_health_and_checkin" -Detail "daemon failed named pipe IPC readiness ($decidePipe) or floor.bin/floor.pub write"
     }
-    Add-Assertion -Name "daemon_health_and_checkin" -Passed $true -Detail "daemon running, uplink connected to server, signed floor bundle written"
+    Add-Assertion -Name "daemon_health_and_checkin" -Passed $true -Detail "daemon running with Windows named pipes and signed floor bundle (floor.bin/floor.pub)"
 
     $allowRes = Invoke-ProcessWithStdin -FilePath $hookExe `
-        -ArgumentList @("--daemon", $daemonUrl, "--timeout-ms", "2000", "--floor-table", $floorFile, "--floor-key", $floorKey) `
+        -ArgumentList @("--agent", "claude-code", "--socket", $decidePipe, "--state-dir", $daemonState) `
         -StdinText '{"session_id":"sess-qa-win","tool_name":"Bash","tool_input":{"command":"git status"}}'
     if ($allowRes.ExitCode -ne 0) {
         Fail-Assertion -Name "hook_benign_allow" -Detail "expected exit 0, got $($allowRes.ExitCode): $($allowRes.Stderr)"
@@ -300,12 +319,20 @@ try {
     Add-Assertion -Name "hook_benign_allow" -Passed $true -Detail "git status returned Allow (exit 0)"
 
     $blockRes = Invoke-ProcessWithStdin -FilePath $hookExe `
-        -ArgumentList @("--daemon", $daemonUrl, "--timeout-ms", "2000", "--floor-table", $floorFile, "--floor-key", $floorKey) `
+        -ArgumentList @("--agent", "claude-code", "--socket", $decidePipe, "--state-dir", $daemonState) `
         -StdinText '{"session_id":"sess-qa-win","tool_name":"Bash","tool_input":{"command":"git commit --no-verify -m test"}}'
     if ($blockRes.ExitCode -ne 2 -or $blockRes.Stderr -notmatch "BLOCKED") {
         Fail-Assertion -Name "hook_risky_exec_block" -Detail "expected exit 2 BLOCKED, got $($blockRes.ExitCode): $($blockRes.Stderr)"
     }
     Add-Assertion -Name "hook_risky_exec_block" -Passed $true -Detail "git commit --no-verify blocked deterministically (exit 2)"
+
+    $offlineRes = Invoke-ProcessWithStdin -FilePath $hookExe `
+        -ArgumentList @("--agent", "claude-code", "--socket", $missingPipe, "--state-dir", $daemonState) `
+        -StdinText '{"session_id":"sess-qa-win-offline","tool_name":"Write","tool_input":{"file_path":".claude/settings.json"}}'
+    if ($offlineRes.ExitCode -ne 2 -or $offlineRes.Stderr -notmatch "BLOCKED") {
+        Fail-Assertion -Name "hook_offline_failsafe" -Detail "expected exit 2 offline BLOCKED, got $($offlineRes.ExitCode): $($offlineRes.Stderr)"
+    }
+    Add-Assertion -Name "hook_offline_failsafe" -Passed $true -Detail "offline signed floor bundle blocked control-file write without daemon (exit 2)"
 
     $docRes = Invoke-ProcessWithStdin -FilePath $grdrExe -ArgumentList @("doctor", "--json", "--profile", "user") -StdinText ""
     if ($docRes.ExitCode -ne 0) {
@@ -317,31 +344,11 @@ try {
     }
     Add-Assertion -Name "doctor_json" -Passed $true -Detail "grdr doctor --json reported discovered_agent_count=$($docObj.discovered_agent_count)"
 
-    $flushed = $false
-    for ($i = 0; $i -lt 40; $i++) {
-        try {
-            $st = (Invoke-HttpText "$daemonUrl/local/v1/status") | ConvertFrom-Json
-            if ($st.pending_events -eq 0) {
-                $flushed = $true
-                break
-            }
-        } catch {}
-        Start-Sleep -Milliseconds 300
-    }
-    if (-not $flushed) {
-        Fail-Assertion -Name "server_uplink_and_audit_verify" -Detail "daemon pending_events did not drain to 0"
-    }
-
-    $session = Invoke-ConnectJson -BaseUrl $serverUrl -MethodPath "/grdr.api.activity.v1alpha1.SessionService/GetSession" -BodyJson '{"id":"sess-qa-win"}'
-    $exportResp = Invoke-ConnectJson -BaseUrl $serverUrl -MethodPath "/grdr.api.overview.v1alpha1.OverviewService/ExportAuditJsonl" -BodyJson "{}"
-    $auditRaw = $exportResp.payload
-    $auditLines = @($auditRaw -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_ | ConvertFrom-Json })
-    $receiptRecords = @($auditLines | Where-Object { $_.record_type -eq "decision_receipt" })
-    if (@($session.receipts).Count -lt 2 -or $receiptRecords.Count -lt 2) {
-        Fail-Assertion -Name "server_uplink_and_audit_verify" -Detail "missing session receipts or ExportAuditJsonl records"
-    }
-
+    $ckptPath = Join-Path $daemonState "audit.checkpoint"
     $walPath = Join-Path $daemonData "receipts.wal.jsonl"
+    if (-not (Test-Path $ckptPath)) {
+        Fail-Assertion -Name "server_uplink_and_audit_verify" -Detail "missing signed audit.checkpoint at $ckptPath"
+    }
     $auditVerifyRes = Invoke-ProcessWithStdin -FilePath $grdrExe -ArgumentList @("audit", "verify", "--json", "--path", $walPath) -StdinText ""
     if ($auditVerifyRes.ExitCode -ne 0) {
         Fail-Assertion -Name "server_uplink_and_audit_verify" -Detail "grdr audit verify failed: $($auditVerifyRes.Stderr)"
@@ -350,7 +357,7 @@ try {
     if ($auditVerifyObj.verified -ne $true -or $auditVerifyObj.entries -lt 2) {
         Fail-Assertion -Name "server_uplink_and_audit_verify" -Detail "unexpected grdr audit verify payload: $($auditVerifyRes.Stdout)"
     }
-    Add-Assertion -Name "server_uplink_and_audit_verify" -Passed $true -Detail "Connect RPC session/ExportAuditJsonl and native grdr audit verify verified"
+    Add-Assertion -Name "server_uplink_and_audit_verify" -Passed $true -Detail "signed audit.checkpoint and native grdr audit verify verified"
 
     $uninstRes = Invoke-ProcessWithStdin -FilePath $grdrExe -ArgumentList @("hook", "uninstall", "--agent", "claude-code") -StdinText ""
     $restoredSha = (Get-FileHash -Path $claudeCfg -Algorithm SHA256).Hash

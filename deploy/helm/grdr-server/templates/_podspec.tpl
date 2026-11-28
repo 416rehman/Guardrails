@@ -1,4 +1,5 @@
 {{- define "grdr-server.podSpec" -}}
+{{- include "grdr-server.validate" . -}}
 {{- with .Values.imagePullSecrets }}
 imagePullSecrets:
   {{- toYaml . | nindent 2 }}
@@ -29,6 +30,27 @@ initContainers:
       - "--object-store-dir"
       - {{ .Values.storage.objectStore.dir | quote }}
       {{- end }}
+      {{- if .Values.storage.objectStore.endpoint }}
+      - "--object-store-endpoint"
+      - {{ .Values.storage.objectStore.endpoint | quote }}
+      {{- end }}
+      {{- if .Values.storage.objectStore.bucket }}
+      - "--object-store-bucket"
+      - {{ .Values.storage.objectStore.bucket | quote }}
+      {{- end }}
+      {{- if .Values.storage.objectStore.backupBucket }}
+      - "--backup-bucket"
+      - {{ .Values.storage.objectStore.backupBucket | quote }}
+      {{- end }}
+      {{- if .Values.storage.objectStore.pathStyle }}
+      - "--object-store-path-style"
+      {{- end }}
+      {{- if .Values.secrets.privateCAConfigMap }}
+      - "--cert-file"
+      - "/etc/grdr/certs/ca.crt"
+      {{- end }}
+      - "--check-pg-clock"
+      - "--strict"
     securityContext:
       allowPrivilegeEscalation: false
       readOnlyRootFilesystem: true
@@ -41,6 +63,24 @@ initContainers:
         value: {{ .Values.profile | quote }}
       - name: GRDR_DATA_DIR
         value: "/var/lib/grdr"
+      {{- if .Values.storage.objectStore.endpoint }}
+      - name: GRDR_OBJECT_STORE_ENDPOINT
+        value: {{ .Values.storage.objectStore.endpoint | quote }}
+      {{- end }}
+      {{- if .Values.storage.objectStore.bucket }}
+      - name: GRDR_OBJECT_STORE_BUCKET
+        value: {{ .Values.storage.objectStore.bucket | quote }}
+      {{- end }}
+      {{- if .Values.storage.objectStore.backupBucket }}
+      - name: GRDR_BACKUP_BUCKET
+        value: {{ .Values.storage.objectStore.backupBucket | quote }}
+      {{- end }}
+      {{- if .Values.storage.objectStore.region }}
+      - name: GRDR_OBJECT_STORE_REGION
+        value: {{ .Values.storage.objectStore.region | quote }}
+      {{- end }}
+      - name: GRDR_OBJECT_STORE_PATH_STYLE
+        value: {{ .Values.storage.objectStore.pathStyle | quote }}
       {{- if .Values.storage.database.existingSecret }}
       - name: GRDR_POSTGRES_DSN
         valueFrom:
@@ -56,6 +96,20 @@ initContainers:
       - name: SSL_CERT_FILE
         value: "/etc/grdr/certs/ca.crt"
       {{- end }}
+      {{- if .Values.storage.objectStore.existingSecret }}
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: {{ .Values.storage.objectStore.existingSecret }}
+            key: access-key
+            optional: true
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: {{ .Values.storage.objectStore.existingSecret }}
+            key: secret-key
+            optional: true
+      {{- end }}
     volumeMounts:
       - name: boot-config
         mountPath: /etc/grdr/server.toml
@@ -63,6 +117,10 @@ initContainers:
         readOnly: true
       - name: data
         mountPath: /var/lib/grdr
+      {{- if ne .Values.profile "embedded" }}
+      - name: object-store-data
+        mountPath: {{ .Values.storage.objectStore.dir | quote }}
+      {{- end }}
       - name: tmp
         mountPath: /tmp
       {{- if .Values.secrets.privateCAConfigMap }}
@@ -88,6 +146,12 @@ containers:
     args:
       - "--bind"
       - "0.0.0.0:{{ .Values.service.targetPort }}"
+      {{- if .Values.operator.enabled }}
+      - "--operator-bind"
+      - "0.0.0.0:{{ .Values.operator.listenPort }}"
+      - "--operator-web-dir"
+      - "/usr/share/grdr/operator-web"
+      {{- end }}
       - "--data-dir"
       - "/var/lib/grdr"
       - "--profile"
@@ -114,6 +178,11 @@ containers:
         containerPort: {{ .Values.operator.listenPort }}
         protocol: TCP
       {{- end }}
+      {{- if .Values.metrics.enabled }}
+      - name: metrics
+        containerPort: {{ .Values.metrics.port }}
+        protocol: TCP
+      {{- end }}
     livenessProbe:
       httpGet:
         path: {{ .Values.probes.path | quote }}
@@ -137,6 +206,30 @@ containers:
         value: "/var/lib/grdr"
       - name: GRDR_WEB_DIR
         value: "/usr/share/grdr/web"
+      {{- if .Values.operator.enabled }}
+      - name: GRDR_OPERATOR_BIND
+        value: "0.0.0.0:{{ .Values.operator.listenPort }}"
+      - name: GRDR_OPERATOR_WEB_DIR
+        value: "/usr/share/grdr/operator-web"
+      {{- end }}
+      {{- if .Values.storage.objectStore.endpoint }}
+      - name: GRDR_OBJECT_STORE_ENDPOINT
+        value: {{ .Values.storage.objectStore.endpoint | quote }}
+      {{- end }}
+      {{- if .Values.storage.objectStore.bucket }}
+      - name: GRDR_OBJECT_STORE_BUCKET
+        value: {{ .Values.storage.objectStore.bucket | quote }}
+      {{- end }}
+      {{- if .Values.storage.objectStore.backupBucket }}
+      - name: GRDR_BACKUP_BUCKET
+        value: {{ .Values.storage.objectStore.backupBucket | quote }}
+      {{- end }}
+      {{- if .Values.storage.objectStore.region }}
+      - name: GRDR_OBJECT_STORE_REGION
+        value: {{ .Values.storage.objectStore.region | quote }}
+      {{- end }}
+      - name: GRDR_OBJECT_STORE_PATH_STYLE
+        value: {{ .Values.storage.objectStore.pathStyle | quote }}
       {{- if .Values.secrets.bootstrapExistingSecret }}
       - name: GRDR_API_TOKEN
         valueFrom:
@@ -148,6 +241,19 @@ containers:
           secretKeyRef:
             name: {{ .Values.secrets.bootstrapExistingSecret }}
             key: enroll-token
+      {{- end }}
+      {{- if and .Values.operator.enabled .Values.operator.existingSecret }}
+      - name: GRDR_OPERATOR_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: {{ .Values.operator.existingSecret }}
+            key: operator-token
+      - name: GRDR_STEP_UP_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: {{ .Values.operator.existingSecret }}
+            key: step-up-token
+            optional: true
       {{- end }}
       {{- if .Values.storage.database.existingSecret }}
       - name: GRDR_POSTGRES_DSN
@@ -164,6 +270,20 @@ containers:
       - name: SSL_CERT_FILE
         value: "/etc/grdr/certs/ca.crt"
       {{- end }}
+      {{- if .Values.storage.objectStore.existingSecret }}
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: {{ .Values.storage.objectStore.existingSecret }}
+            key: access-key
+            optional: true
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: {{ .Values.storage.objectStore.existingSecret }}
+            key: secret-key
+            optional: true
+      {{- end }}
       {{- with .Values.extraEnv }}
       {{- toYaml . | nindent 6 }}
       {{- end }}
@@ -176,6 +296,10 @@ containers:
         readOnly: true
       - name: data
         mountPath: /var/lib/grdr
+      {{- if ne .Values.profile "embedded" }}
+      - name: object-store-data
+        mountPath: {{ .Values.storage.objectStore.dir | quote }}
+      {{- end }}
       - name: tmp
         mountPath: /tmp
       {{- if .Values.secrets.privateCAConfigMap }}
@@ -260,6 +384,10 @@ volumes:
     emptyDir: {}
   {{- if or (ne .Values.profile "embedded") (not .Values.storage.embedded.persistence.enabled) }}
   - name: data
+    emptyDir: {}
+  {{- end }}
+  {{- if ne .Values.profile "embedded" }}
+  - name: object-store-data
     emptyDir: {}
   {{- end }}
   {{- if .Values.secrets.privateCAConfigMap }}

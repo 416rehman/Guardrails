@@ -11,6 +11,7 @@ surface = "internal"
 renders = "person"
 
 [dependencies]
+base64 = { workspace = true }
 clap = { workspace = true }
 grdr-agents = { workspace = true }
 grdr-blob = { workspace = true }
@@ -28,12 +29,18 @@ grdr-rel-sqlite = { workspace = true }
 grdr-sandbox-engine = { workspace = true }
 grdr-update = { workspace = true }
 jiff = { workspace = true }
-reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "charset"] }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls", "json", "charset"] }
 rusqlite = { workspace = true }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
+rustls-pki-types = "1.16"
+rustls-platform-verifier = "0.7"
+rustls-webpki = { version = "0.103", default-features = false, features = ["aws-lc-rs", "std"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+url = { workspace = true }
 uuid = { workspace = true }
+webpki-root-certs = "1.0"
 zeroize = { workspace = true }
 
 [lints]

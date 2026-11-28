@@ -9,10 +9,6 @@
     <string>/Library/Application Support/grdr/bin/grdr-daemon</string>
     <string>--profile</string>
     <string>protected</string>
-    <string>--data-dir</string>
-    <string>/Library/Application Support/grdr</string>
-    <string>--bind</string>
-    <string>127.0.0.1:8788</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -23,6 +19,23 @@
   </dict>
   <key>WorkingDirectory</key>
   <string>/Library/Application Support/grdr</string>
+  <key>Sockets</key>
+  <dict>
+    <key>decide</key>
+    <dict>
+      <key>SockPathName</key>
+      <string>/private/var/run/guardrails/decide.sock</string>
+      <key>SockPathMode</key>
+      <integer>438</integer>
+    </dict>
+    <key>local</key>
+    <dict>
+      <key>SockPathName</key>
+      <string>/private/var/run/guardrails/local.sock</string>
+      <key>SockPathMode</key>
+      <integer>432</integer>
+    </dict>
+  </dict>
   <key>StandardOutPath</key>
   <string>/Library/Logs/grdr/daemon.log</string>
   <key>StandardErrorPath</key>

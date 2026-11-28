@@ -937,6 +937,7 @@ dependencies = [
 name = "grdr"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "clap",
  "grdr-agents",
  "grdr-blob",
@@ -956,10 +957,16 @@ dependencies = [
  "jiff 1.0.2",
  "reqwest",
  "rusqlite",
+ "rustls",
+ "rustls-pki-types",
+ "rustls-platform-verifier",
+ "rustls-webpki",
  "serde",
  "serde_json",
  "thiserror",
+ "url",
  "uuid",
+ "webpki-root-certs",
  "zeroize",
 ]
 

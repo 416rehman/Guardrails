@@ -21,7 +21,11 @@ COPY programs ./programs
 COPY contracts ./contracts
 COPY bpf ./bpf
 
-RUN cargo build --release --locked -p "${KEYS_PACKAGE}" \
+RUN test -f "programs/${KEYS_PACKAGE}/Cargo.toml" || { \
+      echo "GRDR-BUILD-0001: workspace package '${KEYS_PACKAGE}' is missing (out of W5-2 scope; requires programs/grdr-keys-pkcs11 crate)." >&2; \
+      exit 1; \
+    } \
+    && cargo build --release --locked -p "${KEYS_PACKAGE}" \
     && mkdir -p /rootfs/usr/local/bin /rootfs/usr/lib/grdr/pkcs11 /rootfs/run/grdr/keys /rootfs/tmp \
     && install -m 0755 "target/release/${KEYS_PACKAGE}" /rootfs/usr/local/bin/grdr-keys-pkcs11 \
     && chown -R 65532:65532 /rootfs/run/grdr/keys \

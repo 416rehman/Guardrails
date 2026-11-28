@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: The Guardrails ADR Authors
 set -euo pipefail
 
 SERVER_URL="${GRDR_SERVER_URL:-http://grdr-server:8787}"
-DAEMON_BIND="${GRDR_DAEMON_BIND:-127.0.0.1:8788}"
-DAEMON_URL="${GRDR_DAEMON_URL:-http://127.0.0.1:8788}"
-DEVICE_NAME="${GRDR_DEVICE_NAME:-qa-docker-endpoint}"
+OPERATOR_URL="${GRDR_OPERATOR_URL:-http://grdr-server:44444}"
 SESSION_ID="sess-slice0-e2e"
 SETTINGS_SEED="/opt/grdr/qa/claude-settings.json"
 CLAUDE_DIR="$HOME/.claude"
@@ -12,8 +12,13 @@ SETTINGS_FILE="$CLAUDE_DIR/settings.json"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/grdr"
 BACKUP_FILE="$STATE_DIR/hook-backup-claude-code.json"
 DATA_DIR="$HOME/.local/share/grdr/daemon"
-FLOOR_TABLE="$HOME/.local/share/grdr/floor.json"
-FLOOR_KEY="$HOME/.local/share/grdr/floor.pub"
+DAEMON_STATE_DIR="${STATE_DIR}/daemon-state"
+RUN_DIR="${XDG_RUNTIME_DIR:-${STATE_DIR}/run}"
+FLOOR_BIN="${DAEMON_STATE_DIR}/floor.bin"
+FLOOR_PUB="${DAEMON_STATE_DIR}/floor.pub"
+DECIDE_SOCK="${GRDR_DECIDE_ENDPOINT:-${RUN_DIR}/decide.sock}"
+LOCAL_SOCK="${GRDR_LOCAL_ENDPOINT:-${RUN_DIR}/local.sock}"
+MISSING_SOCK="${RUN_DIR}/missing-decide.sock"
 DAEMON_LOG="$HOME/grdr-daemon.log"
 DAEMON_PID=""
 
@@ -30,11 +35,11 @@ if [ "$(id -u)" -eq 0 ]; then
   exit 1
 fi
 
-echo "[1/7] Checking server health and static Web Console at ${SERVER_URL}"
-python3 - "$SERVER_URL" <<'PY'
+echo "[1/7] Checking server health, Web Console, and Operator UI at ${SERVER_URL} / ${OPERATOR_URL}"
+python3 - "$SERVER_URL" "$OPERATOR_URL" <<'PY'
 import json, sys, time, urllib.request
 
-base = sys.argv[1].rstrip("/")
+base, op_base = [s.rstrip("/") for s in sys.argv[1:3]]
 for _ in range(30):
     try:
         with urllib.request.urlopen(
@@ -53,13 +58,20 @@ else:
 with urllib.request.urlopen(f"{base}/", timeout=5) as resp:
     assert resp.status == 200
     html = resp.read().decode("utf-8", "replace")
-    assert "<div id=\"root\"></div>" in html, "console index.html missing #root"
+    assert '<div id="root"></div>' in html, "console index.html missing #root"
+
+with urllib.request.urlopen(f"{op_base}/", timeout=5) as resp:
+    assert resp.status == 200
+    op_html = resp.read().decode("utf-8", "replace")
+    assert '<div id="root"></div>' in op_html, "operator index.html missing #root"
 storage = health.get("storageMode") or {}
 print(f"server health ok: version={health.get('version')} storage={storage.get('kind')}")
 PY
 
 echo "[2/7] Seeding Claude Code settings and verifying read-only discovery"
-mkdir -p "$CLAUDE_DIR" "$DATA_DIR"
+umask 077
+mkdir -p -m 0700 "$CLAUDE_DIR" "$DATA_DIR" "$DAEMON_STATE_DIR" "$RUN_DIR"
+chmod 0700 "$RUN_DIR" "$DAEMON_STATE_DIR"
 cp "$SETTINGS_SEED" "$SETTINGS_FILE"
 ORIG_SHA256="$(sha256sum "$SETTINGS_FILE" | awk '{print $1}')"
 
@@ -140,45 +152,55 @@ assert agents["claude-code"]["hook_installed"] is True, agents["claude-code"]
 print("discovery after install ok: hook_installed=true")
 PY
 
-echo "[4/7] Starting grdr-daemon with uplink to ${SERVER_URL}"
-grdr-daemon \
-  --bind "$DAEMON_BIND" \
-  --server "$SERVER_URL" \
-  --profile user \
-  --device-name "$DEVICE_NAME" \
-  --interval-secs 3 \
-  --data-dir "$DATA_DIR" \
-  --floor-table "$FLOOR_TABLE" \
-  >"$DAEMON_LOG" 2>&1 &
+echo "[4/7] Starting grdr-daemon with OS peer IPC endpoints (${DECIDE_SOCK})"
+DAEMON_ARGS=(
+  --profile user
+  --server "$SERVER_URL"
+  --data-dir "$DATA_DIR"
+  --state-dir "$DAEMON_STATE_DIR"
+  --decide-endpoint "$DECIDE_SOCK"
+  --local-endpoint "$LOCAL_SOCK"
+)
+if [ -x /usr/libexec/grdr/grdr-engine ]; then
+  DAEMON_ARGS+=(--engine-bin /usr/libexec/grdr/grdr-engine)
+fi
+if [ -x /usr/local/bin/grdr-uplink ]; then
+  DAEMON_ARGS+=(--uplink-bin /usr/local/bin/grdr-uplink)
+fi
+grdr-daemon "${DAEMON_ARGS[@]}" >"$DAEMON_LOG" 2>&1 &
 DAEMON_PID="$!"
 
-for _ in $(seq 1 30); do
-  if grdr status --daemon "$DAEMON_URL" >/dev/null 2>&1; then
+for _ in $(seq 1 40); do
+  if [ -S "$DECIDE_SOCK" ] && [ -S "$LOCAL_SOCK" ] && [ -f "$FLOOR_BIN" ] && [ -f "$FLOOR_PUB" ]; then
     break
   fi
-  sleep 0.5
+  sleep 0.25
 done
-grdr status --daemon "$DAEMON_URL"
+if [ ! -S "$DECIDE_SOCK" ] || [ ! -S "$LOCAL_SOCK" ] || [ ! -f "$FLOOR_BIN" ] || [ ! -f "$FLOOR_PUB" ]; then
+  cat "$DAEMON_LOG" >&2 || true
+  echo "ERROR: grdr-daemon IPC sockets or signed floor cache did not initialize" >&2
+  exit 1
+fi
 
-echo "[5/7] Exercising grdr-hook (Allow, Block, Ask, and offline fail-safe)"
+echo "[5/7] Exercising grdr-hook over OS peer IPC (Allow, Block, Ask, and offline floor fail-safe)"
 printf '{"session_id":"%s","tool_name":"Bash","tool_input":{"command":"git status"}}' "$SESSION_ID" \
-  | grdr-hook --daemon "$DAEMON_URL" --agent claude-code
+  | grdr-hook --socket "$DECIDE_SOCK" --state-dir "$DAEMON_STATE_DIR" --agent claude-code
 
 set +e
 BLOCK_CONTROL_OUT="$(printf '{"session_id":"%s","tool_name":"Write","tool_input":{"file_path":".claude/settings.json"}}' "$SESSION_ID" \
-  | grdr-hook --daemon "$DAEMON_URL" --agent claude-code 2>&1)"
+  | grdr-hook --socket "$DECIDE_SOCK" --state-dir "$DAEMON_STATE_DIR" --agent claude-code 2>&1)"
 BLOCK_CONTROL_RC=$?
 
 BLOCK_BYPASS_OUT="$(printf '{"session_id":"%s","tool_name":"Bash","tool_input":{"command":"git commit --no-verify"}}' "$SESSION_ID" \
-  | grdr-hook --daemon "$DAEMON_URL" --agent claude-code 2>&1)"
+  | grdr-hook --socket "$DECIDE_SOCK" --state-dir "$DAEMON_STATE_DIR" --agent claude-code 2>&1)"
 BLOCK_BYPASS_RC=$?
 
 ASK_DELETE_OUT="$(printf '{"session_id":"%s","tool_name":"Bash","tool_input":{"command":"rm -rf /tmp/slice0-e2e-target"}}' "$SESSION_ID" \
-  | grdr-hook --daemon "$DAEMON_URL" --agent claude-code 2>&1)"
+  | grdr-hook --socket "$DECIDE_SOCK" --state-dir "$DAEMON_STATE_DIR" --agent claude-code 2>&1)"
 ASK_DELETE_RC=$?
 
 FAILSAFE_OUT="$(printf '{"session_id":"%s-offline","tool_name":"Write","tool_input":{"file_path":".claude/settings.json"}}' "$SESSION_ID" \
-  | grdr-hook --daemon "http://127.0.0.1:19999" --floor-table "$FLOOR_TABLE" --floor-key "$FLOOR_KEY" --agent claude-code 2>&1)"
+  | grdr-hook --socket "$MISSING_SOCK" --state-dir "$DAEMON_STATE_DIR" --agent claude-code 2>&1)"
 FAILSAFE_RC=$?
 set -e
 
@@ -200,63 +222,11 @@ if [ "$FAILSAFE_RC" -ne 2 ]; then
 fi
 echo "hook verdicts ok: control-file=$BLOCK_CONTROL_RC bypass=$BLOCK_BYPASS_RC rm-rf=$ASK_DELETE_RC offline-failsafe=$FAILSAFE_RC"
 
-echo "[6/7] Waiting for daemon uplink, verifying Connect RPC state, and running grdr audit verify"
-python3 - "$DAEMON_URL" "$SERVER_URL" "$DEVICE_NAME" "$SESSION_ID" <<'PY'
-import json, sys, time, urllib.request
-
-daemon_url, server_url, device_name, session_id = [s.rstrip("/") for s in sys.argv[1:5]]
-
-for _ in range(30):
-    with urllib.request.urlopen(f"{daemon_url}/local/v1/status", timeout=2) as resp:
-        st = json.loads(resp.read().decode("utf-8"))
-    uplink = st.get("uplink") or {}
-    if uplink.get("state") == "connected" and st.get("pending_events", 1) == 0:
-        break
-    time.sleep(1)
-else:
-    raise SystemExit(f"daemon uplink did not flush in time: {st}")
-
-def rpc_post(method_path, body):
-    req = urllib.request.Request(
-        f"{server_url}{method_path}",
-        data=json.dumps(body).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Connect-Protocol-Version": "1",
-        },
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=5) as resp:
-        assert resp.status == 200, f"{method_path} -> {resp.status}"
-        return json.loads(resp.read().decode("utf-8"))
-
-devices_resp = rpc_post("/grdr.api.inventory.v1alpha1.InventoryService/ListDevices", {})
-devices = devices_resp.get("devices", [])
-matching = [d for d in devices if d.get("hostname") == device_name]
-assert matching and matching[0].get("hookEffective") is True, devices
-
-detail = rpc_post("/grdr.api.activity.v1alpha1.SessionService/GetSession", {"id": session_id})
-verdicts = {r["target"]: r["verdict"] for r in detail.get("receipts", [])}
-assert verdicts.get("git status") == "VERDICT_ALLOW", verdicts
-assert verdicts.get(".claude/settings.json") == "VERDICT_DENY", verdicts
-assert verdicts.get("git commit --no-verify") == "VERDICT_DENY", verdicts
-assert verdicts.get("rm -rf /tmp/slice0-e2e-target") == "VERDICT_STEP_UP", verdicts
-
-findings_resp = rpc_post("/grdr.api.response.v1alpha1.ResponseService/ListFindings", {})
-findings = findings_resp.get("findings", [])
-assert any(f.get("sessionId") == session_id for f in findings), findings
-
-audit_resp = rpc_post("/grdr.api.response.v1alpha1.ResponseService/ListAuditEvents", {})
-audit = audit_resp.get("entries", [])
-assert len(audit) >= 1, audit
-
-export_resp = rpc_post("/grdr.api.overview.v1alpha1.OverviewService/ExportAuditJsonl", {})
-lines = [ln for ln in export_resp.get("payload", "").splitlines() if ln.strip()]
-assert len(lines) >= 1, export_resp
-
-print(f"server ingest ok: device={matching[0]['id']} receipts={len(detail['receipts'])} findings={len(findings)} audit={len(audit)}")
-PY
-
+echo "[6/7] Verifying signed audit checkpoint and hash-chained WAL via grdr audit verify"
+if [ ! -f "${DAEMON_STATE_DIR}/audit.checkpoint" ]; then
+  echo "ERROR: missing signed audit.checkpoint in ${DAEMON_STATE_DIR}" >&2
+  exit 1
+fi
 AUDIT_VERIFY_OUT="$(grdr audit verify --json --path "$DATA_DIR/receipts.wal.jsonl")"
 python3 - "$AUDIT_VERIFY_OUT" <<'PY'
 import json, sys

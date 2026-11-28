@@ -17,13 +17,17 @@ services:
     environment:
       GRDR_SERVER_PROFILE: embedded
       GRDR_SERVER_BIND: "0.0.0.0:8787"
+      GRDR_OPERATOR_BIND: "${GRDR_OPERATOR_BIND:-0.0.0.0:44444}"
       GRDR_DATA_DIR: /var/lib/grdr
       GRDR_WEB_DIR: /usr/share/grdr/web
+      GRDR_OPERATOR_WEB_DIR: /usr/share/grdr/operator-web
       GRDR_API_TOKEN: ${GRDR_API_TOKEN:?set GRDR_API_TOKEN before starting compose}
+      GRDR_OPERATOR_TOKEN: ${GRDR_OPERATOR_TOKEN:?set GRDR_OPERATOR_TOKEN before starting compose}
       GRDR_ENROLL_TOKEN: ${GRDR_ENROLL_TOKEN:?set GRDR_ENROLL_TOKEN before starting compose}
       SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
     ports:
       - "127.0.0.1:8787:8787"
+      - "127.0.0.1:44444:44444"
     volumes:
       - grdr_embedded_data:/var/lib/grdr
     tmpfs:

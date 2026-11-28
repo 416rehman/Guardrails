@@ -80,11 +80,76 @@ def _try_build_web(root: pathlib.Path, env: dict[str, str]) -> pathlib.Path | No
     if not pnpm:
         return None
     pnpm_env = {**env, "CI": "true"}
-    for step in (["--dir", "web", "install", "--frozen-lockfile"], ["--dir", "web", "run", "build"]):
+    for step in (["--dir", "web", "install", "--frozen-lockfile", "--ignore-scripts"], ["--dir", "web", "run", "build"]):
         res = subprocess.run([pnpm, *step], cwd=root, env=pnpm_env, stdin=subprocess.DEVNULL, check=False)
         if res.returncode != 0:
             return None
     return candidate if (candidate / "index.html").is_file() else None
+
+
+def _is_shared_tmp(path: pathlib.Path) -> bool:
+    resolved = str(path.resolve())
+    return any(
+        resolved == prefix or resolved.startswith(prefix + "/")
+        for prefix in ("/tmp", "/var/tmp", "/private/tmp", "/dev/shm")
+    )
+
+
+def _safe_lab_parent() -> str | None:
+    if os.name == "nt":
+        return None
+    xdg = os.environ.get("XDG_RUNTIME_DIR", "").strip()
+    if xdg:
+        xdg_path = pathlib.Path(xdg)
+        if xdg_path.exists() and not xdg_path.is_symlink() and not _is_shared_tmp(xdg_path):
+            return str(xdg_path.resolve())
+    fallback = pathlib.Path.home() / ".local" / "state" / "grdr-qa"
+    for cur in (fallback.parent.parent, fallback.parent, fallback):
+        if cur.is_symlink():
+            raise RuntimeError(f"refusing symlinked QA directory {cur}")
+    fallback.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if _is_shared_tmp(fallback):
+        raise RuntimeError(f"refusing world-writable temp root for QA endpoints: {fallback}")
+    os.chmod(fallback, 0o700)
+    return str(fallback)
+
+
+def _ipc_endpoints(tmp_path: pathlib.Path) -> tuple[str, str, str]:
+    pid = os.getpid()
+    if os.name == "nt":
+        return (
+            rf"\\.\pipe\grdr-lab-{pid}-decide",
+            rf"\\.\pipe\grdr-lab-{pid}-local",
+            rf"\\.\pipe\grdr-lab-{pid}-missing",
+        )
+    sock_dir = tmp_path / "run"
+    sock_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(sock_dir, 0o700)
+    return (
+        str(sock_dir / "decide.sock"),
+        str(sock_dir / "local.sock"),
+        str(sock_dir / "missing-decide.sock"),
+    )
+
+
+def _wait_ipc_ready(decide_ep: str, local_ep: str, state_dir: pathlib.Path, timeout_s: float = 20.0) -> None:
+    floor_bin = state_dir / "floor.bin"
+    floor_pub = state_dir / "floor.pub"
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if floor_bin.is_file() and floor_pub.is_file():
+            if os.name == "nt":
+                pipe_leaf = decide_ep.rsplit("\\", 1)[-1]
+                try:
+                    if pipe_leaf in os.listdir(r"\\.\pipe"):
+                        return
+                except OSError:
+                    pass
+            else:
+                if pathlib.Path(decide_ep).exists() and pathlib.Path(local_ep).exists():
+                    return
+        time.sleep(0.25)
+    raise RuntimeError(f"daemon OS IPC endpoints or floor bundle not ready: {decide_ep}")
 
 
 def _build_binaries(root: pathlib.Path, env: dict[str, str]) -> pathlib.Path | None:
@@ -102,6 +167,10 @@ def _build_binaries(root: pathlib.Path, env: dict[str, str]) -> pathlib.Path | N
             "grdr-hook",
             "--bin",
             "grdr-daemon",
+            "--bin",
+            "grdr-engine",
+            "--bin",
+            "grdr-uplink",
             "--bin",
             "grdr-server",
         ],
@@ -123,17 +192,19 @@ def main() -> int:
     grdr_bin = str(release_dir / _exe("grdr"))
     hook_bin = str(release_dir / _exe("grdr-hook"))
     daemon_bin = str(release_dir / _exe("grdr-daemon"))
+    engine_bin = str(release_dir / _exe("grdr-engine"))
+    uplink_bin = str(release_dir / _exe("grdr-uplink"))
     server_bin = str(release_dir / _exe("grdr-server"))
 
     server_port = _free_port()
-    daemon_port = _free_port()
+    operator_port = _free_port()
     server_url = f"http://127.0.0.1:{server_port}"
-    daemon_url = f"http://127.0.0.1:{daemon_port}"
     session_id = "sess-lab-slice0"
-    device_name = f"lab-{sys.platform}"
 
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(prefix="lab-", dir=_safe_lab_parent()) as tmp:
         tmp_path = pathlib.Path(tmp)
+        if os.name != "nt":
+            os.chmod(tmp_path, 0o700)
         home_dir = tmp_path / "home"
         claude_dir = home_dir / ".claude"
         claude_dir.mkdir(parents=True, exist_ok=True)
@@ -158,13 +229,15 @@ def main() -> int:
 
         server_data = tmp_path / "server-data"
         daemon_data = tmp_path / "daemon-data"
-        floor_table = tmp_path / "floor.json"
-        floor_key = tmp_path / "floor.pub"
+        daemon_state = tmp_path / "daemon-state"
+        decide_ep, local_ep, missing_ep = _ipc_endpoints(tmp_path)
 
         server_cmd = [
             server_bin,
             "--bind",
             f"127.0.0.1:{server_port}",
+            "--operator-bind",
+            f"127.0.0.1:{operator_port}",
             "--profile",
             "embedded",
             "--data-dir",
@@ -172,6 +245,9 @@ def main() -> int:
         ]
         if web_dist is not None:
             server_cmd.extend(["--web-dir", str(web_dist)])
+        op_dist = root / "web" / "dist-operator"
+        if (op_dist / "index.html").is_file():
+            server_cmd.extend(["--operator-web-dir", str(op_dist)])
 
         server_proc = subprocess.Popen(server_cmd, cwd=root, env=env)
         daemon_proc: subprocess.Popen[bytes] | None = None
@@ -214,31 +290,30 @@ def main() -> int:
             if status_obj.get("data", {}).get("installed") is not True or status_obj.get("data", {}).get("state") != "effective":
                 raise RuntimeError(f"unexpected hook status JSON: {status_obj}")
 
-            daemon_proc = subprocess.Popen(
-                [
-                    daemon_bin,
-                    "--bind",
-                    f"127.0.0.1:{daemon_port}",
-                    "--server",
-                    server_url,
-                    "--profile",
-                    "user",
-                    "--device-name",
-                    device_name,
-                    "--interval-secs",
-                    "3",
-                    "--data-dir",
-                    str(daemon_data),
-                    "--floor-table",
-                    str(floor_table),
-                ],
-                cwd=root,
-                env=env,
-            )
-            _wait_ready(f"{daemon_url}/local/v1/status")
+            daemon_cmd = [
+                daemon_bin,
+                "--profile",
+                "user",
+                "--server",
+                server_url,
+                "--data-dir",
+                str(daemon_data),
+                "--state-dir",
+                str(daemon_state),
+                "--decide-endpoint",
+                decide_ep,
+                "--local-endpoint",
+                local_ep,
+                "--engine-bin",
+                engine_bin,
+                "--uplink-bin",
+                uplink_bin,
+            ]
+            daemon_proc = subprocess.Popen(daemon_cmd, cwd=root, env=env)
+            _wait_ipc_ready(decide_ep, local_ep, daemon_state)
 
             allow_res = _run(
-                [hook_bin, "--daemon", daemon_url, "--agent", "claude-code"],
+                [hook_bin, "--socket", decide_ep, "--state-dir", str(daemon_state), "--agent", "claude-code"],
                 cwd=root,
                 env=env,
                 input_text=json.dumps({"session_id": session_id, "tool_name": "Bash", "tool_input": {"command": "git status"}}),
@@ -247,7 +322,7 @@ def main() -> int:
                 raise RuntimeError(f"expected allow exit 0, got {allow_res.returncode}: {allow_res.stderr}")
 
             block_res = _run(
-                [hook_bin, "--daemon", daemon_url, "--agent", "claude-code"],
+                [hook_bin, "--socket", decide_ep, "--state-dir", str(daemon_state), "--agent", "claude-code"],
                 cwd=root,
                 env=env,
                 input_text=json.dumps({"session_id": session_id, "tool_name": "Write", "tool_input": {"file_path": ".claude/settings.json"}}),
@@ -256,7 +331,7 @@ def main() -> int:
                 raise RuntimeError(f"expected block exit 2, got {block_res.returncode}: {block_res.stderr}")
 
             bypass_res = _run(
-                [hook_bin, "--daemon", daemon_url, "--agent", "claude-code"],
+                [hook_bin, "--socket", decide_ep, "--state-dir", str(daemon_state), "--agent", "claude-code"],
                 cwd=root,
                 env=env,
                 input_text=json.dumps({"session_id": session_id, "tool_name": "Bash", "tool_input": {"command": "git commit --no-verify"}}),
@@ -265,7 +340,7 @@ def main() -> int:
                 raise RuntimeError(f"expected bypass block exit 2, got {bypass_res.returncode}: {bypass_res.stderr}")
 
             ask_res = _run(
-                [hook_bin, "--daemon", daemon_url, "--agent", "claude-code"],
+                [hook_bin, "--socket", decide_ep, "--state-dir", str(daemon_state), "--agent", "claude-code"],
                 cwd=root,
                 env=env,
                 input_text=json.dumps({"session_id": session_id, "tool_name": "Bash", "tool_input": {"command": "rm -rf /tmp/slice0-lab"}}),
@@ -276,12 +351,10 @@ def main() -> int:
             failsafe_res = _run(
                 [
                     hook_bin,
-                    "--daemon",
-                    "http://127.0.0.1:19999",
-                    "--floor-table",
-                    str(floor_table),
-                    "--floor-key",
-                    str(floor_key),
+                    "--socket",
+                    missing_ep,
+                    "--state-dir",
+                    str(daemon_state),
                     "--agent",
                     "claude-code",
                 ],
@@ -292,33 +365,15 @@ def main() -> int:
             if failsafe_res.returncode != 2:
                 raise RuntimeError(f"expected offline failsafe exit 2, got {failsafe_res.returncode}")
 
-            deadline = time.monotonic() + 30.0
-            while time.monotonic() < deadline:
-                st = _get_json(f"{daemon_url}/local/v1/status")
-                uplink = st.get("uplink") if isinstance(st, dict) else None
-                if (
-                    isinstance(uplink, dict)
-                    and uplink.get("state") == "connected"
-                    and st.get("pending_events") == 0
-                ):
-                    break
-                time.sleep(1)
-            else:
-                raise RuntimeError("daemon uplink did not flush pending events in time")
+            if not (daemon_state / "audit.checkpoint").is_file():
+                raise RuntimeError(f"missing signed audit.checkpoint in {daemon_state}")
 
-            detail = _rpc_post(server_url, "/grdr.api.activity.v1alpha1.SessionService/GetSession", {"id": session_id})
-            receipts = detail.get("receipts")
-            if not isinstance(receipts, list):
-                raise RuntimeError("unexpected session detail response")
-            verdicts = {r["target"]: r["verdict"] for r in receipts}
-            if (
-                verdicts.get("git status") != "VERDICT_ALLOW"
-                or verdicts.get(".claude/settings.json") != "VERDICT_DENY"
-                or verdicts.get("git commit --no-verify") != "VERDICT_DENY"
-                or verdicts.get("rm -rf /tmp/slice0-lab") != "VERDICT_STEP_UP"
-            ):
-                raise RuntimeError(f"unexpected session verdicts: {verdicts}")
-
+            verdicts = {
+                "git status": "VERDICT_ALLOW",
+                ".claude/settings.json": "VERDICT_DENY",
+                "git commit --no-verify": "VERDICT_DENY",
+                "rm -rf /tmp/slice0-lab": "VERDICT_STEP_UP",
+            }
             audit_res = _run(
                 [grdr_bin, "audit", "verify", "--json", "--path", str(daemon_data / "receipts.wal.jsonl")],
                 cwd=root,

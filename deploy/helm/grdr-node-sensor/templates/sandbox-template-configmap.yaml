@@ -1,4 +1,5 @@
 {{- if and .Values.sidecar.enabled .Values.sidecar.sandboxTemplateConfigMap.enabled }}
+{{- include "grdr-node-sensor.validate" . -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -20,7 +21,37 @@ data:
         - name: grdr-node-sensor
           image: {{ include "grdr-node-sensor.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          args: ["--profile", "user", "--data-dir", "/var/lib/grdr"]
+          args:
+            - "--profile"
+            - "user"
+            - "--data-dir"
+            - "/var/lib/guardrails/data"
+            - "--state-dir"
+            - "/var/lib/guardrails/state"
+          env:
+            - name: HOME
+              value: "/var/lib/guardrails"
+            - name: GRDR_DATA_DIR
+              value: "/var/lib/guardrails/data"
+            - name: GRDR_STATE_DIR
+              value: "/var/lib/guardrails/state"
+            - name: XDG_RUNTIME_DIR
+              value: "/var/lib/guardrails/run"
+            {{- if .Values.server.endpoint }}
+            - name: GRDR_SERVER_URL
+              value: {{ .Values.server.endpoint | quote }}
+            {{- end }}
+            {{- if .Values.server.enrollExistingSecret }}
+            - name: GRDR_ENROLL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.server.enrollExistingSecret }}
+                  key: enroll-token
+            {{- end }}
+            {{- if .Values.server.caConfigMap }}
+            - name: SSL_CERT_FILE
+              value: "/etc/grdr/certs/ca.crt"
+            {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -36,10 +67,20 @@ data:
             - name: grdr-tmp
               mountPath: /tmp
             - name: grdr-state
-              mountPath: /var/lib/grdr
+              mountPath: /var/lib/guardrails
+            {{- if .Values.server.caConfigMap }}
+            - name: server-ca
+              mountPath: /etc/grdr/certs
+              readOnly: true
+            {{- end }}
       volumes:
         - name: grdr-tmp
           emptyDir: {}
         - name: grdr-state
           emptyDir: {}
+        {{- if .Values.server.caConfigMap }}
+        - name: server-ca
+          configMap:
+            name: {{ .Values.server.caConfigMap }}
+        {{- end }}
 {{- end }}

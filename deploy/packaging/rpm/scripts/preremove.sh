@@ -9,6 +9,6 @@ if [ "${1:-0}" -ge 1 ]; then
   fi
 elif [ "${1:-0}" -eq 0 ]; then
   if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
-    systemctl disable --now grdr-daemon.service grdr-decide.socket grdr-local.socket
+    systemctl disable --now grdr-daemon.service grdr-decide.socket grdr-local.socket || true
   fi
 fi

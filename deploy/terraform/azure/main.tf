@@ -1,6 +1,6 @@
 check "distinct_operator_host" {
   assert {
-    condition     = var.operator_host != var.ingress_host
+    condition     = local.normalized_operator_host != local.normalized_ingress_host
     error_message = "D-70 requires operator_host to differ from ingress_host."
   }
 }
@@ -14,7 +14,9 @@ resource "azurerm_resource_group" "this" {
 }
 
 locals {
-  rg_name = var.resource_group_name == null ? azurerm_resource_group.this[0].name : var.resource_group_name
+  rg_name                  = var.resource_group_name == null ? azurerm_resource_group.this[0].name : var.resource_group_name
+  normalized_ingress_host  = trimsuffix(lower(trimspace(var.ingress_host)), ".")
+  normalized_operator_host = trimsuffix(lower(trimspace(var.operator_host)), ".")
 }
 
 resource "azurerm_virtual_network" "this" {
@@ -302,9 +304,9 @@ resource "azurerm_role_assignment" "data_blob_contributor" {
   principal_id         = azurerm_user_assigned_identity.server.principal_id
 }
 
-resource "azurerm_role_assignment" "backup_blob_reader" {
+resource "azurerm_role_assignment" "backup_blob_contributor" {
   scope                = azurerm_storage_container.backup.id
-  role_definition_name = "Storage Blob Data Reader"
+  role_definition_name = "Storage Blob Data Contributor"
   principal_id         = azurerm_user_assigned_identity.server.principal_id
 }
 
@@ -336,14 +338,20 @@ resource "helm_release" "grdr_server" {
           sslMode        = "verify-full"
         }
         objectStore = {
-          provider     = "azure"
-          endpoint     = azurerm_storage_account.this.primary_blob_endpoint
-          bucket       = azurerm_storage_container.data.name
-          backupBucket = azurerm_storage_container.backup.name
+          provider       = "azure"
+          dir            = "/var/lib/grdr-objects"
+          endpoint       = azurerm_storage_account.this.primary_blob_endpoint
+          bucket         = azurerm_storage_container.data.name
+          backupBucket   = azurerm_storage_container.backup.name
+          existingSecret = var.object_store_existing_secret
         }
       }
       secrets = {
         bootstrapExistingSecret = var.bootstrap_existing_secret
+      }
+      networkPolicy = {
+        enabled                    = true
+        allowIngressFromNamespaces = var.api_ingress_namespaces
       }
       ingress = {
         enabled = true
@@ -354,7 +362,11 @@ resource "helm_release" "grdr_server" {
         }
       }
       operator = {
-        enabled = true
+        enabled        = true
+        existingSecret = var.operator_existing_secret
+        clientCA = {
+          existingSecret = var.operator_client_ca_existing_secret
+        }
         ingress = {
           enabled    = true
           host       = var.operator_host
@@ -365,8 +377,19 @@ resource "helm_release" "grdr_server" {
           }
         }
       }
+      metrics = {
+        enabled = true
+        port    = 9090
+      }
     })
   ]
+
+  lifecycle {
+    precondition {
+      condition     = local.normalized_operator_host != local.normalized_ingress_host
+      error_message = "D-70 requires operator_host to differ from ingress_host."
+    }
+  }
 
   depends_on = [
     azurerm_postgresql_flexible_server.this,

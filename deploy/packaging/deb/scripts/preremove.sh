@@ -11,7 +11,7 @@ case "${1:-}" in
     ;;
   remove|purge)
     if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
-      systemctl disable --now grdr-daemon.service grdr-decide.socket grdr-local.socket
+      systemctl disable --now grdr-daemon.service grdr-decide.socket grdr-local.socket || true
     fi
     ;;
 esac

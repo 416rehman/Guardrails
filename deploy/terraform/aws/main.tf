@@ -1,21 +1,24 @@
 check "distinct_operator_host" {
   assert {
-    condition     = var.operator_host != var.ingress_host
+    condition     = local.normalized_operator_host != local.normalized_ingress_host
     error_message = "D-70 requires operator_host to differ from ingress_host."
   }
 }
 
 locals {
-  create_vpc             = var.vpc_id == null
-  vpc_id                 = local.create_vpc ? aws_vpc.this[0].id : var.vpc_id
-  private_subnet_ids     = local.create_vpc ? aws_subnet.private[*].id : var.private_subnet_ids
-  kms_key_arn            = var.kms_key_arn == null ? aws_kms_key.this[0].arn : var.kms_key_arn
-  data_bucket_name       = "${var.name_prefix}-lake-data-${data.aws_caller_identity.current.account_id}-${var.region}"
-  backup_bucket_name     = "${var.name_prefix}-backups-${data.aws_caller_identity.current.account_id}-${var.region}"
-  db_fallback_cidrs      = length(var.db_allowed_cidr_blocks) > 0 ? var.db_allowed_cidr_blocks : (local.create_vpc ? aws_subnet.private[*].cidr_block : [])
+  create_vpc               = var.vpc_id == null
+  vpc_id                   = local.create_vpc ? aws_vpc.this[0].id : var.vpc_id
+  private_subnet_ids       = local.create_vpc ? aws_subnet.private[*].id : var.private_subnet_ids
+  kms_key_arn              = var.kms_key_arn == null ? aws_kms_key.this[0].arn : var.kms_key_arn
+  data_bucket_name         = "${var.name_prefix}-lake-data-${data.aws_caller_identity.current.account_id}-${var.region}"
+  backup_bucket_name       = "${var.name_prefix}-backups-${data.aws_caller_identity.current.account_id}-${var.region}"
+  db_fallback_cidrs        = length(var.db_allowed_cidr_blocks) > 0 ? var.db_allowed_cidr_blocks : (local.create_vpc ? aws_subnet.private[*].cidr_block : [])
+  normalized_ingress_host  = trimsuffix(lower(trimspace(var.ingress_host)), ".")
+  normalized_operator_host = trimsuffix(lower(trimspace(var.operator_host)), ".")
 }
 
 data "aws_caller_identity" "current" {}
+data "aws_partition" "current" {}
 data "aws_availability_zones" "available" {
   state = "available"
 }
@@ -195,12 +198,68 @@ resource "aws_s3_bucket_object_lock_configuration" "backup" {
   }
 }
 
+data "aws_iam_policy_document" "data_tls_only" {
+  statement {
+    sid       = "DenyInsecureTransport"
+    effect    = "Deny"
+    actions   = ["s3:*"]
+    resources = [aws_s3_bucket.data.arn, "${aws_s3_bucket.data.arn}/*"]
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "data_tls" {
+  bucket = aws_s3_bucket.data.id
+  policy = data.aws_iam_policy_document.data_tls_only.json
+}
+
+data "aws_iam_policy_document" "backup_tls_only" {
+  statement {
+    sid       = "DenyInsecureTransport"
+    effect    = "Deny"
+    actions   = ["s3:*"]
+    resources = [aws_s3_bucket.backup.arn, "${aws_s3_bucket.backup.arn}/*"]
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "backup_tls" {
+  bucket = aws_s3_bucket.backup.id
+  policy = data.aws_iam_policy_document.backup_tls_only.json
+}
+
 data "aws_iam_policy_document" "pod_trust" {
   statement {
     actions = ["sts:AssumeRole", "sts:TagSession"]
     principals {
       type        = "Service"
       identifiers = ["pods.eks.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:${data.aws_partition.current.partition}:eks:${var.region}:${data.aws_caller_identity.current.account_id}:cluster/${var.eks_cluster_name}"]
     }
   }
 }
@@ -286,14 +345,21 @@ resource "helm_release" "grdr_server" {
           sslMode        = "verify-full"
         }
         objectStore = {
-          provider     = "s3"
-          bucket       = aws_s3_bucket.data.id
-          backupBucket = aws_s3_bucket.backup.id
-          region       = var.region
+          provider       = "s3"
+          dir            = "/var/lib/grdr-objects"
+          endpoint       = "https://s3.${var.region}.amazonaws.com"
+          bucket         = aws_s3_bucket.data.id
+          backupBucket   = aws_s3_bucket.backup.id
+          region         = var.region
+          existingSecret = var.object_store_existing_secret
         }
       }
       secrets = {
         bootstrapExistingSecret = var.bootstrap_existing_secret
+      }
+      networkPolicy = {
+        enabled                    = true
+        allowIngressFromNamespaces = var.api_ingress_namespaces
       }
       ingress = {
         enabled = true
@@ -304,7 +370,11 @@ resource "helm_release" "grdr_server" {
         }
       }
       operator = {
-        enabled = true
+        enabled        = true
+        existingSecret = var.operator_existing_secret
+        clientCA = {
+          existingSecret = var.operator_client_ca_existing_secret
+        }
         ingress = {
           enabled    = true
           host       = var.operator_host
@@ -315,8 +385,19 @@ resource "helm_release" "grdr_server" {
           }
         }
       }
+      metrics = {
+        enabled = true
+        port    = 9090
+      }
     })
   ]
+
+  lifecycle {
+    precondition {
+      condition     = local.normalized_operator_host != local.normalized_ingress_host
+      error_message = "D-70 requires operator_host to differ from ingress_host."
+    }
+  }
 
   depends_on = [
     aws_db_instance.this,

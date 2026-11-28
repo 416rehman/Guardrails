@@ -99,6 +99,15 @@ operator:
     existingSecret: ""
   existingSecret: ""
 
+metrics:
+  enabled: true
+  port: 9090
+  service:
+    type: "ClusterIP"
+    port: 9090
+    annotations: {}
+  allowNamespaces: []
+
 storage:
   embedded:
     persistence:
@@ -112,7 +121,7 @@ storage:
     sslMode: "verify-full"
   objectStore:
     provider: "s3"
-    dir: "/var/lib/grdr/objects"
+    dir: "/var/lib/grdr-objects"
     endpoint: ""
     bucket: ""
     backupBucket: ""

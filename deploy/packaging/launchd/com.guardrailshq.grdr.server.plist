@@ -13,6 +13,12 @@
     <string>127.0.0.1:8787</string>
     <string>--data-dir</string>
     <string>/var/lib/grdr-server</string>
+    <string>--web-dir</string>
+    <string>/usr/local/share/grdr/web</string>
+    <string>--operator-bind</string>
+    <string>127.0.0.1:44444</string>
+    <string>--operator-web-dir</string>
+    <string>/usr/local/share/grdr/operator-web</string>
   </array>
   <key>UserName</key>
   <string>_grdr-server</string>
@@ -24,8 +30,8 @@
     <false/>
   </dict>
   <key>StandardOutPath</key>
-  <string>/Library/Logs/grdr/server.log</string>
+  <string>/Library/Logs/grdr/server/server.log</string>
   <key>StandardErrorPath</key>
-  <string>/Library/Logs/grdr/server.err.log</string>
+  <string>/Library/Logs/grdr/server/server.err.log</string>
 </dict>
 </plist>

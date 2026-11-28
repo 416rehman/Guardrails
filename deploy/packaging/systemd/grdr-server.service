@@ -5,15 +5,18 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=grdr
-Group=grdr
+User=grdr-server
+Group=grdr-server
+EnvironmentFile=-/etc/grdr-server/server.env
 # Absolute binary invoked via /usr/bin/env (no PATH search) so offline systemd-analyze verify passes.
-ExecStart=/usr/bin/env /usr/bin/grdr-server --profile embedded --data-dir /var/lib/grdr --bind 127.0.0.1:8787 --web-dir /usr/share/grdr/web
+ExecStart=/usr/bin/env /usr/bin/grdr-server --profile embedded --data-dir /var/lib/grdr-server --bind 127.0.0.1:8787 --web-dir /usr/share/grdr/web --operator-bind 127.0.0.1:44444 --operator-web-dir /usr/share/grdr/operator-web
 Restart=on-failure
 RestartSec=5s
-StateDirectory=grdr
+StateDirectory=grdr-server
+StateDirectoryMode=0750
 RuntimeDirectory=grdr-server
-ConfigurationDirectory=grdr
+ConfigurationDirectory=grdr-server
+ConfigurationDirectoryMode=0750
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

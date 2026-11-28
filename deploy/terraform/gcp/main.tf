@@ -1,16 +1,18 @@
 check "distinct_operator_host" {
   assert {
-    condition     = var.operator_host != var.ingress_host
+    condition     = local.normalized_operator_host != local.normalized_ingress_host
     error_message = "D-70 requires operator_host to differ from ingress_host."
   }
 }
 
 locals {
-  create_network     = var.network_self_link == null
-  network_self_link  = local.create_network ? google_compute_network.this[0].self_link : var.network_self_link
-  data_bucket_name   = "${var.project_id}-${var.name_prefix}-lake-data"
-  backup_bucket_name = "${var.project_id}-${var.name_prefix}-backups"
-  wif_member         = "principalSet://iam.googleapis.com/projects/${data.google_project.current.number}/locations/global/workloadIdentityPools/${var.project_id}.svc.id.goog/attribute.kubernetes_namespace/${var.kubernetes_namespace}"
+  create_network           = var.network_self_link == null
+  network_self_link        = local.create_network ? google_compute_network.this[0].self_link : var.network_self_link
+  data_bucket_name         = "${var.project_id}-${var.name_prefix}-lake-data"
+  backup_bucket_name       = "${var.project_id}-${var.name_prefix}-backups"
+  wif_member               = "serviceAccount:${var.project_id}.svc.id.goog[${var.kubernetes_namespace}/${var.service_account_name}]"
+  normalized_ingress_host  = trimsuffix(lower(trimspace(var.ingress_host)), ".")
+  normalized_operator_host = trimsuffix(lower(trimspace(var.operator_host)), ".")
 }
 
 data "google_project" "current" {
@@ -178,6 +180,12 @@ resource "google_storage_bucket_iam_member" "backup_admin" {
   member = "serviceAccount:${google_service_account.server.email}"
 }
 
+resource "google_storage_bucket_iam_member" "backup_viewer" {
+  bucket = google_storage_bucket.backup.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.server.email}"
+}
+
 resource "google_kms_crypto_key_iam_member" "server_kms" {
   crypto_key_id = google_kms_crypto_key.this.id
   role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
@@ -212,14 +220,21 @@ resource "helm_release" "grdr_server" {
           sslMode        = "verify-full"
         }
         objectStore = {
-          provider     = "gcs"
-          bucket       = google_storage_bucket.data.name
-          backupBucket = google_storage_bucket.backup.name
-          region       = var.region
+          provider       = "gcs"
+          dir            = "/var/lib/grdr-objects"
+          endpoint       = "https://storage.googleapis.com"
+          bucket         = google_storage_bucket.data.name
+          backupBucket   = google_storage_bucket.backup.name
+          region         = var.region
+          existingSecret = var.object_store_existing_secret
         }
       }
       secrets = {
         bootstrapExistingSecret = var.bootstrap_existing_secret
+      }
+      networkPolicy = {
+        enabled                    = true
+        allowIngressFromNamespaces = var.api_ingress_namespaces
       }
       ingress = {
         enabled = true
@@ -230,7 +245,11 @@ resource "helm_release" "grdr_server" {
         }
       }
       operator = {
-        enabled = true
+        enabled        = true
+        existingSecret = var.operator_existing_secret
+        clientCA = {
+          existingSecret = var.operator_client_ca_existing_secret
+        }
         ingress = {
           enabled    = true
           host       = var.operator_host
@@ -241,8 +260,19 @@ resource "helm_release" "grdr_server" {
           }
         }
       }
+      metrics = {
+        enabled = true
+        port    = 9090
+      }
     })
   ]
+
+  lifecycle {
+    precondition {
+      condition     = local.normalized_operator_host != local.normalized_ingress_host
+      error_message = "D-70 requires operator_host to differ from ingress_host."
+    }
+  }
 
   depends_on = [
     google_sql_database_instance.this,

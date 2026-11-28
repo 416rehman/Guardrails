@@ -1,6 +1,6 @@
 # High-availability reference evaluation topology for Docker Compose (docs/design/24 section 6).
 # For single-host evaluation and backup/restore drills; production ha belongs on Kubernetes or HA VMs.
-# Requires TLS-enabled PostgreSQL connection URI via GRDR_POSTGRES_DSN (sslmode=verify-full).
+# Requires TLS-enabled PostgreSQL connection URI via GRDR_POSTGRES_DSN (sslmode=verify-full) and a mounted CA bundle.
 
 services:
   postgres:
@@ -12,13 +12,38 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    command:
+      - "postgres"
+      - "-c"
+      - "ssl=on"
+      - "-c"
+      - "ssl_cert_file=/run/secrets/grdr_pg_tls_cert"
+      - "-c"
+      - "ssl_key_file=/run/secrets/grdr_pg_tls_key"
+      - "-c"
+      - "ssl_ca_file=/run/secrets/grdr_ca_cert"
     environment:
       POSTGRES_DB: grdr
       POSTGRES_USER: grdr
       POSTGRES_PASSWORD_FILE: /run/secrets/grdr_postgres_password
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
     secrets:
-      - grdr_postgres_password
+      - source: grdr_postgres_password
+        uid: "70"
+        gid: "70"
+        mode: 0400
+      - source: grdr_pg_tls_cert
+        uid: "70"
+        gid: "70"
+        mode: 0440
+      - source: grdr_pg_tls_key
+        uid: "70"
+        gid: "70"
+        mode: 0400
+      - source: grdr_ca_cert
+        uid: "70"
+        gid: "70"
+        mode: 0440
     volumes:
       - grdr_pg_data:/var/lib/postgresql/data
     tmpfs:
@@ -46,6 +71,11 @@ services:
       - grdr_seaweed_data:/data
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=32m
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 8333 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - grdr_backend
 
@@ -64,21 +94,41 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+    secrets:
+      - grdr_ca_cert
     environment:
       GRDR_SERVER_PROFILE: ha
       GRDR_SERVER_BIND: "0.0.0.0:8787"
+      GRDR_OPERATOR_BIND: "${GRDR_OPERATOR_BIND:-0.0.0.0:44444}"
       GRDR_DATA_DIR: /var/lib/grdr
-      GRDR_OBJECT_STORE_DIR: /var/lib/grdr/objects
+      GRDR_OBJECT_STORE_DIR: /var/lib/grdr-objects
+      GRDR_OBJECT_STORE_ENDPOINT: "${GRDR_OBJECT_STORE_ENDPOINT:-}"
+      GRDR_OBJECT_STORE_BUCKET: "${GRDR_OBJECT_STORE_BUCKET:-grdr-lake}"
+      GRDR_BACKUP_BUCKET: "${GRDR_BACKUP_BUCKET:-grdr-backup}"
+      GRDR_OBJECT_STORE_PATH_STYLE: "${GRDR_OBJECT_STORE_PATH_STYLE:-true}"
       GRDR_WEB_DIR: /usr/share/grdr/web
+      GRDR_OPERATOR_WEB_DIR: /usr/share/grdr/operator-web
       GRDR_POSTGRES_DSN: ${GRDR_POSTGRES_DSN:?set GRDR_POSTGRES_DSN with sslmode=verify-full}
       GRDR_API_TOKEN: ${GRDR_API_TOKEN:?set GRDR_API_TOKEN before starting ha compose}
+      GRDR_OPERATOR_TOKEN: ${GRDR_OPERATOR_TOKEN:?set GRDR_OPERATOR_TOKEN before starting ha compose}
       GRDR_ENROLL_TOKEN: ${GRDR_ENROLL_TOKEN:?set GRDR_ENROLL_TOKEN before starting ha compose}
+      SSL_CERT_FILE: /run/secrets/grdr_ca_cert
     ports:
       - "127.0.0.1:8787:8787"
+      - "127.0.0.1:44444:44444"
     volumes:
       - grdr_ha_cache_1:/var/lib/grdr
+      - grdr_ha_objects:/var/lib/grdr-objects
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=64m
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grdr", "server", "preflight", "--profile", "ha", "--data-dir", "/var/lib/grdr", "--object-store-dir", "/var/lib/grdr-objects", "--cert-file", "/run/secrets/grdr_ca_cert", "--strict"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - grdr_backend
       - grdr_edge
@@ -98,21 +148,41 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+    secrets:
+      - grdr_ca_cert
     environment:
       GRDR_SERVER_PROFILE: ha
       GRDR_SERVER_BIND: "0.0.0.0:8787"
+      GRDR_OPERATOR_BIND: "${GRDR_OPERATOR_BIND:-0.0.0.0:44444}"
       GRDR_DATA_DIR: /var/lib/grdr
-      GRDR_OBJECT_STORE_DIR: /var/lib/grdr/objects
+      GRDR_OBJECT_STORE_DIR: /var/lib/grdr-objects
+      GRDR_OBJECT_STORE_ENDPOINT: "${GRDR_OBJECT_STORE_ENDPOINT:-}"
+      GRDR_OBJECT_STORE_BUCKET: "${GRDR_OBJECT_STORE_BUCKET:-grdr-lake}"
+      GRDR_BACKUP_BUCKET: "${GRDR_BACKUP_BUCKET:-grdr-backup}"
+      GRDR_OBJECT_STORE_PATH_STYLE: "${GRDR_OBJECT_STORE_PATH_STYLE:-true}"
       GRDR_WEB_DIR: /usr/share/grdr/web
+      GRDR_OPERATOR_WEB_DIR: /usr/share/grdr/operator-web
       GRDR_POSTGRES_DSN: ${GRDR_POSTGRES_DSN:?set GRDR_POSTGRES_DSN with sslmode=verify-full}
       GRDR_API_TOKEN: ${GRDR_API_TOKEN:?set GRDR_API_TOKEN before starting ha compose}
+      GRDR_OPERATOR_TOKEN: ${GRDR_OPERATOR_TOKEN:?set GRDR_OPERATOR_TOKEN before starting ha compose}
       GRDR_ENROLL_TOKEN: ${GRDR_ENROLL_TOKEN:?set GRDR_ENROLL_TOKEN before starting ha compose}
+      SSL_CERT_FILE: /run/secrets/grdr_ca_cert
     ports:
       - "127.0.0.1:8788:8787"
+      - "127.0.0.1:44445:44444"
     volumes:
       - grdr_ha_cache_2:/var/lib/grdr
+      - grdr_ha_objects:/var/lib/grdr-objects
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=64m
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grdr", "server", "preflight", "--profile", "ha", "--data-dir", "/var/lib/grdr", "--object-store-dir", "/var/lib/grdr-objects", "--cert-file", "/run/secrets/grdr_ca_cert", "--strict"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - grdr_backend
       - grdr_edge
@@ -120,12 +190,19 @@ services:
 secrets:
   grdr_postgres_password:
     environment: GRDR_POSTGRES_PASSWORD
+  grdr_ca_cert:
+    file: ${GRDR_CA_CERT_FILE:?set GRDR_CA_CERT_FILE to PEM CA bundle path}
+  grdr_pg_tls_cert:
+    file: ${GRDR_PG_TLS_CERT_FILE:?set GRDR_PG_TLS_CERT_FILE to PostgreSQL server TLS cert}
+  grdr_pg_tls_key:
+    file: ${GRDR_PG_TLS_KEY_FILE:?set GRDR_PG_TLS_KEY_FILE to PostgreSQL server TLS key}
 
 volumes:
   grdr_pg_data:
   grdr_seaweed_data:
   grdr_ha_cache_1:
   grdr_ha_cache_2:
+  grdr_ha_objects:
 
 networks:
   grdr_backend:
