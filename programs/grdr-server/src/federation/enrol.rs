@@ -18,6 +18,9 @@ use uuid::Uuid;
 
 use crate::auth::AuthContext;
 
+use super::enrol_json::{
+    MAX_HARDWARE_ATTESTATION_BYTES, has_forbidden_control_bytes, parse_hardware_attestation_payload,
+};
 use super::runtime::{
     api_bad_request, api_conflict, api_denied, api_internal, api_not_found, auth_actor,
     require_console_scope, tenant_trust_domain,
@@ -26,7 +29,6 @@ use super::types::{
     EnrolledDeviceRecord, EnrolmentMethod, FedError, FederationState, ServerEnrolmentState,
 };
 
-const MAX_HARDWARE_ATTESTATION_BYTES: usize = 16_384;
 const MAX_HARDWARE_FIELD_BYTES: usize = 256;
 
 #[derive(Debug, Deserialize)]
@@ -70,8 +72,7 @@ pub struct WorkloadOidcEnrolRequest {
     pub public_key_b64: String,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug)]
 pub struct HardwareAttestationPayload {
     pub device_id: String,
     pub boot_id: String,
@@ -352,10 +353,7 @@ pub async fn enrol_attested_hardware(
     }
     if req.attestation_payload.trim().is_empty()
         || req.attestation_payload.len() > MAX_HARDWARE_ATTESTATION_BYTES
-        || req
-            .attestation_payload
-            .bytes()
-            .any(|b| b == 0 || (b < 0x20 && !matches!(b, b'\t' | b'\n' | b'\r')))
+        || has_forbidden_control_bytes(&req.attestation_payload)
     {
         return Err(api_bad_request(
             "attestation_payload must be non-empty JSON within 16 KiB without control bytes",
@@ -407,7 +405,7 @@ pub async fn enrol_attested_hardware(
                 "attestation_payload exceeds 16 KiB maximum size",
             ));
         }
-        let parsed: HardwareAttestationPayload = serde_json::from_str(raw_attestation)
+        let parsed = parse_hardware_attestation_payload(raw_attestation)
             .map_err(|e| api_bad_request(&format!("invalid hardware attestation payload: {e}")))?;
         if parsed.device_id != req.device_id
             || parsed.boot_id != req.boot_id

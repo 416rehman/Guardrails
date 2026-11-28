@@ -1,47 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
-use std::collections::BTreeMap;
-
 use axum::Json;
 use axum::extract::{Extension, State};
 use serde::{Deserialize, Serialize};
 
 use crate::auth::AuthContext;
 
+use super::enrol_json::{
+    FleetProfileField, FleetScalar, MAX_FLEET_PROFILE_KEYS, MAX_FLEET_SCALAR_BYTES,
+    MAX_MDM_ARTIFACT_BYTES, has_forbidden_control_bytes, parse_fleet_mdm_payload,
+};
 use super::runtime::{api_bad_request, api_conflict, require_console_scope};
 use super::types::{FedError, FederationState};
 
-const MAX_MDM_ARTIFACT_BYTES: usize = 65_536;
 const MAX_FLEET_FIELD_BYTES: usize = 256;
 const MAX_FLEET_KEY_BYTES: usize = 128;
-const MAX_FLEET_SCALAR_BYTES: usize = 4_096;
-const MAX_FLEET_PROFILE_KEYS: usize = 64;
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct FleetMdmPayload {
-    #[serde(default)]
-    team_id: Option<String>,
-    #[serde(default)]
-    profile: Option<FleetProfileField>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum FleetProfileField {
-    Str(String),
-    Map(BTreeMap<String, FleetScalar>),
-}
-
-#[derive(Debug)]
-enum FleetScalar {
-    Str(String),
-    Bool,
-    Int,
-}
-
-struct FleetScalarVisitor;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -93,55 +67,6 @@ pub struct GoldenImageCheckRequest {
 pub struct GoldenImageCheckResponse {
     pub clone_ready: bool,
     pub clean_reasons: Vec<String>,
-}
-
-impl<'de> serde::de::Visitor<'de> for FleetScalarVisitor {
-    type Value = FleetScalar;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("a Fleet profile scalar (string, boolean, or integer)")
-    }
-
-    fn visit_bool<E>(self, _value: bool) -> Result<Self::Value, E> {
-        Ok(FleetScalar::Bool)
-    }
-
-    fn visit_i64<E>(self, _value: i64) -> Result<Self::Value, E> {
-        Ok(FleetScalar::Int)
-    }
-
-    fn visit_u64<E>(self, _value: u64) -> Result<Self::Value, E> {
-        Ok(FleetScalar::Int)
-    }
-
-    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        if value.len() > MAX_FLEET_SCALAR_BYTES {
-            return Err(E::custom("Fleet profile scalar string exceeds size limit"));
-        }
-        Ok(FleetScalar::Str(value.to_owned()))
-    }
-
-    fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        if value.len() > MAX_FLEET_SCALAR_BYTES {
-            return Err(E::custom("Fleet profile scalar string exceeds size limit"));
-        }
-        Ok(FleetScalar::Str(value))
-    }
-}
-
-impl<'de> Deserialize<'de> for FleetScalar {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        deserializer.deserialize_any(FleetScalarVisitor)
-    }
 }
 
 pub async fn validate_mdm_artifact(
@@ -283,12 +208,6 @@ fn validate_xml_plist(
     ])
 }
 
-fn has_forbidden_control_bytes(input: &str) -> bool {
-    input
-        .bytes()
-        .any(|b| b == 0 || (b < 0x20 && !matches!(b, b'\t' | b'\n' | b'\r')))
-}
-
 fn validate_fleet_json(body: &str) -> Result<Vec<String>, FedError> {
     let trimmed = body.trim();
     if trimmed.is_empty() || trimmed.len() > MAX_MDM_ARTIFACT_BYTES {
@@ -301,7 +220,7 @@ fn validate_fleet_json(body: &str) -> Result<Vec<String>, FedError> {
             "Fleet payload contains forbidden control bytes",
         ));
     }
-    let parsed: FleetMdmPayload = serde_json::from_str(trimmed)
+    let parsed = parse_fleet_mdm_payload(trimmed)
         .map_err(|e| api_bad_request(&format!("Fleet payload must be valid JSON: {e}")))?;
     let has_team = match parsed.team_id.as_deref() {
         Some(team) => {

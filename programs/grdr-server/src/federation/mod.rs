@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
 mod enrol;
+mod enrol_json;
 mod enrol_validate;
 mod id_jag;
 mod instances;
