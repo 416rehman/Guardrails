@@ -1,0 +1,106 @@
+format: grdr.content-recognisers.v1
+pack_id: grdr.lists.content-recognisers
+recognisers:
+  - id: pem_private_key_block
+    detector_kind: secret
+    rule_kind: private_key_pem
+    regex: '[-]{5}BEGIN [A-Z0-9 ]*[P]RIVATE KEY[-]{5}(?s:.*?)[-]{5}END [A-Z0-9 ]*[P]RIVATE KEY[-]{5}|[-]{5}BEGIN PGP [P]RIVATE KEY BLOCK[-]{5}(?s:.*?)[-]{5}END PGP [P]RIVATE KEY BLOCK[-]{5}'
+    capture_group: 0
+    post_validator: pem_block
+  - id: pem_private_key_header
+    detector_kind: secret
+    rule_kind: private_key_pem
+    regex: '(?:[-]{5}BEGIN [A-Z0-9 ]*[P]RIVATE KEY[-]{5}|[-]{5}BEGIN PGP [P]RIVATE KEY BLOCK[-]{5})[ \t]*(?:\r?\n[ \t]*[A-Za-z][A-Za-z0-9-]{0,31}:[ \t]*[^\r\n]*)*(?:(?:\r?\n[ \t]*)?(?:\r?\n[ \t]*[A-Za-z0-9+/=]+[ \t]*)+)?'
+    capture_group: 0
+    post_validator: pem_header_uncovered
+  - id: openai_api_key
+    detector_kind: secret
+    rule_kind: openai_api_key
+    regex: '\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{24,}\b'
+    capture_group: 0
+    exclude_prefix: 'sk-ant-'
+    post_validator: none
+  - id: anthropic_api_key
+    detector_kind: secret
+    rule_kind: anthropic_api_key
+    regex: '\b(?:sk-ant-(?:api|admin|oat|sid)\d{0,2}-|(?:ant-)?api\d{2}-)[A-Za-z0-9_-]{24,}\b'
+    capture_group: 0
+    post_validator: none
+  - id: github_token
+    detector_kind: secret
+    rule_kind: github_token
+    regex: '\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b|\bgithub_pat_[A-Za-z0-9_]{22,}\b'
+    capture_group: 0
+    post_validator: none
+  - id: gitlab_token
+    detector_kind: secret
+    rule_kind: gitlab_token
+    regex: '\bglpat-[A-Za-z0-9_-]{20,}\b'
+    capture_group: 0
+    post_validator: none
+  - id: huggingface_token
+    detector_kind: secret
+    rule_kind: huggingface_token
+    regex: '\bhf_[A-Za-z0-9]{20,}\b'
+    capture_group: 0
+    post_validator: none
+  - id: npm_token
+    detector_kind: secret
+    rule_kind: npm_token
+    regex: '\bnpm_[A-Za-z0-9]{20,}\b'
+    capture_group: 0
+    post_validator: none
+  - id: aws_access_key
+    detector_kind: secret
+    rule_kind: aws_access_key
+    regex: '\b(?:AKIA|ASIA|AROA|ABIA|ACCA)[0-9A-Z]{16}\b'
+    capture_group: 0
+    post_validator: none
+  - id: stripe_live_key
+    detector_kind: secret
+    rule_kind: stripe_live_key
+    regex: '\b(?:sk|rk)_live_[0-9A-Za-z]{20,}\b'
+    capture_group: 0
+    post_validator: none
+  - id: slack_token
+    detector_kind: secret
+    rule_kind: slack_token
+    regex: '\bxox[bpasor]-[0-9A-Za-z-]{16,}\b|\bxapp-\d+-[A-Za-z0-9-]{16,}\b|\bxoxe\.xox[bp]-\d+-[A-Za-z0-9_-]{16,}\b'
+    capture_group: 0
+    post_validator: none
+  - id: google_api_key
+    detector_kind: secret
+    rule_kind: google_api_key
+    regex: '\bAIza[0-9A-Za-z_-]{35}\b'
+    capture_group: 0
+    post_validator: none
+  - id: jwt_token
+    detector_kind: secret
+    rule_kind: jwt_token
+    regex: '\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b'
+    capture_group: 0
+    post_validator: none
+  - id: aws_secret_key
+    detector_kind: secret
+    rule_kind: aws_secret_key
+    regex: '(?i)(?:aws_secret_access_key|aws_secret_key|secret_access_key|secretaccesskey)["'']?\s*[:=]\s*["'']?([A-Za-z0-9/+=]{40})(?:["''\s,;\}\]\)]|$)'
+    capture_group: 1
+    post_validator: none
+  - id: credit_card_pan
+    detector_kind: pii
+    rule_kind: credit_card_pan
+    regex: '\b\d+(?:[ -]\d+)*\b'
+    capture_group: 0
+    post_validator: luhn_subranges
+  - id: iban
+    detector_kind: pii
+    rule_kind: iban
+    regex: '(?i)\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]){11,30}\b'
+    capture_group: 0
+    post_validator: iban_mod97
+  - id: us_ssn
+    detector_kind: pii
+    rule_kind: us_ssn
+    regex: '\b\d{3}-\d{2}-\d{4}\b'
+    capture_group: 0
+    post_validator: us_ssn_bounds

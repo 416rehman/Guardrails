@@ -97,6 +97,33 @@ impl YamlValue {
             Self::Null | Self::Map(_) => Vec::new(),
         }
     }
+
+    pub fn try_to_string_list(&self) -> Result<Vec<String>, DetectError> {
+        match self {
+            Self::Str(s) => Ok(vec![s.clone()]),
+            Self::Int(v) => Ok(vec![v.to_string()]),
+            Self::Bool(b) => Ok(vec![b.to_string()]),
+            Self::Seq(items) => {
+                let mut out = Vec::with_capacity(items.len());
+                for item in items {
+                    match item {
+                        Self::Str(s) => out.push(s.clone()),
+                        Self::Int(v) => out.push(v.to_string()),
+                        Self::Bool(b) => out.push(b.to_string()),
+                        Self::Null | Self::Seq(_) | Self::Map(_) => {
+                            return Err(DetectError::InvalidRule(
+                                "YAML string list item must be a scalar".into(),
+                            ));
+                        }
+                    }
+                }
+                Ok(out)
+            }
+            Self::Null | Self::Map(_) => Err(DetectError::InvalidRule(
+                "expected YAML scalar or sequence for string list".into(),
+            )),
+        }
+    }
 }
 
 fn yaml_max_bytes_cached() -> usize {

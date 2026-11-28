@@ -7,8 +7,9 @@ use std::cmp::Reverse;
 
 use serde::{Deserialize, Serialize};
 
-use crate::analyze::content_rules::scan_layer_bytes;
+use crate::analyze::content_rules::{scan_layer_bytes, scan_layer_bytes_with_catalog};
 use crate::analyze::decode::{DecodeStatus, decode_payload_layers_checked};
+use crate::analyze::pack_lists::ContentRecogniserCatalog;
 use crate::analyze::types::{AnalyzeFact, AnalyzeLimits, FactOriginTag, Span};
 
 pub use crate::analyze::content_rules::{iban_valid, luhn_valid};
@@ -37,20 +38,47 @@ pub struct ContentScanReport {
     pub decoded_layers: u8,
 }
 
+/// Scans input plus up to 3 decoded layers and returns an error if embedded recognisers fail to load.
+pub fn try_scan_deterministic_content(raw: &[u8]) -> Result<ContentScanReport, &'static str> {
+    let report = scan_deterministic_content_internal(raw, None, None);
+    if report
+        .facts
+        .iter()
+        .any(|f| f.key == "content.catalog_unavailable")
+    {
+        return Err("embedded content recognisers YAML catalog failed to load");
+    }
+    Ok(report)
+}
+
 /// Scans input plus up to 3 decoded layers for deterministic secrets and checksum-validated PII.
 /// Omits unkeyed digests when called without a caller secret key so low-entropy PII is never brute-forceable (`P8`).
 #[must_use]
 pub fn scan_deterministic_content(raw: &[u8]) -> ContentScanReport {
-    scan_deterministic_content_internal(raw, None)
+    scan_deterministic_content_internal(raw, None, None)
 }
 
 /// Scans input with a caller-supplied HMAC key and schema scan-byte ceiling.
 #[must_use]
 pub fn scan_deterministic_content_with_key(raw: &[u8], hmac_key: &[u8]) -> ContentScanReport {
-    scan_deterministic_content_internal(raw, Some(hmac_key))
+    scan_deterministic_content_internal(raw, Some(hmac_key), None)
 }
 
-fn scan_deterministic_content_internal(raw: &[u8], hmac_key: Option<&[u8]>) -> ContentScanReport {
+/// Scans input against a dynamically loaded `ContentRecogniserCatalog` without recompiling rules.
+#[must_use]
+pub fn scan_deterministic_content_with_catalog(
+    raw: &[u8],
+    hmac_key: Option<&[u8]>,
+    catalog: &ContentRecogniserCatalog,
+) -> ContentScanReport {
+    scan_deterministic_content_internal(raw, hmac_key, Some(catalog))
+}
+
+fn scan_deterministic_content_internal(
+    raw: &[u8],
+    hmac_key: Option<&[u8]>,
+    custom_catalog: Option<&ContentRecogniserCatalog>,
+) -> ContentScanReport {
     let limits = AnalyzeLimits::from_schema();
     let max_scan = limits.content_max_scan_bytes;
     let bounded = raw.get(..raw.len().min(max_scan)).unwrap_or(&[]);
@@ -66,20 +94,55 @@ fn scan_deterministic_content_internal(raw: &[u8], hmac_key: Option<&[u8]>) -> C
         });
     }
 
-    scan_layer_bytes(bounded, 0, 0, hmac_key, &mut matches, &mut facts);
+    let mut catalog_err = false;
+    match custom_catalog {
+        Some(cat) => {
+            scan_layer_bytes_with_catalog(bounded, 0, 0, hmac_key, cat, &mut matches, &mut facts)
+        }
+        None => {
+            if scan_layer_bytes(bounded, 0, 0, hmac_key, &mut matches, &mut facts).is_err() {
+                catalog_err = true;
+            }
+        }
+    }
 
     let (layers, decoded_variants, decode_err) = decode_payload_layers_checked(bounded);
     for (idx, variant) in decoded_variants.iter().enumerate() {
         let layer_num = u8::try_from(idx.saturating_add(1)).unwrap_or(u8::MAX);
         let var_bounded = variant.get(..variant.len().min(max_scan)).unwrap_or(&[]);
-        scan_layer_bytes(
-            var_bounded,
-            0,
-            layer_num,
-            hmac_key,
-            &mut matches,
-            &mut facts,
-        );
+        match custom_catalog {
+            Some(cat) => scan_layer_bytes_with_catalog(
+                var_bounded,
+                0,
+                layer_num,
+                hmac_key,
+                cat,
+                &mut matches,
+                &mut facts,
+            ),
+            None => {
+                if scan_layer_bytes(
+                    var_bounded,
+                    0,
+                    layer_num,
+                    hmac_key,
+                    &mut matches,
+                    &mut facts,
+                )
+                .is_err()
+                {
+                    catalog_err = true;
+                }
+            }
+        }
+    }
+    if catalog_err {
+        facts.push(AnalyzeFact {
+            key: "content.catalog_unavailable".into(),
+            value: "true".into(),
+            origin: FactOriginTag::Deterministic,
+            span: None,
+        });
     }
     match decode_err {
         Some(DecodeStatus::LimitExceeded) => facts.push(AnalyzeFact {
@@ -135,8 +198,10 @@ fn redact_sensitive_text_internal(raw: &str, hmac_key: Option<&[u8]>) -> String 
         if end_off == start_off {
             break;
         }
-        if let Some(chunk) = raw.as_bytes().get(start_off..end_off) {
-            scan_layer_bytes(chunk, start_off, 0, hmac_key, &mut matches, &mut facts);
+        if let Some(chunk) = raw.as_bytes().get(start_off..end_off)
+            && scan_layer_bytes(chunk, start_off, 0, hmac_key, &mut matches, &mut facts).is_err()
+        {
+            return "[REDACTED:content.catalog_unavailable:redacted]".into();
         }
         if end_off >= raw.len() {
             break;

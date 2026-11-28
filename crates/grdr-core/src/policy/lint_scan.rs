@@ -250,8 +250,26 @@ pub(crate) fn scope_header_slice(body: &str) -> &str {
     let mut i: usize = 0;
     let mut in_string = false;
     let mut escaped = false;
+    let mut in_line_comment = false;
+    let mut in_block_comment = false;
     let mut depth: usize = 0;
     while let Some(&b) = bytes.get(i) {
+        if in_line_comment {
+            if b == b'\n' {
+                in_line_comment = false;
+            }
+            i = i.saturating_add(1);
+            continue;
+        }
+        if in_block_comment {
+            if b == b'*' && bytes.get(i.saturating_add(1)) == Some(&b'/') {
+                in_block_comment = false;
+                i = i.saturating_add(2);
+            } else {
+                i = i.saturating_add(1);
+            }
+            continue;
+        }
         if in_string {
             if escaped {
                 escaped = false;
@@ -261,6 +279,16 @@ pub(crate) fn scope_header_slice(body: &str) -> &str {
                 in_string = false;
             }
             i = i.saturating_add(1);
+            continue;
+        }
+        if b == b'/' && bytes.get(i.saturating_add(1)) == Some(&b'/') {
+            in_line_comment = true;
+            i = i.saturating_add(2);
+            continue;
+        }
+        if b == b'/' && bytes.get(i.saturating_add(1)) == Some(&b'*') {
+            in_block_comment = true;
+            i = i.saturating_add(2);
             continue;
         }
         if b == b'"' {
