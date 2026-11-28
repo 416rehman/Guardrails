@@ -34,6 +34,7 @@ use crate::cred_helpers::{
 use crate::jwt_keys::{
     TokenKeyRing, discovery_metadata, keypair_to_jwk, protected_resource_metadata,
 };
+#[cfg(windows)]
 use crate::keystore::{OsKeystore, adopt_credential_into_store, verify_secret_store_port_contract};
 use crate::locator::{CredentialLocatorPack, HygieneRuleId, HygieneSignal};
 use crate::locator_scan::{
@@ -52,6 +53,7 @@ use crate::registry_correlation::{
     normalize_aws_agentcore_arn, normalize_entra_agent_id, normalize_google_workload,
     normalize_okta_ud_agent,
 };
+#[cfg(windows)]
 use crate::secret_store::{SecretStore, SecretStoreKind};
 use crate::spiffe::{
     AgentLifecycle, AttestationEvidence, IdentityProof, LocalAttestation, SpiffeId, derive_agi_id,
