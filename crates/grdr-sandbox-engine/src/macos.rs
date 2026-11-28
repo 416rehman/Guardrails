@@ -1,8 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
-
 #![deny(clippy::arithmetic_side_effects)]
 
+#[cfg(target_os = "macos")]
+#[path = "macos_sys.rs"]
+mod macos_sys;
+
+#[cfg(target_os = "macos")]
+use std::ffi::CString;
+#[cfg(target_os = "macos")]
+use std::os::unix::fs::DirBuilderExt;
+#[cfg(target_os = "macos")]
+use std::os::unix::process::CommandExt;
+#[cfg(target_os = "macos")]
+use std::path::Path;
 use std::process::Command;
 
 #[cfg(target_os = "macos")]
@@ -15,7 +26,31 @@ use crate::policy::build_filtered_env;
 use crate::policy::{EnforcedMechanism, OsContainmentSpec, SandboxExecutionReport};
 use crate::{ContainmentMode, SandboxError};
 
-const SEATBELT_BIN: &str = "/usr/bin/sandbox-exec";
+const FORBIDDEN_BROAD_WRITE_PATHS: &[&str] = &[
+    "/",
+    "/tmp",
+    "/private",
+    "/private/tmp",
+    "/var",
+    "/private/var",
+    "/var/tmp",
+    "/private/var/tmp",
+    "/Users",
+    "/etc",
+    "/private/etc",
+    "/System",
+    "/Library",
+    "/bin",
+    "/sbin",
+    "/usr",
+    "/dev",
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MacOsSandboxBackend {
+    LibSystemPreExecSeatbelt,
+    EnvWorkdirOnly,
+}
 
 pub fn validate_sbpl_profile(sbpl: &str) -> Result<(), SandboxError> {
     let trimmed = sbpl.trim();
@@ -43,11 +78,24 @@ pub fn validate_sbpl_profile(sbpl: &str) -> Result<(), SandboxError> {
         }
         if escaped {
             escaped = false;
+            if depth > 0 {
+                cur.push(ch);
+            }
             continue;
         }
         match ch {
-            '\\' if in_string => escaped = true,
-            '"' => in_string = !in_string,
+            '\\' if in_string => {
+                escaped = true;
+                if depth > 0 {
+                    cur.push(ch);
+                }
+            }
+            '"' => {
+                in_string = !in_string;
+                if depth > 0 {
+                    cur.push(ch);
+                }
+            }
             ';' if !in_string => in_comment = true,
             '(' if !in_string => {
                 depth = depth.saturating_add(1);
@@ -71,7 +119,7 @@ pub fn validate_sbpl_profile(sbpl: &str) -> Result<(), SandboxError> {
                     cur.push(')');
                 }
             }
-            c if !in_string && depth > 0 => cur.push(c),
+            c if depth > 0 => cur.push(c),
             _ => {}
         }
     }
@@ -93,7 +141,22 @@ pub fn validate_sbpl_profile(sbpl: &str) -> Result<(), SandboxError> {
             "Seatbelt SBPL profile cannot declare top-level `(allow default)`".into(),
         ));
     }
+    for form in &forms {
+        if contains_forbidden_broad_write(form) {
+            return Err(SandboxError::InvalidPolicy(
+                "Seatbelt SBPL profile cannot grant broad or unscoped file-write* rules".into(),
+            ));
+        }
+    }
     Ok(())
+}
+
+pub fn select_macos_sandbox_backend(spec: &OsContainmentSpec) -> MacOsSandboxBackend {
+    if spec.mode == ContainmentMode::WorkspaceContained && spec.macos_seatbelt_sbpl.is_some() {
+        MacOsSandboxBackend::LibSystemPreExecSeatbelt
+    } else {
+        MacOsSandboxBackend::EnvWorkdirOnly
+    }
 }
 
 pub fn build_macos_seatbelt_command(
@@ -107,23 +170,33 @@ pub fn build_macos_seatbelt_command(
     }
     let mut mechanisms = vec![EnforcedMechanism::EnvSanitized];
     let mut warnings = Vec::new();
-    let mut cmd = if let Some(sbpl) = spec.macos_seatbelt_sbpl.as_deref()
+    let mut cmd = Command::new(program);
+    cmd.args(args);
+
+    if let Some(sbpl) = spec.macos_seatbelt_sbpl.as_deref()
         && spec.mode == ContainmentMode::WorkspaceContained
     {
         validate_sbpl_profile(sbpl)?;
         mechanisms.push(EnforcedMechanism::MacOsSeatbelt);
-        let mut sb = Command::new(SEATBELT_BIN);
-        sb.arg("-p").arg(sbpl).arg("--").arg(program).args(args);
-        sb
-    } else {
-        if spec.mode == ContainmentMode::WorkspaceContained {
-            warnings
-                .push("macOS Seatbelt SBPL profile absent; running env/workdir isolation".into());
+        #[cfg(target_os = "macos")]
+        {
+            let c_sbpl = CString::new(sbpl).map_err(|_| {
+                SandboxError::InvalidPolicy(
+                    "Seatbelt SBPL profile contains interior NUL byte".into(),
+                )
+            })?;
+            #[allow(
+                unsafe_code,
+                reason = "Attach async-signal-safe pre_exec Seatbelt initialization hook before child exec."
+            )]
+            // SAFETY: c_sbpl is allocated prior to fork; apply_seatbelt_in_pre_exec performs zero heap allocations or locks in the child process.
+            unsafe {
+                cmd.pre_exec(move || macos_sys::apply_seatbelt_in_pre_exec(&c_sbpl));
+            }
         }
-        let mut plain = Command::new(program);
-        plain.args(args);
-        plain
-    };
+    } else if spec.mode == ContainmentMode::WorkspaceContained {
+        warnings.push("macOS Seatbelt SBPL profile absent; running env/workdir isolation".into());
+    }
 
     if let Some(dir) = &spec.workdir {
         cmd.current_dir(dir);
@@ -144,6 +217,9 @@ pub fn execute_macos(
     inherited_env: &[(String, String)],
 ) -> Result<SandboxExecutionReport, SandboxError> {
     let (env_pairs, stripped_env_vars) = build_filtered_env(spec, inherited_env);
+    if spec.mode == ContainmentMode::WorkspaceContained && spec.macos_seatbelt_sbpl.is_some() {
+        ensure_scoped_tmpdir_from_env(&env_pairs)?;
+    }
     let (mut cmd, enforced_mechanisms, warnings) =
         build_macos_seatbelt_command(program, args, spec, &env_pairs)?;
     let status = cmd
@@ -189,14 +265,179 @@ pub fn execute_macos(
     ))
 }
 
+#[cfg(target_os = "macos")]
+fn ensure_scoped_tmpdir_from_env(env_pairs: &[(String, String)]) -> Result<(), SandboxError> {
+    let Some((_, tmpdir)) = env_pairs.iter().find(|(k, _)| k == "TMPDIR") else {
+        return Ok(());
+    };
+    let trimmed = tmpdir.trim();
+    if trimmed.is_empty()
+        || trimmed.contains('\0')
+        || !trimmed.starts_with('/')
+        || trimmed.split('/').any(|seg| seg == "..")
+    {
+        return Err(SandboxError::InvalidPolicy(
+            "TMPDIR must be an absolute canonical scoped path".into(),
+        ));
+    }
+    let target = Path::new(trimmed);
+    for anc in target.ancestors() {
+        if anc.as_os_str().is_empty() {
+            continue;
+        }
+        if let Ok(meta) = std::fs::symlink_metadata(anc)
+            && meta.file_type().is_symlink()
+        {
+            return Err(SandboxError::ContainmentSetup(format!(
+                "refusing symlink component `{}` in macOS TMPDIR",
+                anc.display()
+            )));
+        }
+    }
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true).mode(0o700);
+    builder.create(target).map_err(|err| {
+        SandboxError::ContainmentSetup(format!(
+            "failed creating scoped macOS TMPDIR `{}`: {err}",
+            target.display()
+        ))
+    })
+}
+
+fn contains_forbidden_broad_write(normalized_form: &str) -> bool {
+    let Some(rest) = normalized_form.strip_prefix("allow ") else {
+        return false;
+    };
+    let rest_trim = rest.trim_start();
+    let (top_ops, first_paren_idx) = extract_top_level_ops(rest_trim);
+    let has_write_op = top_ops
+        .iter()
+        .any(|op| *op == "file*" || op.starts_with("file-write"));
+    if !has_write_op {
+        return false;
+    }
+
+    let Some(tail_start) = first_paren_idx else {
+        return true;
+    };
+    let Some((_, raw_tail)) = rest_trim.split_at_checked(tail_start) else {
+        return true;
+    };
+    let tail = raw_tail.trim_start();
+    if tail.contains("regex ") || tail.contains("regex\"") || tail.contains("path-regex") {
+        return true;
+    }
+
+    let literals = extract_quoted_literals(tail);
+    if literals.is_empty() {
+        return true;
+    }
+    for lit in literals {
+        if lit.split('/').any(|seg| seg == ".." || seg == ".") {
+            return true;
+        }
+        let norm = if lit == "/" {
+            lit.as_str()
+        } else {
+            lit.trim_end_matches('/')
+        };
+        if FORBIDDEN_BROAD_WRITE_PATHS.contains(&norm) {
+            return true;
+        }
+    }
+    false
+}
+
+fn extract_top_level_ops(rest_trim: &str) -> (Vec<&str>, Option<usize>) {
+    let mut ops = Vec::new();
+    let mut depth: i32 = 0;
+    let mut in_str = false;
+    let mut escaped = false;
+    let mut first_paren = None;
+    let mut tok_start: Option<usize> = None;
+
+    for (idx, ch) in rest_trim.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' && in_str {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            in_str = !in_str;
+            continue;
+        }
+        if in_str {
+            continue;
+        }
+        if ch == '(' {
+            if let Some(start) = tok_start.take()
+                && let Some(op) = rest_trim.get(start..idx)
+            {
+                ops.push(op);
+            }
+            if first_paren.is_none() {
+                first_paren = Some(idx);
+            }
+            depth = depth.saturating_add(1);
+        } else if ch == ')' {
+            depth = depth.saturating_sub(1);
+        } else if depth == 0 {
+            if ch.is_whitespace() {
+                if let Some(start) = tok_start.take()
+                    && let Some(op) = rest_trim.get(start..idx)
+                {
+                    ops.push(op);
+                }
+            } else if tok_start.is_none() {
+                tok_start = Some(idx);
+            }
+        }
+    }
+    if let Some(start) = tok_start
+        && let Some(op) = rest_trim.get(start..)
+    {
+        ops.push(op);
+    }
+    (ops, first_paren)
+}
+
+fn extract_quoted_literals(input: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut in_str = false;
+    let mut escaped = false;
+    let mut cur = String::new();
+    for ch in input.chars() {
+        if escaped {
+            cur.push(ch);
+            escaped = false;
+            continue;
+        }
+        match ch {
+            '\\' if in_str => escaped = true,
+            '"' => {
+                if in_str {
+                    out.push(std::mem::take(&mut cur));
+                }
+                in_str = !in_str;
+            }
+            c if in_str => cur.push(c),
+            _ => {}
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::policy::{LinuxNamespaceMode, PrivilegePolicy, WindowsTokenMode};
 
     #[test]
-    fn validates_sbpl_and_builds_sandbox_exec_command() {
-        let valid = "(version 1)\n(deny default)\n(allow process-exec*)";
+    fn validates_sbpl_and_builds_pre_exec_seatbelt_command() {
+        let valid = "(version 1)\n(deny default)\n(allow process-exec*)\n(allow file-write* (literal \"/dev/null\"))\n(allow file-write* (subpath \"/private/var/tmp/grdr-sessions/s1/tmp\"))";
         assert!(validate_sbpl_profile(valid).is_ok());
         assert!(validate_sbpl_profile("(version 1)").is_err());
         assert!(validate_sbpl_profile("(version 1)\n(deny default").is_err());
@@ -206,6 +447,25 @@ mod tests {
             validate_sbpl_profile("(version 1)\n(allow process* (literal \"(deny default)\"))")
                 .is_err()
         );
+        for bad in [
+            "(version 1)\n(deny default)\n(allow file-write*)",
+            "(version 1)\n(deny default)\n(allow file*)",
+            "(version 1)\n(deny default)\n(allow file* (subpath \"/tmp/\"))",
+            "(version 1)\n(deny default)\n(allow file-write-data (subpath \"/private/tmp\"))",
+            "(version 1)\n(deny default)\n(allow file-write* (subpath \"/tmp\"))",
+            "(version 1)\n(deny default)\n(allow file-write* (subpath \"/Users\"))",
+            "(version 1)\n(deny default)\n(allow file-write* (subpath \"/var/tmp/\"))",
+            "(version 1)\n(deny default)\n(allow file-write* (regex \"^/tmp\"))",
+            "(version 1)\n(deny default)\n(allow file-write*(subpath \"/tmp\"))",
+            "(version 1)\n(deny default)\n(allow file-read* file-write* (subpath \"/tmp\"))",
+            "(version 1)\n(deny default)\n(allow file-read-data file-write-data (subpath \"/Users\"))",
+            "(version 1)\n(deny default)\n(allow file-read* (subpath \"/usr\") file-write*)",
+        ] {
+            assert!(
+                validate_sbpl_profile(bad).is_err(),
+                "expected rejection for `{bad}`"
+            );
+        }
 
         let spec = OsContainmentSpec {
             session_id: "sess-mac".into(),
@@ -230,11 +490,15 @@ mod tests {
             windows_sandbox_sid: None,
             windows_token: WindowsTokenMode::Restricted,
         };
-        let (cmd, mechs, warnings) =
-            build_macos_seatbelt_command("echo", &["hi".into()], &spec, &[]).unwrap();
-        assert_eq!(cmd.get_program(), "/usr/bin/sandbox-exec");
-        assert!(cmd.get_args().any(|arg| arg == "--"));
-        assert!(mechs.contains(&EnforcedMechanism::MacOsSeatbelt));
+        assert_eq!(
+            select_macos_sandbox_backend(&spec),
+            MacOsSandboxBackend::LibSystemPreExecSeatbelt
+        );
+        let env = vec![("PATH".into(), "/usr/bin:/bin".into())];
+        let (_cmd, mechanisms, warnings) =
+            build_macos_seatbelt_command("/bin/echo", &["ok".into()], &spec, &env)
+                .expect("command builds cleanly");
+        assert!(mechanisms.contains(&EnforcedMechanism::MacOsSeatbelt));
         assert!(warnings.is_empty());
     }
 }

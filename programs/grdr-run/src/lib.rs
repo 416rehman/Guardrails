@@ -11,6 +11,7 @@ pub mod floor_fallback;
 pub mod gate;
 pub mod ipc_transport;
 pub mod planner;
+pub mod planner_macos;
 
 use grdr_model::CodedError;
 

@@ -11,11 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use grdr_model::{ActionClass, AssuranceLevel, AssuranceRecord, InstallProfile};
 use grdr_sandbox_engine::{ContainmentMode, SandboxReport, SandboxSpec, prepare_contained_command};
-use grdr_sensor_macos::{
-    MacOsCapabilityFlags, MacOsContainmentMode, MacOsTier, SeatbeltLaunchPlan, SeatbeltProfileSpec,
-    SlotRung, compute_macos_assurance, es_tree::EsClientStatus, generate_sbpl_profile,
-    plan_macos_launch,
-};
+use grdr_sensor_macos::SeatbeltLaunchPlan;
 use grdr_sensor_windows::{
     LaunchRoute, SandboxPrincipalKind, ToolContainmentPlan, WfpPrincipalKey, WfpSublayerPlan,
     WindowsTier, compute_windows_assurance, plan_session_wfp_filters, plan_tool_containment,
@@ -24,6 +20,9 @@ use grdr_sensor_windows::{
 use grdr_wire::limits::embedded_limits;
 
 use crate::RunError;
+use crate::planner_macos::{
+    MacOsSuperviseConfig, MacOsSupervisorPlan, build_macos_plan, resolve_macos_delegate_strategy,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -60,6 +59,8 @@ pub struct LaunchRequestSpec {
     pub decide_socket_path: String,
     pub sandbox_sid: String,
     pub extra_allow_env: Vec<String>,
+    #[serde(default)]
+    pub macos_supervise: Option<MacOsSuperviseConfig>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -84,6 +85,8 @@ pub enum PlatformContainmentPlan {
     },
     MacOs {
         launch: SeatbeltLaunchPlan,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        supervisor: Option<MacOsSupervisorPlan>,
         exec_assurance: AssuranceRecord,
         net_assurance: AssuranceRecord,
         exec_level: AssuranceLevel,
@@ -197,11 +200,11 @@ pub fn build_launch_plan(
         proxy_env.insert("HTTPS_PROXY".into(), url.clone());
         proxy_env.insert("HTTP_PROXY".into(), url);
     }
+
+    let platform = build_platform_plan(req, effective_strategy, &mut proxy_env)?;
     for (k, v) in &proxy_env {
         cmd.env(k, v);
     }
-
-    let platform = build_platform_plan(req, effective_strategy)?;
     let runtime_enforced_level = compute_runtime_enforced_level(req, effective_strategy);
     let plan = PreparedLaunchPlan {
         strategy: effective_strategy,
@@ -357,6 +360,9 @@ fn resolve_effective_strategy(req: &LaunchRequestSpec) -> ContainmentStrategy {
     if req.strategy != ContainmentStrategy::Delegate {
         return req.strategy;
     }
+    if req.host_os == HostOsKind::MacOs {
+        return resolve_macos_delegate_strategy(&req.agent_name, req.agent_has_native_sandbox);
+    }
     let lower = req.agent_name.trim().to_ascii_lowercase();
     if req.agent_has_native_sandbox && (lower == "codex" || lower == "claude-code") {
         ContainmentStrategy::Delegate
@@ -370,11 +376,12 @@ fn resolve_effective_strategy(req: &LaunchRequestSpec) -> ContainmentStrategy {
 fn build_platform_plan(
     req: &LaunchRequestSpec,
     strategy: ContainmentStrategy,
+    proxy_env: &mut BTreeMap<String, String>,
 ) -> Result<PlatformContainmentPlan, RunError> {
     let (default_mem, default_pids, _) = sandbox_default_limits()?;
     match req.host_os {
         HostOsKind::Windows => build_windows_plan(req, strategy, default_mem),
-        HostOsKind::MacOs => build_macos_plan(req, strategy),
+        HostOsKind::MacOs => build_macos_plan(req, strategy, proxy_env),
         HostOsKind::Linux => Ok(build_linux_plan(req, strategy, default_mem, default_pids)),
     }
 }
@@ -426,71 +433,6 @@ fn build_windows_plan(
         containment,
         wfp,
         exec_assurance,
-        exec_level,
-    })
-}
-
-fn build_macos_plan(
-    req: &LaunchRequestSpec,
-    strategy: ContainmentStrategy,
-) -> Result<PlatformContainmentPlan, RunError> {
-    let sb_spec = SeatbeltProfileSpec {
-        session_id: req.session_id.clone(),
-        workspace_root: req.workspace_root.clone(),
-        state_dirs: req.state_dirs.clone(),
-        protected_paths: req.protected_paths.clone(),
-        decide_socket_path: req.decide_socket_path.clone(),
-        proxy_port: req.proxy_port,
-        deny_elevation_binaries: true,
-    };
-    let launch = match strategy {
-        ContainmentStrategy::Delegate => {
-            plan_macos_launch(&req.agent_name, req.agent_has_native_sandbox, &sb_spec)
-                .map_err(|e| RunError::InvalidPlan(e.to_string()))?
-        }
-        ContainmentStrategy::WrapTools => SeatbeltLaunchPlan {
-            containment_mode: MacOsContainmentMode::WrapTools,
-            visibility_is_claimed: true,
-            on_failure_closed: true,
-            profile_sbpl: Some(
-                generate_sbpl_profile(&sb_spec)
-                    .map_err(|e| RunError::InvalidPlan(e.to_string()))?,
-            ),
-            reason: "explicit WrapTools Seatbelt profile generated".into(),
-        },
-        ContainmentStrategy::WrapAgent => SeatbeltLaunchPlan {
-            containment_mode: MacOsContainmentMode::WrapAgent,
-            visibility_is_claimed: true,
-            on_failure_closed: true,
-            profile_sbpl: Some(
-                generate_sbpl_profile(&sb_spec)
-                    .map_err(|e| RunError::InvalidPlan(e.to_string()))?,
-            ),
-            reason: "explicit WrapAgent Seatbelt profile generated".into(),
-        },
-        ContainmentStrategy::RequestOnly => SeatbeltLaunchPlan {
-            containment_mode: MacOsContainmentMode::RequestOnly,
-            visibility_is_claimed: true,
-            on_failure_closed: false,
-            profile_sbpl: None,
-            reason: "request-only fallback configured explicitly".into(),
-        },
-    };
-
-    let caps = MacOsCapabilityFlags {
-        profile: req.profile,
-        tier: MacOsTier::Tier1HooksAndSeatbelt,
-        containment: launch.containment_mode,
-        content_filter_rung: SlotRung::Observe,
-        es_status: EsClientStatus::MissingEntitlement,
-    };
-    let exec_assurance = compute_macos_assurance(&caps, ActionClass::Exec);
-    let net_assurance = compute_macos_assurance(&caps, ActionClass::NetConnect);
-    let exec_level = exec_assurance.level();
-    Ok(PlatformContainmentPlan::MacOs {
-        launch,
-        exec_assurance,
-        net_assurance,
         exec_level,
     })
 }

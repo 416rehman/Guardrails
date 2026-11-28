@@ -19,6 +19,7 @@ use grdr_run::gate::{
 };
 use grdr_run::ipc_transport::default_decide_endpoint_display;
 use grdr_run::planner::{ContainmentStrategy, HostOsKind, LaunchRequestSpec, build_launch_plan};
+use grdr_run::planner_macos::{MacOsSuperviseConfig, MacOsSuperviseMissMode};
 use grdr_wire::peer_auth::Profile;
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -39,6 +40,12 @@ enum ProfileArg {
 enum ExecModeArg {
     Spawn,
     PlanJson,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum DescendantsMissArg {
+    Open,
+    Closed,
 }
 
 #[derive(Debug, Parser)]
@@ -92,6 +99,15 @@ struct Cli {
     /// Optional explicit peer-verified IPC Decide endpoint path or pipe name (user profile only).
     #[arg(long)]
     decide_socket: Option<String>,
+    /// Enable macOS 27 DescendantsSupervisor Endpoint Security containment mode.
+    #[arg(long)]
+    supervise: bool,
+    /// Configure DescendantsSupervisor deadline miss policy (`open` or `closed`).
+    #[arg(long, value_enum, default_value_t = DescendantsMissArg::Open)]
+    descendants_deadline_miss: DescendantsMissArg,
+    /// Explicit DescendantsSupervisor kernel deadline floor in ms.
+    #[arg(long)]
+    descendants_deadline_floor_ms: Option<u64>,
     /// Target executable and trailing arguments after `--`.
     #[arg(required = true, trailing_var_arg = true)]
     command: Vec<String>,
@@ -147,6 +163,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(ms) => ms,
         None => default_gate_timeout_ms()?,
     };
+    let macos_supervise = cli.supervise.then(|| MacOsSuperviseConfig {
+        deadline_floor_ms: cli.descendants_deadline_floor_ms.unwrap_or(0),
+        miss_mode: match cli.descendants_deadline_miss {
+            DescendantsMissArg::Closed => MacOsSuperviseMissMode::FailClosed,
+            DescendantsMissArg::Open => MacOsSuperviseMissMode::FailOpen,
+        },
+    });
     let req = LaunchRequestSpec {
         session_id: cli.session,
         tool_call_id: cli.tool_call,
@@ -164,6 +187,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         decide_socket_path: decide_socket_for_plan,
         sandbox_sid: cli.sandbox_sid,
         extra_allow_env: Vec::new(),
+        macos_supervise,
     };
 
     let inherited: BTreeMap<String, String> = std::env::vars().collect();

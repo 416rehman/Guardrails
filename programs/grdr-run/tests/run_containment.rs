@@ -26,8 +26,9 @@ use grdr_run::gate::{
 use grdr_run::planner::{
     ContainmentStrategy, HostOsKind, LaunchRequestSpec, PlatformContainmentPlan, build_launch_plan,
 };
+use grdr_run::planner_macos::{MacOsSuperviseConfig, MacOsSuperviseMissMode};
 use grdr_sandbox_engine::policy::EnforcedMechanism;
-use grdr_sensor_macos::MacOsContainmentMode;
+use grdr_sensor_macos::{DeadlineMissPolicy, MacOsContainmentMode};
 use grdr_sensor_windows::LaunchRoute;
 use grdr_wire::floor_bin::{
     FloorMatchKind, FloorRuleRecord, FloorTableDocument, encode_signed_floor_table,
@@ -155,6 +156,7 @@ fn sample_req(
             decide_socket_path: "/var/run/grdr/decide.sock".into(),
             sandbox_sid: "S-1-15-2-1001".into(),
             extra_allow_env: Vec::new(),
+            macos_supervise: None,
         },
         guard,
     )
@@ -1060,4 +1062,63 @@ async fn active_peer_auth_failure_fails_closed_even_when_floor_exists() {
     }
     let _ = std::fs::remove_dir_all(&state_dir);
     assert!(matches!(res, Err(RunError::PolicyDenied(_))));
+}
+
+#[test]
+fn plans_macos_supervise_descendants_budget_and_scoped_tmpdir() {
+    let env = BTreeMap::new();
+    let (mut req, _guard) = sample_req(
+        ContainmentStrategy::WrapAgent,
+        HostOsKind::MacOs,
+        "cursor",
+        false,
+    );
+    req.macos_supervise = Some(MacOsSuperviseConfig {
+        deadline_floor_ms: 5_000,
+        miss_mode: MacOsSuperviseMissMode::FailClosed,
+    });
+    let (_, plan) = build_launch_plan(&req, &env).expect("valid macOS supervise plan");
+    assert!(plan.proxy_env.contains_key("TMPDIR"));
+    assert_eq!(
+        plan.proxy_env.get("GRDR_MAC_SUPERVISE").map(String::as_str),
+        Some("1")
+    );
+    assert_eq!(
+        plan.proxy_env
+            .get("GRDR_MAC_SUPERVISE_HOLD_CAP_MS")
+            .map(String::as_str),
+        Some("4000")
+    );
+    assert_eq!(
+        plan.proxy_env
+            .get("GRDR_MAC_SUPERVISE_FAIL_CLOSED")
+            .map(String::as_str),
+        Some("1")
+    );
+    match plan.platform {
+        PlatformContainmentPlan::MacOs {
+            supervisor: Some(sup),
+            exec_assurance,
+            ..
+        } => {
+            assert!(sup.descendants_mode);
+            assert_eq!(sup.deadline_floor_ms, 5_000);
+            assert_eq!(sup.hold_cap_ms, 4_000);
+            assert_eq!(sup.miss_policy, DeadlineMissPolicy::DescendantsFailClosed);
+            if sup.es_verified_live {
+                assert_eq!(exec_assurance.level(), AssuranceLevel::Al4Enforced);
+            } else {
+                assert_eq!(exec_assurance.level(), AssuranceLevel::Al3Contained);
+                assert!(exec_assurance.level() < AssuranceLevel::Al4Enforced);
+            }
+        }
+        other => panic!("expected MacOs supervisor plan, got {other:?}"),
+    }
+
+    // Invalid floor within 10s guard of u32::MAX must fail validation.
+    req.macos_supervise = Some(MacOsSuperviseConfig {
+        deadline_floor_ms: u64::from(u32::MAX),
+        miss_mode: MacOsSuperviseMissMode::FailOpen,
+    });
+    assert!(build_launch_plan(&req, &env).is_err());
 }

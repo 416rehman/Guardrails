@@ -204,6 +204,14 @@ impl EsTreeFollower {
         self.members.len()
     }
 
+    pub fn lookup_member(&self, key: ProcessTreeKey) -> Option<&TrackedTreeMember> {
+        self.members.get(&key)
+    }
+
+    pub fn is_tracked(&self, key: ProcessTreeKey) -> bool {
+        self.members.contains_key(&key)
+    }
+
     pub fn total_sequence_gaps(&self) -> u64 {
         self.total_sequence_gaps
     }

@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
+#![deny(clippy::arithmetic_side_effects)]
 
-use std::collections::BTreeMap;
+use std::net::IpAddr;
 
 use serde::{Deserialize, Serialize};
 
-use grdr_fastpath::{FastActionClass, FastVerdict, FloorRuleRef, evaluate_floor_entries};
+use grdr_fastpath::{
+    BinaryFloorTable, FastActionClass, FastVerdict, FloorRuleRef, PRINCIPAL_PROCESS,
+    PRINCIPAL_SESSION, evaluate_floor_entries,
+};
 
 pub const QUIC_UDP_PORT: u16 = 443;
 
@@ -85,6 +89,8 @@ pub enum NeFlowVerdict {
     },
 }
 
+use std::collections::BTreeMap;
+
 impl SlotBrokerState {
     pub fn new() -> Self {
         Self::default()
@@ -147,6 +153,38 @@ pub fn evaluate_ne_flow(
     floor: &[FloorRuleRef<'_>],
     default_policy: EgressDefaultPolicy,
 ) -> NeFlowVerdict {
+    evaluate_ne_flow_inner(flow, default_policy, |host| {
+        evaluate_floor_entries(floor, FastActionClass::NetConnect, &flow.agent_name, host)
+            .map(|h| (h.rule_id.to_string(), h.verdict))
+    })
+}
+
+pub fn evaluate_ne_flow_table(
+    flow: &NeFlowRecord,
+    table: &BinaryFloorTable<'_>,
+    default_policy: EgressDefaultPolicy,
+) -> NeFlowVerdict {
+    evaluate_ne_flow_inner(flow, default_policy, |host| {
+        table
+            .evaluate(
+                FastActionClass::NetConnect,
+                PRINCIPAL_SESSION | PRINCIPAL_PROCESS,
+                0,
+                &flow.agent_name,
+                host,
+            )
+            .map(|h| (h.rule_id.to_string(), h.verdict))
+    })
+}
+
+fn evaluate_ne_flow_inner<F>(
+    flow: &NeFlowRecord,
+    default_policy: EgressDefaultPolicy,
+    eval_host: F,
+) -> NeFlowVerdict
+where
+    F: Fn(&str) -> Option<(String, FastVerdict)>,
+{
     if flow.governed_process
         && flow.transport == FlowTransport::Udp
         && flow.remote_port == QUIC_UDP_PORT
@@ -157,18 +195,41 @@ pub fn evaluate_ne_flow(
         };
     }
 
-    let resolved_host = flow
+    let host_opt = flow
         .host_name
         .as_deref()
         .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .or_else(|| {
-            flow.tls_sni
-                .as_deref()
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-        });
-    let Some(host) = resolved_host else {
+        .filter(|s| !s.is_empty());
+    let sni_opt = flow
+        .tls_sni
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+
+    // Evaluate SNI first when present so an IP literal host_name never shadows domain rules.
+    let mut candidates: Vec<&str> = Vec::with_capacity(2);
+    if let Some(sni) = sni_opt {
+        candidates.push(sni);
+    }
+    if let Some(host) = host_opt
+        && !candidates.contains(&host)
+    {
+        candidates.push(host);
+    }
+
+    for target in &candidates {
+        if let Some((rule_id, verdict)) = eval_host(target)
+            && verdict != FastVerdict::Allow
+        {
+            return NeFlowVerdict::Drop {
+                rule_id,
+                reason: "blocked by fastpath egress floor rule",
+            };
+        }
+    }
+
+    let has_domain_identity = sni_opt.is_some() || host_opt.is_some_and(|h| !is_ip_literal(h));
+    if !has_domain_identity {
         return match default_policy {
             EgressDefaultPolicy::DefaultDeny => NeFlowVerdict::Drop {
                 rule_id: "macos.ne.opaque_host_deny".into(),
@@ -178,19 +239,18 @@ pub fn evaluate_ne_flow(
                 reason: "opaque-egress-host",
             },
         };
-    };
-
-    if let Some(hit) =
-        evaluate_floor_entries(floor, FastActionClass::NetConnect, &flow.agent_name, host)
-        && hit.verdict != FastVerdict::Allow
-    {
-        return NeFlowVerdict::Drop {
-            rule_id: hit.rule_id.to_string(),
-            reason: "blocked by fastpath egress floor rule",
-        };
     }
 
     NeFlowVerdict::Allow
+}
+
+fn is_ip_literal(host: &str) -> bool {
+    let bare = host
+        .trim()
+        .strip_prefix('[')
+        .and_then(|s| s.strip_suffix(']'))
+        .unwrap_or(host.trim());
+    bare.parse::<IpAddr>().is_ok()
 }
 
 #[cfg(test)]
@@ -213,7 +273,7 @@ mod tests {
     }
 
     #[test]
-    fn ne_flow_drops_quic_and_treats_blank_host_as_opaque() {
+    fn ne_flow_drops_quic_prefers_sni_over_ip_and_flags_bare_ip_as_opaque() {
         let quic = NeFlowRecord {
             flow_id: 1,
             agent_name: "claude-code".into(),
@@ -228,25 +288,11 @@ mod tests {
             NeFlowVerdict::Drop { .. }
         ));
 
-        let blank_host = NeFlowRecord {
+        let ip_with_sni = NeFlowRecord {
             transport: FlowTransport::Tcp,
-            host_name: Some("   ".into()),
-            tls_sni: None,
-            ..quic.clone()
-        };
-        assert!(matches!(
-            evaluate_ne_flow(&blank_host, &[], EgressDefaultPolicy::DefaultDeny),
-            NeFlowVerdict::Drop { .. }
-        ));
-        assert!(matches!(
-            evaluate_ne_flow(&blank_host, &[], EgressDefaultPolicy::DefaultAllow),
-            NeFlowVerdict::AllowOpaqueWithFinding { .. }
-        ));
-
-        let blank_with_sni = NeFlowRecord {
-            host_name: Some("".into()),
+            host_name: Some("198.51.100.7".into()),
             tls_sni: Some("blocked.example".into()),
-            ..blank_host
+            ..quic.clone()
         };
         let rules = [FloorRuleRef {
             rule_id: "egress.deny",
@@ -257,8 +303,23 @@ mod tests {
             verdict: FastVerdict::Deny,
         }];
         assert!(matches!(
-            evaluate_ne_flow(&blank_with_sni, &rules, EgressDefaultPolicy::DefaultAllow),
-            NeFlowVerdict::Drop { .. }
+            evaluate_ne_flow(&ip_with_sni, &rules, EgressDefaultPolicy::DefaultAllow),
+            NeFlowVerdict::Drop { rule_id, .. } if rule_id == "egress.deny"
+        ));
+
+        let bare_ip = NeFlowRecord {
+            transport: FlowTransport::Tcp,
+            host_name: Some("198.51.100.7".into()),
+            tls_sni: None,
+            ..quic.clone()
+        };
+        assert!(matches!(
+            evaluate_ne_flow(&bare_ip, &[], EgressDefaultPolicy::DefaultDeny),
+            NeFlowVerdict::Drop { rule_id, .. } if rule_id == "macos.ne.opaque_host_deny"
+        ));
+        assert!(matches!(
+            evaluate_ne_flow(&bare_ip, &[], EgressDefaultPolicy::DefaultAllow),
+            NeFlowVerdict::AllowOpaqueWithFinding { .. }
         ));
     }
 }
