@@ -95,7 +95,7 @@ items:
     gates_oss_repo: false
     route: qualified_ip_counsel
   - id: L-16
-    topic: US EAR standard-cryptography export posture and EU dual-use public domain status
+    topic: US EAR standard-cryptography export compliance stance and EU dual-use public domain status
     status: open
     blocks: [paid_hosted_offer, oem_contract_signature]
     gates_oss_repo: false

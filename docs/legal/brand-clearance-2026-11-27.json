@@ -1,0 +1,10 @@
+{
+  "schema": "grdr.legal.brand-clearance.v1alpha1",
+  "recorded_at": "2026-11-27",
+  "mark": "Guardrails ADR",
+  "short_mark": "grdr",
+  "brand_manifest": "contracts/interface/brand/brand.toml",
+  "trademark_policy": "docs/governance/TRADEMARKS.md",
+  "status": "seeded-preliminary-watch",
+  "notes": "Seeded clearance register (LBC-2) linked to contracts/interface/brand/brand.toml; external trademark filing remains tracked under pre-foundation-transfer / legal counsel queue."
+}

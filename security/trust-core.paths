@@ -24,6 +24,7 @@ crates/grdr-sensor-linux/**
 crates/grdr-sensor-macos/**
 crates/grdr-sensor-windows/**
 crates/grdr-export/**
+crates/grdr-saas/**
 crates/grdr-store-local/**
 crates/grdr-compat/**
 crates/grdr-model/src/log_safe.rs

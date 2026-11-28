@@ -1,0 +1,33 @@
+# Guardrails ADR Hosted SLO Recording and Multi-Window Burn Rules (OPS-04, OPS-05)
+schema: grdr.ops.slo.v1alpha1
+groups:
+  - name: grdr-hosted-slo-recording
+    interval: 30s
+    rules:
+      - record: grdr:decision_fastpath:p99_ms
+        expr: histogram_quantile(0.99, sum(rate(grdr_decision_duration_ms_bucket[5m])) by (le, cell_id))
+      - record: grdr:ingest_rpc:error_ratio_5m
+        expr: sum(rate(grdr_connect_requests_total{service=~"grdr.ingest.*",code!="OK"}[5m])) by (cell_id) / clamp_min(sum(rate(grdr_connect_requests_total{service=~"grdr.ingest.*"}[5m])) by (cell_id), 1)
+      - record: grdr:control_plane:error_ratio_1h
+        expr: sum(rate(grdr_connect_requests_total{code!="OK"}[1h])) by (cell_id) / clamp_min(sum(rate(grdr_connect_requests_total[1h])) by (cell_id), 1)
+
+  - name: grdr-hosted-slo-alerts
+    rules:
+      - alert: GrdrIngestFastBurnCritical
+        expr: (grdr:ingest_rpc:error_ratio_5m > 0.0144) and (grdr:control_plane:error_ratio_1h > 0.0144)
+        for: 2m
+        labels:
+          severity: page
+          runbook: docs/runbooks/RB-10-slo-burn-rate-incident.md
+      - alert: GrdrIngestSlowBurnWarning
+        expr: grdr:control_plane:error_ratio_1h > 0.006
+        for: 15m
+        labels:
+          severity: ticket
+          runbook: docs/runbooks/RB-10-slo-burn-rate-incident.md
+      - alert: GrdrCellHeadroomExceeded
+        expr: grdr_cell_max_utilization_pct >= 70
+        for: 10m
+        labels:
+          severity: ticket
+          runbook: docs/runbooks/RB-04-cell-split-and-rebalance.md

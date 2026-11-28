@@ -1,0 +1,52 @@
+{
+  "schema": "grdr.ops.cost-model.v1alpha1",
+  "plan_reference": "contracts/plans.toml",
+  "assumptions": {
+    "A1_currency": "USD_cents",
+    "A2_team_price_per_endpoint_cents": 1500,
+    "A3_enterprise_price_per_endpoint_cents": 2800,
+    "A4_reference_cohort_endpoints": 1000,
+    "A5_avg_events_per_endpoint_month": 45000,
+    "A6_avg_bytes_per_event": 512,
+    "A7_hot_lake_retention_days": 90,
+    "A8_warm_archive_retention_days": 365,
+    "A9_compute_cents_per_1k_endpoints": 82000,
+    "A10_storage_cents_per_1k_endpoints": 24000,
+    "A11_egress_cents_per_1k_endpoints": 11000,
+    "A12_model_eval_cents_per_1k_endpoints": 18000,
+    "A13_support_ops_cents_per_1k_endpoints": 30000,
+    "A14_payment_fee_bps": 290,
+    "A15_cell_soft_cap_pct": 70,
+    "A16_target_min_gross_margin_bps": 7000
+  },
+  "scenarios": [
+    {
+      "name": "team_1000_endpoints",
+      "paid_endpoints": 1000,
+      "price_per_endpoint_cents": 1500,
+      "compute_cents": 82000,
+      "storage_cents": 24000,
+      "egress_cents": 11000,
+      "model_eval_cents": 18000,
+      "support_ops_cents": 30000,
+      "payment_fee_bps": 290,
+      "expected_gross_revenue_cents": 1500000,
+      "expected_variable_cogs_cents": 208500,
+      "expected_gross_margin_bps": 8610
+    },
+    {
+      "name": "enterprise_5000_endpoints",
+      "paid_endpoints": 5000,
+      "price_per_endpoint_cents": 2800,
+      "compute_cents": 390000,
+      "storage_cents": 120000,
+      "egress_cents": 52000,
+      "model_eval_cents": 85000,
+      "support_ops_cents": 140000,
+      "payment_fee_bps": 290,
+      "expected_gross_revenue_cents": 14000000,
+      "expected_variable_cogs_cents": 1193000,
+      "expected_gross_margin_bps": 9147
+    }
+  ]
+}

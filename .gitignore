@@ -16,3 +16,6 @@ web/test-results/
 web/playwright-report/
 web/blob-report/
 web/playwright/.cache/
+website/build/
+website/.docusaurus/
+website/static/pagefind/

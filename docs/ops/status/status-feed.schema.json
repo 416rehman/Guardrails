@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Guardrails ADR Hosted Status Feed (OPS-30)",
+  "type": "object",
+  "required": ["schema", "updated_at", "overall_status", "cells", "incidents"],
+  "properties": {
+    "schema": { "const": "grdr.status.v1alpha1" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "overall_status": {
+      "type": "string",
+      "enum": ["operational", "degraded", "partial_outage", "maintenance"]
+    },
+    "cells": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["cell_id", "region", "state"],
+        "properties": {
+          "cell_id": { "type": "string" },
+          "region": { "type": "string" },
+          "state": { "type": "string", "enum": ["active", "draining", "read_only", "decommissioned"] }
+        }
+      }
+    },
+    "incidents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "status", "started_at"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "status": { "type": "string", "enum": ["investigating", "identified", "monitoring", "resolved"] },
+          "started_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}

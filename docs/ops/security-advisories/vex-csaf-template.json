@@ -1,0 +1,35 @@
+{
+  "document": {
+    "category": "csaf_vex",
+    "csaf_version": "2.0",
+    "title": "Guardrails ADR Security Advisory Template",
+    "publisher": {
+      "category": "vendor",
+      "name": "Guardrails ADR Project",
+      "namespace": "https://guardrailshq.com/security"
+    },
+    "tracking": {
+      "id": "GRDR-SA-YYYY-NNNN",
+      "status": "draft",
+      "version": "1",
+      "current_release_date": "2026-11-27T00:00:00Z",
+      "initial_release_date": "2026-11-27T00:00:00Z"
+    }
+  },
+  "vulnerabilities": [
+    {
+      "cve": "CVE-YYYY-NNNNN",
+      "notes": [
+        {
+          "category": "description",
+          "text": "Structured CSAF/OpenVEX advisory seed template for SP-18 / RB-07."
+        }
+      ],
+      "product_status": {
+        "fixed": [],
+        "known_affected": [],
+        "known_not_affected": []
+      }
+    }
+  ]
+}
