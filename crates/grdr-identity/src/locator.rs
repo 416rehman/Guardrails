@@ -291,7 +291,7 @@ fn collect_triggered_hygiene(
     out
 }
 
-fn is_reparse_or_symlink(meta: &fs::Metadata) -> bool {
+pub fn is_reparse_or_symlink(meta: &fs::Metadata) -> bool {
     if meta.file_type().is_symlink() {
         return true;
     }
@@ -306,13 +306,13 @@ fn is_reparse_or_symlink(meta: &fs::Metadata) -> bool {
     false
 }
 
-fn read_bounded(path: &Path) -> Result<String, IdentityError> {
+pub fn open_regular_nofollow(path: &Path) -> Result<fs::File, IdentityError> {
     let meta = fs::symlink_metadata(path).map_err(|e| {
         IdentityError::LocatorPack(format!("cannot stat `{}`: {e}", path.display()))
     })?;
     if is_reparse_or_symlink(&meta) || !meta.is_file() {
         return Err(IdentityError::LocatorPack(format!(
-            "locator pack `{}` must be a regular non-symlink file",
+            "`{}` must be a regular non-symlink file",
             path.display()
         )));
     }
@@ -321,7 +321,7 @@ fn read_bounded(path: &Path) -> Result<String, IdentityError> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        opts.custom_flags(libc::O_NOFOLLOW);
+        opts.custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC);
     }
     #[cfg(windows)]
     {
@@ -337,10 +337,25 @@ fn read_bounded(path: &Path) -> Result<String, IdentityError> {
     })?;
     if is_reparse_or_symlink(&opened_meta) || !opened_meta.is_file() {
         return Err(IdentityError::LocatorPack(format!(
-            "locator pack `{}` changed into symlink or non-regular file",
+            "`{}` changed into symlink or non-regular file",
             path.display()
         )));
     }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if meta.dev() != opened_meta.dev() || meta.ino() != opened_meta.ino() {
+            return Err(IdentityError::LocatorPack(format!(
+                "`{}` device/inode changed across open",
+                path.display()
+            )));
+        }
+    }
+    Ok(file)
+}
+
+fn read_bounded(path: &Path) -> Result<String, IdentityError> {
+    let file = open_regular_nofollow(path)?;
     let cap = u64::try_from(MAX_YAML_BYTES.saturating_add(1)).unwrap_or(u64::MAX);
     let mut raw_bytes = Vec::new();
     file.take(cap).read_to_end(&mut raw_bytes).map_err(|e| {

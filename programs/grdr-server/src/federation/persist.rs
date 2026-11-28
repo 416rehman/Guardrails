@@ -6,6 +6,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use grdr_crypto::AeadKey;
+use grdr_identity::locator::{is_reparse_or_symlink, open_regular_nofollow};
 use grdr_identity::standards_adapters::TokenStatusList;
 use grdr_model::CodedError;
 use grdr_model::error::{CODE_STORE_CORRUPT, CODE_STORE_IO};
@@ -100,7 +101,16 @@ pub fn load_snapshot_strict(
             "Replace snapshot with a regular file before restarting.",
         ));
     }
-    let file = open_regular_nofollow(&path)?;
+    let file = open_regular_nofollow(&path).map_err(|err| {
+        CodedError::new(
+            CODE_STORE_CORRUPT,
+            format!(
+                "Failed safely opening federation snapshot {}: {err}",
+                path.display()
+            ),
+            "Replace snapshot with a regular non-symlink file before restarting.",
+        )
+    })?;
     let opened_meta = file.metadata().map_err(|err| {
         CodedError::new(
             CODE_STORE_IO,
@@ -282,45 +292,4 @@ fn apply_snapshot(
     rt.hw_nonce_replay
         .import_active(snap.active_hw_nonce_replay, now_sec);
     Ok(())
-}
-
-fn is_reparse_or_symlink(meta: &fs::Metadata) -> bool {
-    if meta.file_type().is_symlink() {
-        return true;
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0400;
-        if (meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT) != 0 {
-            return true;
-        }
-    }
-    false
-}
-
-fn open_regular_nofollow(path: &Path) -> Result<fs::File, CodedError> {
-    let mut opts = OpenOptions::new();
-    opts.read(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        opts.custom_flags(libc::O_NOFOLLOW);
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::OpenOptionsExt;
-        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
-        opts.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
-    }
-    opts.open(path).map_err(|err| {
-        CodedError::new(
-            CODE_STORE_IO,
-            format!(
-                "Failed opening federation snapshot {}: {err}",
-                path.display()
-            ),
-            "Verify snapshot permissions and regularity.",
-        )
-    })
 }
