@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+use std::collections::BTreeMap;
+
 use axum::Json;
 use axum::extract::{Extension, State};
 use serde::{Deserialize, Serialize};
@@ -9,6 +11,37 @@ use crate::auth::AuthContext;
 
 use super::runtime::{api_bad_request, api_conflict, require_console_scope};
 use super::types::{FedError, FederationState};
+
+const MAX_MDM_ARTIFACT_BYTES: usize = 65_536;
+const MAX_FLEET_FIELD_BYTES: usize = 256;
+const MAX_FLEET_KEY_BYTES: usize = 128;
+const MAX_FLEET_SCALAR_BYTES: usize = 4_096;
+const MAX_FLEET_PROFILE_KEYS: usize = 64;
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FleetMdmPayload {
+    #[serde(default)]
+    team_id: Option<String>,
+    #[serde(default)]
+    profile: Option<FleetProfileField>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum FleetProfileField {
+    Str(String),
+    Map(BTreeMap<String, FleetScalar>),
+}
+
+#[derive(Debug)]
+enum FleetScalar {
+    Str(String),
+    Bool,
+    Int,
+}
+
+struct FleetScalarVisitor;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -62,6 +95,55 @@ pub struct GoldenImageCheckResponse {
     pub clean_reasons: Vec<String>,
 }
 
+impl<'de> serde::de::Visitor<'de> for FleetScalarVisitor {
+    type Value = FleetScalar;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a Fleet profile scalar (string, boolean, or integer)")
+    }
+
+    fn visit_bool<E>(self, _value: bool) -> Result<Self::Value, E> {
+        Ok(FleetScalar::Bool)
+    }
+
+    fn visit_i64<E>(self, _value: i64) -> Result<Self::Value, E> {
+        Ok(FleetScalar::Int)
+    }
+
+    fn visit_u64<E>(self, _value: u64) -> Result<Self::Value, E> {
+        Ok(FleetScalar::Int)
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        if value.len() > MAX_FLEET_SCALAR_BYTES {
+            return Err(E::custom("Fleet profile scalar string exceeds size limit"));
+        }
+        Ok(FleetScalar::Str(value.to_owned()))
+    }
+
+    fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        if value.len() > MAX_FLEET_SCALAR_BYTES {
+            return Err(E::custom("Fleet profile scalar string exceeds size limit"));
+        }
+        Ok(FleetScalar::Str(value))
+    }
+}
+
+impl<'de> Deserialize<'de> for FleetScalar {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_any(FleetScalarVisitor)
+    }
+}
+
 pub async fn validate_mdm_artifact(
     State(st): State<FederationState>,
     auth: Option<Extension<AuthContext>>,
@@ -69,9 +151,17 @@ pub async fn validate_mdm_artifact(
 ) -> Result<Json<MdmValidateResponse>, FedError> {
     st.ensure_healthy()?;
     let _ = require_console_scope(auth.as_deref(), "identity:read")?;
+    if req.payload.len() > MAX_MDM_ARTIFACT_BYTES {
+        return Err(api_bad_request("MDM payload exceeds 64 KiB maximum size"));
+    }
     let body = req.payload.trim();
     if body.is_empty() {
         return Err(api_bad_request("MDM payload cannot be empty"));
+    }
+    if has_forbidden_control_bytes(body) {
+        return Err(api_bad_request(
+            "MDM payload contains forbidden control bytes",
+        ));
     }
     let checks = match req.vendor {
         MdmTargetVendor::Intune => validate_intune_script(body)?,
@@ -193,16 +283,74 @@ fn validate_xml_plist(
     ])
 }
 
+fn has_forbidden_control_bytes(input: &str) -> bool {
+    input
+        .bytes()
+        .any(|b| b == 0 || (b < 0x20 && !matches!(b, b'\t' | b'\n' | b'\r')))
+}
+
 fn validate_fleet_json(body: &str) -> Result<Vec<String>, FedError> {
-    let parsed: serde_json::Value = serde_json::from_str(body)
+    let trimmed = body.trim();
+    if trimmed.is_empty() || trimmed.len() > MAX_MDM_ARTIFACT_BYTES {
+        return Err(api_bad_request(
+            "Fleet payload must be non-empty JSON within 64 KiB",
+        ));
+    }
+    if has_forbidden_control_bytes(trimmed) {
+        return Err(api_bad_request(
+            "Fleet payload contains forbidden control bytes",
+        ));
+    }
+    let parsed: FleetMdmPayload = serde_json::from_str(trimmed)
         .map_err(|e| api_bad_request(&format!("Fleet payload must be valid JSON: {e}")))?;
-    let has_team = parsed
-        .get("team_id")
-        .and_then(|v| v.as_str())
-        .is_some_and(|s| !s.trim().is_empty());
-    let has_profile = parsed
-        .get("profile")
-        .is_some_and(|v| v.is_object() || v.as_str().is_some_and(|s| !s.trim().is_empty()));
+    let has_team = match parsed.team_id.as_deref() {
+        Some(team) => {
+            if team.len() > MAX_FLEET_FIELD_BYTES || has_forbidden_control_bytes(team) {
+                return Err(api_bad_request(
+                    "Fleet team_id exceeds size limit or contains control bytes",
+                ));
+            }
+            !team.trim().is_empty()
+        }
+        None => false,
+    };
+    let has_profile = match &parsed.profile {
+        Some(FleetProfileField::Str(s)) => {
+            if has_forbidden_control_bytes(s) {
+                return Err(api_bad_request(
+                    "Fleet profile contains forbidden control bytes",
+                ));
+            }
+            !s.trim().is_empty()
+        }
+        Some(FleetProfileField::Map(map)) => {
+            if map.len() > MAX_FLEET_PROFILE_KEYS {
+                return Err(api_bad_request("Fleet profile exceeds 64 fields"));
+            }
+            for (key, val) in map {
+                if key.trim().is_empty()
+                    || key.len() > MAX_FLEET_KEY_BYTES
+                    || has_forbidden_control_bytes(key)
+                {
+                    return Err(api_bad_request(
+                        "Fleet profile key is invalid or exceeds size limit",
+                    ));
+                }
+                match val {
+                    FleetScalar::Str(s) => {
+                        if s.len() > MAX_FLEET_SCALAR_BYTES || has_forbidden_control_bytes(s) {
+                            return Err(api_bad_request(
+                                "Fleet profile scalar string exceeds size limit or contains control bytes",
+                            ));
+                        }
+                    }
+                    FleetScalar::Bool | FleetScalar::Int => {}
+                }
+            }
+            !map.is_empty()
+        }
+        None => false,
+    };
     if !has_team && !has_profile {
         return Err(api_bad_request(
             "Fleet JSON requires non-empty team_id or profile",

@@ -1947,6 +1947,171 @@ async fn server_enrolment_mdm_vdi_and_tampered_snapshot_fail_closed() {
     .await;
     assert_eq!(st_empty_plist, StatusCode::BAD_REQUEST);
 
+    let oversized_hw_payload = serde_json::json!({
+        "device_id": "dev_hw_oversized",
+        "boot_id": "boot_hw_oversized",
+        "hardware_vendor": "tpm2",
+        "device_pubkey_b64": dev_kp.public_key_b64(),
+        "nonce": "x".repeat(16_500),
+        "iat": now_sec,
+        "exp": now_sec + 300
+    })
+    .to_string();
+    let (st_hw_oversized, _) = send_json(
+        &app,
+        "POST",
+        "/grdr.api.connect.v1alpha1.ConnectService/EnrolAttestedHardware",
+        tok,
+        &[],
+        Some(serde_json::json!({
+            "device_id": "dev_hw_oversized",
+            "hostname": "hw-box-oversized",
+            "boot_id": "boot_hw_oversized",
+            "hardware_vendor": "tpm2",
+            "attestation_signature_b64": hw_sig,
+            "attestation_payload": oversized_hw_payload
+        })),
+    )
+    .await;
+    assert_eq!(st_hw_oversized, StatusCode::BAD_REQUEST);
+
+    let (st_hw_ctrl, _) = send_json(
+        &app,
+        "POST",
+        "/grdr.api.connect.v1alpha1.ConnectService/EnrolAttestedHardware",
+        tok,
+        &[],
+        Some(serde_json::json!({
+            "device_id": "dev_hw_ctrl",
+            "hostname": "hw-box-ctrl",
+            "boot_id": "boot_hw_ctrl",
+            "hardware_vendor": "tpm2",
+            "attestation_signature_b64": hw_sig,
+            "attestation_payload": "{\"device_id\":\"dev_hw_ctrl\u{0000}\"}"
+        })),
+    )
+    .await;
+    assert_eq!(st_hw_ctrl, StatusCode::BAD_REQUEST);
+
+    let unknown_hw_payload = serde_json::json!({
+        "device_id": "dev_hw_unknown",
+        "boot_id": "boot_hw_unknown",
+        "hardware_vendor": "tpm2",
+        "device_pubkey_b64": dev_kp.public_key_b64(),
+        "nonce": "nonce_hw_unknown",
+        "iat": now_sec,
+        "exp": now_sec + 300,
+        "unexpected_extra": true
+    })
+    .to_string();
+    let unknown_hw_sig =
+        hw_ca_kp.sign_bytes("grdr.enrol.hardware.v1", unknown_hw_payload.as_bytes());
+    let (st_hw_unknown, _) = send_json(
+        &app,
+        "POST",
+        "/grdr.api.connect.v1alpha1.ConnectService/EnrolAttestedHardware",
+        tok,
+        &[],
+        Some(serde_json::json!({
+            "device_id": "dev_hw_unknown",
+            "hostname": "hw-box-unknown",
+            "boot_id": "boot_hw_unknown",
+            "hardware_vendor": "tpm2",
+            "attestation_signature_b64": unknown_hw_sig,
+            "attestation_payload": unknown_hw_payload
+        })),
+    )
+    .await;
+    assert_eq!(st_hw_unknown, StatusCode::BAD_REQUEST);
+
+    let (st_fleet_ok, _) = send_json(
+        &app,
+        "POST",
+        "/grdr.api.connect.v1alpha1.ConnectService/ValidateMdmArtifact",
+        tok,
+        &[],
+        Some(serde_json::json!({
+            "vendor": "fleet",
+            "payload": "{\"team_id\":\"eng-mac\",\"profile\":{\"PayloadDisplayName\":\"Guardrails\",\"Enabled\":true,\"PayloadVersion\":1}}"
+        })),
+    )
+    .await;
+    assert_eq!(st_fleet_ok, StatusCode::OK);
+
+    let oversized_fleet = format!(
+        "{{\"team_id\":\"eng\",\"profile\":\"{}\"}}",
+        "a".repeat(66_000)
+    );
+    let (st_fleet_oversized, _) = send_json(
+        &app,
+        "POST",
+        "/grdr.api.connect.v1alpha1.ConnectService/ValidateMdmArtifact",
+        tok,
+        &[],
+        Some(serde_json::json!({
+            "vendor": "fleet",
+            "payload": oversized_fleet
+        })),
+    )
+    .await;
+    assert_eq!(st_fleet_oversized, StatusCode::BAD_REQUEST);
+
+    let (st_fleet_ctrl, _) = send_json(
+        &app,
+        "POST",
+        "/grdr.api.connect.v1alpha1.ConnectService/ValidateMdmArtifact",
+        tok,
+        &[],
+        Some(serde_json::json!({
+            "vendor": "fleet",
+            "payload": "{\"team_id\":\"eng\u{0000}\"}"
+        })),
+    )
+    .await;
+    assert_eq!(st_fleet_ctrl, StatusCode::BAD_REQUEST);
+
+    let (st_fleet_nested, _) = send_json(
+        &app,
+        "POST",
+        "/grdr.api.connect.v1alpha1.ConnectService/ValidateMdmArtifact",
+        tok,
+        &[],
+        Some(serde_json::json!({
+            "vendor": "fleet",
+            "payload": "{\"team_id\":\"eng\",\"profile\":{\"nested\":{\"deep\":true}}}"
+        })),
+    )
+    .await;
+    assert_eq!(st_fleet_nested, StatusCode::BAD_REQUEST);
+
+    let (st_fleet_unknown, _) = send_json(
+        &app,
+        "POST",
+        "/grdr.api.connect.v1alpha1.ConnectService/ValidateMdmArtifact",
+        tok,
+        &[],
+        Some(serde_json::json!({
+            "vendor": "fleet",
+            "payload": "{\"team_id\":\"eng\",\"extra_untrusted\":123}"
+        })),
+    )
+    .await;
+    assert_eq!(st_fleet_unknown, StatusCode::BAD_REQUEST);
+
+    let (st_fleet_empty_map, _) = send_json(
+        &app,
+        "POST",
+        "/grdr.api.connect.v1alpha1.ConnectService/ValidateMdmArtifact",
+        tok,
+        &[],
+        Some(serde_json::json!({
+            "vendor": "fleet",
+            "payload": "{\"profile\":{}}"
+        })),
+    )
+    .await;
+    assert_eq!(st_fleet_empty_map, StatusCode::BAD_REQUEST);
+
     let (st_win11_vdi, _) = send_json(
         &app,
         "POST",

@@ -26,6 +26,9 @@ use super::types::{
     EnrolledDeviceRecord, EnrolmentMethod, FedError, FederationState, ServerEnrolmentState,
 };
 
+const MAX_HARDWARE_ATTESTATION_BYTES: usize = 16_384;
+const MAX_HARDWARE_FIELD_BYTES: usize = 256;
+
 #[derive(Debug, Deserialize)]
 pub struct AdmitDeploymentKeyRequest {
     pub deployment_key_id: String,
@@ -68,6 +71,7 @@ pub struct WorkloadOidcEnrolRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct HardwareAttestationPayload {
     pub device_id: String,
     pub boot_id: String,
@@ -336,6 +340,27 @@ pub async fn enrol_attested_hardware(
             "hardware_vendor must be tpm2, apple_secure_enclave, or mdm_scep_ca",
         ));
     }
+    if req.device_id.trim().is_empty()
+        || req.device_id.len() > MAX_HARDWARE_FIELD_BYTES
+        || req.boot_id.trim().is_empty()
+        || req.boot_id.len() > MAX_HARDWARE_FIELD_BYTES
+        || req.attestation_signature_b64.len() > MAX_HARDWARE_ATTESTATION_BYTES
+    {
+        return Err(api_bad_request(
+            "device_id, boot_id, and signature must be non-empty and within size limits",
+        ));
+    }
+    if req.attestation_payload.trim().is_empty()
+        || req.attestation_payload.len() > MAX_HARDWARE_ATTESTATION_BYTES
+        || req
+            .attestation_payload
+            .bytes()
+            .any(|b| b == 0 || (b < 0x20 && !matches!(b, b'\t' | b'\n' | b'\r')))
+    {
+        return Err(api_bad_request(
+            "attestation_payload must be non-empty JSON within 16 KiB without control bytes",
+        ));
+    }
     let now = Timestamp::now();
     let now_sec = now.as_second();
     let mut rt = st.runtime.write().await;
@@ -376,12 +401,20 @@ pub async fn enrol_attested_hardware(
                 "hardware attestation signature did not match any pinned CA key",
             ));
         }
-        let parsed: HardwareAttestationPayload = serde_json::from_str(&req.attestation_payload)
+        let raw_attestation = req.attestation_payload.as_str();
+        if raw_attestation.len() > MAX_HARDWARE_ATTESTATION_BYTES {
+            return Err(api_bad_request(
+                "attestation_payload exceeds 16 KiB maximum size",
+            ));
+        }
+        let parsed: HardwareAttestationPayload = serde_json::from_str(raw_attestation)
             .map_err(|e| api_bad_request(&format!("invalid hardware attestation payload: {e}")))?;
         if parsed.device_id != req.device_id
             || parsed.boot_id != req.boot_id
             || parsed.hardware_vendor != req.hardware_vendor
             || parsed.nonce.trim().is_empty()
+            || parsed.nonce.len() > MAX_HARDWARE_FIELD_BYTES
+            || parsed.device_pubkey_b64.len() > MAX_HARDWARE_FIELD_BYTES
             || parsed.iat > now_sec.saturating_add(max_skew)
             || parsed.exp <= now_sec
             || parsed.exp.saturating_sub(parsed.iat) > MAX_FEDERATION_TOKEN_TTL_SECS
