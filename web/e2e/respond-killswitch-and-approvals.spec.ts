@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+import type { Frame } from "@playwright/test";
 import {
   assertNoHorizontalOverflow,
   attachDiagnostics,
@@ -136,8 +139,35 @@ test.describe("Respond Kill Switch, Single-Use Approvals, Findings, and Live SSE
       await releaseBtn.click();
       await expect(releaseBtn).toHaveCount(0);
 
-      await page.goto("/");
+      const suppressOrphanRejection = () => undefined;
+      let homeNavCommitted = false;
+      const onMainFrameNavigated = (frame: Frame) => {
+        if (frame === page.mainFrame() && new URL(frame.url()).pathname === "/") {
+          homeNavCommitted = true;
+        }
+      };
+      page.on("framenavigated", onMainFrameNavigated);
+      const initialOverview = page.waitForResponse(
+        (res) =>
+          homeNavCommitted &&
+          res.url().includes("OverviewService/GetOverview") &&
+          res.status() === 200,
+      );
+      const liveStreamOpen = page.waitForResponse(
+        (res) =>
+          homeNavCommitted &&
+          res.url().includes("OverviewService/LiveEvents") &&
+          res.status() === 200,
+      );
+      initialOverview.catch(suppressOrphanRejection);
+      liveStreamOpen.catch(suppressOrphanRejection);
+      try {
+        await Promise.all([page.goto("/"), initialOverview, liveStreamOpen]);
+      } finally {
+        page.off("framenavigated", onMainFrameNavigated);
+      }
       await expect(page.getByRole("region", { name: "Protection overview" })).toBeVisible();
+
       const liveTarget = `~/.ssh/id_rsa_sse_${suffix}`;
       const [sseResponse] = await Promise.all([
         page.waitForResponse(

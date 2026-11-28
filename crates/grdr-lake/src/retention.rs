@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: The Guardrails ADR Authors
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use rusqlite::Connection;
 
+use grdr_crypto::AeadKey;
 use grdr_model::CodedError;
 use grdr_ports::{
     BlobPort, CODE_LAKE_IO, LakeCompactionResult, LegalHold, LegalHoldScope, LegalHoldState, OrgId,
     RetentionClass, SingleCtx, TenantPath,
 };
 
+use crate::compaction::coalesce_day_segments;
 use crate::crypto::day_from_ms;
 use crate::schema::lake_sql_err;
 
@@ -81,6 +85,7 @@ pub(crate) fn load_active_holds(
 pub(crate) fn run_retention_and_compaction<B: BlobPort>(
     conn: &mut Connection,
     blobs: &B,
+    org_kek: &AeadKey,
     ctx: &SingleCtx,
     now_ms: i64,
     pitr_lag_ms: i64,
@@ -181,7 +186,16 @@ pub(crate) fn run_retention_and_compaction<B: BlobPort>(
         }
     }
 
+    let _compaction = coalesce_day_segments(conn, blobs, org_kek, ctx, &active_holds, now_ms)?;
     let keys_destroyed = expire_old_keys(conn, org_id, &active_holds, now_ms)?;
+    let active_after: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM lake_segments
+             WHERE organisation_id = ?1 AND logical_deleted_at_ms IS NULL",
+            rusqlite::params![org_id.as_str()],
+            |row| row.get(0),
+        )
+        .map_err(lake_sql_err)?;
     let observables_written: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM lake_observables WHERE organisation_id = ?1",
@@ -192,7 +206,7 @@ pub(crate) fn run_retention_and_compaction<B: BlobPort>(
 
     Ok(LakeCompactionResult {
         organisation_id: org_id.clone(),
-        segments_compacted: active_segments,
+        segments_compacted: usize::try_from(active_after).unwrap_or(active_segments),
         segments_logically_deleted: logically_deleted,
         segments_physically_deleted: physically_deleted,
         segments_held,
@@ -227,13 +241,18 @@ fn expire_old_keys(
         .map_err(lake_sql_err)?;
     drop(stmt);
 
+    let session_devices = load_session_device_map(conn, org_id)?;
     let mut destroyed = 0usize;
     for (root_session_id, created_at_ms, _) in due_keys {
         let day = day_from_ms(created_at_ms)?;
         let sessions = vec![root_session_id.clone()];
+        let devices = session_devices
+            .get(&root_session_id)
+            .cloned()
+            .unwrap_or_default();
         let held = active_holds
             .iter()
-            .any(|h| h.covers(RetentionClass::Content, &day, &[], &sessions));
+            .any(|h| h.covers(RetentionClass::Content, &day, &devices, &sessions));
         if !held {
             let rec_id = format!("retire-{root_session_id}-{now_ms}");
             conn.execute(
@@ -247,6 +266,38 @@ fn expire_old_keys(
         }
     }
     Ok(destroyed)
+}
+
+fn load_session_device_map(
+    conn: &Connection,
+    org_id: &OrgId,
+) -> Result<BTreeMap<String, Vec<String>>, CodedError> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT device_ids_json, root_session_ids_json
+             FROM lake_segments
+             WHERE organisation_id = ?1 AND physical_deleted_at_ms IS NULL",
+        )
+        .map_err(lake_sql_err)?;
+    let rows = stmt
+        .query_map(rusqlite::params![org_id.as_str()], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(lake_sql_err)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(lake_sql_err)?;
+    let mut map: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for (dev_json, sess_json) in rows {
+        let devs: Vec<String> = serde_json::from_str(&dev_json).map_err(codec_err)?;
+        let sessions: Vec<String> = serde_json::from_str(&sess_json).map_err(codec_err)?;
+        for s in sessions {
+            map.entry(s).or_default().extend(devs.iter().cloned());
+        }
+    }
+    Ok(map
+        .into_iter()
+        .map(|(s, devs)| (s, devs.into_iter().collect()))
+        .collect())
 }
 
 fn codec_err(err: serde_json::Error) -> CodedError {

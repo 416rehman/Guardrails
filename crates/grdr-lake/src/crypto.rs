@@ -16,7 +16,6 @@ use crate::schema::lake_sql_err;
 
 const SESSION_KEY_DOMAIN: &str = "lake.session_key.v1";
 const CONTENT_SEAL_DOMAIN: &str = "lake.content.v1";
-const SEGMENT_SEAL_DOMAIN: &str = "lake.segment.v1";
 const ARCHIVE_SEAL_DOMAIN: &str = "lake.archive.v1";
 const MIN_LAKE_YEAR: i16 = 1970;
 const MAX_LAKE_YEAR: i16 = 9999;
@@ -255,10 +254,6 @@ pub(crate) fn open_envelope(
             "Verify organisation KEK and object integrity.",
         )
     })
-}
-
-pub(crate) fn segment_seal_domain() -> &'static str {
-    SEGMENT_SEAL_DOMAIN
 }
 
 pub(crate) fn archive_seal_domain() -> &'static str {

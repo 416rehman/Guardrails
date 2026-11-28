@@ -3,16 +3,24 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::arithmetic_side_effects)]
 
+mod bus_pg;
+mod bus_pg_offline;
+mod bus_pg_wire;
 pub mod config;
 pub mod dialect;
 pub mod migrations;
+pub mod pool;
 mod repos;
 mod repos_core;
+mod scram;
 mod store;
+mod tls;
+mod tls_hash;
 pub mod wire;
 pub mod wire_codec;
 mod wire_repos;
 
+pub use bus_pg::PostgresLogBus;
 pub use config::{
     CODE_PG_CODEC, CODE_PG_CONFIG, CODE_PG_IO, CODE_PG_MIGRATION, CODE_PG_RLS, CODE_PG_WIRE,
     PostgresConfig, PostgresSslMode, PostgresTransport,
@@ -21,6 +29,7 @@ pub use dialect::{
     PostgresSqlRegistry, PostgresStatementId, rls_session_statements, rls_write_statements,
 };
 pub use migrations::{MigrationPhase, POSTGRES_MIGRATIONS, PostgresMigration};
+pub use pool::{PgConnectionPool, PgPoolStats};
 pub use store::PostgresRelationalStore;
 pub use wire::{PostgresWireState, TransactionStatus, WireConnParams};
 
@@ -88,19 +97,35 @@ mod tests {
         assert!(cfg.validate().is_ok());
 
         let ipv6_cfg = PostgresConfig::parse_dsn("postgres://grdr@[::1]:5433/guardrails").unwrap();
+        assert_eq!(ipv6_cfg.ssl_mode, PostgresSslMode::VerifyFull);
         assert!(matches!(
             ipv6_cfg.transport,
             PostgresTransport::TcpWire { ref endpoint, .. } if endpoint == "[::1]:5433"
         ));
+
+        let dbg = format!("{cfg:?}");
+        assert!(!dbg.contains(&random_pw));
+        assert!(dbg.contains("[REDACTED]"));
 
         for bad_dsn in [
             "mysql://bad/db",
             "postgres://grdr@host:0/db",
             "postgres://grdr@host\0:5432/db",
             "postgres://grdr@host:5432/db\nextra",
+            "postgres://grdr@host:5432/db#fragment",
+            "postgres://grdr@host:5432/db/sub",
         ] {
             assert!(PostgresConfig::parse_dsn(bad_dsn).is_err());
         }
+
+        let mut bad_cfg = ipv6_cfg.clone();
+        if let PostgresTransport::TcpWire {
+            ref mut endpoint, ..
+        } = bad_cfg.transport
+        {
+            *endpoint = "missing_port_host".into();
+        }
+        assert!(bad_cfg.validate().is_err());
 
         let org_a = OrgId::new("org-pg-a").unwrap();
         let org_b = OrgId::new("org-pg-b").unwrap();
@@ -165,90 +190,56 @@ mod tests {
         let addr = listener.local_addr().unwrap();
 
         let server = thread::spawn(move || {
-            // Connection 1: connect() check (`SELECT 1`)
-            {
-                let (mut sock, _) = listener.accept().unwrap();
-                let mut len_buf = [0u8; 4];
-                sock.read_exact(&mut len_buf).unwrap();
-                let len = u32::from_be_bytes(len_buf) as usize;
-                let mut rest = vec![0u8; len - 4];
-                sock.read_exact(&mut rest).unwrap();
-                send_auth_ok(&mut sock);
+            let (mut sock, _) = listener.accept().unwrap();
+            let mut len_buf = [0u8; 4];
+            sock.read_exact(&mut len_buf).unwrap();
+            let len = u32::from_be_bytes(len_buf) as usize;
+            let mut rest = vec![0u8; len.saturating_sub(4)];
+            sock.read_exact(&mut rest).unwrap();
+            send_auth_ok(&mut sock);
+
+            let mut saw_put = false;
+            let mut saw_get = false;
+            loop {
                 let (tag, body) = read_pg_frame(&mut sock);
-                assert_eq!(tag, b'Q');
-                assert!(String::from_utf8_lossy(&body).contains("SELECT 1"));
-                send_cmd_complete(&mut sock, b"SELECT 1\0");
-                let (t_tag, _) = read_pg_frame(&mut sock);
-                assert_eq!(t_tag, b'X');
+                match tag {
+                    b'Q' => {
+                        let sql = String::from_utf8_lossy(&body);
+                        if sql.contains("SET LOCAL app.org_id = 'org-wire-kv'") {
+                            send_cmd_complete(&mut sock, b"BEGIN\0");
+                        } else if sql.contains("SELECT 1") {
+                            send_cmd_complete(&mut sock, b"SELECT 1\0");
+                        } else if sql.contains("COMMIT") {
+                            send_cmd_complete(&mut sock, b"COMMIT\0");
+                        } else {
+                            send_cmd_complete(&mut sock, b"OK\0");
+                        }
+                    }
+                    b'P' => {
+                        let sql = String::from_utf8_lossy(&body);
+                        let (b_tag, b_body) = read_pg_frame(&mut sock);
+                        assert_eq!(b_tag, b'B');
+                        let (e_tag, _) = read_pg_frame(&mut sock);
+                        assert_eq!(e_tag, b'E');
+                        let (s_tag, _) = read_pg_frame(&mut sock);
+                        assert_eq!(s_tag, b'S');
+                        sock.write_all(&[b'1', 0, 0, 0, 4]).unwrap();
+                        sock.write_all(&[b'2', 0, 0, 0, 4]).unwrap();
+                        if sql.contains("INSERT INTO tenant_kv") {
+                            assert!(String::from_utf8_lossy(&b_body).contains("{\"ok\":true}"));
+                            saw_put = true;
+                            send_cmd_complete(&mut sock, b"INSERT 0 1\0");
+                        } else {
+                            saw_get = true;
+                            send_single_row(&mut sock, "{\"ok\":true}");
+                            send_cmd_complete(&mut sock, b"SELECT 1\0");
+                        }
+                    }
+                    b'X' => break,
+                    other => panic!("unexpected frame tag {other}"),
+                }
             }
-            // Connection 2: put_kv via Extended Query
-            {
-                let (mut sock, _) = listener.accept().unwrap();
-                let mut len_buf = [0u8; 4];
-                sock.read_exact(&mut len_buf).unwrap();
-                let len = u32::from_be_bytes(len_buf) as usize;
-                let mut rest = vec![0u8; len - 4];
-                sock.read_exact(&mut rest).unwrap();
-                send_auth_ok(&mut sock);
-                let (tag, body) = read_pg_frame(&mut sock);
-                assert_eq!(tag, b'Q');
-                let rls = String::from_utf8_lossy(&body);
-                assert!(rls.contains("SET LOCAL app.org_id = 'org-wire-kv'"));
-                send_cmd_complete(&mut sock, b"BEGIN\0");
-
-                let (p_tag, p_body) = read_pg_frame(&mut sock);
-                assert_eq!(p_tag, b'P');
-                assert!(String::from_utf8_lossy(&p_body).contains("INSERT INTO tenant_kv"));
-                let (b_tag, b_body) = read_pg_frame(&mut sock);
-                assert_eq!(b_tag, b'B');
-                assert!(String::from_utf8_lossy(&b_body).contains("{\"ok\":true}"));
-                let (e_tag, _) = read_pg_frame(&mut sock);
-                assert_eq!(e_tag, b'E');
-                let (s_tag, _) = read_pg_frame(&mut sock);
-                assert_eq!(s_tag, b'S');
-                sock.write_all(&[b'1', 0, 0, 0, 4]).unwrap();
-                sock.write_all(&[b'2', 0, 0, 0, 4]).unwrap();
-                send_cmd_complete(&mut sock, b"INSERT 0 1\0");
-
-                let (c_tag, _) = read_pg_frame(&mut sock);
-                assert_eq!(c_tag, b'Q');
-                send_cmd_complete(&mut sock, b"COMMIT\0");
-                let (x_tag, _) = read_pg_frame(&mut sock);
-                assert_eq!(x_tag, b'X');
-            }
-            // Connection 3: get_kv via Extended Query
-            {
-                let (mut sock, _) = listener.accept().unwrap();
-                let mut len_buf = [0u8; 4];
-                sock.read_exact(&mut len_buf).unwrap();
-                let len = u32::from_be_bytes(len_buf) as usize;
-                let mut rest = vec![0u8; len - 4];
-                sock.read_exact(&mut rest).unwrap();
-                send_auth_ok(&mut sock);
-                let (tag, body) = read_pg_frame(&mut sock);
-                assert_eq!(tag, b'Q');
-                assert!(
-                    String::from_utf8_lossy(&body).contains("SET LOCAL app.org_id = 'org-wire-kv'")
-                );
-                send_cmd_complete(&mut sock, b"BEGIN\0");
-
-                let (p_tag, _) = read_pg_frame(&mut sock);
-                assert_eq!(p_tag, b'P');
-                let (b_tag, _) = read_pg_frame(&mut sock);
-                assert_eq!(b_tag, b'B');
-                let (e_tag, _) = read_pg_frame(&mut sock);
-                assert_eq!(e_tag, b'E');
-                let (s_tag, _) = read_pg_frame(&mut sock);
-                assert_eq!(s_tag, b'S');
-                send_single_row(&mut sock, "{\"ok\":true}");
-                send_cmd_complete(&mut sock, b"SELECT 1\0");
-
-                let (c_tag, _) = read_pg_frame(&mut sock);
-                assert_eq!(c_tag, b'Q');
-                send_cmd_complete(&mut sock, b"COMMIT\0");
-                let (x_tag, _) = read_pg_frame(&mut sock);
-                assert_eq!(x_tag, b'X');
-            }
+            assert!(saw_put && saw_get);
         });
 
         let cfg = PostgresConfig::parse_dsn(&format!(
@@ -260,6 +251,10 @@ mod tests {
         store.put_kv(&ctx, "ns", "k1", "{\"ok\":true}").unwrap();
         let val = store.get_kv(&TenantCtx::Single(ctx), "ns", "k1").unwrap();
         assert_eq!(val.as_deref(), Some("{\"ok\":true}"));
+        let stats = store.pool_stats().unwrap().unwrap();
+        assert_eq!(stats.total_connects, 1);
+        assert!(stats.reused_checkouts >= 2);
+        drop(store);
         server.join().unwrap();
     }
 
@@ -278,6 +273,7 @@ mod tests {
                 app_name: "grdr-test",
                 timeout_ms: 1_000,
                 ssl_mode: mode,
+                ca_cert_pem: None,
             };
             let err = wire::execute_simple_query_wire(&conn, None, "SELECT 1").unwrap_err();
             assert_eq!(err.code, CODE_PG_WIRE);
@@ -330,11 +326,57 @@ mod tests {
                 app_name: "grdr-test",
                 timeout_ms: 2_000,
                 ssl_mode: PostgresSslMode::Disable,
+                ca_cert_pem: None,
             };
             let err = wire::execute_simple_query_wire(&conn, maybe_pw, "SELECT 1").unwrap_err();
             assert_eq!(err.code, CODE_PG_WIRE);
             srv.join().unwrap();
         }
+
+        // Server skipping SCRAM with AuthenticationOk when password is configured must fail.
+        {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let addr = listener.local_addr().unwrap();
+            let srv = thread::spawn(move || {
+                let (mut sock, _) = listener.accept().unwrap();
+                let mut len_buf = [0u8; 4];
+                sock.read_exact(&mut len_buf).unwrap();
+                let len = u32::from_be_bytes(len_buf) as usize;
+                let mut rest = vec![0u8; len - 4];
+                sock.read_exact(&mut rest).unwrap();
+                send_auth_ok(&mut sock);
+            });
+            let addr_str = addr.to_string();
+            let conn = WireConnParams {
+                endpoint: &addr_str,
+                user: "grdr",
+                database: "guardrails",
+                app_name: "grdr-test",
+                timeout_ms: 2_000,
+                ssl_mode: PostgresSslMode::Disable,
+                ca_cert_pem: None,
+            };
+            let err =
+                wire::execute_simple_query_wire(&conn, Some(&dyn_pw), "SELECT 1").unwrap_err();
+            assert_eq!(err.code, CODE_PG_WIRE);
+            srv.join().unwrap();
+        }
+
+        // Truncated or non-UTF-8 DataRow / RowDescription must fail closed.
+        let truncated_datarow = [b'D', 0, 0, 0, 10, 0, 1, 0, 0, 0, 16];
+        assert_eq!(
+            wire_codec::decode_backend_message(&mut truncated_datarow.as_slice())
+                .unwrap_err()
+                .code,
+            CODE_PG_WIRE
+        );
+        let invalid_utf8_datarow = [b'D', 0, 0, 0, 12, 0, 1, 0, 0, 0, 2, 0xff, 0xfe];
+        assert_eq!(
+            wire_codec::decode_backend_message(&mut invalid_utf8_datarow.as_slice())
+                .unwrap_err()
+                .code,
+            CODE_PG_WIRE
+        );
 
         // ReadyForQuery before AuthenticationOk must be rejected.
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -356,6 +398,7 @@ mod tests {
             app_name: "grdr-test",
             timeout_ms: 2_000,
             ssl_mode: PostgresSslMode::Disable,
+            ca_cert_pem: None,
         };
         let err = wire::execute_simple_query_wire(&conn, None, "SELECT 1").unwrap_err();
         assert_eq!(err.code, CODE_PG_WIRE);
@@ -385,6 +428,7 @@ mod tests {
             app_name: "grdr-test",
             timeout_ms: 2_000,
             ssl_mode: PostgresSslMode::Disable,
+            ca_cert_pem: None,
         };
         let err = wire::execute_simple_query_wire(&conn, None, "SELECT 1").unwrap_err();
         assert_eq!(err.code, CODE_PG_WIRE);
@@ -396,47 +440,33 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let srv = thread::spawn(move || {
-            // Conn 1: connect() check (`SELECT 1`)
-            {
-                let (mut sock, _) = listener.accept().unwrap();
-                let mut len_buf = [0u8; 4];
-                sock.read_exact(&mut len_buf).unwrap();
-                let len = u32::from_be_bytes(len_buf) as usize;
-                let mut rest = vec![0u8; len.saturating_sub(4)];
-                sock.read_exact(&mut rest).unwrap();
-                send_auth_ok(&mut sock);
-                let _ = read_pg_frame(&mut sock);
-                send_cmd_complete(&mut sock, b"SELECT 1\0");
-                let _ = read_pg_frame(&mut sock);
-            }
-            // Conn 2: CREATE TABLE IF NOT EXISTS schema_migrations
-            {
-                let (mut sock, _) = listener.accept().unwrap();
-                let mut len_buf = [0u8; 4];
-                sock.read_exact(&mut len_buf).unwrap();
-                let len = u32::from_be_bytes(len_buf) as usize;
-                let mut rest = vec![0u8; len.saturating_sub(4)];
-                sock.read_exact(&mut rest).unwrap();
-                send_auth_ok(&mut sock);
-                let _ = read_pg_frame(&mut sock);
-                send_cmd_complete(&mut sock, b"CREATE TABLE\0");
-                let _ = read_pg_frame(&mut sock);
-            }
-            // Conn 3: SELECT version::text FROM schema_migrations -> return 1, 2, 3
-            {
-                let (mut sock, _) = listener.accept().unwrap();
-                let mut len_buf = [0u8; 4];
-                sock.read_exact(&mut len_buf).unwrap();
-                let len = u32::from_be_bytes(len_buf) as usize;
-                let mut rest = vec![0u8; len.saturating_sub(4)];
-                sock.read_exact(&mut rest).unwrap();
-                send_auth_ok(&mut sock);
-                let _ = read_pg_frame(&mut sock);
-                send_single_row(&mut sock, "1");
-                send_single_row(&mut sock, "2");
-                send_single_row(&mut sock, "3");
-                send_cmd_complete(&mut sock, b"SELECT 3\0");
-                let _ = read_pg_frame(&mut sock);
+            let (mut sock, _) = listener.accept().unwrap();
+            let mut len_buf = [0u8; 4];
+            sock.read_exact(&mut len_buf).unwrap();
+            let len = u32::from_be_bytes(len_buf) as usize;
+            let mut rest = vec![0u8; len.saturating_sub(4)];
+            sock.read_exact(&mut rest).unwrap();
+            send_auth_ok(&mut sock);
+
+            loop {
+                let (tag, body) = read_pg_frame(&mut sock);
+                match tag {
+                    b'Q' => {
+                        let sql = String::from_utf8_lossy(&body);
+                        if sql.contains("SELECT version::text FROM schema_migrations") {
+                            send_single_row(&mut sock, "1");
+                            send_single_row(&mut sock, "2");
+                            send_single_row(&mut sock, "3");
+                            send_cmd_complete(&mut sock, b"SELECT 3\0");
+                        } else if sql.contains("CREATE TABLE") {
+                            send_cmd_complete(&mut sock, b"CREATE TABLE\0");
+                        } else {
+                            send_cmd_complete(&mut sock, b"SELECT 1\0");
+                        }
+                    }
+                    b'X' => break,
+                    other => panic!("unexpected frame tag {other}"),
+                }
             }
         });
         let cfg = PostgresConfig::parse_dsn(&format!(
@@ -445,6 +475,7 @@ mod tests {
         .unwrap();
         let store = PostgresRelationalStore::connect(cfg).unwrap();
         store.run_migrations().unwrap();
+        drop(store);
         srv.join().unwrap();
     }
 }
