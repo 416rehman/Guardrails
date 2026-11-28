@@ -15,6 +15,8 @@ pub mod canonical;
 pub mod codecs;
 pub mod feeds;
 pub mod fuse;
+pub(crate) mod gov_io;
+pub mod governance;
 pub mod index;
 pub mod pack;
 pub mod record;

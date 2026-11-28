@@ -9,24 +9,13 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use url::Url;
 
 use crate::IntelError;
+use crate::governance::default_intel_governance;
 use crate::record::ObservableKind;
 use crate::validators::{
     canonicalize_strict_dns_domain, validate_observable_syntax, validate_purl_syntax,
 };
 
 const MAX_PUBLIC_ARTEFACT_BYTES: usize = 4_096;
-
-const PRIVATE_HOST_SUFFIXES: &[&str] = &[
-    "localhost",
-    "local",
-    "internal",
-    "corp",
-    "lan",
-    "home",
-    "arpa",
-    "intranet",
-    "localdomain",
-];
 
 /// Canonicalizes an observable into a normalized `(kind:value)` key.
 #[must_use]
@@ -243,8 +232,9 @@ fn ensure_public_host(host: &str) -> Result<(), IntelError> {
             "single-label internal host rejected from sightings".into(),
         ));
     }
-    for suffix in PRIVATE_HOST_SUFFIXES {
-        if strict_host == *suffix || strict_host.ends_with(&format!(".{suffix}")) {
+    let gov = default_intel_governance()?;
+    for suffix in &gov.private_host_suffixes {
+        if strict_host == suffix.as_str() || strict_host.ends_with(&format!(".{suffix}")) {
             return Err(IntelError::SightingRejected(format!(
                 "internal host suffix `.{suffix}` rejected from sightings"
             )));

@@ -23,57 +23,10 @@ use crate::analyze::types::{
 
 pub use crate::analyze::net_ip::IpExposureClass;
 
+use crate::analyze::pack_lists::{NetEndpointCatalog, default_net_endpoint_catalog};
+
 pub const DEFAULT_LONG_QUERY_CHARS: usize = 512;
 pub const DEFAULT_HIGH_ENTROPY_MILLI_BITS: u32 = 3_900;
-
-const CLOUD_METADATA_HOSTS: &[&str] = &[
-    "metadata.google.internal",
-    "metadata.goog",
-    "metadata.azure.internal",
-    "169.254.169.254",
-    "169.254.170.2",
-    "fd00:ec2::254",
-    "fd20:ce::254",
-];
-const PASTE_CAPTURE_HOSTS: &[&str] = &[
-    "pastebin.com",
-    "webhook.site",
-    "transfer.sh",
-    "requestbin.net",
-    "pipedream.net",
-    "hastebin.com",
-    "dpaste.org",
-];
-const TUNNEL_SERVICE_HOSTS: &[&str] = &[
-    "ngrok.io",
-    "ngrok-free.app",
-    "trycloudflare.com",
-    "localhost.run",
-    "serveo.net",
-    "tailscale.com",
-];
-const MODEL_PROVIDER_HOSTS: &[&str] = &[
-    "api.openai.com",
-    "api.anthropic.com",
-    "generativelanguage.googleapis.com",
-    "api.mistral.ai",
-    "api.cohere.com",
-];
-const PACKAGE_REGISTRY_HOSTS: &[&str] = &[
-    "registry.npmjs.org",
-    "pypi.org",
-    "upload.pypi.org",
-    "crates.io",
-    "rubygems.org",
-    "nuget.org",
-];
-const MULTI_TENANT_API_HOSTS: &[&str] = &[
-    "api.github.com",
-    "storage.googleapis.com",
-    "s3.amazonaws.com",
-    "graph.microsoft.com",
-    "slack.com",
-];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -268,12 +221,20 @@ pub fn classify_url_or_host(
     }
 
     let decoded_path = decode_url_percent_once(parsed.path());
-    let classes = classify_host_classes(
+    let Ok(endpoints) = default_net_endpoint_catalog() else {
+        return Resolution::Malformed(MalformedReason::new(
+            MalformedKind::InvalidUrl,
+            Span::from_usize(0, raw.len()),
+            "network endpoint catalog unavailable",
+        ));
+    };
+    let classes = classify_host_classes_with_catalog(
         &canonical_host,
         &registrable_domain,
         &decoded_path,
         ip_exposure,
         cfg,
+        endpoints,
     );
 
     Resolution::Resolved(NormalizedHostUrl {
@@ -401,34 +362,35 @@ fn is_special_scheme(scheme: &str) -> bool {
     matches!(scheme, "http" | "https" | "ws" | "wss" | "ftp" | "file")
 }
 
-fn classify_host_classes(
+fn classify_host_classes_with_catalog(
     host: &str,
     registrable: &str,
     path: &str,
     ip_exposure: Option<IpExposureClass>,
     cfg: &HostClassifierConfig,
+    endpoints: &NetEndpointCatalog,
 ) -> Vec<HostClass> {
     let mut classes = Vec::new();
     if matches!(ip_exposure, Some(IpExposureClass::CloudMetadataLinkLocal))
-        || matches_host_or_reg(host, registrable, CLOUD_METADATA_HOSTS)
+        || matches_host_or_reg(host, registrable, &endpoints.cloud_metadata_hosts)
     {
         classes.push(HostClass::CloudMetadata);
     }
-    if matches_host_or_reg(host, registrable, PASTE_CAPTURE_HOSTS) {
+    if matches_host_or_reg(host, registrable, &endpoints.paste_capture_hosts) {
         classes.push(HostClass::PasteCapture);
     }
-    if matches_host_or_reg(host, registrable, TUNNEL_SERVICE_HOSTS) {
+    if matches_host_or_reg(host, registrable, &endpoints.tunnel_service_hosts) {
         classes.push(HostClass::TunnelService);
     }
-    if matches_host_or_reg(host, registrable, MODEL_PROVIDER_HOSTS)
+    if matches_host_or_reg(host, registrable, &endpoints.model_provider_hosts)
         || matches_custom_list(host, &cfg.org_model_endpoints)
     {
         classes.push(HostClass::ModelProvider);
     }
-    if matches_host_or_reg(host, registrable, MULTI_TENANT_API_HOSTS) {
+    if matches_host_or_reg(host, registrable, &endpoints.multi_tenant_api_hosts) {
         classes.push(HostClass::MultiTenantApi);
     }
-    if matches_host_or_reg(host, registrable, PACKAGE_REGISTRY_HOSTS)
+    if matches_host_or_reg(host, registrable, &endpoints.package_registry_hosts)
         || matches_custom_list(host, &cfg.org_package_mirrors)
     {
         classes.push(HostClass::PackageRegistry);
@@ -443,10 +405,9 @@ fn classify_host_classes(
     classes
 }
 
-fn matches_host_or_reg(host: &str, registrable: &str, set: &[&str]) -> bool {
-    set.iter().any(|entry| {
-        host == *entry || registrable == *entry || host.ends_with(&format!(".{entry}"))
-    })
+fn matches_host_or_reg(host: &str, registrable: &str, set: &[String]) -> bool {
+    set.iter()
+        .any(|entry| host == entry || registrable == entry || host.ends_with(&format!(".{entry}")))
 }
 
 fn matches_custom_list(host: &str, custom: &[String]) -> bool {

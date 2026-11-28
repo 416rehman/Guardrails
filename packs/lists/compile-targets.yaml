@@ -1,0 +1,38 @@
+format: grdr.compile-targets.v1
+pack_id: grdr.lists.compile-targets
+targets:
+  - id: claude-code
+    format: json
+    deny_rule_template: "{{tool}}({{pattern}})"
+    read_tool: Read
+    write_tool: Edit
+    exec_tool: Bash
+    net_tool: WebFetch
+    exec_pattern_suffix: ":*"
+    supports_allow_overrides: false
+    supports_exec_rules: true
+  - id: codex
+    format: toml
+    sandbox_mode: workspace-write
+    approval_policy: on-request
+    exec_decision: forbidden
+    supports_allow_overrides: false
+    supports_exec_rules: true
+  - id: openshell
+    format: yaml
+    schema: openshell.policy/v1
+    verdict_token: deny
+    supports_allow_overrides: true
+    supports_exec_rules: true
+  - id: defenseclaw
+    format: json
+    schema: defenseclaw.rules/v1
+    verdict_token: block
+    supports_allow_overrides: true
+    supports_exec_rules: true
+  - id: numbat
+    format: yaml
+    schema: numbat.guard/v1
+    verdict_token: deny
+    supports_allow_overrides: true
+    supports_exec_rules: true

@@ -5,6 +5,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::analyze::pack_lists::{ProtectedPathCatalog, default_protected_path_catalog};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProtectedPathClass {
@@ -26,168 +28,31 @@ pub enum VolumeCase {
     CaseInsensitive,
 }
 
-/// Maps normalized path (without NTFS ADS stream) to guardrails protected path classes.
+/// Maps normalized path (without NTFS ADS stream) to guardrails protected path classes from YAML packs.
 #[must_use]
 pub fn classify_protected_path(path: &str) -> Vec<ProtectedPathClass> {
-    let lower = path.to_ascii_lowercase();
-    let mut classes = Vec::new();
+    try_classify_protected_path(path).unwrap_or_else(|_| {
+        vec![
+            ProtectedPathClass::AgentControl,
+            ProtectedPathClass::GrdrControl,
+            ProtectedPathClass::CredStore,
+            ProtectedPathClass::PrivateKey,
+        ]
+    })
+}
 
-    if contains_any(
-        &lower,
-        &[
-            ".claude/",
-            ".claude.json",
-            ".cursor/",
-            ".codex/",
-            ".gemini/",
-            ".vscode/settings.json",
-            ".vscode/tasks.json",
-            ".git/hooks/",
-            ".git/config",
-        ],
-    ) || ends_with_any_segment(
-        &lower,
-        &[
-            ".claude",
-            ".cursor",
-            ".codex",
-            ".gemini",
-            ".git/hooks",
-            "agents.md",
-            "claude.md",
-        ],
-    ) {
-        classes.push(ProtectedPathClass::AgentControl);
-    }
+/// Maps normalized path (without NTFS ADS stream) and reports catalog availability failures.
+pub fn try_classify_protected_path(path: &str) -> Result<Vec<ProtectedPathClass>, &'static str> {
+    default_protected_path_catalog().map(|catalog| catalog.classify(path))
+}
 
-    if contains_any(&lower, &["grdr-data/", "security/", "/etc/guardrails/"]) {
-        classes.push(ProtectedPathClass::GrdrControl);
-    }
-
-    if contains_any(
-        &lower,
-        &[
-            "monitoring",
-            "alertmanager",
-            "prometheus",
-            "siem-forwarder",
-            "auditd",
-        ],
-    ) {
-        classes.push(ProtectedPathClass::MonitoringConfig);
-    }
-
-    if contains_any(
-        &lower,
-        &[
-            ".aws/credentials",
-            ".aws/config",
-            ".config/gh/",
-            ".docker/config.json",
-            ".npmrc",
-            ".pypirc",
-            ".netrc",
-            ".kube/config",
-            ".env.production",
-        ],
-    ) || has_env_file_segment(&lower)
-    {
-        classes.push(ProtectedPathClass::CredStore);
-    }
-
-    if contains_any(
-        &lower,
-        &[
-            ".ssh/id_",
-            ".ssh/",
-            ".gnupg/",
-            "id_rsa",
-            "id_ed25519",
-            "id_ecdsa",
-            ".pem",
-            ".p12",
-            ".pfx",
-        ],
-    ) {
-        classes.push(ProtectedPathClass::PrivateKey);
-    }
-
-    if contains_any(
-        &lower,
-        &[
-            ".claude/projects/",
-            ".claude/history.jsonl",
-            ".cursor/user/",
-            ".codex/sessions/",
-        ],
-    ) {
-        classes.push(ProtectedPathClass::AgentStore);
-    }
-
-    if contains_any(
-        &lower,
-        &[
-            "google/chrome/",
-            "chromium/",
-            "mozilla/firefox/",
-            "cookies",
-            "login data",
-        ],
-    ) {
-        classes.push(ProtectedPathClass::BrowserStore);
-    }
-
-    if contains_any(
-        &lower,
-        &[
-            "/launchagents/",
-            "/launchdaemons/",
-            "systemd/user/",
-            "/etc/systemd/",
-            "authorized_keys",
-            "/cron.d/",
-            "/etc/cron",
-            "/var/spool/cron/",
-            "/etc/xdg/autostart/",
-            "/etc/profile.d/",
-            "/etc/rc.local",
-            ".config/autostart/",
-            "/start menu/programs/startup/",
-        ],
-    ) || lower == "/etc/profile.d"
-        || ends_with_any_segment(
-            &lower,
-            &[
-                ".config/autostart",
-                ".bashrc",
-                ".zshrc",
-                ".profile",
-                ".bash_profile",
-                ".zprofile",
-            ],
-        )
-    {
-        classes.push(ProtectedPathClass::Autorun);
-    }
-
-    if lower == "/tmp"
-        || lower.starts_with("/tmp/")
-        || lower == "/private/tmp"
-        || lower == "/var/tmp"
-        || contains_any(
-            &lower,
-            &[
-                "/private/tmp/",
-                "/private/var/folders/",
-                "/var/tmp/",
-                "appdata/local/temp/",
-            ],
-        )
-    {
-        classes.push(ProtectedPathClass::SessionTmp);
-    }
-
-    classes
+/// Maps normalized path against a caller-supplied runtime `ProtectedPathCatalog`.
+#[must_use]
+pub fn classify_protected_path_with_catalog(
+    path: &str,
+    catalog: &ProtectedPathCatalog,
+) -> Vec<ProtectedPathClass> {
+    catalog.classify(path)
 }
 
 /// Splits an NTFS alternate data stream `:stream` from the final component of a path only.
@@ -289,23 +154,4 @@ pub(crate) fn path_within_workspace(path: &str, root: &str, volume_case: VolumeC
         return false;
     };
     r_cmp.ends_with('/') || rest.starts_with('/')
-}
-
-fn ends_with_any_segment(path: &str, segs: &[&str]) -> bool {
-    segs.iter().any(|seg| {
-        path == *seg
-            || path
-                .strip_suffix(seg)
-                .is_some_and(|prefix| prefix.ends_with('/'))
-    })
-}
-
-fn has_env_file_segment(lower: &str) -> bool {
-    lower
-        .split('/')
-        .any(|seg| seg == ".env" || seg.starts_with(".env."))
-}
-
-fn contains_any(haystack: &str, needles: &[&str]) -> bool {
-    needles.iter().any(|n| haystack.contains(n))
 }

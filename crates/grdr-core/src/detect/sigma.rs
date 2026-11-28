@@ -3,7 +3,7 @@
 
 //! Pure-Rust Sigma YAML rule parser supporting `x_grdr`, validated condition ASTs, and `correlation` blocks (`D-09`).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ipnet::IpNet;
 use regex::RegexBuilder;
@@ -12,6 +12,7 @@ use grdr_crypto::sha256_hex;
 use grdr_model::{FindingClass, FindingSeverity, MAX_OTHER_LABEL_CHARS};
 
 use crate::detect::eval::parse_condition_ast;
+use crate::detect::pack_sig::shipped_core_verified_rule_digests;
 use crate::detect::response::validate_response_binding_with_legacy;
 use crate::detect::sigma_fields::{
     opt_str_field, parse_ceiling, parse_correlation, parse_finding_class, parse_modifier,
@@ -34,47 +35,17 @@ const CONTENT_FIELDS: &[&str] = &[
     "file.path",
     "net.url",
 ];
-const PINNED_SIGNED_CORE_RULE_SHA256: &[&str] = &[
-    "2647b259ab45199aa176a13a960108d289172771596c9856318c2c3ad72d3e27",
-    "691ec38811bdc142ed0378914483b2e49f501dbc634a589beffb8dac3587933a",
-    "c73ce97a9c9f7c6be770f9fff2212e3b584cb1ec9df96f0ab77bd8ceeb9770eb",
-    "a668f21431e838473a7ec243eb8270c53a10814f4e60075051d82b5d30746b7e",
-    "11c4559dba5bb4881d1245cde86f23cef84c64249343e0aa2d47fa761f65b235",
-    "2b006c16f0a6dfb4cee65f720bb283e497adf7ab5f8a9478e13f419691c38f99",
-    "5a52b39035fe9eab8fa6627476d5c87bc1c14d534fbce3e39fe2a11600629a64",
-    "3c0723236d7d49a2670d1f74501b9fa509740e1a45f7f784a55b3697da98654a",
-    "6df61c9e5d87cd23d0cc23c31934481b56ee9312f3765401cf9fd766ced66ea3",
-    "aba17a8fb584ab4279cbcec4139cd6d8b17e1881a16e760319c8bdbad9e937e0",
-    "f6b63de5726ab8896703f298f61be337e2bb0382ce75cc03132fcc294adb6779",
-    "1552be8069bf6da23ba893f596160c4ce70747b7977d28934da5824444ef6def",
-    "597249b814397fcb6995a4b0384811a7aae8bd7e84e3f3d490a747e87f3a2854",
-    "879a1245cc5fd36749db1dd506662387181f60e2c617fa67c17960aa3f7f0794",
-    "caa4e09c315365faf5a1bcc18f7e63bd08c792bd76b195196ce6db122be665db",
-    "6ea9035f1a746eb3f89fe9d1fed3e860b46701187675e925fcb5fe8699add0b1",
-    "7f46ab24f27f65a0bd41726b3b44390a404728034cede6aef36698fc73951464",
-    "42c72832d67b5d2646e914ba2714441e7cc94b9339d782aff8ece1cf41b74540",
-    "7a3453306dad609e8a0d390e739d8bf40acac589b0fbbe2f8740c15f8a49695a",
-    "ddabc561ee5237e0da5a0116f513d749bf49724d2c16357b6a3e2014b729b3b8",
-    "c5fafc6342caa8eb51fb44efe6c790b168578e015a11acb2f1c56040ac2c07ef",
-    "67a90907f7c5dad193346a3e02f22abf8c284e0f19a7b62c1aedd8c547fbfb71",
-    "95c5ece6b05df971d5892cc7e4f657b046acc8fdc7ece51c2ab2c25f61f24c27",
-    "d053d3f636a6c779fe30672ac14670600794c4f4bd63ed0a6b0647626bf90ff7",
-    "5c279f61d2044d05bea889f18a9be528784eef450da89392c0e2a8b2eb5475ca",
-    "d9c11f294a76a110f3870f45e985732e0ac06122309a78e0bf863fa3dd2bf4b8",
-    "1dded4cdb0474d57674adb49e2fbc5965932a668cb37b324679dc15e4fa60274",
-    "63d729724f42dee4f919de5624509c193ae781e9b37901baea9b16e398f4cae4",
-    "d94a2234caa4435105af8c53ae3c8da77f68daa7fbb9d7692a8bbfa0f6445356",
-    "b2094ef822e4aff21fd45df1d9a9a03c421205e29b9ab8c02fd6e1cbdbcb6ece",
-];
 
 /// Parses a single Sigma YAML document including `x_grdr`, validated `condition_ast`, and `correlation`.
 pub fn parse_sigma_rule(raw_yaml: &str) -> Result<SigmaRule, DetectError> {
-    parse_sigma_rule_for_verified_pack(raw_yaml, false)
+    parse_sigma_rule_for_verified_pack(raw_yaml, false, None, false)
 }
 
 pub(crate) fn parse_sigma_rule_for_verified_pack(
     raw_yaml: &str,
-    trusted_official_pack: bool,
+    allow_official_origin: bool,
+    verified_rule_digests: Option<&BTreeSet<String>>,
+    verify_shipped_core: bool,
 ) -> Result<SigmaRule, DetectError> {
     let root = parse_yaml(raw_yaml)?;
     let title = req_str(&root, "title")?;
@@ -151,19 +122,28 @@ pub(crate) fn parse_sigma_rule_for_verified_pack(
         None => FindingCeiling::Notify,
         Some(v) => parse_ceiling(opt_str_field(v, "x_grdr.ceiling")?)?,
     };
+    let raw_sha = sha256_hex(raw_yaml.as_bytes());
+    let is_verified_digest = if let Some(digests) = verified_rule_digests {
+        digests.contains(&raw_sha)
+    } else if verify_shipped_core {
+        shipped_core_verified_rule_digests()?.contains(&raw_sha)
+    } else {
+        false
+    };
+    let is_official_verified = allow_official_origin && is_verified_digest;
     let (origin, origin_declared) = match x_grdr.get("origin") {
-        None => {
-            let inferred = if trusted_official_pack && author == "The Guardrails ADR Authors" {
+        None => (
+            if is_official_verified {
                 RuleOrigin::Official
             } else {
                 RuleOrigin::Community
-            };
-            (inferred, false)
-        }
+            },
+            false,
+        ),
         Some(v) => {
             let parsed = parse_origin(opt_str_field(v, "x_grdr.origin")?)?;
-            // Clamp all non-community provenance on untrusted/standalone rules.
-            let capped = if trusted_official_pack && author == "The Guardrails ADR Authors" {
+            // Non-verified or non-official packs always clamp origin to Community.
+            let capped = if is_official_verified {
                 parsed
             } else {
                 RuleOrigin::Community
@@ -202,15 +182,8 @@ pub(crate) fn parse_sigma_rule_for_verified_pack(
     let scope =
         parse_placement_scope(x_grdr, &selections, correlation.as_ref(), response.as_ref())?;
     let effective_ceiling = ceiling.clamp_by_origin(status, origin);
-    let normalized = raw_yaml.replace("\r\n", "\n");
-    let raw_sha = sha256_hex(normalized.as_bytes());
-    let is_pinned_signed_core = trusted_official_pack
-        && response
-            .as_ref()
-            .is_some_and(|b| b.mode == ResponseExecutionMode::Simulate)
-        && PINNED_SIGNED_CORE_RULE_SHA256.contains(&raw_sha.as_str());
     if let Some(binding) = &response {
-        validate_response_binding_with_legacy(binding, effective_ceiling, !is_pinned_signed_core)?;
+        validate_response_binding_with_legacy(binding, effective_ceiling, !is_verified_digest)?;
     }
     let severity = match (&finding_class, &effective_ceiling) {
         (FindingClass::Tamper, FindingCeiling::Remediate | FindingCeiling::Contain) => {
@@ -240,14 +213,14 @@ pub(crate) fn parse_sigma_rule_for_verified_pack(
             .get("stage")
             .and_then(YamlValue::as_str)
             .map(str::to_owned),
-        atlas: x_grdr
-            .get("atlas")
-            .map(YamlValue::to_string_list)
-            .unwrap_or_default(),
-        owasp_asi: x_grdr
-            .get("owasp_asi")
-            .map(YamlValue::to_string_list)
-            .unwrap_or_default(),
+        atlas: match x_grdr.get("atlas") {
+            None => Vec::new(),
+            Some(v) => v.try_to_string_list()?,
+        },
+        owasp_asi: match x_grdr.get("owasp_asi") {
+            None => Vec::new(),
+            Some(v) => v.try_to_string_list()?,
+        },
         logsource,
         selections,
         condition,
@@ -498,5 +471,87 @@ fn parse_predicate_values(field: &str, raw: &YamlValue) -> Result<Vec<String>, D
             items.iter().map(|v| scalar_to_string(field, v)).collect()
         }
         other => Ok(vec![scalar_to_string(field, other)?]),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::detect::engine::SigmaDetectionEngine;
+    use crate::detect::types::{DetectionEngine as _, VerifiedDetectionContent};
+    use grdr_model::Mode;
+
+    #[test]
+    fn rejects_unverified_official_origin_and_crlf_spoofing() {
+        let spoofed_rule = "title: Spoofed Official Rule\nid: 11111111-1111-4111-8111-111111111111\nauthor: The Guardrails ADR Authors\nstatus: stable\nlogsource:\n  product: grdr\nx_grdr:\n  rule_id: grdr.det.core.r99.spoof\n  origin: official\n  ceiling: remediate\n  response:\n    mode: simulate\n    verbs: [restore-workspace-files]\n    max_scope: session\n    max_share_bp: 500\ndetection:\n  sel:\n    action_class: exec\n  condition: sel\n";
+        assert!(
+            SigmaDetectionEngine::load(
+                &VerifiedDetectionContent {
+                    pack_id: "grdr.det.core".into(),
+                    version: "1.0.0".into(),
+                    raw_rules_yaml: vec![spoofed_rule.into()],
+                    pack_mode: Mode::Watch,
+                },
+                &crate::detect::types::HostProfile {
+                    device_id: "d".into(),
+                    device_name: "d".into(),
+                    organisation_id: "o".into(),
+                    scope: DeploymentScope::Any,
+                    provenance_grade: 3,
+                    expand_vars: BTreeMap::new(),
+                    model_audit_passed: false,
+                    remediate_approvers: BTreeMap::new(),
+                },
+            )
+            .expect("load")
+            .1
+            .loaded_rules
+            .is_empty()
+        );
+
+        let notify_spoof = "title: Spoofed Official Notify\nid: 22222222-2222-4222-8222-222222222222\nauthor: The Guardrails ADR Authors\nstatus: stable\nlogsource:\n  product: grdr\nx_grdr:\n  rule_id: custom.spoof.notify\ndetection:\n  sel:\n    action_class: exec\n  condition: sel\n";
+        let (eng, _rep) = SigmaDetectionEngine::load(
+            &VerifiedDetectionContent {
+                pack_id: "grdr.det.experimental".into(),
+                version: "1.0.0".into(),
+                raw_rules_yaml: vec![notify_spoof.into()],
+                pack_mode: Mode::Watch,
+            },
+            &crate::detect::types::HostProfile {
+                device_id: "d".into(),
+                device_name: "d".into(),
+                organisation_id: "o".into(),
+                scope: DeploymentScope::Any,
+                provenance_grade: 3,
+                expand_vars: BTreeMap::new(),
+                model_audit_passed: false,
+                remediate_approvers: BTreeMap::new(),
+            },
+        )
+        .expect("load exp");
+        let loaded = eng.loaded_rules().next().expect("loaded rule");
+        assert_eq!(loaded.origin, RuleOrigin::Community);
+
+        let r01 =
+            include_str!("../../../../packs/detections/rules/det-01-agent-control-write.yaml");
+        let parsed_lf = parse_sigma_rule_for_verified_pack(r01, true, None, true).expect("lf core");
+        assert_eq!(parsed_lf.origin, RuleOrigin::Official);
+        assert!(
+            parse_sigma_rule_for_verified_pack(&r01.replace('\n', "\r\n"), true, None, true,)
+                .is_err()
+        );
+
+        let r03 =
+            include_str!("../../../../packs/detections/rules/det-03-repo-carried-config.yaml");
+        assert_eq!(
+            parse_sigma_rule_for_verified_pack(r03, true, None, true)
+                .expect("lf r03")
+                .origin,
+            RuleOrigin::Official
+        );
+        assert!(
+            parse_sigma_rule_for_verified_pack(&r03.replace('\n', "\r\n"), true, None, true,)
+                .is_err()
+        );
     }
 }

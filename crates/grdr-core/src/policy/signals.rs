@@ -8,93 +8,15 @@ use grdr_model::{ActionAttempt, ActionClass, CommandParseStatus, Mode, PolicyPac
 
 use super::request::RequestBuildOptions;
 use super::signals_scan::{
-    contains_any, contains_path_segment, detect_cloud_provider, detect_llm_provider,
-    has_destructive_command, has_pipe_to_shell, has_traversal_segment, is_mcp_write_capable,
+    contains_any, contains_path_segment, detect_cloud_provider_with_catalog,
+    detect_llm_provider_with_catalog, has_destructive_command, has_pipe_to_shell,
+    has_traversal_segment, is_mcp_write_capable_with_catalog,
 };
 use crate::analyze::TargetAnalysis;
-
-const DESTRUCTIVE_PATTERNS: &[&str] = &[
-    "remove-item -recurse -force",
-    "git reset --hard",
-    "git push --force",
-    "git push -f",
-    "shred ",
-    "wipefs ",
-    "drop table",
-    "drop database",
-    "truncate -s 0",
-];
-
-const EGRESS_EXFIL_PATTERNS: &[&str] = &[
-    "curl ",
-    "wget ",
-    "invoke-webrequest",
-    "invoke-restmethod",
-    "pastebin",
-    "webhook.site",
-    "transfer.sh",
-    "ngrok",
-    "0x0.st",
-    "169.254.169.254",
-    "fd00:ec2::254",
-    "metadata.google.internal",
-];
-
-const PKG_PUBLISH_PATTERNS: &[&str] = &[
-    "npm publish",
-    "yarn publish",
-    "pnpm publish",
-    "cargo publish",
-    "twine upload",
-];
-
-const CLOUD_ADMIN_PATTERNS: &[&str] = &[
-    "iam:createaccesskey",
-    "sts:assumerole",
-    "aws iam",
-    "gcloud auth",
-    "az role",
-    "terraform destroy",
-    "kubectl delete",
-];
-
-const SECRET_VALUE_PATTERNS: &[&str] = &[
-    "ghp_",
-    "github_pat_",
-    "sk-ant-",
-    "sk-live-",
-    "sk_live_",
-    "xoxb-",
-    "xoxp-",
-    "aws_access_key_id",
-    "akia",
-    "asia",
-    "aiza",
-];
-
-const EXTRA_CONTROL_SEGMENTS: &[&str] = &[
-    ".claude",
-    ".claude.json",
-    ".cursor",
-    ".codex",
-    ".gemini",
-    ".windsurf",
-    ".grdr",
-    "grdr-data",
-];
-
-const EXTRA_CRED_SEGMENTS: &[&str] = &[
-    ".ssh",
-    ".aws",
-    ".gnupg",
-    ".config/gh",
-    ".npmrc",
-    ".pypirc",
-    ".netrc",
-    "id_rsa",
-    "id_ed25519",
-    ".env.production",
-];
+use crate::analyze::pack_lists::{
+    NetEndpointCatalog, SignalPatternCatalog, default_net_endpoint_catalog,
+    default_signal_pattern_catalog,
+};
 
 // grdr:allow-s4 orthogonal command signal attributes
 #[derive(Debug, Clone)]
@@ -120,6 +42,29 @@ pub(crate) fn extract_cedar_signals(
     analysis: &TargetAnalysis,
     packs: &[PolicyPack],
     opts: &RequestBuildOptions,
+) -> Result<CedarSignals, super::PolicyError> {
+    let signals = default_signal_pattern_catalog().map_err(|detail| {
+        super::PolicyError::RequestBuildFailed {
+            detail: detail.to_owned(),
+        }
+    })?;
+    let endpoints = default_net_endpoint_catalog().map_err(|detail| {
+        super::PolicyError::RequestBuildFailed {
+            detail: detail.to_owned(),
+        }
+    })?;
+    Ok(extract_cedar_signals_with_catalogs(
+        attempt, analysis, packs, opts, signals, endpoints,
+    ))
+}
+
+pub(crate) fn extract_cedar_signals_with_catalogs(
+    attempt: &ActionAttempt,
+    analysis: &TargetAnalysis,
+    packs: &[PolicyPack],
+    opts: &RequestBuildOptions,
+    signals: &SignalPatternCatalog,
+    endpoints: &NetEndpointCatalog,
 ) -> CedarSignals {
     let raw_lower = attempt.target.replace('\\', "/").to_ascii_lowercase();
     let norm_lower = analysis.normalized_target.to_ascii_lowercase();
@@ -141,7 +86,7 @@ pub(crate) fn extract_cedar_signals(
     }
 
     if analysis.risk_tags.iter().any(|t| t == "agent-control-file")
-        || EXTRA_CONTROL_SEGMENTS.iter().any(|seg| {
+        || signals.extra_control_segments.iter().any(|seg| {
             contains_path_segment(&raw_lower, seg) || contains_path_segment(&norm_lower, seg)
         })
         || (contains_any(&raw_lower, &norm_lower, &["security/"])
@@ -161,7 +106,7 @@ pub(crate) fn extract_cedar_signals(
         .risk_tags
         .iter()
         .any(|t| t == "sensitive-credential")
-        || EXTRA_CRED_SEGMENTS.iter().any(|seg| {
+        || signals.extra_cred_segments.iter().any(|seg| {
             contains_path_segment(&raw_lower, seg) || contains_path_segment(&norm_lower, seg)
         })
     {
@@ -174,46 +119,26 @@ pub(crate) fn extract_cedar_signals(
         }
     }
 
-    if contains_any(&raw_lower, &norm_lower, SECRET_VALUE_PATTERNS) {
+    if contains_any(&raw_lower, &norm_lower, &signals.secret_value_patterns) {
         resource_classes.insert("secret-material".into());
         facts.insert("content.secret".into());
     }
 
     if analysis.risk_tags.iter().any(|t| t == "hook-bypass")
-        || contains_any(
-            &raw_lower,
-            &norm_lower,
-            &[
-                "--dangerously-skip-permissions",
-                "--no-verify",
-                "--disable-hooks",
-                "--no-sandbox",
-                "--disable-sandbox",
-                "--yolo",
-                "grdr_disable",
-            ],
-        )
+        || contains_any(&raw_lower, &norm_lower, &signals.hook_bypass_risk_patterns)
     {
-        if contains_any(
-            &raw_lower,
-            &norm_lower,
-            &["--dangerously-skip-permissions", "--no-verify", "--yolo"],
-        ) {
+        if contains_any(&raw_lower, &norm_lower, &signals.bypass_permission_flags) {
             facts.insert("flag.bypass-permissions".into());
             command_classes.insert("flag.bypass-permissions".into());
         }
-        if contains_any(&raw_lower, &norm_lower, &["--disable-hooks"]) {
+        if contains_any(&raw_lower, &norm_lower, &signals.hooks_disabled_flags) {
             facts.insert("flag.hooks-disabled".into());
         }
-        if contains_any(
-            &raw_lower,
-            &norm_lower,
-            &["--no-sandbox", "--disable-sandbox"],
-        ) {
+        if contains_any(&raw_lower, &norm_lower, &signals.no_sandbox_flags) {
             facts.insert("flag.no-sandbox".into());
             command_classes.insert("flag.no-sandbox".into());
         }
-        if contains_any(&raw_lower, &norm_lower, &["grdr_disable"]) {
+        if contains_any(&raw_lower, &norm_lower, &signals.grdr_disable_flags) {
             facts.insert("grdr.disable".into());
         }
         if !facts.contains("flag.bypass-permissions")
@@ -226,7 +151,7 @@ pub(crate) fn extract_cedar_signals(
         }
     }
 
-    if contains_any(&raw_lower, &norm_lower, DESTRUCTIVE_PATTERNS)
+    if contains_any(&raw_lower, &norm_lower, &signals.destructive_patterns)
         || has_destructive_command(&raw_lower)
         || has_destructive_command(&norm_lower)
     {
@@ -234,18 +159,21 @@ pub(crate) fn extract_cedar_signals(
         command_classes.insert("destructive-delete".into());
     }
 
-    if contains_any(&raw_lower, &norm_lower, &["pip install git+"])
-        || has_pipe_to_shell(&raw_lower)
-        || has_pipe_to_shell(&norm_lower)
-    {
+    let supply_risk_install = signals.unsafe_installers.iter().any(|item| {
+        !item.starts_with('|')
+            && !item.contains("publish")
+            && !item.contains("upload")
+            && (raw_lower.contains(item.as_str()) || norm_lower.contains(item.as_str()))
+    });
+    if supply_risk_install || has_pipe_to_shell(&raw_lower) || has_pipe_to_shell(&norm_lower) {
         resource_classes.insert("supply-chain-risk".into());
         command_classes.insert("supply-chain-risk".into());
     }
-    if contains_any(&raw_lower, &norm_lower, PKG_PUBLISH_PATTERNS) {
+    if contains_any(&raw_lower, &norm_lower, &signals.pkg_publish_patterns) {
         sink_classes.insert("pkg.publish".into());
     }
 
-    if contains_any(&raw_lower, &norm_lower, CLOUD_ADMIN_PATTERNS) {
+    if contains_any(&raw_lower, &norm_lower, &signals.cloud_admin_patterns) {
         resource_classes.insert("cloud-admin".into());
         command_classes.insert("cloud-admin".into());
         cloud_account_classes.insert("privileged-role".into());
@@ -259,50 +187,23 @@ pub(crate) fn extract_cedar_signals(
         || contains_any(
             &raw_lower,
             &norm_lower,
-            &[
-                "sudo ",
-                "doas ",
-                "runas ",
-                "pkexec ",
-                "su -",
-                "su root",
-                "start-process -verb=runas",
-            ],
+            &signals.privilege_escalation_patterns,
         )
     {
         resource_classes.insert("privilege-elevate".into());
         command_classes.insert("privilege-elevate".into());
     }
 
-    if contains_any(&raw_lower, &norm_lower, EGRESS_EXFIL_PATTERNS)
-        || contains_any(
-            &raw_lower,
-            &norm_lower,
-            &[
-                "169.254.170.2",
-                "0xa9fea9fe",
-                "fd00:0ec2::254",
-                "::ffff:169.254.169.254",
-            ],
-        )
+    if contains_any(&raw_lower, &norm_lower, &signals.egress_exfil_patterns)
+        || contains_any(&raw_lower, &norm_lower, &endpoints.cloud_aws_ips)
     {
         resource_classes.insert("egress-exfil".into());
         command_classes.insert("egress-exfil".into());
         http_classes.insert("external-upload".into());
         sink_classes.insert("egress-outside-profile".into());
-        if contains_any(
-            &raw_lower,
-            &norm_lower,
-            &[
-                "169.254.169.254",
-                "169.254.170.2",
-                "0xa9fea9fe",
-                "fd00:ec2::254",
-                "fd00:0ec2::254",
-                "::ffff:169.254.169.254",
-                "metadata.google.internal",
-            ],
-        ) {
+        if contains_any(&raw_lower, &norm_lower, &endpoints.cloud_metadata_hosts)
+            || contains_any(&raw_lower, &norm_lower, &endpoints.cloud_aws_ips)
+        {
             resource_classes.insert("metadata-endpoint".into());
             http_classes.insert("metadata-ssrf".into());
             command_classes.insert("metadata-ssrf".into());
@@ -319,21 +220,18 @@ pub(crate) fn extract_cedar_signals(
         sink_classes.insert("push-outside-org".into());
     }
 
-    if contains_any(
-        &raw_lower,
-        &norm_lower,
-        &["slack.com", "discord.com/api/webhooks", "sendmail"],
-    ) {
+    if contains_any(&raw_lower, &norm_lower, &signals.message_send_patterns) {
         sink_classes.insert("message.send".into());
     }
 
     let has_mcp_write_tag = analysis.risk_tags.iter().any(|t| t == "mcp-write");
     let write_capable = has_mcp_write_tag
         || (attempt.action_class == ActionClass::McpCall
-            && is_mcp_write_capable(
+            && is_mcp_write_capable_with_catalog(
                 &attempt.target,
                 opts.mcp_hints.read_only_hint,
                 has_mcp_write_tag,
+                signals,
             ));
     if write_capable {
         resource_classes.insert("mcp-write".into());
@@ -352,13 +250,14 @@ pub(crate) fn extract_cedar_signals(
     ) {
         sink_classes.insert("egress-outside-profile".into());
     } else if attempt.action_class == ActionClass::DataFlow {
-        if contains_any(&raw_lower, &norm_lower, &["pkg.publish"]) {
-            sink_classes.insert("pkg.publish".into());
-        } else if contains_any(&raw_lower, &norm_lower, &["message.send"]) {
-            sink_classes.insert("message.send".into());
-        } else if contains_any(&raw_lower, &norm_lower, &["llm-non-tenant"]) {
-            sink_classes.insert("llm-non-tenant".into());
-        } else {
+        let mut matched_sink = false;
+        for sink in &signals.sink_classes {
+            if raw_lower.contains(sink.as_str()) || norm_lower.contains(sink.as_str()) {
+                sink_classes.insert(sink.clone());
+                matched_sink = true;
+            }
+        }
+        if !matched_sink {
             sink_classes.insert("egress-outside-profile".into());
         }
         for s in &sink_classes {
@@ -389,8 +288,8 @@ pub(crate) fn extract_cedar_signals(
         }
     }
     resource_classes.extend(extra_pack_matches);
-    let cloud_provider = detect_cloud_provider(&raw_lower, &norm_lower);
-    let llm_provider = detect_llm_provider(&raw_lower, &norm_lower);
+    let cloud_provider = detect_cloud_provider_with_catalog(&raw_lower, &norm_lower, endpoints);
+    let llm_provider = detect_llm_provider_with_catalog(&raw_lower, &norm_lower, endpoints);
 
     CedarSignals {
         resource_classes,

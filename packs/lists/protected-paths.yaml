@@ -1,0 +1,100 @@
+format: grdr.policy-lists.v1
+pack_id: grdr.lists.protected-paths
+lists:
+  agent_control_contains:
+    - ".claude/"
+    - ".claude.json"
+    - ".cursor/"
+    - ".codex/"
+    - ".gemini/"
+    - ".vscode/settings.json"
+    - ".vscode/tasks.json"
+    - ".git/hooks/"
+    - ".git/config"
+  agent_control_segments:
+    - ".claude"
+    - ".cursor"
+    - ".codex"
+    - ".gemini"
+    - ".git/hooks"
+    - "agents.md"
+    - "claude.md"
+  grdr_control_contains:
+    - "grdr-data/"
+    - "security/"
+    - "/etc/guardrails/"
+  monitoring_config_contains:
+    - "monitoring"
+    - "alertmanager"
+    - "prometheus"
+    - "siem-forwarder"
+    - "auditd"
+  cred_store_contains:
+    - ".aws/credentials"
+    - ".aws/config"
+    - ".config/gh/"
+    - ".docker/config.json"
+    - ".npmrc"
+    - ".pypirc"
+    - ".netrc"
+    - ".kube/config"
+    - ".env.production"
+  cred_store_env_exact_segments:
+    - ".env"
+  cred_store_env_segment_prefixes:
+    - ".env."
+  private_key_contains:
+    - ".ssh/id_"
+    - ".ssh/"
+    - ".gnupg/"
+    - "id_rsa"
+    - "id_ed25519"
+    - "id_ecdsa"
+    - ".pem"
+    - ".p12"
+    - ".pfx"
+  agent_store_contains:
+    - ".claude/projects/"
+    - ".claude/history.jsonl"
+    - ".cursor/user/"
+    - ".codex/sessions/"
+  browser_store_contains:
+    - "google/chrome/"
+    - "chromium/"
+    - "mozilla/firefox/"
+    - "cookies"
+    - "login data"
+  autorun_contains:
+    - "/launchagents/"
+    - "/launchdaemons/"
+    - "systemd/user/"
+    - "/etc/systemd/"
+    - "authorized_keys"
+    - "/cron.d/"
+    - "/etc/cron"
+    - "/var/spool/cron/"
+    - "/etc/xdg/autostart/"
+    - "/etc/profile.d/"
+    - "/etc/rc.local"
+    - ".config/autostart/"
+    - "/start menu/programs/startup/"
+  autorun_exact:
+    - "/etc/profile.d"
+  autorun_segments:
+    - ".config/autostart"
+    - ".bashrc"
+    - ".zshrc"
+    - ".profile"
+    - ".bash_profile"
+    - ".zprofile"
+  session_tmp_exact:
+    - "/tmp"
+    - "/private/tmp"
+    - "/var/tmp"
+  session_tmp_prefixes:
+    - "/tmp/"
+  session_tmp_contains:
+    - "/private/tmp/"
+    - "/private/var/folders/"
+    - "/var/tmp/"
+    - "appdata/local/temp/"
