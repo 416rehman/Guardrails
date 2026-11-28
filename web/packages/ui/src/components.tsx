@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
 import type { ReactNode } from "react";
 import { type BadgeVariant } from "@astryxdesign/core/Badge";
 import { Banner, type BannerStatus } from "@astryxdesign/core/Banner";
@@ -27,6 +30,7 @@ import {
   Ban,
   Binoculars,
   Box,
+  Building2,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -54,6 +58,7 @@ import {
   LayoutGrid,
   List,
   Lock,
+  LogOut,
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
@@ -63,9 +68,11 @@ import {
   Plus,
   PlusCircle,
   Radio,
+  Redo2,
   RefreshCw,
   Route,
   Search,
+  Send,
   Server,
   Settings,
   Shield,
@@ -78,6 +85,7 @@ import {
   Tag,
   Terminal,
   Trash2,
+  Undo2,
   User,
   Users,
   X,
@@ -174,6 +182,7 @@ export type GrdrIconName =
   | "ban"
   | "binoculars"
   | "box"
+  | "building"
   | "check"
   | "check-circle"
   | "chevron-down"
@@ -201,6 +210,7 @@ export type GrdrIconName =
   | "layout-grid"
   | "list"
   | "lock"
+  | "log-out"
   | "moon"
   | "panel-left-close"
   | "panel-left-open"
@@ -210,9 +220,11 @@ export type GrdrIconName =
   | "plus"
   | "plus-circle"
   | "radio"
+  | "redo"
   | "refresh"
   | "route"
   | "search"
+  | "send"
   | "server"
   | "settings"
   | "shield"
@@ -225,6 +237,7 @@ export type GrdrIconName =
   | "tag"
   | "terminal"
   | "trash"
+  | "undo"
   | "user"
   | "users"
   | "x"
@@ -237,15 +250,27 @@ export function GrdrIcon({
   size = 14,
   color,
   ariaLabel,
+  mirror,
 }: {
   name: GrdrIconName;
   size?: number;
   color?: string;
   ariaLabel?: string;
+  mirror?: boolean;
 }) {
+  const autoMirror =
+    mirror ??
+    (name === "arrow-left" ||
+      name === "arrow-right" ||
+      name === "chevron-right" ||
+      name === "undo" ||
+      name === "redo" ||
+      name === "log-out" ||
+      name === "send");
   const props = {
     size,
     color,
+    className: autoMirror ? "grdr-icon-mirror" : undefined,
     ...(ariaLabel ? { "aria-label": ariaLabel } : { "aria-hidden": true as const }),
   };
 
@@ -268,6 +293,8 @@ export function GrdrIcon({
       return <Binoculars {...props} />;
     case "box":
       return <Box {...props} />;
+    case "building":
+      return <Building2 {...props} />;
     case "check":
       return <Check {...props} />;
     case "check-circle":
@@ -322,6 +349,8 @@ export function GrdrIcon({
       return <List {...props} />;
     case "lock":
       return <Lock {...props} />;
+    case "log-out":
+      return <LogOut {...props} />;
     case "moon":
       return <Moon {...props} />;
     case "panel-left-close":
@@ -340,12 +369,16 @@ export function GrdrIcon({
       return <PlusCircle {...props} />;
     case "radio":
       return <Radio {...props} />;
+    case "redo":
+      return <Redo2 {...props} />;
     case "refresh":
       return <RefreshCw {...props} />;
     case "route":
       return <Route {...props} />;
     case "search":
       return <Search {...props} />;
+    case "send":
+      return <Send {...props} />;
     case "server":
       return <Server {...props} />;
     case "settings":
@@ -370,6 +403,8 @@ export function GrdrIcon({
       return <Terminal {...props} />;
     case "trash":
       return <Trash2 {...props} />;
+    case "undo":
+      return <Undo2 {...props} />;
     case "user":
       return <User {...props} />;
     case "users":

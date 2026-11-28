@@ -71,6 +71,7 @@ tone = "danger"
 enum = "AssuranceLevel"
 value = "AL0"
 label = "assurance.al0"
+description = "assurance.al0.desc"
 icon = "assurance.al0"
 tone = "neutral"
 
@@ -78,6 +79,7 @@ tone = "neutral"
 enum = "AssuranceLevel"
 value = "AL1"
 label = "assurance.al1"
+description = "assurance.al1.desc"
 icon = "assurance.al1"
 tone = "neutral"
 
@@ -85,6 +87,7 @@ tone = "neutral"
 enum = "AssuranceLevel"
 value = "AL2"
 label = "assurance.al2"
+description = "assurance.al2.desc"
 icon = "assurance.al2"
 tone = "warning"
 
@@ -92,6 +95,7 @@ tone = "warning"
 enum = "AssuranceLevel"
 value = "AL3"
 label = "assurance.al3"
+description = "assurance.al3.desc"
 icon = "assurance.al3"
 tone = "success"
 
@@ -99,6 +103,7 @@ tone = "success"
 enum = "AssuranceLevel"
 value = "AL4"
 label = "assurance.al4"
+description = "assurance.al4.desc"
 icon = "assurance.al4"
 tone = "success"
 
@@ -128,4 +133,389 @@ enum = "SessionLabel"
 value = "tainted_exfil_risk"
 label = "session_label.tainted_exfil_risk"
 icon = "security.alert"
+tone = "danger"
+
+[[entry]]
+enum = "ActionClass"
+value = "exec"
+label = "action.exec"
+icon = "action.generic"
+tone = "neutral"
+
+[[entry]]
+enum = "ActionClass"
+value = "file.read"
+label = "action.file_read"
+icon = "status.file_code"
+tone = "neutral"
+
+[[entry]]
+enum = "ActionClass"
+value = "file.write"
+label = "action.file_write"
+icon = "verdict.modify"
+tone = "warning"
+
+[[entry]]
+enum = "ActionClass"
+value = "file.delete"
+label = "action.file_delete"
+icon = "mode.block"
+tone = "danger"
+
+[[entry]]
+enum = "ActionClass"
+value = "net.connect"
+label = "action.net_connect"
+icon = "status.globe"
+tone = "neutral"
+
+[[entry]]
+enum = "ActionClass"
+value = "net.request"
+label = "action.net_request"
+icon = "status.globe"
+tone = "neutral"
+
+[[entry]]
+enum = "ActionClass"
+value = "llm.request"
+label = "action.llm_request"
+icon = "status.layers"
+tone = "info"
+
+[[entry]]
+enum = "ActionClass"
+value = "mcp.connect"
+label = "action.mcp_connect"
+icon = "status.plug"
+tone = "neutral"
+
+[[entry]]
+enum = "ActionClass"
+value = "mcp.call"
+label = "action.mcp_call"
+icon = "status.plug"
+tone = "neutral"
+
+[[entry]]
+enum = "ActionClass"
+value = "cred.use"
+label = "action.cred_use"
+icon = "security.key"
+tone = "warning"
+
+[[entry]]
+enum = "ActionClass"
+value = "agent.spawn"
+label = "action.agent_spawn"
+icon = "status.cpu"
+tone = "warning"
+
+[[entry]]
+enum = "ActionClass"
+value = "config.change"
+label = "action.config_change"
+icon = "nav.operator_settings"
+tone = "warning"
+
+[[entry]]
+enum = "ActionClass"
+value = "elevate"
+label = "action.elevate"
+icon = "security.shield"
+tone = "danger"
+
+[[entry]]
+enum = "ActionClass"
+value = "ui.act"
+label = "action.ui_act"
+icon = "mode.ask"
+tone = "neutral"
+
+[[entry]]
+enum = "ActionClass"
+value = "data.flow"
+label = "action.data_flow"
+icon = "assurance.al2"
+tone = "warning"
+
+[[entry]]
+enum = "MdmFormat"
+value = "intune_win32"
+label = "mdm_format.intune_win32"
+icon = "nav.operator_backups"
+tone = "neutral"
+
+[[entry]]
+enum = "MdmFormat"
+value = "jamf_mobileconfig"
+label = "mdm_format.jamf_mobileconfig"
+icon = "nav.operator_backups"
+tone = "neutral"
+
+[[entry]]
+enum = "MdmFormat"
+value = "hexnode"
+label = "mdm_format.hexnode"
+icon = "nav.operator_backups"
+tone = "neutral"
+
+[[entry]]
+enum = "MdmFormat"
+value = "tanium"
+label = "mdm_format.tanium"
+icon = "nav.operator_backups"
+tone = "neutral"
+
+[[entry]]
+enum = "MdmFormat"
+value = "chrome_enterprise"
+label = "mdm_format.chrome_enterprise"
+icon = "status.globe"
+tone = "neutral"
+
+[[entry]]
+enum = "MdmFormat"
+value = "firefox_gpo"
+label = "mdm_format.firefox_gpo"
+icon = "status.globe"
+tone = "neutral"
+
+[[entry]]
+enum = "MdmFormat"
+value = "linux_repo"
+label = "mdm_format.linux_repo"
+icon = "action.generic"
+tone = "neutral"
+
+[[entry]]
+enum = "IntegrationCategory"
+value = "directory_sync"
+label = "integration_category.directory_sync"
+icon = "status.users"
+tone = "neutral"
+
+[[entry]]
+enum = "IntegrationCategory"
+value = "saas_connector"
+label = "integration_category.saas_connector"
+icon = "status.globe"
+tone = "info"
+
+[[entry]]
+enum = "IntegrationCategory"
+value = "export_sink"
+label = "integration_category.export_sink"
+icon = "status.server"
+tone = "neutral"
+
+[[entry]]
+enum = "IntegrationHealth"
+value = "connected"
+label = "integration_health.connected"
+icon = "status.connected"
+tone = "allow"
+
+[[entry]]
+enum = "IntegrationHealth"
+value = "at_risk"
+label = "integration_health.at_risk"
+icon = "status.warning"
+tone = "ask"
+
+[[entry]]
+enum = "IntegrationHealth"
+value = "degraded"
+label = "integration_health.degraded"
+icon = "security.alert"
+tone = "block"
+
+[[entry]]
+enum = "IntegrationHealth"
+value = "not_configured"
+label = "integration_health.not_configured"
+icon = "mode.off"
+tone = "neutral"
+
+[[entry]]
+enum = "DeploymentKeyStatus"
+value = "active"
+label = "deployment_key_status.active"
+icon = "status.connected"
+tone = "allow"
+
+[[entry]]
+enum = "DeploymentKeyStatus"
+value = "exhausted"
+label = "deployment_key_status.exhausted"
+icon = "status.warning"
+tone = "ask"
+
+[[entry]]
+enum = "DeploymentKeyStatus"
+value = "expired"
+label = "deployment_key_status.expired"
+icon = "verdict.defer"
+tone = "neutral"
+
+[[entry]]
+enum = "DeploymentKeyStatus"
+value = "revoked"
+label = "deployment_key_status.revoked"
+icon = "mode.block"
+tone = "block"
+
+[[entry]]
+enum = "InstallProfile"
+value = "standard"
+label = "install_profile.standard"
+icon = "security.shield"
+tone = "neutral"
+
+[[entry]]
+enum = "InstallProfile"
+value = "enforced"
+label = "install_profile.enforced"
+icon = "assurance.al4"
+tone = "success"
+
+[[entry]]
+enum = "InstallProfile"
+value = "watch"
+label = "install_profile.watch"
+icon = "mode.watch"
+tone = "info"
+
+[[entry]]
+enum = "BrowserDlpClass"
+value = "file_upload"
+label = "browser_dlp.file_upload"
+icon = "nav.operator_audit"
+tone = "warning"
+
+[[entry]]
+enum = "BrowserDlpClass"
+value = "paste_secret"
+label = "browser_dlp.paste_secret"
+icon = "security.key"
+tone = "danger"
+
+[[entry]]
+enum = "BrowserDlpClass"
+value = "source_code"
+label = "browser_dlp.source_code"
+icon = "status.file_code"
+tone = "warning"
+
+[[entry]]
+enum = "BrowserDlpClass"
+value = "customer_pii"
+label = "browser_dlp.customer_pii"
+icon = "status.user"
+tone = "danger"
+
+[[entry]]
+enum = "ArtifactKind"
+value = "skill"
+label = "artifact.kind.skill"
+icon = "status.file_code"
+tone = "neutral"
+
+[[entry]]
+enum = "ArtifactKind"
+value = "rule"
+label = "artifact.kind.rule"
+icon = "security.shield"
+tone = "neutral"
+
+[[entry]]
+enum = "ArtifactKind"
+value = "plugin"
+label = "artifact.kind.plugin"
+icon = "status.plug"
+tone = "neutral"
+
+[[entry]]
+enum = "ArtifactKind"
+value = "command"
+label = "artifact.kind.command"
+icon = "action.generic"
+tone = "neutral"
+
+[[entry]]
+enum = "ArtifactKind"
+value = "subagent"
+label = "artifact.kind.subagent"
+icon = "status.cpu"
+tone = "neutral"
+
+[[entry]]
+enum = "ArtifactScope"
+value = "user"
+label = "artifact.scope.user"
+icon = "status.user"
+tone = "neutral"
+
+[[entry]]
+enum = "ArtifactScope"
+value = "workspace"
+label = "artifact.scope.workspace"
+icon = "status.box"
+tone = "info"
+
+[[entry]]
+enum = "ArtifactScope"
+value = "managed"
+label = "artifact.scope.managed"
+icon = "security.lock"
+tone = "success"
+
+[[entry]]
+enum = "ArtifactRiskFlag"
+value = "has-scripts"
+label = "artifact.risk.has_scripts"
+icon = "status.file_code"
+tone = "warning"
+
+[[entry]]
+enum = "ArtifactRiskFlag"
+value = "requests-broad-tools"
+label = "artifact.risk.requests_broad_tools"
+icon = "security.alert"
+tone = "warning"
+
+[[entry]]
+enum = "ArtifactRiskFlag"
+value = "bidi-obfuscation"
+label = "artifact.risk.bidi_obfuscation"
+icon = "security.alert"
+tone = "danger"
+
+[[entry]]
+enum = "ArtifactRiskFlag"
+value = "unpinned-digest"
+label = "artifact.risk.unpinned_digest"
+icon = "status.warning"
+tone = "warning"
+
+[[entry]]
+enum = "ApprovalGrade"
+value = "G1"
+label = "approval.grade.g1"
+icon = "verdict.step_up"
+tone = "warning"
+
+[[entry]]
+enum = "ApprovalGrade"
+value = "G2"
+label = "approval.grade.g2"
+icon = "status.users"
+tone = "warning"
+
+[[entry]]
+enum = "ApprovalGrade"
+value = "G3"
+label = "approval.grade.g3"
+icon = "security.lock"
 tone = "danger"

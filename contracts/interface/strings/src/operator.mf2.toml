@@ -18,6 +18,30 @@ max = 24
 risk = "normal"
 msg = "Settings"
 
+["operator.nav.upgrades"]
+desc = "Operator navigation item: Upgrades"
+max = 24
+risk = "normal"
+msg = "Upgrades"
+
+["operator.nav.orgs"]
+desc = "Operator navigation item: Organisations"
+max = 24
+risk = "normal"
+msg = "Organisations"
+
+["operator.nav.keys"]
+desc = "Operator navigation item: Keys"
+max = 24
+risk = "normal"
+msg = "Keys"
+
+["operator.nav.backups"]
+desc = "Operator navigation item: Backups"
+max = 24
+risk = "normal"
+msg = "Backups"
+
 ["operator.nav.audit"]
 desc = "Operator navigation item: Audit log"
 max = 24

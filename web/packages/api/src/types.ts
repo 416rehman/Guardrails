@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
 export type Mode = "off" | "watch" | "ask" | "block";
 export type Verdict = "allow" | "modify" | "step_up" | "defer" | "deny";
 export type InstallProfile = "user" | "protected";
@@ -67,7 +70,9 @@ export interface AssuranceRecord {
 export interface DiscoveredAgent {
   id: string;
   name: string;
+  vendor?: string;
   kind: string;
+  icon_key?: string;
   config_path: string;
   hook_installed: boolean;
   mcp_count: number;

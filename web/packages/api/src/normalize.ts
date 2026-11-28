@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
 import type {
   ActionAttempt,
   ActionClass,
@@ -137,10 +140,14 @@ export function normTrustedKey(raw: RawRecord): TrustedKeyInfo {
 
 export function normAgent(raw: RawRecord): DiscoveredAgent {
   const a = rec(raw.assurance);
+  const vendor = optStr(raw.vendor);
+  const iconKey = optStr(raw.iconKey ?? raw.icon_key);
   return {
     id: str(raw.id),
     name: str(raw.name),
+    ...(vendor ? { vendor } : {}),
     kind: str(raw.kind),
+    ...(iconKey ? { icon_key: iconKey } : {}),
     config_path: str(raw.configPath ?? raw.config_path),
     hook_installed: Boolean(raw.hookInstalled ?? raw.hook_installed),
     mcp_count: num(raw.mcpCount ?? raw.mcp_count),

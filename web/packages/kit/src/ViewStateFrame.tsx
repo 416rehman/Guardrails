@@ -1,5 +1,9 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: The Guardrails ADR Authors
+
 import type { ReactNode } from "react";
-import { Banner, EmptyState } from "@grdr/ui";
+import { t } from "@grdr/i18n";
+import { Banner, EmptyState, useGrdrLocale } from "@grdr/ui";
 
 export type ViewStateKind =
   | "ready"
@@ -22,10 +26,12 @@ export function ViewStateFrame({
   actions?: ReactNode;
   children?: ReactNode;
 }) {
+  const { locale } = useGrdrLocale();
+
   if (state === "empty") {
     return (
       <EmptyState
-        title={title ?? "Nothing recorded yet"}
+        title={title ?? t("kit.view_state.empty", undefined, locale)}
         description={description}
         actions={actions}
       />
@@ -36,7 +42,7 @@ export function ViewStateFrame({
     return (
       <Banner
         status="error"
-        title={title ?? "Connection failed"}
+        title={title ?? t("kit.view_state.error", undefined, locale)}
         description={description}
         role="alert"
       />
@@ -48,7 +54,7 @@ export function ViewStateFrame({
       <>
         <Banner
           status="warning"
-          title={title ?? "Read-only view"}
+          title={title ?? t("kit.view_state.read_only", undefined, locale)}
           description={description}
         />
         {children}

@@ -1,0 +1,164 @@
+# Spanish (es-ES) translated UI catalog (D-69).
+
+["grdr.brand.subtitle"]
+msg = "Protección de agentes"
+
+["grdr.brand.operator_subtitle"]
+msg = "Plano de operador"
+
+["mode.off.label"]
+msg = "Desactivado"
+
+["mode.watch.label"]
+msg = "Observar"
+
+["mode.ask.label"]
+msg = "Consultar"
+
+["mode.block.label"]
+msg = "Bloquear"
+
+["verdict.allow"]
+msg = "Permitir"
+
+["verdict.modify"]
+msg = "Modificado"
+
+["verdict.step_up"]
+msg = "Consultar"
+
+["verdict.defer"]
+msg = "Diferido"
+
+["verdict.deny"]
+msg = "Denegar"
+
+["assurance.al0"]
+msg = "AL0 Inventariado"
+
+["assurance.al1"]
+msg = "AL1 Observado"
+
+["assurance.al2"]
+msg = "AL2 Guiado"
+
+["assurance.al3"]
+msg = "AL3 Contenido"
+
+["assurance.al4"]
+msg = "AL4 Aplicado"
+
+["console.nav.home"]
+msg = "Inicio"
+
+["console.nav.first_run"]
+msg = "Primer inicio"
+
+["console.nav.users"]
+msg = "Usuarios"
+
+["console.nav.inventory"]
+msg = "Inventario"
+
+["console.nav.sessions"]
+msg = "Sesiones"
+
+["console.nav.protect"]
+msg = "Protección"
+
+["console.nav.review"]
+msg = "Cola de revisión"
+
+["console.nav.respond"]
+msg = "Respuesta"
+
+["console.nav.why"]
+msg = "Explicación"
+
+["console.nav.compliance"]
+msg = "Cumplimiento"
+
+["console.nav.settings"]
+msg = "Ajustes y privacidad"
+
+["console.nav.provider"]
+msg = "Proveedor"
+
+["console.nav.coverage"]
+msg = "Cobertura"
+
+["console.nav.tester"]
+msg = "Probador en vivo"
+
+["console.nav.integrations"]
+msg = "Integraciones"
+
+["operator.nav.overview"]
+msg = "Resumen"
+
+["operator.nav.health"]
+msg = "Salud"
+
+["operator.nav.settings"]
+msg = "Ajustes"
+
+["operator.nav.upgrades"]
+msg = "Actualizaciones"
+
+["operator.nav.orgs"]
+msg = "Organizaciones"
+
+["operator.nav.keys"]
+msg = "Claves"
+
+["operator.nav.backups"]
+msg = "Copias de seguridad"
+
+["operator.nav.audit"]
+msg = "Registro de auditoría"
+
+["common.count.sandboxed_devices"]
+msg = '''
+.input {$count :number}
+.match $count
+one {{{$count} dispositivo contenido}}
+* {{{$count} dispositivos contenidos}}
+'''
+
+["common.count.hook_agents"]
+msg = '''
+.input {$count :number}
+.match $count
+one {{{$count} agente con hook}}
+* {{{$count} agentes con hook}}
+'''
+
+["kit.approval.deny"]
+msg = "Denegar"
+
+["kit.approval.why"]
+msg = "¿Por qué?"
+
+["kit.approval.allow_once"]
+msg = "Permitir una vez"
+
+["kit.approval.allow_session"]
+msg = "Permitir en esta sesión"
+
+["kit.approval.allow_hour"]
+msg = "Permitir una hora"
+
+["kit.locale.label"]
+msg = "Idioma"
+
+["kit.approval.requested_on"]
+msg = "solicitó {$action} en"
+
+["kit.drawer.close"]
+msg = "Cerrar"
+
+["kit.drawer.close_named"]
+msg = "Cerrar {$title}"
+
+["kit.quoted.bidi_badge"]
+msg = "Bidi eliminado"
