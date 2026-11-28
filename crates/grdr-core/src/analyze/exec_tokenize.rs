@@ -13,7 +13,7 @@ use crate::analyze::decode_pipe::{
 };
 use crate::analyze::types::ShellDialect;
 
-pub(crate) fn normalize_command_body(raw: &str, opaque_patterns: &[&str]) -> NormalizedCommand {
+pub(crate) fn normalize_command_body(raw: &str, opaque_patterns: &[String]) -> NormalizedCommand {
     let global_dialect = detect_shell_dialect(raw);
     let mut dialect = clause_dialect_from_rest(global_dialect, raw);
     let mut quote_mode: Option<char> = None;
@@ -142,7 +142,7 @@ pub(crate) fn normalize_command_body(raw: &str, opaque_patterns: &[&str]) -> Nor
         || segments_have_ps_encoded_switch(&canon_tokens)
         || opaque_patterns
             .iter()
-            .any(|pat| padded.contains(pat) || canonical_text.contains(pat));
+            .any(|pat| padded.contains(pat.as_str()) || canonical_text.contains(pat.as_str()));
 
     NormalizedCommand {
         status: if has_opaque {

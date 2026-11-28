@@ -3,87 +3,18 @@
 
 //! Deterministic byte-level secret and PII recogniser rules (`D-10`, `D-28`).
 
-use std::sync::LazyLock;
-
-use regex::bytes::{Regex as BytesRegex, RegexBuilder as BytesRegexBuilder};
-
 use grdr_crypto::{domain_hmac_sha256, encode_lower_hex};
 
 use crate::analyze::content::{ContentFindingMatch, FindingDetectorKind};
+use crate::analyze::pack_lists::{
+    CompiledRecogniser, ContentRecogniserCatalog, RecogniserPostValidator,
+    default_content_recognisers,
+};
 use crate::analyze::types::{AnalyzeFact, FactOriginTag, Span};
 
 const FINDING_HMAC_DOMAIN: &str = "grdr.analyze.finding.v1";
-const CONTENT_REGEX_DFA_SIZE_LIMIT: usize = 256 * 1024;
 
-static RE_OPENAI: LazyLock<Option<BytesRegex>> =
-    LazyLock::new(|| compile_bytes_regex(r"\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{24,}\b"));
-static RE_ANTHROPIC: LazyLock<Option<BytesRegex>> = LazyLock::new(|| {
-    compile_bytes_regex(
-        r"\b(?:sk-ant-(?:api|admin|oat|sid)\d{0,2}-|(?:ant-)?api\d{2}-)[A-Za-z0-9_-]{24,}\b",
-    )
-});
-static RE_GITHUB: LazyLock<Option<BytesRegex>> = LazyLock::new(|| {
-    compile_bytes_regex(
-        r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b|\bgithub_pat_[A-Za-z0-9_]{22,}\b",
-    )
-});
-static RE_GITLAB: LazyLock<Option<BytesRegex>> =
-    LazyLock::new(|| compile_bytes_regex(r"\bglpat-[A-Za-z0-9_-]{20,}\b"));
-static RE_HUGGINGFACE: LazyLock<Option<BytesRegex>> =
-    LazyLock::new(|| compile_bytes_regex(r"\bhf_[A-Za-z0-9]{20,}\b"));
-static RE_NPM: LazyLock<Option<BytesRegex>> =
-    LazyLock::new(|| compile_bytes_regex(r"\bnpm_[A-Za-z0-9]{20,}\b"));
-static RE_AWS_KEY: LazyLock<Option<BytesRegex>> =
-    LazyLock::new(|| compile_bytes_regex(r"\b(?:AKIA|ASIA|AROA|ABIA|ACCA)[0-9A-Z]{16}\b"));
-static RE_AWS_SECRET_CTX: LazyLock<Option<BytesRegex>> = LazyLock::new(|| {
-    compile_bytes_regex(
-        r#"(?i)(?:aws_secret_access_key|aws_secret_key|secret_access_key|secretaccesskey)["']?\s*[:=]\s*["']?([A-Za-z0-9/+=]{40})(?:["'\s,;\}\]\)]|$)"#,
-    )
-});
-static RE_STRIPE: LazyLock<Option<BytesRegex>> =
-    LazyLock::new(|| compile_bytes_regex(r"\b(?:sk|rk)_live_[0-9A-Za-z]{20,}\b"));
-static RE_SLACK: LazyLock<Option<BytesRegex>> = LazyLock::new(|| {
-    compile_bytes_regex(
-        r"\bxox[bpasor]-[0-9A-Za-z-]{16,}\b|\bxapp-\d+-[A-Za-z0-9-]{16,}\b|\bxoxe\.xox[bp]-\d+-[A-Za-z0-9_-]{16,}\b",
-    )
-});
-static RE_GCP: LazyLock<Option<BytesRegex>> =
-    LazyLock::new(|| compile_bytes_regex(r"\bAIza[0-9A-Za-z_-]{35}\b"));
-static RE_JWT: LazyLock<Option<BytesRegex>> = LazyLock::new(|| {
-    compile_bytes_regex(r"\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")
-});
-static RE_PEM_KEY_BLOCK: LazyLock<Option<BytesRegex>> = LazyLock::new(|| {
-    compile_bytes_regex(concat!(
-        r"-----BEGIN ",
-        r"[A-Z0-9 ]*PRIVATE KEY-----(?s:.*?)-----END ",
-        r"[A-Z0-9 ]*PRIVATE KEY-----|-----BEGIN ",
-        r"PGP PRIVATE KEY BLOCK-----(?s:.*?)-----END ",
-        r"PGP PRIVATE KEY BLOCK-----",
-    ))
-});
-static RE_PEM_KEY_HEADER: LazyLock<Option<BytesRegex>> = LazyLock::new(|| {
-    compile_bytes_regex(concat!(
-        r"(?:-----BEGIN ",
-        r"[A-Z0-9 ]*PRIVATE KEY-----|-----BEGIN ",
-        r"PGP PRIVATE KEY BLOCK-----)",
-        r"[ \t]*(?:\r?\n[ \t]*[A-Za-z][A-Za-z0-9-]{0,31}:[ \t]*[^\r\n]*)*(?:(?:\r?\n[ \t]*)?(?:\r?\n[ \t]*[A-Za-z0-9+/=]+[ \t]*)+)?",
-    ))
-});
-static RE_CARD_CANDIDATE: LazyLock<Option<BytesRegex>> =
-    LazyLock::new(|| compile_bytes_regex(r"\b\d+(?:[ -]\d+)*\b"));
-static RE_IBAN: LazyLock<Option<BytesRegex>> =
-    LazyLock::new(|| compile_bytes_regex(r"(?i)\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]){11,30}\b"));
-static RE_SSN: LazyLock<Option<BytesRegex>> =
-    LazyLock::new(|| compile_bytes_regex(r"\b\d{3}-\d{2}-\d{4}\b"));
-
-fn compile_bytes_regex(pattern: &str) -> Option<BytesRegex> {
-    BytesRegexBuilder::new(pattern)
-        .dfa_size_limit(CONTENT_REGEX_DFA_SIZE_LIMIT)
-        .build()
-        .ok()
-}
-
-/// Scans raw bytes for secret and PII findings at `layer` using `offset_base` for layer-0 chunking.
+/// Scans raw bytes for secret and PII findings at `layer` using signed YAML recognisers.
 pub(crate) fn scan_layer_bytes(
     data: &[u8],
     offset_base: usize,
@@ -91,48 +22,171 @@ pub(crate) fn scan_layer_bytes(
     hmac_key: Option<&[u8]>,
     matches: &mut Vec<ContentFindingMatch>,
     facts: &mut Vec<AnalyzeFact>,
-) {
-    let secret_rules: [(&Option<BytesRegex>, &str); 12] = [
-        (&RE_OPENAI, "openai_api_key"),
-        (&RE_ANTHROPIC, "anthropic_api_key"),
-        (&RE_GITHUB, "github_token"),
-        (&RE_GITLAB, "gitlab_token"),
-        (&RE_HUGGINGFACE, "huggingface_token"),
-        (&RE_NPM, "npm_token"),
-        (&RE_AWS_KEY, "aws_access_key"),
-        (&RE_STRIPE, "stripe_live_key"),
-        (&RE_SLACK, "slack_token"),
-        (&RE_GCP, "google_api_key"),
-        (&RE_JWT, "jwt_token"),
-        (&RE_AWS_SECRET_CTX, "aws_secret_key"),
-    ];
+) -> Result<(), &'static str> {
+    let catalog = default_content_recognisers()?;
+    scan_layer_bytes_with_catalog(data, offset_base, layer, hmac_key, catalog, matches, facts);
+    Ok(())
+}
 
+/// Scans raw bytes against an explicit dynamically loaded `ContentRecogniserCatalog`.
+pub(crate) fn scan_layer_bytes_with_catalog(
+    data: &[u8],
+    offset_base: usize,
+    layer: u8,
+    hmac_key: Option<&[u8]>,
+    catalog: &ContentRecogniserCatalog,
+    matches: &mut Vec<ContentFindingMatch>,
+    facts: &mut Vec<AnalyzeFact>,
+) {
     let mut pem_ranges: Vec<(usize, usize)> = Vec::new();
-    if let Some(re) = &*RE_PEM_KEY_BLOCK {
-        for m in re.find_iter(data) {
-            pem_ranges.push((m.start(), m.end()));
-            push_finding(
-                FindingDetectorKind::Secret,
-                "private_key_pem",
-                offset_base.saturating_add(m.start()),
-                offset_base.saturating_add(m.end()),
-                m.as_bytes(),
-                layer,
-                hmac_key,
-                matches,
-                facts,
-            );
-        }
+    for rule in &catalog.rules {
+        apply_recogniser(
+            rule,
+            data,
+            offset_base,
+            layer,
+            hmac_key,
+            &mut pem_ranges,
+            matches,
+            facts,
+        );
     }
-    if let Some(re) = &*RE_PEM_KEY_HEADER {
-        for m in re.find_iter(data) {
-            let covered = pem_ranges
-                .iter()
-                .any(|&(s, e)| m.start() >= s && m.start() < e);
-            if !covered {
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_recogniser(
+    rule: &CompiledRecogniser,
+    data: &[u8],
+    offset_base: usize,
+    layer: u8,
+    hmac_key: Option<&[u8]>,
+    pem_ranges: &mut Vec<(usize, usize)>,
+    matches: &mut Vec<ContentFindingMatch>,
+    facts: &mut Vec<AnalyzeFact>,
+) {
+    match rule.post_validator {
+        RecogniserPostValidator::PemBlock => {
+            for m in rule.regex.find_iter(data) {
+                pem_ranges.push((m.start(), m.end()));
                 push_finding(
-                    FindingDetectorKind::Secret,
-                    "private_key_pem",
+                    rule.detector_kind,
+                    &rule.rule_kind,
+                    offset_base.saturating_add(m.start()),
+                    offset_base.saturating_add(m.end()),
+                    m.as_bytes(),
+                    layer,
+                    hmac_key,
+                    matches,
+                    facts,
+                );
+            }
+        }
+        RecogniserPostValidator::PemHeaderUncovered => {
+            for m in rule.regex.find_iter(data) {
+                let covered = pem_ranges
+                    .iter()
+                    .any(|&(s, e)| m.start() >= s && m.start() < e);
+                if !covered {
+                    push_finding(
+                        rule.detector_kind,
+                        &rule.rule_kind,
+                        offset_base.saturating_add(m.start()),
+                        offset_base.saturating_add(m.end()),
+                        m.as_bytes(),
+                        layer,
+                        hmac_key,
+                        matches,
+                        facts,
+                    );
+                }
+            }
+        }
+        RecogniserPostValidator::LuhnSubranges => {
+            for m in rule.regex.find_iter(data) {
+                let slice = m.as_bytes();
+                for (rel_s, rel_e) in extract_card_subranges(slice) {
+                    if let Some(cand) = slice.get(rel_s..rel_e) {
+                        push_finding(
+                            rule.detector_kind,
+                            &rule.rule_kind,
+                            offset_base.saturating_add(m.start()).saturating_add(rel_s),
+                            offset_base.saturating_add(m.start()).saturating_add(rel_e),
+                            cand,
+                            layer,
+                            hmac_key,
+                            matches,
+                            facts,
+                        );
+                    }
+                }
+            }
+        }
+        RecogniserPostValidator::IbanMod97 => {
+            for m in rule.regex.find_iter(data) {
+                if let Ok(text) = std::str::from_utf8(m.as_bytes())
+                    && iban_valid(text)
+                {
+                    push_finding(
+                        rule.detector_kind,
+                        &rule.rule_kind,
+                        offset_base.saturating_add(m.start()),
+                        offset_base.saturating_add(m.end()),
+                        m.as_bytes(),
+                        layer,
+                        hmac_key,
+                        matches,
+                        facts,
+                    );
+                }
+            }
+        }
+        RecogniserPostValidator::UsSsnBounds => {
+            for m in rule.regex.find_iter(data) {
+                if ssn_bytes_valid(m.as_bytes()) {
+                    push_finding(
+                        rule.detector_kind,
+                        &rule.rule_kind,
+                        offset_base.saturating_add(m.start()),
+                        offset_base.saturating_add(m.end()),
+                        m.as_bytes(),
+                        layer,
+                        hmac_key,
+                        matches,
+                        facts,
+                    );
+                }
+            }
+        }
+        RecogniserPostValidator::None => {
+            if rule.capture_group > 0 {
+                for caps in rule.regex.captures_iter(data) {
+                    if let Some(m) = caps.get(rule.capture_group) {
+                        push_finding(
+                            rule.detector_kind,
+                            &rule.rule_kind,
+                            offset_base.saturating_add(m.start()),
+                            offset_base.saturating_add(m.end()),
+                            m.as_bytes(),
+                            layer,
+                            hmac_key,
+                            matches,
+                            facts,
+                        );
+                    }
+                }
+                return;
+            }
+            for m in rule.regex.find_iter(data) {
+                if rule
+                    .exclude_prefix
+                    .as_deref()
+                    .is_some_and(|prefix| m.as_bytes().starts_with(prefix))
+                {
+                    continue;
+                }
+                push_finding(
+                    rule.detector_kind,
+                    &rule.rule_kind,
                     offset_base.saturating_add(m.start()),
                     offset_base.saturating_add(m.end()),
                     m.as_bytes(),
@@ -144,49 +198,6 @@ pub(crate) fn scan_layer_bytes(
             }
         }
     }
-
-    for (opt_re, kind) in secret_rules {
-        let Some(re) = opt_re else {
-            continue;
-        };
-        if kind == "aws_secret_key" {
-            for caps in re.captures_iter(data) {
-                if let Some(m) = caps.get(1) {
-                    push_finding(
-                        FindingDetectorKind::Secret,
-                        kind,
-                        offset_base.saturating_add(m.start()),
-                        offset_base.saturating_add(m.end()),
-                        m.as_bytes(),
-                        layer,
-                        hmac_key,
-                        matches,
-                        facts,
-                    );
-                }
-            }
-            continue;
-        }
-        for m in re.find_iter(data) {
-            if kind == "openai_api_key" && m.as_bytes().starts_with(b"sk-ant-") {
-                continue;
-            }
-            push_finding(
-                FindingDetectorKind::Secret,
-                kind,
-                offset_base.saturating_add(m.start()),
-                offset_base.saturating_add(m.end()),
-                m.as_bytes(),
-                layer,
-                hmac_key,
-                matches,
-                facts,
-            );
-        }
-    }
-
-    scan_credit_cards(data, offset_base, layer, hmac_key, matches, facts);
-    scan_iban_and_ssn(data, offset_base, layer, hmac_key, matches, facts);
 }
 
 #[must_use]
@@ -246,38 +257,6 @@ pub fn iban_valid(raw: &str) -> bool {
     rem == 1
 }
 
-fn scan_credit_cards(
-    data: &[u8],
-    offset_base: usize,
-    layer: u8,
-    hmac_key: Option<&[u8]>,
-    matches: &mut Vec<ContentFindingMatch>,
-    facts: &mut Vec<AnalyzeFact>,
-) {
-    let Some(re) = &*RE_CARD_CANDIDATE else {
-        return;
-    };
-    for m in re.find_iter(data) {
-        let slice = m.as_bytes();
-        let ranges = extract_card_subranges(slice);
-        for (rel_s, rel_e) in ranges {
-            if let Some(cand) = slice.get(rel_s..rel_e) {
-                push_finding(
-                    FindingDetectorKind::Pii,
-                    "credit_card_pan",
-                    offset_base.saturating_add(m.start()).saturating_add(rel_s),
-                    offset_base.saturating_add(m.start()).saturating_add(rel_e),
-                    cand,
-                    layer,
-                    hmac_key,
-                    matches,
-                    facts,
-                );
-            }
-        }
-    }
-}
-
 fn extract_card_subranges(slice: &[u8]) -> Vec<(usize, usize)> {
     let mut group_starts = vec![0usize];
     for (idx, &b) in slice.iter().enumerate() {
@@ -324,52 +303,6 @@ fn extract_card_subranges(slice: &[u8]) -> Vec<(usize, usize)> {
         }
     }
     out
-}
-
-fn scan_iban_and_ssn(
-    data: &[u8],
-    offset_base: usize,
-    layer: u8,
-    hmac_key: Option<&[u8]>,
-    matches: &mut Vec<ContentFindingMatch>,
-    facts: &mut Vec<AnalyzeFact>,
-) {
-    if let Some(re) = &*RE_IBAN {
-        for m in re.find_iter(data) {
-            if let Ok(text) = std::str::from_utf8(m.as_bytes())
-                && iban_valid(text)
-            {
-                push_finding(
-                    FindingDetectorKind::Pii,
-                    "iban",
-                    offset_base.saturating_add(m.start()),
-                    offset_base.saturating_add(m.end()),
-                    m.as_bytes(),
-                    layer,
-                    hmac_key,
-                    matches,
-                    facts,
-                );
-            }
-        }
-    }
-    if let Some(re) = &*RE_SSN {
-        for m in re.find_iter(data) {
-            if ssn_bytes_valid(m.as_bytes()) {
-                push_finding(
-                    FindingDetectorKind::Pii,
-                    "us_ssn",
-                    offset_base.saturating_add(m.start()),
-                    offset_base.saturating_add(m.end()),
-                    m.as_bytes(),
-                    layer,
-                    hmac_key,
-                    matches,
-                    facts,
-                );
-            }
-        }
-    }
 }
 
 #[allow(clippy::too_many_arguments)]

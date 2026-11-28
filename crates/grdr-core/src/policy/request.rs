@@ -17,17 +17,9 @@ use super::compiler::{CompiledRuleMeta, runtime_schema};
 use super::entities::{build_entities, entity_uid, req_err};
 use super::request_ctx::{build_context, populate_uncertainty};
 use super::signals::extract_cedar_signals;
+use crate::analyze::pack_lists::default_signal_pattern_catalog;
 use crate::analyze::{classify_target, normalize_attempt_target};
 use crate::session::SessionRuleState;
-
-const SINK_CLASSES: &[&str] = &[
-    "egress-outside-profile",
-    "push-outside-org",
-    "pkg.publish",
-    "message.send",
-    "mcp-unpinned-write",
-    "llm-non-tenant",
-];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ContextField {
@@ -209,7 +201,7 @@ pub fn build_cedar_request_with_options(
 ) -> Result<CedarRequest, PolicyError> {
     let schema = runtime_schema()?;
     let analysis = classify_target(attempt.action_class, &attempt.target);
-    let signals = extract_cedar_signals(attempt, &analysis, packs, opts);
+    let signals = extract_cedar_signals(attempt, &analysis, packs, opts)?;
 
     let (granted_rule_ids, lifted_grant_by_rule_id) =
         collect_matching_grants(attempt, active_rules, grants, now);
@@ -276,11 +268,15 @@ pub fn build_cedar_request_with_options(
         )
     };
 
+    let signal_cat =
+        default_signal_pattern_catalog().map_err(|detail| PolicyError::RequestBuildFailed {
+            detail: detail.to_owned(),
+        })?;
     let has_data_flow = attempt.action_class != ActionClass::DataFlow
         && signals
             .sink_classes
             .iter()
-            .any(|c| SINK_CLASSES.contains(&c.as_str()));
+            .any(|c| signal_cat.sink_classes.iter().any(|s| s == c));
     let (data_flow_request, data_flow_request_without_grants) = if has_data_flow {
         let df_action = entity_uid("Grdr::Action", ActionClass::DataFlow.as_str())?;
         let df_ctx = build_context(

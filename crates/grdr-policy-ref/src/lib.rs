@@ -9,6 +9,7 @@
 mod cedar_stub;
 pub mod derive;
 pub mod eval;
+mod list_yaml;
 mod normalize;
 
 use std::collections::BTreeSet;
@@ -23,6 +24,7 @@ pub use eval::{
     RefSessionState, ReferenceDecision, evaluate_ref, evaluate_ref_mut, evaluate_ref_with_session,
 };
 pub use grdr_model::{ChangePolarity, LayerLock, LayerModeSetting, Mode};
+pub use list_yaml::RefSignalLists;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum RefError {

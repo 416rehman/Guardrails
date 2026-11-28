@@ -454,7 +454,7 @@ Dogwood syntax is accepted as a front end that lowers to this Cedar plus session
 
 ### 13. Compile-down and drift
 
-Targets: Claude Code managed settings and Codex `requirements.toml`. A rule compiles to native deny settings only if it is in Block, final, locked at the layer that owns the device's managed source, has no `unless`, reads no session state, and ranges over a path class, a host class or MCP server identity. No command-string rules and no native "ask" (D-12). Hardening flags come from code-defined templates (managed hooks only, bypass mode off, the agent's sandbox on). Output is a fragment or MDM artefact handed to the D-49 writer; this component never writes files.
+Targets: Claude Code managed settings, Codex `requirements.toml`, OpenShell, DefenseClaw, and Numbat (`packs/lists/compile-targets.yaml`). A rule compiles to native deny settings only if it is in Block, final, locked at the layer that owns the device's managed source, has either no `unless` or only a target-supported allowlisted `resource.classes.contains("allow:<id>")` override, reads no session state, has an unscoped global principal/resource header, and ranges over static path, MCP server identity, host, or static command prefix patterns supported by the target profile (D-12). Hardening flags come from YAML target profiles and code templates (managed hooks only, bypass mode off, the agent's sandbox on). Output is a fragment or MDM artefact handed to the D-49 writer; this component never writes files.
 
 Soundness direction: native denials must be a subset of what Cedar always denies.
 

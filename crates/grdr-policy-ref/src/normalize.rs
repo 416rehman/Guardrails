@@ -4,16 +4,7 @@
 
 use grdr_model::{ActionAttempt, ActionClass, CommandParseStatus};
 
-const OPAQUE_PATTERNS: &[&str] = &[
-    "$(",
-    "`",
-    "-encodedcommand",
-    " -enc ",
-    "eval ",
-    "invoke-expression",
-    "iex ",
-    "frombase64string",
-];
+use crate::list_yaml::default_ref_signal_lists;
 
 pub(crate) struct TargetSignals {
     pub(crate) command_status: CommandParseStatus,
@@ -28,6 +19,14 @@ struct RefNormalizedCommand {
 }
 
 pub(crate) fn analyze_attempt_signals(attempt: &ActionAttempt) -> TargetSignals {
+    let Ok(lists) = default_ref_signal_lists() else {
+        return TargetSignals {
+            command_status: CommandParseStatus::Malformed,
+            risk_score: 100,
+            sensitive_credential: true,
+            external_network: true,
+        };
+    };
     let raw_lower = attempt.target.replace('\\', "/").to_ascii_lowercase();
     let (normalized_target, command_status) =
         normalize_target_for_match(attempt.action_class, &attempt.target);
@@ -40,72 +39,26 @@ pub(crate) fn analyze_attempt_signals(attempt: &ActionAttempt) -> TargetSignals 
         risk_score = risk_score.saturating_add(55);
     }
 
-    if matches_either(
-        &raw_lower,
-        &norm_lower,
-        &[
-            ".claude/",
-            ".claude.json",
-            ".cursor/",
-            ".codex/",
-            ".gemini/",
-            ".windsurf/",
-            ".grdr/",
-            "grdr-data/",
-            "security/",
-        ],
-    ) {
+    if matches_either(&raw_lower, &norm_lower, &lists.agent_control_risk_patterns) {
         risk_score = risk_score.saturating_add(70);
     }
-    let sensitive_credential = matches_either(
-        &raw_lower,
-        &norm_lower,
-        &[
-            ".ssh/",
-            ".aws/",
-            ".gnupg/",
-            ".config/gh/",
-            "id_rsa",
-            "id_ed25519",
-            ".env.production",
-        ],
-    );
+    let sensitive_credential =
+        matches_either(&raw_lower, &norm_lower, &lists.credential_risk_patterns);
     if sensitive_credential {
         risk_score = risk_score.saturating_add(65);
     }
-    if matches_either(
-        &raw_lower,
-        &norm_lower,
-        &[
-            "--dangerously-skip-permissions",
-            "--no-verify",
-            "--disable-hooks",
-            "--no-sandbox",
-            "--disable-sandbox",
-            "--yolo",
-            "grdr_disable",
-        ],
-    ) {
+    if matches_either(&raw_lower, &norm_lower, &lists.hook_bypass_risk_patterns) {
         risk_score = risk_score.saturating_add(75);
     }
-    if matches_either(
-        &raw_lower,
-        &norm_lower,
-        &[
-            "rm -rf",
-            "rm -fr",
-            "remove-item -recurse -force",
-            "git reset --hard",
-            "mkfs.",
-        ],
-    ) || attempt.action_class == ActionClass::FileDelete
+    if matches_either(&raw_lower, &norm_lower, &lists.destructive_risk_patterns)
+        || attempt.action_class == ActionClass::FileDelete
     {
         risk_score = risk_score.saturating_add(45);
     }
     if matches_either(
         &raw_lower,
         &norm_lower,
-        &["sudo ", "doas ", "runas ", "verb runas"],
+        &lists.privilege_escalation_patterns,
     ) || attempt.action_class == ActionClass::Elevate
     {
         risk_score = risk_score.saturating_add(50);
@@ -113,13 +66,7 @@ pub(crate) fn analyze_attempt_signals(attempt: &ActionAttempt) -> TargetSignals 
     let external_network = matches_either(
         &raw_lower,
         &norm_lower,
-        &[
-            "curl ",
-            "invoke-webrequest",
-            "pastebin",
-            "webhook.site",
-            "transfer.sh",
-        ],
+        &lists.external_network_risk_patterns,
     ) || matches!(
         attempt.action_class,
         ActionClass::NetRequest | ActionClass::NetConnect | ActionClass::DataFlow
@@ -158,10 +105,10 @@ pub(crate) fn normalize_target_for_match(
     }
 }
 
-fn matches_either(raw: &str, normalized: &str, needles: &[&str]) -> bool {
+fn matches_either(raw: &str, normalized: &str, needles: &[String]) -> bool {
     needles
         .iter()
-        .any(|needle| raw.contains(needle) || normalized.contains(needle))
+        .any(|needle| raw.contains(needle.as_str()) || normalized.contains(needle.as_str()))
 }
 
 fn canonicalize_path_ref(raw: &str) -> String {
@@ -384,11 +331,18 @@ fn normalize_command_ref(raw: &str) -> RefNormalizedCommand {
         };
     }
 
+    let Ok(lists) = default_ref_signal_lists() else {
+        return RefNormalizedCommand {
+            status: CommandParseStatus::Malformed,
+            canonical_text,
+        };
+    };
     let padded = format!(" {canonical_text} ");
     let has_opaque = saw_subshell
-        || OPAQUE_PATTERNS
+        || lists
+            .opaque_command_patterns
             .iter()
-            .any(|pat| padded.contains(pat) || canonical_text.contains(pat));
+            .any(|pat| padded.contains(pat.as_str()) || canonical_text.contains(pat.as_str()));
     let status = if has_opaque {
         CommandParseStatus::Unresolved
     } else {

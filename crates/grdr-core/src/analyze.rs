@@ -31,6 +31,9 @@ mod mcp_schema;
 pub mod net;
 mod net_ip;
 mod net_psl;
+pub(crate) mod pack_io;
+pub mod pack_lists;
+mod pack_lists_data;
 pub mod path;
 mod path_rules;
 mod risk;
@@ -40,45 +43,20 @@ use std::fmt;
 
 use grdr_model::{ActionAttempt, ActionClass, CommandParseStatus, DataClass};
 
-use crate::analyze::content::scan_deterministic_content;
 use crate::analyze::decode::{DecodeStatus, extract_and_decode_command_payloads};
 use crate::analyze::exec_tokenize::{normalize_command_body, tokenize_shell_for_decode};
 use crate::analyze::net::{HostClassifierConfig, classify_url_or_host};
+use crate::analyze::pack_lists::default_signal_pattern_catalog;
 use crate::analyze::path::{
     canonicalize_path_lex, canonicalize_windows_path_lex, has_unresolved_path_syntax,
     split_ntfs_ads, validate_path_syntax,
 };
 use crate::analyze::risk::{
-    add_risk, apply_net_risk, apply_path_class_risk, apply_pattern_risk, apply_tree_risk,
-    evaluate_exec_target, is_posix_only_path, worse_parse_status,
+    add_risk, apply_content_risk, apply_net_risk, apply_path_class_risk, apply_pattern_risk,
+    apply_tree_risk, evaluate_exec_target, is_posix_only_path, worse_parse_status,
 };
 
 pub use crate::analyze::types::{Resolution, ShellLimits};
-
-const OPAQUE_PATTERNS: &[&str] = &[
-    "$(",
-    "`",
-    "-encodedcommand",
-    " -enc",
-    " -ec ",
-    " -ec:",
-    " -ec=",
-    " /enc",
-    " /ec ",
-    " /ec:",
-    " /ec=",
-    "eval ",
-    "invoke-expression",
-    "iex ",
-    "iex(",
-    "icm ",
-    "invoke-command",
-    "frombase64string",
-    "scriptblock]::create",
-    ".invokescript(",
-    ".invoke(",
-    "$executioncontext",
-];
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct NormalizedCommand {
@@ -251,16 +229,17 @@ pub fn normalize_command(raw: &str) -> NormalizedCommand {
             opaque: true,
         };
     }
-    if raw.contains('\0') {
-        return NormalizedCommand {
-            status: CommandParseStatus::Malformed,
-            segments: Vec::new(),
-            canonical_text: String::new(),
-            opaque: true,
-        };
+    if !raw.contains('\0')
+        && let Ok(cat) = default_signal_pattern_catalog()
+    {
+        return normalize_command_body(raw, cat.analyze_opaque_patterns.as_slice());
     }
-
-    normalize_command_body(raw, OPAQUE_PATTERNS)
+    NormalizedCommand {
+        status: CommandParseStatus::Malformed,
+        segments: Vec::new(),
+        canonical_text: String::new(),
+        opaque: true,
+    }
 }
 
 #[must_use]
@@ -362,11 +341,13 @@ pub fn classify_target(action_class: ActionClass, target: &str) -> TargetAnalysi
         apply_net_risk(&url_norm, &mut risk_tags, &mut risk_score);
     }
 
-    let raw_content = scan_deterministic_content(target.as_bytes());
-    let decoded_content = scan_deterministic_content(case_corpus.as_bytes());
-    if !raw_content.matches.is_empty() || !decoded_content.matches.is_empty() {
-        add_risk(&mut risk_tags, &mut risk_score, "content.secret", 60);
-    }
+    apply_content_risk(
+        target,
+        &case_corpus,
+        &mut command_status,
+        &mut risk_tags,
+        &mut risk_score,
+    );
 
     apply_pattern_risk(
         &raw_lower,

@@ -20,7 +20,8 @@ use crate::analyze::types::{
 };
 
 pub use crate::analyze::path_rules::{
-    ProtectedPathClass, VolumeCase, classify_protected_path, split_ntfs_ads,
+    ProtectedPathClass, VolumeCase, classify_protected_path, classify_protected_path_with_catalog,
+    split_ntfs_ads,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

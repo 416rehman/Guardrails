@@ -4,12 +4,17 @@
 //! Embedding option L0 portability analyser and AST query compilers (`KQL`, `LogScale`, `EQL`, `XQL`, `SPL`, `GenericSigma`).
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
 use crate::detect::condition::sel_name_matches_pattern;
 use crate::detect::l0_format::{
     expand_l0_values, format_single_term, format_spl_where_term, valid_field_ident,
+};
+use crate::detect::l0_vars::embedded_l0_expand_vars;
+pub use crate::detect::l0_vars::{
+    load_l0_vars_from_packs_dir, parse_catalogue_agent_binaries_yaml, parse_l0_vars_yaml,
 };
 use crate::detect::types::{
     ConditionExpr, DetectError, FieldPredicate, HostProfile, MAX_CONDITION_DEPTH, SigmaModifier,
@@ -99,23 +104,28 @@ pub fn classify_l0_portability(rule: &SigmaRule) -> L0Portability {
     }
 }
 
-/// Compiles `rule` to an L0 target using default Tier-A agent binary expansion (`%grdr_agent_images%`).
+/// Compiles `rule` to an L0 target using YAML-loaded agent binary expansion (`packs/lists/l0-agent-images.yaml`).
 pub fn compile_l0_target(
     rule: &SigmaRule,
     target: L0Target,
 ) -> Result<CompiledL0Rule, DetectError> {
-    let mut expand_vars = BTreeMap::new();
-    expand_vars.insert(
-        "grdr_agent_images".to_owned(),
-        vec![
-            "claude".into(),
-            "codex".into(),
-            "cursor".into(),
-            "gemini".into(),
-            "opencode".into(),
-            "aider".into(),
-        ],
-    );
+    compile_l0_target_with_vars(rule, target, embedded_l0_expand_vars()?)
+}
+
+/// Compiles `rule` to an L0 target reading expansion variables dynamically from `packs_dir`.
+pub fn compile_l0_target_with_packs_dir(
+    rule: &SigmaRule,
+    target: L0Target,
+    packs_dir: &Path,
+) -> Result<CompiledL0Rule, DetectError> {
+    compile_l0_target_with_vars(rule, target, load_l0_vars_from_packs_dir(packs_dir)?)
+}
+
+fn compile_l0_target_with_vars(
+    rule: &SigmaRule,
+    target: L0Target,
+    expand_vars: BTreeMap<String, Vec<String>>,
+) -> Result<CompiledL0Rule, DetectError> {
     let host = HostProfile {
         device_id: "l0-export".into(),
         device_name: "l0-export".into(),

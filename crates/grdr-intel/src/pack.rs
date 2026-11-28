@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::canonical::normalize_observable;
+use crate::governance::{IntelGovernancePolicy, default_intel_governance};
 use crate::record::{ClaimNature, GrdrIntelId, IntelRecord, IntelStatus, compute_status};
 use crate::validators::{
     canonicalize_strict_dns_domain, validate_http_https_url, validate_observable_syntax,
@@ -22,40 +23,6 @@ const MAX_OBSERVABLES_PER_RECORD: usize = 512;
 const MAX_EVIDENCE_PER_RECORD: usize = 128;
 const MAX_FIELD_STRING_BYTES: usize = 4_096;
 const MAX_GUARD_DOMAINS: usize = 10_000;
-
-const FORBIDDEN_INTEL_KEYS: &[&str] = &[
-    "allow",
-    "allow_list",
-    "allowlist",
-    "grant",
-    "grants",
-    "suppress",
-    "suppressions",
-    "rules",
-    "rule",
-    "cedar",
-    "mode",
-    "modes",
-    "mode_overrides",
-    "action_ceiling",
-    "max_mode",
-    "exec",
-    "command",
-    "commands",
-    "path",
-    "url",
-    "env",
-    "hooks",
-    "hook",
-    "mcp_server",
-    "mcp_servers",
-    "mcpservers",
-    "mcpserver",
-    "permit",
-    "exception",
-    "exceptions",
-    "declassify",
-];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -148,7 +115,17 @@ impl TryFrom<RawValidatedIntelPack> for ValidatedIntelPack {
 
 /// Validates raw JSON pack payloads strictly as restrict-only `PackKind::Intel`,
 /// enforcing recursive P7 checks, schema caps, duplicate ID rejection, and lane rules (`D-32`).
+/// Validates a JSON-encoded `PackKind::Intel` payload using default signed YAML governance rules.
 pub fn validate_intel_pack_json(raw_json: &str) -> Result<ValidatedIntelPack, IntelError> {
+    let gov = default_intel_governance()?;
+    validate_intel_pack_json_with_governance(raw_json, gov)
+}
+
+/// Validates a JSON-encoded `PackKind::Intel` payload against an explicit `IntelGovernancePolicy`.
+pub fn validate_intel_pack_json_with_governance(
+    raw_json: &str,
+    gov: &IntelGovernancePolicy,
+) -> Result<ValidatedIntelPack, IntelError> {
     let (base_max_bytes, _) = pack_byte_limits()?;
     if raw_json.len() > base_max_bytes {
         return Err(IntelError::NonRestrictivePack(format!(
@@ -159,7 +136,7 @@ pub fn validate_intel_pack_json(raw_json: &str) -> Result<ValidatedIntelPack, In
 
     let doc: Value = serde_json::from_str(raw_json)
         .map_err(|e| IntelError::NonRestrictivePack(format!("invalid intel pack JSON: {e}")))?;
-    scan_forbidden_keys_recursive(&doc, 0)?;
+    scan_forbidden_keys_recursive(&doc, gov, 0)?;
 
     let has_manifest_wrapper = doc
         .as_object()
@@ -398,7 +375,11 @@ fn is_bounded_non_empty(val: &str) -> bool {
         && !val.chars().any(char::is_control)
 }
 
-fn scan_forbidden_keys_recursive(val: &Value, depth: usize) -> Result<(), IntelError> {
+fn scan_forbidden_keys_recursive(
+    val: &Value,
+    gov: &IntelGovernancePolicy,
+    depth: usize,
+) -> Result<(), IntelError> {
     if depth > MAX_JSON_SCAN_DEPTH {
         return Err(IntelError::NonRestrictivePack(
             "intel JSON exceeds maximum nesting depth".into(),
@@ -407,18 +388,17 @@ fn scan_forbidden_keys_recursive(val: &Value, depth: usize) -> Result<(), IntelE
     match val {
         Value::Object(map) => {
             for (k, child) in map {
-                let norm = k.trim().to_ascii_lowercase();
-                if FORBIDDEN_INTEL_KEYS.contains(&norm.as_str()) {
+                if gov.is_forbidden_key(k) {
                     return Err(IntelError::NonRestrictivePack(
                         "forbidden field in PackKind::Intel payload".into(),
                     ));
                 }
-                scan_forbidden_keys_recursive(child, depth.saturating_add(1))?;
+                scan_forbidden_keys_recursive(child, gov, depth.saturating_add(1))?;
             }
         }
         Value::Array(items) => {
             for item in items {
-                scan_forbidden_keys_recursive(item, depth.saturating_add(1))?;
+                scan_forbidden_keys_recursive(item, gov, depth.saturating_add(1))?;
             }
         }
         _ => {}
@@ -742,5 +722,82 @@ mod tests {
         let nested_msg = nested_err.to_string();
         assert!(!nested_msg.contains("UNTRUSTED_POLARITY_SECRET"));
         assert!(!nested_msg.contains("UNTRUSTED_NESTED_FIELD"));
+    }
+
+    #[test]
+    fn rejects_camel_hyphen_and_extended_p7_forbidden_intel_keys() {
+        for bad_key in [
+            "allow-list",
+            "modeOverrides",
+            "mcpServersToStart",
+            "envVarsToSet",
+            "executables",
+            "urls",
+            "wasm",
+            "wasi",
+            "plugins",
+            "bypass",
+            "widen",
+        ] {
+            let mut payload = valid_base_pack("rapid");
+            payload
+                .as_object_mut()
+                .expect("object")
+                .insert(bad_key.to_owned(), serde_json::json!(["x"]));
+            assert!(
+                matches!(
+                    validate_intel_pack_json(&payload.to_string()),
+                    Err(IntelError::NonRestrictivePack(_))
+                ),
+                "expected NonRestrictivePack for normalized key `{bad_key}`"
+            );
+        }
+
+        let gov = crate::governance::IntelGovernancePolicy::from_yaml(
+            "format: grdr.intel-governance.v1\npack_id: custom\nlists:\n  forbidden_intel_keys:\n    - \"custom_bypass\"\n  private_host_suffixes:\n    - \"corp.internal\"\n",
+        )
+        .expect("custom gov yaml");
+        let mut custom_payload = valid_base_pack("standard");
+        custom_payload
+            .as_object_mut()
+            .expect("object")
+            .insert("custom-bypass".to_owned(), serde_json::json!(true));
+        assert!(matches!(
+            validate_intel_pack_json_with_governance(&custom_payload.to_string(), &gov),
+            Err(IntelError::NonRestrictivePack(_))
+        ));
+
+        for extra_bad in [
+            "modeOverride",
+            "rule_snippets",
+            "evidence_queries",
+            "per_person_scoring",
+            "r\u{200B}ules",
+            "\u{FF4D}ode",
+            "m\u{043E}de",
+        ] {
+            let mut payload = valid_base_pack("standard");
+            payload
+                .as_object_mut()
+                .expect("object")
+                .insert(extra_bad.to_owned(), serde_json::json!(true));
+            assert!(
+                matches!(
+                    validate_intel_pack_json(&payload.to_string()),
+                    Err(IntelError::NonRestrictivePack(_))
+                ),
+                "expected NonRestrictivePack for `{extra_bad}`"
+            );
+        }
+
+        let bad_fmt = "format: wrong\npack_id: p\nlists:\n  forbidden_intel_keys:\n    - \"a\"\n";
+        assert!(crate::governance::IntelGovernancePolicy::from_yaml(bad_fmt).is_err());
+
+        let empty_list =
+            "format: grdr.intel-governance.v1\npack_id: p\nlists:\n  forbidden_intel_keys: []\n";
+        assert!(crate::governance::IntelGovernancePolicy::from_yaml(empty_list).is_err());
+
+        let bad_suffix = "format: grdr.intel-governance.v1\npack_id: p\nlists:\n  forbidden_intel_keys:\n    - \"allow\"\n  private_host_suffixes:\n    - \"bad host\"\n";
+        assert!(crate::governance::IntelGovernancePolicy::from_yaml(bad_suffix).is_err());
     }
 }
