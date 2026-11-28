@@ -418,10 +418,9 @@ fn serve_pg_session(
                 return;
             };
             let server_nonce = format!("{client_nonce}srvrandom9876");
-            let mut salt = [0u8; 16];
-            if grdr_crypto::fill_random(&mut salt).is_err() {
+            let Ok(salt) = grdr_crypto::random_bytes_16() else {
                 return;
-            }
+            };
             let salt_b64 = B64.encode(salt);
             let server_first = format!("r={server_nonce},s={salt_b64},i={iterations}");
             send_auth_frame(stream.as_mut(), 11, server_first.as_bytes());
@@ -982,10 +981,9 @@ fn postgres_bus_wire_atomic_rls_fence_and_monotonic_guards() {
         };
         let (_, bare) = cf.split_once(",,").unwrap();
         let cnonce = bare.strip_prefix("n=,r=").unwrap();
-        let mut salt = [0u8; 16];
-        if grdr_crypto::fill_random(&mut salt).is_err() {
+        let Ok(salt) = grdr_crypto::random_bytes_16() else {
             return;
-        }
+        };
         let salt_b64 = B64.encode(salt);
         let srv_first = format!("r={cnonce}buswire12345,s={salt_b64},i=4096");
         send_auth_frame(&mut tls, 11, srv_first.as_bytes());

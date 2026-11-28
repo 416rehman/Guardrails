@@ -271,6 +271,13 @@ pub fn pbkdf2_hmac_sha256(
     Ok(out)
 }
 
+pub fn random_bytes_16() -> Result<[u8; 16], CryptoError> {
+    let rng = aws_lc_rs::rand::SystemRandom::new();
+    let rnd: aws_lc_rs::rand::Random<[u8; 16]> = aws_lc_rs::rand::generate(&rng)
+        .map_err(|_| CryptoError::Entropy("aws-lc-rs RNG failure".into()))?;
+    Ok(rnd.expose())
+}
+
 #[must_use]
 pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     bool::from(a.ct_eq(b))
@@ -542,10 +549,8 @@ mod tests {
 
     #[test]
     fn pbkdf2_hmac_sha256_matches_one_round_hmac_and_rejects_zero() {
-        let mut ikm = [0u8; 24];
-        let mut salt = [0u8; 16];
-        fill_random(&mut ikm).unwrap();
-        fill_random(&mut salt).unwrap();
+        let ikm = random_bytes_16().unwrap();
+        let salt = random_bytes_16().unwrap();
 
         assert!(pbkdf2_hmac_sha256(&ikm, &salt, 0).is_err());
 
