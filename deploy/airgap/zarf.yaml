@@ -1,0 +1,91 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: The Guardrails ADR Authors
+kind: ZarfPackageConfig
+metadata:
+  name: guardrails-adr-airgap
+  description: Offline air-gap deployment package for Guardrails ADR (grdr-server, grdr CLI, verified airgap bundle, and digest-pinned image)
+  version: "0.1.0"
+
+constants:
+  - name: GRDR_SOURCE_REGISTRY
+    description: Upstream OCI registry mirrored into the Zarf package at create time
+    value: "ghcr.io/416rehman"
+  - name: GRDR_SOURCE_IMAGE_DIGEST
+    description: Verified non-zero sha256 digest of grdr-server from release-manifest.json (set via --set at create time)
+    value: ""
+    pattern: "^sha256:[0-9a-f]{64}$"
+
+variables:
+  - name: GRDR_IMAGE_REGISTRY
+    description: Private site OCI registry host and namespace
+    default: "registry.site.internal:5000/416rehman"
+    prompt: true
+  - name: GRDR_SERVER_IMAGE_DIGEST
+    description: Verified sha256 digest of grdr-server container image from release-manifest.json
+    default: ""
+    pattern: "^sha256:[0-9a-f]{64}$"
+    prompt: true
+  - name: GRDR_BUNDLE_TAR
+    description: Path to verified grdr air-gap bundle tarball staged alongside zarf.yaml
+    default: "./dist/grdr-airgap.tar"
+    prompt: true
+
+components:
+  - name: grdr-cli-linux-amd64
+    required: false
+    only:
+      cluster:
+        architecture: amd64
+    files:
+      - source: "./bin/linux-amd64/grdr"
+        target: "/usr/local/bin/grdr"
+        executable: true
+
+  - name: grdr-cli-linux-arm64
+    required: false
+    only:
+      cluster:
+        architecture: arm64
+    files:
+      - source: "./bin/linux-arm64/grdr"
+        target: "/usr/local/bin/grdr"
+        executable: true
+
+  - name: grdr-airgap-bundle
+    required: true
+    files:
+      - source: "###ZARF_VAR_GRDR_BUNDLE_TAR###"
+        target: "/var/lib/grdr/airgap/grdr-airgap.tar"
+    actions:
+      onDeploy:
+        before:
+          - cmd: "printf '%s' '###ZARF_VAR_GRDR_SERVER_IMAGE_DIGEST###' | grep -Eq '^sha256:[0-9a-f]{64}$' && [ '###ZARF_VAR_GRDR_SERVER_IMAGE_DIGEST###' != 'sha256:0000000000000000000000000000000000000000000000000000000000000000' ]"
+            description: "Fail closed unless GRDR_SERVER_IMAGE_DIGEST is a valid non-zero sha256 digest"
+
+  - name: grdr-server
+    required: true
+    actions:
+      onCreate:
+        before:
+          - cmd: "printf '%s' '###ZARF_CONST_GRDR_SOURCE_IMAGE_DIGEST###' | grep -Eq '^sha256:[0-9a-f]{64}$' && [ '###ZARF_CONST_GRDR_SOURCE_IMAGE_DIGEST###' != 'sha256:0000000000000000000000000000000000000000000000000000000000000000' ]"
+            description: "Fail closed unless GRDR_SOURCE_IMAGE_DIGEST is set to a verified non-zero sha256 digest before packaging"
+      onDeploy:
+        before:
+          - cmd: "printf '%s' '###ZARF_VAR_GRDR_SERVER_IMAGE_DIGEST###' | grep -Eq '^sha256:[0-9a-f]{64}$' && [ '###ZARF_VAR_GRDR_SERVER_IMAGE_DIGEST###' != 'sha256:0000000000000000000000000000000000000000000000000000000000000000' ]"
+            description: "Fail closed unless GRDR_SERVER_IMAGE_DIGEST is a valid non-zero sha256 digest"
+    charts:
+      - name: grdr-server
+        localPath: "../helm/grdr-server"
+        namespace: "guardrails"
+        releaseName: "grdr-server"
+        valuesFiles:
+          - "./values-airgap.yaml"
+        variables:
+          - name: GRDR_IMAGE_REGISTRY
+            description: Private site OCI registry host and namespace
+            path: global.imageRegistry
+          - name: GRDR_SERVER_IMAGE_DIGEST
+            description: Verified sha256 digest of grdr-server container image
+            path: image.digest
+    images:
+      - "###ZARF_CONST_GRDR_SOURCE_REGISTRY###/grdr-server@###ZARF_CONST_GRDR_SOURCE_IMAGE_DIGEST###"

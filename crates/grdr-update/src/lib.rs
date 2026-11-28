@@ -3,17 +3,54 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::arithmetic_side_effects)]
 
+mod airgap_bundle_verify;
+pub mod ceremony;
 pub mod dsse;
+pub mod fips_pq;
+pub mod handshake;
+pub mod mirror;
+pub mod rollout;
+pub mod rollout_admission;
+pub mod rollout_sketch;
 pub mod slots;
 pub mod tuf;
+mod tuf_helpers;
 pub mod tuf_types;
 
 #[cfg(test)]
 mod tests;
 
+pub use ceremony::{
+    CeremonyIdentityConfig, CeremonyParticipant, CeremonyTranscript, DeploymentCeremonyBundle,
+    MirrorConvergenceReport, MirrorExportKind, MirrorExportPlan, ProjectCeremonyBundle,
+    SigstoreTrustedRoot, TRUSTED_ROOT_MEDIA_TYPE, TrustedRootAuthority, TrustedRootLogEntry,
+    evaluate_mirror_convergence, evaluate_mirror_convergence_scoped, issue_freshness_vouch,
+    plan_mirror_export, run_deployment_root_ceremony, run_project_root_ceremony,
+};
 pub use dsse::{
     DsseEnvelope, DsseLimits, DsseSignature, DsseTargetStatement, dsse_pae, sign_dsse_envelope,
     verify_dsse_envelope, verify_dsse_envelope_with_limits,
+};
+pub use fips_pq::{
+    DualSignedPayload, FailClosedPqBackend, FipsKatCheck, FipsMode, FipsSbomProperty,
+    FipsSelfTestReport, FipsSelfTestState, HostOsProfile, KatOutcome, ML_DSA_65_PUBKEY_BYTES,
+    ML_DSA_65_SIG_BYTES, PqPolicyActivation, PqPublicKeyRecord, PqSignatureEntry,
+    PqVerifierBackend, run_fips_startup_self_test, verify_dual_signed_payload,
+};
+pub use handshake::{
+    HandshakeContractOffer, HandshakePolicy, HandshakeResolution, evaluate_offer_handshake,
+};
+pub use mirror::{DEFAULT_PLATFORM_MARKERS, target_matches_platforms};
+pub use rollout::{
+    AdmissionDecision, DEFAULT_SELF_HOSTED_JITTER_HOURS, DEFAULT_SELF_HOSTED_MIN_DELAY_HOURS,
+    HaltRollbackStatus, OperatorResumeStatement, ReleasePublishStatus, ResumeAuthorization,
+    RingDefinition, RolloutCoordinator, RolloutPhase, RolloutScope, SignedRolloutPlan,
+    admit_device_at, default_canary_rings,
+};
+pub use rollout_sketch::{
+    BPS_DENOM, CohortGateVerdict, CohortTelemetrySnapshot, DDSKETCH_MAX_BUCKET_INDEX,
+    DDSKETCH_MAX_BUCKETS, HaltReason, LatencyDdSketch, RollbackDirective, RollbackTargetKind,
+    RolloutGatePolicy,
 };
 pub use slots::{
     AirgapArtifact, AirgapBundleEntry, AirgapBundleManifest, AirgapVerificationOutcome,
@@ -21,10 +58,11 @@ pub use slots::{
 };
 pub use tuf::UpdateTrust;
 pub use tuf_types::{
-    FreshnessEvaluation, FreshnessStatement, PackKind, RootKeyRole, RootMetadata, SignedMetadata,
-    SignerClass, SnapshotMetadata, SnapshotTargetRef, TargetDescriptor, TargetsMetadata,
-    TimestampMetadata, TrustVerificationResult, TufRole, TufRootKind, TufSignature,
-    UpdateFreshness, canonical_sha256, sign_metadata,
+    FreshnessEvaluation, FreshnessStatement, PackKind, RootKeyRole, RootMetadata,
+    SignatureAlgorithm, SignedMetadata, SignerClass, SnapshotMetadata, SnapshotTargetRef,
+    TargetDescriptor, TargetsMetadata, TimestampMetadata, TrustVerificationResult, TufRole,
+    TufRootKind, TufSignature, UpdateFreshness, YankReason, YankRecord, canonical_sha256,
+    decode_base64, decode_ed25519_pubkey, encode_base64, sign_metadata, verify_root_self,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

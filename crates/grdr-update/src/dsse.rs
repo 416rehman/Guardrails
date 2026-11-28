@@ -151,6 +151,7 @@ pub fn verify_dsse_envelope_with_limits(
     let pae = dsse_pae(&envelope.payload_type, &payload_bytes);
 
     let mut verified_key_ids = BTreeSet::new();
+    let mut verified_pubkeys: BTreeSet<[u8; 32]> = BTreeSet::new();
     for entry in &envelope.signatures {
         if verified_key_ids.contains(&entry.keyid) {
             continue;
@@ -158,12 +159,22 @@ pub fn verify_dsse_envelope_with_limits(
         let Some(key) = trusted_keys.iter().find(|k| k.key_id == entry.keyid) else {
             continue;
         };
+        let Ok(pk_raw) = B64.decode(key.public_key_b64.trim()) else {
+            continue;
+        };
+        let Ok(pk_arr) = <[u8; 32]>::try_from(pk_raw) else {
+            continue;
+        };
+        if verified_pubkeys.contains(&pk_arr) {
+            continue;
+        }
         if verify_bytes(&key.public_key_b64, DSSE_SIG_DOMAIN, &pae, &entry.sig).is_ok() {
             verified_key_ids.insert(entry.keyid.clone());
+            verified_pubkeys.insert(pk_arr);
         }
     }
 
-    let verified_count = u32::try_from(verified_key_ids.len()).unwrap_or(u32::MAX);
+    let verified_count = u32::try_from(verified_pubkeys.len()).unwrap_or(u32::MAX);
     if verified_count < threshold {
         return Err(UpdateError::InvalidSignature(format!(
             "DSSE verified {verified_count} unique signatures, required threshold {threshold}"
@@ -217,6 +228,29 @@ mod tests {
         };
         assert!(matches!(
             verify_dsse_envelope(&dup_env, &trusted, 2),
+            Err(UpdateError::InvalidSignature(_))
+        ));
+
+        let alias_trusted = vec![
+            k1.public_info(),
+            TrustedKeyInfo {
+                key_id: "alias-kid".into(),
+                public_key_b64: k1.public_key_b64(),
+            },
+        ];
+        let alias_env = DsseEnvelope {
+            payload_type: env.payload_type.clone(),
+            payload: env.payload.clone(),
+            signatures: vec![
+                env.signatures[0].clone(),
+                DsseSignature {
+                    keyid: "alias-kid".into(),
+                    sig: env.signatures[0].sig.clone(),
+                },
+            ],
+        };
+        assert!(matches!(
+            verify_dsse_envelope(&alias_env, &alias_trusted, 2),
             Err(UpdateError::InvalidSignature(_))
         ));
 

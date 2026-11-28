@@ -387,10 +387,13 @@ impl DualRootVerifier {
             .trust
             .verify_target_artifact(
                 bundle.root_kind,
+                bundle.snapshot,
                 target_meta,
+                bundle.freshness,
                 bundle.target_path,
                 bundle.artifact_bytes,
                 Some(bundle.dsse_envelope),
+                now,
             )
             .map_err(|e| UpdaterError::TufVerification {
                 detail: e.to_string(),

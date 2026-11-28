@@ -3,6 +3,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as B64;
 use grdr_crypto::{SigningKeypair, sha256_hex, verify_bytes};
 use grdr_model::TrustedKeyInfo;
 use jiff::Timestamp;
@@ -28,8 +30,16 @@ pub enum TufRole {
     Targets,
     Binaries,
     Content,
+    ContentDetection,
+    ContentPolicy,
+    ContentAdapters,
+    ContentDictionary,
+    IntelBase,
+    IntelRapid,
     Rollout,
     Fleet,
+    PostQuantum,
+    Mirror,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -38,6 +48,8 @@ pub enum SignerClass {
     ProjectBinaries,
     ProjectContent,
     Deployment,
+    Organisation,
+    Local,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -49,6 +61,21 @@ pub enum PackKind {
     Intel,
     Integration,
     Rollout,
+    ZstdDictionary,
+    AgentAdapter,
+    Catalogue,
+    BuildingBlocks,
+    Detector,
+    Tripwire,
+    L0,
+    AnalyserVocab,
+    Prompt,
+    ReviewSettings,
+    Model,
+    AttributionHops,
+    Tile,
+    Report,
+    AuthenticatorList,
     LayerDocument,
     AgentConfig,
     OrgCatalogue,
@@ -61,6 +88,33 @@ pub enum UpdateFreshness {
     Current,
     Stale,
     Expired,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SignatureAlgorithm {
+    Ed25519,
+    EcdsaP256Sha256,
+    MlDsa65,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum YankReason {
+    Superseded,
+    Defective,
+    Compromised,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct YankRecord {
+    pub pack_id: String,
+    pub version: String,
+    pub sha256: String,
+    pub reason: YankReason,
+    pub issued_at: Timestamp,
+    pub replacement_version: Option<String>,
+    pub replacement_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -196,19 +250,32 @@ pub(crate) fn collect_role_keys(
             "role {role:?} missing from root"
         )));
     };
+    let mut seen_kids = BTreeSet::new();
+    let mut seen_pks: BTreeSet<[u8; 32]> = BTreeSet::new();
     let mut keys = Vec::with_capacity(role_def.key_ids.len());
     for kid in &role_def.key_ids {
+        if !seen_kids.insert(kid.as_str()) {
+            continue;
+        }
         if let Some(info) = root.keys.get(kid) {
-            keys.push(info.clone());
+            let pk_bytes = decode_ed25519_pubkey(&info.public_key_b64)?;
+            if seen_pks.insert(pk_bytes) {
+                keys.push(info.clone());
+            }
         }
     }
     Ok((keys, role_def.threshold))
 }
 
-pub(crate) fn verify_root_self(
+pub fn verify_root_self(
     root: &SignedMetadata<RootMetadata>,
     now: Timestamp,
 ) -> Result<(), UpdateError> {
+    if root.signed.version < 1 {
+        return Err(UpdateError::MalformedMetadata(
+            "root metadata version must be >= 1".into(),
+        ));
+    }
     if root.signed.expires <= now {
         return Err(UpdateError::MetadataExpired {
             role: format!("{:?}::root", root.signed.root_kind),
@@ -237,6 +304,7 @@ pub(crate) fn verify_role_signatures<T: Serialize>(
 
     let raw = canonical_json(&meta.signed)?;
     let mut verified_kids = BTreeSet::new();
+    let mut verified_pubkeys: BTreeSet<[u8; 32]> = BTreeSet::new();
     for entry in &meta.signatures {
         if verified_kids.contains(&entry.keyid) {
             continue;
@@ -247,12 +315,19 @@ pub(crate) fn verify_role_signatures<T: Serialize>(
         let Some(key_info) = root.keys.get(&entry.keyid) else {
             continue;
         };
+        let Ok(pk_bytes) = decode_ed25519_pubkey(&key_info.public_key_b64) else {
+            continue;
+        };
+        if verified_pubkeys.contains(&pk_bytes) {
+            continue;
+        }
         if verify_bytes(&key_info.public_key_b64, TUF_SIG_DOMAIN, &raw, &entry.sig).is_ok() {
             verified_kids.insert(entry.keyid.clone());
+            verified_pubkeys.insert(pk_bytes);
         }
     }
 
-    let count = u32::try_from(verified_kids.len()).unwrap_or(u32::MAX);
+    let count = u32::try_from(verified_pubkeys.len()).unwrap_or(u32::MAX);
     if count < role_def.threshold {
         return Err(UpdateError::InvalidSignature(format!(
             "role {role:?} verified {count} signatures, required threshold {}",
@@ -260,6 +335,23 @@ pub(crate) fn verify_role_signatures<T: Serialize>(
         )));
     }
     Ok(())
+}
+
+pub fn decode_ed25519_pubkey(public_key_b64: &str) -> Result<[u8; 32], UpdateError> {
+    let raw = decode_base64(public_key_b64)?;
+    raw.try_into().map_err(|_| {
+        UpdateError::InvalidSignature("TUF root public key must decode to 32 bytes".into())
+    })
+}
+
+pub fn decode_base64(raw: &str) -> Result<Vec<u8>, UpdateError> {
+    B64.decode(raw.trim())
+        .map_err(|e| UpdateError::MalformedMetadata(format!("invalid base64 payload: {e}")))
+}
+
+#[must_use]
+pub fn encode_base64(bytes: &[u8]) -> String {
+    B64.encode(bytes)
 }
 
 pub(crate) fn check_monotonic(role: &str, found: u64, trusted: u64) -> Result<(), UpdateError> {
@@ -330,10 +422,33 @@ pub(crate) fn enforce_root_separation(
                     | PackKind::Intel
                     | PackKind::Integration
                     | PackKind::Rollout
+                    | PackKind::ZstdDictionary
+                    | PackKind::AgentAdapter
+                    | PackKind::Catalogue
+                    | PackKind::BuildingBlocks
+                    | PackKind::Detector
+                    | PackKind::Tripwire
+                    | PackKind::L0
+                    | PackKind::AnalyserVocab
+                    | PackKind::Prompt
+                    | PackKind::ReviewSettings
+                    | PackKind::Model
+                    | PackKind::AttributionHops
+                    | PackKind::Tile
+                    | PackKind::Report
+                    | PackKind::AuthenticatorList
             );
             let is_project_content_role = matches!(
                 descriptor.role,
-                TufRole::Content | TufRole::Rollout | TufRole::Targets
+                TufRole::Content
+                    | TufRole::ContentDetection
+                    | TufRole::ContentPolicy
+                    | TufRole::ContentAdapters
+                    | TufRole::ContentDictionary
+                    | TufRole::IntelBase
+                    | TufRole::IntelRapid
+                    | TufRole::Rollout
+                    | TufRole::Targets
             );
             if descriptor.signer_class != SignerClass::ProjectContent
                 || !is_project_content_kind
@@ -346,7 +461,11 @@ pub(crate) fn enforce_root_separation(
         }
         TufRootKind::Deployment => {
             let is_deployment_role = matches!(descriptor.role, TufRole::Targets | TufRole::Fleet);
-            if descriptor.signer_class != SignerClass::Deployment
+            let is_deployment_signer = matches!(
+                descriptor.signer_class,
+                SignerClass::Deployment | SignerClass::Organisation
+            );
+            if !is_deployment_signer
                 || !is_deployment_role
                 || !matches!(
                     descriptor.pack_kind,

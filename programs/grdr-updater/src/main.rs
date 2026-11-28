@@ -11,10 +11,11 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use grdr_crypto::load_or_create_keypair;
-use grdr_os_clock::SystemClock;
-use grdr_update::{RootMetadata, SignedMetadata, UpdateSlot};
+use grdr_os_clock::{Clock as _, SystemClock};
+use grdr_update::{FipsMode, RootMetadata, SignedMetadata, UpdateSlot};
 use tracing_subscriber::EnvFilter;
 
+use grdr_updater::cohort_fips::{detect_host_os_profile, enforce_fips_startup};
 use grdr_updater::fs_safe::{
     confine_path_under_root, ensure_safe_dir, path_exists_nofollow, read_bounded_bytes,
 };
@@ -59,6 +60,11 @@ enum UpdaterCommand {
     },
     /// Verify clock, compatibility matrix defaults, and handover bounds locally.
     SelfTest,
+    /// Run FIPS 140-3 startup known-answer self-tests for the active host OS profile.
+    FipsSelfTest {
+        #[arg(long, default_value_t = false)]
+        required: bool,
+    },
     /// Run supervised inherited-IPC worker loop attached to `grdr-daemon`.
     DaemonWorker {
         #[arg(long)]
@@ -169,6 +175,18 @@ fn run_cli(cli: Cli) -> Result<(), String> {
         UpdaterCommand::SelfTest => {
             run_updater_self_test(&clock).map_err(|e| e.to_string())?;
             tracing::info!("grdr-updater self-test passed");
+            Ok(())
+        }
+        UpdaterCommand::FipsSelfTest { required } => {
+            let now = clock.now_wall().map_err(|e| e.to_string())?;
+            let mode = if required {
+                FipsMode::Required
+            } else {
+                FipsMode::Disabled
+            };
+            let report = enforce_fips_startup(detect_host_os_profile(), mode, now)
+                .map_err(|e| e.to_string())?;
+            tracing::info!(fips_state = ?report.state, "grdr-updater FIPS self-test complete");
             Ok(())
         }
         UpdaterCommand::DaemonWorker {

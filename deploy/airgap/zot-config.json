@@ -1,0 +1,33 @@
+{
+  "distSpecVersion": "1.1.0",
+  "storage": {
+    "rootDirectory": "/var/lib/grdr/airgap/zot",
+    "dedupe": true,
+    "gc": false,
+    "gcDelay": "0s"
+  },
+  "http": {
+    "address": "127.0.0.1",
+    "port": "5000",
+    "tls": {
+      "cert": "/etc/grdr/mirror/tls.crt",
+      "key": "/etc/grdr/mirror/tls.key"
+    }
+  },
+  "extensions": {
+    "search": {
+      "enable": true
+    },
+    "lint": {
+      "enable": true,
+      "mandatoryAnnotations": [
+        "org.guardrails.airgap.bundle_id",
+        "org.guardrails.airgap.root_fingerprint"
+      ]
+    }
+  },
+  "log": {
+    "level": "info",
+    "output": "/var/log/grdr/zot-mirror.log"
+  }
+}

@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: The Guardrails ADR Authors
+# Default component compatibility floors and required protocol capabilities
+# driven against contracts/support.toml [compatibility_matrix] wire ranges.
+schema = "grdr.updater.compat-components.v1"
+
+[[components]]
+name = "grdr-daemon"
+contracts = ["grdr.ingest", "grdr.fleet", "grdr.bootstrap", "grdr.operator", "grdr.pack"]
+min_patch_floor = "0.1.0"
+required_capabilities = ["signed_receipts", "session_labels", "fastpath_floor"]
+
+[[components]]
+name = "grdr-mcp"
+contracts = ["grdr.bootstrap", "grdr.operator"]
+min_patch_floor = "0.1.0"
+required_capabilities = ["mcp_tool_pinning", "step_up_approval"]
+
+[[components]]
+name = "grdr-desktop"
+contracts = ["grdr.operator"]
+min_patch_floor = "0.1.0"
+required_capabilities = ["step_up_approval"]

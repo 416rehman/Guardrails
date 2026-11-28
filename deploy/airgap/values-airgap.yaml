@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: The Guardrails ADR Authors
+# Air-gap Helm overrides for deploy/helm/grdr-server (validated against values.schema.json).
+# Fails closed until image.digest is supplied via --set image.digest=sha256:... or Zarf variables.
+
+global:
+  imageRegistry: "registry.site.internal:5000/416rehman"
+
+image:
+  repository: "grdr-server"
+  digest: ""
+  pullPolicy: "IfNotPresent"
+
+storage:
+  database:
+    sslMode: "verify-full"
+  objectStore:
+    provider: "filesystem"
+    dir: "/var/lib/grdr/objects"
+
+secrets:
+  privateCAConfigMap: "grdr-airgap-ca"
+
+networkPolicy:
+  enabled: true
+  allowIngressFromNamespaces:
+    - "ingress-nginx"
+  allowEgressNamespaces:
+    - "kube-system"
+    - "postgres"
+    - "nats"
+  allowEgressCidrs:
+    - "10.0.0.0/8"
+    - "172.16.0.0/12"
+    - "192.168.0.0/16"
+
+extraEnv:
+  - name: "OTEL_SDK_DISABLED"
+    value: "true"

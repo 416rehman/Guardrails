@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: The Guardrails ADR Authors
+# Offline Terraform / OpenTofu filesystem provider mirror configuration.
+# Set TF_CLI_CONFIG_FILE=/etc/grdr/mirror/terraform-mirror.tfrc on air-gapped operator hosts.
+
+provider_installation {
+  filesystem_mirror {
+    path    = "/var/lib/grdr/airgap/terraform-providers"
+    include = ["registry.terraform.io/*/*", "registry.opentofu.org/*/*"]
+  }
+  direct {
+    exclude = ["*/*"]
+  }
+}
